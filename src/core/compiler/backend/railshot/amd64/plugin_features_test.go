@@ -14,6 +14,8 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+const testPluginFeaturePOPCNT = plugincodegen.Features(1 << 9)
+
 func pluginCPUFeatureModule(t *testing.T, body []byte) *wasm.Module {
 	t.Helper()
 	imp := append(append(wasmtest.Name("env"), wasmtest.Name("f")...), 0, 0)
@@ -75,6 +77,8 @@ func TestExplicitPluginCPUFeatures(t *testing.T) {
 			accept   bool
 			want     shared.AMD64Features
 		}{
+			{"missing-popcnt", shared.AMD64KnownFeatures &^ shared.AMD64POPCNT, testPluginFeaturePOPCNT, false, 0},
+			{"popcnt", shared.AMD64KnownFeatures, testPluginFeaturePOPCNT, true, shared.AMD64POPCNT},
 			{"missing-avx2", shared.AMD64ModernBaseline, plugincodegen.FeatureAVX2, false, 0},
 			{"avx2", shared.AMD64ModernBaseline | shared.AMD64AVX2, plugincodegen.FeatureAVX2, true, shared.AMD64AVX | shared.AMD64AVX2},
 			{"missing-avx-state", shared.AMD64AVX2, plugincodegen.FeatureAVX2, false, 0},
