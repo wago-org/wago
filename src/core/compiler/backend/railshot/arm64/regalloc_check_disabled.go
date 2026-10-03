@@ -20,3 +20,8 @@ func checkSize(machineType) int                  { return 0 }
 func (*fn) checkBeginRegMoves([]regMove, bool) func() { return nil }
 
 func (*fn) checkInputs(*elem) {}
+
+func (*fn) checkEndLifetimes() {}
+
+func (*fn) checkTerminalGPWrites() uint32 { return 0 }
+func (*fn) checkRestoreGPWrites(uint32)   {}

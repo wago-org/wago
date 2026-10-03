@@ -33,6 +33,9 @@ const (
 func (a *Asm) shiftedReg(base32, base64 uint32, rd, rn, rm Reg, kind RegShift, shift uint8, w bool) {
 	a.word(wbase(w, base32, base64) | uint32(kind&3)<<22 | r(rm)<<16 |
 		(uint32(shift)&0x3F)<<10 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 
 // AddShifted is retained for existing LSL-only users.
@@ -65,19 +68,45 @@ func (a *Asm) EorShiftedReg(rd, rn, rm Reg, kind RegShift, shift uint8, w bool) 
 // into an add without a separate zero-extend. option=UXTW(010), imm3=0.
 func (a *Asm) AddExtUXTW(rd, rn, rm Reg) {
 	a.word(0x8B204000 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, true))
+	}
 }
 
 // Adds32 is 32-bit flag-setting ADD (Adds64 is in asm.go).
-func (a *Asm) Adds32(rd, rn, rm Reg) { a.word(0x2B000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
+func (a *Asm) Adds32(rd, rn, rm Reg) {
+	a.word(0x2B000000 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
 
 // Sign-extends (SBFM aliases).
-func (a *Asm) Sxtw(rd, rn Reg)         { a.word(0x93407C00 | r(rn)<<5 | r(rd)) }
-func (a *Asm) Sxtb(rd, rn Reg, w bool) { a.word(wbase(w, 0x13001C00, 0x93401C00) | r(rn)<<5 | r(rd)) }
-func (a *Asm) Sxth(rd, rn Reg, w bool) { a.word(wbase(w, 0x13003C00, 0x93403C00) | r(rn)<<5 | r(rd)) }
+func (a *Asm) Sxtw(rd, rn Reg) {
+	a.word(0x93407C00 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Sxtb(rd, rn Reg, w bool) {
+	a.word(wbase(w, 0x13001C00, 0x93401C00) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Sxth(rd, rn Reg, w bool) {
+	a.word(wbase(w, 0x13003C00, 0x93403C00) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
 
 // bfm emits a UBFM/SBFM-family instruction with the given immr/imms.
 func (a *Asm) bfm(base32, base64 uint32, rd, rn Reg, immr, imms uint32, w bool) {
 	a.word(wbase(w, base32, base64) | (immr&0x3F)<<16 | (imms&0x3F)<<10 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 
 // LslImm / LsrImm / AsrImm are the immediate shifts (UBFM/SBFM aliases).
@@ -110,26 +139,75 @@ func (a *Asm) AsrImm64(rd, rn Reg, sh uint8) { a.AsrImm(rd, rn, sh, false) }
 // RorImm is ROR rd, rn, #sh, encoded as EXTR rd, rn, rn, #sh.
 func (a *Asm) RorImm(rd, rn Reg, sh uint8, w bool) {
 	a.word(wbase(w, 0x13800000, 0x93C00000) | r(rn)<<16 | (uint32(sh)&0x3F)<<10 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 
 // Variable rotate right.
-func (a *Asm) Rorv32(rd, rn, rm Reg) { a.word(0x1AC02C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
-func (a *Asm) Rorv64(rd, rn, rm Reg) { a.word(0x9AC02C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
+func (a *Asm) Rorv32(rd, rn, rm Reg) {
+	a.word(0x1AC02C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Rorv64(rd, rn, rm Reg) {
+	a.word(0x9AC02C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
 
 // Clz / Rbit (ctz is RBIT then CLZ).
-func (a *Asm) Clz(rd, rn Reg, w bool)  { a.word(wbase(w, 0x5AC01000, 0xDAC01000) | r(rn)<<5 | r(rd)) }
-func (a *Asm) Rbit(rd, rn Reg, w bool) { a.word(wbase(w, 0x5AC00000, 0xDAC00000) | r(rn)<<5 | r(rd)) }
+func (a *Asm) Clz(rd, rn Reg, w bool) {
+	a.word(wbase(w, 0x5AC01000, 0xDAC01000) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Rbit(rd, rn Reg, w bool) {
+	a.word(wbase(w, 0x5AC00000, 0xDAC00000) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
 
 // Divide + multiply-subtract (remainder = Rn - (Rn/Rm)*Rm via div then Msub).
-func (a *Asm) Sdiv32(rd, rn, rm Reg) { a.word(0x1AC00C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
-func (a *Asm) Sdiv64(rd, rn, rm Reg) { a.word(0x9AC00C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
-func (a *Asm) Udiv32(rd, rn, rm Reg) { a.word(0x1AC00800 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
-func (a *Asm) Udiv64(rd, rn, rm Reg) { a.word(0x9AC00800 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
+func (a *Asm) Sdiv32(rd, rn, rm Reg) {
+	a.word(0x1AC00C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Sdiv64(rd, rn, rm Reg) {
+	a.word(0x9AC00C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Udiv32(rd, rn, rm Reg) {
+	a.word(0x1AC00800 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Udiv64(rd, rn, rm Reg) {
+	a.word(0x9AC00800 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
 func (a *Asm) Msub32(rd, rn, rm, ra Reg) {
 	a.word(0x1B008000 | r(rm)<<16 | r(ra)<<10 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 func (a *Asm) Msub64(rd, rn, rm, ra Reg) {
 	a.word(0x9B008000 | r(rm)<<16 | r(ra)<<10 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 
 // CMN (ADDS to XZR) with immediate — compare against a negative value.
@@ -137,14 +215,39 @@ func (a *Asm) CmnImm32(rn Reg, imm uint32) { a.word(0x3100001F | (imm&0xFFF)<<10
 func (a *Asm) CmnImm64(rn Reg, imm uint32) { a.word(0xB100001F | (imm&0xFFF)<<10 | r(rn)<<5) }
 
 // High/long multiplies for magic-number division.
-func (a *Asm) Smulh(rd, rn, rm Reg) { a.word(0x9B407C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
-func (a *Asm) Umulh(rd, rn, rm Reg) { a.word(0x9BC07C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
-func (a *Asm) Smull(rd, rn, rm Reg) { a.word(0x9B207C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) } // Xd, Wn, Wm
-func (a *Asm) Umull(rd, rn, rm Reg) { a.word(0x9BA07C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
+func (a *Asm) Smulh(rd, rn, rm Reg) {
+	a.word(0x9B407C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Umulh(rd, rn, rm Reg) {
+	a.word(0x9BC07C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+
+// Smull multiplies Wn and Wm into Xd.
+func (a *Asm) Smull(rd, rn, rm Reg) {
+	a.word(0x9B207C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+func (a *Asm) Umull(rd, rn, rm Reg) {
+	a.word(0x9BA07C00 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
 
 // Csel32 is the 32-bit conditional select (Csel64 is in asm.go).
 func (a *Asm) Csel32(rd, rn, rm Reg, c Cond) {
 	a.word(0x1A800000 | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 
 // 32-bit logical immediates (return false when val is not an encodable bitmask).
@@ -172,6 +275,10 @@ func (a *Asm) logicalImm32(base uint32, rd, rn Reg, val uint32) bool {
 		return false
 	}
 	a.word(base | immr<<16 | imms<<10 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		// ANDS discards register 31; AND/ORR/EOR immediates write SP.
+		a.regallocGPWrites(regallocGPMask(rd, base&(3<<29) != 3<<29))
+	}
 	return true
 }
 
@@ -236,6 +343,9 @@ func (a *Asm) FmovToGpr(rd, rn Reg, f64 bool) {
 		a.regallocCrossCopy(rd, rn, false, regallocWidth(f64))
 	}
 	a.word(fbase(f64, 0x1E260000, 0x9E660000) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 
 // Fcmp sets NZCV from Rn ? Rm.
@@ -272,6 +382,9 @@ func (a *Asm) Fcvtzs(rd, rn Reg, f64src, dstWide bool) {
 		base |= 0x00400000
 	}
 	a.word(base | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 
 // Scvtf converts signed int→float. f64 selects dest precision, srcWide selects an
@@ -306,19 +419,47 @@ func (a *Asm) FcvtD2S(rd, rn Reg) { a.word(0x1E624000 | r(rn)<<5 | r(rd)) } // d
 
 // --- Stack-pointer register forms (SP must use the extended-register encoding) ---
 
-func (a *Asm) SubSPReg(rm Reg) { a.word(0xCB2063FF | r(rm)<<16) } // SUB SP, SP, Xm
-func (a *Asm) AddSPReg(rm Reg) { a.word(0x8B2063FF | r(rm)<<16) } // ADD SP, SP, Xm
-func (a *Asm) CmpSP64(rm Reg)  { a.word(0xEB2063FF | r(rm)<<16) } // CMP SP, Xm (stack fence)
+// SubSPReg emits SUB SP, SP, Xm.
+func (a *Asm) SubSPReg(rm Reg) {
+	a.word(0xCB2063FF | r(rm)<<16)
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(SP, true))
+	}
+}
+
+// AddSPReg emits ADD SP, SP, Xm.
+func (a *Asm) AddSPReg(rm Reg) {
+	a.word(0x8B2063FF | r(rm)<<16)
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(SP, true))
+	}
+}
+func (a *Asm) CmpSP64(rm Reg) { a.word(0xEB2063FF | r(rm)<<16) } // CMP SP, Xm (stack fence)
 
 // --- Branch-with-link, ADR, and patch helpers ---
 
 // Bl emits BL with a zero displacement, returning its byte offset (patch with
 // PatchBranch26 at module layout — same imm26 field as B).
-func (a *Asm) Bl() int { at := a.Len(); a.word(0x94000000); return at }
+func (a *Asm) Bl() int {
+	at := len(a.B)
+	// Inline the fixed word to preserve the ordinary-build instruction layout.
+	a.B = append(a.B, 0x00, 0x00, 0x00, 0x94)
+	if regallocCheckEnabled {
+		a.regallocGPWrites(^uint32(0))
+	}
+	return at
+}
 
 // Adr emits ADR rd with a zero PC-relative displacement, returning its byte
 // offset (patch with PatchAdr). Range ±1 MiB.
-func (a *Asm) Adr(rd Reg) int { at := a.Len(); a.word(0x10000000 | r(rd)); return at }
+func (a *Asm) Adr(rd Reg) int {
+	at := len(a.B)
+	a.word(0x10000000 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+	return at
+}
 
 // PatchAdr fills the split immlo:immhi (21-bit signed) of an ADR at byte offset
 // `at` to address byte offset `target`. Returns false if out of ±1 MiB range.
@@ -382,6 +523,9 @@ func (a *Asm) LdrIdx(rt, rn, rm Reg, size int, signed, wideDest bool) {
 		}
 	}
 	a.word(0x38206800 | sizeField(size) | opc<<22 | r(rm)<<16 | r(rn)<<5 | r(rt))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rt, false))
+	}
 }
 
 // StrIdx stores the low `size` bytes of rt to [rn + rm] (unscaled byte offset).
@@ -397,6 +541,11 @@ func (a *Asm) ldStrScaled(base uint32, shift uint, rt, rn Reg, off uint32) bool 
 		return false
 	}
 	a.word(base | s<<10 | r(rn)<<5 | r(rt))
+	if regallocCheckEnabled {
+		if loadStoreMayWriteGPR(base) {
+			a.regallocGPWrites(regallocGPMask(rt, false))
+		}
+	}
 	return true
 }
 
@@ -474,6 +623,9 @@ func (a *Asm) materializeBaseDisp(dst, base Reg, disp int32) {
 	}
 	a.MovImm64(scratch, uint64(magnitude))
 	a.word(op | r(scratch)<<16 | r(base)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(dst, true))
+	}
 }
 
 // LdrQ / StrQ are 128-bit spill load/store with a signed byte displacement,
@@ -906,6 +1058,9 @@ func (a *Asm) Ldur64(rt, rn Reg, off int32) {
 	}
 
 	a.word(0xF8400000 | (uint32(off)&0x1FF)<<12 | r(rn)<<5 | r(rt))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rt, false))
+	}
 }
 func (a *Asm) Ldur32(rt, rn Reg, off int32) {
 	if regallocCheckEnabled {
@@ -913,6 +1068,9 @@ func (a *Asm) Ldur32(rt, rn Reg, off int32) {
 	}
 
 	a.word(0xB8400000 | (uint32(off)&0x1FF)<<12 | r(rn)<<5 | r(rt))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rt, false))
+	}
 }
 func (a *Asm) Stur64(rt, rn Reg, off int32) {
 	if regallocCheckEnabled {
@@ -1236,15 +1394,27 @@ func (a *Asm) NeonInsD(dst, rn Reg, lane byte) {
 }
 func (a *Asm) NeonUmovB(rd, vn Reg, lane byte) {
 	a.word(0x0E003C00 | neonImm5(1, lane)<<16 | r(vn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 func (a *Asm) NeonUmovH(rd, vn Reg, lane byte) {
 	a.word(0x0E003C00 | neonImm5(2, lane)<<16 | r(vn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 func (a *Asm) NeonUmovS(rd, vn Reg, lane byte) {
 	a.word(0x0E003C00 | neonImm5(4, lane)<<16 | r(vn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 func (a *Asm) NeonUmovD(rd, vn Reg, lane byte) {
 	a.word(0x4E003C00 | neonImm5(8, lane)<<16 | r(vn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
 }
 
 func (a *Asm) NeonDupB(dst, src Reg)    { a.word(0x4E010400 | r(src)<<5 | r(dst)) }

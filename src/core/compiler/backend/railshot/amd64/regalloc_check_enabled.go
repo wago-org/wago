@@ -11,12 +11,15 @@ import (
 const regallocCheckEnabled = true
 
 // Transfer regions trust incoming locations and observe only covered transfers.
-// Immutable-cache admission is tracked separately across physical calls; neither
-// state is whole-function dataflow.
+// Immutable GP reservations observe all typed encoder writes; FP cache
+// admission is checked at calls. Neither state is whole-function dataflow.
 type regallocFnState struct {
-	allocationCheck *allocationRegion
-	immutableCheck  regalloccheck.State
-	immutableValues []allocationGoal
+	allocationCheck    *allocationRegion
+	immutableCheck     regalloccheck.State
+	immutableValues    []allocationGoal
+	immutableGPMask    uint32
+	gpObserverActive   bool
+	gpObserverPrevious func(uint32)
 }
 type allocationGoal struct {
 	loc   regalloccheck.Location
@@ -267,6 +270,20 @@ func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
 	value := f.immutableCheck.Fresh(size)
 	f.immutableCheck.Put(loc, value)
 	f.immutableValues = append(f.immutableValues, allocationGoal{loc, value})
+	if !fp {
+		f.immutableGPMask |= uint32(1) << uint8(reg)
+		if !f.gpObserverActive && f.a != nil {
+			f.gpObserverActive = true
+			f.gpObserverPrevious = f.a.ObserveGPWrites(func(mask uint32) {
+				if mask&f.immutableGPMask != 0 {
+					panic(fmt.Sprintf("regalloccheck: function %d pc %d: immutable GP reservation overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, mask&f.immutableGPMask))
+				}
+				if f.gpObserverPrevious != nil {
+					f.gpObserverPrevious(mask)
+				}
+			})
+		}
+	}
 }
 
 // A loop-scoped cache ceases to reserve its register at the loop's lexical end.
@@ -276,6 +293,9 @@ func (f *fn) checkReleaseImmutable(reg Reg, fp bool) {
 	loc := checkReg(reg, fp)
 	for i, goal := range f.immutableValues {
 		if goal.loc == loc {
+			if !fp {
+				f.immutableGPMask &^= uint32(1) << uint8(reg)
+			}
 			copy(f.immutableValues[i:], f.immutableValues[i+1:])
 			f.immutableValues[len(f.immutableValues)-1] = allocationGoal{}
 			f.immutableValues = f.immutableValues[:len(f.immutableValues)-1]
@@ -330,3 +350,23 @@ func (f *fn) checkBeginRegMoves(moves []regMove, fp bool) func() {
 		}
 	}
 }
+
+// A reservation forbids every physical write until its lifetime ends. This
+// path-independent rule cannot be repaired by copying a value from another arm.
+func (f *fn) checkEndLifetimes() {
+	if f.gpObserverActive {
+		f.a.ObserveGPWrites(f.gpObserverPrevious)
+		f.gpObserverPrevious = nil
+		f.gpObserverActive = false
+	}
+	f.immutableGPMask = 0
+}
+
+// Trap stubs are terminal edges: they unwind directly to Go and cannot return
+// to a cache use. Restore the body reservation for other emitted paths.
+func (f *fn) checkTerminalGPWrites() uint32 {
+	saved := f.immutableGPMask
+	f.immutableGPMask = 0
+	return saved
+}
+func (f *fn) checkRestoreGPWrites(saved uint32) { f.immutableGPMask = saved }

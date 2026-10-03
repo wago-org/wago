@@ -20,3 +20,8 @@ func regallocWidth(wide bool) int                                               
 
 func (*Asm) regallocCrossCopy(Reg, Reg, bool, int) {}
 func (*Asm) regallocKillFP(Reg)                    {}
+
+// ObserveGPWrites is inert in ordinary builds and retains no callback state.
+func (*Asm) ObserveGPWrites(func(uint32)) func(uint32) { return nil }
+func (*Asm) regallocGPWrites(uint32)                   {}
+func regallocGPMask(Reg, bool) uint32                  { return 0 }

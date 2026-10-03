@@ -6,7 +6,37 @@ import "github.com/wago-org/wago/internal/regalloccheck"
 
 const regallocCheckEnabled = true
 
-type regallocState struct{ regallocObserver func(regalloccheck.Effect) }
+type regallocState struct {
+	regallocObserver func(regalloccheck.Effect)
+	gpWriteObserver  func(uint32)
+}
+
+// ObserveGPWrites installs an independent physical GP-write observer. Restore the
+// returned observer when the observation scope ends, including on panic. Masks
+// name X0..X30 and, where an instruction writes SP, bit 31. Discarded XZR
+// destinations are excluded. Calls conservatively report every bit for their
+// ABI clobbers. This does not change the allocation-transfer observer.
+func (a *Asm) ObserveGPWrites(fn func(uint32)) func(uint32) {
+	old := a.gpWriteObserver
+	a.gpWriteObserver = fn
+	return old
+}
+
+func (a *Asm) regallocGPWrites(mask uint32) {
+	if mask != 0 && a.gpWriteObserver != nil {
+		a.gpWriteObserver(mask)
+	}
+}
+
+// Register 31 is SP only for the instruction forms that explicitly admit it.
+// Match the encoded five-bit register field, including for aliased Reg values.
+func regallocGPMask(dst Reg, sp bool) uint32 {
+	reg := r(dst)
+	if reg == 31 && !sp {
+		return 0
+	}
+	return uint32(1) << reg
+}
 
 // ObserveRegalloc scopes an observer to an explicitly checked transfer window.
 // The returned observer must be restored, including when codegen panics.
