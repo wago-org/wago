@@ -1580,6 +1580,31 @@ func HostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) [
 	return hostIndirectSyncThunk(importIdx, paramSlots, resultSlots, false)
 }
 
+// emitHostThunkTransfers rebases each cursor at the 32 KiB scaled-offset
+// boundary. This keeps every LDR/STR encodable without materializing a large
+// address for each remaining slot.
+func emitHostThunkTransfers(a *a64.Asm, value, loadBase, storeBase Reg, loadOffset, storeOffset uint32, slots int) {
+	const offsetWindow = uint32(0x1000 * 8)
+	for range slots {
+		if loadOffset >= offsetWindow {
+			a.AddImm64LSL12(loadBase, loadBase, offsetWindow)
+			loadOffset -= offsetWindow
+		}
+		if storeOffset >= offsetWindow {
+			a.AddImm64LSL12(storeBase, storeBase, offsetWindow)
+			storeOffset -= offsetWindow
+		}
+		if !a.Load64(value, loadBase, loadOffset) {
+			panic("arm64: host thunk load offset out of range")
+		}
+		if !a.Store64(value, storeBase, storeOffset) {
+			panic("arm64: host thunk store offset out of range")
+		}
+		loadOffset += 8
+		storeOffset += 8
+	}
+}
+
 func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHome bool) []byte {
 	// Preserve the ordinary encoding; module functions opt into logical MOVs
 	// through their policy.
@@ -1604,10 +1629,7 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 		argOffset = 0
 		a.AddImm64(X11, X10, uint32(hcWideBase+hcWideArgs))
 	}
-	for i := 0; i < paramSlots; i++ {
-		a.Load64(X9, X0, uint32(i*8))
-		a.Store64(X9, argBase, argOffset+uint32(i*8))
-	}
+	emitHostThunkTransfers(a, X9, X0, argBase, 0, argOffset, paramSlots)
 	a.MovImm64(X16, uint64(uint32(importIdx)))
 	a.Store32(X16, X10, hcImportIdx)
 	a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16)) // low16 params, high16 results
@@ -1631,10 +1653,7 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 		a.AddShifted(X11, X10, X11, 3, false)
 		a.AddImm64(X11, X11, uint32(hcWideBase+hcWideArgs))
 	}
-	for i := 0; i < resultSlots; i++ {
-		a.Load64(X9, resultBase, resultOffset+uint32(i*8))
-		a.Store64(X9, X3, uint32(i*8))
-	}
+	emitHostThunkTransfers(a, X9, resultBase, X3, resultOffset, 0, resultSlots)
 	a.Load64(LR, SP, 16)
 	a.LdpPost(linMemReg, X3, SP, 32) // restore caller linMemReg (X3 reload is harmless), SP += 32
 	a.Ret()

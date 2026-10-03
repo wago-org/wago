@@ -1263,3 +1263,34 @@ func TestHostIndirectThunksReturnAndVaryBySignature(t *testing.T) {
 		t.Fatal("sync thunk did not preserve its home/arity-specific encoding")
 	}
 }
+
+func TestHostIndirectSyncThunkTransfersPastScaledOffsetLimit(t *testing.T) {
+	for _, test := range []struct {
+		name                    string
+		params, results         int
+		moreParams, moreResults int
+	}{
+		{name: "parameter", params: 4096, moreParams: 4097},
+		{name: "result", results: 4096, moreResults: 4097},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := countThunkTransfers(HostIndirectSyncThunk(7, test.params, test.results))
+			after := countThunkTransfers(HostIndirectSyncThunk(7, test.moreParams, test.moreResults))
+			if after-before != 2 {
+				t.Fatalf("one additional slot emitted %d additional memory transfers, want 2", after-before)
+			}
+		})
+	}
+}
+
+func countThunkTransfers(code []byte) int {
+	n := 0
+	for i := 0; i+4 <= len(code); i += 4 {
+		word := uint32(code[i]) | uint32(code[i+1])<<8 | uint32(code[i+2])<<16 | uint32(code[i+3])<<24
+		switch word & 0xffc00000 {
+		case 0xf9400000, 0xf9000000: // LDR/STR Xt with a scaled unsigned offset.
+			n++
+		}
+	}
+	return n
+}
