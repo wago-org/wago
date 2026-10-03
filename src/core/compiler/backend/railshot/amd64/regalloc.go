@@ -29,9 +29,10 @@ func (f *fn) preloadLoopIntConsts(h *funcHintView) {
 		reg := regNone
 		for _, candidate := range [...]Reg{R12, R13, R14, R15, R9, R10, R11, RDI, RSI} {
 			// Bulk lowerings use fixed pointer registers; table.copy also uses R9
-			// for its source descriptor. Persistent caches cannot share them.
-			if (candidate == RDI || candidate == RSI) && h.flags.has(hintUsesBulkMem|hintMutatesTable) ||
-				candidate == R9 && h.flags.has(hintMutatesTable) {
+			// for its source descriptor. Original call hints cover inlined bodies
+			// whose scratch flags are not propagated. Caches cannot share them.
+			if (candidate == RDI || candidate == RSI) && h.flags.has(hintUsesBulkMem|hintMutatesTable|hintHasCall) ||
+				candidate == R9 && h.flags.has(hintMutatesTable|hintHasCall) {
 				continue
 			}
 			// Loop interrupt polls use RSI as fixed scratch after the operand stack
