@@ -665,15 +665,19 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 			return dest
 		}
 		if dest == regNone {
-			// Evaluate and protect the full source before allocating the distinct
-			// destructive destination. A deferred source can borrow several interval
-			// locals; reserving the destination first perturbs that condensation and
-			// may evict one before its use. Keeping the source distinct also matches
-			// the non-destructive BMI2 path's ownership contract.
-			src, _ := f.materializeRead(left)
-			f.pinned = f.pinned.add(src)
-			dest = f.allocReg(maskOf(src))
-			f.pinned = f.pinned.remove(src)
+			// Evaluate the full source before choosing the destructive destination.
+			// A deferred source can borrow several regional locals; reserving a
+			// destination first may evict one before its use. An owned result can
+			// be reused; a borrowed source still needs a protected copy.
+			src, owned := f.materializeRead(left)
+			if shiftOwnedDestinationEnabled && owned {
+				dest = src
+				f.stats.peep("shift-owned-destination")
+			} else {
+				f.pinned = f.pinned.add(src)
+				dest = f.allocReg(maskOf(src))
+				f.pinned = f.pinned.remove(src)
+			}
 		}
 		f.pinned = f.pinned.add(dest)
 		f.condenseInto(left, dest)

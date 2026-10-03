@@ -143,8 +143,12 @@ func TestRegallocCheckShiftedI64ComparisonResult(t *testing.T) {
 				f.materialize(root)
 				f.spill(root)
 				f.checkEndFlush()
-				if narrowMoves != 1 {
-					t.Fatalf("target-hint 32-bit moves = %d, want 1", narrowMoves)
+				wantMoves := 1
+				if shiftOwnedDestinationEnabled {
+					wantMoves = 0 // the comparison's owned result is already i32
+				}
+				if narrowMoves != wantMoves {
+					t.Fatalf("target-hint 32-bit moves = %d, want %d", narrowMoves, wantMoves)
 				}
 			})
 		}
