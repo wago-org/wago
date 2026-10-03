@@ -127,3 +127,32 @@ func TestEncodeExprPreservesExplicitReferenceValueType(t *testing.T) {
 		t.Fatalf("shorthand typed select = % x, want % x", got, want)
 	}
 }
+
+func TestEncodeDecodeStringRefUsesExplicitForm(t *testing.T) {
+	encoded, err := EncodeExpr(Expr{Instrs: []Instruction{{
+		Kind: InstrSelect,
+		ext:  &instrExt{ValTypes: []ValType{StringRef}},
+	}}})
+	if err != nil {
+		t.Fatalf("encode stringref typed select: %v", err)
+	}
+	r := newReader(encoded)
+	decoded, err := decodeInstruction(r, 0)
+	if err != nil {
+		t.Fatalf("decode stringref typed select: %v", err)
+	}
+	if got, want := r.off(), len(encoded)-1; got != want {
+		t.Fatalf("typed select consumed %d bytes before end, want %d", got, want)
+	}
+	end, err := r.byte()
+	if err != nil || end != 0x0b || r.has() {
+		t.Fatalf("encoded expression terminator = %#x, remaining=%d, err=%v", end, r.left(), err)
+	}
+	valTypes := decoded.ValTypes()
+	if len(valTypes) != 1 || !EqualValType(valTypes[0], StringRef) || valTypes[0].Ref().Bare() {
+		t.Fatalf("decoded typed select value types = %#v", valTypes)
+	}
+	if want := []byte{0x1c, 0x01, 0x63, 0x64, 0x0b}; !bytes.Equal(encoded, want) {
+		t.Fatalf("stringref typed select = % x, want % x", encoded, want)
+	}
+}
