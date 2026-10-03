@@ -3717,6 +3717,49 @@
         "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       }
+    },
+    {
+      "suite": "Grain stdlib",
+      "desc": "Grain 0.7.2 JSON Parse, ToString, and Lenses assertion subset (Validation excluded)",
+      "id": "grain-stdlib-json-subset",
+      "artifact": "workloads/applications/grain-stdlib/json-subset.wasm",
+      "artifact_sha256": "48bc2e82d2eeec22b403732dfe4f1a48c1793f8ed72cacd92cb60a0cdbcc4c48",
+      "tags": [
+        "application",
+        "grain",
+        "grain-stdlib",
+        "stdlib",
+        "wasi",
+        "self-check"
+      ],
+      "source": {
+        "repository": "https://github.com/grain-lang/grain",
+        "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+        "revision_date": "2026-02-08",
+        "license": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+        "toolchain": "Grain packaged Linux x64 compiler",
+        "toolchain_version": "0.7.2; Binaryen 124; --release --no-wasm-tail-call"
+      },
+      "stages": [
+        "Decode",
+        "Validate",
+        "Compile",
+        "CompileFull",
+        "CommandExec"
+      ],
+      "command": {
+        "runtime": "wasi",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
+        "export": "_start",
+        "oracle": "self-check",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
     }
   ]
 }

@@ -20,7 +20,7 @@ var requiredCorpusCorrectnessShardTargets = []corpusCorrectnessShardTarget{
 	{Platform: "windows/arm64", Count: 4},
 }
 
-const requiredCorpusCorrectnessWorkloadCount = 127
+const requiredCorpusCorrectnessWorkloadCount = 128
 
 func TestVerifyCorpusCorrectnessShardReports(t *testing.T) {
 	// Check the inventory locally too, before CI report availability can skip us.

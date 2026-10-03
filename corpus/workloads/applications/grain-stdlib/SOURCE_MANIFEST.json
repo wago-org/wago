@@ -2,7 +2,7 @@
   "repository": "https://github.com/grain-lang/grain",
   "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
   "archive": "source.tar.gz",
-  "archive_sha256": "66a7f38faab1852b1b1be98aa02b7ac0581cd683875d79205772492ca9a4eb71",
+  "archive_sha256": "81a2b0c304e8b613a1044c26c3bee8763b09d9f6c906359e913fc166de215436",
   "files": [
     {
       "path": "LICENSE",
@@ -13,6 +13,14 @@
       "path": "compiler/test/stdlib/array.test.gr",
       "sha256": "665cb292b772c20c168a84ed923296154f57e364c50e3eca1b8d3a8b846cf487",
       "git_blob_sha1": "4908a1368c0bf29c8889479a0ca75e90258fb953"
+    },
+    {
+      "path": "compiler/test/stdlib/json.test.gr",
+      "sha256": "c9cff3e9047427daa4d8b0dd37bfebb1286bd2f5d8695c48c05cf1ee85ade3ad",
+      "git_blob_sha1": "79199c3ab4ebe2e4380c0c291b462e67997b8afb",
+      "upstream_sha256": "ccc62b48964114b37beb67856eae1a5d950bbb3b065d4badcdc500a5ffff0a6e",
+      "upstream_git_blob_sha1": "ddcb7d24ee8a6f809b735a181700da2ec0fc3780",
+      "modification": "2026-10-03: omit entire Validation module (upstream lines 40-176); add dated modification notice; retain all other source text unchanged. See JSON_SUBSET.md."
     },
     {
       "path": "compiler/test/stdlib/string.test.gr",
@@ -30,6 +38,11 @@
       "git_blob_sha1": "16330899a569f625b29d8dde29218ac5934fa337"
     },
     {
+      "path": "stdlib/buffer.gr",
+      "sha256": "b935ea787e9420dbcc28f896a9ca9776f26ef58bbe06a5f36b8aac0afd52a616",
+      "git_blob_sha1": "7ee0261db050d7486437a86148055dce09457d0d"
+    },
+    {
       "path": "stdlib/bytes.gr",
       "sha256": "52438b87b2456bd419f8b13d282108338d77accb0c1ff606488cba96eb2e140b",
       "git_blob_sha1": "247ad6fa0381655bfd86db9a5dd4aebcee05c971"
@@ -45,6 +58,11 @@
       "git_blob_sha1": "100725f0eda91fd6f7250ace8a937a25f28264ed"
     },
     {
+      "path": "stdlib/json.gr",
+      "sha256": "b62b73064d4977b17a37625be566bc39721a7d59143bee48c074777dabbed8bf",
+      "git_blob_sha1": "2146c8c9ff167b31575b96ec7b8571633a765f02"
+    },
+    {
       "path": "stdlib/list.gr",
       "sha256": "3248025d7103e804e171ebdacf9128397b4d1732cb40271ccbaa7c8e4c6d4ed7",
       "git_blob_sha1": "0933e9b8927f82d02855bfaef009e82781fe8b81"
@@ -55,6 +73,11 @@
       "git_blob_sha1": "b6dcb7088cdc1ffaaddd9e0d2f6416a8af335396"
     },
     {
+      "path": "stdlib/option.gr",
+      "sha256": "bd8a3fdfeaf2481f1874f0c5ccb49f15282189f3d0e9c25972af5f2ed9a81254",
+      "git_blob_sha1": "4d490a0ca241d92df125e0d29ea1622f8b29c184"
+    },
+    {
       "path": "stdlib/pervasives.gr",
       "sha256": "4f7f97930a45380e832f86dd69895505d075e53f6ba9397eff404b118145afbb",
       "git_blob_sha1": "5ab250843c1ba21874594f78ce2a381316c48269"
@@ -63,6 +86,11 @@
       "path": "stdlib/range.gr",
       "sha256": "d0d5c89888fdb73a929ea5e6e2e8e36c88fa572d87b307c912d9012f5780ec1a",
       "git_blob_sha1": "abdb300b5fc2ec4b9e2a0c4fd43611e32b7f8d6c"
+    },
+    {
+      "path": "stdlib/result.gr",
+      "sha256": "defef5aaa45c4b7c5a81f5252fe92fd803a6ccb1fd73277e16eb32ee0f804311",
+      "git_blob_sha1": "1d35a5c23bc098b7d40f8430bbc9b530b8c97adb"
     },
     {
       "path": "stdlib/runtime/atof/common.gr",
@@ -238,6 +266,11 @@
       "path": "stdlib/string.gr",
       "sha256": "ffc89371c696a743d853fc158f627005087c19e60098d5a29ab956e49ecd94b6",
       "git_blob_sha1": "e268573940745db45e180718ba61cb6e94857cdd"
+    },
+    {
+      "path": "stdlib/uint8.gr",
+      "sha256": "b260eb8ecee9785cf24c1be2e30f9f940ec50109b6c7b64d4ebd604e476383b0",
+      "git_blob_sha1": "8b3b8b95ec1b5276a6e1da23974898d192be75ba"
     }
   ]
 }

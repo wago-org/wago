@@ -1,8 +1,9 @@
 # Grain stdlib fixture notices
 
-These fixtures contain unmodified Grain test sources from commit
+These fixtures contain unchanged Array/String and a modified JSON test subset from commit
 `49829d7966b38b177291f7e91f5eb81c65ec07aa` and linked Grain runtime/stdlib code.
-The source archive retains every original source header. This file repeats the
+The source archive retains every original source header. JSON omits the entire
+Validation module and adds a dated modification notice; see `JSON_SUBSET.md`. This file repeats the
 third-party notices for recipients of the binaries.
 
 Upstream project copyright, retained from the
@@ -10,7 +11,7 @@ Upstream project copyright, retained from the
 
 Copyright ©️ 2017-2025 Philip Blair, Oscar Spencer, & contributors.
 
-The two tests live under `compiler/test/stdlib`, outside `stdlib/LICENSE`.
+The three test inputs live under `compiler/test/stdlib`, outside `stdlib/LICENSE`.
 They are conservatively distributed under the repository's LGPLv3 terms;
 see `COPYING.LESSER` and its incorporated GPLv3 text in `COPYING`.
 The linked stdlib/runtime has the MIT notice in `LICENSE.stdlib`, together with
@@ -204,3 +205,31 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## Maciej Hirsz JSON number tests: MIT
+
+The retained JSON test source attributes number tests to
+https://github.com/maciejhirsz/json-rust/blob/master/tests/number.rs.
+The separate JSON_checker-derived Validation module is excluded.
+
+Copyright (c) 2016 Maciej Hirsz <maciej.hirsz@gmail.com>
+
+The MIT License (MIT)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
