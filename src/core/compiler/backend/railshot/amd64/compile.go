@@ -33,9 +33,10 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
-// Experimental: lend one argument register to guarded call-making local pins.
-// R9/R10 remain staging scratch; current capture and spill contracts still apply.
-var guardCallPinEnabled = os.Getenv("WAGO_AMD64_GUARD_CALL_PIN") == "1"
+// Lend one argument register to guarded call-making local pins. R9/R10 remain
+// staging scratch; current capture and spill contracts still apply.
+// WAGO_AMD64_GUARD_CALL_PIN=0 restores the previous pin pool for comparison.
+var guardCallPinEnabled = os.Getenv("WAGO_AMD64_GUARD_CALL_PIN") != "0"
 
 // A small pin budget leaves transient capacity in loop functions with many
 // locals. Keep the default on the native qualification platform.
