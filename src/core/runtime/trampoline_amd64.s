@@ -35,6 +35,9 @@ TEXT ·enterNativeRaw(SB), NOSPLIT, $0-48
 	MOVQ R13, 32(R10)
 	MOVQ R14, 40(R10)               // g
 	MOVQ R15, 48(R10)
+	STMXCSR 56(R10)                  // save caller floating-point control state
+	MOVL $0x1f80, 60(R10)            // nearest-even, all exceptions masked
+	LDMXCSR 60(R10)
 
 	// Switch to the foreign stack and zero RBP so any unwinder stops here.
 	MOVQ R10, SP
@@ -54,6 +57,7 @@ TEXT ·enterNativeRaw(SB), NOSPLIT, $0-48
 	CALL R11
 
 	// Restore Go context (SP currently == R10).
+	LDMXCSR 56(SP)
 	MOVQ  8(SP), BP
 	MOVQ 16(SP), BX
 	MOVQ 24(SP), R12
