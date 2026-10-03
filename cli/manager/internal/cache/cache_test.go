@@ -42,6 +42,116 @@ func TestCleanRemovesOnlySelectedCacheLocations(t *testing.T) {
 	}
 }
 
+func TestCleanBuildsDoesNotFollowVersionDirectorySymlink(t *testing.T) {
+	root := t.TempDir()
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(workingDirectory) })
+	dirs := wagopaths.Dirs{
+		Cache:    filepath.Join(root, "cache", "canary"),
+		Versions: filepath.Join(root, "versions"),
+		Version:  "canary",
+	}
+	externalRoot := t.TempDir()
+	externalPlugin := filepath.Join(externalRoot, "standard", "normal", "plugins", "keep")
+	if err := os.MkdirAll(filepath.Dir(externalPlugin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(externalPlugin, []byte("outside wago"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dirs.Versions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(externalRoot, filepath.Join(dirs.Versions, "linked")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := Clean(dirs, Selection{Builds: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(externalPlugin); err != nil {
+		t.Fatalf("cache cleanup followed a symlink outside the versions directory: %v", err)
+	}
+}
+
+func TestCleanBuildsRemovesPluginLeafSymlinkWithoutFollowingIt(t *testing.T) {
+	root := t.TempDir()
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(workingDirectory) })
+	dirs := wagopaths.Dirs{Versions: filepath.Join(root, "versions")}
+	build := filepath.Join(dirs.Versions, "v1", "standard", "normal")
+	if err := os.MkdirAll(build, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	external := t.TempDir()
+	marker := filepath.Join(external, "keep")
+	if err := os.WriteFile(marker, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	leaf := filepath.Join(build, "plugins")
+	if err := os.Symlink(external, leaf); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	result, err := Clean(dirs, Selection{Builds: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Removed != 1 || result.Bytes != 0 {
+		t.Fatalf("removed plugin leaf = %+v, want one zero-byte cache object", result)
+	}
+	if _, err := os.Lstat(leaf); !os.IsNotExist(err) {
+		t.Fatalf("plugin leaf symlink still exists: %v", err)
+	}
+	if data, err := os.ReadFile(marker); err != nil || string(data) != "outside" {
+		t.Fatalf("plugin leaf symlink target changed: %q, %v", data, err)
+	}
+}
+
+func TestCleanBuildsRemovesMalformedPluginFileLeaf(t *testing.T) {
+	root := t.TempDir()
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(workingDirectory) })
+	dirs := wagopaths.Dirs{Versions: filepath.Join(root, "versions")}
+	leaf := filepath.Join(dirs.Versions, "v1", "standard", "normal", "plugins")
+	if err := os.MkdirAll(filepath.Dir(leaf), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const data = "malformed cache leaf"
+	if err := os.WriteFile(leaf, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Clean(dirs, Selection{Builds: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Removed != 1 || result.Bytes != int64(len(data)) {
+		t.Fatalf("removed malformed plugin leaf = %+v", result)
+	}
+	if _, err := os.Lstat(leaf); !os.IsNotExist(err) {
+		t.Fatalf("malformed plugin leaf still exists: %v", err)
+	}
+}
+
 func TestPruneKeepsInstalledAndCurrentCaches(t *testing.T) {
 	root := t.TempDir()
 	dirs := wagopaths.Dirs{

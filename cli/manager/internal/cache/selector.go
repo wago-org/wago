@@ -15,11 +15,11 @@ const (
 // CleanPicker builds the cache cleanup selector with current sizes. Every
 // regenerable cache category starts enabled so Enter cleans everything.
 func CleanPicker(dirs wagopaths.Dirs) (*tui.MultiSelect, error) {
-	downloadBytes, err := Size(Paths(dirs, Selection{Downloads: true}))
+	downloadBytes, err := Measure(dirs, Selection{Downloads: true})
 	if err != nil {
 		return nil, err
 	}
-	buildBytes, err := Size(Paths(dirs, Selection{Builds: true}))
+	buildBytes, err := Measure(dirs, Selection{Builds: true})
 	if err != nil {
 		return nil, err
 	}
