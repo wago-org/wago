@@ -2,6 +2,7 @@
 package cache
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -32,10 +34,19 @@ func Paths(dirs wagopaths.Dirs, selection Selection) []string {
 	}
 	if selection.Builds {
 		paths = append(paths, LocalBuildDir())
-		matches, _ := filepath.Glob(filepath.Join(dirs.Versions, "*", "*", "*", "plugins"))
-		paths = append(paths, matches...)
 	}
 	return paths
+}
+
+func Measure(dirs wagopaths.Dirs, selection Selection) (int64, error) {
+	total, err := Size(Paths(dirs, selection))
+	if err != nil || !selection.Builds {
+		return total, err
+	}
+	// Global build sizing uses the same handle-contained traversal as cleanup;
+	// returning discovered path strings would reintroduce a validation/use race.
+	plugins, err := sizePluginBuilds(dirs.Versions)
+	return total + plugins, err
 }
 
 func Size(paths []string) (int64, error) {
@@ -65,7 +76,13 @@ func Size(paths []string) (int64, error) {
 }
 
 func Clean(dirs wagopaths.Dirs, selection Selection) (Result, error) {
-	paths := Paths(dirs, selection)
+	var paths []string
+	if selection.Downloads {
+		paths = append(paths, DownloadDir(dirs))
+	}
+	if selection.Builds {
+		paths = append(paths, LocalBuildDir())
+	}
 	bytes, err := Size(paths)
 	if err != nil {
 		return Result{}, err
@@ -81,6 +98,32 @@ func Clean(dirs wagopaths.Dirs, selection Selection) (Result, error) {
 			return result, err
 		}
 		result.Removed++
+	}
+	if selection.Builds {
+		// Plugin publication holds the global project mutation lock while it
+		// parks the prior build for rollback. Join that lock before opening the
+		// versions tree so cleanup cannot erase a parked backup through an
+		// already-open directory handle. WithMutation also recovers any
+		// interrupted metadata journal before deleting derived build output.
+		dataDir := dirs.Data
+		if dataDir == "" {
+			dataDir = filepath.Dir(dirs.Versions)
+		}
+		var plugins Result
+		err := project.WithMutation(context.Background(), dataDir, func(*project.Mutation) error {
+			var cleanErr error
+			// Handle-relative traversal still protects against unrelated path
+			// swaps outside the cooperating plugin publication protocol.
+			plugins, cleanErr = cleanPluginBuilds(dirs.Versions)
+			return cleanErr
+		})
+		// A later cleanup failure must not hide files already removed by the
+		// handle-contained walker.
+		result.Bytes += plugins.Bytes
+		result.Removed += plugins.Removed
+		if err != nil {
+			return result, err
+		}
 	}
 	return result, nil
 }

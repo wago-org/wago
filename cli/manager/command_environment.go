@@ -262,7 +262,7 @@ func cacheSelection(selection cacheoptions.Selection) managercache.Selection {
 	return managercache.Selection{Downloads: selection.Downloads, Builds: selection.Builds}
 }
 func (e commandEnvironment) CacheSize(selection cacheoptions.Selection) {
-	bytes, err := managercache.Size(managercache.Paths(e.dirs(), cacheSelection(selection)))
+	bytes, err := managercache.Measure(e.dirs(), cacheSelection(selection))
 	if err != nil {
 		fatal("cache size: %v", err)
 	}
