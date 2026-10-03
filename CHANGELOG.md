@@ -94,6 +94,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Global `ref.i31` initializers whose operand is extended-constant arithmetic,
   such as `(ref.i31 (i32.add (i32.const 1) (i32.const 2)))`, instantiate
   instead of failing as invalid compiled metadata.
+- Custom plugin inputs can no longer be read through scalar or checked-memory
+  accessors, which previously aliased them with spill slot zero.
 
 ## [v0.1.0-beta.10] - 2026-09-23
 
