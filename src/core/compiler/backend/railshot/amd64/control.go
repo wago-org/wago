@@ -49,13 +49,13 @@ const (
 
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
-	kind           ctrlKind
-	res0           machineType // first result's machine type (valid when resultN >= 1)
-	flags          ctrlFlags
-	mergeIndex     uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
-	branchN        uint32 // values transferred on a branch to this label
-	baseTypes      uint16 // fixed-arena start in low byte, count in high byte
-	floatConstBase uint8  // cfLoop: constant reservations before this loop
+	kind       ctrlKind
+	res0       machineType // first result's machine type (valid when resultN >= 1)
+	flags      ctrlFlags
+	mergeIndex uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
+	branchN    uint32 // values transferred on a branch to this label
+	baseTypes  uint16 // fixed-arena start in low byte, count in high byte
+	ehDepth    uint16 // installed handler count at this label
 
 	height             int // operand depth at the frame's result base
 	paramN, resultN    int
@@ -80,6 +80,22 @@ func (fr *ctrlFrame) setBaseTypeRange(start, count int) {
 		panic("amd64: control base-type range exceeds packed storage")
 	}
 	fr.baseTypes = uint16(uint8(start)) | uint16(uint8(count))<<8
+}
+
+// The constant-cache base occupies two unused flag bits so EH depth and loop
+// constant lifetime state both fit in the existing 80-byte control frame.
+const ctrlFloatConstBaseShift = 12
+const ctrlFloatConstBaseMask ctrlFlags = 3 << ctrlFloatConstBaseShift
+
+func (fr *ctrlFrame) floatConstBase() int {
+	return int(fr.flags & ctrlFloatConstBaseMask >> ctrlFloatConstBaseShift)
+}
+
+func (fr *ctrlFrame) setFloatConstBase(n int) {
+	if n < 0 || n > 3 {
+		panic("amd64: control float constant base exceeds packed storage")
+	}
+	fr.flags = fr.flags&^ctrlFloatConstBaseMask | ctrlFlags(n)<<ctrlFloatConstBaseShift
 }
 
 func (fr *ctrlFrame) has(flag ctrlFlags) bool { return fr.flags&flag != 0 }
@@ -537,6 +553,7 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 		f.callFreeLoopDepth++
 	}
 	fr.callFreeLoopPrefix = f.callFreeLoopDepth
+	fr.ehDepth = uint16(f.ehTryDepth)
 	f.ctrl = append(f.ctrl, *fr)
 }
 
@@ -1578,7 +1595,8 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes, floatConstBase: uint8(len(f.fconsts))}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
+	fr.setFloatConstBase(len(f.fconsts))
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
 		fr.branchN = uint32(pN)
@@ -2079,6 +2097,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 		}
 	}
 	f.convergeBranchLocals(target)
+	f.restoreBranchHandlers(int(clause.frame))
 	f.branchJump(target)
 	if f.usesCalls {
 		for i, x := range f.pinnedLocals {
@@ -2193,11 +2212,11 @@ func (f *fn) opEnd() error {
 	fr := f.ctrl[last]
 	if fr.kind == cfLoop {
 		if regallocCheckEnabled {
-			for _, c := range f.fconsts[fr.floatConstBase:] {
+			for _, c := range f.fconsts[fr.floatConstBase():] {
 				f.checkReleaseImmutable(c.reg, true)
 			}
 		}
-		f.fconsts = f.fconsts[:fr.floatConstBase]
+		f.fconsts = f.fconsts[:fr.floatConstBase()]
 	}
 	if fr.kind == cfLoop && f.linearSumLoopDepth == uint16(last+1) {
 		f.linearSumLoop = 0
@@ -2354,6 +2373,25 @@ func (f *fn) opEnd() error {
 	return nil
 }
 
+// branchHandlerRecord identifies the outermost installed try exited by an edge.
+// Handler records form a dense depth-indexed prefix. A target retains the prefix
+// it had at entry (including itself for a try target, whose end pops it). The
+// packed depth avoids rescanning arbitrarily deep non-try control nests. The top
+// frame also excludes the already-popped record while emitting a catch route.
+func (f *fn) branchHandlerRecord(fi int) int {
+	if f.ehTryDepth != 0 && f.ctrl[fi].ehDepth < f.ctrl[len(f.ctrl)-1].ehDepth {
+		return int(f.ctrl[fi].ehDepth)
+	}
+	return -1
+}
+
+// Emit only on the taken edge, alongside its value/local reconciliation.
+func (f *fn) restoreBranchHandlers(fi int) {
+	if record := f.branchHandlerRecord(fi); record >= 0 {
+		f.a.Load64(RBP, RSP, f.ehRecordOff(record)+ehPrevOff)
+	}
+}
+
 // branchToFrame emits an unconditional branch edge to control frame fi: evaluate
 // operands, reconcile pinned locals, move the branched values into the frame's
 // canonical slots (or merge register), and jump. Shared by opBr's unconditional
@@ -2367,6 +2405,7 @@ func (f *fn) branchToFrame(fi int) {
 		f.reconcileMerge1(fr)
 		f.convergeBranchLocals(fr)
 		f.stats.peep("direct-int-branch-merge")
+		f.restoreBranchHandlers(fi)
 		f.branchJump(fr)
 		return
 	}
@@ -2378,6 +2417,7 @@ func (f *fn) branchToFrame(fi int) {
 	} else {
 		f.moveBranchValues(fr, d, a)
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 }
 
@@ -2449,6 +2489,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	} else {
 		f.moveBranchValues(fr, d, a)
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
 	if coldExit {
@@ -2489,6 +2530,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	} else {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
 	fallthroughRef := f.allocReg(0)
@@ -2532,6 +2574,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	} else {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
 	// The reference is appended only to the taken branch payload. A null
@@ -2574,6 +2617,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	} else {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
 	f.recordBrFold(over)
@@ -2640,13 +2684,15 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	// Per-target convergence and transfers therefore need no pin reloads and
 	// case bodies can be emitted in any order and shared.
 	emitCase := func(labelIdx uint32) {
-		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
+		fi := len(f.ctrl) - 1 - int(labelIdx)
+		fr := &f.ctrl[fi]
 		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)
 		if fr.has(ctrlRegMerge1) {
 			f.branchEdgeToMerge1(fr, d)
 		} else {
 			f.moveBranchValues(fr, d, fr.branchArity())
 		}
+		f.restoreBranchHandlers(fi)
 		f.branchJump(fr)
 	}
 	if len(labels) >= brTableJumpMin {

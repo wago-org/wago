@@ -580,6 +580,8 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 // bridge and immediately returns from the current function; cross-instance imports
 // remain explicit backend rejections. The public tail-call feature gate stays disabled.
 func (f *fn) returnCall(r *wasm.Reader) error {
+	// Tail transfer discards the operand prefix; preserve its traps first.
+	f.materializePendingTraps()
 	idx, err := r.U32()
 	if err != nil {
 		return err
@@ -2608,6 +2610,8 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 }
 
 func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
+	// The target null/type checks are later observable traps.
+	f.materializePendingTraps()
 	ft, ok := f.m.TypeFunc(typeIdx)
 	if !ok {
 		return fmt.Errorf("return_call_ref: bad type %d", typeIdx)
@@ -2988,6 +2992,8 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 // the entry jumped to directly. Mutable/imported/exported tables and wrapper-only
 // signatures remain explicit backend rejections.
 func (f *fn) returnCallIndirect(r *wasm.Reader) error {
+	// Earlier operand traps precede table checks as well as callee effects.
+	f.materializePendingTraps()
 	typeIdx, err := r.U32()
 	if err != nil {
 		return err

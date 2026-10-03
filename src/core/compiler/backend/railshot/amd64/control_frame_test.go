@@ -539,3 +539,23 @@ func TestReserveLocalScratchAMD64(t *testing.T) {
 		t.Fatalf("local scratch capacities = %d/%d/%d, want 7/7/7", cap(sc.fnState.localType), cap(sc.fnState.localSlot), cap(sc.fnState.locals))
 	}
 }
+
+func TestCtrlFrameFloatConstantsAndHandlerDepth(t *testing.T) {
+	if ctrlIfDeferredPrefix >= 1<<ctrlFloatConstBaseShift {
+		t.Fatal("control flags overlap the constant-cache base")
+	}
+	for base := 0; base <= 3; base++ {
+		fr := ctrlFrame{ehDepth: 65535}
+		fr.setFloatConstBase(base)
+		for flag := ctrlHasElse; flag <= ctrlIfDeferredPrefix; flag <<= 1 {
+			fr.set(flag, true)
+			if !fr.has(flag) || fr.floatConstBase() != base || fr.ehDepth != 65535 {
+				t.Fatal("packed fields overlap", base, flag)
+			}
+			fr.set(flag, false)
+		}
+		if fr.floatConstBase() != base {
+			t.Fatal("constant base cleared", base)
+		}
+	}
+}

@@ -66,6 +66,7 @@ type ctrlFrame struct {
 	mergeIndex uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
 	branchN    uint32 // values transferred on a branch to this label
 	baseTypes  uint16 // fixed-arena start in low byte, count in high byte
+	ehDepth    uint16 // installed handler count at this label (uses existing padding)
 
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
@@ -561,6 +562,7 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 			fr.mergeIndex = stale
 		}
 	}
+	fr.ehDepth = uint16(f.ehTryDepth)
 	f.ctrl = append(f.ctrl, *fr)
 }
 
@@ -2343,6 +2345,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause) {
 		}
 	}
 	f.convergeBranchLocals(target)
+	f.restoreBranchHandlers(int(clause.frame))
 	f.branchJump(target)
 	if f.usesCalls {
 		for x := range f.locals {
@@ -2682,6 +2685,25 @@ func (f *fn) restorePreviousEHHandler(recordOff int32) {
 	f.ld64(ehReg, base, baseOff+ehPrevOff)
 }
 
+// branchHandlerRecord identifies the outermost installed try exited by an edge.
+// Handler records form a dense depth-indexed prefix. A target retains the prefix
+// it had at entry (including itself for a try target, whose end pops it). The
+// packed depth avoids rescanning arbitrarily deep non-try control nests. The top
+// frame also excludes the already-popped record while emitting a catch route.
+func (f *fn) branchHandlerRecord(fi int) int {
+	if f.ehTryDepth != 0 && f.ctrl[fi].ehDepth < f.ctrl[len(f.ctrl)-1].ehDepth {
+		return int(f.ctrl[fi].ehDepth)
+	}
+	return -1
+}
+
+// Emit only on the taken edge, alongside its value/local reconciliation.
+func (f *fn) restoreBranchHandlers(fi int) {
+	if record := f.branchHandlerRecord(fi); record >= 0 {
+		f.restorePreviousEHHandler(f.ehRecordOff(record))
+	}
+}
+
 // branchToFrame emits an unconditional branch edge to control frame fi: converge
 // pinned locals, flush operands, move the branched values into the frame's
 // canonical slots (or merge register), and jump. Shared by opBr's unconditional
@@ -2696,6 +2718,7 @@ func (f *fn) branchToFrame(fi int) {
 	} else {
 		f.moveBranchValues(fr, d, a)
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 }
 
@@ -2771,6 +2794,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	} else {
 		f.moveBranchValues(fr, d, a)
 	}
+	f.restoreBranchHandlers(fi)
 	if len(coldEdgeCode) != 0 {
 		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
@@ -2862,6 +2886,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	} else {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 	f.patchBranch19(over, f.a.Len())
 	fallthroughRef := f.allocReg(0)
@@ -2898,6 +2923,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	} else {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 	f.patchBranch19(over, f.a.Len())
 	_ = f.popValue()
@@ -2933,6 +2959,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	} else {
 		f.moveBranchValues(fr, d, fr.branchArity())
 	}
+	f.restoreBranchHandlers(fi)
 	f.branchJump(fr)
 	f.patchBranch19(over, f.a.Len())
 	return nil
@@ -2983,13 +3010,15 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	// merge-reg load) uses only fixed scratch and pinned registers and mutates no
 	// compile-time state — so case bodies can be emitted in any order and shared.
 	emitCase := func(labelIdx uint32) {
-		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
+		fi := len(f.ctrl) - 1 - int(labelIdx)
+		fr := &f.ctrl[fi]
 		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)
 		if fr.has(ctrlRegMerge1) {
 			f.branchEdgeToMerge1(fr, d)
 		} else {
 			f.moveBranchValues(fr, d, fr.branchArity())
 		}
+		f.restoreBranchHandlers(fi)
 		f.branchJump(fr)
 	}
 	if brTableUseJump(labels, def, f.policy) {
