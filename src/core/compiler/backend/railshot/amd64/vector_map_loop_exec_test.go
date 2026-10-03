@@ -74,7 +74,7 @@ func TestVectorMapRawFloatResults(t *testing.T) {
 				binary.LittleEndian.PutUint64(mem[256:], math.Float64bits(3))
 				binary.LittleEndian.PutUint64(mem[264:], bits)
 			}
-			got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{}, init, 128, 256, 0, 2, math.Float64bits(2), math.Float64bits(-0.0))
+			got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{}, init, 128, 256, 0, 2, math.Float64bits(2), uint64(1)<<63)
 			if err != nil {
 				t.Fatal(bits, on, err)
 			}

@@ -273,12 +273,6 @@ func (p *regionLoopPlan) memoryForms(enabled bool) (folded [regionLoopMaxOps + 1
 	return
 }
 
-func (p *regionLoopPlan) scratchNeed() int {
-	return p.scratchNeedFolded([regionLoopMaxOps + 1]bool{})
-}
-func (p *regionLoopPlan) scratchNeedFolded(folded [regionLoopMaxOps + 1]bool) int {
-	return p.scratchNeedPermanent(folded, [regionLoopMaxOps + 1]bool{})
-}
 func (p *regionLoopPlan) scratchNeedPermanent(folded [regionLoopMaxOps + 1]bool, permanent [regionLoopMaxOps + 1]bool) int {
 	uses := p.fpUses()
 	homes, live, peak := 0, 0, 0
