@@ -43,6 +43,10 @@ var guardCallPinEnabled = os.Getenv("WAGO_AMD64_GUARD_CALL_PIN") != "0"
 // scratch contracts. Set WAGO_AMD64_SECOND_CALL_PIN=0 for comparison.
 var guardSecondCallPinEnabled = os.Getenv("WAGO_AMD64_SECOND_CALL_PIN") != "0"
 
+// R9 has fixed uses in bulk table lowering. Its experimental local lease is
+// limited by the existing bulk-memory and table-mutation hints.
+var guardThirdCallPinEnabled = os.Getenv("WAGO_AMD64_THIRD_CALL_PIN") == "1"
+
 // A small pin budget leaves transient capacity in loop functions with many
 // locals. Keep the default on the native qualification platform.
 var wideLocalPinsEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_WIDE_LOCAL_PINS") != "1"
@@ -3522,6 +3526,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			// Ordinary calls spill local homes before staging fixed R10 uses;
 			// GC, EH, and custom lowering have separate scratch contracts.
 			gpPool = append(gpPool, R10)
+			if guardThirdCallPinEnabled && !hints.flags.has(hintUsesBulkMem|hintMutatesTable) {
+				gpPool = append(gpPool, R9)
+			}
 		}
 	}
 	for _, mg := range modGlobals {
@@ -3623,6 +3630,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			}
 			if guardSecondCallPinEnabled && !f.locals[x].isFloat && f.locals[x].reg == R10 {
 				f.stats.peep("second-call-pin")
+			}
+			if guardThirdCallPinEnabled && !f.locals[x].isFloat && f.locals[x].reg == R9 {
+				f.stats.peep("third-call-pin")
 			}
 		}
 	}

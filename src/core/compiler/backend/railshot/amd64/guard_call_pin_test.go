@@ -15,6 +15,10 @@ import (
 // repeated and reordered arguments, a deferred operand below the arguments,
 // and memory traffic. Mixed calls also materialize a late FP literal.
 func TestGuardCallPinPreservesArgumentsAndLocals(t *testing.T) {
+	runGuardCallPinPreservation(t, false)
+}
+
+func runGuardCallPinPreservation(t *testing.T, bulk bool) {
 	requireCompilerDiagnostics(t)
 	old := guardCallPinEnabled
 	defer func() { guardCallPinEnabled = old }()
@@ -29,6 +33,11 @@ func TestGuardCallPinPreservesArgumentsAndLocals(t *testing.T) {
 			body = append(body, 0x20, byte(i%4), 0x42, byte(i+17), 0x85, 0x21, byte(i))
 		}
 		body = append(body, 0x41, 0, 0x20, 9, 0x37, 3, 0, 0x41, 0, 0x29, 3, 0, 0x21, 9)
+		if bulk {
+			// A zero-length copy preserves the oracle while exercising the
+			// conservative exclusion for a function containing a bulk operation.
+			body = append(body, 0x41, 16, 0x41, 0, 0x41, 0, 0xfc, 10, 0, 0)
+		}
 		// A deferred expression below the call arguments exercises flushBelow.
 		body = append(body, 0x20, 8, 0x20, 9, 0x85)
 		indices := [8]byte{9, 7, 0, 5, 0, 3, 2, 1}
@@ -73,6 +82,10 @@ func TestGuardCallPinPreservesArgumentsAndLocals(t *testing.T) {
 						if second != (enabled && guardSecondCallPinEnabled) {
 							t.Fatalf("second admission=%v enabled=%v policy=%v pins=%d", second, enabled, guardSecondCallPinEnabled, stats.Funcs[0].PinnedLocals)
 						}
+						third := stats.Funcs[0].Peephole["third-call-pin"] != 0
+						if third != (enabled && guardSecondCallPinEnabled && guardThirdCallPinEnabled && !bulk) {
+							t.Fatalf("third admission=%v enabled=%v policy=%v bulk=%v pins=%d", third, enabled, guardThirdCallPinEnabled, bulk, stats.Funcs[0].PinnedLocals)
+						}
 						for _, seed := range []uint64{0, 1, 0x123456789abcdef0, ^uint64(0)} {
 							args := make([]uint64, 4)
 							var locals [10]uint64
@@ -109,4 +122,23 @@ func TestSecondCallPinPreservesArgumentsAndLocals(t *testing.T) {
 	defer func() { guardSecondCallPinEnabled = old }()
 	guardSecondCallPinEnabled = true
 	TestGuardCallPinPreservesArgumentsAndLocals(t)
+}
+
+func TestThirdCallPinPreservesArgumentsAndLocals(t *testing.T) {
+	oldSecond, oldThird := guardSecondCallPinEnabled, guardThirdCallPinEnabled
+	defer func() { guardSecondCallPinEnabled, guardThirdCallPinEnabled = oldSecond, oldThird }()
+	guardSecondCallPinEnabled, guardThirdCallPinEnabled = true, true
+	for _, bulk := range []bool{false, true} {
+		t.Run(fmt.Sprintf("bulk%v", bulk), func(t *testing.T) { runGuardCallPinPreservation(t, bulk) })
+	}
+}
+
+func TestThirdCallPinTableMutationHint(t *testing.T) {
+	h, err := scanBodyBytes([]byte{0xfc, 14, 0, 0, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.flags.has(hintMutatesTable) {
+		t.Fatal("table.copy must exclude the R9 local lease")
+	}
 }
