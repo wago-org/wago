@@ -1227,7 +1227,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			gcI31Product = stagedGCI31ProductCore
 		}
 	}
-	if features.GCStructProducts && moduleUsesGCExternConversion(m) && !gcStructProduct.requiresExternConversion() {
+	if features.GCStructProducts && gcProductAnalysisNeeded(requiredByModule) && !gcStructProduct.requiresExternConversion() && moduleUsesGCExternConversion(m) {
 		// Conversion identity is an orthogonal runtime obligation. The extern
 		// product uses the same complete struct/array helpers while additionally
 		// provisioning the bounded anyref/externref identity bridge.

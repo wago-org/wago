@@ -33,6 +33,7 @@ func TestGCProductGatePreservesArtifacts(t *testing.T) {
 	}{
 		{"plain-with-prefix-in-immediate", function([]byte{0x41, 0xfb, 0x01, 0x1a, 0x41, 42, 0x0b}), false},
 		{"abstract-i31", function([]byte{0x41, 42, 0xfb, 0x1c, 0xfb, 0x14, 0x6c, 0x0b}), true},
+		{"extern-conversion", function([]byte{0xd0, 0x6f, 0xfb, 0x1a, 0xfb, 0x1b, 0xd1, 0x0b}), true},
 		{"struct", stagedGCStructGetOnlyBytes(t), true},
 		{"array", stagedGCArrayNumericLocalBytes(t), true},
 		{"array-declaration", wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}))), true},
