@@ -41,6 +41,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   extended constants, and constant expressions accept chains of
   `any.convert_extern`/`extern.convert_any` on null. An allocating
   initializer is evaluated once, so every slot holds the same object.
+- AMD64 nullability refinements preserve whether a reference belongs to the
+  compact collector, so native function references are not scanned as GC roots.
 - Non-nullable bottom reference types such as `(ref noextern)` are accepted.
 - `Global.GetValue`/`SetValue` work for `externref` globals holding converted
   GC references.

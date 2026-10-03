@@ -2513,7 +2513,9 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if !f.usesCalls {
 		f.convergeBranchLocals(fr)
 	}
-	ref := f.materialize(f.popValue())
+	value := f.popValue()
+	gcRoot := value.st.hasGCRoot()
+	ref := f.materialize(value)
 	if f.usesCalls {
 		f.convergeBranchLocals(fr)
 	}
@@ -2536,7 +2538,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	fallthroughRef := f.allocReg(0)
 	f.a.Load64(fallthroughRef, RSP, f.spillOff(refSlot))
 	result := f.pushReg(fallthroughRef, mtI64)
-	f.markGCReference(result)
+	f.setStackGCRoot(result, gcRoot)
 	return nil
 }
 
@@ -2553,9 +2555,11 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	if !f.usesCalls {
 		f.convergeBranchLocals(fr)
 	}
-	ref := f.materialize(f.popValue())
+	value := f.popValue()
+	gcRoot := value.st.hasGCRoot()
+	ref := f.materialize(value)
 	result := f.pushReg(ref, mtI64)
-	f.markGCReference(result)
+	f.setStackGCRoot(result, gcRoot)
 	if f.usesCalls {
 		f.convergeBranchLocals(fr)
 	}

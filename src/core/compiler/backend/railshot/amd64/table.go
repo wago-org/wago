@@ -646,11 +646,13 @@ func (f *fn) refEq() {
 }
 
 func (f *fn) refAsNonNull() {
-	ref := f.materialize(f.popValue())
+	value := f.popValue()
+	gcRoot := value.st.hasGCRoot()
+	ref := f.materialize(value)
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapNullReference)
 	result := f.pushReg(ref, mtI64)
-	f.markGCReference(result)
+	f.setStackGCRoot(result, gcRoot)
 }
 
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
