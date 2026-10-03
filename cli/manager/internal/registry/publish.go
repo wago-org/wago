@@ -106,9 +106,16 @@ func registryPublishContext(ctx context.Context, options PublishRequest) {
 	if err := validatePublishProviders(providers, artifactMetadata, version); err != nil {
 		fatal("publish: exact source artifact provider catalog: %v", err)
 	}
+	artifactKB, err := unpackedArtifactKB(download.Dir)
+	if err != nil {
+		fatal("publish: exact source artifact size: %v", err)
+	}
+	// Registry size metadata describes every file in the checksum-pinned module
+	// artifact. Do not use UnpackedKB here: its Git-aware checkout filtering can
+	// report zero when GOMODCACHE is an ignored directory inside a worktree.
 	body := map[string]any{
 		"manifest": artifactManifest, "version": version, "checksum": download.Sum, "providers": providers,
-		"commit": commit, "notes": options.Notes, "unpackedKB": UnpackedKB(moduleRoot),
+		"commit": commit, "notes": options.Notes, "unpackedKB": artifactKB,
 	}
 	status, data, err := apiRequestContext(ctx, http.MethodPost, "/api/publish", token, body)
 	if err != nil {
