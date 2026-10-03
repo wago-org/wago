@@ -16,7 +16,7 @@ func TestBuildRejectsSameFile(t *testing.T) {
 		Command(testEnvironment{}).Run(command.NewContext([]string{os.Getenv("WAGO_BUILD_INPUT")}, map[string]string{"output": os.Getenv("WAGO_BUILD_OUTPUT")}, nil))
 		return
 	}
-	for _, kind := range []string{"absolute", "relative", "symlink", "hardlink"} {
+	for _, kind := range []string{"absolute", "relative", "symlink", "relative-symlink-chain", "hardlink"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()
 			source := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}
@@ -38,6 +38,20 @@ func TestBuildRejectsSameFile(t *testing.T) {
 				if err := link(input, output); err != nil {
 					t.Skipf("link unavailable: %v", err)
 				}
+				if kind == "symlink" {
+					requireTestSymlink(t, output)
+				}
+			case "relative-symlink-chain":
+				intermediate := filepath.Join(dir, "input-link")
+				if err := os.Symlink(filepath.Base(input), intermediate); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+				requireTestSymlink(t, intermediate)
+				output = filepath.Join(dir, "alias.wago")
+				if err := os.Symlink(filepath.Base(intermediate), output); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+				requireTestSymlink(t, output)
 			}
 			cmd := exec.Command(os.Args[0], "-test.run=^TestBuildRejectsSameFile$")
 			cmd.Dir = dir
@@ -51,6 +65,14 @@ func TestBuildRejectsSameFile(t *testing.T) {
 				t.Errorf("source changed: %x, %v", got, err)
 			}
 		})
+	}
+}
+
+func requireTestSymlink(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Skipf("symlink unavailable at %s: %v", path, err)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/windowsfilepath"
 	"golang.org/x/sys/windows"
 )
 
@@ -28,26 +29,14 @@ type fileRenameInfo struct {
 }
 
 func replaceExisting(source, destination string) error {
-	sourcePointer, err := windows.UTF16PtrFromString(source)
+	sourcePointer, err := windowsfilepath.UTF16PtrFromString(source)
 	if err != nil {
 		return err
 	}
-	destination, err = filepath.Abs(destination)
+	buffer, info, err := windowsRenameInformation(destination)
 	if err != nil {
 		return err
 	}
-	const nameOffset = int(unsafe.Offsetof(fileRenameInfo{}.fileName)) / 2
-	buffer := make([]uint16, nameOffset, nameOffset+len(destination)+1)
-	for _, character := range destination {
-		if character == 0 {
-			return syscall.EINVAL
-		}
-		buffer = utf16.AppendRune(buffer, character)
-	}
-	buffer = append(buffer, 0)
-	info := (*fileRenameInfo)(unsafe.Pointer(&buffer[0]))
-	info.flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
-	info.fileNameLength = uint32((len(buffer) - nameOffset - 1) * 2)
 	class := uint32(windows.FileRenameInfoEx)
 	deadline := time.Now().Add(windowsReplaceRetryTimeout)
 	for {
@@ -55,12 +44,11 @@ func replaceExisting(source, destination string) error {
 			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
 			windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
 		if err == nil {
-			err = windows.SetFileInformationByHandle(handle, class, (*byte)(unsafe.Pointer(info)), uint32(len(buffer)*2))
+			err = setWindowsRenameInformation(handle, class, info, buffer)
 			if closeErr := windows.CloseHandle(handle); closeErr != nil {
 				return errors.Join(err, closeErr)
 			}
-			if class == windows.FileRenameInfoEx && (errors.Is(err, windows.ERROR_INVALID_PARAMETER) || errors.Is(err, windows.ERROR_NOT_SUPPORTED) || errors.Is(err, windows.ERROR_INVALID_FUNCTION)) {
-				// Older file systems support replacement without POSIX handle semantics.
+			if class == windows.FileRenameInfoEx && unsupportedWindowsRenameInfo(err) {
 				class = windows.FileRenameInfo
 				info.flags = windows.FILE_RENAME_REPLACE_IF_EXISTS
 				continue
@@ -71,6 +59,59 @@ func replaceExisting(source, destination string) error {
 		}
 		time.Sleep(windowsReplaceRetryDelay)
 	}
+}
+
+func replaceExistingHandle(handle windows.Handle, destination string) error {
+	buffer, info, err := windowsRenameInformation(destination)
+	if err != nil {
+		return err
+	}
+	class := uint32(windows.FileRenameInfoEx)
+	deadline := time.Now().Add(windowsReplaceRetryTimeout)
+	for {
+		err := setWindowsRenameInformation(handle, class, info, buffer)
+		if class == windows.FileRenameInfoEx && unsupportedWindowsRenameInfo(err) {
+			class = windows.FileRenameInfo
+			info.flags = windows.FILE_RENAME_REPLACE_IF_EXISTS
+			continue
+		}
+		if err == nil || !retryableWindowsReplaceError(err) || !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(windowsReplaceRetryDelay)
+	}
+}
+
+func windowsRenameInformation(destination string) ([]uint16, *fileRenameInfo, error) {
+	destination, err := filepath.Abs(destination)
+	if err != nil {
+		return nil, nil, err
+	}
+	destination = windowsfilepath.Normalize(destination)
+	const nameOffset = int(unsafe.Offsetof(fileRenameInfo{}.fileName)) / 2
+	buffer := make([]uint16, nameOffset, nameOffset+len(destination)+1)
+	for _, character := range destination {
+		if character == 0 {
+			return nil, nil, syscall.EINVAL
+		}
+		buffer = utf16.AppendRune(buffer, character)
+	}
+	buffer = append(buffer, 0)
+	info := (*fileRenameInfo)(unsafe.Pointer(&buffer[0]))
+	info.flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
+	info.fileNameLength = uint32((len(buffer) - nameOffset - 1) * 2)
+	return buffer, info, nil
+}
+
+func setWindowsRenameInformation(handle windows.Handle, class uint32, info *fileRenameInfo, buffer []uint16) error {
+	return windows.SetFileInformationByHandle(handle, class,
+		(*byte)(unsafe.Pointer(info)), uint32(len(buffer)*2))
+}
+
+func unsupportedWindowsRenameInfo(err error) bool {
+	// Older file systems support replacement without POSIX handle semantics.
+	return errors.Is(err, windows.ERROR_INVALID_PARAMETER) || errors.Is(err, windows.ERROR_NOT_SUPPORTED) ||
+		errors.Is(err, windows.ERROR_INVALID_FUNCTION)
 }
 
 func retryableWindowsReplaceError(err error) bool {
