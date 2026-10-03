@@ -1,15 +1,20 @@
 package plugin
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
+	"github.com/wago-org/wago/internal/filelock"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -24,6 +29,111 @@ func TestParsePluginSpecExpandsGitHubShorthand(t *testing.T) {
 }
 
 func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
+	buildDir, _ := prepareTestPluginRuntime(t)
+	got, configured, err := pluginRuntimeBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured || got != pluginbuild.BinaryPath(buildDir) {
+		t.Fatalf("plugin runtime = %q, %v; want %q, true", got, configured, pluginbuild.BinaryPath(buildDir))
+	}
+}
+
+func TestPluginRuntimeBinaryBlocksConcurrentPublication(t *testing.T) {
+	buildDir, manifestDir := prepareTestPluginRuntime(t)
+	buildLock := buildDir + ".lock"
+	if err := os.Mkdir(buildLock, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	buildLockReleased := false
+	releaseBuildLock := func() {
+		if !buildLockReleased {
+			buildLockReleased = true
+			if err := os.Remove(buildLock); err != nil && !os.IsNotExist(err) {
+				t.Errorf("release test build lock: %v", err)
+			}
+		}
+	}
+	t.Cleanup(releaseBuildLock)
+
+	runtimeDone := make(chan error, 1)
+	go func() {
+		_, _, err := pluginRuntimeBinary()
+		runtimeDone <- err
+	}()
+	waitForPluginBuildLock(t)
+
+	projectLockPath := filepath.Join(manifestDir, ".wago", "project.lock")
+	probe, err := filelock.TryAcquireExisting(projectLockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeOwnsProjectLock := probe == nil
+	if probe != nil {
+		if err := probe.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	publisherStarted := make(chan struct{})
+	publisherEntered := make(chan struct{})
+	publisherDone := make(chan error, 1)
+	go func() {
+		close(publisherStarted)
+		publisherDone <- project.WithMutation(context.Background(), manifestDir, func(*project.Mutation) error {
+			close(publisherEntered)
+			return nil
+		})
+	}()
+	<-publisherStarted
+	if !runtimeOwnsProjectLock {
+		select {
+		case <-publisherEntered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("publisher did not enter after runtime released the project lock")
+		}
+	}
+	releaseBuildLock()
+	if err := receivePluginTestResult(t, runtimeDone, "plugin runtime"); err != nil {
+		t.Fatal(err)
+	}
+	if err := receivePluginTestResult(t, publisherDone, "plugin publication"); err != nil {
+		t.Fatal(err)
+	}
+	if !runtimeOwnsProjectLock {
+		t.Fatal("plugin metadata publication overlapped active runtime reconciliation")
+	}
+}
+
+func waitForPluginBuildLock(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	stacks := make([]byte, 1<<20)
+	for time.Now().Before(deadline) {
+		length := runtime.Stack(stacks, true)
+		if bytes.Contains(stacks[:length], []byte("plugin/build.acquireBuildLock")) {
+			return
+		}
+		runtime.Gosched()
+	}
+	t.Fatal("plugin runtime did not block on the active build lock")
+}
+
+func receivePluginTestResult(t *testing.T, result <-chan error, operation string) error {
+	t.Helper()
+	select {
+	case err := <-result:
+		return err
+	// Windows CI may need tens of seconds to rebuild the generated executable
+	// after the test releases its lock; the timeout guards deadlocks, not speed.
+	case <-time.After(time.Minute):
+		t.Fatalf("%s did not finish", operation)
+		return nil
+	}
+}
+
+func prepareTestPluginRuntime(t *testing.T) (buildDir, manifestDir string) {
+	t.Helper()
 	t.Setenv("WAGO_HOME", t.TempDir())
 	t.Setenv("WAGO_BARE", "")
 	t.Setenv("WAGO_GLOBAL", "")
@@ -65,7 +175,7 @@ func Providers() []wago.PluginProvider { return nil }
 	}
 	t.Setenv("WAGO_SRC", source)
 
-	buildDir, err := buildDirFor(true)
+	buildDir, err = buildDirFor(true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +185,7 @@ func Providers() []wago.PluginProvider { return nil }
 	if err := pluginbuild.EnsureModule(buildDir); err != nil {
 		t.Fatal(err)
 	}
-	manifestDir := sharedGlobalPluginDir(wago.DirsFor(managerVersion()))
+	manifestDir = sharedGlobalPluginDir(wago.DirsFor(managerVersion()))
 	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -90,13 +200,7 @@ func Providers() []wago.PluginProvider { return nil }
 	if err := project.WriteLock(manifestDir, lock); err != nil {
 		t.Fatal(err)
 	}
-	got, configured, err := pluginRuntimeBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !configured || got != pluginbuild.BinaryPath(buildDir) {
-		t.Fatalf("plugin runtime = %q, %v; want %q, true", got, configured, pluginbuild.BinaryPath(buildDir))
-	}
+	return buildDir, manifestDir
 }
 
 func TestLockedPluginResolutionRequiresPinnedVersionsBeforeBuilding(t *testing.T) {

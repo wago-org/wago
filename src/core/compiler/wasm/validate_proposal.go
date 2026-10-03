@@ -394,12 +394,26 @@ func (v *funcValidator) stepGC(in Instruction) error {
 			return v.verr(ErrUnknownType, "invalid descriptor target reftype")
 		}
 		if in.Kind == InstrRefCastDescEq {
-			desc, err := v.pop()
-			if err != nil {
-				return err
+			if in.HeapType().Kind() != HeapTypeIndex {
+				return v.verr(ErrTypeMismatch, "cast target must have descriptor")
 			}
-			if !desc.unknown && desc.t.Kind() != ValRef {
-				return v.verr(ErrTypeMismatch, "descriptor operand")
+			st, recGroup, ok := v.subtypeByTypeIdxWithRecGroup(in.HeapType().Type())
+			if !ok {
+				return v.verr(ErrUnknownType, "invalid descriptor target reftype")
+			}
+			descriptor, present := st.Metadata.Descriptor.Get()
+			if st.Comp.Kind != CompStruct || !present {
+				return v.verr(ErrTypeMismatch, "cast target must have descriptor")
+			}
+			descriptorFlat, ok := v.flatTypeIdxInRecGroup(descriptor, recGroup)
+			if !ok {
+				return v.verr(ErrUnknownType, "invalid descriptor type")
+			}
+			// Descriptor equality is sound only for the descriptor declared by the
+			// target; an exact target likewise requires an exact descriptor value.
+			want := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: uint32(descriptorFlat)}), in.Cast.SourceNullable))
+			if err := v.popExpect(want); err != nil {
+				return err
 			}
 		}
 		x, err := v.pop()

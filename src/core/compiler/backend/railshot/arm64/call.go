@@ -483,7 +483,9 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 
 func (f *fn) discardEHHandlersForTail() {
 	if f.ehTryDepth != 0 {
-		f.ld64(ehReg, SP, f.ehRecordOff(0)+ehPrevOff)
+		// A tail transfer discards every record in this frame. Use the shared
+		// large-frame-safe restore instead of addressing record zero from SP.
+		f.restorePreviousEHHandler(f.ehRecordOff(0))
 	}
 }
 
@@ -713,6 +715,9 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	for _, reg := range []Reg{X10, X11, X12, X17} {
 		f.pinned = f.pinned.add(reg)
 	}
+	// Publish the callee context once before staging and the root/nested split.
+	// Its tag-directory cell is immediately outside the wrapper argument bank.
+	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(X0, X10)
 	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
 	argBase := len(types) - p
@@ -732,7 +737,6 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	f.emitTailFrameRelease()
 
 	transfer := func() {
-		f.copyInstanceContext(X10, X11)
 		f.ld64(X9, linMemReg, -int32(offTrapHandlerPtr))
 		f.st64(X10, -int32(offTrapHandlerPtr), X9)
 		f.ld64(X9, linMemReg, -int32(offTrapStackReentry))
@@ -965,6 +969,9 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 
 	f.ld64(X12, linMemReg, -int32(offFuncRefDescPtr))
 	f.ld64(X12, X12, runtime.FuncRefContextOffset)
+	// Publish the callee context once before staging and the root/nested split.
+	// Its tag-directory cell is immediately outside the wrapper argument bank.
+	f.copyInstanceContext(X10, X11)
 	f.a.MovReg64(X0, X10)
 	f.leaDisp(X0, X0, -int32(abi.TailArgsOffset), true)
 	argBase := len(types) - p
@@ -980,7 +987,6 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	}
 
 	transfer := func() {
-		f.copyInstanceContext(X10, X11)
 		f.ld64(X9, linMemReg, -int32(offTrapHandlerPtr))
 		f.st64(X10, -int32(offTrapHandlerPtr), X9)
 		f.ld64(X9, linMemReg, -int32(offTrapStackReentry))
@@ -1580,6 +1586,31 @@ func HostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) [
 	return hostIndirectSyncThunk(importIdx, paramSlots, resultSlots, false)
 }
 
+// emitHostThunkTransfers rebases each cursor at the 32 KiB scaled-offset
+// boundary. This keeps every LDR/STR encodable without materializing a large
+// address for each remaining slot.
+func emitHostThunkTransfers(a *a64.Asm, value, loadBase, storeBase Reg, loadOffset, storeOffset uint32, slots int) {
+	const offsetWindow = uint32(0x1000 * 8)
+	for range slots {
+		if loadOffset >= offsetWindow {
+			a.AddImm64LSL12(loadBase, loadBase, offsetWindow)
+			loadOffset -= offsetWindow
+		}
+		if storeOffset >= offsetWindow {
+			a.AddImm64LSL12(storeBase, storeBase, offsetWindow)
+			storeOffset -= offsetWindow
+		}
+		if !a.Load64(value, loadBase, loadOffset) {
+			panic("arm64: host thunk load offset out of range")
+		}
+		if !a.Store64(value, storeBase, storeOffset) {
+			panic("arm64: host thunk store offset out of range")
+		}
+		loadOffset += 8
+		storeOffset += 8
+	}
+}
+
 func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHome bool) []byte {
 	// Preserve the ordinary encoding; module functions opt into logical MOVs
 	// through their policy.
@@ -1604,10 +1635,7 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 		argOffset = 0
 		a.AddImm64(X11, X10, uint32(hcWideBase+hcWideArgs))
 	}
-	for i := 0; i < paramSlots; i++ {
-		a.Load64(X9, X0, uint32(i*8))
-		a.Store64(X9, argBase, argOffset+uint32(i*8))
-	}
+	emitHostThunkTransfers(a, X9, X0, argBase, 0, argOffset, paramSlots)
 	a.MovImm64(X16, uint64(uint32(importIdx)))
 	a.Store32(X16, X10, hcImportIdx)
 	a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16)) // low16 params, high16 results
@@ -1631,10 +1659,7 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 		a.AddShifted(X11, X10, X11, 3, false)
 		a.AddImm64(X11, X11, uint32(hcWideBase+hcWideArgs))
 	}
-	for i := 0; i < resultSlots; i++ {
-		a.Load64(X9, resultBase, resultOffset+uint32(i*8))
-		a.Store64(X9, X3, uint32(i*8))
-	}
+	emitHostThunkTransfers(a, X9, resultBase, X3, resultOffset, 0, resultSlots)
 	a.Load64(LR, SP, 16)
 	a.LdpPost(linMemReg, X3, SP, 32) // restore caller linMemReg (X3 reload is harmless), SP += 32
 	a.Ret()
@@ -1691,6 +1716,11 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 	f.a.LdpOffset(X8, X9, src, 56)
 	f.st64(dst, -int32(offMemoryDirPtr), X8)
 	f.st64(dst, -int32(offImportDispatchPtr), X9)
+	// Exception tag identities follow the callee instance, not shared Memory.
+	// This cell is immediately outside the wrapper tail bank so context and all
+	// staged arguments remain valid together during wrapper entry.
+	f.ld64(X9, src, runtime.InstanceContextEHTagDirOffset)
+	f.st64(dst, -int32(abi.EHTagDirPtrOffset), X9)
 	f.ld64(X9, src, runtime.InstanceContextGCNativeViewOffset)
 	f.a.SubImm64(X8, dst, uint32(abi.GCNativeViewPtrOffset))
 	f.a.Store64(X9, X8, 0)

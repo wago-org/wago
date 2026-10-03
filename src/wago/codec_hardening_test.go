@@ -231,10 +231,10 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 4 {
-		t.Fatalf("compiled codec version = %d, want codec version 4", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 5 {
+		t.Fatalf("compiled codec version = %d, want codec version 5", blob[4])
 	}
-	for _, version := range []byte{0, 1, 2, 3, 19, 35} {
+	for _, version := range []byte{0, 1, 2, 3, 4, 19, 35} {
 		unsupportedVersion := append([]byte(nil), blob...)
 		unsupportedVersion[4] = version
 		var unsupported Compiled

@@ -8,6 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -1938,26 +1939,88 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 }
 
 const (
-	// A record is [prev, saved SP, handler target, saved linear memory, tag,
-	// lanes...] and a root slot mirrors its [tag, lanes...] block. Lanes
-	// follow the module-independent shared payload layout.
-	ehMaxPayloadWords = shared.MaxEHTagPayloadWords
-	ehRecordSlots     = 5 + shared.EHPayloadLanes
-	ehRootSlots       = 1 + shared.EHPayloadLanes
+	// A record is [prev, saved SP, handler target, context anchor, tag, lanes...].
+	// Root slots mirror [tag, lanes...] using the shared payload layout.
+	// EH bodies keep the ordinary header; its spare word holds CustomCtx.
+	frEHCustomCtxOff   = 0
+	ehContextAnchorOff = 24 // descriptor zero, replacing the saved linear-memory word
+	ehMaxPayloadWords  = shared.MaxEHTagPayloadWords
+	ehRecordSlots      = 5 + shared.EHPayloadLanes
+	ehRootSlots        = 1 + shared.EHPayloadLanes
 	// Historical fixed reservation, kept for modules built without body bytes.
 	legacyEHTryRecords  = 4
 	legacyEHRootRecords = 4
 	// Catch clauses are a growable list dispatched with ordinary branches;
 	// the bound only keeps one try_table's dispatch within branch range.
-	maxEHCatches     = 1024
-	ehPrevOff        = 0
-	ehSavedSPOff     = 8
-	ehTargetOff      = 16
-	ehSavedLinMemOff = 24
-	ehTagOff         = 32
-	offEHTagDirPtr   = abi.EHTagDirPtrOffset
-	ehReg            = X22
+	maxEHCatches         = 1024
+	ehPrevOff            = 0
+	ehSavedSPOff         = 8
+	ehTargetOff          = 16
+	ehTagOff             = 32
+	offEHTagDirPtr       = abi.EHTagDirPtrOffset
+	maxScaled64FrameDisp = 0xfff * 8
+	ehReg                = X22
 )
+
+var ehStableInstanceContextOffsets = [...]int32{
+	offTablePtr,
+	offFuncRefDescPtr,
+	offPassiveElemPtr,
+	offGlobalsPtr,
+	offPassiveDataPtr,
+	offTableDirPtr,
+	offMemoryDirPtr,
+	offImportDispatchPtr,
+}
+
+// CustomCtx is the first ordinary context word and is activation-dynamic. The
+// remaining ordinary prefix has the same order as this stable-field list. Make
+// additions fail the build until this cold restore path is updated deliberately.
+var _ [int(coreruntime.InstanceContextGCDomainOffset/8) - 1 - len(ehStableInstanceContextOffsets)]struct{}
+var _ [len(ehStableInstanceContextOffsets) - (int(coreruntime.InstanceContextGCDomainOffset/8) - 1)]struct{}
+
+// ehFrameRangeBase keeps the common small-frame path on a direct SP-relative
+// LDR/STR while rebasing ranges which do not fit AArch64's scaled imm12 field.
+func (f *fn) ehFrameRangeBase(scratch Reg, off, last int32) (base Reg, baseOff int32) {
+	if off >= 0 && int64(off)+int64(last) <= maxScaled64FrameDisp {
+		return SP, off
+	}
+	f.leaDisp(scratch, SP, off, true)
+	return scratch, 0
+}
+
+func (f *fn) captureEHInstanceContext() {
+	// X16 is the new record base; X17 is reserved scratch, never a live pin.
+	// EH bodies retain the ordinary header and its otherwise unused first word.
+	f.ld64(X17, linMemReg, -offCustomCtx)
+	f.st64(SP, frEHCustomCtxOff, X17)
+	// Descriptor zero owns both the stable home and native-context pointers.
+	// Reuse the record's saved-linear-memory word so spills and roots never move.
+	f.ld64(X17, linMemReg, -offFuncRefDescPtr)
+	f.st64(X16, ehContextAnchorOff, X17)
+}
+
+func (f *fn) restoreEHInstanceContext(recordOff int32) {
+	// Keep the record address encodable even when locals extend beyond 32 KiB.
+	f.leaDisp(ehReg, SP, recordOff, true)
+	f.ld64(X16, ehReg, ehContextAnchorOff)
+	f.ld64(linMemReg, X16, coreruntime.TableEntryHomeLinMemOffset)
+	f.ld64(X16, X16, coreruntime.FuncRefContextOffset)
+	for i, basedataOff := range ehStableInstanceContextOffsets {
+		f.ld64(X17, X16, int32((i+1)*8))
+		f.st64(linMemReg, -basedataOff, X17)
+	}
+	f.ld64(X17, X16, coreruntime.InstanceContextEHTagDirOffset)
+	f.st64(linMemReg, -int32(abi.EHTagDirPtrOffset), X17)
+	f.ld64(X17, X16, coreruntime.InstanceContextGCNativeViewOffset)
+	// The GC view is beyond STUR's signed displacement; only reserved scratch
+	// registers are free here, because call-free local pins may remain live.
+	f.leaDisp(X16, linMemReg, -int32(abi.GCNativeViewPtrOffset), true)
+	f.st64(X16, 0, X17)
+	// The activation-specific value wins over the mutable native image.
+	f.ld64(X17, SP, frEHCustomCtxOff)
+	f.st64(linMemReg, -offCustomCtx, X17)
+}
 
 func exceptionPayloadMachineType(typ wasm.ValType) (machineType, bool) {
 	if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
@@ -2104,8 +2167,11 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			continue
 		}
 		rootOff := f.ehRootOff(int(clause.rootIndex))
+		// Root records follow the locals and may lie beyond LDR/STR's scaled
+		// displacement. Small frames retain their original direct stores.
+		base, baseOff := f.ehFrameRangeBase(X16, rootOff, (ehRootSlots-1)*8)
 		for word := int32(0); word < ehRootSlots*8; word += 8 {
-			f.st64(SP, rootOff+word, ZR)
+			f.st64(base, baseOff+word, ZR)
 		}
 		f.stats.peep("eh-root-init")
 	}
@@ -2117,7 +2183,11 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	eh.targetSite = uint32(f.a.Adr(X17))
 	f.recordPCRelative(int(eh.targetSite))
 	f.st64(X16, ehTargetOff, X17)
-	f.st64(X16, ehSavedLinMemOff, linMemReg)
+	// An exceptional cross-instance return jumps directly to this frame and skips
+	// the normal call continuation. Preserve the activation-dynamic values plus a
+	// stable context anchor once per frame so any bounded handler can restore
+	// shared-memory basedata without expanding every nested handler record.
+	f.captureEHInstanceContext()
 	f.a.MovReg64(ehReg, X16)
 	f.pushCtrl(&fr)
 	return nil
@@ -2147,6 +2217,10 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	}
 	f.flush()
 	noHandler := f.zeroBranch(ehReg, true, true)
+	// The handler restores its owner context and rederives cached globals from
+	// cells. Publish deferred global.set values before that exceptional edge;
+	// unhandled throws take the ordinary trap path, which already does this.
+	f.storeDirtyGlobalPins(X16)
 	f.ld64(X16, linMemReg, -int32(offEHTagDirPtr))
 	f.ld64(X16, X16, int32(tag*8))
 	f.st64(ehReg, ehTagOff, X16)
@@ -2191,6 +2265,9 @@ func (f *fn) opThrowRef() error {
 	f.ld64(X16, SP, f.spillOff(refSlot))
 	f.trapIfZero(X16, true, true, trapNullReference)
 	noHandler := f.zeroBranch(ehReg, true, true)
+	// X16 carries the exception object, so use the other fixed scratch while
+	// making dirty pinned globals coherent for the handler's register reload.
+	f.storeDirtyGlobalPins(X17)
 	for off := int32(0); off < ehRootSlots*8; off += 8 {
 		f.ld64(X17, X16, off)
 		f.st64(ehReg, ehTagOff+off, X17)
@@ -2205,31 +2282,34 @@ func (f *fn) opThrowRef() error {
 	return nil
 }
 
-func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff int32) {
+func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause) {
 	target := &f.ctrl[int(clause.frame)]
-	f.ld64(ehReg, SP, recordOff+ehPrevOff)
+	// emitEHHandler keeps the current record base in ehReg. Keep it there until
+	// every payload is consumed; loading the previous handler earlier would force
+	// large SP-relative accesses or require a third reserved scratch register.
 
 	rootOff := int32(0)
 	if clause.kind == wasm.CatchRef || clause.kind == wasm.CatchAllRef {
 		rootOff = f.ehRootOff(int(clause.rootIndex))
-		for off := int32(0); off < ehRootSlots*8; off += 8 {
-			f.ld64(X16, SP, recordOff+ehTagOff+off)
-			f.st64(SP, rootOff+off, X16)
+		f.leaDisp(X17, SP, rootOff, true)
+		for off := int32(ehTagOff); off < ehTagOff+ehRootSlots*8; off += 8 {
+			f.ld64(X16, ehReg, off)
+			f.st64(X17, off-ehTagOff, X16)
 		}
 	}
 
 	loadPayload := func(reg Reg, i int) {
 		if i == int(clause.scalarN) {
-			f.leaDisp(reg, SP, rootOff, true)
+			f.a.MovReg64(reg, X17)
 			return
 		}
-		f.ld64(reg, SP, recordOff+ehPayloadOff(clause.lane(i)))
+		f.ld64(reg, ehReg, ehPayloadOff(clause.lane(i)))
 	}
 	if target.has(ctrlRegMerge1) && clause.payloadN == 1 {
 		if clause.scalarN == 0 {
-			f.leaDisp(mergeReg, SP, rootOff, true)
+			f.a.MovReg64(mergeReg, X17)
 		} else if clause.firstType.isFloat() {
-			f.fld(mergeFReg, SP, recordOff+ehPayloadOff(0), clause.firstType == mtF64)
+			f.fld(mergeFReg, ehReg, ehPayloadOff(0), clause.firstType == mtF64)
 		} else {
 			loadPayload(mergeReg, 0)
 		}
@@ -2240,6 +2320,9 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 			f.st64(SP, f.spillOff(toSlot+i), X16)
 		}
 	}
+	// The catch continuation owns the previous handler. Delay this load until the
+	// record base is no longer needed for payload and rooted-reference copies.
+	f.ld64(ehReg, ehReg, ehPrevOff)
 
 	// A throw skips the ordinary post-call eager reload. Direct throws in this
 	// frame publish the same slots before unwinding; call-free pins stay live.
@@ -2277,12 +2360,18 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	if !f.a.PatchAdr(int(eh.targetSite), handlerPos) {
 		panic("arm64: exception handler ADR out of range")
 	}
-	f.ld64(linMemReg, SP, recordOff+ehSavedLinMemOff)
+	// A handler jump bypasses the normal cross-instance call continuation. Restore
+	// every per-instance basedata pointer before dispatch so tag matching and the
+	// catch continuation observe the owner, even when caller and callee share Memory.
+	f.restoreEHInstanceContext(recordOff)
 	if f.memSizeReg != regNone {
 		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
 	}
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
+	// Keep one rebased record pointer through dispatch and matched catch routes.
+	// EH records follow locals, so direct SP-relative loads would fail above 32 KiB.
+	f.leaDisp(ehReg, SP, recordOff, true)
 
 	dispatchN := len(eh.catches)
 	for i := range eh.catches {
@@ -2292,19 +2381,23 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 			dispatchN = i + 1
 			break
 		}
-		f.ld64(X16, SP, recordOff+ehTagOff)
+		f.ld64(X16, ehReg, ehTagOff)
 		f.ld64(X17, linMemReg, -int32(offEHTagDirPtr))
 		f.ld64(X17, X17, int32(clause.tag*8))
 		f.cmpRR(X16, X17, true)
 		clause.matchSite = uint32(f.a.Bcond(condE))
 	}
 
-	f.leaDisp(X16, SP, recordOff, true)
+	// Forward unmatched exceptions with the two reserved backend scratches. X9
+	// may hold a call-free pin that the outer catch legitimately keeps live. Keep
+	// the record base in X16 so frames beyond LDR's 32 KiB scaled-offset range also
+	// work, and use the soon-to-be-replaced EH register as the copy temporary.
+	f.a.MovReg64(X16, ehReg)
 	f.ld64(X17, X16, ehPrevOff)
 	noPrevious := f.zeroBranch(X17, true, true)
 	for off := int32(ehTagOff); off < ehTagOff+ehRootSlots*8; off += 8 {
-		f.ld64(X9, X16, off)
-		f.st64(X17, off, X9)
+		f.ld64(ehReg, X16, off)
+		f.st64(X17, off, ehReg)
 	}
 	f.a.MovReg64(ehReg, X17)
 	f.ld64(X16, X17, ehTargetOff)
@@ -2321,7 +2414,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 		} else {
 			f.patchBranch19(int(clause.matchSite), f.a.Len())
 		}
-		f.emitEHCatchRoute(fr, clause, recordOff)
+		f.emitEHCatchRoute(fr, clause)
 	}
 }
 
@@ -2563,7 +2656,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
 		recordOff := f.ehRecordOff(int(f.ensureFrameEH(&fr).recordIndex))
 		if endReachable {
-			f.ld64(ehReg, SP, recordOff+ehPrevOff)
+			f.restorePreviousEHHandler(recordOff)
 		}
 		skip := -1
 		if endReachable {
@@ -2579,6 +2672,14 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)
 	return nil
+}
+
+// restorePreviousEHHandler leaves the innermost try record without relying on a
+// direct SP displacement. Large local frames can place every EH record beyond
+// AArch64 LDR's 32 KiB scaled-immediate range.
+func (f *fn) restorePreviousEHHandler(recordOff int32) {
+	base, baseOff := f.ehFrameRangeBase(X16, recordOff, ehPrevOff)
+	f.ld64(ehReg, base, baseOff+ehPrevOff)
 }
 
 // branchToFrame emits an unconditional branch edge to control frame fi: converge

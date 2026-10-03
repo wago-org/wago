@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -87,32 +88,52 @@ func Tree(request MaintenanceRequest) {
 func Rebuild(request MaintenanceRequest) {
 	selection := capturePluginRuntime()
 	dir, global := selection.maintenanceSource(request)
-	requirements, lock := maintenanceState(dir)
-	if len(requirements) == 0 {
-		fatal("plugin rebuild: no plugins enabled")
-	}
-	if err := project.ValidateLockedResolution(requirements, lock); err != nil {
-		fatal("plugin rebuild: %v", err)
-	}
 	buildDir, err := selection.buildDirFor(global)
 	if err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
-	input, err := pluginbuild.InputFromLock(lock)
+	var bin string
+	pluginCount := 0
+	err = withPluginRuntimeLock(context.Background(), dir, func(mutation *project.Mutation) error {
+		manifest, err := mutation.ReadManifest()
+		if err != nil {
+			return err
+		}
+		requirements, err := project.RequirementsFromManifest(manifest)
+		if err != nil {
+			return err
+		}
+		if len(requirements) == 0 {
+			return fmt.Errorf("no plugins enabled")
+		}
+		lock, err := mutation.ReadLock()
+		if err != nil {
+			return err
+		}
+		if err := project.ValidateLockedResolution(requirements, lock); err != nil {
+			return err
+		}
+		input, err := pluginbuild.InputFromLock(lock)
+		if err != nil {
+			return err
+		}
+		if _, err := syncPluginBuildVersions(buildDir, input, request.Verbose); err != nil {
+			return err
+		}
+		bin, _, err = pluginbuild.EnsureBinary(buildDir, input, true, request.Verbose, selection.config())
+		if err != nil {
+			return err
+		}
+		if err := verifyStagedRuntime(bin); err != nil {
+			return err
+		}
+		pluginCount = len(lock.Plugins)
+		return nil
+	})
 	if err != nil {
 		fatal("plugin rebuild: %v", err)
 	}
-	if _, err := syncLockedPluginVersions(buildDir, dir, request.Verbose); err != nil {
-		fatal("plugin rebuild: %v", err)
-	}
-	bin, _, err := pluginbuild.EnsureBinary(buildDir, input, true, request.Verbose, selection.config())
-	if err != nil {
-		fatal("plugin rebuild: %v", err)
-	}
-	if err := verifyStagedRuntime(bin); err != nil {
-		fatal("plugin rebuild: %v", err)
-	}
-	fmt.Printf("%s rebuilt Wago with %d plugin%s  %s\n", cyan("✓"), len(lock.Plugins), plural(len(lock.Plugins)), bin)
+	fmt.Printf("%s rebuilt Wago with %d plugin%s  %s\n", cyan("✓"), pluginCount, plural(pluginCount), bin)
 }
 
 func maintenanceSource(request MaintenanceRequest) (string, bool) {

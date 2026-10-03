@@ -33,17 +33,27 @@ type Module struct {
 	// subtypes occupy indexes in Types but must not be callable; their FuncType
 	// entries are placeholders only.
 	TypeIsFunc []bool
-	// CanonicalTypeIDs is a codegen contract for indirect-call signature checks:
-	// function type entries must name the first equivalent function signature.
-	CanonicalTypeIDs  []uint32
-	ImportedFuncCount uint32
-	FuncTypes         []uint32 // all functions, imported first, local after imports
-	Globals           []wasm.GlobalType
-	Memories          []wasm.MemType
-	Tables            []wasm.TableType
-	Elements          []ElementMeta
-	Data              []DataMeta
-	Funcs             []Func // local functions only, in module-local order
+	// CanonicalTypeIDs records module-local equivalent function signatures.
+	// It is not suitable as a dispatch identity because type indexes are local.
+	CanonicalTypeIDs []uint32
+	// StructuralTypeKeys is the codegen contract for indirect-call signature
+	// checks across instances. All 64 bits are significant, and map presence is
+	// explicit because zero is valid; only call_indirect type indexes need entries.
+	StructuralTypeKeys map[uint32]uint64
+	// StructuralTypeGroups retains the authoritative Wasm type graph only when a
+	// reachable call_indirect needs a structural key. Verification recomputes each
+	// key from this graph instead of trusting duplicated instruction metadata.
+	// The slice aliases the validated source type section; it does not copy or
+	// retain the source module's code, data, or other sections.
+	StructuralTypeGroups []wasm.RecType
+	ImportedFuncCount    uint32
+	FuncTypes            []uint32 // all functions, imported first, local after imports
+	Globals              []wasm.GlobalType
+	Memories             []wasm.MemType
+	Tables               []wasm.TableType
+	Elements             []ElementMeta
+	Data                 []DataMeta
+	Funcs                []Func // local functions only, in module-local order
 }
 
 type ElementMeta struct {
@@ -127,8 +137,8 @@ type Inst struct {
 	Args    Range
 	Results Range
 	// Aux/Aux2 carry opcode-specific metadata that codegen may trust after
-	// verification (memory kind/align/index/offset, call targets, canonical type
-	// IDs). Effect flags are separate scheduling barriers, not a substitute for
+	// verification (memory kind/align/index/offset, call targets, structural type
+	// keys). Effect flags are separate scheduling barriers, not a substitute for
 	// validating this metadata.
 	Aux     uint64
 	Aux2    uint64

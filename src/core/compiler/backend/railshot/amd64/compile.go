@@ -3256,6 +3256,10 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 // whole register file even after spillable values and optional pins are homed.
 type regExhausted struct{ class string }
 
+func (e regExhausted) Error() string {
+	return fmt.Sprintf("no %s register available after spilling optional pins", e.class)
+}
+
 // Below this count, optional inlining can erase the only relocation and an
 // eager arena reserve crosses too few target size classes to repay itself.
 const minPreallocatedCallRelocs = 8
@@ -3294,17 +3298,32 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	return
 }
 
+// compilerPanicError reads diagnostic context only after an invariant failed.
+// A nil state means setup failed before the current function replaced scratch.
+func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *railcore.InternalCompilerError {
+	index, offset := funcIdx, -1
+	if m != nil {
+		index += m.ImportedFuncCount()
+	}
+	if f != nil {
+		index = int(f.traceFuncIdx)
+		// Valid bodies begin with the local-declaration vector; zero means no
+		// instruction location has yet been recorded by the driver.
+		if f.wasmPC != 0 {
+			offset = int(f.wasmPC)
+		}
+	}
+	return railcore.NewInternalCompilerError("amd64", index, offset, recovered)
+}
+
 func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	var state *fn
 	defer func() {
-		if r := recover(); r != nil {
-			if exhausted, ok := r.(regExhausted); ok {
-				err = fmt.Errorf("amd64: no %s register available after spilling optional pins", exhausted.class)
-				return
-			}
+		if recovered := recover(); recovered != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
-				panic(r)
+				panic(recovered)
 			}
-			err = fmt.Errorf("amd64: %v", r)
+			err = state.compilerPanicError(m, funcIdx, recovered)
 		}
 	}()
 
@@ -3350,6 +3369,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		bmi2Rorx = false
 	}
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
+	state = f
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
 	} else if f.nParams != 0 {

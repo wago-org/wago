@@ -75,8 +75,8 @@ const (
 
 	// TailArgsOffset is the end of a fixed 16-slot scratch bank used only while a
 	// wrapper-ABI tail call tears down the current frame and enters the next one.
-	// The bank occupies [linMem-272, linMem-144), immediately below the import-
-	// dispatch pointer, and is reused by every tail step without allocation.
+	// The bank occupies [linMem-272, linMem-144), immediately below the EH tag-
+	// directory cell, and is reused by every tail step without allocation.
 	// TODO(runtime-resource-model): replace this temporary implementation limit
 	// with an instance-owned spill area that stays stable across context switches.
 	TailArgsOffset = 272
@@ -93,9 +93,10 @@ const (
 	EHHandlerPtrOffset = 152
 
 	// EHTagDirPtrOffset points at one exact 64-bit identity per declared/imported
-	// exception tag. The staged EH shape admits only register-ABI tails, so this
-	// otherwise-unused wrapper-tail slot cannot be overwritten by argument-bank use.
-	EHTagDirPtrOffset = 160
+	// exception tag. It occupies the alignment word immediately above the wrapper-
+	// tail bank, so all 16 staged arguments and the tag directory remain live at
+	// the same time during a cross-instance wrapper transfer.
+	EHTagDirPtrOffset = 144
 
 	// FuncRefInternalHomeTag marks a descriptor whose code pointer is an internal
 	// register-ABI entry in the same instance. FuncRefCrossInstanceHomeTag marks a

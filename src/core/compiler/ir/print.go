@@ -137,7 +137,7 @@ func writeInst(b *strings.Builder, f *Func, in *Inst) {
 	case OpCall, OpCallImport:
 		fmt.Fprintf(b, " $%d", uint32(in.Aux))
 	case OpCallIndirect:
-		fmt.Fprintf(b, " type=%d table=%d canon=%d", callIndirectType(in.Aux), callIndirectTable(in.Aux), uint32(in.Aux2))
+		fmt.Fprintf(b, " type=%d table=%d key=%#x", callIndirectType(in.Aux), callIndirectTable(in.Aux), in.Aux2)
 	case OpSelect:
 		fmt.Fprintf(b, " %s", auxValType(in.Aux).String())
 	}

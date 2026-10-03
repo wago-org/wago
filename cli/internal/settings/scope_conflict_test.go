@@ -1,12 +1,15 @@
 package settings
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/internal/filelock"
 )
 
 func TestLocalSettingsSaveRejectsStaleTarget(t *testing.T) {
@@ -80,6 +83,117 @@ func TestLocalSettingsSaveRejectsStaleTarget(t *testing.T) {
 				t.Fatalf("retry lost parallel override: %s", parallel)
 			}
 		})
+	}
+}
+
+func TestGlobalSettingsSaveRejectsStaleTarget(t *testing.T) {
+	enterSettingsTestDir(t)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	t.Setenv("WAGO_CONFIG", path)
+	first, err := Open(true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Open(true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Set("simd", "off", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Set("runtime.parallel", "4", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Save(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Save(); err == nil || !strings.Contains(err.Error(), "settings changed") || !strings.Contains(err.Error(), "retry") {
+		t.Fatalf("stale global Save() = %v, want settings conflict with retry guidance", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("stale global Save changed the settings file")
+	}
+}
+
+func TestGlobalSettingsConcurrentSavesSerializeConflictCheck(t *testing.T) {
+	enterSettingsTestDir(t)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	t.Setenv("WAGO_CONFIG", path)
+	first, err := Open(true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Open(true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Set("simd", "off", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Set("runtime.parallel", "4", false); err != nil {
+		t.Fatal(err)
+	}
+
+	gate, err := filelock.Acquire(context.Background(), path+".lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateHeld := true
+	t.Cleanup(func() {
+		if gateHeld {
+			_ = gate.Close()
+		}
+	})
+	started := make(chan struct{}, 2)
+	results := make(chan error, 2)
+	for _, target := range []*Target{first, second} {
+		go func() {
+			started <- struct{}{}
+			results <- target.Save()
+		}()
+	}
+	<-started
+	<-started
+	var bypassErr error
+	bypassed := false
+	select {
+	case bypassErr = <-results:
+		bypassed = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := gate.Close(); err != nil {
+		t.Fatal(err)
+	}
+	gateHeld = false
+	if bypassed {
+		// Drain both goroutines before failing so their file operations cannot race
+		// TempDir cleanup on the deliberately red, unlocked implementation.
+		<-results
+		t.Fatalf("Save bypassed the global transaction lock: %v", bypassErr)
+	}
+
+	var succeeded, conflicted int
+	for range 2 {
+		err := <-results
+		switch {
+		case err == nil:
+			succeeded++
+		case strings.Contains(err.Error(), "settings changed"):
+			conflicted++
+		default:
+			t.Fatalf("concurrent Save() = %v, want success or stale-target conflict", err)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("concurrent saves succeeded/conflicted = %d/%d, want 1/1", succeeded, conflicted)
 	}
 }
 

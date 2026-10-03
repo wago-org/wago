@@ -17,6 +17,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Preserve earlier call arguments when later deferred expressions use fixed
   registers for shifts or division, including mixed and tail calls.
+- Legacy exception-handling opcodes now report their unsupported encoding and
+  a `try_table`/exnref migration hint instead of a generic invalid instruction.
+- Recovered backend panics now return a distinct `InternalCompilerError` with
+  function/bytecode context and bounded diagnostics instead of ordinary rejection.
 - Preserve AMD64 `select` operands when deferred divisions, remainders, shifts,
   or rotates reclaim fixed registers, and report operand traps in WebAssembly
   evaluation order.

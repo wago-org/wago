@@ -1,6 +1,9 @@
 package wasm
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func structType(fields []FieldType, meta TypeMetadata) RecType {
 	return RecType{SubTypes: []SubType{{Final: true, Metadata: meta, Comp: CompType{Kind: CompStruct, Fields: fields}}}}
@@ -29,6 +32,126 @@ func descriptorModule(body ...Instruction) *Module {
 	}
 }
 
+func TestTypecheckDescriptorEqualityCast(t *testing.T) {
+	for _, offset := range []uint32{0, 1} {
+		for _, exact := range []bool{false, true} {
+			for _, descriptorExact := range []bool{false, true} {
+				for _, nullable := range []bool{false, true} {
+					name := fmt.Sprintf("offset=%d/exact=%t/descriptorExact=%t/nullable=%t", offset, exact, descriptorExact, nullable)
+					t.Run(name, func(t *testing.T) {
+						target := IndexedHeap(TypeIdx{Index: offset})
+						m := descriptorModule(
+							Instruction{Kind: InstrLocalGet, Index: 0},
+							Instruction{Kind: InstrLocalGet, Index: 1},
+							Instruction{Kind: InstrRefCastDescEq, Cast: CastOp{SourceNullable: exact, TargetNullable: nullable}, ext: &instrExt{HeapType: target}},
+						)
+						if offset != 0 {
+							// Keep the descriptor's recursive index at 1 while its flat index is 2.
+							m.Types = append([]RecType{ft(nil, nil)}, m.Types...)
+							m.FuncTypes[0].Index += offset
+						}
+						descriptor := RefVal(Ref(nullable, IndexedHeap(TypeIdx{Index: offset + 1}), descriptorExact))
+						result := RefVal(Ref(nullable, target, exact))
+						m.Types[len(m.Types)-1] = ft([]ValType{AnyRef, descriptor}, []ValType{result})
+						if exact && !descriptorExact {
+							expectValidateErr(t, m, ErrTypeMismatch)
+						} else if err := ValidateModule(m); err != nil {
+							t.Fatalf("matching descriptor rejected: %v", err)
+						}
+					})
+				}
+			}
+		}
+	}
+	t.Run("rejects targets without struct descriptors", func(t *testing.T) {
+		for _, tc := range []struct {
+			name   string
+			target HeapType
+			typ    RecType
+		}{
+			{"abstract", AbsHeap(HeapAny), structType(nil, TypeMetadata{})},
+			{"array", IndexedHeap(TypeIdx{Index: 0}), arrayType(field(I32, Var))},
+			{"function", IndexedHeap(TypeIdx{Index: 0}), ft(nil, nil)},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				m := &Module{
+					Types:     []RecType{tc.typ, ft(nil, nil)},
+					FuncTypes: []TypeIdx{{Index: 1}},
+					Code: []Func{{Body: Expr{Instrs: []Instruction{
+						{Kind: InstrUnreachable},
+						{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: tc.target}},
+						{Kind: InstrDrop},
+					}}}},
+				}
+				expectValidateErr(t, m, ErrTypeMismatch)
+			})
+		}
+	})
+	t.Run("unreachable operands remain polymorphic", func(t *testing.T) {
+		m := descriptorModule(
+			Instruction{Kind: InstrUnreachable},
+			Instruction{Kind: InstrRefCastDescEq, Cast: CastOp{SourceNullable: true}, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 0})}},
+			Instruction{Kind: InstrDrop},
+		)
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("unreachable operands rejected: %v", err)
+		}
+		m.Code[0].Body.Instrs = []Instruction{
+			{Kind: InstrUnreachable},
+			{Kind: InstrI32Const},
+			{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 0})}},
+			{Kind: InstrDrop},
+		}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+}
+
+func TestValidateDescriptorEqualityCastBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		descriptor []byte
+		exact      bool
+		missing    bool
+		valid      bool
+	}{
+		{"matching inexact", []byte{0x63, 0x01}, false, false, true},
+		{"matching exact", []byte{0x63, 0x62, 0x01}, true, false, true},
+		{"inexact for exact", []byte{0x63, 0x01}, true, false, false},
+		{"unrelated descriptor", []byte{0x6e}, false, false, false},
+		{"missing descriptor", []byte{0x6e}, false, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// One recursive group holds the reciprocal descriptor pair; flat type 2 is the function.
+			types := []byte{0x02, 0x4e, 0x02, 0x4d, 0x01, 0x5f, 0x00, 0x4c, 0x00, 0x5f, 0x00}
+			if tc.missing {
+				types = []byte{0x02, 0x4e, 0x02, 0x5f, 0x00, 0x5f, 0x00}
+			}
+			types = append(types, 0x60, 0x02, 0x6e)
+			types = append(types, tc.descriptor...)
+			types = append(types, 0x00)
+			body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xfb, 0x23}
+			if tc.exact {
+				body = append(body, 0x62)
+			}
+			body = append(body, 0x00, 0x1a, 0x0b)
+			data := module(
+				section(secType, types...),
+				section(secFunction, 0x01, 0x02),
+				section(secCode, append([]byte{0x01, byte(len(body))}, body...)...),
+			)
+			for _, validate := range []struct {
+				name string
+				fn   func([]byte, ValidationFeatures) error
+			}{{"AST", decodeThenValidateWithFeatures}, {"byte-backed", byteBackedDecodeThenValidateWithFeatures}} {
+				err := validate.fn(data, ValidationFeatures{})
+				if tc.valid && err != nil || !tc.valid && !isValidationCode(err, ErrTypeMismatch) {
+					t.Errorf("%s validation = %v, want valid=%t", validate.name, err, tc.valid)
+				}
+			}
+		})
+	}
+}
+
 func TestTypecheckNegativeDescriptorAndGC(t *testing.T) {
 	t.Run("ref.get_desc rejects non-reference operand", func(t *testing.T) {
 		expectValidateErr(t, descriptorModule(Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrRefGetDesc, Index: 0}, Instruction{Kind: InstrDrop}), ErrTypeMismatch)
@@ -53,6 +176,51 @@ func TestTypecheckNegativeDescriptorAndGC(t *testing.T) {
 	t.Run("ref.cast_desc_eq rejects invalid target type index", func(t *testing.T) {
 		m := modWithFunc([]ValType{AnyRef, AnyRef}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrLocalGet, Index: 1}, Instruction{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 999})}}, Instruction{Kind: InstrDrop})
 		expectValidateErr(t, m, ErrUnknownType)
+	})
+	t.Run("ref.cast_desc_eq rejects target without descriptor", func(t *testing.T) {
+		m := &Module{
+			Types:     []RecType{structType(nil, TypeMetadata{}), ft([]ValType{AnyRef, AnyRef}, nil)},
+			FuncTypes: []TypeIdx{{Index: 1}},
+			Code: []Func{{Body: Expr{Instrs: []Instruction{
+				{Kind: InstrLocalGet, Index: 0},
+				{Kind: InstrLocalGet, Index: 1},
+				{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 0})}},
+				{Kind: InstrDrop},
+			}}}},
+		}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("ref.cast_desc_eq rejects unrelated descriptor operand", func(t *testing.T) {
+		m := descriptorModule(
+			Instruction{Kind: InstrLocalGet, Index: 0},
+			Instruction{Kind: InstrLocalGet, Index: 1},
+			Instruction{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 0})}},
+			Instruction{Kind: InstrDrop},
+		)
+		m.Types[1] = ft([]ValType{AnyRef, AnyRef}, nil)
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("ref.cast_desc_eq rejects inexact operand for exact descriptor", func(t *testing.T) {
+		m := descriptorModule(
+			Instruction{Kind: InstrLocalGet, Index: 0},
+			Instruction{Kind: InstrLocalGet, Index: 1},
+			Instruction{Kind: InstrRefCastDescEq, Cast: CastOp{SourceNullable: true}, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 0})}},
+			Instruction{Kind: InstrDrop},
+		)
+		m.Types[1] = ft([]ValType{AnyRef, RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 1}), false))}, nil)
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("ref.cast_desc_eq accepts matching descriptor operand", func(t *testing.T) {
+		m := descriptorModule(
+			Instruction{Kind: InstrLocalGet, Index: 0},
+			Instruction{Kind: InstrLocalGet, Index: 1},
+			Instruction{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 0})}},
+			Instruction{Kind: InstrDrop},
+		)
+		m.Types[1] = ft([]ValType{AnyRef, RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 1}), false))}, nil)
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("matching descriptor rejected: %v", err)
+		}
 	})
 	t.Run("ref.cast rejects a disjoint reference hierarchy", func(t *testing.T) {
 		m := modWithFunc([]ValType{FuncRef}, nil,

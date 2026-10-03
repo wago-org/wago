@@ -157,7 +157,7 @@ func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImm
 	case 0xfe:
 		return directInstr, classifyFEBytes(r, imm, widths)
 	default:
-		return directInstr, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+		return directInstr, invalidInstructionError(op, r.off()-1)
 	}
 }
 

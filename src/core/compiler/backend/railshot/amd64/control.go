@@ -7,6 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -1716,12 +1717,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 }
 
 const (
-	// A record is [prev, saved RSP, handler target, saved RBX, tag, lanes...]
+	// A record is [prev, saved RSP, handler target, context anchor, tag, lanes...]
 	// and a root slot mirrors its [tag, lanes...] block, so both copy as one
 	// range. Lanes follow the module-independent shared payload layout.
-	ehMaxPayloadWords = shared.MaxEHTagPayloadWords
-	ehRecordSlots     = 5 + shared.EHPayloadLanes
-	ehRootSlots       = 1 + shared.EHPayloadLanes
+	// EH bodies keep the ordinary header; its spare word holds CustomCtx.
+	frEHCustomCtxOff   = 0
+	ehContextAnchorOff = 24 // descriptor zero, replacing the saved linear-memory word
+	ehMaxPayloadWords  = shared.MaxEHTagPayloadWords
+	ehRecordSlots      = 5 + shared.EHPayloadLanes
+	ehRootSlots        = 1 + shared.EHPayloadLanes
 	// Historical fixed reservation, kept for modules built without body bytes.
 	legacyEHTryRecords  = 4
 	legacyEHRootRecords = 4
@@ -1731,10 +1735,43 @@ const (
 	ehPrevOff      = 0
 	ehSavedRSPOff  = 8
 	ehTargetOff    = 16
-	ehSavedRBXOff  = 24
 	ehTagOff       = 32
 	offEHTagDirPtr = abi.EHTagDirPtrOffset
 )
+
+// The ordinary prefix of the stable native context has the same order as
+// instanceContextOffsets. Make additions fail the build until this cold restore
+// path is updated deliberately.
+var _ [int(coreruntime.InstanceContextGCDomainOffset/8) - len(instanceContextOffsets)]struct{}
+var _ [len(instanceContextOffsets) - int(coreruntime.InstanceContextGCDomainOffset/8)]struct{}
+
+func (f *fn) captureEHInstanceContext(recordOff int32) {
+	// CustomCtx can change during synchronous host reentry; preserve this
+	// activation's exact value in the otherwise unused ordinary frame header.
+	f.a.Load64(RAX, RBX, -offCustomCtx)
+	f.a.Store64(RSP, frEHCustomCtxOff, RAX)
+	// Descriptor zero owns both the stable home and native-context pointers.
+	// Reuse the record's former saved-RBX word, so spills and roots never move.
+	f.a.Load64(RAX, RBX, -offFuncRefDescPtr)
+	f.a.Store64(RSP, recordOff+ehContextAnchorOff, RAX)
+}
+
+func (f *fn) restoreEHInstanceContext(recordOff int32) {
+	f.a.Load64(RDX, RSP, recordOff+ehContextAnchorOff)
+	f.a.Load64(RBX, RDX, coreruntime.TableEntryHomeLinMemOffset)
+	f.a.Load64(RDX, RDX, coreruntime.FuncRefContextOffset)
+	for i, basedataOff := range instanceContextOffsets[1:] {
+		f.a.Load64(RAX, RDX, int32((i+1)*8))
+		f.a.Store64(RBX, -basedataOff, RAX)
+	}
+	f.a.Load64(RAX, RDX, coreruntime.InstanceContextGCNativeViewOffset)
+	f.a.Store64(RBX, -int32(abi.GCNativeViewPtrOffset), RAX)
+	f.a.Load64(RAX, RDX, coreruntime.InstanceContextEHTagDirOffset)
+	f.a.Store64(RBX, -int32(abi.EHTagDirPtrOffset), RAX)
+	// The activation-specific value wins over the mutable native image.
+	f.a.Load64(RAX, RSP, frEHCustomCtxOff)
+	f.a.Store64(RBX, -offCustomCtx, RAX)
+}
 
 func exceptionPayloadMachineType(typ wasm.ValType) (machineType, bool) {
 	if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
@@ -1899,7 +1936,11 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	f.a.Store64(R11, ehSavedRSPOff, RSP)
 	eh.targetSite = uint32(f.a.LeaRipPlaceholder(RAX))
 	f.a.Store64(R11, ehTargetOff, RAX)
-	f.a.Store64(R11, ehSavedRBXOff, RBX)
+	// An exceptional cross-instance return jumps directly to this frame and skips
+	// the normal call continuation. Preserve the activation-dynamic values plus a
+	// stable context anchor once per frame so any bounded handler can restore
+	// shared-memory basedata without expanding every nested handler record.
+	f.captureEHInstanceContext(recordOff)
 	f.a.MovReg64(RBP, R11)
 	f.pushCtrl(&fr)
 	return nil
@@ -2051,9 +2092,13 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	recordOff := f.ehRecordOff(int(eh.recordIndex))
 	handlerPos := f.a.Len()
 	f.a.PatchRel32(int(eh.targetSite), handlerPos)
-	// A throw may arrive from a foreign instance with its RBX installed. The
-	// record owns the target handler and restores its basedata before dispatch.
-	f.a.Load64(RBX, RSP, recordOff+ehSavedRBXOff)
+	// A handler jump bypasses the normal cross-instance call continuation. Restore
+	// every per-instance basedata pointer before dispatch so tag matching and the
+	// catch continuation observe the owner, even when caller and callee share Memory.
+	f.restoreEHInstanceContext(recordOff)
+	f.refreshCachedMemoryBoundAfterExternalCall()
+	f.deriveModuleGlobals()
+	f.derivePinnedGlobals()
 
 	dispatchN := len(eh.catches)
 	for i := range eh.catches {
@@ -2071,8 +2116,8 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	}
 
 	// No clause matched: transfer the exception words into the previous fixed
-	// record and continue unwinding. The previous record carries its own RBX, so
-	// this path composes local nesting with one exact foreign-instance transfer.
+	// record and continue unwinding. Its target handler restores its owning frame's
+	// context after the saved stack pointer has selected that frame.
 	f.a.LeaRsp(R10, recordOff)
 	f.a.Load64(R11, R10, ehPrevOff)
 	f.a.TestSelf(R11, true)
@@ -2082,7 +2127,6 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 		f.a.Store64(R11, off, RAX)
 	}
 	f.a.MovReg64(RBP, R11)
-	f.a.Load64(RBX, R11, ehSavedRBXOff)
 	f.a.Load64(RAX, R11, ehTargetOff)
 	f.a.Load64(RSP, R11, ehSavedRSPOff)
 	f.a.JmpReg(RAX)

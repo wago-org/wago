@@ -2886,6 +2886,10 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 // whole register file after every spillable value has been homed.
 type regExhausted struct{ class string }
 
+func (e regExhausted) Error() string {
+	return fmt.Sprintf("no %s register available after applying the transient register floor", e.class)
+}
+
 // Below this count, an optionally inlined call can erase the only relocation
 // and ordinary append growth crosses too few size classes to repay a reserve.
 const minPreallocatedCallRelocs = 8
@@ -2916,17 +2920,32 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	return
 }
 
+// compilerPanicError reads diagnostic context only after an invariant failed.
+// A nil state means setup failed before the current function replaced scratch.
+func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *railcore.InternalCompilerError {
+	index, offset := funcIdx, -1
+	if m != nil {
+		index += m.ImportedFuncCount()
+	}
+	if f != nil {
+		index = int(f.traceFuncIdx)
+		// Valid bodies begin with the local-declaration vector; zero means no
+		// instruction location has yet been recorded by the driver.
+		if f.wasmPC != 0 {
+			offset = int(f.wasmPC)
+		}
+	}
+	return railcore.NewInternalCompilerError("arm64", index, offset, recovered)
+}
+
 func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleeHints []funcHints, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	var state *fn
 	defer func() {
-		if r := recover(); r != nil {
-			if exhausted, ok := r.(regExhausted); ok {
-				err = fmt.Errorf("arm64: no %s register available after applying the transient register floor", exhausted.class)
-				return
-			}
+		if recovered := recover(); recovered != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
-				panic(r)
+				panic(recovered)
 			}
-			err = fmt.Errorf("arm64: %v", r)
+			err = state.compilerPanicError(m, funcIdx, recovered)
 		}
 	}()
 
@@ -2956,6 +2975,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	mt0, _ := m.MemoryType(0)
 	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	state = f
 	f.adapterBacklink = sc.moduleNeedsAdapterBacklink(calleeHints)
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
@@ -3785,6 +3805,26 @@ func (f *fn) storeGlobalPins(scratch Reg, valuePins bool) {
 	for g, state := range f.globalReg {
 		reg := globalRegValue(state)
 		if reg == regNone || (!f.isModuleGlobal(g) && (!valuePins || !globalRegIsDirty(state))) {
+			continue
+		}
+		f.ld64(scratch, linMemReg, -int32(abi.GlobalsPtrOffset))
+		f.ld64(scratch, scratch, int32(g*8))
+		if f.globalIs64(g) {
+			f.st64(scratch, 0, reg)
+		} else {
+			f.st32(scratch, 0, reg)
+		}
+	}
+}
+
+// storeDirtyGlobalPins publishes only values changed by this function. An EH
+// transfer may rederive every pin in the handler after restoring instance
+// context, so direct throws must make deferred global.set values cell-coherent
+// first. Filtering on the compile-time dirty bit keeps the cold edge compact.
+func (f *fn) storeDirtyGlobalPins(scratch Reg) {
+	for g, state := range f.globalReg {
+		reg := globalRegValue(state)
+		if reg == regNone || !globalRegIsDirty(state) {
 			continue
 		}
 		f.ld64(scratch, linMemReg, -int32(abi.GlobalsPtrOffset))

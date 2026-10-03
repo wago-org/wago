@@ -14,8 +14,9 @@ func TestVerifyModuleRejectsBadFuncType(t *testing.T) {
 
 func TestVerifyModuleRejectsFunctionMetadataMismatches(t *testing.T) {
 	base := func() *Module {
+		ft := wasm.FuncType{Results: []wasm.ValType{wasm.I32}}
 		return &Module{
-			Types:             []wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}},
+			Types:             []wasm.FuncType{ft},
 			ImportedFuncCount: 1,
 			FuncTypes:         []uint32{0, 0},
 			Funcs:             []Func{*validReturnI32Func()},
@@ -45,6 +46,50 @@ func TestVerifyModuleRejectsFunctionMetadataMismatches(t *testing.T) {
 	}
 }
 
+func TestVerifyModuleRejectsMissingReferencedStructuralTypeKey(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	delete(m.StructuralTypeKeys, 1)
+	wantErr(t, VerifyModule(m), "type 1 has no structural type key")
+}
+
+func TestVerifyCallIndirectRejectsForgedZeroStructuralTypeKey(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.StructuralTypeKeys[1] = 0
+	m.Funcs[0].Insts[0].Aux2 = 0
+	wantErr(t, VerifyModule(m), "structural type key for type 1")
+}
+
+func TestVerifyCallIndirectRejectsWrongSignatureKeyWhenMetadataAgrees(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	wrong := structuralTypeKeyForTest(wasm.FuncType{Params: []wasm.ValType{wasm.I64}})
+	m.StructuralTypeKeys[1] = wrong
+	m.Funcs[0].Insts[0].Aux2 = wrong
+	wantErr(t, VerifyModule(m), "structural type key for type 1")
+}
+
+func TestVerifyRejectsStructuralTypeGraphMetadataMismatch(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		m := callIndirectModuleForVerify()
+		m.StructuralTypeGroups = nil
+		wantErr(t, VerifyModule(m), "no source type graph")
+	})
+	t.Run("flattened-count", func(t *testing.T) {
+		m := callIndirectModuleForVerify()
+		m.StructuralTypeGroups = m.StructuralTypeGroups[:2]
+		wantErr(t, VerifyModule(m), "flattened types")
+	})
+	t.Run("signature", func(t *testing.T) {
+		m := callIndirectModuleForVerify()
+		m.StructuralTypeGroups[1].SubTypes[0].Comp.Params = []wasm.ValType{wasm.I64}
+		wantErr(t, VerifyModule(m), "signature mismatch at type 1")
+	})
+	t.Run("kind", func(t *testing.T) {
+		m := callIndirectModuleForVerify()
+		m.StructuralTypeGroups[1].SubTypes[0].Comp = wasm.CompType{Kind: wasm.CompStruct}
+		wantErr(t, VerifyModule(m), "kind mismatch at type 1")
+	})
+}
+
 func TestVerifyFuncInModuleChecksModuleIndexes(t *testing.T) {
 	f := instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
 	// Standalone verification cannot see missing module metadata.
@@ -52,6 +97,20 @@ func TestVerifyFuncInModuleChecksModuleIndexes(t *testing.T) {
 		t.Fatalf("VerifyFunc standalone = %v", err)
 	}
 	wantErr(t, VerifyFuncInModule(f, &Module{}), "memory index 0")
+}
+
+func TestVerifyFuncInModuleRejectsWrongStructuralTypeKeyWhenMetadataAgrees(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	wrong := structuralTypeKeyForTest(wasm.FuncType{Params: []wasm.ValType{wasm.I64}})
+	m.StructuralTypeKeys[1] = wrong
+	m.Funcs[0].Insts[0].Aux2 = wrong
+	wantErr(t, VerifyFuncInModule(&m.Funcs[0], m), "structural type key for type 1")
+}
+
+func TestVerifyFuncInModuleRejectsShortTypeKindMetadataWithoutPanic(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.TypeIsFunc = m.TypeIsFunc[:1]
+	wantErr(t, VerifyFuncInModule(&m.Funcs[0], m), "type kind metadata length 1")
 }
 
 func TestVerifyFuncInModuleRejectsDirectCallToNonFunctionTypeIndex(t *testing.T) {
@@ -420,21 +479,26 @@ func TestVerifyRejectsEdgeProblems(t *testing.T) {
 
 func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 	base := func() *Module {
+		types := []wasm.FuncType{{Results: []wasm.ValType{wasm.I64}}, {Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}}
 		return &Module{
-			Types:             []wasm.FuncType{{Results: []wasm.ValType{wasm.I64}}, {Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}},
-			TypeIsFunc:        []bool{true, true},
-			CanonicalTypeIDs:  []uint32{0, 1},
-			ImportedFuncCount: 1,
-			FuncTypes:         []uint32{1, 0},
-			Globals:           []wasm.GlobalType{{Type: wasm.I32}},
-			Memories:          []wasm.MemType{{}},
-			Tables:            []wasm.TableType{{Ref: wasm.FuncRef.Ref()}},
+			Types:                types,
+			TypeIsFunc:           []bool{true, true},
+			CanonicalTypeIDs:     []uint32{0, 1},
+			StructuralTypeKeys:   map[uint32]uint64{1: structuralTypeKeyForTest(types[1])},
+			StructuralTypeGroups: structuralTypeGroupsForTest(types),
+			ImportedFuncCount:    1,
+			FuncTypes:            []uint32{1, 0},
+			Globals:              []wasm.GlobalType{{Type: wasm.I32}},
+			Memories:             []wasm.MemType{{}},
+			Tables:               []wasm.TableType{{Ref: wasm.FuncRef.Ref()}},
 		}
 	}
 	placeFunc := func(m *Module, f *Func) {
 		// Module verification now checks that the local function header agrees with
 		// flattened module metadata before it validates instruction-index metadata.
 		m.Types[0] = f.Sig
+		m.StructuralTypeGroups[0].SubTypes[0].Comp.Params = f.Sig.Params
+		m.StructuralTypeGroups[0].SubTypes[0].Comp.Results = f.Sig.Results
 		f.Index = 1
 		f.LocalIndex = 0
 		f.TypeIndex = 0
@@ -457,7 +521,7 @@ func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 		{"call_indirect_table", func(m *Module) {
 			f := instFunc(OpCallIndirect, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall|EffectReadTable)
 			f.Insts[0].Aux = packCallIndirect(1, 9)
-			f.Insts[0].Aux2 = 1
+			f.Insts[0].Aux2 = m.StructuralTypeKeys[1]
 			placeFunc(m, f)
 		}, "table 9"},
 		{"global_type", func(m *Module) {
@@ -511,17 +575,19 @@ func TestVerifyAcceptsCanonicalEquivalentTypeMetadata(t *testing.T) {
 	}
 }
 
-func TestVerifyRejectsBadCallIndirectCanonicalTypeID(t *testing.T) {
+func TestVerifyRejectsBadCallIndirectStructuralTypeKey(t *testing.T) {
 	m := callIndirectModuleForVerify()
 	m.Funcs[0].Insts[0].Aux = packCallIndirect(1, 0)
-	m.Funcs[0].Insts[0].Aux2 = 2
-	wantErr(t, VerifyModule(m), "canonical type id")
+	m.Funcs[0].Insts[0].Aux2 ^= 1
+	wantErr(t, VerifyModule(m), "structural type key")
 }
 
 func TestVerifyRejectsCallIndirectTableWithNonFunctionHeapTypeIndex(t *testing.T) {
 	m := callIndirectModuleForVerify()
 	m.TypeIsFunc = []bool{true, true, false}
+	m.StructuralTypeGroups[2].SubTypes[0].Comp = wasm.CompType{Kind: wasm.CompStruct}
 	m.CanonicalTypeIDs = []uint32{0, 1, 2}
+	delete(m.StructuralTypeKeys, 2)
 	m.Tables[0] = wasm.TableType{Ref: wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 2}), false)}
 	wantErr(t, VerifyModule(m), "function reference table")
 }
@@ -537,35 +603,68 @@ func TestVerifyAcceptsCallIndirectTableWithFunctionHeapTypeIndex(t *testing.T) {
 func TestVerifyRejectsCallIndirectNonFunctionTypeIndex(t *testing.T) {
 	m := callIndirectModuleForVerify()
 	m.TypeIsFunc = []bool{true, true, false}
+	m.StructuralTypeGroups[2].SubTypes[0].Comp = wasm.CompType{Kind: wasm.CompStruct}
 	m.CanonicalTypeIDs = []uint32{0, 1, 2}
+	delete(m.StructuralTypeKeys, 2)
 	m.Funcs[0].Insts[0].Aux = packCallIndirect(2, 0)
-	m.Funcs[0].Insts[0].Aux2 = 2
+	m.Funcs[0].Insts[0].Aux2 = 0
 	wantErr(t, VerifyModule(m), "not a function type")
 }
 
 func TestVerifyAcceptsCallIndirectCanonicalEquivalentType(t *testing.T) {
 	m := callIndirectModuleForVerify()
 	m.Funcs[0].Insts[0].Aux = packCallIndirect(2, 0)
-	m.Funcs[0].Insts[0].Aux2 = 1
+	m.Funcs[0].Insts[0].Aux2 = m.StructuralTypeKeys[2]
 	if err := VerifyModule(m); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func callIndirectModuleForVerify() *Module {
+	types := []wasm.FuncType{{Params: []wasm.ValType{wasm.I32}}, {}, {}}
+	key := structuralTypeKeyForTest(types[1])
+	keys := map[uint32]uint64{1: key, 2: key}
 	f := instFunc(OpCallIndirect, []wasm.ValType{wasm.I32}, nil, EffectCanTrap|EffectCall|EffectReadTable)
 	f.Index = 0
 	f.LocalIndex = 0
 	f.TypeIndex = 0
 	f.Insts[0].Aux = packCallIndirect(1, 0)
-	f.Insts[0].Aux2 = 1
+	f.Insts[0].Aux2 = key
 	return &Module{
-		Types:            []wasm.FuncType{{Params: []wasm.ValType{wasm.I32}}, {}, {}},
-		TypeIsFunc:       []bool{true, true, true},
-		CanonicalTypeIDs: []uint32{0, 1, 1},
-		FuncTypes:        []uint32{0},
-		Tables:           []wasm.TableType{{Ref: wasm.FuncRef.Ref()}},
-		Funcs:            []Func{*f},
+		Types:                types,
+		TypeIsFunc:           []bool{true, true, true},
+		CanonicalTypeIDs:     []uint32{0, 1, 1},
+		StructuralTypeKeys:   keys,
+		StructuralTypeGroups: structuralTypeGroupsForTest(types),
+		FuncTypes:            []uint32{0},
+		Tables:               []wasm.TableType{{Ref: wasm.FuncRef.Ref()}},
+		Funcs:                []Func{*f},
+	}
+}
+
+func structuralTypeKeyForTest(ft wasm.FuncType) uint64 {
+	ct := wasm.CompType{Kind: wasm.CompFunc, Params: ft.Params, Results: ft.Results}
+	return wasm.StructuralFuncTypeKey(&ct)
+}
+
+func structuralTypeGroupsForTest(types []wasm.FuncType) []wasm.RecType {
+	groups := make([]wasm.RecType, len(types))
+	for i := range types {
+		groups[i].SubTypes = []wasm.SubType{{
+			Final: true,
+			Comp:  wasm.CompType{Kind: wasm.CompFunc, Params: types[i].Params, Results: types[i].Results},
+		}}
+	}
+	return groups
+}
+
+func BenchmarkVerifyModuleStructuralTypeKeys(b *testing.B) {
+	m := callIndirectModuleForVerify()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if err := VerifyModule(m); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

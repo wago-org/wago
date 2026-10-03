@@ -22,31 +22,42 @@ type PluginSelection struct {
 }
 
 func PluginSelections(dir string) ([]PluginSelection, error) {
-	lock, err := ReadLock(dir)
-	if err != nil {
-		return nil, err
-	}
-	requirements, err := Requirements(dir)
-	if err != nil {
-		return nil, err
-	}
-	if err := ValidateLockedResolution(requirements, lock); err != nil {
-		return nil, fmt.Errorf("%s: %w", DisplayPath(dir), err)
-	}
-	selections := make([]PluginSelection, 0, len(lock.Plugins))
-	ids := sortedLockKeys(lock.Plugins)
-	for _, id := range ids {
-		entry := lock.Plugins[id]
-		selections = append(selections, PluginSelection{
-			ID: id, DefinitionDigest: entry.DefinitionDigest,
-			Direct: entry.Direct, Dependencies: cloneDependencyConstraints(entry.Dependencies),
-			Grants:    append([]AuthorityGrant(nil), entry.Grants...),
-			Contracts: append([]ContractBinding(nil), entry.Bindings...),
-			Config:    append(json.RawMessage(nil), entry.Config...),
-		})
-	}
-	sort.Slice(selections, func(i, j int) bool { return selections[i].ID < selections[j].ID })
-	return selections, nil
+	var selections []PluginSelection
+	// The manifest and lock are one committed metadata snapshot. Established
+	// projects hold their shared lock through validation; a fresh read is retried
+	// if its first writer appears, without creating state in a read-only project.
+	err := withMetadataSnapshotRead(dir, func(mutation *Mutation) error {
+		lock, err := mutation.ReadLock()
+		if err != nil {
+			return err
+		}
+		manifest, err := mutation.ReadManifest()
+		if err != nil {
+			return err
+		}
+		requirements, err := requirementsFromMap(manifest, dir)
+		if err != nil {
+			return err
+		}
+		if err := ValidateLockedResolution(requirements, lock); err != nil {
+			return fmt.Errorf("%s: %w", DisplayPath(dir), err)
+		}
+		selections = make([]PluginSelection, 0, len(lock.Plugins))
+		ids := sortedLockKeys(lock.Plugins)
+		for _, id := range ids {
+			entry := lock.Plugins[id]
+			selections = append(selections, PluginSelection{
+				ID: id, DefinitionDigest: entry.DefinitionDigest,
+				Direct: entry.Direct, Dependencies: cloneDependencyConstraints(entry.Dependencies),
+				Grants:    append([]AuthorityGrant(nil), entry.Grants...),
+				Contracts: append([]ContractBinding(nil), entry.Bindings...),
+				Config:    append(json.RawMessage(nil), entry.Config...),
+			})
+		}
+		sort.Slice(selections, func(i, j int) bool { return selections[i].ID < selections[j].ID })
+		return nil
+	})
+	return selections, err
 }
 
 func cloneDependencyConstraints(input map[string]string) map[string]string {

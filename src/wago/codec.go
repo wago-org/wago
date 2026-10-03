@@ -1044,10 +1044,15 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
 		return fmt.Errorf("unknown AMD64 CPU requirements %#x", c.requiredAMD64Features)
 	}
-	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
 	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatures))
+	// Version-5 EH code dereferences descriptor zero to recover its owning native
+	// context on an exceptional cross-instance return. Derive the fixed-header
+	// requirement from authoritative feature metadata as well as the redundant
+	// bit before footprint validation, so a sparse producer cannot create native
+	// code with a missing context anchor.
+	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0 || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling)
 	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
 	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
 		label := "native GC call-boundary"

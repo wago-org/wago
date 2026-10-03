@@ -801,6 +801,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if c.needsFuncRefDescs() {
 		selfLinMem := uint64(jm.LinMemBase())
 		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes * (len(c.FuncTypeID) + 1))
+		// Descriptor zero is the stable home/context anchor saved by EH records.
+		binary.LittleEndian.PutUint64(funcRefDescs[runtime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase()))
 		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
 		if c.usesDynamicFuncRefTest() {
 			typeIDBytes := (4*len(c.FuncTypeID) + 7) &^ 7
@@ -990,6 +992,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	} else if c.needsFuncRefContextHeader {
 		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes)
+		// Descriptor zero is the stable home/context anchor saved by EH records.
+		binary.LittleEndian.PutUint64(funcRefDescs[runtime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase()))
 		binary.LittleEndian.PutUint64(funcRefDescs[runtime.FuncRefContextOffset:], uint64(nativeContextPtr))
 		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
 	}
