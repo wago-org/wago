@@ -32,6 +32,42 @@ func TestPickerDrillsIntoSubpackagesAndReturns(t *testing.T) {
 	}
 }
 
+func TestPickerAcceptsCanonicalGitHubPackage(t *testing.T) {
+	const name = "github.com/wago-org/wasi"
+	picker := Picker("Select installed plugin", []Package{{Name: name, Version: "0.0.0"}})
+	if done, cancelled := picker.Apply(tui.KeyAccept); !done || cancelled {
+		t.Fatalf("enter = done %v, cancelled %v", done, cancelled)
+	}
+	if got := picker.Selected(); got != name {
+		t.Fatalf("selected = %q, want %q", got, name)
+	}
+}
+
+func TestPickerGroupsCanonicalSubpackages(t *testing.T) {
+	for _, test := range []struct {
+		root, child, label string
+	}{
+		{"github.com/wago-org/wasi", "github.com/wago-org/wasi/p1", "wasi/p1"},
+		{"gopkg.in/yaml.v3", "gopkg.in/yaml.v3/parser", "yaml.v3/parser"},
+	} {
+		t.Run(test.root, func(t *testing.T) {
+			picker := Picker("Select installed plugin", []Package{
+				{Name: test.root, Version: "1.0.0"},
+				{Name: test.child, Version: "1.0.0"},
+			})
+			if frame := picker.Frame(); !strings.Contains(frame, test.root) || !strings.Contains(frame, "→") {
+				t.Fatalf("root frame:\n%s", frame)
+			}
+			if done, cancelled := picker.Apply(tui.KeyRight); done || cancelled {
+				t.Fatalf("right = done %v, cancelled %v", done, cancelled)
+			}
+			if frame := picker.Frame(); !strings.Contains(frame, test.label) {
+				t.Fatalf("child frame:\n%s", frame)
+			}
+		})
+	}
+}
+
 func TestPickerPaginatesAtFifteenRoots(t *testing.T) {
 	packages := make([]Package, 17)
 	for index := range packages {
