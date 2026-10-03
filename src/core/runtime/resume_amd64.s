@@ -41,6 +41,9 @@ TEXT ·resumeNativeRaw(SB), NOSPLIT, $0-16
 	MOVQ R13, 32(R10)
 	MOVQ R14, 40(R10)              // g
 	MOVQ R15, 48(R10)
+	STMXCSR 56(R10)                // save host floating-point control state
+	MOVL $0x1f80, 60(R10)          // reinstall canonical guest state
+	LDMXCSR 60(R10)
 
 	// Reload the wasm register state hostCallStub saved into the control frame.
 	MOVQ  8(R9), BX                // hcSavedRBX (linMem)
