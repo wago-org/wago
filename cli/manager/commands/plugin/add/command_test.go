@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/project"
 )
@@ -97,5 +98,45 @@ func TestCommandSupportsAllowAllWithoutPrompt(t *testing.T) {
 	))
 	if !environment.options.GrantAll {
 		t.Fatalf("options = %#v", environment.options)
+	}
+}
+
+func TestCommandAllowAllAcceptsContractsWithoutChangingOtherFlags(t *testing.T) {
+	for _, test := range []struct {
+		name                             string
+		flags                            []string
+		grantAll, acceptContracts, force bool
+	}{
+		{name: "allow all", flags: []string{"--allow-all"}, grantAll: true, acceptContracts: true},
+		{name: "allow all with no input", flags: []string{"--allow-all", "--no-input"}, grantAll: true, acceptContracts: true},
+		{name: "explicit contracts", flags: []string{"--accept-contracts"}, acceptContracts: true},
+		{name: "allow specific", flags: []string{"--allow", "host.arguments.read"}},
+		{name: "deny all", flags: []string{"--deny-all"}},
+		{name: "force", flags: []string{"--force"}, force: true},
+		{name: "short force", flags: []string{"-f"}, force: true},
+		{name: "default"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			automation.Reset()
+			t.Cleanup(automation.Reset)
+			environment := &testEnvironment{}
+			cmd := Command(environment)
+			ctx, err := cmd.Parse("wago add", append(test.flags, "wago-org/wasi@^0.2.0"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := automation.Current()
+			cmd.Run(ctx)
+			got := environment.options
+			if got.GrantAll != test.grantAll || got.AcceptContracts != test.acceptContracts || got.Force != test.force {
+				t.Fatalf("options = %#v; want grantAll=%v acceptContracts=%v force=%v", got, test.grantAll, test.acceptContracts, test.force)
+			}
+			if automation.Current() != before {
+				t.Fatal("add changed process-wide automation policy")
+			}
+			if !reflect.DeepEqual(got.Modules, []string{"github.com/wago-org/wasi@^0.2.0"}) {
+				t.Fatalf("modules = %q", got.Modules)
+			}
+		})
 	}
 }

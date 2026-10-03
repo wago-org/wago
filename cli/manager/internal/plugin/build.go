@@ -50,7 +50,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		progress.Fail("Plugin fetch failed")
 		fatal("add: %v", err)
 	}
-	if !automation.NoInput() {
+	if !options.grantAll && !automation.NoInput() {
 		prompts, err := findPackageInstallPrompts(pluginContext(options.ctx), specs)
 		if err != nil {
 			progress.Fail("Plugin fetch failed")

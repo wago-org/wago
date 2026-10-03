@@ -150,6 +150,11 @@ wago init
 wago add wago-org/wasi
 ```
 
+Use `wago add --allow-all wago-org/wasi` to install all subpackages, grant their
+requested Authorities, and accept the proposed exact Contract bindings without
+prompting. Explicit `--scopes` still narrows grants. `-f` / `--force` does not
+approve an installation.
+
 See [Use plugins](https://docs.wago.sh/guides/plugins) or browse the
 [plugin registry](https://plugins.wago.sh).
 
