@@ -207,7 +207,7 @@ var intervalScratchLeaseEnabled = os.Getenv("WAGO_AMD64_NO_INTERVAL_SCRATCH_LEAS
 // implicit R8 role. WAGO_AMD64_NO_INTERVAL_R8_LEASE=1 keeps R8 reserved.
 var intervalR8LeaseEnabled = os.Getenv("WAGO_AMD64_NO_INTERVAL_R8_LEASE") != "1"
 
-var shiftOwnedDestinationEnabled = os.Getenv("WAGO_AMD64_SHIFT_OWNED_DESTINATION") == "1"
+var shiftOwnedDestinationEnabled = os.Getenv("WAGO_AMD64_SHIFT_OWNED_DESTINATION") != "0"
 
 // countedLoopLatchEnabled folds exact non-interruptible top-tested countdown
 // loops onto their decrement flags. WAGO_AMD64_NO_COUNTED_LOOP_LATCH=1 keeps

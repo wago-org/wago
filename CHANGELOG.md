@@ -12,6 +12,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   branch-result transfers, memory operands, and scalar/vector loop lowering.
 - Reduce compilation work by skipping GC conversion scans for validated non-GC
   modules and synchronizing only the globals assigned to physical registers.
+- Reuse owned integer shift operands and an additional revocable local register
+  in admitted straight-line AMD64 functions.
 
 ### Fixed
 
