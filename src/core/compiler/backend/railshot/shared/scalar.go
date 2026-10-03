@@ -9,7 +9,7 @@ import (
 // ScalarSummary is admission metadata, not an instruction array. Admission is
 // performed on validated bytecode before any function instruction is emitted.
 type ScalarSummary struct {
-	Eligible        bool
+	Eligible, HasIf bool
 	MaxStack, Nodes int
 }
 
@@ -91,6 +91,7 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 				return s
 			}
 			if op == 0x04 {
+				s.HasIf = true
 				stack--
 			}
 			ctrl[depth] = frame{base: stack, result: result, isIf: op == 0x04}
@@ -570,7 +571,13 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 	s.controls = s.controls[:0]
 	s.freeSlots = s.freeSlots[:0]
 	s.owners = [64]scalarID{}
-	s.tempBase = summary.MaxStack + 1
+	// Plain blocks have only fallthrough in the admitted subset. Reserve
+	// canonical operand homes only when a conditional actually needs them;
+	// slot zero remains available to the target's single-result return ABI.
+	s.tempBase = 1
+	if summary.HasIf {
+		s.tempBase = summary.MaxStack + 1
+	}
 	s.nextSlot = s.tempBase
 	s.maxSlot = 0
 	s.Spills = 0
