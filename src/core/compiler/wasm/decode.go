@@ -243,14 +243,7 @@ func decodeValType(r *reader) (ValType, error) {
 		_, _ = r.byte()
 		return V128, nil
 	case 0x63, 0x64, 0x6f, 0x70, 0x6e, 0x6d, 0x6c, 0x6b, 0x6a, 0x69, 0x71, 0x72, 0x73, 0x74:
-		start := r.pos
 		rt, err := decodeRefType(r)
-		if err != nil && b == 0x64 {
-			// stringref uses the same byte as the non-null ref prefix. Treat a bare
-			// 0x64 that cannot complete a ref type as stringref.
-			r.pos = start + 1
-			return StringRef, nil
-		}
 		return RefVal(rt), err
 	default:
 		return ValType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off()}

@@ -61,7 +61,7 @@ func TestMoreReferenceDecodeEdges(t *testing.T) {
 		cases := []struct {
 			bytes    []byte
 			nullable bool
-		}{{[]byte{0x64}, true}, {[]byte{0x63, 0x64}, true}, {[]byte{0x64, 0x64}, false}}
+		}{{[]byte{0x63, 0x64}, true}, {[]byte{0x64, 0x64}, false}}
 		for _, tc := range cases {
 			vt, err := decodeValType(newReader(tc.bytes))
 			if err != nil || vt.Kind() != ValRef || vt.Ref().Heap().Abs() != HeapString || vt.Ref().Nullable() != tc.nullable {
@@ -95,6 +95,13 @@ func TestDecodeRejectsBareStringRefCollision(t *testing.T) {
 	data := module(section(secType, 0x01, 0x60, 0x00, 0x01, 0x64))
 	if _, err := DecodeModule(data); err == nil {
 		t.Fatal("DecodeModule accepted bare 0x64 as stringref in Core 3 grammar")
+	}
+}
+
+func TestDecodeNonNullRefPrefixBeforeFollowingType(t *testing.T) {
+	data := module(section(secType, 0x01, 0x60, 0x02, 0x64, 0x70, 0x7f, 0x00))
+	if _, err := DecodeModule(data); err != nil {
+		t.Fatalf("DecodeModule: %v", err)
 	}
 }
 
