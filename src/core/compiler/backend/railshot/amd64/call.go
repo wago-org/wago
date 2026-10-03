@@ -2499,6 +2499,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		return fmt.Errorf("call_ref: type %d exceeds bounded native identity", typeIdx)
 	}
 
+	f.materializePendingTraps()
 	ref := f.materialize(f.popValue())
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.pinned = f.pinned.add(ref)
@@ -3147,6 +3148,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	}
 	table64 := tt.Limits.Addr64
 
+	f.materializePendingTraps()
 	idxReg := f.materialize(f.popValue()) // table32 uses i32; table64 uses full i64
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.canonicalizeTableOperand(idxReg, tableIdx)

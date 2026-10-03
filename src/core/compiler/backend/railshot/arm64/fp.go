@@ -815,6 +815,7 @@ func (f *fn) loadFConstBits(bits uint64, f64 bool) Reg {
 // f2iTrunc converts float→int with truncation, trapping (TruncOverflow) on NaN or
 // out-of-range. srcF64 selects the source width; dstWide the i64 destination.
 func (f *fn) f2iTrunc(dstWide, srcF64, signed bool) {
+	f.materializePendingTraps()
 	x := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(x)
 

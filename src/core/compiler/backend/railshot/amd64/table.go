@@ -523,6 +523,7 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()), tableIdx)
 	f.pinned = f.pinned.add(entry)
 	slot := f.allocReg(0)
@@ -547,6 +548,7 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	if f.gcStructHelpers && (f.tableIsGCObjectRef(tableIdx) || (f.m.TableCount() == 3 && tableIdx == 2 && f.tableIsExternref(tableIdx))) {
 		tt, ok := f.m.TableType(tableIdx)
 		if !ok {
@@ -646,6 +648,7 @@ func (f *fn) refEq() {
 }
 
 func (f *fn) refAsNonNull() {
+	f.materializePendingTraps()
 	ref := f.materialize(f.popValue())
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapNullReference)

@@ -457,6 +457,7 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
 func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	f.materializePendingTraps()
 	if f.memoryAddr64(0) {
 		return f.memAddr64(off, size)
 	}
@@ -574,6 +575,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 // staged memory64 allocation remains bounded to 65,535 pages, but neither u64
 // addition may wrap into that range.
 func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	f.materializePendingTraps()
 	e := f.popValue()
 	ea, eaOwned = f.materialize(e), true
 	borrow, disp = -1, 0
@@ -634,6 +636,7 @@ func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, 
 }
 
 func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
+	f.materializePendingTraps()
 	e := f.popValue()
 	loadDefinedLocal := f.loadDefinedAddressLocal(e)
 	ea = f.materialize(e)
