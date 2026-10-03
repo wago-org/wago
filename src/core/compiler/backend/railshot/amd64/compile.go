@@ -33,6 +33,10 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
+// Experimental: lend one argument register to guarded call-making local pins.
+// R9/R10 remain staging scratch; current capture and spill contracts still apply.
+var guardCallPinEnabled = os.Getenv("WAGO_AMD64_GUARD_CALL_PIN") == "1"
+
 // A small pin budget leaves transient capacity in loop functions with many
 // locals. Keep the default on the native qualification platform.
 var wideLocalPinsEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_WIDE_LOCAL_PINS") != "1"
@@ -3513,7 +3517,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// num-bigint's to_str_radix panics ("assertion failed: digit_2 < big_base")
 		// only under guard-page. Excluding R15 instead is NOT a fix: it pushes a pin
 		// onto R9/R10/R11 for other modules (e.g. sqlite) and reintroduces the bug.
-		gpPool = withoutReg(withoutReg(withoutReg(gpPool, R9), R10), R11)
+		gpPool = withoutReg(withoutReg(gpPool, R9), R10)
+		if !guardCallPinEnabled {
+			gpPool = withoutReg(gpPool, R11)
+		}
 	}
 	for _, mg := range modGlobals {
 		if mg.reg == f.moduleGlobalRegionalLease {
@@ -3607,6 +3614,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
 	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, fpPinLimit, hasCall, pinLocals && f.opt(optV128Pins) && !hasCall)
+	if diagnosticsEnabled && guardCallPinEnabled && guardMode && hasCall && touchesMemory && f.memSizeReg == regNone {
+		for _, x := range f.pinnedLocals {
+			if !f.locals[x].isFloat && f.locals[x].reg == R11 {
+				f.stats.peep("guard-call-pin")
+			}
+		}
+	}
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
 			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
