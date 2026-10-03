@@ -47,6 +47,10 @@ var guardSecondCallPinEnabled = os.Getenv("WAGO_AMD64_SECOND_CALL_PIN") != "0"
 // limited by the existing bulk-memory and table-mutation hints.
 var guardThirdCallPinEnabled = os.Getenv("WAGO_AMD64_THIRD_CALL_PIN") == "1"
 
+func thirdCallPinEligible(flags funcHintFlags, inlineCallees int) bool {
+	return inlineCallees == 0 && !flags.has(hintUsesBulkMem|hintMutatesTable)
+}
+
 // A small pin budget leaves transient capacity in loop functions with many
 // locals. Keep the default on the native qualification platform.
 var wideLocalPinsEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_WIDE_LOCAL_PINS") != "1"
@@ -3526,7 +3530,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			// Ordinary calls spill local homes before staging fixed R10 uses;
 			// GC, EH, and custom lowering have separate scratch contracts.
 			gpPool = append(gpPool, R10)
-			if guardThirdCallPinEnabled && !hints.flags.has(hintUsesBulkMem|hintMutatesTable) {
+			// Inline callees do not propagate their table-mutation flag into
+			// the caller hints. Keep their fixed R9 scratch outside this lease.
+			if guardThirdCallPinEnabled && thirdCallPinEligible(hints.flags, len(inlinedCallees)) {
 				gpPool = append(gpPool, R9)
 			}
 		}

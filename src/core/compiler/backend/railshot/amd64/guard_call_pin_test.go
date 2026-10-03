@@ -142,3 +142,17 @@ func TestThirdCallPinTableMutationHint(t *testing.T) {
 		t.Fatal("table.copy must exclude the R9 local lease")
 	}
 }
+
+func TestThirdCallPinRejectsInlineScratch(t *testing.T) {
+	for _, tc := range []struct {
+		flags   funcHintFlags
+		inlines int
+		want    bool
+	}{
+		{0, 0, true}, {hintUsesBulkMem, 0, false}, {hintMutatesTable, 0, false}, {0, 1, false}, {0, 8, false},
+	} {
+		if got := thirdCallPinEligible(tc.flags, tc.inlines); got != tc.want {
+			t.Fatalf("flags=%x inlines=%d: got %v, want %v", tc.flags, tc.inlines, got, tc.want)
+		}
+	}
+}
