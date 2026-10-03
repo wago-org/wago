@@ -17,6 +17,15 @@ type Features uint64
 const (
 	FeatureAVX2 Features = 1 << iota
 	FeatureAVX512
+	FeatureSSSE3
+	FeatureSSE41
+	FeatureSSE42
+	FeatureAVX
+	FeatureBMI1
+	FeatureBMI2
+	FeatureLZCNT
+	FeaturePOPCNT
+	FeatureFMA
 )
 
 // Compatibility selects the trust contract of an AMD64 lowering.
