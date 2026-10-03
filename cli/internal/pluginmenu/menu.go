@@ -25,7 +25,7 @@ func Picker(title string, packages []Package) *tui.Picker {
 	groups := map[string]*group{}
 	var roots []string
 	for _, current := range packages {
-		root := Root(current.Name)
+		root := packageRoot(current.Name, packages)
 		if groups[root] == nil {
 			groups[root] = &group{}
 			roots = append(roots, root)
@@ -70,16 +70,23 @@ func Select(title string, packages []Package) (string, bool) {
 	return selected, selected != ""
 }
 
-func Root(name string) string {
-	first := strings.IndexByte(name, '/')
-	if first < 0 {
-		return name
+func packageRoot(name string, packages []Package) string {
+	root := name
+	for prefix := name; ; {
+		slash := strings.LastIndexByte(prefix, '/')
+		if slash < 0 {
+			return root
+		}
+		prefix = prefix[:slash]
+		// Module boundaries are not encoded uniformly in Go paths. Group only
+		// under an installed ancestor, which is selectable and unambiguous.
+		index := sort.Search(len(packages), func(index int) bool {
+			return packages[index].Name >= prefix
+		})
+		if index < len(packages) && packages[index].Name == prefix {
+			root = prefix
+		}
 	}
-	second := strings.IndexByte(name[first+1:], '/')
-	if second < 0 {
-		return name
-	}
-	return name[:first+1+second]
 }
 
 func ChildLabel(root, name string) string {

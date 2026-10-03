@@ -49,6 +49,61 @@ func TestConfigureExposesOnlyExplicitReviewedPluginSet(t *testing.T) {
 	}
 }
 
+func TestConfigureAndPluginSetDeepCopyMutableMetadata(t *testing.T) {
+	definition := wago.PluginDefinition{
+		ID: "github.com/acme/isolated", Name: "Isolated", Version: "1.2.3",
+		Compatibility: wago.Compatibility{
+			Engines:   map[string]string{"wago": "*"},
+			Platforms: []string{"linux/amd64"},
+		},
+		Provenance: wago.PluginProvenance{
+			Repository: "https://github.com/acme/isolated", License: "MIT", Authors: []string{"Acme"},
+		},
+		ConfigSchema: json.RawMessage(`{"additionalProperties":false,"type":"object"}`),
+	}
+	digest, err := wago.DefinitionDigest(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := wago.PluginSet{
+		Providers: []wago.PluginProvider{{Definition: definition, New: func() wago.Plugin { return inertPlugin{} }}},
+		Selections: []wago.PluginSelection{{
+			ID: definition.ID, DefinitionDigest: digest, Direct: true,
+			Dependencies: map[string]string{}, Config: json.RawMessage(`{"enabled":true}`),
+		}},
+	}
+	Configure(set)
+	t.Cleanup(func() { Configure(wago.PluginSet{}) })
+
+	set.Providers[0].Definition.Compatibility.Engines["wago"] = "mutated"
+	set.Providers[0].Definition.Provenance.Authors[0] = "mutated"
+	set.Providers[0].Definition.ConfigSchema[0] = '['
+	set.Selections[0].Dependencies["example.com/mutated"] = "v1.0.0"
+	set.Selections[0].Config[0] = '['
+
+	first := PluginSet()
+	if got := first.Providers[0].Definition.Compatibility.Engines["wago"]; got != "*" {
+		t.Fatalf("configured engine constraint = %q, want independent copy", got)
+	}
+	if got := first.Providers[0].Definition.Provenance.Authors[0]; got != "Acme" {
+		t.Fatalf("configured author = %q, want independent copy", got)
+	}
+	if string(first.Providers[0].Definition.ConfigSchema) != `{"additionalProperties":false,"type":"object"}` ||
+		len(first.Selections[0].Dependencies) != 0 || string(first.Selections[0].Config) != `{"enabled":true}` {
+		t.Fatalf("configured nested metadata was mutated: %#v", first)
+	}
+
+	first.Providers[0].Definition.Compatibility.Platforms[0] = "mutated"
+	first.Selections[0].Config[0] = '['
+	second := PluginSet()
+	if got := second.Providers[0].Definition.Compatibility.Platforms[0]; got != "linux/amd64" {
+		t.Fatalf("returned platform mutated linked set: %q", got)
+	}
+	if got := string(second.Selections[0].Config); got != `{"enabled":true}` {
+		t.Fatalf("returned config mutated linked set: %q", got)
+	}
+}
+
 func TestVerifyRejectsDefinitionDigestDriftWithoutRunningProvider(t *testing.T) {
 	definition := wago.PluginDefinition{
 		ID: "github.com/acme/drift", Version: "1.0.0",
