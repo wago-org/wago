@@ -37,7 +37,11 @@ func RunArtifact(artifact []byte, plugins wago.PluginSet, options Options, args 
 func reportError(err error, args []string) int {
 	var exit *wago.ExitError
 	if errors.As(err, &exit) {
-		return int(exit.Code)
+		// A nonzero guest exit keeps its requested status. Exit code zero is
+		// success only if deferred teardown added no other error to the tree.
+		if exit.Code != 0 || onlyGuestExit(err, exit) {
+			return int(exit.Code)
+		}
 	}
 	name := "program"
 	if len(args) != 0 {
@@ -47,12 +51,34 @@ func reportError(err error, args []string) int {
 	return 1
 }
 
-func executeArtifact(artifact []byte, plugins wago.PluginSet, options Options, args []string) error {
+func onlyGuestExit(err error, exit *wago.ExitError) bool {
+	if err == exit {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !onlyGuestExit(child, exit) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return onlyGuestExit(wrapped.Unwrap(), exit)
+	}
+	return false
+}
+
+func executeArtifact(artifact []byte, plugins wago.PluginSet, options Options, args []string) (err error) {
 	runtime, err := loadRuntime(plugins, options, args)
 	if err != nil {
 		return err
 	}
-	defer runtime.Close()
+	defer finishRuntime(runtime, &err)
 	compiled, err := wago.LoadTrustedArtifact(artifact)
 	if err != nil {
 		return err
@@ -71,14 +97,30 @@ func loadRuntime(plugins wago.PluginSet, options Options, args []string) (*wago.
 	}
 	runtime := wago.NewRuntime(wago.WithRuntimeConfig(config), wago.WithGuestArguments(args))
 	if err := runtime.LoadPlugins(context.Background(), plugins); err != nil {
-		_ = runtime.Close()
-		return nil, err
+		return nil, errors.Join(err, runtime.CloseContext(context.Background()))
 	}
 	return runtime, nil
 }
 
-func executeModule(runtime *wago.Runtime, module *wago.Module, options Options, args []string) error {
-	defer module.Close()
+// finishRuntime waits for plugin Stop and close observers. CLI entry points
+// return directly to main (and generated standalones call os.Exit), so merely
+// publishing asynchronous Runtime.Close would abandon teardown at process exit.
+func finishRuntime(runtime *wago.Runtime, result *error) {
+	*result = errors.Join(*result, runtime.CloseContext(context.Background()))
+}
+
+func finishModule(module *wago.Module, result *error) {
+	*result = errors.Join(*result, module.Close())
+}
+
+func finishInstance(instance *wago.Instance, result *error) {
+	*result = errors.Join(*result, instance.Close())
+}
+
+func executeModule(runtime *wago.Runtime, module *wago.Module, options Options, args []string) (err error) {
+	// Preserve teardown failures in the returned command status. The defer order
+	// closes the instance before its module and the outer caller closes Runtime.
+	defer finishModule(module, &err)
 	invoke, err := wasmcall.ResolveExport(module.Compiled(), options.Invoke)
 	if err != nil {
 		return err
@@ -105,7 +147,7 @@ func executeModule(runtime *wago.Runtime, module *wago.Module, options Options, 
 	if err != nil {
 		return err
 	}
-	defer instance.Close()
+	defer finishInstance(instance, &err)
 	result, err := instance.Invoke(invoke, values...)
 	if err != nil {
 		return err
