@@ -2,7 +2,10 @@
 
 package arm64
 
-import "math/bits"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"math/bits"
+)
 
 // Constant folding: when both operands of a binary op are constants, compute the
 // result at compile time and push a constant instead of a deferred node (WARP's
@@ -10,147 +13,12 @@ import "math/bits"
 // low 32 bits and re-sign/zero-extend as needed.
 
 // foldBin folds `a op b` for two integer constants. w selects i64 (else i32).
-func foldBin(op wOp, a, b int64, w bool) int64 {
-	if w {
-		return foldI64(op, a, b)
-	}
-	return int64(int32(foldI32(op, uint32(a), uint32(b))))
-}
-
-func foldI32(op wOp, a, b uint32) uint32 {
-	switch op {
-	case opAdd:
-		return a + b
-	case opSub:
-		return a - b
-	case opMul:
-		return a * b
-	case opAnd:
-		return a & b
-	case opOr:
-		return a | b
-	case opXor:
-		return a ^ b
-	case opShl:
-		return a << (b & 31)
-	case opShrU:
-		return a >> (b & 31)
-	case opShrS:
-		return uint32(int32(a) >> (b & 31))
-	case opRotl:
-		s := b & 31
-		return a<<s | a>>((32-s)&31)
-	case opRotr:
-		s := b & 31
-		return a>>s | a<<((32-s)&31)
-	}
-	panic("arm64: foldI32 unsupported op")
-}
-
-func foldI64(op wOp, a, b int64) int64 {
-	ua, ub := uint64(a), uint64(b)
-	switch op {
-	case opAdd:
-		return a + b
-	case opSub:
-		return a - b
-	case opMul:
-		return a * b
-	case opAnd:
-		return a & b
-	case opOr:
-		return a | b
-	case opXor:
-		return a ^ b
-	case opShl:
-		return int64(ua << (ub & 63))
-	case opShrU:
-		return int64(ua >> (ub & 63))
-	case opShrS:
-		return a >> (ub & 63)
-	case opRotl:
-		s := ub & 63
-		return int64(ua<<s | ua>>((64-s)&63))
-	case opRotr:
-		s := ub & 63
-		return int64(ua>>s | ua<<((64-s)&63))
-	}
-	panic("arm64: foldI64 unsupported op")
-}
-
-// foldable reports whether op can be constant-folded by foldBin.
-func foldable(op wOp) bool {
-	switch op {
-	case opAdd, opSub, opMul, opAnd, opOr, opXor, opShl, opShrU, opShrS, opRotl, opRotr:
-		return true
-	}
-	return false
-}
-
-// foldCompare folds a relational compare of two integer constants to its 0/1
-// result. w selects the operand width (i64 else i32); the result is always i32.
-// Signed ops interpret the operands at the operand width, unsigned ops at the
-// same width unsigned — matching wasm's per-width comparison semantics.
+func foldBin(op wOp, a, b int64, w bool) int64 { return shared.FoldBin(shared.IntOp(op), a, b, w) }
+func foldI32(op wOp, a, b uint32) uint32       { return shared.FoldI32(shared.IntOp(op), a, b) }
+func foldI64(op wOp, a, b int64) int64         { return shared.FoldI64(shared.IntOp(op), a, b) }
+func foldable(op wOp) bool                     { return shared.Foldable(shared.IntOp(op)) }
 func foldCompare(op wOp, a, b int64, w bool) int64 {
-	var res bool
-	if w {
-		ua, ub := uint64(a), uint64(b)
-		switch op {
-		case opEq:
-			res = a == b
-		case opNe:
-			res = a != b
-		case opLtS:
-			res = a < b
-		case opLtU:
-			res = ua < ub
-		case opGtS:
-			res = a > b
-		case opGtU:
-			res = ua > ub
-		case opLeS:
-			res = a <= b
-		case opLeU:
-			res = ua <= ub
-		case opGeS:
-			res = a >= b
-		case opGeU:
-			res = ua >= ub
-		default:
-			panic("arm64: foldCompare unsupported op")
-		}
-	} else {
-		sa, sb := int32(a), int32(b)
-		ua, ub := uint32(a), uint32(b)
-		switch op {
-		case opEq:
-			res = sa == sb
-		case opNe:
-			res = sa != sb
-		case opLtS:
-			res = sa < sb
-		case opLtU:
-			res = ua < ub
-		case opGtS:
-			res = sa > sb
-		case opGtU:
-			res = ua > ub
-		case opLeS:
-			res = sa <= sb
-		case opLeU:
-			res = ua <= ub
-		case opGeS:
-			res = sa >= sb
-		case opGeU:
-			res = ua >= ub
-		default:
-			panic("arm64: foldCompare unsupported op")
-		}
-	}
-	if res {
-		return 1
-	}
-	return 0
+	return shared.FoldCompare(shared.IntOp(op), a, b, w)
 }
 
 // foldUnaryConst folds a unary op over a constant operand: the counting ops

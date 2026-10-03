@@ -2,7 +2,7 @@
 
 package amd64
 
-import "math/bits"
+import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 // Parallel register-move resolution (WARP's RegisterCopyResolver): placing N
 // values, each already live in some register, into their target registers is a
@@ -76,52 +76,5 @@ func resolveRegMovesWindow(moves []regMove, emitMove func(dst, src Reg), emitSwa
 // of live destinations (every dst is a GP register < 64), so resolution allocates
 // nothing — this runs on every register-ABI call.
 func resolveRegMoves(moves []regMove, emitMove func(dst, src Reg), emitSwap func(a, b Reg)) {
-	var src [64]Reg
-	var pending regMask
-	for _, m := range moves {
-		if m.dst != m.src {
-			src[m.dst] = m.src
-			pending = pending.add(m.dst)
-		}
-	}
-	// isSource reports whether r is still needed as some pending move's source.
-	isSource := func(r Reg) bool {
-		for d := uint64(pending); d != 0; d &= d - 1 {
-			if src[bits.TrailingZeros64(d)] == r {
-				return true
-			}
-		}
-		return false
-	}
-	for pending != 0 {
-		moved := false
-		for d := uint64(pending); d != 0; d &= d - 1 {
-			dst := Reg(bits.TrailingZeros64(d))
-			if !isSource(dst) {
-				emitMove(dst, src[dst])
-				pending = pending.remove(dst)
-				moved = true
-				break
-			}
-		}
-		if moved {
-			continue
-		}
-		// Residual graph is pure cycles; break one with a swap.
-		dst := Reg(bits.TrailingZeros64(uint64(pending)))
-		s := src[dst]
-		emitSwap(dst, s)
-		pending = pending.remove(dst)
-		// Any move still sourcing from dst now reads the swapped-in value s.
-		for d := uint64(pending); d != 0; d &= d - 1 {
-			dd := Reg(bits.TrailingZeros64(d))
-			if src[dd] == dst {
-				if dd == s {
-					pending = pending.remove(dd)
-				} else {
-					src[dd] = s
-				}
-			}
-		}
-	}
+	shared.ResolveRegMoves(len(moves), func(i int) (Reg, Reg) { return moves[i].dst, moves[i].src }, emitMove, emitSwap)
 }
