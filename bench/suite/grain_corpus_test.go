@@ -26,7 +26,7 @@ func TestCatalogGrainStdlibHostContract(t *testing.T) {
 	if err := json.Unmarshal(data, &catalog); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"grain-stdlib-array": false, "grain-stdlib-string": false}
+	want := map[string]bool{"grain-stdlib-array": false, "grain-stdlib-string": false, "grain-stdlib-json-subset": false}
 	empty := fmt.Sprintf("%x", sha256.Sum256(nil))
 	for _, entry := range catalog.Benchmarks {
 		if !strings.HasPrefix(entry.ID, "grain-stdlib-") {
@@ -92,9 +92,9 @@ func TestCatalogGrainStdlibSourceBundle(t *testing.T) {
 		}
 		want["grain/"+file.Path] = file.SHA256
 	}
-	// Two tests, 43 runtime/stdlib dependencies, and both upstream licenses.
-	if len(want) != 47 {
-		t.Fatalf("source inventory has %d files, want 47", len(want))
+	// Three tests (JSON is a documented subset), 48 runtime/stdlib dependencies, and both upstream licenses.
+	if len(want) != 53 {
+		t.Fatalf("source inventory has %d files, want 53", len(want))
 	}
 	archive, err := os.ReadFile(filepath.Join(root, "source.tar.gz"))
 	if err != nil {
@@ -136,7 +136,7 @@ func TestCatalogGrainStdlibSourceBundle(t *testing.T) {
 }
 
 func TestCatalogGrainStdlibCore2Profile(t *testing.T) {
-	for _, name := range []string{"array", "string"} {
+	for _, name := range []string{"array", "string", "json-subset"} {
 		t.Run(name, func(t *testing.T) {
 			data, err := os.ReadFile(filepath.Join(corpusDir, "workloads", "applications", "grain-stdlib", name+".wasm"))
 			if err != nil {
