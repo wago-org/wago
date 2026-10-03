@@ -2,13 +2,50 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/internal/automation"
+	"github.com/wago-org/wago/internal/httpclient"
 )
+
+func init() {
+	if os.Getenv("WAGO_TEST_FAKE_GO") == "1" && len(os.Args) >= 2 && os.Args[1] == "run" {
+		data, err := os.ReadFile(os.Getenv("WAGO_TEST_CATALOG"))
+		if err == nil {
+			err = os.WriteFile(os.Args[len(os.Args)-1], data, 0o600)
+		}
+		if err != nil {
+			_, _ = io.WriteString(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	if os.Getenv("WAGO_TEST_FAKE_GO") == "1" && len(os.Args) >= 3 && os.Args[1] == "mod" && os.Args[2] == "download" {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{
+			"Path": "github.com/acme/root", "Version": "v1.2.3", "Sum": "h1:artifact",
+			"Dir": os.Getenv("WAGO_TEST_ARTIFACT"),
+		})
+		os.Exit(0)
+	}
+	if os.Getenv("WAGO_TEST_FAKE_GO") == "1" && os.Getenv("WAGO_TEST_PUBLISH_SIZE_ERROR") != "1" {
+		_, _ = io.WriteString(os.Stderr, "unexpected fake go invocation")
+		os.Exit(2)
+	}
+	if os.Getenv("WAGO_TEST_PUBLISH_SIZE_ERROR") == "1" {
+		automation.Configure(automation.Options{NoInput: true})
+		registryPublishContext(context.Background(), PublishRequest{Manifest: os.Getenv("WAGO_TEST_MANIFEST")})
+		os.Exit(2)
+	}
+}
 
 func TestSourceSize(t *testing.T) {
 	dir := t.TempDir()
@@ -29,6 +66,201 @@ func TestSourceSize(t *testing.T) {
 	}
 	if GitOutput("definitely-not-a-git-command") != "" {
 		t.Fatal("failed GitOutput was non-empty")
+	}
+}
+
+func TestPublishPayloadUsesDownloadedArtifactSize(t *testing.T) {
+	automation.Configure(automation.Options{NoInput: true})
+	t.Cleanup(automation.Reset)
+	t.Setenv("WAGO_TOKEN", testRegistryToken)
+	t.Setenv("WAGO_REGISTRY", "https://registry.example")
+	checkout := filepath.Join(t.TempDir(), "work")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	// Put the fake module cache under the checkout and ignore it, matching CI
+	// configurations that set GOMODCACHE to a workspace-local cache.
+	artifact := filepath.Join(checkout, ".cache", "go-mod", "github.com", "acme", "root@v1.2.3")
+	if err := os.MkdirAll(artifact, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const module = "github.com/acme/root"
+	manifest := []byte(`{
+		"$schema":"https://wago.sh/v1/schema.json",
+		"package":{
+			"module":"github.com/acme/root","version":"1.2.3","name":"Root","description":"Useful.","stability":"stable",
+			"license":"MIT","repository":"https://github.com/acme/root","authors":[{"name":"A"}]
+		}
+	}`)
+	definition := wago.PluginDefinition{
+		ID: module, Name: "Root", Version: "1.2.3", Description: "Useful.", Stability: wago.Stable,
+		Provenance: wago.PluginProvenance{Repository: "https://github.com/acme/root", License: "MIT", Authors: []string{"A"}},
+	}
+	catalogData, err := wago.EncodeProviderCatalog(module+"/register", []wago.PluginProvider{{
+		Definition: definition, New: func() wago.Plugin { return nil },
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, "", "init", "--bare", "--initial-branch=main", remote)
+	testGit(t, "", "init", "--initial-branch=main", checkout)
+	testGit(t, checkout, "config", "user.name", "Wago test")
+	testGit(t, checkout, "config", "user.email", "wago@example.test")
+	if err := os.WriteFile(filepath.Join(checkout, ".gitignore"), []byte(".cache/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{checkout, artifact} {
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module "+module+"\n\ngo 1.22\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "wago.json"), manifest, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, wago.ProviderCatalogFile), catalogData, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, size := range map[string]int{
+		filepath.Join(".git", "release-data"):  2048,
+		filepath.Join(".wago", "release-data"): 3072,
+	} {
+		path := filepath.Join(artifact, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, make([]byte, size), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	testGit(t, checkout, "add", ".gitignore", "go.mod", "wago.json", wago.ProviderCatalogFile)
+	testGit(t, checkout, "commit", "-m", "release files")
+	testGit(t, checkout, "remote", "add", "origin", remote)
+	testGit(t, checkout, "push", "-u", "origin", "main")
+	testGit(t, checkout, "tag", "v1.2.3")
+	testGit(t, checkout, "push", "origin", "refs/tags/v1.2.3")
+	if err := os.WriteFile(filepath.Join(checkout, "working-copy-only"), make([]byte, 32<<10), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, checkout, "add", "working-copy-only")
+	artifactBytes, err := testArtifactSize(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactKB := int((artifactBytes + 1023) / 1024)
+	checkoutKB := UnpackedKB(checkout)
+	if artifactKB == 0 {
+		t.Fatal("test artifact unexpectedly has zero size")
+	}
+	if artifactKB == checkoutKB {
+		t.Fatalf("test setup sizes are equal: %d KB", artifactKB)
+	}
+	fakeGoDir := t.TempDir()
+	fakeGo := filepath.Join(fakeGoDir, "go")
+	if runtime.GOOS == "windows" {
+		fakeGo += ".exe"
+	}
+	copyTestExecutable(t, fakeGo)
+	t.Setenv("PATH", fakeGoDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("WAGO_TEST_FAKE_GO", "1")
+	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(catalogPath, catalogData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_TEST_CATALOG", catalogPath)
+	t.Setenv("WAGO_TEST_ARTIFACT", artifact)
+
+	t.Run("rejects incomplete artifact walk", func(t *testing.T) {
+		unreadable := filepath.Join(artifact, "unreadable")
+		if err := os.Mkdir(unreadable, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(unreadable, "data"), []byte("must not be omitted"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(unreadable, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Chmod(unreadable, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.RemoveAll(unreadable); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if probe, err := os.Open(unreadable); err == nil {
+			_ = probe.Close()
+			t.Skip("current user can read mode-000 directories")
+		}
+		command := exec.Command(os.Args[0])
+		command.Dir = checkout
+		command.Env = append(os.Environ(),
+			"WAGO_TEST_PUBLISH_SIZE_ERROR=1", "WAGO_TEST_MANIFEST="+filepath.Join(checkout, "wago.json"),
+			"WAGO_REGISTRY=http://127.0.0.1:1")
+		output, err := command.CombinedOutput()
+		if err == nil || !strings.Contains(string(output), "exact source artifact size") {
+			t.Fatalf("publication with unreadable artifact returned %v:\n%s", err, output)
+		}
+	})
+
+	t.Run("includes complete downloaded tree", func(t *testing.T) {
+		previousHTTP := registryHTTP
+		var payload map[string]any
+		registryHTTP = httpclient.New(httpclient.Config{HTTPClient: &http.Client{Transport: registryRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Method != http.MethodPost || request.URL.Path != "/api/publish" || request.Header.Get("Authorization") != "Bearer "+testRegistryToken {
+				t.Fatalf("publish request = %s %s authorization %q", request.Method, request.URL.Path, request.Header.Get("Authorization"))
+			}
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+		})}})
+		t.Cleanup(func() { registryHTTP = previousHTTP })
+
+		registryPublishContext(context.Background(), PublishRequest{Manifest: filepath.Join(checkout, "wago.json")})
+		if got := int(payload["unpackedKB"].(float64)); got != artifactKB {
+			t.Fatalf("published unpackedKB = %v, want downloaded artifact size %d KB (checkout is %d KB)", got, artifactKB, checkoutKB)
+		}
+	})
+}
+
+func testArtifactSize(root string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(root, func(_ string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total, err
+}
+
+func copyTestExecutable(t *testing.T, destination string) {
+	t.Helper()
+	sourcePath, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	target, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(target, source); err != nil {
+		_ = target.Close()
+		t.Fatal(err)
+	}
+	if err := target.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
