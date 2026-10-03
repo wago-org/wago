@@ -170,3 +170,69 @@ func TestSharedScalarMixedBankFallback(t *testing.T) {
 		c.Close()
 	}
 }
+
+func TestSharedScalarCommutativeDeferredOperands(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		typ, constant, add, shl, shr := wasm.I32, byte(0x41), byte(0x6a), byte(0x74), byte(0x76)
+		mask := uint64(0xffffffff)
+		if wide {
+			typ, constant, add, shl, shr = wasm.I64, 0x42, 0x7c, 0x86, 0x88
+			mask = ^uint64(0)
+		}
+		for _, op := range []struct {
+			i32, i64 byte
+			compare  bool
+			apply    func(uint64, uint64) uint64
+		}{
+			{0x6a, 0x7c, false, func(a, b uint64) uint64 { return a + b }},
+			{0x6c, 0x7e, false, func(a, b uint64) uint64 { return a * b }},
+			{0x71, 0x83, false, func(a, b uint64) uint64 { return a & b }},
+			{0x72, 0x84, false, func(a, b uint64) uint64 { return a | b }},
+			{0x73, 0x85, false, func(a, b uint64) uint64 { return a ^ b }},
+			{0x46, 0x51, true, func(a, b uint64) uint64 {
+				if a == b {
+					return 1
+				}
+				return 0
+			}},
+			{0x47, 0x52, true, func(a, b uint64) uint64 {
+				if a != b {
+					return 1
+				}
+				return 0
+			}},
+		} {
+			opcode, result := op.i32, typ
+			if wide {
+				opcode = op.i64
+			}
+			if op.compare {
+				result = wasm.I32
+			}
+			// The deeper right tree contains fixed-register shifts. Reordering
+			// must preserve the older left read and each operand's width.
+			body := []byte{0x20, 0, constant, 5, add, 0x20, 0, constant, 3, shl, 0x20, 0, constant, 2, shr, add, opcode, 0x0b}
+			m := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{result}))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
+			c, err := Compile(nil, m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				c.Close()
+				t.Fatal(err)
+			}
+			for _, x := range []uint64{0, 1, 3, 31, 0x80000000, 0xffffffff, 0x8000000000000000, ^uint64(0)} {
+				x &= mask
+				a, b := (x+5)&mask, ((x<<3)+(x>>2))&mask
+				want := op.apply(a, b) & mask
+				got, err := in.Invoke("run", x)
+				if err != nil || len(got) != 1 || got[0] != want {
+					t.Fatalf("wide=%v op=%x x=%x: got %v %v, want %x", wide, opcode, x, got, err, want)
+				}
+			}
+			in.Close()
+			c.Close()
+		}
+	}
+}

@@ -159,6 +159,14 @@ func ScalarOpcode(op byte) (IntOp, bool, bool) {
 }
 func scalarCompare(op IntOp) bool { return op >= IntEq && op <= IntGeU }
 
+func scalarCommutative(op IntOp) bool {
+	switch op {
+	case IntAdd, IntMul, IntAnd, IntOr, IntXor, IntEq, IntNe:
+		return true
+	}
+	return false
+}
+
 type ScalarLocation uint8
 
 const (
@@ -403,6 +411,15 @@ func (s *ScalarState) expression(id scalarID, avoid uint64) uint8 {
 					return dst
 				}
 			}
+		}
+	}
+	if scalarCommutative(n.op) {
+		left, right := s.node(n.left), s.node(n.right)
+		// Realize the deeper tree first, leaving a spilled/borrowed leaf as
+		// the target's optional memory operand. Otherwise prefer a register
+		// accumulator over reloading a left-hand memory or constant value.
+		if right.depth > left.depth || right.kind == ScalarRegister && left.kind != ScalarRegister && left.kind != scalarDeferred {
+			n.left, n.right = n.right, n.left
 		}
 	}
 	clobber := s.target.Clobbers(n.op)
