@@ -65,8 +65,13 @@ func testConfigureCancellationAtGoPhase(t *testing.T, phase string) {
 	go func() {
 		done <- Configure(ConfigRequest{Context: ctx, ID: pluginID, Config: json.RawMessage(`{"candidate":true}`), Global: true})
 	}()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for {
+		select {
+		case err := <-done:
+			t.Fatalf("plugin %s finished before blocked Go command started: %v", phase, err)
+		default:
+		}
 		if _, err := os.Stat(ready); err == nil {
 			break
 		} else if !os.IsNotExist(err) {
@@ -78,36 +83,42 @@ func testConfigureCancellationAtGoPhase(t *testing.T, phase string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	cancel()
-	// The shim leaves a descendant holding the Go command's output pipe. Let
-	// that child exit in both the red and green cases before temp-dir cleanup.
-	releaseChild := func() {
+	// The shim leaves a descendant holding the Go command's output pipe.
+	// Releasing it after cancellation detects whether it escaped tree shutdown.
+	releaseChild := func(expectSurvivor bool) {
 		t.Helper()
 		if err := os.WriteFile(release, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		childDeadline := time.Now().Add(time.Second)
+		childDeadline := time.Now().Add(200 * time.Millisecond)
 		for {
 			if _, err := os.Stat(childExited); err == nil {
+				if !expectSurvivor {
+					t.Fatal("canceled Go command left a live descendant")
+				}
 				return
 			} else if !os.IsNotExist(err) {
 				t.Fatal(err)
 			}
 			if time.Now().After(childDeadline) {
-				t.Fatal("inherited-pipe test child did not exit")
+				if expectSurvivor {
+					t.Fatal("inherited-pipe test child did not exit")
+				}
+				return
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
 	select {
 	case err := <-done:
-		releaseChild()
+		releaseChild(false)
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("canceled %s returned %v, want context cancellation", phase, err)
 		}
 	case <-time.After(3 * time.Second):
 		// Unblock the red implementation before failing, so its subprocess and
 		// project lock cannot outlive the test's temporary directories.
-		releaseChild()
+		releaseChild(true)
 		<-done
 		t.Fatalf("canceled plugin %s kept the Go command and project lock alive", phase)
 	}

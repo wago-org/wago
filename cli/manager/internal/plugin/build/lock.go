@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,11 +18,17 @@ const (
 // process changes it during `go mod edit`; keeping every module operation under
 // one portable mkdir lock also protects main.go and the cached binary/hash pair.
 func withBuildLock(dir string, fn func() error) error {
+	return withBuildLockContext(context.Background(), dir, fn)
+}
+
+// A staged mutation must stop waiting for another builder when its caller
+// cancels, or the project-wide lock could remain held for 30 minutes.
+func withBuildLockContext(ctx context.Context, dir string, fn func() error) error {
 	lockDir := dir + ".lock"
 	if err := os.MkdirAll(filepath.Dir(lockDir), 0o755); err != nil {
 		return err
 	}
-	if err := acquireBuildLock(lockDir, os.Mkdir); err != nil {
+	if err := acquireBuildLockContext(ctx, lockDir, os.Mkdir); err != nil {
 		return err
 	}
 	defer os.Remove(lockDir)
@@ -29,9 +36,18 @@ func withBuildLock(dir string, fn func() error) error {
 }
 
 func acquireBuildLock(lockDir string, mkdir func(string, os.FileMode) error) error {
+	return acquireBuildLockContext(context.Background(), lockDir, mkdir)
+}
+
+func acquireBuildLockContext(ctx context.Context, lockDir string, mkdir func(string, os.FileMode) error) error {
 	deadline := time.Now().Add(buildLockTimeout)
 	retriedPermission := false
 	for {
+		// A canceled mutation must not wait for the 30-minute build-lock
+		// timeout after another builder has taken this generated module.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		err := mkdir(lockDir, 0o755)
 		if err == nil {
 			return nil

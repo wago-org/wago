@@ -1,6 +1,7 @@
 package build
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,33 @@ import (
 	"testing"
 	"time"
 )
+
+func TestBuildLockContextStopsWaitingWithoutEntering(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "plugins")
+	if err := os.Mkdir(dir+".lock", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- withBuildLockContext(ctx, dir, func() error {
+			return errors.New("canceled build entered a locked module")
+		})
+	}()
+	time.Sleep(2 * buildLockPoll)
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("waiting on build lock returned %v, want cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled builder remained blocked on a build lock")
+	}
+	if _, err := os.Stat(dir + ".lock"); err != nil {
+		t.Fatalf("canceled waiter removed another builder's lock: %v", err)
+	}
+}
 
 func TestBuildLockTreatsInaccessibleExistingDirectoryAsContention(t *testing.T) {
 	lockDir := filepath.Join(t.TempDir(), "plugins.lock")
