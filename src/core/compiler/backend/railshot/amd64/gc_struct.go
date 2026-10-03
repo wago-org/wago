@@ -317,6 +317,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	sourceLocal, hasSourceLocal := gcLocalProvenance(f.s.back())
 	finalTarget := false
 	if heap >= 0 {
@@ -689,6 +690,9 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) emitGCI31(sub uint32) error {
+	if sub == 29 || sub == 30 {
+		f.materializePendingTraps()
+	}
 	value := f.materialize(f.popValue())
 	switch sub {
 	case 28: // ref.i31

@@ -121,6 +121,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
+		f.materializePendingTraps()
 		if f.gcStructHelpers && heap >= 0 {
 			if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
 				return err
@@ -195,6 +196,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
 	}
 	if sub >= 28 && sub <= 30 {
+		if sub == 29 || sub == 30 {
+			f.materializePendingTraps()
+		}
 		value := f.materialize(f.popValue())
 		switch sub {
 		case 28: // ref.i31
