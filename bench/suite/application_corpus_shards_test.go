@@ -42,10 +42,10 @@ var requiredApplicationCorpusShards = []applicationCorpusShardSpec{
 }
 
 var requiredApplicationCorpusWorkloadCounts = map[string]int{
-	"linux/amd64":   62,
-	"linux/arm64":   62,
-	"darwin/amd64":  61,
-	"darwin/arm64":  62,
+	"linux/amd64":   63,
+	"linux/arm64":   63,
+	"darwin/amd64":  62,
+	"darwin/arm64":  63,
 	"windows/amd64": 1,
 	"windows/arm64": 1,
 }
