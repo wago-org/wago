@@ -29,7 +29,11 @@ func prepareMachineCode(spec InstructionSpec) (codegen.Lowering, error) {
 	default:
 		return nil, fmt.Errorf("wago: instruction %q.%q requires an explicit amd64 compatibility mode", spec.Module, spec.Name)
 	}
-	if lowering.Features & ^(amd64codegen.FeatureAVX2|amd64codegen.FeatureAVX512) != 0 {
+	const knownFeatures = amd64codegen.FeatureAVX2 | amd64codegen.FeatureAVX512 |
+		amd64codegen.FeatureSSSE3 | amd64codegen.FeatureSSE41 | amd64codegen.FeatureSSE42 |
+		amd64codegen.FeatureAVX | amd64codegen.FeatureBMI1 | amd64codegen.FeatureBMI2 |
+		amd64codegen.FeatureLZCNT | amd64codegen.FeaturePOPCNT | amd64codegen.FeatureFMA
+	if lowering.Features&^knownFeatures != 0 {
 		return nil, fmt.Errorf("wago: instruction %q.%q declares unsupported amd64 features %#x", spec.Module, spec.Name, lowering.Features)
 	}
 	if err := validateMachineCodeWidths(spec, "amd64"); err != nil {
