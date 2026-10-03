@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -102,7 +103,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		printPluginPlanWarnings(reviewed.Warnings)
 		progress.Finish("Permissions checked")
 		progress.Begin("Building plugin runtime")
-		if err := stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config()); err != nil {
+		if err := stageAndPublishLockedState(pluginContext(options.ctx), mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config()); err != nil {
 			return err
 		}
 		installedLock = reviewed.Lock
@@ -212,7 +213,7 @@ func pkgRemove(name string, options pkgOpts) {
 			printPluginPlanWarnings(reviewed.Warnings)
 			lock = reviewed.Lock
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false, selection.config())
+		return stageAndPublishLockedState(pluginContext(options.ctx), mutation, src, buildDir, manifest, lock, false, selection.config())
 	})
 	if err != nil {
 		fatal("plugin remove: %v", err)
@@ -272,7 +273,7 @@ func pkgUpdate(target string, options pkgOpts) {
 			return err
 		}
 		printPluginPlanWarnings(reviewed.Warnings)
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config())
+		return stageAndPublishLockedState(pluginContext(options.ctx), mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config())
 	})
 	if err != nil {
 		fatal("plugin update: %v", err)
@@ -280,7 +281,7 @@ func pkgUpdate(target string, options pkgOpts) {
 	fmt.Printf("%s updated the complete plugin graph\n", cyan("✓"))
 }
 
-func stageAndPublishLockedState(mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool, config pluginbuild.Config) error {
+func stageAndPublishLockedState(ctx context.Context, mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool, config pluginbuild.Config) error {
 	manifestData, err := project.EncodeManifest(manifest)
 	if err != nil {
 		return err
@@ -322,22 +323,74 @@ func stageAndPublishLockedState(mutation *project.Mutation, manifestDir, buildDi
 	if err != nil {
 		return err
 	}
-	if err := verifyStagedRuntime(bin); err != nil {
+	if err := verifyStagedRuntimeContext(ctx, bin); err != nil {
 		return err
 	}
 	return publishPluginTransaction(mutation, buildDir, staged, manifestData, lockData)
 }
 
-func verifyStagedRuntime(binary string) error {
-	command := exec.Command(binary)
-	command.Env = append(os.Environ(), "WAGO_INTERNAL_VALIDATE_PLUGIN_SET=1")
-	automation.ConfigureCommand(command)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("verify staged plugin runtime: %w: %s", err, strings.TrimSpace(string(output)))
+const (
+	// Validation should only execute generated initialization; ten seconds
+	// leaves cold hosts headroom without extending the metadata lock forever.
+	stagedRuntimeTimeout     = 10 * time.Second
+	stagedRuntimeWaitDelay   = time.Second
+	stagedRuntimeOutputLimit = 64 << 10
+)
+
+type limitedRuntimeOutput struct {
+	buffer   bytes.Buffer
+	exceeded bool
+}
+
+func (output *limitedRuntimeOutput) Write(data []byte) (int, error) {
+	remaining := stagedRuntimeOutputLimit - output.buffer.Len()
+	if remaining > 0 {
+		if remaining > len(data) {
+			remaining = len(data)
+		}
+		_, _ = output.buffer.Write(data[:remaining])
 	}
-	if len(strings.TrimSpace(string(output))) != 0 {
-		return fmt.Errorf("verify staged plugin runtime produced unexpected output: %s", strings.TrimSpace(string(output)))
+	if remaining < len(data) {
+		output.exceeded = true
+	}
+	return len(data), nil
+}
+
+func (output *limitedRuntimeOutput) String() string { return output.buffer.String() }
+
+func verifyStagedRuntime(binary string) error {
+	return verifyStagedRuntimeContext(context.Background(), binary)
+}
+
+func verifyStagedRuntimeContext(ctx context.Context, binary string) error {
+	validationContext, cancel := context.WithTimeout(pluginContext(ctx), stagedRuntimeTimeout)
+	defer cancel()
+	command, err := stagedRuntimeCommand(validationContext, binary)
+	if err != nil {
+		return fmt.Errorf("verify staged plugin runtime: %w", err)
+	}
+	command.WaitDelay = stagedRuntimeWaitDelay
+	if command.Env == nil {
+		command.Env = os.Environ()
+	}
+	command.Env = append(command.Env, "WAGO_INTERNAL_VALIDATE_PLUGIN_SET=1")
+	// A plugin runtime is untrusted until validation succeeds, so both process
+	// lifetime and retained diagnostic output must remain bounded.
+	automation.ConfigureCommand(command)
+	var output limitedRuntimeOutput
+	command.Stdout, command.Stderr = &output, &output
+	err = runBoundStagedRuntime(command)
+	if contextErr := validationContext.Err(); contextErr != nil {
+		return fmt.Errorf("verify staged plugin runtime: %w", contextErr)
+	}
+	if output.exceeded {
+		return fmt.Errorf("verify staged plugin runtime exceeded %d-byte output limit: %s", stagedRuntimeOutputLimit, strings.TrimSpace(output.String()))
+	}
+	if err != nil {
+		return fmt.Errorf("verify staged plugin runtime: %w: %s", err, strings.TrimSpace(output.String()))
+	}
+	if len(strings.TrimSpace(output.String())) != 0 {
+		return fmt.Errorf("verify staged plugin runtime produced unexpected output: %s", strings.TrimSpace(output.String()))
 	}
 	return nil
 }

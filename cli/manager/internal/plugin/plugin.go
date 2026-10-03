@@ -63,7 +63,7 @@ func Remove(request MutationRequest) {
 }
 
 func Grant(request MutationRequest) {
-	pkgGrant(request.Name, mustMutationScope(request.Global, request.Local), request.Authorities, request.GrantAll, request.DenyAll, request.Scopes)
+	pkgGrant(request.Context, request.Name, mustMutationScope(request.Global, request.Local), request.Authorities, request.GrantAll, request.DenyAll, request.Scopes)
 }
 
 func Update(request MutationRequest) {

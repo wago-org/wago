@@ -54,6 +54,6 @@ func Configure(request ConfigRequest) error {
 		if err := project.ValidateLock(lock); err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false, selection.config())
+		return stageAndPublishLockedState(pluginContext(request.Context), mutation, src, buildDir, manifest, lock, false, selection.config())
 	})
 }

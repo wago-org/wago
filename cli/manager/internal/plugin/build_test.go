@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -17,6 +18,47 @@ import (
 	"github.com/wago-org/wago/internal/filelock"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
+
+func init() {
+	if os.Getenv("WAGO_TEST_GRANT_CONTEXT") == "1" {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		Grant(MutationRequest{Context: ctx, Local: true, Name: "ignored"})
+		os.Exit(2)
+	}
+	switch os.Getenv("WAGO_TEST_STAGED_RUNTIME") {
+	case "output":
+		_, _ = os.Stdout.Write(bytes.Repeat([]byte("x"), 256<<10))
+		os.Exit(0)
+	case "clean":
+		os.Exit(0)
+	case "slow":
+		time.Sleep(11 * time.Second)
+		os.Exit(0)
+	case "tree-parent", "tree-parent-exit":
+		mode := os.Getenv("WAGO_TEST_STAGED_RUNTIME")
+		_ = os.WriteFile(os.Getenv("WAGO_TEST_TREE_READY"), []byte("ready"), 0o600)
+		child := exec.Command(os.Args[0])
+		child.Env = append(os.Environ(), "WAGO_TEST_STAGED_RUNTIME=tree-child")
+		child.Stdout, child.Stderr = os.Stdout, os.Stderr
+		if err := child.Start(); err != nil {
+			_, _ = os.Stderr.WriteString(err.Error())
+			os.Exit(2)
+		}
+		if mode == "tree-parent" {
+			time.Sleep(3 * time.Second)
+		}
+		os.Exit(0)
+	case "tree-child":
+		delay, err := time.ParseDuration(os.Getenv("WAGO_TEST_TREE_DELAY"))
+		if err != nil {
+			delay = 11 * time.Second
+		}
+		time.Sleep(delay)
+		_ = os.WriteFile(os.Getenv("WAGO_TEST_TREE_SURVIVED"), []byte("survived"), 0o600)
+		os.Exit(0)
+	}
+}
 
 func TestParsePluginSpecExpandsGitHubShorthand(t *testing.T) {
 	id, constraint, err := parsePluginSpec("wago-org/wasi@^1.2.3")
@@ -232,6 +274,129 @@ func TestVerifySourceChecksumsReconcilesGeneratedModule(t *testing.T) {
 	}
 	if err := verifySourceChecksums(buildDir, nil); err != nil {
 		t.Fatalf("verifySourceChecksums: %v", err)
+	}
+}
+
+func TestVerifyStagedRuntimeBoundsUntrustedProcess(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("clean runtime", func(t *testing.T) {
+		t.Setenv("WAGO_TEST_STAGED_RUNTIME", "clean")
+		if err := verifyStagedRuntime(executable); err != nil {
+			t.Fatalf("contained runtime failed validation: %v", err)
+		}
+	})
+	t.Run("output", func(t *testing.T) {
+		t.Setenv("WAGO_TEST_STAGED_RUNTIME", "output")
+		err := verifyStagedRuntime(executable)
+		if err == nil || !strings.Contains(err.Error(), "output limit") {
+			length := 0
+			if err != nil {
+				length = len(err.Error())
+			}
+			t.Fatalf("expected bounded-output error; non-nil=%t length=%d", err != nil, length)
+		}
+		if len(err.Error()) > 70<<10 {
+			t.Fatalf("verification error retained unbounded process output: %d bytes", len(err.Error()))
+		}
+	})
+	t.Run("process tree", func(t *testing.T) {
+		dir := t.TempDir()
+		ready := filepath.Join(dir, "ready")
+		survived := filepath.Join(dir, "survived")
+		t.Setenv("WAGO_TEST_STAGED_RUNTIME", "tree-parent")
+		t.Setenv("WAGO_TEST_TREE_READY", ready)
+		t.Setenv("WAGO_TEST_TREE_SURVIVED", survived)
+		t.Setenv("WAGO_TEST_TREE_DELAY", "2s")
+		started := time.Now()
+		err := verifyStagedRuntime(executable)
+		if err == nil {
+			t.Fatalf("runtime verification returned after %s with %v", time.Since(started), err)
+		}
+		if runtime.GOOS != "windows" {
+			// Windows validation uses a write-restricted token. The process's
+			// exit status above proves child creation was denied without relying
+			// on marker writes that the token intentionally cannot perform.
+			if _, err := os.Stat(ready); err != nil {
+				t.Fatalf("validation descendant did not start: %v", err)
+			}
+			if wait := time.Until(started.Add(3 * time.Second)); wait > 0 {
+				time.Sleep(wait)
+			}
+			if _, err := os.Stat(survived); !os.IsNotExist(err) {
+				t.Fatalf("validation descendant survived cancellation: %v", err)
+			}
+		}
+	})
+	t.Run("early parent exit", func(t *testing.T) {
+		dir := t.TempDir()
+		ready := filepath.Join(dir, "ready")
+		survived := filepath.Join(dir, "survived")
+		t.Setenv("WAGO_TEST_STAGED_RUNTIME", "tree-parent-exit")
+		t.Setenv("WAGO_TEST_TREE_READY", ready)
+		t.Setenv("WAGO_TEST_TREE_SURVIVED", survived)
+		t.Setenv("WAGO_TEST_TREE_DELAY", "2s")
+		started := time.Now()
+		if err := verifyStagedRuntime(executable); err == nil {
+			t.Fatal("verification accepted a runtime that left a background child")
+		}
+		if runtime.GOOS != "windows" {
+			if _, err := os.Stat(ready); err != nil {
+				t.Fatalf("validation descendant did not start: %v", err)
+			}
+			if wait := time.Until(started.Add(2500 * time.Millisecond)); wait > 0 {
+				time.Sleep(wait)
+			}
+			if _, err := os.Stat(survived); !os.IsNotExist(err) {
+				t.Fatalf("validation descendant survived parent exit: %v", err)
+			}
+		}
+	})
+	t.Run("deadline", func(t *testing.T) {
+		t.Setenv("WAGO_TEST_STAGED_RUNTIME", "slow")
+		started := time.Now()
+		err := verifyStagedRuntime(executable)
+		if elapsed := time.Since(started); err == nil || !strings.Contains(err.Error(), "deadline exceeded") || elapsed >= 11*time.Second {
+			t.Fatalf("runtime verification returned after %s with %v", elapsed, err)
+		}
+	})
+}
+
+func TestVerifyStagedRuntimeStartFailureReturnsError(t *testing.T) {
+	err := verifyStagedRuntime(filepath.Join(t.TempDir(), "missing-runtime"))
+	if err == nil || !strings.Contains(err.Error(), "verify staged plugin runtime") {
+		t.Fatalf("missing staged runtime error = %v", err)
+	}
+}
+
+func TestLinuxStagedRuntimePinsSeccompThreadUntilExec(t *testing.T) {
+	// Seccomp is thread-local. Keep this source-level guard because a scheduler
+	// migration in the tiny interval before Exec is not deterministic in a test.
+	body, err := os.ReadFile("staged_runtime_command_linux.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := bytes.Index(body, []byte("runtime.LockOSThread()"))
+	filter := bytes.Index(body, []byte("prohibitStagedRuntimeProcesses()"))
+	exec := bytes.Index(body, []byte("syscall.Exec("))
+	if lock < 0 || filter < 0 || exec < 0 || !(lock < filter && filter < exec) {
+		t.Fatal("Linux helper must pin its OS thread before installing seccomp and keep it pinned through Exec")
+	}
+}
+
+func TestGrantPropagatesMutationContext(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(executable)
+	command.Dir = t.TempDir()
+	command.Env = append(os.Environ(), "WAGO_TEST_GRANT_CONTEXT=1", "WAGO_HOME="+t.TempDir())
+	output, err := command.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), context.Canceled.Error()) {
+		t.Fatalf("Grant with canceled request context returned %v:\n%s", err, output)
 	}
 }
 
