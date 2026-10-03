@@ -16,13 +16,13 @@ func VerifyModule(m *Module) error {
 	if len(m.Memories) > 1 {
 		return fmt.Errorf("ir: multi-memory unsupported")
 	}
-	if len(m.TypeIsFunc) != 0 && len(m.TypeIsFunc) != len(m.Types) {
-		return fmt.Errorf("ir: type kind metadata length %d, want %d", len(m.TypeIsFunc), len(m.Types))
-	}
-	if len(m.CanonicalTypeIDs) != 0 && len(m.CanonicalTypeIDs) != len(m.Types) {
-		return fmt.Errorf("ir: canonical type metadata length %d, want %d", len(m.CanonicalTypeIDs), len(m.Types))
+	if err := verifyTypeMetadataSizes(m); err != nil {
+		return err
 	}
 	if err := verifyCanonicalTypeIDs(m); err != nil {
+		return err
+	}
+	if err := verifyStructuralTypeKeys(m); err != nil {
 		return err
 	}
 	for i := range m.FuncTypes {
@@ -44,6 +44,16 @@ func VerifyModule(m *Module) error {
 	return nil
 }
 
+func verifyTypeMetadataSizes(m *Module) error {
+	if len(m.TypeIsFunc) != 0 && len(m.TypeIsFunc) != len(m.Types) {
+		return fmt.Errorf("ir: type kind metadata length %d, want %d", len(m.TypeIsFunc), len(m.Types))
+	}
+	if len(m.CanonicalTypeIDs) != 0 && len(m.CanonicalTypeIDs) != len(m.Types) {
+		return fmt.Errorf("ir: canonical type metadata length %d, want %d", len(m.CanonicalTypeIDs), len(m.Types))
+	}
+	return nil
+}
+
 // VerifyFunc checks a standalone function's shape, value definitions, effects,
 // and dominance. It cannot validate module-indexed references such as memories,
 // tables, globals, or callees; use VerifyModule when module metadata is
@@ -56,6 +66,19 @@ func VerifyFunc(f *Func) error {
 // focused tests and tools that build or mutate a single function but still need
 // index validation.
 func VerifyFuncInModule(f *Func, m *Module) error {
+	if m != nil {
+		// Size checks must precede structural-key authentication because that walk
+		// indexes TypeIsFunc for each retained source type.
+		if err := verifyTypeMetadataSizes(m); err != nil {
+			return err
+		}
+		// VerifyModule authenticates structural keys once before its function loop.
+		// This standalone entry point must do the same itself so coordinated edits
+		// to the map and instruction metadata cannot bypass the codegen contract.
+		if err := verifyStructuralTypeKeys(m); err != nil {
+			return err
+		}
+	}
 	return verifyFunc(f, m)
 }
 
@@ -86,6 +109,62 @@ func verifyCanonicalTypeIDs(m *Module) error {
 		}
 		if canon != first {
 			return fmt.Errorf("ir: canonical type id for type %d is %d, want %d", i, canon, first)
+		}
+	}
+	return nil
+}
+
+func verifyStructuralTypeKeys(m *Module) error {
+	if len(m.StructuralTypeKeys) == 0 {
+		if len(m.StructuralTypeGroups) != 0 {
+			return fmt.Errorf("ir: structural type graph present without structural type keys")
+		}
+		return nil
+	}
+	if len(m.StructuralTypeGroups) == 0 {
+		return fmt.Errorf("ir: structural type keys have no source type graph")
+	}
+
+	// Structural keys include recursive-group membership, supertypes, indexed
+	// references, and descriptor metadata that flattened FuncType entries cannot
+	// reconstruct. Keep the compact metadata honest against the retained type
+	// graph, then derive each codegen key from that authoritative representation.
+	flatCount := 0
+	for i := range m.StructuralTypeGroups {
+		flatCount += len(m.StructuralTypeGroups[i].SubTypes)
+	}
+	if flatCount != len(m.Types) {
+		return fmt.Errorf("ir: structural type graph has %d flattened types, want %d", flatCount, len(m.Types))
+	}
+	flat := 0
+	for group := range m.StructuralTypeGroups {
+		for member := range m.StructuralTypeGroups[group].SubTypes {
+			comp := &m.StructuralTypeGroups[group].SubTypes[member].Comp
+			isFunc := comp.Kind == wasm.CompFunc
+			if isFunc != irTypeIsFunc(m, uint32(flat)) {
+				return fmt.Errorf("ir: structural type graph kind mismatch at type %d", flat)
+			}
+			if isFunc && !funcTypeEqual(m.Types[flat], wasm.FuncType{Params: comp.Params, Results: comp.Results}) {
+				return fmt.Errorf("ir: structural type graph signature mismatch at type %d", flat)
+			}
+			flat++
+		}
+	}
+
+	source := wasm.Module{Types: m.StructuralTypeGroups}
+	for typeIdx, got := range m.StructuralTypeKeys {
+		if uint(typeIdx) >= uint(len(m.Types)) {
+			return fmt.Errorf("ir: structural type key index %d out of range", typeIdx)
+		}
+		if !irTypeIsFunc(m, typeIdx) {
+			return fmt.Errorf("ir: structural type key references non-function type %d", typeIdx)
+		}
+		want, ok := source.StructuralTypeKeyChecked(typeIdx)
+		if !ok {
+			return fmt.Errorf("ir: structural type key unavailable for function type %d", typeIdx)
+		}
+		if got != want {
+			return fmt.Errorf("ir: structural type key for type %d is %#x, want %#x", typeIdx, got, want)
 		}
 	}
 	return nil
@@ -926,9 +1005,6 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 	if in.Op != OpCallIndirect && uint64(uint32(in.Aux)) != in.Aux {
 		return fmt.Errorf("inst %d %s has non-canonical function index aux 0x%x", id, opName(in.Op), in.Aux)
 	}
-	if in.Op == OpCallIndirect && uint64(uint32(in.Aux2)) != in.Aux2 {
-		return fmt.Errorf("inst %d call_indirect has non-canonical canonical type aux2 0x%x", id, in.Aux2)
-	}
 	if m == nil {
 		return nil
 	}
@@ -941,8 +1017,12 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 		if !irTypeIsFunc(m, typeIdx) {
 			return fmt.Errorf("inst %d call_indirect type %d is not a function type", id, typeIdx)
 		}
-		if got, want := uint32(in.Aux2), irCanonicalTypeID(m, typeIdx); got != want {
-			return fmt.Errorf("inst %d call_indirect canonical type id %d, want %d", id, got, want)
+		want, ok := m.StructuralTypeKeys[typeIdx]
+		if !ok {
+			return fmt.Errorf("inst %d call_indirect type %d has no structural type key", id, typeIdx)
+		}
+		if got := in.Aux2; got != want {
+			return fmt.Errorf("inst %d call_indirect structural type key %#x, want %#x", id, got, want)
 		}
 		if uint(tableIdx) >= uint(len(m.Tables)) {
 			return fmt.Errorf("inst %d call_indirect table %d out of range", id, tableIdx)

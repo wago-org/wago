@@ -89,7 +89,7 @@ func TestBuildCallIndirect(t *testing.T) {
 	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
 		wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)),
 	}))
-	assertBuilds(t, m, "call_indirect type=0 table=0 canon=0")
+	assertBuilds(t, m, "call_indirect type=0 table=0 key=0x")
 }
 
 func TestBuildLoadStore(t *testing.T) {
