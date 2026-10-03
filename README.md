@@ -4,7 +4,6 @@
 
 <p align="center">
   a wonderfully quick, compact, and extensible webassembly runtime for go
-	wAh-goh
 </p>
 
 <p align="center">
@@ -39,6 +38,8 @@ machine code.
 * **Extensible by design.** WASI, the Component Model, and other host
   capabilities live outside the core runtime as plugins.
 * **Standalone executables** Compile your `.wasm` to _tiny_ native executables. Great for CLIs.
+
+> Pronounced wag-oh
 
 ## Install
 
