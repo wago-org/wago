@@ -462,7 +462,7 @@ type ctrlFrameEH struct {
 	// its stable frame-relative address.
 	catches     []ehCatchClause
 	targetSite  uint32
-	recordIndex uint8
+	recordIndex uint16
 	refResults  uint16 // bit i: branch-result position i carries a rooted exception identity
 }
 
@@ -812,7 +812,7 @@ type ehCatchClause struct {
 	kind      wasm.CatchKind
 	scalarN   uint8
 	payloadN  uint8
-	rootIndex uint8
+	rootIndex uint16
 	// firstType is the machine type of payload 0, the only one delivered in a
 	// register (single-result merge); wider payloads always go through slots.
 	firstType machineType
@@ -2111,7 +2111,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 				if f.ehRootCount >= f.ehRootCap {
 					return fmt.Errorf("exception root %d exceeds the %d reserved for this function", f.ehRootCount, f.ehRootCap)
 				}
-				clause.rootIndex = uint8(f.ehRootCount)
+				clause.rootIndex = uint16(f.ehRootCount)
 				f.ehRootCount++
 				if clause.payloadN == 0 {
 					clause.firstType = mtI64
@@ -2123,7 +2123,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			if f.ehRootCount >= f.ehRootCap {
 				return fmt.Errorf("exception root %d exceeds the %d reserved for this function", f.ehRootCount, f.ehRootCap)
 			}
-			clause.rootIndex = uint8(f.ehRootCount)
+			clause.rootIndex = uint16(f.ehRootCount)
 			f.ehRootCount++
 			clause.firstType = mtI64
 			clause.payloadN = 1
@@ -2159,7 +2159,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if f.ehTryDepth >= f.ehTryCap {
 		return fmt.Errorf("try_table record %d exceeds the %d reserved for this function", f.ehTryDepth, f.ehTryCap)
 	}
-	eh.recordIndex = uint8(f.ehTryDepth)
+	eh.recordIndex = uint16(f.ehTryDepth)
 	f.ehTryDepth++
 	f.reconcileLocals()
 	f.flush()
