@@ -86,6 +86,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   AMD64. On ARM64, mixed tail loops through references no longer grow the
   stack, and a wrapper-ABI function's tail call into another instance no
   longer leaves that instance installed for its caller.
+- Compiled artifacts record their native architecture and reject foreign-ISA
+  code before allocating an executable image.
 - Modules using `any.convert_extern`/`extern.convert_any` instantiate with any
   combination of reference tables.
 - `ref.test` on an `anyref` converted from a host `externref` no longer traps

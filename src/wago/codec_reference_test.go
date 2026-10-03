@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecVersion5Contract(t *testing.T) {
+func TestCompiledCodecVersion6Contract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
@@ -49,7 +49,7 @@ func TestCompiledCodecVersion5Contract(t *testing.T) {
 		})
 	}
 
-	for _, version := range []byte{0, 1, 2, 3, 4, 22, 35} {
+	for _, version := range []byte{0, 1, 2, 3, 4, 5, 22, 35} {
 		for _, loader := range loaders {
 			t.Run(fmt.Sprintf("%s/reject-version-%d", loader.name, version), func(t *testing.T) {
 				unsupported := append([]byte(nil), blob...)
@@ -61,10 +61,10 @@ func TestCompiledCodecVersion5Contract(t *testing.T) {
 			})
 		}
 	}
-	// Version 5 rejects v4 because native instructions embed basedata offsets;
-	// executing a v4 image after the tag-directory cell moves can read another cell.
-	if wagoVersion != 5 {
-		t.Fatalf("wagoVersion = %d, want 5 after native basedata ABI change", wagoVersion)
+	// Version 6 rejects artifacts before foreign-ISA native instructions can be
+	// mapped. Version 5 remains incompatible after the header gained a target ID.
+	if wagoVersion != 6 {
+		t.Fatalf("wagoVersion = %d, want 6 after adding artifact architecture identity", wagoVersion)
 	}
 }
 

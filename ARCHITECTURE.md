@@ -42,10 +42,10 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 5 -->
+<!-- artifact:codec-version 6 -->
 
 Compiled artifacts use a strict ordered section stream. It has a fixed
-header and section count, followed by length-delimited native-code and metadata
+header with a native-architecture ID and section count, followed by length-delimited native-code and metadata
 sections. Wago rejects unknown, duplicate, reordered, truncated, over-limit, and
 non-canonical section encodings. `Compiled.WriteTo` streams code without making a
 second full image. `Compiled.ReadFromWithLimits` reads code directly into an RW
@@ -58,9 +58,10 @@ dotted flat-key collisions from crossing module authority boundaries. Artifact
 decoding also caps the expanded function-import directory at 64 MiB, so compact
 empty names cannot produce an unbounded slice allocation. Version 2 replaced the
 initial version 1 format when generated `memory.grow` code and the native instance
-context gained a runtime memory-page quota. The current format is version 5,
-which rejects version-4 native code compiled with the former EH tag-directory
-basedata offset. Version 4 records optional CPU requirements as well as exact
+context gained a runtime memory-page quota. The current format is version 6,
+which rejects foreign-architecture native code before allocating an executable
+mapping. Version 5 rejected version-4 native code compiled with the former EH
+tag-directory basedata offset. Version 4 records optional CPU requirements and exact
 native GC metadata. Wago rejects all earlier versions; there is no compatibility
 decoder or dual-format ambiguity.
 

@@ -72,7 +72,7 @@ func TestAMD64ArtifactCapabilityRoundTrip(t *testing.T) {
 			t.Fatalf("roundtrip=%x want=%x", loaded.requiredAMD64Features, required)
 		}
 		loaded.Close()
-		for _, oldVersion := range []byte{2, 3, 4} {
+		for _, oldVersion := range []byte{2, 3, 4, 5} {
 			data[4] = oldVersion
 			if err := loaded.UnmarshalBinary(data); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", oldVersion)) {
 				t.Fatalf("ambiguous version %d artifact admitted: %v", oldVersion, err)
