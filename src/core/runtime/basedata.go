@@ -309,6 +309,9 @@ type InstanceContext struct {
 	TableDirPtr    uintptr
 	MemoryDirPtr   uintptr
 	ImportDispatch uintptr
+	// EHTagDirPtr carries exact tag identities with the instance even when its
+	// basedata belongs to a Memory shared by several instances.
+	EHTagDirPtr uintptr
 }
 
 const (
@@ -324,7 +327,10 @@ const (
 	// InstanceContextGCNativeViewOffset carries the per-instance checked GC
 	// metadata pointer for context switches over shared linear-memory basedata.
 	InstanceContextGCNativeViewOffset = 13 * 8
-	InstanceContextBytes              = 14 * 8
+	// InstanceContextEHTagDirOffset is appended so existing native metadata
+	// offsets remain stable while exception-tag identity stays per-instance.
+	InstanceContextEHTagDirOffset = 14 * 8
+	InstanceContextBytes          = 15 * 8
 )
 
 // CaptureInstanceContext snapshots the per-instance pointer fields currently
@@ -340,6 +346,7 @@ func (j *JobMemory) CaptureInstanceContext() InstanceContext {
 		TableDirPtr:    uintptr(j.getU64(offTableDirPtr)),
 		MemoryDirPtr:   uintptr(j.getU64(offMemoryDirPtr)),
 		ImportDispatch: uintptr(j.getU64(offImportDispatchPtr)),
+		EHTagDirPtr:    uintptr(j.getU64(offEHTagDirPtr)),
 	}
 }
 
@@ -355,6 +362,7 @@ func (j *JobMemory) BindInstanceContext(ctx InstanceContext) {
 	j.putU64(offTableDirPtr, uint64(ctx.TableDirPtr))
 	j.putU64(offMemoryDirPtr, uint64(ctx.MemoryDirPtr))
 	j.putU64(offImportDispatchPtr, uint64(ctx.ImportDispatch))
+	j.putU64(offEHTagDirPtr, uint64(ctx.EHTagDirPtr))
 }
 
 // CaptureInstanceContextBytes stores the current context in a stable off-heap
@@ -367,7 +375,8 @@ func (j *JobMemory) CaptureInstanceContextBytes(dst []byte) {
 	for i, value := range [...]uintptr{ctx.CustomCtx, ctx.TablePtr, ctx.FuncRefDescPtr, ctx.PassiveElemPtr, ctx.GlobalsPtr, ctx.PassiveDataPtr, ctx.TableDirPtr, ctx.MemoryDirPtr, ctx.ImportDispatch} {
 		binary.LittleEndian.PutUint64(dst[i*8:], uint64(value))
 	}
-	clear(dst[InstanceContextGCDomainOffset:InstanceContextBytes])
+	clear(dst[InstanceContextGCDomainOffset:InstanceContextEHTagDirOffset])
+	binary.LittleEndian.PutUint64(dst[InstanceContextEHTagDirOffset:], uint64(ctx.EHTagDirPtr))
 }
 
 // BindInstanceContextBytes restores a context captured by
@@ -378,7 +387,7 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	}
 	// These basedata destinations are naturally uint64-aligned. Store directly
 	// into the already bounds-checked basedata image instead of constructing an
-	// InstanceContext and taking ten separate slice/method bounds paths on every
+	// InstanceContext and taking repeated slice/method bounds paths on every
 	// native entry. Source loads stay byte-based because callers may supply an
 	// arbitrarily aligned context slice.
 	base := unsafe.Pointer(&j.mem[j.linOff-basedataSize])
@@ -392,6 +401,7 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	*(*uint64)(unsafe.Add(base, basedataSize-offMemoryDirPtr)) = binary.LittleEndian.Uint64(src[56:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offImportDispatchPtr)) = binary.LittleEndian.Uint64(src[64:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offGCNativeViewPtr)) = binary.LittleEndian.Uint64(src[InstanceContextGCNativeViewOffset:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offEHTagDirPtr)) = binary.LittleEndian.Uint64(src[InstanceContextEHTagDirOffset:])
 }
 
 // ClearEHHandler removes any native-stack handler left behind when a non-EH

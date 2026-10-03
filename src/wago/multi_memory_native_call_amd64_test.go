@@ -1002,8 +1002,8 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 }
 
 func TestStagedMultiMemoryNativeContextAccounting(t *testing.T) {
-	if runtime.InstanceContextBytes != 112 {
-		t.Fatalf("native instance context = %d bytes, want restored hot-path size 112", runtime.InstanceContextBytes)
+	if runtime.InstanceContextBytes != 120 {
+		t.Fatalf("native instance context = %d bytes, want restored hot-path size 120", runtime.InstanceContextBytes)
 	}
 	if abi.BasedataSize != 288 {
 		t.Fatalf("basedata = %d bytes, want restored hot-path size 288", abi.BasedataSize)

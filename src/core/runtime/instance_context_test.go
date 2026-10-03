@@ -10,8 +10,8 @@ import (
 )
 
 func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
-	if InstanceContextBytes != 112 {
-		t.Fatalf("instance context bytes = %d, want hot-path layout size 112", InstanceContextBytes)
+	if InstanceContextBytes != 120 {
+		t.Fatalf("instance context bytes = %d, want hot-path layout size 120", InstanceContextBytes)
 	}
 	jm, err := NewJobMemory(65536)
 	if err != nil {
@@ -39,6 +39,18 @@ func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
 	}
 	if got := jm.GCNativeViewPtr(); got != 19 {
 		t.Fatalf("binding native context GC view = %d, want 19", got)
+	}
+}
+
+func TestEHTagDirectoryLivesOutsideWrapperTailBank(t *testing.T) {
+	// Basedata offsets grow downward. The argument cells therefore occupy offsets
+	// (TailArgsOffset-TailArgsSlots*8, TailArgsOffset], not the adjacent low cell.
+	bankLow := abi.TailArgsOffset - abi.TailArgsSlots*8
+	if off := abi.EHTagDirPtrOffset; off > bankLow && off <= abi.TailArgsOffset {
+		t.Fatalf("EH tag directory offset %d aliases wrapper tail bank (%d, %d]", off, bankLow, abi.TailArgsOffset)
+	}
+	if abi.EHTagDirPtrOffset > abi.BasedataSize {
+		t.Fatalf("EH tag directory offset %d exceeds basedata size %d", abi.EHTagDirPtrOffset, abi.BasedataSize)
 	}
 }
 
@@ -102,5 +114,40 @@ func TestInstanceContextRoundTripLeavesMemoryAndInvocationState(t *testing.T) {
 	}
 	if jm.curBytes() != beforeBytes || jm.getU64(offStackFence) != beforeFence || jm.getU64(abi.TrapCellPtrOffset) != beforeTrap {
 		t.Fatal("binding instance context changed memory or invocation state")
+	}
+}
+
+func TestInstanceContextRoundTripRestoresEHTagDirectory(t *testing.T) {
+	jm, err := NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+
+	const captured, replacement = 0x1111, 0x2222
+	jm.SetEHTagDirPtr(captured)
+	ctx := jm.CaptureInstanceContext()
+	jm.SetEHTagDirPtr(replacement)
+	jm.BindInstanceContext(ctx)
+	if got := jm.getU64(offEHTagDirPtr); got != captured {
+		t.Fatalf("bound instance context EH tag directory = %#x, want %#x", got, captured)
+	}
+}
+
+func TestInstanceContextBytesRoundTripRestoresEHTagDirectory(t *testing.T) {
+	jm, err := NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+
+	const captured, replacement = 0x1111, 0x2222
+	buf := make([]byte, InstanceContextBytes)
+	jm.SetEHTagDirPtr(captured)
+	jm.CaptureInstanceContextBytes(buf)
+	jm.SetEHTagDirPtr(replacement)
+	jm.BindInstanceContextBytes(buf)
+	if got := jm.getU64(offEHTagDirPtr); got != captured {
+		t.Fatalf("bound byte context EH tag directory = %#x, want %#x", got, captured)
 	}
 }

@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"reflect"
@@ -8,22 +9,62 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecVersion4Contract(t *testing.T) {
+func TestCompiledCodecVersion5Contract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if got := blob[4]; got != wagoVersion || wagoVersion != 4 {
-		t.Fatalf("compiled codec version = %d, want codec version 4", got)
+	if got := blob[4]; got != wagoVersion {
+		t.Fatalf("compiled codec version = %d, want %d", got, wagoVersion)
 	}
 
-	for _, version := range []byte{0, 1, 2, 3, 22, 35} {
-		unsupported := append([]byte(nil), blob...)
-		unsupported[4] = version
-		var got Compiled
-		if err := got.UnmarshalBinary(unsupported); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", version)) {
-			t.Fatalf("UnmarshalBinary version %d error = %v, want explicit incompatibility rejection", version, err)
+	loaders := []struct {
+		name string
+		load func([]byte) error
+	}{
+		{"UnmarshalBinary", func(data []byte) error {
+			var got Compiled
+			defer got.Close()
+			return got.UnmarshalBinary(data)
+		}},
+		{"ReadFrom", func(data []byte) error {
+			var got Compiled
+			defer got.Close()
+			_, err := got.ReadFrom(bytes.NewReader(data))
+			return err
+		}},
+		{"LoadTrustedArtifact", func(data []byte) error {
+			got, err := LoadTrustedArtifact(data)
+			if got != nil {
+				defer got.Close()
+			}
+			return err
+		}},
+	}
+	for _, loader := range loaders {
+		t.Run(loader.name+"/current", func(t *testing.T) {
+			if err := loader.load(blob); err != nil {
+				t.Fatalf("load current artifact: %v", err)
+			}
+		})
+	}
+
+	for _, version := range []byte{0, 1, 2, 3, 4, 22, 35} {
+		for _, loader := range loaders {
+			t.Run(fmt.Sprintf("%s/reject-version-%d", loader.name, version), func(t *testing.T) {
+				unsupported := append([]byte(nil), blob...)
+				unsupported[4] = version
+				err := loader.load(unsupported)
+				if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", version)) {
+					t.Fatalf("load version %d error = %v, want explicit incompatibility rejection", version, err)
+				}
+			})
 		}
+	}
+	// Version 5 rejects v4 because native instructions embed basedata offsets;
+	// executing a v4 image after the tag-directory cell moves can read another cell.
+	if wagoVersion != 5 {
+		t.Fatalf("wagoVersion = %d, want 5 after native basedata ABI change", wagoVersion)
 	}
 }
 

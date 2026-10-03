@@ -282,10 +282,11 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
-	// Dynamic call_ref dispatch needs only the fixed arena header: ARM64
-	// home-aware calls read its guaranteed instance-context cell even when the
-	// module has no local ref.func/table descriptor payloads of its own.
-	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef
+	// Dynamic call_ref dispatch and cold EH restoration need only descriptor zero:
+	// its arena-stable instance-context cell exists even when the module has no
+	// local ref.func/table descriptor payloads. Key EH to the analyzed required
+	// feature so tag-free try_table/catch_all modules receive the header too.
+	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef || requirements.features.IsEnabled(CoreFeatureExceptionHandling)
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
 	for i := range m.Tables {
 		tableIndex := importedTables + i
@@ -479,7 +480,7 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			}
 			if table64 {
 				// OffsetInit's compact Base/HasGlobal forms are i32-only. Preserve the
-				// validated i64 expression so codec version 4 and instantiation retain every bit.
+				// validated i64 expression so codec version 4 and later retain every bit.
 				if len(e.Mode.Offset.BodyBytes) != 0 {
 					init.Offset.Expr = append([]byte(nil), e.Mode.Offset.BodyBytes...)
 				} else {
@@ -532,7 +533,7 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		if memory64 {
 			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
 			// Preserve the already validated i64 program in the existing Expr field so
-			// codec version 4 retains the existing expression field while instantiation preserves all 64 address bits.
+			// codec version 4 and later retain the existing expression field while instantiation preserves all 64 address bits.
 			if len(d.Mode.Offset.BodyBytes) != 0 {
 				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
 			} else {

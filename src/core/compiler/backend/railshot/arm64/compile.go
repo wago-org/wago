@@ -3817,6 +3817,26 @@ func (f *fn) storeGlobalPins(scratch Reg, valuePins bool) {
 	}
 }
 
+// storeDirtyGlobalPins publishes only values changed by this function. An EH
+// transfer may rederive every pin in the handler after restoring instance
+// context, so direct throws must make deferred global.set values cell-coherent
+// first. Filtering on the compile-time dirty bit keeps the cold edge compact.
+func (f *fn) storeDirtyGlobalPins(scratch Reg) {
+	for g, state := range f.globalReg {
+		reg := globalRegValue(state)
+		if reg == regNone || !globalRegIsDirty(state) {
+			continue
+		}
+		f.ld64(scratch, linMemReg, -int32(abi.GlobalsPtrOffset))
+		f.ld64(scratch, scratch, int32(g*8))
+		if f.globalIs64(g) {
+			f.st64(scratch, 0, reg)
+		} else {
+			f.st32(scratch, 0, reg)
+		}
+	}
+}
+
 // derivePinnedGlobals loads each value-pinned global's current value into its
 // register from memory (base → &cell → value, reusing the register for the chain).
 // Used in the prologue and to reload after a call (the callee may have changed the
