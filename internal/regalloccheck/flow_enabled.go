@@ -86,8 +86,8 @@ type Result struct {
 	Work      int // metered analysis units, not elapsed time; tied limits may stop at different units
 }
 
-// Limits bound retained states and total work, including validation and the
-// final use pass. Zero selects the default; negative limits are invalid.
+// Limits bound retained storage credits and total work, including validation and the
+// final use pass. Deleted map entries keep storage credits until image release. Zero selects the default; negative limits are invalid.
 type Limits struct {
 	Blocks, Values, Operations, Facts, Work int
 }
@@ -96,7 +96,7 @@ func DefaultLimits() Limits {
 	return Limits{Blocks: 4096, Values: 65536, Operations: 262144, Facts: 1048576, Work: 33554432}
 }
 
-type flowLimit struct{ message string }
+type flowLimit struct{}
 type flowBudget struct {
 	limits      Limits
 	work, facts int
@@ -104,7 +104,7 @@ type flowBudget struct {
 
 func (b *flowBudget) charge(n int) {
 	if n > b.limits.Work-b.work {
-		panic(flowLimit{"analysis work limit"})
+		panic(flowLimit{})
 	}
 	b.work += n
 }
@@ -112,7 +112,7 @@ func (b *flowBudget) charge(n int) {
 func (b *flowBudget) addFact() {
 	b.charge(1)
 	if b.facts == b.limits.Facts {
-		panic(flowLimit{"retained fact limit"})
+		panic(flowLimit{})
 	}
 	b.facts++
 }
@@ -122,23 +122,44 @@ type symbol struct {
 	part uint8
 }
 
+// Most bytes have one identity. Allocate a set only when semantic aliases meet.
+type flowCell struct {
+	one  symbol
+	more map[symbol]struct{}
+}
+
+func (c flowCell) empty() bool { return c.one.id == 0 && len(c.more) == 0 }
+func (c flowCell) each(fn func(symbol)) {
+	if c.one.id != 0 {
+		fn(c.one)
+	}
+	for v := range c.more {
+		fn(v)
+	}
+}
+
 // The reverse index makes semantic redefinition proportional to that value's
 // aliases, rather than scanning the entire frame at every definition.
 type flowImage struct {
-	cells     map[Location]map[symbol]struct{}
+	cells     map[Location]flowCell
 	registers map[Location]struct{}
 	ids       map[ValueID]map[Location]uint16
 	count     int
+	retained  int // storage credits are reclaimed only when the image is released
 	b         *flowBudget
 }
 
 func newImage(b *flowBudget) *flowImage {
-	return &flowImage{cells: make(map[Location]map[symbol]struct{}), registers: make(map[Location]struct{}), ids: make(map[ValueID]map[Location]uint16), b: b}
+	return &flowImage{cells: make(map[Location]flowCell), registers: make(map[Location]struct{}), ids: make(map[ValueID]map[Location]uint16), b: b}
 }
 
 func (s *flowImage) has(loc Location, v symbol) bool {
 	s.b.charge(1)
-	_, ok := s.cells[loc][v]
+	c := s.cells[loc]
+	if c.one == v {
+		return true
+	}
+	_, ok := c.more[v]
 	return ok
 }
 
@@ -147,26 +168,40 @@ func (s *flowImage) add(loc Location, v symbol) {
 		return
 	}
 	s.b.addFact()
-	if s.cells[loc] == nil {
-		s.cells[loc] = make(map[symbol]struct{})
-		if loc.Bank != Frame {
-			s.registers[loc] = struct{}{}
+	c := s.cells[loc]
+	if c.one.id == 0 {
+		c.one = v
+	} else {
+		if c.more == nil {
+			c.more = make(map[symbol]struct{})
 		}
+		c.more[v] = struct{}{}
 	}
-	s.cells[loc][v] = struct{}{}
+	s.cells[loc] = c
+	if loc.Bank != Frame {
+		s.registers[loc] = struct{}{}
+	}
 	if s.ids[v.id] == nil {
 		s.ids[v.id] = make(map[Location]uint16)
 	}
 	s.ids[v.id][loc] |= 1 << v.part
 	s.count++
+	s.retained++
 }
 
 func (s *flowImage) remove(loc Location, v symbol) {
 	s.b.charge(1)
-	delete(s.cells[loc], v)
-	if len(s.cells[loc]) == 0 {
+	c := s.cells[loc]
+	if c.one == v {
+		c.one = symbol{}
+	} else {
+		delete(c.more, v)
+	}
+	if c.empty() {
 		delete(s.cells, loc)
 		delete(s.registers, loc)
+	} else {
+		s.cells[loc] = c
 	}
 	s.ids[v.id][loc] &^= 1 << v.part
 	if s.ids[v.id][loc] == 0 {
@@ -176,16 +211,15 @@ func (s *flowImage) remove(loc Location, v symbol) {
 		delete(s.ids, v.id)
 	}
 	s.count--
-	s.b.facts--
+	// Go maps retain buckets after deletion. Keeping the storage credit until
+	// release bounds historical capacity, not merely currently visible facts.
 }
 
 func (s *flowImage) clear(loc Location, size int) {
 	for i := 0; i < size; i++ {
 		s.b.charge(1)
 		at := loc.next(i)
-		for v := range s.cells[at] {
-			s.remove(at, v)
-		}
+		s.cells[at].each(func(v symbol) { s.remove(at, v) })
 	}
 }
 
@@ -201,16 +235,14 @@ func (s *flowImage) forget(id ValueID) {
 }
 
 func (s *flowImage) release() {
-	s.b.facts -= s.count
-	s.cells, s.ids, s.registers, s.count = nil, nil, nil, 0
+	s.b.facts -= s.retained
+	s.cells, s.ids, s.registers, s.count, s.retained = nil, nil, nil, 0, 0
 }
 
 func (s *flowImage) clone() *flowImage {
 	out := newImage(s.b)
 	for loc, values := range s.cells {
-		for v := range values {
-			out.add(loc, v)
-		}
+		values.each(func(v symbol) { out.add(loc, v) })
 	}
 	return out
 }
@@ -218,12 +250,12 @@ func (s *flowImage) clone() *flowImage {
 func (s *flowImage) meet(other *flowImage) bool {
 	changed := false
 	for loc, values := range s.cells {
-		for v := range values {
+		values.each(func(v symbol) {
 			if !other.has(loc, v) {
 				s.remove(loc, v)
 				changed = true
 			}
-		}
+		})
 	}
 	return changed
 }
@@ -236,26 +268,27 @@ type flowFact struct {
 func (s *flowImage) snapshot(src, dst Location, size int, facts []flowFact) []flowFact {
 	for i := 0; i < size; i++ {
 		s.b.charge(1)
-		for v := range s.cells[src.next(i)] {
+		s.cells[src.next(i)].each(func(v symbol) {
 			// Snapshots count against the same live-memory budget as states.
 			s.b.addFact()
 			facts = append(facts, flowFact{dst.next(i), v})
-		}
+		})
 	}
 	return facts
 }
 
 func (s *flowImage) restore(facts []flowFact) {
 	for _, f := range facts {
-		s.b.facts--
 		s.add(f.loc, f.v)
 	}
+	s.b.facts -= len(facts)
 }
 
 func (s *flowImage) effect(e Effect) {
 	switch e.Kind {
 	case Copy, Swap:
-		facts := s.snapshot(e.Src, e.Dst, e.Size, nil)
+		var inline [32]flowFact
+		facts := s.snapshot(e.Src, e.Dst, e.Size, inline[:0])
 		if e.Kind == Swap {
 			facts = s.snapshot(e.Dst, e.Src, e.Size, facts)
 			s.clear(e.Src, e.Size)
@@ -272,9 +305,7 @@ func (s *flowImage) effect(e Effect) {
 		s.clear(e.Dst, e.Size)
 	case Call:
 		for loc := range s.registers {
-			for v := range s.cells[loc] {
-				s.remove(loc, v)
-			}
+			s.cells[loc].each(func(v symbol) { s.remove(loc, v) })
 		}
 	case Read:
 		return
@@ -478,7 +509,7 @@ func (g *Graph) check(s *flowImage, loc Location, value ValueID, where string, b
 		at := loc.next(part)
 		if !s.has(at, symbol{value, uint8(part)}) {
 			reason, why := ProvenanceMismatch, "unproven provenance"
-			if len(s.cells[at]) == 0 {
+			if s.cells[at].empty() {
 				reason, why = UnknownInput, "unknown value"
 			}
 			return &Result{Verdict: Rejected, Reason: reason, Block: block, Operation: op, Message: fmt.Sprintf("%s: %s at %v byte %d", where, why, loc, part)}

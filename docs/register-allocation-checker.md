@@ -107,8 +107,10 @@ new backend lifetime coverage. Its callers must provide bounded graph constructi
 complete physical effects, and independent semantic contracts. It does not infer
 missing edges or instruction effects. Reachable unsupported operations, malformed
 models, and analysis-budget exhaustion return an inconclusive result, never a
-successful check. Default limits bound blocks, values, operations, simultaneously
-retained facts (including temporary copies), and cumulative analysis work.
+successful check. Default limits bound blocks, values, operations, retained
+fact-storage credits and cumulative analysis work. Credits include temporary
+copies and conservatively keep deleted map entries charged until their analysis
+state is released, because deletion does not reclaim Go map capacity.
 
 ## Ordinary-build contract and qualification
 

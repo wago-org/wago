@@ -408,3 +408,56 @@ func BenchmarkFlowCallsWithFrame(b *testing.B) {
 		})
 	}
 }
+
+func TestFlowDeletedFactsRetainStorageCreditsUntilRelease(t *testing.T) {
+	b := &flowBudget{limits: DefaultLimits()}
+	s := newImage(b)
+	loc := Register(GP, 1)
+	s.add(loc, symbol{1, 0})
+	s.add(loc, symbol{2, 0})
+	s.remove(loc, symbol{1, 0})
+	if s.count != 1 || b.facts != 2 {
+		t.Fatalf("deleted map capacity lost its storage credit: count=%d credits=%d", s.count, b.facts)
+	}
+	if !s.has(loc, symbol{2, 0}) {
+		t.Fatal("removing inline identity lost alias set")
+	}
+	s.add(loc, symbol{3, 0})
+	if !s.has(loc, symbol{2, 0}) || !s.has(loc, symbol{3, 0}) {
+		t.Fatal("inline reuse lost aliases")
+	}
+	s.clear(loc, 1)
+	if s.count != 0 || b.facts != 3 {
+		t.Fatalf("clear released retained capacity: %d/%d", s.count, b.facts)
+	}
+	s.release()
+	if b.facts != 0 {
+		t.Fatalf("release retained %d credits", b.facts)
+	}
+}
+
+func TestFlowSnapshotCreditsRemainUntilRestored(t *testing.T) {
+	limits := DefaultLimits()
+	limits.Facts = 2
+	b := &flowBudget{limits: limits}
+	s := newImage(b)
+	s.add(Register(GP, 1), symbol{1, 0})
+	facts := s.snapshot(Register(GP, 1), Register(GP, 2), 1, nil)
+	defer func() {
+		if _, ok := recover().(flowLimit); !ok {
+			t.Fatal("restoration released still-live snapshot credits too early")
+		}
+	}()
+	s.restore(facts)
+}
+
+func TestFlowAliasCopyOverflowsInlineSnapshot(t *testing.T) {
+	g := Graph{Blocks: []Block{{Operations: []Operation{copyTo(Slot(0), Register(GP, 0), 1), kill(Register(GP, 0), 1), machine(Effect{Kind: Call})}}}}
+	for i := 0; i < 65; i++ {
+		g.Widths = append(g.Widths, 1)
+		id := ValueID(i + 1)
+		g.Inputs = append(g.Inputs, Binding{Register(GP, 0), id})
+		g.Blocks[0].Operations = append(g.Blocks[0].Operations, use(Slot(0), id))
+	}
+	verifyFlow(t, g, Verified, NoFailure)
+}
