@@ -84,7 +84,8 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	case wasm.EqualValType(gtv, wasm.I64) || gtv.Kind() == wasm.ValRef:
 		dst := f.allocReg(0)
 		f.a.Load64(dst, cell, 0)
-		f.pushReg(dst, mtI64)
+		value := f.pushReg(dst, mtI64)
+		f.setStackGCRoot(value, gcFrameRefType(f.m, gtv))
 	case wasm.EqualValType(gtv, wasm.I32):
 		dst := f.allocReg(0)
 		f.a.Load32(dst, cell, 0) // low half of the 8-byte cell
