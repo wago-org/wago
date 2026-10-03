@@ -433,6 +433,10 @@ func syncLockedPluginVersions(buildDir, manifestDir string, verbose bool) (bool,
 	if err != nil {
 		return false, err
 	}
+	return syncPluginBuildVersions(buildDir, input, verbose)
+}
+
+func syncPluginBuildVersions(buildDir string, input pluginbuild.Input, verbose bool) (bool, error) {
 	// Reject before reconciliation so an existing replacement is reported
 	// instead of being silently removed and treated as an unchanged exact pin.
 	if err := pluginbuild.RejectLockedSourceReplacements(buildDir, input.Sources); err != nil {
@@ -468,30 +472,43 @@ func pluginRuntimeBinary() (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	if len(environment.dependencies) == 0 {
+	if environment.scope == "bare" || len(environment.dependencies) == 0 {
 		return "", false, nil
 	}
-	lock, err := project.ReadLock(environment.manifestDir)
-	if err != nil {
-		return "", false, err
-	}
-	requirements, err := project.Requirements(environment.manifestDir)
-	if err != nil {
-		return "", false, err
-	}
-	if err := project.ValidateLockedResolution(requirements, lock); err != nil {
-		return "", false, err
-	}
-	input, err := pluginbuild.InputFromLock(lock)
-	if err != nil {
-		return "", false, err
-	}
-	changed, err := syncLockedPluginVersions(environment.buildDir, environment.manifestDir, false)
-	if err != nil {
-		return "", false, err
-	}
-	bin, _, err := pluginbuild.EnsureBinary(environment.buildDir, input, changed, false, environment.selection.config())
-	return bin, err == nil, err
+	var bin string
+	configured := false
+	err = withPluginRuntimeLock(context.Background(), environment.manifestDir, func(mutation *project.Mutation) error {
+		manifest, err := mutation.ReadManifest()
+		if err != nil {
+			return err
+		}
+		requirements, err := project.RequirementsFromManifest(manifest)
+		if err != nil {
+			return err
+		}
+		if len(requirements) == 0 {
+			return nil
+		}
+		lock, err := mutation.ReadLock()
+		if err != nil {
+			return err
+		}
+		if err := project.ValidateLockedResolution(requirements, lock); err != nil {
+			return err
+		}
+		input, err := pluginbuild.InputFromLock(lock)
+		if err != nil {
+			return err
+		}
+		changed, err := syncPluginBuildVersions(environment.buildDir, input, false)
+		if err != nil {
+			return err
+		}
+		bin, _, err = pluginbuild.EnsureBinary(environment.buildDir, input, changed, false, environment.selection.config())
+		configured = err == nil
+		return err
+	})
+	return bin, configured, err
 }
 
 func parsePluginSpec(spec string) (string, string, error) {

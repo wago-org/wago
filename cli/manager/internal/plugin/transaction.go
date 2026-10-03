@@ -18,6 +18,12 @@ func withPluginMutationLock(ctx context.Context, manifestDir string, fn func(*pr
 	return project.WithMutation(ctx, manifestDir, fn)
 }
 
+func withPluginRuntimeLock(ctx context.Context, manifestDir string, fn func(*project.Mutation) error) error {
+	// Runtime reconciliation and publication share one lock so a staged build
+	// cannot replace the active directory underneath a reader or rebuilder.
+	return withPluginMutationLock(ctx, manifestDir, fn)
+}
+
 // publishPluginTransaction makes a fully staged build, manifest, and lockfile
 // visible under the project-wide mutation lock. Metadata is crash-recoverable;
 // failures before its journal commit restore the prior generated build.
