@@ -9,9 +9,69 @@ import (
 	"testing"
 
 	amd64codegen "github.com/wago-org/wago/codegen/amd64"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+const testPluginFeaturePOPCNT = amd64codegen.Features(1 << 9)
+
+func TestFullAccessPluginPOPCNTRequirementArtifact(t *testing.T) {
+	if !selectedAMD64CompileFeatures(shared.AMD64KnownFeatures).Has(shared.AMD64POPCNT) {
+		t.Skip("SSE2-only build profile disables POPCNT code generation")
+	}
+	mockAMD64ArtifactCPU(t, shared.AMD64KnownFeatures)
+	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
+	rt := NewRuntime(WithRuntimeConfig(cfg))
+	defer rt.Close()
+	ext := instructionMachineExt{name: "popcnt.marker", output: []int32{32}, lowering: &amd64codegen.Lowering{
+		Compatibility: amd64codegen.CompatibilityFullAccess,
+		Features:      testPluginFeaturePOPCNT,
+		Emit: func(ctx amd64codegen.Context) error {
+			r := ctx.AllocGP()
+			ctx.Encoder().MovImm32(r, 1)
+			ctx.Encoder().Popcnt(r, r, false)
+			return ctx.OutputI32(r)
+		},
+	}}
+	if err := rt.Use(ext); err != nil {
+		t.Fatal(err)
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("wago:instr/machine", "popcnt.marker", 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x0b}))),
+	)
+	mod, err := rt.Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	compiled := mod.Compiled()
+	if compiled.requiredAMD64Features != shared.AMD64POPCNT {
+		t.Fatalf("requirements = %#x, want POPCNT", compiled.requiredAMD64Features)
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	amd64CPUCache.features = shared.AMD64KnownFeatures &^ shared.AMD64POPCNT
+	var missing Compiled
+	if err := missing.UnmarshalBinary(blob); err == nil {
+		missing.Close()
+		t.Fatal("artifact requiring POPCNT admitted without POPCNT")
+	}
+	amd64CPUCache.features = shared.AMD64KnownFeatures
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	if loaded.requiredAMD64Features != shared.AMD64POPCNT {
+		t.Fatalf("roundtrip requirements = %#x, want POPCNT", loaded.requiredAMD64Features)
+	}
+}
 
 func TestUnusedPluginCPURequirementsArtifact(t *testing.T) {
 	previous := runtime.GOMAXPROCS(2)
