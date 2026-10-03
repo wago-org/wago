@@ -155,6 +155,15 @@ func (f *fn) trapTableUnlessLE(value, limit Reg) {
 	f.trapIf(condA, trapTableOOB)
 }
 
+func (f *fn) tableRangeEnd(dst, start, count Reg, addr64 bool) {
+	if addr64 {
+		f.a.Adds64(dst, start, count)
+		f.trapIf(condAE, trapTableOOB) // unsigned addition carry
+		return
+	}
+	f.leaScaled(dst, start, count, 0, 0, true)
+}
+
 func (f *fn) tableSize(r *wasm.Reader) error {
 	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
@@ -196,7 +205,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X12, X14, 0)
-	f.leaScaled(X13, X9, X11, 0, 0, true)
+	f.tableRangeEnd(X13, X9, X11, f.tableAddr64(tableIdx))
 	f.trapTableUnlessLE(X13, X12)
 	externref := f.tableIsExternref(tableIdx)
 	f.typedTableEntryAddr(X9, X14, tableIdx)
@@ -204,7 +213,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	disp := int32(elemIdx) * runtime.PassiveElemDescBytes
 	f.ld64(X14, linMemReg, -int32(offPassiveElemPtr))
 	f.ld32(X12, X14, disp+8)
-	f.leaScaled(X13, X10, X11, 0, 0, true)
+	f.tableRangeEnd(X13, X10, X11, false)
 	f.trapTableUnlessLE(X13, X12)
 	f.ld64(X14, X14, disp)
 	f.entryArrayAddr(X10, X14, externref)
@@ -248,12 +257,12 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	}
 	f.loadTableDescriptor(X14, dstTableIdx)
 	f.ld32(X12, X14, 0)
-	f.leaScaled(X13, X9, X11, 0, 0, true)
+	f.tableRangeEnd(X13, X9, X11, f.tableAddr64(dstTableIdx))
 	f.trapTableUnlessLE(X13, X12)
 	f.typedTableEntryAddr(X9, X14, dstTableIdx)
 	f.loadTableDescriptor(X14, srcTableIdx)
 	f.ld32(X12, X14, 0)
-	f.leaScaled(X13, X10, X11, 0, 0, true)
+	f.tableRangeEnd(X13, X10, X11, f.tableAddr64(srcTableIdx))
 	f.trapTableUnlessLE(X13, X12)
 	f.typedTableEntryAddr(X10, X14, srcTableIdx)
 	f.shiftImm(shLSL, X11, entryStrideShift(f.tableIsExternref(dstTableIdx)), true)
@@ -300,7 +309,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.canonicalizeTableOperand(X11, tableIdx)
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
-	f.leaScaled(X9, X9, X11, 0, 0, true)
+	f.tableRangeEnd(X9, X9, X11, f.tableAddr64(tableIdx))
 	f.trapTableUnlessLE(X9, X13)
 	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))
 	f.canonicalizeTableOperand(X9, tableIdx)
@@ -330,7 +339,7 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.canonicalizeTableOperand(X11, tableIdx)
 	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
-	f.leaScaled(X9, X9, X11, 0, 0, true)
+	f.tableRangeEnd(X9, X9, X11, f.tableAddr64(tableIdx))
 	f.trapTableUnlessLE(X9, X13)
 	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))
 	f.typedTableEntryAddr(X9, X14, tableIdx)
