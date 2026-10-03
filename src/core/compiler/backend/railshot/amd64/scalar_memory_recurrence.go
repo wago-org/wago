@@ -6,7 +6,10 @@ import "os"
 
 var scalarMemoryRecurrenceEnabled = os.Getenv("WAGO_AMD64_SCALAR_MEMORY_RECURRENCE") != "0"
 
-var scalarLoopMemoryFormsEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_MEMORY_FORM") == "1"
+// Fold single-use scalar loads with the same checked address, access width,
+// and event order. Set WAGO_AMD64_SCALAR_LOOP_MEMORY_FORM=0 to compare without
+// these forms while retaining accumulator destination reuse.
+var scalarLoopMemoryFormsEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_MEMORY_FORM") != "0"
 
 var scalarLoopDestinationEnabled = os.Getenv("WAGO_AMD64_SCALAR_LOOP_DESTINATION") != "0"
 
