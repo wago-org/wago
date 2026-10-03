@@ -20,9 +20,17 @@ var requiredCorpusCorrectnessShardTargets = []corpusCorrectnessShardTarget{
 	{Platform: "windows/arm64", Count: 4},
 }
 
-const requiredCorpusCorrectnessWorkloadCount = 125
+const requiredCorpusCorrectnessWorkloadCount = 127
 
 func TestVerifyCorpusCorrectnessShardReports(t *testing.T) {
+	// Check the inventory locally too, before CI report availability can skip us.
+	workloads, err := corpusplan.LoadCatalog(filepath.Join(corpusDir, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workloads) != requiredCorpusCorrectnessWorkloadCount {
+		t.Fatalf("catalog has %d correctness workloads, want %d; review shard coverage before changing this contract", len(workloads), requiredCorpusCorrectnessWorkloadCount)
+	}
 	root := os.Getenv("WAGO_CORPUS_CORRECTNESS_REPORT_DIR")
 	if root == "" {
 		t.Skip("corpus correctness shard report directory is not configured")
@@ -30,13 +38,6 @@ func TestVerifyCorpusCorrectnessShardReports(t *testing.T) {
 	wantSHA := os.Getenv("CI_SOURCE_SHA")
 	if wantSHA == "" {
 		t.Fatal("CI_SOURCE_SHA is required when verifying corpus correctness shards")
-	}
-	workloads, err := corpusplan.LoadCatalog(filepath.Join(corpusDir, "catalog.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(workloads) != requiredCorpusCorrectnessWorkloadCount {
-		t.Fatalf("catalog has %d correctness workloads, want %d; review shard coverage before changing this contract", len(workloads), requiredCorpusCorrectnessWorkloadCount)
 	}
 	paths, err := filepath.Glob(filepath.Join(root, "*.json"))
 	if err != nil {

@@ -1,0 +1,79 @@
+{
+  "runtime": "Wasmtime",
+  "version": "49.0.2 (3c8a3e79a 2026-10-02)",
+  "release_url": "https://github.com/bytecodealliance/wasmtime/releases/tag/v49.0.2",
+  "archive_sha256": "a4d6e9e3a5a60f527cf7793d674c48930c80c2e8977995b8a275cad3254b9322",
+  "wasi": "preview1",
+  "preopens": [],
+  "environment": {},
+  "network": false,
+  "memory_limit_bytes": 268435456,
+  "execution_timeout_seconds": 10,
+  "cases": [
+    {
+      "artifact": "array.wasm",
+      "artifact_sha256": "cffc1de88b1777739c8f004791f6bb16185b1113bed0b38bb8533635ca970c74",
+      "exit_code": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "imports": [
+        {
+          "module": "wasi_snapshot_preview1",
+          "name": "fd_write",
+          "kind": 0,
+          "signature": {
+            "params": [
+              "0x7f",
+              "0x7f",
+              "0x7f",
+              "0x7f"
+            ],
+            "results": [
+              "0x7f"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "artifact": "string.wasm",
+      "artifact_sha256": "0eebeab44cdeb06d4dbc8698c6fe4eaf88e5df38d10c2572ab4d92952600bb91",
+      "exit_code": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "imports": [
+        {
+          "module": "wasi_snapshot_preview1",
+          "name": "fd_write",
+          "kind": 0,
+          "signature": {
+            "params": [
+              "0x7f",
+              "0x7f",
+              "0x7f",
+              "0x7f"
+            ],
+            "results": [
+              "0x7f"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "compile_flags": [
+    "--release",
+    "--no-wasm-tail-call"
+  ],
+  "wasm_profile": "core-2",
+  "uses_wasm_tail_calls": false,
+  "additional_reference": {
+    "runtime": "wazero",
+    "version": "1.9.0",
+    "harness": "bench/suite/command_corpus_test.go",
+    "cases_passed": [
+      "array.wasm",
+      "string.wasm"
+    ]
+  }
+}

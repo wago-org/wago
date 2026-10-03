@@ -14,6 +14,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   modules and synchronizing only the globals assigned to physical registers.
 - Reuse owned integer shift operands and an additional revocable local register
   in admitted straight-line AMD64 functions.
+### Added
+
+- Add two prebuilt Grain standard-library assertion suites to the executable
+  corpus, with matching guest sources, reproducible rebuild instructions,
+  preserved licenses, and independently verified WASI execution oracles.
 
 ### Fixed
 

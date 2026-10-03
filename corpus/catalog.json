@@ -3631,6 +3631,92 @@
         "c"
       ],
       "artifact_sha256": "2b1647ba27936995e85892492c7389d114811496e5c276a2c4b2d44e8a455b41"
+    },
+    {
+      "suite": "Grain stdlib",
+      "desc": "Grain 0.7.2 upstream array standard-library assertions",
+      "id": "grain-stdlib-array",
+      "artifact": "workloads/applications/grain-stdlib/array.wasm",
+      "artifact_sha256": "cffc1de88b1777739c8f004791f6bb16185b1113bed0b38bb8533635ca970c74",
+      "tags": [
+        "application",
+        "grain",
+        "grain-stdlib",
+        "stdlib",
+        "wasi",
+        "self-check"
+      ],
+      "source": {
+        "repository": "https://github.com/grain-lang/grain",
+        "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+        "revision_date": "2026-02-08",
+        "license": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+        "toolchain": "Grain packaged Linux x64 compiler",
+        "toolchain_version": "0.7.2; Binaryen 124; --release --no-wasm-tail-call"
+      },
+      "stages": [
+        "Decode",
+        "Validate",
+        "Compile",
+        "CompileFull",
+        "CommandExec"
+      ],
+      "command": {
+        "runtime": "wasi",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
+        "export": "_start",
+        "oracle": "self-check",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "suite": "Grain stdlib",
+      "desc": "Grain 0.7.2 upstream string standard-library assertions",
+      "id": "grain-stdlib-string",
+      "artifact": "workloads/applications/grain-stdlib/string.wasm",
+      "artifact_sha256": "0eebeab44cdeb06d4dbc8698c6fe4eaf88e5df38d10c2572ab4d92952600bb91",
+      "tags": [
+        "application",
+        "grain",
+        "grain-stdlib",
+        "stdlib",
+        "wasi",
+        "self-check"
+      ],
+      "source": {
+        "repository": "https://github.com/grain-lang/grain",
+        "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+        "revision_date": "2026-02-08",
+        "license": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+        "toolchain": "Grain packaged Linux x64 compiler",
+        "toolchain_version": "0.7.2; Binaryen 124; --release --no-wasm-tail-call"
+      },
+      "stages": [
+        "Decode",
+        "Validate",
+        "Compile",
+        "CompileFull",
+        "CommandExec"
+      ],
+      "command": {
+        "runtime": "wasi",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
+        "export": "_start",
+        "oracle": "self-check",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
     }
   ]
 }
