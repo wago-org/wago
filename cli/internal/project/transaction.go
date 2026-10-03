@@ -72,16 +72,52 @@ func projectJournalPath(dir string) string {
 // access. Once a writer has created the shared lock, readers join that lock and
 // recover any committed journal before inspecting metadata.
 func withMetadataRead(dir string, fn func(*Mutation) error) error {
-	for _, path := range []string{projectJournalPath(dir), projectLockPath(dir)} {
-		if _, err := os.Lstat(path); err == nil {
-			return WithMutation(context.Background(), dir, fn)
-		} else if !os.IsNotExist(err) {
-			return err
-		}
+	coordinated, err := projectMetadataCoordinated(dir)
+	if err != nil {
+		return err
+	}
+	if coordinated {
+		return WithMutation(context.Background(), dir, fn)
 	}
 	mutation := &Mutation{dir: dir, active: true}
 	defer func() { mutation.active = false }()
 	return fn(mutation)
+}
+
+// withMetadataSnapshotRead avoids creating state for fresh/read-only projects,
+// but retries under the project lock if the first writer appears during the
+// unlocked read. The persistent lock pathname makes a clean post-read check a
+// proof that every read in fn preceded the first coordinated publication.
+func withMetadataSnapshotRead(dir string, fn func(*Mutation) error) error {
+	coordinated, err := projectMetadataCoordinated(dir)
+	if err != nil {
+		return err
+	}
+	if coordinated {
+		return WithMutation(context.Background(), dir, fn)
+	}
+	mutation := &Mutation{dir: dir, active: true}
+	err = fn(mutation)
+	mutation.active = false
+	coordinated, checkErr := projectMetadataCoordinated(dir)
+	if checkErr != nil {
+		return errors.Join(err, checkErr)
+	}
+	if coordinated {
+		return WithMutation(context.Background(), dir, fn)
+	}
+	return err
+}
+
+func projectMetadataCoordinated(dir string) (bool, error) {
+	for _, path := range []string{projectJournalPath(dir), projectLockPath(dir)} {
+		if _, err := os.Lstat(path); err == nil {
+			return true, nil
+		} else if !os.IsNotExist(err) {
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 // WithMutation serializes project metadata access across processes, recovers
