@@ -18,7 +18,7 @@ check() {
   fi
 }
 check "$compiler" 82658891d33f5431e7bd260f0c00b8e86c43eb9182c5327f41db25d60b54dadd
-check "$here/source.tar.gz" 66a7f38faab1852b1b1be98aa02b7ac0581cd683875d79205772492ca9a4eb71
+check "$here/source.tar.gz" 81a2b0c304e8b613a1044c26c3bee8763b09d9f6c906359e913fc166de215436
 stage="$(mktemp -d "${TMPDIR:-/tmp}/wago-grain.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 tar -xzf "$here/source.tar.gz" -C "$stage"
@@ -27,8 +27,10 @@ cd "$stage/grain"
 # Paths remain relative so assertion diagnostics do not embed a build directory.
 # Compilation is sequential. Assertions remain enabled; the documented
 # no-tail-call option keeps these shared fixtures within the Core 2 profile.
-for name in array string; do
-  BINARYEN_CORES=1 "$compiler" compile "compiler/test/stdlib/$name.test.gr" \
+for name in array string json-subset; do
+  source_name="$name"
+  [[ "$name" != json-subset ]] || source_name=json
+  BINARYEN_CORES=1 "$compiler" compile "compiler/test/stdlib/$source_name.test.gr" \
     --release --no-wasm-tail-call -S stdlib -o "$stage/out/$name.wasm"
   if ! cmp -s "$stage/out/$name.wasm" "$here/$name.wasm"; then
     echo "grain-stdlib: $name.wasm differs; review before re-pinning" >&2

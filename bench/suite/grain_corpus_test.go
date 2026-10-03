@@ -37,8 +37,10 @@ func TestCatalogGrainStdlibHostContract(t *testing.T) {
 			t.Fatalf("unexpected or duplicate Grain fixture %q", entry.ID)
 		}
 		want[entry.ID] = true
-		if !selectedByTag("tag:application", entry.Tags) {
-			t.Fatalf("%s is missing from application-scoped corpus selection", entry.ID)
+		for _, tag := range []string{"tag:application", "tag:grain-stdlib"} {
+			if !selectedByTag(tag, entry.Tags) {
+				t.Fatalf("%s is missing from %s corpus selection", entry.ID, tag)
+			}
 		}
 		c := entry.Command
 		if c == nil || c.Runtime != "wasi" || c.Export != "_start" || c.Oracle != "self-check" || c.ReferenceRuntime != "" {
