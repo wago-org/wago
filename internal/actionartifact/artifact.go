@@ -383,7 +383,7 @@ func list(ctx context.Context, config Config, name string) ([]artifact, error) {
 }
 
 func download(ctx context.Context, config Config, item artifact, asset, destination string) error {
-	request, err := request(ctx, item.ArchiveDownloadURL, config.Token)
+	request, err := request(ctx, item.ArchiveDownloadURL, sameOriginToken(config.CatalogURL, item.ArchiveDownloadURL, config.Token))
 	if err != nil {
 		return err
 	}
@@ -424,6 +424,34 @@ func download(ctx context.Context, config Config, item artifact, asset, destinat
 		return fmt.Errorf("download Actions artifact: %w", io.ErrUnexpectedEOF)
 	}
 	return extractExecutable(archivePath, asset, destination)
+}
+
+// sameOriginToken keeps catalog credentials at the API origin. Cross-origin
+// archive URLs must be independently authorized, for example by a signed URL.
+func sameOriginToken(catalogURL, archiveURL, token string) string {
+	catalog, catalogErr := url.Parse(catalogURL)
+	archive, archiveErr := url.Parse(archiveURL)
+	if catalogErr != nil || archiveErr != nil ||
+		(catalog.Scheme != "http" && catalog.Scheme != "https") ||
+		!strings.EqualFold(catalog.Scheme, archive.Scheme) ||
+		!strings.EqualFold(catalog.Hostname(), archive.Hostname()) ||
+		originPort(catalog) != originPort(archive) {
+		return ""
+	}
+	return token
+}
+
+func originPort(address *url.URL) string {
+	if port := address.Port(); port != "" {
+		return port
+	}
+	if address.Scheme == "https" {
+		return "443"
+	}
+	if address.Scheme == "http" {
+		return "80"
+	}
+	return ""
 }
 
 func extractExecutable(archivePath, asset, destination string) error {
