@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -471,6 +473,8 @@ func TestLifecycleRollbackReverseStopAndContractLease(t *testing.T) {
 	consumerDef.Consumes = []ContractRequirement{{ID: spec.ID, Major: 1, Mode: ContractRequired}}
 	var ref *ContractRef
 	entered, release := make(chan struct{}), make(chan struct{})
+	providerStopped := make(chan struct{})
+	var releaseOnce sync.Once
 	events := []string{}
 	var mu sync.Mutex
 	provider := PluginProvider{Definition: providerDef, New: func() Plugin {
@@ -479,6 +483,7 @@ func TestLifecycleRollbackReverseStopAndContractLease(t *testing.T) {
 				return err
 			}
 			return r.Lifecycle(PluginLifecycle{Stop: func(context.Context) error {
+				close(providerStopped)
 				mu.Lock()
 				events = append(events, "provider-stop")
 				mu.Unlock()
@@ -513,23 +518,47 @@ func TestLifecycleRollbackReverseStopAndContractLease(t *testing.T) {
 	if err := rt.LoadPlugins(context.Background(), testSet(t, provider, consumer)); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := rt.CloseContext(ctx); errors.Is(err, context.DeadlineExceeded) {
+			t.Error("runtime cleanup timed out")
+		}
+	})
 	doneCall := make(chan error, 1)
 	go func() { doneCall <- ref.Call(func(any) error { close(entered); <-release; return nil }) }()
 	<-entered
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 1000; i++ {
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	for {
 		if err := ref.Call(func(any) error { return nil }); err != nil {
+			if !errors.Is(err, ErrPermissionDenied) {
+				t.Fatal(err)
+			}
 			break
 		}
+		select {
+		case <-deadline.C:
+			t.Fatal("contract admission did not close")
+		default:
+			runtime.Gosched()
+		}
+	}
+	select {
+	case <-providerStopped:
+		t.Fatal("provider stopped while a consumer contract call was active")
+	default:
 	}
 	select {
 	case <-rt.Closed():
 		t.Fatal("runtime teardown completed while a contract call was active")
 	default:
 	}
-	close(release)
+	releaseOnce.Do(func() { close(release) })
 	if err := <-doneCall; err != nil {
 		t.Fatal(err)
 	}

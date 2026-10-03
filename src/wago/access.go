@@ -313,6 +313,13 @@ func (a *InstanceCloseObserver) Before(fns ...func(InstanceCloseEvent)) error {
 	a.reg.hooks.beforeClose = append(a.reg.hooks.beforeClose, fns...)
 	return nil
 }
+
+// After observes terminal closure once admitted invocations have quiesced. It
+// may run after PluginLifecycle.Stop during runtime shutdown. During shutdown,
+// core handles such as GuestArgumentsAccess remain active through callback return.
+// New compile and instance-creation requests are rejected; already-revoked
+// contracts return ErrPermissionDenied.
+// Plugins must keep observer-owned state safe for these late callbacks.
 func (a *InstanceCloseObserver) After(fns ...func(InstanceCloseEvent)) error {
 	if err := a.reg.ensureOpen(); err != nil {
 		return err

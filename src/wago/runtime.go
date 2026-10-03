@@ -1484,23 +1484,23 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 	}
 	rt.mu.Unlock()
 
+	for i := len(pluginRuns) - 1; i >= 0; i-- {
+		pluginRuns[i].callbacks.beginTerminalCallbacks()
+	}
 	instances := rt.directInstancesSnapshot()
 	for i := len(instances) - 1; i >= 0; i-- {
 		// The close state below owns both the logical-close result and the
 		// terminal result published after admitted invocations quiesce.
 		_ = instances[i].Close()
 	}
+	// Stop runs in reverse dependency order, but do not wait on callback gates
+	// here. A provider's Stop may be what releases an admitted host callback in
+	// its consumer; waiting for that consumer first would deadlock shutdown.
 	for i := len(pluginRuns) - 1; i >= 0; i-- {
-		errs = append(errs, closePluginRun(ctx, pluginRuns[i])...)
+		errs = append(errs, stopPluginRun(ctx, pluginRuns[i])...)
 	}
 	for i := len(pluginRuns) - 1; i >= 0; i-- {
-		for j := len(pluginRuns[i].provided) - 1; j >= 0; j-- {
-			var revokeErr error
-			panicErr := callShutdownSafely("provided contract revoke", func() { revokeErr = pluginRuns[i].provided[j].revoke() })
-			if err := joinPrimary(revokeErr, panicErr); err != nil {
-				errs = append(errs, err)
-			}
-		}
+		errs = append(errs, drainPluginRun(pluginRuns[i])...)
 	}
 	rt.mu.Lock()
 	for rt.activeOperations != 0 {
@@ -1510,6 +1510,21 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 	for i := len(instances) - 1; i >= 0; i-- {
 		if err := instances[i].waitTerminalClose(); err != nil {
 			errs = append(errs, err)
+		}
+	}
+	for i := len(pluginRuns) - 1; i >= 0; i-- {
+		pluginRuns[i].callbacks.endTerminalCallbacks()
+	}
+	for i := len(pluginRuns) - 1; i >= 0; i-- {
+		errs = append(errs, finishPluginRun(pluginRuns[i])...)
+	}
+	for i := len(pluginRuns) - 1; i >= 0; i-- {
+		for j := len(pluginRuns[i].provided) - 1; j >= 0; j-- {
+			var revokeErr error
+			panicErr := callShutdownSafely("provided contract revoke", func() { revokeErr = pluginRuns[i].provided[j].revoke() })
+			if err := joinPrimary(revokeErr, panicErr); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 	for i := len(internalClose) - 1; i >= 0; i-- {
@@ -1573,7 +1588,7 @@ func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
 	return err
 }
 
-func closePluginRun(ctx context.Context, run registeredPluginRun) (errs []error) {
+func stopPluginRun(ctx context.Context, run registeredPluginRun) (errs []error) {
 	for i := len(run.closeInstances) - 1; i >= 0; i-- {
 		var closeErr error
 		panicErr := callShutdownSafely("manager close admission", func() { closeErr = run.closeInstances[i]() })
@@ -1589,15 +1604,13 @@ func closePluginRun(ctx context.Context, run registeredPluginRun) (errs []error)
 			errs = append(errs, &PluginError{Plugin: run.name, Phase: PluginPhaseStop, Err: err})
 		}
 	}
-	if err := run.callbacks.closeAndWait(); err != nil {
-		errs = append(errs, err)
-	}
-	for i := len(run.drainInstances) - 1; i >= 0; i-- {
-		var drainErr error
-		panicErr := callShutdownSafely("manager drain", func() { drainErr = run.drainInstances[i]() })
-		if err := joinPrimary(drainErr, panicErr); err != nil {
-			errs = append(errs, err)
-		}
+	// Close all consumer contract admissions before draining any lease. Unlike
+	// host callbacks, a contract lease promises its provider remains live until
+	// release, so these drains must finish before the provider's Stop can run.
+	// Late terminal observers then receive ErrPermissionDenied instead of
+	// entering a provider whose Stop has already completed.
+	for i := len(run.consumed) - 1; i >= 0; i-- {
+		run.consumed[i].deactivate()
 	}
 	for i := len(run.consumed) - 1; i >= 0; i-- {
 		var revokeErr error
@@ -1606,6 +1619,27 @@ func closePluginRun(ctx context.Context, run registeredPluginRun) (errs []error)
 			errs = append(errs, err)
 		}
 	}
+	return errs
+}
+
+func drainPluginRun(run registeredPluginRun) (errs []error) {
+	for i := len(run.drainInstances) - 1; i >= 0; i-- {
+		var drainErr error
+		panicErr := callShutdownSafely("manager drain", func() { drainErr = run.drainInstances[i]() })
+		if err := joinPrimary(drainErr, panicErr); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := run.callbacks.closeAndWait(); err != nil {
+		errs = append(errs, err)
+	}
+	return errs
+}
+
+// finishPluginRun retains core-owned handles through terminal observer delivery.
+// Contract leases were drained before provider Stop; late observers cannot call
+// them, but may still use core handles through this terminal phase.
+func finishPluginRun(run registeredPluginRun) (errs []error) {
 	for i := len(run.handles) - 1; i >= 0; i-- {
 		var closeErr error
 		panicErr := callShutdownSafely("plugin handle revoke", func() { closeErr = run.handles[i]() })
