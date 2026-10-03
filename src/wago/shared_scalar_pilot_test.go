@@ -33,6 +33,14 @@ func TestSharedScalarVersionsPressureAndJoins(t *testing.T) {
 		want func(uint64) uint64
 	}{
 		{"old_version", []byte{0x20, 0, 0x41, 0x23, 0x21, 0, 0x20, 0, 0x6a, 0x0b}, func(x uint64) uint64 { return uint64(uint32(x + 35)) }},
+		{"blocks_keep_deferred_versions", []byte{0x20, 0, 0x41, 2, 0x6a, 0x02, 0x7f, 0x02, 0x7f, 0x41, 7, 0x21, 0, 0x20, 0, 0x41, 3, 0x6a, 0x0b, 0x0b, 0x6a, 0x0b}, func(x uint64) uint64 { return uint64(uint32(x + 12)) }},
+		{"block_around_if_join", []byte{0x20, 0, 0x02, 0x7f, 0x20, 0, 0x04, 0x7f, 0x41, 7, 0x21, 0, 0x20, 0, 0x05, 0x41, 9, 0x21, 0, 0x20, 0, 0x0b, 0x0b, 0x20, 0, 0x6a, 0x6a, 0x0b}, func(x uint64) uint64 {
+			v := uint64(7)
+			if uint32(x) == 0 {
+				v = 9
+			}
+			return uint64(uint32(x + 2*v))
+		}},
 		{"pressure_join", join, func(x uint64) uint64 {
 			v := uint64(7)
 			if uint32(x) == 0 {

@@ -634,11 +634,13 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 					s.materialize(cond, 0)
 				}
 			}
-			s.canonicalize()
 			fr.base = len(s.stack)
 			if fr.isIf {
+				s.canonicalize()
 				fr.falseSite = s.condition(cond)
 			}
+			// Admission excludes br/br_if/br_table. A plain block therefore has
+			// only fallthrough edges and needs no physical state agreement.
 			s.controls = append(s.controls, fr)
 		case 0x05:
 			i := len(s.controls) - 1
@@ -667,8 +669,8 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			}
 			i := len(s.controls) - 1
 			fr := s.controls[i]
-			s.canonicalize()
 			if fr.isIf {
+				s.canonicalize()
 				site := fr.falseSite
 				if fr.hasElse {
 					site = fr.endSite
