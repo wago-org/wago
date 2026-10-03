@@ -28,6 +28,12 @@ func (f *fn) preloadLoopIntConsts(h *funcHintView) {
 	for i := 0; i < int(h.loopIntConsts.count) && i < len(f.iconsts); i++ {
 		reg := regNone
 		for _, candidate := range [...]Reg{R12, R13, R14, R15, R9, R10, R11, RDI, RSI} {
+			// Bulk lowerings use fixed pointer registers; table.copy also uses R9
+			// for its source descriptor. Persistent caches cannot share them.
+			if (candidate == RDI || candidate == RSI) && h.flags.has(hintUsesBulkMem|hintMutatesTable) ||
+				candidate == R9 && h.flags.has(hintMutatesTable) {
+				continue
+			}
 			// Loop interrupt polls use RSI as fixed scratch after the operand stack
 			// is flushed. It cannot simultaneously hold function-persistent state.
 			if f.interruptible && candidate == RSI {
