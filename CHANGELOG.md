@@ -76,6 +76,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   `try_table` levels and hold up to 1,024 `catch_ref`/`catch_all_ref`
   results (previously 4 each, reserved in every function of a module with
   tags).
+- Exception handler and rooted-catch indexes retain their full admitted range
+  above 256 records on AMD64 and ARM64.
 - Exception tags may carry up to eight values (previously two), including GC
   references such as structs, arrays, `i31ref`, `anyref` and `externref`.
 - AMD64 `catch_all_ref` catches exceptions of every tag, not only the first
