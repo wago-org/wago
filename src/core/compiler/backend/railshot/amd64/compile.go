@@ -469,6 +469,9 @@ type fn struct {
 	// CALL-FREE loop are pinned there (the spill/reload lands on out-of-loop calls).
 	// regNone when g is not pinned. See globals.go / assignPinnedLocals.
 	globalReg []Reg // high bit records a dirty value pin; physical registers are below 16
+	// Keep synchronization work bounded by physical pins, in global-index order.
+	globalPinIndices [16]uint32
+	nGlobalPins      uint8
 
 	// moduleGlobals is the bounded module-owned set of MODULE-pinned globals. Every
 	// function holds each global's live value in the SAME reserved register, making it a
@@ -4106,6 +4109,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		idx := int(c.idx)
 		if c.global {
 			f.globalReg[idx] = gpPool[k]
+			f.recordGlobalPin(uint32(idx))
 			f.stats.addPinnedGlobalValue()
 		} else {
 			f.locals[idx].reg = gpPool[k]
@@ -4182,6 +4186,7 @@ func globalRegIsDirty(state Reg) bool {
 }
 
 func (f *fn) initGlobalRegs(n int) {
+	f.nGlobalPins = 0
 	if cap(f.globalReg) < n {
 		f.globalReg = make([]Reg, n)
 	} else {
@@ -4205,7 +4210,28 @@ func (f *fn) installModuleGlobals(pins []moduleGlobalPin) {
 	f.moduleGlobals = pins
 	for _, p := range pins {
 		f.globalReg[p.global] = p.reg
+		f.recordGlobalPin(p.global)
 	}
+}
+
+// recordGlobalPin preserves the dense array's emission order without scanning
+// unpinned globals at every call, return, trap, and GC helper. There can be at
+// most one global value per physical GP register. Reinstalling a pin is harmless.
+func (f *fn) recordGlobalPin(global uint32) {
+	n := int(f.nGlobalPins)
+	at := 0
+	for at < n && f.globalPinIndices[at] < global {
+		at++
+	}
+	if at < n && f.globalPinIndices[at] == global {
+		return
+	}
+	if n == len(f.globalPinIndices) {
+		panic("amd64: global pins exceed physical registers")
+	}
+	copy(f.globalPinIndices[at+1:n+1], f.globalPinIndices[at:n])
+	f.globalPinIndices[at] = global
+	f.nGlobalPins++
 }
 
 func (f *fn) isModuleGlobal(g int) bool {
@@ -4223,7 +4249,9 @@ func (f *fn) isModuleGlobal(g int) bool {
 // offset-0 prologue reloads). Register-ABI calls and returns carry nothing.
 // scratch must be a register safe to clobber at the call site.
 func (f *fn) deriveModuleGlobals() {
-	for g, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		g := int(global)
+		state := f.globalReg[g]
 		reg := globalRegValue(state)
 		if reg == regNone || !f.isModuleGlobal(g) {
 			continue
@@ -4245,7 +4273,9 @@ func (f *fn) storeModuleGlobals(scratch Reg) {
 // Trap exits also persist dirty function-local value pins. The caller supplies
 // a terminal-path scratch register; allocator state need not match a trap site.
 func (f *fn) storeGlobalPins(scratch Reg, valuePins bool) {
-	for g, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		g := int(global)
+		state := f.globalReg[g]
 		reg := globalRegValue(state)
 		if reg == regNone || (!f.isModuleGlobal(g) && (!valuePins || !globalRegIsDirty(state))) {
 			continue
@@ -4265,7 +4295,9 @@ func (f *fn) storeGlobalPins(scratch Reg, valuePins bool) {
 // Used in the prologue and to reload after a call (the callee may have changed the
 // shared global). A no-op when no globals are pinned.
 func (f *fn) derivePinnedGlobals() {
-	for g, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		g := int(global)
+		state := f.globalReg[g]
 		reg := globalRegValue(state)
 		if reg == regNone || f.isModuleGlobal(g) {
 			continue
@@ -4286,7 +4318,9 @@ func (f *fn) derivePinnedGlobals() {
 // observes the current value. Avoids RAX (the int result register) for the
 // cell-address scratch.
 func (f *fn) storePinnedGlobals(dirtyOnly bool) {
-	for g, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		g := int(global)
+		state := f.globalReg[g]
 		reg := globalRegValue(state)
 		if reg == regNone || f.isModuleGlobal(g) || (dirtyOnly && !globalRegIsDirty(state)) {
 			continue

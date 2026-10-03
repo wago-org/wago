@@ -231,7 +231,9 @@ func compactTrapBranch(branch int) uint32 {
 // pins before the common trap exit writes them back.
 func (f *fn) prepareEntryTrapPins() {
 	needed := false
-	for g, state := range f.globalReg {
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		g := int(global)
+		state := f.globalReg[g]
 		needed = needed || (!f.isModuleGlobal(g) && globalRegIsDirty(state))
 	}
 	if !needed {
