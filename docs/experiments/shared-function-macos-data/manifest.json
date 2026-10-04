@@ -1,0 +1,74 @@
+{
+  "architecture": "arm64",
+  "auto_procs": 16,
+  "binaries": {
+    "main-checked": {
+      "bytes": 20079266,
+      "sha256": "c8010a28f72b2f12f44b832051ea9afb2209b50babb6af710aec30d0a69a56e3"
+    },
+    "main-diagnostic": {
+      "bytes": 20259586,
+      "sha256": "d6de5dfcc18090e74aa3e6ee9c9d1d5edd014af25b2da2d7c032b8ac7614299f"
+    },
+    "main-runtime": {
+      "bytes": 8068690,
+      "sha256": "92db221109eb3f127f9c523b25a3783a518e9d5ceb1ceab3ab908f15714438b2"
+    },
+    "main-suite": {
+      "bytes": 20140322,
+      "sha256": "cbccfd5ea58d00a33927fbc606affda5aab11ff10fabb42cebdacf179b97eff2"
+    },
+    "pr-checked": {
+      "bytes": 20168082,
+      "sha256": "0a0de031bd4404a5f39874c2ec3228bf880fb810aa5ecde47e3c14319a67ba12"
+    },
+    "pr-diagnostic": {
+      "bytes": 20348402,
+      "sha256": "1a97cbaca595bd7f9d6e9fa5ccecc0835326fb78fd30ddcd6a6c680920ef1d0a"
+    },
+    "pr-runtime": {
+      "bytes": 8119762,
+      "sha256": "9cc1d7a1551f45129a725b59ef72ad6ee7666deb19b671b729cb3ce13638fd44"
+    },
+    "pr-suite": {
+      "bytes": 20229138,
+      "sha256": "ed3c1e8e1ef1abcd0fb2e00fd838d7d5561cd2d63e061df26b709d372753e027"
+    }
+  },
+  "commits": {
+    "main": "da456bc1c00c89e42cbfec54d4d93300d8601d85",
+    "pr": "ba13d00926a70976c5be5f6375a244e0e631fe5f"
+  },
+  "host": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O"
+  },
+  "origin": "git@github.com:wago-org/wago",
+  "production": {
+    "CGO_ENABLED": 0,
+    "GOAMD64": "v1",
+    "GOARM64": "v8.0",
+    "GOGC": 100,
+    "GOMEMLIMIT": "off",
+    "bounds": "explicit default",
+    "build_tags": [],
+    "cache": "direct compilation, no code cache",
+    "cpu_affinity": "unavailable on macOS; scheduler chooses cores",
+    "optimization": "default"
+  },
+  "script_sha256": "fe65c65f8b0121de1e4a1e6f1e8c34cc9927330ea77c60eaead61f267404f65b",
+  "settings": {
+    "auto_procs": null,
+    "benchtime": "200ms",
+    "blocks": 3,
+    "exec_benchtime": "1s",
+    "full_tests": false,
+    "go_toolchain": "go1.27.1",
+    "output": "/Users/work/Code/Wago/pr802-results-20261004",
+    "pr_ref": "refs/pull/802/head",
+    "prepare_only": false,
+    "quick": false,
+    "repo": null
+  },
+  "status": "complete"
+}

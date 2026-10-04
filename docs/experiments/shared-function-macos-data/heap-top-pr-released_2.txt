@@ -1,0 +1,19 @@
+File: pr-suite
+Type: inuse_space
+Time: 2026-10-04 14:21:06 EDT
+Showing nodes accounting for 1072.75kB, 100% of 1072.75kB total
+      flat  flat%   sum%        cum   cum%
+  536.37kB 50.00% 50.00%   536.37kB 50.00%  github.com/wago-org/wago/src/core/runtime.(*CodeBuffer).growPreserving
+  536.37kB 50.00%   100%   536.37kB 50.00%  github.com/wago-org/wago/src/core/runtime.NewHeapCodeBuffer
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/bench/suite.TestSharingMemory
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.CompileModuleWith
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.compileModuleWith
+         0     0%   100%   536.37kB 50.00%  github.com/wago-org/wago/src/core/runtime.(*CodeBuffer).AppendTail
+         0     0%   100%   536.37kB 50.00%  github.com/wago-org/wago/src/core/runtime.(*CodeBuffer).grow (inline)
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/src/wago.(*PreparedCompile).Compile
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/src/wago.(*Runtime).Compile (inline)
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/src/wago.(*Runtime).compile
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/src/wago.compileWithConfigAndInstructions
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/src/wago.compileWithFrontendFeaturesAndInstructions
+         0     0%   100%  1072.75kB   100%  github.com/wago-org/wago/src/wago.railshotCompileModuleWith (inline)
+         0     0%   100%  1072.75kB   100%  testing.tRunner

@@ -1,5 +1,7 @@
 # Wago shared-function experiment: regression mitigation
 
+Additional native target evidence: [macOS ARM64 qualification](shared-function-macos-qualification.md). The Linux measurements below are preserved; the Mac report adds measured results and identifies its remaining compile/code-size regressions.
+
 **Recommendation: keep the revised bounded pilot for review.** The former join and two-argument leaf execution spikes are reduced to roughly 1–1.5% relative median differences from main, with uncertainty spanning zero. The 256-local compile probe is faster and retains its allocation improvement. Default-policy benchmark-process RSS remains higher: do not claim a uniform RSS improvement. A separately measured per-process huge-page policy removes the large memory spikes, but its execution tradeoff is inconclusive.
 
 This supersedes the performance verdict in [the previous qualification](shared-function-final-qualification.md), while preserving those measurements. PR #802 remains ready for review; no merge is part of this experiment.

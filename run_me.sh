@@ -116,6 +116,11 @@ def parse_benchmarks(text):
             raise RuntimeError('Missing timing: ' + line)
         yield row
 
+def benchmark_name(name):
+    # Go omits the CPU suffix at GOMAXPROCS=1. Preserve workload hyphens
+    # such as json-as, removing only an actual numeric CPU suffix.
+    return re.sub(r'-[0-9]+$', '', name)
+
 def interval(main, pr, rng):
     # Independent fresh processes are the resampling units, never Go iterations.
     ratios = []
@@ -205,7 +210,7 @@ class Experiment:
         self.run('git-init', ['git', 'init', '--bare', self.repo])
         self.run('git-remote', ['git', '--git-dir=' + str(self.repo), 'remote', 'add', 'origin', origin])
         self.run('git-fetch', ['git', '--git-dir=' + str(self.repo), 'fetch', '--no-tags', 'origin',
-                              '+refs/heads/main:refs/heads/main',
+                              '+' + self.args.main_ref + ':refs/heads/main',
                               '+' + self.args.pr_ref + ':refs/heads/pr802'])
         commits = {}
         for rev, ref in [('main', 'main'), ('pr', 'pr802')]:
@@ -371,7 +376,7 @@ class Experiment:
                 aggregated[rev][kind].append(text)
                 groups = {}
                 for row in rows:
-                    name = row['benchmark'].rsplit('-', 1)[0]
+                    name = benchmark_name(row['benchmark'])
                     if name.startswith(('BenchmarkSharingNative/', 'BenchmarkCompile/')):
                         groups.setdefault('AllNative', []).append(row['ns/op'])
                     if name.startswith('BenchmarkSharingNative/') and name.split('/')[1] in SYNTHETIC:
@@ -498,7 +503,8 @@ class Experiment:
                  '## Key timing rows', '', '| Workload | Main ns/op | PR ns/op | Change | Bootstrap 95% |',
                  '|---|---:|---:|---:|---|']
         for row in summary:
-            if row['metric'] == 'ns/op' and any(x in row['benchmark'] for x in ['/join-', '/tiny.add-', '/256-']):
+            if row['metric'] == 'ns/op' and benchmark_name(row['benchmark']) in (
+                    'BenchmarkSharingExec/join', 'BenchmarkExec/tiny.add', 'BenchmarkSharingZeroLocals/256'):
                 lines.append(f"| {row['benchmark']} | {row['main']:.2f} | {row['pr']:.2f} | {row['percent_delta']:+.2f}% | [{row['bootstrap_95_low']:+.2f}%, {row['bootstrap_95_high']:+.2f}%] |")
         lines += ['', '## Aggregate timings (benchstat)', '', '```',
                   (self.out / 'results/comparison-aggregates.text').read_text().strip(), '```', '',
@@ -577,6 +583,7 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--output', help='new results directory; default: unique directory under TMPDIR')
     parser.add_argument('--repo', help='fetch URL; default: this checkout origin')
+    parser.add_argument('--main-ref', default='refs/heads/main', help='main ref or frozen baseline commit to fetch')
     parser.add_argument('--pr-ref', default='refs/pull/802/head', help='remote PR/branch ref or commit to fetch')
     parser.add_argument('--go-toolchain', default='go1.27.1', help='one pinned toolchain for both builds')
     parser.add_argument('--blocks', type=int, default=3, help='ABBA fresh-process blocks per cohort (minimum 3)')
