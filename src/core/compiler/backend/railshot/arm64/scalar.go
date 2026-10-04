@@ -210,7 +210,8 @@ func (f *fn) Return(r uint8, w bool, slots int) {
 	}
 }
 
-func (f *fn) ScaledAdd(w bool, d, l, r, shift uint8) bool {
-	f.a.AddShifted(Reg(d), Reg(l), Reg(r), shift, w)
+func (f *fn) ScaledAdd(wide bool, d, l, r, shift uint8) bool {
+	// Shared width is is64; the encoder's final argument selects W registers.
+	f.a.AddShifted(Reg(d), Reg(l), Reg(r), shift, !wide)
 	return true
 }
