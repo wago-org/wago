@@ -1,0 +1,23 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                 │ EVIDENCE/spike-final/results/P-repeat-execution.txt │ EVIDENCE/spike-final/results/F-repeat-execution.txt │
+                 │                                                                     sec/op                                                                      │                                                          sec/op                                                            vs base              │
+SharingExec/join                                                                                                                                       18.00n ± 9%                                                                                                                 16.43n ± 4%  -8.72% (p=0.002 n=6)
+Exec/tiny.add                                                                                                                                          16.71n ± 1%                                                                                                                 15.73n ± 3%  -5.86% (p=0.002 n=6)
+geomean                                                                                                                                                17.34n                                                                                                                      16.07n       -7.31%
+
+                 │ EVIDENCE/spike-final/results/P-repeat-execution.txt │ EVIDENCE/spike-final/results/F-repeat-execution.txt │
+                 │                                                                      B/op                                                                       │                                                             B/op                                                              vs base           │
+SharingExec/join                                                                                                                                        0.000 ± 0%                                                                                                                     0.000 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal
+
+                 │ EVIDENCE/spike-final/results/P-repeat-execution.txt │ EVIDENCE/spike-final/results/F-repeat-execution.txt │
+                 │                                                                    allocs/op                                                                    │                                                          allocs/op                                                            vs base           │
+SharingExec/join                                                                                                                                        0.000 ± 0%                                                                                                                     0.000 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal
+
+              │ EVIDENCE/spike-final/results/P-repeat-execution.txt │ EVIDENCE/spike-final/results/F-repeat-execution.txt │
+              │                                                                   calls/batch                                                                   │                                                        calls/batch                                                         vs base              │
+Exec/tiny.add                                                                                                                                       123.3k ± 4%                                                                                                                 132.6k ± 3%  +7.50% (p=0.002 n=6)

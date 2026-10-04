@@ -1,0 +1,6 @@
+pkg: helper-derived-geomeans
+          │ EVIDENCE/spike-final/results/B-helper-aggregates.txt │ EVIDENCE/spike-final/results/F-helper-aggregates.txt │
+          │                                                                      sec/op                                                                      │                                                          sec/op                                                            vs base               │
+AllNative                                                                                                                                        70.17µ ± 3%                                                                                                                58.74µ ±  4%  -16.30% (p=0.002 n=6)
+AllFull                                                                                                                                          88.34µ ± 5%                                                                                                                76.08µ ± 10%  -13.88% (p=0.002 n=6)
+geomean                                                                                                                                          78.73µ                                                                                                                     66.85µ        -15.09%

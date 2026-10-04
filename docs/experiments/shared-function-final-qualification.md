@@ -1,5 +1,7 @@
 # Shared function compilation: rebased final qualification
 
+Latest qualification: [regression mitigation and final measurements](shared-function-regression-mitigation.md). The measurements below are preserved as the previous comparison.
+
 **Recommendation: keep the bounded pilot for review; make PR #802 ready as requested.** The 256-local allocation regression is reversed, and live-value reuse greatly reduces compiler scratch and allocation bytes. Process peak RSS is **not uniformly improved**: the benchmark executable still has a repeatable increase, while standalone runtime results have broad overlapping ranges. This is a measured experiment with remaining costs, not a claim that every workload or memory metric improves.
 
 This report supersedes the current recommendation in [the previous review report](shared-function-review-fixes.md). Historical samples and source hashes remain unchanged there and in [the initial A/B/C experiment](shared-function-compilation.md). Those pre-rebase timings are not evidence about this final branch.

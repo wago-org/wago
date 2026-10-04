@@ -1,0 +1,163 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+,EVIDENCE/spike-final/results/M-timing.txt,,EVIDENCE/spike-final/results/F-timing.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P
+SharingNative/small,1.0136000000000001e-05,6%,1.01145e-05,5%,~,p=0.818 n=6
+SharingNative/pressure,2.7658e-05,8%,2.0546000000000003e-05,8%,-25.71%,p=0.002 n=6
+SharingNative/join,1.1558500000000001e-05,9%,1.10695e-05,17%,~,p=0.589 n=6
+SharingNative/large,0.00020091850000000002,4%,0.000133988,14%,-33.31%,p=0.002 n=6
+SharingNative/deep,1.4647e-05,6%,1.10545e-05,5%,-24.53%,p=0.002 n=6
+SharingNative/locals,3.5544000000000004e-05,6%,2.0192e-05,10%,-43.19%,p=0.002 n=6
+SharingNative/many,0.0005918765,3%,0.0005582165,4%,-5.69%,p=0.004 n=6
+SharingNative/large_then_small,0.00084143,4%,0.0006698100000000001,3%,-20.40%,p=0.002 n=6
+SharingNative/fallback,1.0189e-05,12%,9.9895e-06,7%,~,p=0.485 n=6
+SharingFull/small,1.0173e-05,11%,9.9625e-06,19%,~,p=0.310 n=6
+SharingFull/pressure,3.413e-05,10%,2.79005e-05,11%,-18.25%,p=0.002 n=6
+SharingFull/join,1.2237000000000002e-05,9%,1.12985e-05,33%,~,p=0.093 n=6
+SharingFull/large,0.0002888245,38%,0.00025247050000000004,24%,-12.59%,p=0.041 n=6
+SharingFull/deep,1.8262000000000002e-05,54%,1.35265e-05,22%,-25.93%,p=0.009 n=6
+SharingFull/locals,4.88485e-05,19%,3.2626500000000003e-05,17%,-33.21%,p=0.002 n=6
+SharingFull/many,0.000850452,4%,0.0007849665000000001,10%,-7.70%,p=0.015 n=6
+SharingFull/large_then_small,0.001221439,13%,0.0010483915000000003,7%,-14.17%,p=0.002 n=6
+SharingFull/fallback,1.0630500000000001e-05,21%,1.1542000000000002e-05,20%,~,p=0.485 n=6
+SharingExec/small,1.6e-08,19%,1.704e-08,30%,~,p=0.699 n=6
+SharingExec/pressure,4.998e-08,11%,4.845e-08,6%,~,p=0.223 n=6
+SharingExec/join,1.6085e-08,6%,1.6570000000000002e-08,6%,~,p=0.240 n=6
+SharingExec/large,2.5625e-07,3%,2.5560000000000004e-07,4%,~,p=0.937 n=6
+SharingExec/deep,1.6104999999999998e-08,4%,1.595e-08,5%,~,p=0.937 n=6
+SharingExec/locals,8.569e-08,5%,4.216e-08,11%,-50.80%,p=0.002 n=6
+SharingExec/many,1.587e-08,22%,1.5795e-08,17%,~,p=0.727 n=6
+SharingExec/large_then_small,2.5179999999999997e-07,16%,2.5675e-07,8%,~,p=0.818 n=6
+SharingExec/fallback,1.612e-08,55%,1.7079999999999998e-08,20%,~,p=0.818 n=6
+SharingZeroLocals/1,1.1998e-05,17%,1.13865e-05,6%,~,p=0.180 n=6
+SharingZeroLocals/8,1.2057500000000001e-05,13%,1.1372e-05,9%,~,p=0.065 n=6
+SharingZeroLocals/64,1.4504e-05,14%,1.1844500000000002e-05,5%,-18.34%,p=0.002 n=6
+SharingZeroLocals/256,1.72505e-05,27%,1.4514500000000001e-05,7%,-15.86%,p=0.002 n=6
+Compile/tiny,1.3329e-05,22%,1.3303000000000001e-05,4%,~,p=0.937 n=6
+Compile/fib_rec,2.4087500000000003e-05,26%,2.31875e-05,9%,~,p=0.394 n=6
+Compile/many_funcs,0.00041608750000000005,19%,0.000381397,6%,-8.34%,p=0.009 n=6
+Compile/json-as,0.001313567,45%,0.001175721,17%,~,p=0.589 n=6
+Compile/xxhash,0.0001149825,35%,0.00011362900000000002,15%,~,p=0.699 n=6
+CompileFull/tiny,1.60765e-05,80%,1.7092e-05,28%,~,p=0.937 n=6
+CompileFull/fib_rec,2.4399e-05,110%,2.5825500000000002e-05,18%,~,p=0.937 n=6
+CompileFull/many_funcs,0.0005639375,81%,0.0005303555000000001,5%,-5.95%,p=0.026 n=6
+CompileFull/json-as,0.0017847135,25%,0.001800542,11%,~,p=0.818 n=6
+CompileFull/xxhash,0.00014326650000000003,37%,0.00014703950000000002,15%,~,p=0.937 n=6
+Exec/tiny.add,1.563e-08,45%,1.5750000000000002e-08,18%,~,p=0.855 n=6
+Exec/fib_rec.fib,0.000701084,20%,0.0006969955000000001,5%,~,p=0.937 n=6
+Exec/many_funcs.run,1.5675e-08,8%,1.574e-08,15%,~,p=0.619 n=6
+Exec/json-as.serializeN,2.3142500000000004e-05,5%,2.29805e-05,6%,~,p=0.818 n=6
+Exec/json-as.deserializeN,4.21345e-05,45%,4.2343500000000005e-05,2%,~,p=0.937 n=6
+Exec/xxhash.xxhash_run,0.0001256305,6%,0.00012580350000000002,3%,~,p=0.818 n=6
+geomean,1.0881229352523869e-05,,9.904850164327304e-06,,-8.97%,
+
+,EVIDENCE/spike-final/results/M-timing.txt,,EVIDENCE/spike-final/results/F-timing.txt,,,
+,B/op,CI,B/op,CI,vs base,P
+SharingNative/small,8248,0%,7536,0%,-8.63%,p=0.002 n=6
+SharingNative/pressure,19488,0%,10072,0%,-48.32%,p=0.002 n=6
+SharingNative/join,10152,0%,7936,0%,-21.83%,p=0.002 n=6
+SharingNative/large,228544,0%,9416,0%,-95.88%,p=0.002 n=6
+SharingNative/deep,11504,0%,8496,0%,-26.15%,p=0.002 n=6
+SharingNative/locals,29192,0%,14160,0%,-51.49%,p=0.002 n=6
+SharingNative/many,50600,0%,49888,0%,-1.41%,p=0.002 n=6
+SharingNative/large_then_small,275320,0%,56192,0%,-79.59%,p=0.002 n=6
+SharingNative/fallback,8248,0%,8504,0%,+3.10%,p=0.002 n=6
+SharingFull/small,15776,0%,15064,0%,-4.51%,p=0.002 n=6
+SharingFull/pressure,31449,0%,22033,0%,-29.94%,p=0.002 n=6
+SharingFull/join,17688,0%,15472,0%,-12.53%,p=0.002 n=6
+SharingFull/large,315927,0%,95523,0%,-69.76%,p=0.002 n=6
+SharingFull/deep,24961,0%,21953,0%,-12.05%,p=0.002 n=6
+SharingFull/locals,41242,0%,26217,0%,-36.43%,p=0.002 n=6
+SharingFull/many,243900,0%,243188,0%,-0.29%,p=0.002 n=6
+SharingFull/large_then_small,514234.5,0%,295103,0%,-42.61%,p=0.002 n=6
+SharingFull/fallback,15776,0%,16032,0%,+1.62%,p=0.002 n=6
+SharingExec/small,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/pressure,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/join,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/large,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/deep,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/locals,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/many,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/large_then_small,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/fallback,0,0%,0,0%,~,p=1.000 n=6
+SharingZeroLocals/1,8216,0%,7416,0%,-9.74%,p=0.002 n=6
+SharingZeroLocals/8,8360,0%,7544,0%,-9.76%,p=0.002 n=6
+SharingZeroLocals/64,9064,0%,8520,0%,-6.00%,p=0.002 n=6
+SharingZeroLocals/256,14569,0%,11976,0%,-17.80%,p=0.002 n=6
+Compile/tiny,8344,0%,8672,0%,+3.93%,p=0.002 n=6
+Compile/fib_rec,26792,0%,27048,0%,+0.96%,p=0.002 n=6
+Compile/many_funcs,69272,0%,69680,0%,+0.59%,p=0.002 n=6
+Compile/json-as,134624,0%,134880,0%,+0.19%,p=0.002 n=6
+Compile/xxhash,65720,0%,65976,0%,+0.39%,p=0.002 n=6
+CompileFull/tiny,18416,0%,18752,0%,+1.82%,p=0.002 n=6
+CompileFull/fib_rec,35497,0%,35753,0%,+0.72%,p=0.002 n=6
+CompileFull/many_funcs,179337,0%,179745,0%,+0.23%,p=0.002 n=6
+CompileFull/json-as,309673,0%,309930,0%,+0.08%,p=0.002 n=6
+CompileFull/xxhash,107228,0%,107500,0%,+0.25%,p=0.002 n=6
+geomean,,,,,-21.67%,
+
+,EVIDENCE/spike-final/results/M-timing.txt,,EVIDENCE/spike-final/results/F-timing.txt,,,
+,allocs/op,CI,allocs/op,CI,vs base,P
+SharingNative/small,21,0%,20,0%,-4.76%,p=0.002 n=6
+SharingNative/pressure,18,0%,23,0%,+27.78%,p=0.002 n=6
+SharingNative/join,26,0%,21,0%,-19.23%,p=0.002 n=6
+SharingNative/large,24,0%,18,0%,-25.00%,p=0.002 n=6
+SharingNative/deep,22,0%,21,0%,-4.55%,p=0.002 n=6
+SharingNative/locals,21,0%,22,0%,+4.76%,p=0.002 n=6
+SharingNative/many,24,0%,23,0%,-4.17%,p=0.002 n=6
+SharingNative/large_then_small,30,0%,24,0%,-20.00%,p=0.002 n=6
+SharingNative/fallback,21,0%,21,0%,~,p=1.000 n=6
+SharingFull/small,74,0%,73,0%,-1.35%,p=0.002 n=6
+SharingFull/pressure,75,0%,80,0%,+6.67%,p=0.002 n=6
+SharingFull/join,80,0%,75,0%,-6.25%,p=0.002 n=6
+SharingFull/large,87,0%,81,0%,-6.90%,p=0.002 n=6
+SharingFull/deep,83,0%,82,0%,-1.20%,p=0.002 n=6
+SharingFull/locals,73,0%,74,0%,+1.37%,p=0.002 n=6
+SharingFull/many,588,0%,587,0%,-0.17%,p=0.002 n=6
+SharingFull/large_then_small,595,0%,589,0%,-1.01%,p=0.002 n=6
+SharingFull/fallback,74,0%,74,0%,~,p=1.000 n=6
+SharingExec/small,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/pressure,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/join,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/large,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/deep,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/locals,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/many,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/large_then_small,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/fallback,0,0%,0,0%,~,p=1.000 n=6
+SharingZeroLocals/1,20,0%,20,0%,~,p=1.000 n=6
+SharingZeroLocals/8,22,0%,20,0%,-9.09%,p=0.002 n=6
+SharingZeroLocals/64,19,0%,17,0%,-10.53%,p=0.002 n=6
+SharingZeroLocals/256,16,0%,17,0%,+6.25%,p=0.002 n=6
+Compile/tiny,22,0%,24,0%,+9.09%,p=0.002 n=6
+Compile/fib_rec,50,0%,50,0%,~,p=1.000 n=6
+Compile/many_funcs,31,0%,35,0%,+12.90%,p=0.002 n=6
+Compile/json-as,125,0%,125,0%,~,p=1.000 n=6
+Compile/xxhash,58,0%,58,0%,~,p=1.000 n=6
+CompileFull/tiny,91,0%,93,0%,+2.20%,p=0.002 n=6
+CompileFull/fib_rec,107,0%,107,0%,~,p=1.000 n=6
+CompileFull/many_funcs,85,0%,89,0%,+4.71%,p=0.002 n=6
+CompileFull/json-as,399,0%,399,0%,~,p=1.000 n=6
+CompileFull/xxhash,146,0%,146,0%,~,p=1.000 n=6
+geomean,,,,,-1.30%,
+
+,EVIDENCE/spike-final/results/M-timing.txt,,EVIDENCE/spike-final/results/F-timing.txt,,,
+,code-B,CI,code-B,CI,vs base,P
+CompileFull/tiny,96,0%,96,0%,~,p=1.000 n=6
+CompileFull/fib_rec,320,0%,320,0%,~,p=1.000 n=6
+CompileFull/many_funcs,7771,0%,8363,0%,+7.62%,p=0.002 n=6
+CompileFull/json-as,67398,0%,67398,0%,~,p=1.000 n=6
+CompileFull/xxhash,3301,0%,3301,0%,~,p=1.000 n=6
+geomean,2213.289026465295,,2246.0280117808834,,+1.48%,
+
+,EVIDENCE/spike-final/results/M-timing.txt,,EVIDENCE/spike-final/results/F-timing.txt,,,
+,calls/batch,CI,calls/batch,CI,vs base,P
+Exec/tiny.add,132211.5,6%,132116,17%,~,p=1.000 n=6
+Exec/fib_rec.fib,3,0%,3,33%,~,p=1.000 n=6
+Exec/many_funcs.run,131219,3%,130597,13%,~,p=0.394 n=6
+Exec/json-as.serializeN,93,10%,93,4%,~,p=0.907 n=6
+Exec/json-as.deserializeN,59.5,14%,56,14%,~,p=0.463 n=6
+Exec/xxhash.xxhash_run,16.5,3%,16,6%,~,p=1.000 n=6
+geomean,410.0264233831496,,403.4596786950386,,-1.60%,

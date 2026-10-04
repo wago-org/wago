@@ -1,0 +1,247 @@
+[
+  {
+    "name": "arm64-backend-ordinary-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-backend-ordinary.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "arm64-backend-ordinary",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-backend-ordinary.test",
+      "-test.run=TestScalar|TestShared",
+      "-test.v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "darwin-amd64-suite-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/darwin-amd64-suite-ordinary.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "darwin-amd64-amd64-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/darwin-amd64-amd64-ordinary.test",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "darwin-arm64-suite-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/darwin-arm64-suite-ordinary.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "darwin-arm64-arm64-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/darwin-arm64-arm64-ordinary.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "windows-amd64-suite-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/windows-amd64-suite-ordinary.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "windows-amd64-amd64-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/windows-amd64-amd64-ordinary.test",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "windows-arm64-suite-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/windows-arm64-suite-ordinary.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "windows-arm64-arm64-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/windows-arm64-arm64-ordinary.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "arm64-backend-checked-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-backend-checked.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "arm64-backend-checked",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-backend-checked.test",
+      "-test.run=TestScalar|TestShared",
+      "-test.v"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "darwin-amd64-suite-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/darwin-amd64-suite-checked.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "darwin-amd64-amd64-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/darwin-amd64-amd64-checked.test",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "darwin-arm64-suite-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/darwin-arm64-suite-checked.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "darwin-arm64-arm64-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/darwin-arm64-arm64-checked.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "windows-amd64-suite-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/windows-amd64-suite-checked.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "windows-amd64-amd64-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/windows-amd64-amd64-checked.test",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "windows-arm64-suite-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/windows-arm64-suite-checked.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "windows-arm64-arm64-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/windows-arm64-arm64-checked.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "exit": 0
+  }
+]

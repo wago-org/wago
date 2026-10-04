@@ -1,0 +1,43 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+,EVIDENCE/spike-final/results/M-workers.txt,,EVIDENCE/spike-final/results/P-workers.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P
+CompileFullWorkers/tiny/p1-4,2.3402000000000004e-05,19%,2.2412e-05,7%,~,p=0.485 n=6
+CompileFullWorkers/tiny/auto-4,2.42075e-05,7%,2.2537e-05,12%,-6.90%,p=0.026 n=6
+CompileFullWorkers/many_funcs/p1-4,0.0005805055,9%,0.0005390830000000001,8%,~,p=0.180 n=6
+CompileFullWorkers/many_funcs/auto-4,0.000590055,9%,0.000569179,29%,~,p=0.132 n=6
+CompileFullWorkers/json-as/p1-4,0.0017412715000000001,7%,0.0015692735,9%,-9.88%,p=0.015 n=6
+CompileFullWorkers/json-as/auto-4,0.0016461345000000002,47%,0.0016425905,14%,~,p=0.937 n=6
+geomean,0.0002867734402582691,,0.00027138438898152695,,-5.37%,
+
+,EVIDENCE/spike-final/results/M-workers.txt,,EVIDENCE/spike-final/results/P-workers.txt,,,
+,code-B,CI,code-B,CI,vs base,P
+CompileFullWorkers/tiny/p1-4,96,0%,102,0%,+6.25%,p=0.002 n=6
+CompileFullWorkers/tiny/auto-4,96,0%,102,0%,+6.25%,p=0.002 n=6
+CompileFullWorkers/many_funcs/p1-4,7771,0%,8363,0%,+7.62%,p=0.002 n=6
+CompileFullWorkers/many_funcs/auto-4,7771,0%,8363,0%,+7.62%,p=0.002 n=6
+CompileFullWorkers/json-as/p1-4,67398,0%,67398,0%,~,p=1.000 n=6
+CompileFullWorkers/json-as/auto-4,67398,0%,67398,0%,~,p=1.000 n=6
+geomean,3690.895226862312,,3859.547817398687,,+4.57%,
+
+,EVIDENCE/spike-final/results/M-workers.txt,,EVIDENCE/spike-final/results/P-workers.txt,,,
+,B/op,CI,B/op,CI,vs base,P
+CompileFullWorkers/tiny/p1-4,18277,0%,17613,0%,-3.63%,p=0.002 n=6
+CompileFullWorkers/tiny/auto-4,18276,0%,17612,0%,-3.63%,p=0.002 n=6
+CompileFullWorkers/many_funcs/p1-4,179230,0%,179635,0%,+0.23%,p=0.002 n=6
+CompileFullWorkers/many_funcs/auto-4,300302.5,0%,252871.5,4%,-15.79%,p=0.002 n=6
+CompileFullWorkers/json-as/p1-4,309598.5,0%,309851,0%,+0.08%,p=0.002 n=6
+CompileFullWorkers/json-as/auto-4,682513,2%,667757.5,1%,-2.16%,p=0.009 n=6
+geomean,124913.94228535256,,119522.79908624169,,-4.32%,
+
+,EVIDENCE/spike-final/results/M-workers.txt,,EVIDENCE/spike-final/results/P-workers.txt,,,
+,allocs/op,CI,allocs/op,CI,vs base,P
+CompileFullWorkers/tiny/p1-4,90,0%,91,0%,+1.11%,p=0.002 n=6
+CompileFullWorkers/tiny/auto-4,90,0%,91,0%,+1.11%,p=0.002 n=6
+CompileFullWorkers/many_funcs/p1-4,84,0%,88,0%,+4.76%,p=0.002 n=6
+CompileFullWorkers/many_funcs/auto-4,141,1%,141,5%,~,p=0.455 n=6
+CompileFullWorkers/json-as/p1-4,398,0%,398,0%,~,p=1.000 n=6
+CompileFullWorkers/json-as/auto-4,604,5%,606.5,2%,~,p=1.000 n=6
+geomean,168.71378604655035,,170.77189897761835,,+1.22%,

@@ -1,0 +1,317 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   22886	     10595 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingNative/pressure      	   10000	     29998 ns/op	   19488 B/op	      18 allocs/op
+BenchmarkSharingNative/join          	   19090	     12635 ns/op	   10152 B/op	      26 allocs/op
+BenchmarkSharingNative/large         	     996	    209189 ns/op	  228544 B/op	      24 allocs/op
+BenchmarkSharingNative/deep          	   15438	     15311 ns/op	   11504 B/op	      22 allocs/op
+BenchmarkSharingNative/locals        	    6843	     37513 ns/op	   29192 B/op	      21 allocs/op
+BenchmarkSharingNative/many          	     416	    609244 ns/op	   50600 B/op	      24 allocs/op
+BenchmarkSharingNative/large_then_small         	     274	    876808 ns/op	  275320 B/op	      30 allocs/op
+BenchmarkSharingNative/fallback                 	   22930	     10870 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingFull/small                      	   18931	     11331 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingFull/pressure                   	    5683	     37460 ns/op	   31449 B/op	      75 allocs/op
+BenchmarkSharingFull/join                       	   17180	     13376 ns/op	   17688 B/op	      80 allocs/op
+BenchmarkSharingFull/large                      	     777	    301664 ns/op	  315927 B/op	      87 allocs/op
+BenchmarkSharingFull/deep                       	   10000	     20482 ns/op	   24961 B/op	      83 allocs/op
+BenchmarkSharingFull/locals                     	    3555	     58248 ns/op	   41242 B/op	      73 allocs/op
+BenchmarkSharingFull/many                       	     250	    882915 ns/op	  243900 B/op	     588 allocs/op
+BenchmarkSharingFull/large_then_small           	     184	   1302877 ns/op	  514234 B/op	     595 allocs/op
+BenchmarkSharingFull/fallback                   	   17020	     12400 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingExec/small                      	14772270	        17.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure                   	 4486348	        54.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join                       	14613493	        16.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large                      	  909500	       256.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/deep                       	15356259	        16.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals                     	 2742295	        90.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many                       	14263354	        19.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small           	  881307	       293.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/fallback                   	11514334	        25.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingZeroLocals/1                    	   18238	     13994 ns/op	    8216 B/op	      20 allocs/op
+BenchmarkSharingZeroLocals/8                    	   16669	     13639 ns/op	    8360 B/op	      22 allocs/op
+BenchmarkSharingZeroLocals/64                   	   14832	     16478 ns/op	    9064 B/op	      19 allocs/op
+BenchmarkSharingZeroLocals/256                  	   10000	     21993 ns/op	   14569 B/op	      16 allocs/op
+BenchmarkCompile/tiny                           	   15723	     16257 ns/op	    8344 B/op	      22 allocs/op
+BenchmarkCompile/fib_rec                        	    8156	     30408 ns/op	   26792 B/op	      50 allocs/op
+BenchmarkCompile/many_funcs                     	     532	    495977 ns/op	   69272 B/op	      31 allocs/op
+BenchmarkCompile/json-as                        	     150	   1907065 ns/op	  134624 B/op	     125 allocs/op
+BenchmarkCompile/xxhash                         	    1672	    155182 ns/op	   65720 B/op	      58 allocs/op
+BenchmarkCompileFull/tiny                       	    9540	     29013 ns/op	        96.00 code-B	   18416 B/op	      91 allocs/op
+BenchmarkCompileFull/fib_rec                    	    5592	     39354 ns/op	       320.0 code-B	   35497 B/op	     107 allocs/op
+BenchmarkCompileFull/many_funcs                 	     236	   1023421 ns/op	      7771 code-B	  179337 B/op	      85 allocs/op
+BenchmarkCompileFull/json-as                    	      92	   2235992 ns/op	     67398 code-B	  309673 B/op	     399 allocs/op
+BenchmarkCompileFull/xxhash                     	    1394	    159947 ns/op	      3301 code-B	  107228 B/op	     146 allocs/op
+BenchmarkExec/tiny.add                          	     100	        22.67 ns/op	    131135 calls/batch
+BenchmarkExec/fib_rec.fib                       	     100	    708370 ns/op	         3.000 calls/batch
+BenchmarkExec/many_funcs.run                    	     100	        15.99 ns/op	    129142 calls/batch
+BenchmarkExec/json-as.serializeN                	     100	     24364 ns/op	       100.0 calls/batch
+BenchmarkExec/json-as.deserializeN              	     100	     43337 ns/op	        54.00 calls/batch
+BenchmarkExec/xxhash.xxhash_run                 	     100	    125829 ns/op	        17.00 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   26298	      9560 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingNative/pressure      	   10000	     26921 ns/op	   19488 B/op	      18 allocs/op
+BenchmarkSharingNative/join          	   21976	     10856 ns/op	   10152 B/op	      26 allocs/op
+BenchmarkSharingNative/large         	    1166	    196362 ns/op	  228544 B/op	      24 allocs/op
+BenchmarkSharingNative/deep          	   17444	     13806 ns/op	   11504 B/op	      22 allocs/op
+BenchmarkSharingNative/locals        	    6800	     35399 ns/op	   29192 B/op	      21 allocs/op
+BenchmarkSharingNative/many          	     465	    594670 ns/op	   50600 B/op	      24 allocs/op
+BenchmarkSharingNative/large_then_small         	     285	    837441 ns/op	  275320 B/op	      30 allocs/op
+BenchmarkSharingNative/fallback                 	   24014	     10147 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingFull/small                      	   23538	     10083 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingFull/pressure                   	    6700	     33578 ns/op	   31449 B/op	      75 allocs/op
+BenchmarkSharingFull/join                       	   20037	     11888 ns/op	   17688 B/op	      80 allocs/op
+BenchmarkSharingFull/large                      	     794	    279314 ns/op	  315927 B/op	      87 allocs/op
+BenchmarkSharingFull/deep                       	   14509	     16344 ns/op	   24961 B/op	      83 allocs/op
+BenchmarkSharingFull/locals                     	    4654	     44875 ns/op	   41242 B/op	      73 allocs/op
+BenchmarkSharingFull/many                       	     294	    814630 ns/op	  243900 B/op	     588 allocs/op
+BenchmarkSharingFull/large_then_small           	     211	   1148231 ns/op	  514235 B/op	     595 allocs/op
+BenchmarkSharingFull/fallback                   	   24742	      9701 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingExec/small                      	15316670	        15.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure                   	 4981160	        48.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join                       	15132015	        15.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large                      	  962059	       248.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/deep                       	15407421	        15.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals                     	 2860905	        85.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many                       	15500058	        15.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small           	  910430	       248.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/fallback                   	15094999	        16.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingZeroLocals/1                    	   21495	     11622 ns/op	    8216 B/op	      20 allocs/op
+BenchmarkSharingZeroLocals/8                    	   20377	     11699 ns/op	    8360 B/op	      22 allocs/op
+BenchmarkSharingZeroLocals/64                   	   15793	     14895 ns/op	    9064 B/op	      19 allocs/op
+BenchmarkSharingZeroLocals/256                  	   13705	     16796 ns/op	   14569 B/op	      16 allocs/op
+BenchmarkCompile/tiny                           	   18726	     13237 ns/op	    8344 B/op	      22 allocs/op
+BenchmarkCompile/fib_rec                        	   10000	     24287 ns/op	   26792 B/op	      50 allocs/op
+BenchmarkCompile/many_funcs                     	     559	    413814 ns/op	   69272 B/op	      31 allocs/op
+BenchmarkCompile/json-as                        	     199	   1158378 ns/op	  134624 B/op	     125 allocs/op
+BenchmarkCompile/xxhash                         	    2127	    112492 ns/op	   65720 B/op	      58 allocs/op
+BenchmarkCompileFull/tiny                       	   15742	     14705 ns/op	        96.00 code-B	   18416 B/op	      91 allocs/op
+BenchmarkCompileFull/fib_rec                    	    9490	     23229 ns/op	       320.0 code-B	   35497 B/op	     107 allocs/op
+BenchmarkCompileFull/many_funcs                 	     420	    544839 ns/op	      7771 code-B	  179337 B/op	      85 allocs/op
+BenchmarkCompileFull/json-as                    	     135	   1724965 ns/op	     67398 code-B	  309674 B/op	     399 allocs/op
+BenchmarkCompileFull/xxhash                     	    1464	    140652 ns/op	      3301 code-B	  107228 B/op	     146 allocs/op
+BenchmarkExec/tiny.add                          	     100	        15.87 ns/op	    132039 calls/batch
+BenchmarkExec/fib_rec.fib                       	     100	    719460 ns/op	         3.000 calls/batch
+BenchmarkExec/many_funcs.run                    	     100	        15.85 ns/op	    130960 calls/batch
+BenchmarkExec/json-as.serializeN                	     100	     23046 ns/op	        94.00 calls/batch
+BenchmarkExec/json-as.deserializeN              	     100	     41935 ns/op	        61.00 calls/batch
+BenchmarkExec/xxhash.xxhash_run                 	     100	    123688 ns/op	        17.00 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   25657	      9585 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingNative/pressure      	    9760	     26567 ns/op	   19488 B/op	      18 allocs/op
+BenchmarkSharingNative/join          	   21733	     11416 ns/op	   10152 B/op	      26 allocs/op
+BenchmarkSharingNative/large         	    1047	    194929 ns/op	  228544 B/op	      24 allocs/op
+BenchmarkSharingNative/deep          	   17535	     14491 ns/op	   11504 B/op	      22 allocs/op
+BenchmarkSharingNative/locals        	    7368	     34088 ns/op	   29192 B/op	      21 allocs/op
+BenchmarkSharingNative/many          	     435	    582219 ns/op	   50600 B/op	      24 allocs/op
+BenchmarkSharingNative/large_then_small         	     282	    816544 ns/op	  275320 B/op	      30 allocs/op
+BenchmarkSharingNative/fallback                 	   24958	      9928 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingFull/small                      	   22579	     10207 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingFull/pressure                   	    6339	     33289 ns/op	   31449 B/op	      75 allocs/op
+BenchmarkSharingFull/join                       	   20422	     11497 ns/op	   17688 B/op	      80 allocs/op
+BenchmarkSharingFull/large                      	     855	    277910 ns/op	  315927 B/op	      87 allocs/op
+BenchmarkSharingFull/deep                       	   14236	     16399 ns/op	   24961 B/op	      83 allocs/op
+BenchmarkSharingFull/locals                     	    4561	     45461 ns/op	   41242 B/op	      73 allocs/op
+BenchmarkSharingFull/many                       	     294	    813879 ns/op	  243899 B/op	     588 allocs/op
+BenchmarkSharingFull/large_then_small           	     206	   1137321 ns/op	  514235 B/op	     595 allocs/op
+BenchmarkSharingFull/fallback                   	   24559	      9687 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingExec/small                      	15539613	        15.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure                   	 4969513	        47.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join                       	15209809	        15.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large                      	  966526	       249.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/deep                       	15756333	        15.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals                     	 2855444	        84.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many                       	15529771	        15.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small           	  960512	       248.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/fallback                   	15276798	        15.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingZeroLocals/1                    	   22705	     10993 ns/op	    8216 B/op	      20 allocs/op
+BenchmarkSharingZeroLocals/8                    	   21278	     11382 ns/op	    8360 B/op	      22 allocs/op
+BenchmarkSharingZeroLocals/64                   	   17995	     12861 ns/op	    9064 B/op	      19 allocs/op
+BenchmarkSharingZeroLocals/256                  	   13894	     16775 ns/op	   14569 B/op	      16 allocs/op
+BenchmarkCompile/tiny                           	   19026	     12643 ns/op	    8344 B/op	      22 allocs/op
+BenchmarkCompile/fib_rec                        	   10000	     22545 ns/op	   26792 B/op	      50 allocs/op
+BenchmarkCompile/many_funcs                     	     590	    401548 ns/op	   69272 B/op	      31 allocs/op
+BenchmarkCompile/json-as                        	     214	   1135199 ns/op	  134624 B/op	     125 allocs/op
+BenchmarkCompile/xxhash                         	    2379	    111694 ns/op	   65720 B/op	      58 allocs/op
+BenchmarkCompileFull/tiny                       	   14918	     15134 ns/op	        96.00 code-B	   18416 B/op	      91 allocs/op
+BenchmarkCompileFull/fib_rec                    	   10000	     22843 ns/op	       320.0 code-B	   35497 B/op	     107 allocs/op
+BenchmarkCompileFull/many_funcs                 	     448	    536152 ns/op	      7771 code-B	  179337 B/op	      85 allocs/op
+BenchmarkCompileFull/json-as                    	     141	   1687489 ns/op	     67398 code-B	  309673 B/op	     399 allocs/op
+BenchmarkCompileFull/xxhash                     	    1542	    134878 ns/op	      3301 code-B	  107228 B/op	     146 allocs/op
+BenchmarkExec/tiny.add                          	     100	        15.13 ns/op	    134986 calls/batch
+BenchmarkExec/fib_rec.fib                       	     100	    680254 ns/op	         3.000 calls/batch
+BenchmarkExec/many_funcs.run                    	     124	        15.31 ns/op	    131601 calls/batch
+BenchmarkExec/json-as.serializeN                	     100	     22452 ns/op	        94.00 calls/batch
+BenchmarkExec/json-as.deserializeN              	     100	     41288 ns/op	        59.00 calls/batch
+BenchmarkExec/xxhash.xxhash_run                 	     121	    122917 ns/op	        17.00 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   24789	     10091 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingNative/pressure      	   10000	     27651 ns/op	   19488 B/op	      18 allocs/op
+BenchmarkSharingNative/join          	   20734	     11434 ns/op	   10152 B/op	      26 allocs/op
+BenchmarkSharingNative/large         	    1125	    199443 ns/op	  228544 B/op	      24 allocs/op
+BenchmarkSharingNative/deep          	   16783	     14803 ns/op	   11504 B/op	      22 allocs/op
+BenchmarkSharingNative/locals        	    7590	     36469 ns/op	   29192 B/op	      21 allocs/op
+BenchmarkSharingNative/many          	     439	    571833 ns/op	   50600 B/op	      24 allocs/op
+BenchmarkSharingNative/large_then_small         	     298	    837509 ns/op	  275320 B/op	      30 allocs/op
+BenchmarkSharingNative/fallback                 	   25378	      9575 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingFull/small                      	   22514	     10007 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingFull/pressure                   	    7623	     34146 ns/op	   31449 B/op	      75 allocs/op
+BenchmarkSharingFull/join                       	   20130	     13377 ns/op	   17688 B/op	      80 allocs/op
+BenchmarkSharingFull/large                      	     558	    399743 ns/op	  315927 B/op	      87 allocs/op
+BenchmarkSharingFull/deep                       	   10000	     28176 ns/op	   24961 B/op	      83 allocs/op
+BenchmarkSharingFull/locals                     	    4180	     53203 ns/op	   41242 B/op	      73 allocs/op
+BenchmarkSharingFull/many                       	     260	    862634 ns/op	  243900 B/op	     588 allocs/op
+BenchmarkSharingFull/large_then_small           	     196	   1380363 ns/op	  514235 B/op	     595 allocs/op
+BenchmarkSharingFull/fallback                   	   16872	     12815 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingExec/small                      	13819406	        19.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure                   	 4596028	        50.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join                       	13629590	        17.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large                      	  884348	       256.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/deep                       	15385610	        16.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals                     	 2777011	        85.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many                       	15071380	        15.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small           	  940429	       249.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/fallback                   	15106242	        15.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingZeroLocals/1                    	   19891	     12537 ns/op	    8216 B/op	      20 allocs/op
+BenchmarkSharingZeroLocals/8                    	   18804	     12037 ns/op	    8360 B/op	      22 allocs/op
+BenchmarkSharingZeroLocals/64                   	   16944	     12941 ns/op	    9064 B/op	      19 allocs/op
+BenchmarkSharingZeroLocals/256                  	   13731	     16299 ns/op	   14569 B/op	      16 allocs/op
+BenchmarkCompile/tiny                           	   19152	     12846 ns/op	    8344 B/op	      22 allocs/op
+BenchmarkCompile/fib_rec                        	   10617	     22876 ns/op	   26792 B/op	      50 allocs/op
+BenchmarkCompile/many_funcs                     	     591	    402801 ns/op	   69272 B/op	      31 allocs/op
+BenchmarkCompile/json-as                        	     196	   1378594 ns/op	  134624 B/op	     125 allocs/op
+BenchmarkCompile/xxhash                         	    1957	    116634 ns/op	   65720 B/op	      58 allocs/op
+BenchmarkCompileFull/tiny                       	   13783	     15806 ns/op	        96.00 code-B	   18416 B/op	      91 allocs/op
+BenchmarkCompileFull/fib_rec                    	   10000	     24596 ns/op	       320.0 code-B	   35497 B/op	     107 allocs/op
+BenchmarkCompileFull/many_funcs                 	     374	    570757 ns/op	      7771 code-B	  179337 B/op	      85 allocs/op
+BenchmarkCompileFull/json-as                    	     129	   1795890 ns/op	     67398 code-B	  309674 B/op	     399 allocs/op
+BenchmarkCompileFull/xxhash                     	    1615	    145004 ns/op	      3301 code-B	  107228 B/op	     146 allocs/op
+BenchmarkExec/tiny.add                          	     100	        15.39 ns/op	    134667 calls/batch
+BenchmarkExec/fib_rec.fib                       	     115	    693798 ns/op	         3.000 calls/batch
+BenchmarkExec/many_funcs.run                    	     100	        15.50 ns/op	    132404 calls/batch
+BenchmarkExec/json-as.serializeN                	     100	     23213 ns/op	        92.00 calls/batch
+BenchmarkExec/json-as.deserializeN              	     100	     42259 ns/op	        60.00 calls/batch
+BenchmarkExec/xxhash.xxhash_run                 	     100	    125432 ns/op	        16.00 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   24482	     10181 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingNative/pressure      	   10000	     27665 ns/op	   19488 B/op	      18 allocs/op
+BenchmarkSharingNative/join          	   20466	     11983 ns/op	   10152 B/op	      26 allocs/op
+BenchmarkSharingNative/large         	    1039	    202638 ns/op	  228544 B/op	      24 allocs/op
+BenchmarkSharingNative/deep          	   16086	     15005 ns/op	   11504 B/op	      22 allocs/op
+BenchmarkSharingNative/locals        	    7580	     35689 ns/op	   29192 B/op	      21 allocs/op
+BenchmarkSharingNative/many          	     447	    589083 ns/op	   50600 B/op	      24 allocs/op
+BenchmarkSharingNative/large_then_small         	     260	    845351 ns/op	  275320 B/op	      30 allocs/op
+BenchmarkSharingNative/fallback                 	   23960	     10231 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingFull/small                      	   22164	     10139 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingFull/pressure                   	    7443	     34114 ns/op	   31449 B/op	      75 allocs/op
+BenchmarkSharingFull/join                       	   18548	     12288 ns/op	   17688 B/op	      80 allocs/op
+BenchmarkSharingFull/large                      	     825	    293454 ns/op	  315927 B/op	      87 allocs/op
+BenchmarkSharingFull/deep                       	   13987	     19024 ns/op	   24961 B/op	      83 allocs/op
+BenchmarkSharingFull/locals                     	    4840	     49592 ns/op	   41242 B/op	      73 allocs/op
+BenchmarkSharingFull/many                       	     280	    873985 ns/op	  243900 B/op	     588 allocs/op
+BenchmarkSharingFull/large_then_small           	     184	   1243797 ns/op	  514234 B/op	     595 allocs/op
+BenchmarkSharingFull/fallback                   	   21465	     10759 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingExec/small                      	14859339	        15.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure                   	 4842529	        55.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join                       	14893263	        16.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large                      	  932137	       259.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/deep                       	15134941	        16.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals                     	 2775808	        86.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many                       	15159892	        15.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small           	  948862	       258.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/fallback                   	14781723	        16.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingZeroLocals/1                    	   20714	     11714 ns/op	    8216 B/op	      20 allocs/op
+BenchmarkSharingZeroLocals/8                    	   19946	     12520 ns/op	    8360 B/op	      22 allocs/op
+BenchmarkSharingZeroLocals/64                   	   16204	     14968 ns/op	    9064 B/op	      19 allocs/op
+BenchmarkSharingZeroLocals/256                  	   12808	     17955 ns/op	   14569 B/op	      16 allocs/op
+BenchmarkCompile/tiny                           	   17454	     13584 ns/op	    8344 B/op	      22 allocs/op
+BenchmarkCompile/fib_rec                        	   10000	     23888 ns/op	   26792 B/op	      50 allocs/op
+BenchmarkCompile/many_funcs                     	     532	    440440 ns/op	   69272 B/op	      31 allocs/op
+BenchmarkCompile/json-as                        	     181	   1537555 ns/op	  134624 B/op	     125 allocs/op
+BenchmarkCompile/xxhash                         	    1994	    121302 ns/op	   65720 B/op	      58 allocs/op
+BenchmarkCompileFull/tiny                       	   10000	     27173 ns/op	        96.00 code-B	   18416 B/op	      91 allocs/op
+BenchmarkCompileFull/fib_rec                    	    4860	     51231 ns/op	       320.0 code-B	   35497 B/op	     107 allocs/op
+BenchmarkCompileFull/many_funcs                 	     339	    679998 ns/op	      7771 code-B	  179337 B/op	      85 allocs/op
+BenchmarkCompileFull/json-as                    	     100	   2035233 ns/op	     67398 code-B	  309673 B/op	     399 allocs/op
+BenchmarkCompileFull/xxhash                     	    1303	    196401 ns/op	      3301 code-B	  107228 B/op	     146 allocs/op
+BenchmarkExec/tiny.add                          	     190	        16.07 ns/op	    124839 calls/batch
+BenchmarkExec/fib_rec.fib                       	     100	    837990 ns/op	         3.000 calls/batch
+BenchmarkExec/many_funcs.run                    	     124	        16.95 ns/op	    127768 calls/batch
+BenchmarkExec/json-as.serializeN                	     100	     24124 ns/op	        84.00 calls/batch
+BenchmarkExec/json-as.deserializeN              	     100	     61067 ns/op	        56.00 calls/batch
+BenchmarkExec/xxhash.xxhash_run                 	     140	    132581 ns/op	        16.00 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   24481	     10275 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingNative/pressure      	   10000	     27929 ns/op	   19488 B/op	      18 allocs/op
+BenchmarkSharingNative/join          	   21550	     11683 ns/op	   10152 B/op	      26 allocs/op
+BenchmarkSharingNative/large         	    1008	    202394 ns/op	  228544 B/op	      24 allocs/op
+BenchmarkSharingNative/deep          	   16789	     14370 ns/op	   11504 B/op	      22 allocs/op
+BenchmarkSharingNative/locals        	    6928	     35290 ns/op	   29192 B/op	      21 allocs/op
+BenchmarkSharingNative/many          	     435	    597972 ns/op	   50600 B/op	      24 allocs/op
+BenchmarkSharingNative/large_then_small         	     274	    864913 ns/op	  275320 B/op	      30 allocs/op
+BenchmarkSharingNative/fallback                 	   22929	     11449 ns/op	    8248 B/op	      21 allocs/op
+BenchmarkSharingFull/small                      	   19538	     10681 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingFull/pressure                   	    6838	     34774 ns/op	   31449 B/op	      75 allocs/op
+BenchmarkSharingFull/join                       	   19178	     12186 ns/op	   17688 B/op	      80 allocs/op
+BenchmarkSharingFull/large                      	     798	    284195 ns/op	  315927 B/op	      87 allocs/op
+BenchmarkSharingFull/deep                       	   14088	     17500 ns/op	   24961 B/op	      83 allocs/op
+BenchmarkSharingFull/locals                     	    5097	     48105 ns/op	   41242 B/op	      73 allocs/op
+BenchmarkSharingFull/many                       	     285	    838270 ns/op	  243900 B/op	     588 allocs/op
+BenchmarkSharingFull/large_then_small           	     189	   1199081 ns/op	  514234 B/op	     595 allocs/op
+BenchmarkSharingFull/fallback                   	   22988	     10502 ns/op	   15776 B/op	      74 allocs/op
+BenchmarkSharingExec/small                      	15185599	        16.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure                   	 4904282	        49.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join                       	15022646	        16.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large                      	  904654	       259.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/deep                       	15112380	        16.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals                     	 2789599	        86.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many                       	14598040	        16.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small           	  958678	       254.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/fallback                   	15190675	        17.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingZeroLocals/1                    	   16314	     12282 ns/op	    8216 B/op	      20 allocs/op
+BenchmarkSharingZeroLocals/8                    	   18952	     12078 ns/op	    8360 B/op	      22 allocs/op
+BenchmarkSharingZeroLocals/64                   	   15489	     14113 ns/op	    9064 B/op	      19 allocs/op
+BenchmarkSharingZeroLocals/256                  	   13304	     17705 ns/op	   14569 B/op	      16 allocs/op
+BenchmarkCompile/tiny                           	   17683	     13421 ns/op	    8344 B/op	      22 allocs/op
+BenchmarkCompile/fib_rec                        	   10000	     25268 ns/op	   26792 B/op	      50 allocs/op
+BenchmarkCompile/many_funcs                     	     560	    418361 ns/op	   69272 B/op	      31 allocs/op
+BenchmarkCompile/json-as                        	     204	   1248540 ns/op	  134624 B/op	     125 allocs/op
+BenchmarkCompile/xxhash                         	    2125	    113331 ns/op	   65720 B/op	      58 allocs/op
+BenchmarkCompileFull/tiny                       	   14407	     16347 ns/op	        96.00 code-B	   18416 B/op	      91 allocs/op
+BenchmarkCompileFull/fib_rec                    	    8894	     24202 ns/op	       320.0 code-B	   35497 B/op	     107 allocs/op
+BenchmarkCompileFull/many_funcs                 	     410	    557118 ns/op	      7771 code-B	  179337 B/op	      85 allocs/op
+BenchmarkCompileFull/json-as                    	     133	   1773537 ns/op	     67398 code-B	  309673 B/op	     399 allocs/op
+BenchmarkCompileFull/xxhash                     	    1504	    141529 ns/op	      3301 code-B	  107228 B/op	     146 allocs/op
+BenchmarkExec/tiny.add                          	     100	        15.37 ns/op	    132384 calls/batch
+BenchmarkExec/fib_rec.fib                       	     115	    690159 ns/op	         3.000 calls/batch
+BenchmarkExec/many_funcs.run                    	     100	        15.44 ns/op	    131478 calls/batch
+BenchmarkExec/json-as.serializeN                	     100	     23072 ns/op	        91.00 calls/batch
+BenchmarkExec/json-as.deserializeN              	     100	     42010 ns/op	        68.00 calls/batch
+BenchmarkExec/xxhash.xxhash_run                 	     126	    126252 ns/op	        16.00 calls/batch
+PASS

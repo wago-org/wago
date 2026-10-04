@@ -1,0 +1,87 @@
+{
+  "M": {
+    "source": "0ef007c70581bf56155a4daf6fce8bda3f2c5ff1",
+    "binaries": {
+      "M-suite.test": {
+        "sha256": "330a0a37075366212567a15ff5b8e8f526f49558c1334866d4c0fe6512f420b5",
+        "bytes": 21225373
+      },
+      "M-diagnostic.test": {
+        "sha256": "29e8357f4080297a3e3fd05b427b723316adb820980bbc852285e70d9aed9fa0",
+        "bytes": 21386612
+      },
+      "M-runtime-memory": {
+        "sha256": "be64c05fcfa833f779807a6cff81af73efee22e46b0fbc80916b5701951a99e3",
+        "bytes": 8442016
+      }
+    }
+  },
+  "B": {
+    "source": "e026bfc92918b9576007e2ca1e659e62f42e4a13",
+    "binaries": {
+      "B-suite.test": {
+        "sha256": "affba35df11ea3e9f3dc08f12ce03bee517a9259ed3cd4d7fa6c0c2ff7815a37",
+        "bytes": 21225674
+      },
+      "B-diagnostic.test": {
+        "sha256": "f094412c4e5aac4a708349a821ab8ed206a8ca40415f367074bd67d9d026f298",
+        "bytes": 21388513
+      },
+      "B-runtime-memory": {
+        "sha256": "169006a2c1eabadc28671bc9eb2f376928718860f30b6d32a2ece7073f838ff8",
+        "bytes": 8446112
+      }
+    }
+  },
+  "P": {
+    "source": "95732e7454186fccd788b9c4e883354e6772a31a",
+    "binaries": {
+      "P-suite.test": {
+        "sha256": "1028352a44bd562d800d17b55d386ca2b808c64ee79fb767df91f49e42c040ac",
+        "bytes": 21249282
+      },
+      "P-diagnostic.test": {
+        "sha256": "09ff43893d76cd0a018b9440b57866a11ff6c58c975168ff10717a26bc3cca26",
+        "bytes": 21414233
+      },
+      "P-runtime-memory": {
+        "sha256": "8c15207babb08e5a431de443fa0ea195cc0bc1deea17020a159bdda53b5b1835",
+        "bytes": 8495264
+      }
+    }
+  },
+  "Q": {
+    "source": "318170b6159a23cb23aaba03037720d430291d79",
+    "binaries": {
+      "Q-suite.test": {
+        "sha256": "a6ac782a8328cceaa6a2144e48cc82779fea9622f1a283ebbe9da7ec82a1272f",
+        "bytes": 21254423
+      },
+      "Q-diagnostic.test": {
+        "sha256": "27b46a33e0be65875b4d990195dd4bb1462c8c92e719090e039dda8b27868f94",
+        "bytes": 21414614
+      },
+      "Q-runtime-memory": {
+        "sha256": "3eb42d1dd83aefd5e2c328746d1104b8d986ced61083c74ec1328ceaee10808c",
+        "bytes": 8495264
+      }
+    }
+  },
+  "F": {
+    "source": "1e96da7c6b2042d89b2cde78185a83e771136c20",
+    "binaries": {
+      "F-suite.test": {
+        "sha256": "c67c61a0257ec3e4c8606a4e969b24059855d77ebc391e521e324a38cd990153",
+        "bytes": 21254679
+      },
+      "F-diagnostic.test": {
+        "sha256": "369a7f8fce8d6978f9e956304dbc26b406c13b2d0317b5be22db50c5a8c7a44b",
+        "bytes": 21415094
+      },
+      "F-runtime-memory": {
+        "sha256": "601d29de4248c7cd00801a9b8d8591a980494470a1395d6a3885293b5b4c2f82",
+        "bytes": 8495264
+      }
+    }
+  }
+}

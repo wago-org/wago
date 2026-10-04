@@ -1,0 +1,19 @@
+                 │ EVIDENCE/spike-final/results/M-combined-spikes.txt │ EVIDENCE/spike-final/results/F-combined-spikes.txt │
+                 │                                                                     sec/op                                                                     │                                                         sec/op                                                           vs base               │
+SharingExec/join                                                                                                                                      16.35n ± 4%                                                                                                               16.59n ± 2%       ~ (p=0.629 n=12)
+Exec/tiny.add                                                                                                                                         15.54n ± 5%                                                                                                               15.72n ± 3%       ~ (p=0.843 n=12)
+geomean                                                                                                                                               15.94n                                                                                                                    16.14n       +1.28%
+
+                 │ EVIDENCE/spike-final/results/M-combined-spikes.txt │ EVIDENCE/spike-final/results/F-combined-spikes.txt │
+                 │                                                                      B/op                                                                      │                                                            B/op                                                             vs base            │
+SharingExec/join                                                                                                                                       0.000 ± 0%                                                                                                                   0.000 ± 0%  ~ (p=1.000 n=12) ¹
+¹ all samples are equal
+
+                 │ EVIDENCE/spike-final/results/M-combined-spikes.txt │ EVIDENCE/spike-final/results/F-combined-spikes.txt │
+                 │                                                                   allocs/op                                                                    │                                                         allocs/op                                                           vs base            │
+SharingExec/join                                                                                                                                       0.000 ± 0%                                                                                                                   0.000 ± 0%  ~ (p=1.000 n=12) ¹
+¹ all samples are equal
+
+              │ EVIDENCE/spike-final/results/M-combined-spikes.txt │ EVIDENCE/spike-final/results/F-combined-spikes.txt │
+              │                                                                  calls/batch                                                                   │                                                         calls/batch                                                           vs base          │
+Exec/tiny.add                                                                                                                                      131.6k ± 3%                                                                                                                    132.4k ± 2%  ~ (p=0.755 n=12)

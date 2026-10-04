@@ -1,0 +1,24 @@
+BenchmarkSharingExec/join          	73894332	        16.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     584	        15.29 ns/op	    131302 calls/batch
+BenchmarkSharingExec/join          	74359195	        16.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     613	        15.71 ns/op	    130183 calls/batch
+BenchmarkSharingExec/join          	71036007	        16.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     578	        21.57 ns/op	    132969 calls/batch
+BenchmarkSharingExec/join          	72614856	        17.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     579	        15.57 ns/op	    130272 calls/batch
+BenchmarkSharingExec/join          	72241015	        16.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     580	        15.27 ns/op	    132291 calls/batch
+BenchmarkSharingExec/join          	71713576	        16.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     590	        16.15 ns/op	    133158 calls/batch
+BenchmarkSharingExec/join         	75774036	        16.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add            	     582	        15.56 ns/op	    133787 calls/batch
+BenchmarkSharingExec/join         	73326585	        16.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add            	     582	        15.40 ns/op	    132565 calls/batch
+BenchmarkSharingExec/join         	73501848	        16.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add            	     580	        15.74 ns/op	    132541 calls/batch
+BenchmarkSharingExec/join         	70011508	        17.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add            	     570	        16.25 ns/op	    128083 calls/batch
+BenchmarkSharingExec/join         	73850997	        16.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add            	     560	        16.08 ns/op	    128539 calls/batch
+BenchmarkSharingExec/join         	74066324	        16.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add            	     578	        15.72 ns/op	    132974 calls/batch

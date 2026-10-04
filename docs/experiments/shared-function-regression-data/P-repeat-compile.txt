@@ -1,0 +1,41 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingFull/fallback         	  119289	     10245 ns/op	   16032 B/op	      74 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingFull/fallback         	  116767	     10735 ns/op	   16032 B/op	      74 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingFull/fallback         	  107200	     10900 ns/op	   16032 B/op	      74 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingFull/fallback         	  111910	     10361 ns/op	   16032 B/op	      74 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingFull/fallback         	  109216	     10726 ns/op	   16032 B/op	      74 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingFull/fallback         	  113186	     11052 ns/op	   16032 B/op	      74 allocs/op
+PASS

@@ -1,0 +1,71 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkCompileFullWorkers/tiny/p1-4      	    8505	     24057 ns/op	       102.0 code-B	   17613 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/tiny/auto-4    	   10149	     25210 ns/op	       102.0 code-B	   17612 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p1-4         	     376	    583580 ns/op	      8363 code-B	  179641 B/op	      88 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/auto-4       	     585	    404801 ns/op	      8363 code-B	  242888 B/op	     148 allocs/op
+BenchmarkCompileFullWorkers/json-as/p1-4            	     154	   1573758 ns/op	     67398 code-B	  309847 B/op	     398 allocs/op
+BenchmarkCompileFullWorkers/json-as/auto-4          	     198	   1879988 ns/op	     67398 code-B	  660342 B/op	     610 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkCompileFullWorkers/tiny/p1-4      	   10472	     22960 ns/op	       102.0 code-B	   17612 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/tiny/auto-4    	    9812	     23224 ns/op	       102.0 code-B	   17612 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p1-4         	     447	    537139 ns/op	      8363 code-B	  179636 B/op	      88 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/auto-4       	     403	    601025 ns/op	      8363 code-B	  253264 B/op	     141 allocs/op
+BenchmarkCompileFullWorkers/json-as/p1-4            	     147	   1538812 ns/op	     67398 code-B	  309842 B/op	     398 allocs/op
+BenchmarkCompileFullWorkers/json-as/auto-4          	     142	   1552336 ns/op	     67398 code-B	  672241 B/op	     612 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkCompileFullWorkers/tiny/p1-4      	   10000	     21835 ns/op	       102.0 code-B	   17612 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/tiny/auto-4    	    9999	     22913 ns/op	       102.0 code-B	   17613 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p1-4         	     466	    533297 ns/op	      8363 code-B	  179633 B/op	      88 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/auto-4       	     501	    521941 ns/op	      8363 code-B	  248909 B/op	     144 allocs/op
+BenchmarkCompileFullWorkers/json-as/p1-4            	     138	   1564789 ns/op	     67398 code-B	  309858 B/op	     398 allocs/op
+BenchmarkCompileFullWorkers/json-as/auto-4          	     157	   1656301 ns/op	     67398 code-B	  668777 B/op	     603 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkCompileFullWorkers/tiny/p1-4      	   10000	     22324 ns/op	       102.0 code-B	   17613 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/tiny/auto-4    	   10575	     21741 ns/op	       102.0 code-B	   17612 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p1-4         	     432	    541027 ns/op	      8363 code-B	  179639 B/op	      88 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/auto-4       	     409	    564878 ns/op	      8363 code-B	  252616 B/op	     141 allocs/op
+BenchmarkCompileFullWorkers/json-as/p1-4            	     139	   1639174 ns/op	     67398 code-B	  309865 B/op	     398 allocs/op
+BenchmarkCompileFullWorkers/json-as/auto-4          	     147	   1565926 ns/op	     67398 code-B	  666075 B/op	     610 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkCompileFullWorkers/tiny/p1-4      	    9430	     22107 ns/op	       102.0 code-B	   17613 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/tiny/auto-4    	   11132	     22161 ns/op	       102.0 code-B	   17612 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p1-4         	     448	    534774 ns/op	      8363 code-B	  179632 B/op	      88 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/auto-4       	     417	    573480 ns/op	      8363 code-B	  253127 B/op	     141 allocs/op
+BenchmarkCompileFullWorkers/json-as/p1-4            	     146	   1709612 ns/op	     67398 code-B	  309855 B/op	     398 allocs/op
+BenchmarkCompileFullWorkers/json-as/auto-4          	     152	   1628880 ns/op	     67398 code-B	  670179 B/op	     601 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkCompileFullWorkers/tiny/p1-4      	    9296	     22500 ns/op	       102.0 code-B	   17613 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/tiny/auto-4    	   10695	     21273 ns/op	       102.0 code-B	   17612 B/op	      91 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/p1-4         	     403	    555940 ns/op	      8363 code-B	  179634 B/op	      88 allocs/op
+BenchmarkCompileFullWorkers/many_funcs/auto-4       	     373	    595175 ns/op	      8363 code-B	  253475 B/op	     141 allocs/op
+BenchmarkCompileFullWorkers/json-as/p1-4            	     148	   1514123 ns/op	     67398 code-B	  309846 B/op	     398 allocs/op
+BenchmarkCompileFullWorkers/json-as/auto-4          	     170	   1734622 ns/op	     67398 code-B	  666738 B/op	     597 allocs/op
+PASS

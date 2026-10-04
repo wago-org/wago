@@ -1,0 +1,45 @@
+Independent review of simple multi-parameter leaf fallback policy
+Reviewer: contract_review agent; 2026-10-04
+Reviewed commit: 1e96da7c6b2042d89b2cde78185a83e771136c20
+Method: source inspection and git diff --check. No builds/tests/profiles.
+
+Verdict: no concrete correctness defect found in this policy.
+
+The guard executes only after complete bytecode admission, end-offset checks,
+stack/control checks, and the unchanged legacy budget. It returns an ineligible
+summary before either target prologue/body emits instructions. Both adapters
+therefore initialize and use the established whole-function path; there is no
+mid-function handoff or partial-output rollback.
+
+With no declared locals, initial Nodes is exactly parameter count plus the
+sentinel. No zero-width node is present. Constants and supported binary
+operations each increment Nodes once; local operations, drops, nops, and tail
+return do not. With MaxControlDepth zero, there are no restoration creations.
+The comparison Nodes <= parameter count+2 therefore means at most one created
+value beyond parameters/sentinel. Nop padding leaves that comparison unchanged
+(although excessive padding still reaches existing byte/budget rejection).
+Functions with declared local state or any explicit control are unaffected;
+scaled-add expression creation exceeds the guard. Single-parameter and
+zero-parameter functions are also unaffected. Supported widths/operations,
+reference bounds, creation-order bounds, and scratch ownership are unchanged.
+
+The focused test checks arithmetic, nop-padded arithmetic, direct parameter
+return, constant return, declared-local exemption, scaled-add exemption, and
+single-parameter exemption. It is an admission-boundary test, not execution
+proof. Existing mixed fallback/shared correctness tests remain relevant to the
+whole-function routing. No additional test blocker is identified by this review.
+
+Reporting implication
+This is an intentional narrowing of migration after a measured regression.
+Keep the corpus fixed and refresh migrated function/body coverage. tiny.add now
+measures fallback plus admission cost, so its improvement must not be presented
+as faster execution of the shared path. Report migrated workloads separately
+and retain the pre-policy regression evidence. The criterion is a bounded
+creation-count policy; it is not a proof that every excluded body has little
+total work, since many local operations/drops can create no new values.
+
+SHA-256
+shared/scalar.go:
+cc35c167aa790a6bc0fdeb6a5fc6c9c66b3b59d8fe79895f119c7e541dee71c4
+shared/scalar_leaf_admission_test.go:
+29d57a8d75b4763b56e1432c9fb7c6976d3f2f1a062dbd427f14a5e74587b691
