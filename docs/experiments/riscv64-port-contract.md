@@ -1,8 +1,9 @@
 # RV64 port contract
 
-This experimental Linux/RV64 port has an encoder and an isolated integer
-runtime boundary. Generated framed snippets execute under QEMU through that
-boundary; see the [runtime checkpoint](riscv64-runtime-checkpoint.md).
+This experimental Linux/RV64 port has an encoder, an isolated integer runtime
+boundary and bounded shared-scalar module execution. Generated code executes
+under QEMU; see the [scalar checkpoint](riscv64-scalar-checkpoint.md) and
+[runtime checkpoint](riscv64-runtime-checkpoint.md).
 It does not enable a production RV64 compiler, CLI target, artifact architecture,
 or Wasm feature. The [encoder checkpoint](riscv64-encoder-checkpoint.md) records
 the earlier encoder-only acceptance.
@@ -50,7 +51,7 @@ none was modified. The checker enhancements are not assumed to be merged.
 | `Return` | Normalize i32, marshal guest result, retain framed high-water mark. |
 
 Shared code owns logical values, aliases, registers, spills and structured
-agreements. The new adapter must not duplicate those allocators. The merged
+agreements. The RV64 adapter uses those allocators unchanged. The merged
 admission includes a cost heuristic that rejects some tiny multi-argument
 leaves; fixtures must establish actual admission. Parallel move scheduling is
 separate from `ScalarTarget` and needs a reserved-scratch cycle-safe RV64 swap.

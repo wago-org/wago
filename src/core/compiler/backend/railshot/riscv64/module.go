@@ -1,0 +1,346 @@
+//go:build linux && !tinygo
+
+package riscv64
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
+	native "github.com/wago-org/wago/src/core/runtime/riscv64"
+)
+
+const (
+	MaxModuleBytes = 1 << 20
+	MaxFunctions   = 1024
+	MaxCodeBytes   = 16 << 20
+	MaxFrameBytes  = 128 << 10
+)
+
+var ErrUnsupported = errors.New("rv64: unsupported experimental scalar shape")
+var ErrCancelable = errors.New("rv64: cancelable invocation is not implemented")
+
+// FunctionInfo describes genuine shared compilation, not an admission guess.
+type FunctionInfo struct {
+	Entry, CodeBytes, Params, FrameBytes, SpillSlots, Spills, Reloads int
+	Result64                                                          bool
+}
+
+// Compiled owns immutable heap code and metadata, never executable mappings.
+// Every function/type/export was admitted before any instruction was emitted.
+type Compiled struct {
+	code      []byte
+	functions []FunctionInfo
+	exports   map[string]int
+}
+
+func (c *Compiled) Functions() []FunctionInfo {
+	if c == nil {
+		return nil
+	}
+	return append([]FunctionInfo(nil), c.functions...)
+}
+
+// Compile snapshots a bounded Wasm binary, normally decodes and validates it,
+// admits the complete module, then uses shared.CompileScalar for every function.
+// Caller input must not be mutated concurrently with the initial snapshot.
+func Compile(data []byte) (*Compiled, error) { return compile(data, scalarRegisters[:]) }
+
+func compile(data []byte, regs []uint8) (*Compiled, error) {
+	if len(data) > MaxModuleBytes {
+		return nil, fmt.Errorf("rv64: module exceeds %d bytes", MaxModuleBytes)
+	}
+	owned := append([]byte(nil), data...)
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(owned, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	if err != nil {
+		return nil, err
+	}
+	m := decoded.Module
+	if err = wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+		return nil, err
+	}
+	if err = admitWire(owned); err != nil {
+		return nil, err
+	}
+	if err = admitShape(m); err != nil {
+		return nil, err
+	}
+	summaries := make([]shared.ScalarSummary, len(m.Code))
+	for i := range m.Code {
+		ft, _ := m.LocalFuncType(i)
+		summaries[i] = shared.AdmitScalarFunction(&m.Code[i], ft)
+		if !summaries[i].Eligible {
+			return nil, fmt.Errorf("%w: function %d outside shared admission", ErrUnsupported, i)
+		}
+	}
+	c := &Compiled{functions: make([]FunctionInfo, len(m.Code)), exports: make(map[string]int, len(m.Exports))}
+	var worker shared.ScalarState
+	defer worker.FinishWorker()
+	for i := range m.Code {
+		ft, _ := m.LocalFuncType(i)
+		code, info, err := compileFunction(&worker, &m.Code[i], ft, summaries[i], regs)
+		if err != nil {
+			return nil, fmt.Errorf("rv64: function %d: %w", i, err)
+		}
+		if len(code) > MaxCodeBytes-len(c.code) {
+			return nil, fmt.Errorf("rv64: emitted code exceeds %d bytes", MaxCodeBytes)
+		}
+		info.Entry = len(c.code)
+		info.CodeBytes = len(code)
+		c.code = append(c.code, code...)
+		c.functions[i] = info
+	}
+	for _, ex := range m.Exports {
+		c.exports[ex.Name] = int(ex.Index.Index)
+	}
+	return c, nil
+}
+
+func unsupported(detail string) error { return fmt.Errorf("%w: %s", ErrUnsupported, detail) }
+
+// The wire allowlist also rejects present-but-empty unsupported sections and
+// explicit singleton rec groups whose provenance the decoded Module loses.
+// Normal decoding/validation always runs first; this is an execution policy.
+func admitWire(data []byte) error {
+	r := wasm.ReaderFrom(data[8:])
+	for r.HasNext() {
+		id, err := r.Byte()
+		if err != nil {
+			return err
+		}
+		n, err := r.U32()
+		if err != nil {
+			return err
+		}
+		if uint64(n) > uint64(r.BytesLeft()) {
+			return fmt.Errorf("rv64: truncated section")
+		}
+		start := r.Offset()
+		end := start + int(n)
+		switch id {
+		case 0, 3, 7, 10:
+		case 1:
+			s := wasm.ReaderFrom(data[8+start : 8+end])
+			count, err := s.U32()
+			if err != nil {
+				return err
+			}
+			for i := uint32(0); i < count; i++ {
+				kind, err := s.Byte()
+				if err != nil {
+					return err
+				}
+				if kind != 0x60 {
+					return unsupported("type grammar is not a plain function")
+				}
+				for v := 0; v < 2; v++ {
+					n, err := s.U32()
+					if err != nil {
+						return err
+					}
+					if n > 256 || v == 1 && n != 1 {
+						return unsupported("signature arity")
+					}
+					for j := uint32(0); j < n; j++ {
+						t, err := s.Byte()
+						if err != nil {
+							return err
+						}
+						if t != 0x7f && t != 0x7e {
+							return unsupported("noninteger type")
+						}
+					}
+				}
+			}
+			if s.HasNext() {
+				return unsupported("extra type bytes")
+			}
+		default:
+			return unsupported(fmt.Sprintf("section %d", id))
+		}
+		if err = r.JumpTo(end); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func admitShape(m *wasm.Module) error {
+	if len(m.Code) == 0 || len(m.Code) > MaxFunctions {
+		return unsupported("function count outside 1..1024")
+	}
+	if len(m.Imports) != 0 || m.UsesCompactImports || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Globals) != 0 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) != 0 || len(m.BranchHints) != 0 {
+		return unsupported("imports, state, initializers or feature metadata")
+	}
+	for _, custom := range m.Customs {
+		if custom.Name != "name" && custom.Name != "producers" {
+			return unsupported("custom section " + custom.Name)
+		}
+	}
+	for _, rec := range m.Types {
+		if len(rec.SubTypes) != 1 {
+			return unsupported("recursive type group")
+		}
+		s := &rec.SubTypes[0]
+		if !s.Final || s.HasPrefix || len(s.Supers) != 0 || s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || s.Comp.Kind != wasm.CompFunc {
+			return unsupported("unsupported type metadata")
+		}
+		if len(s.Comp.Params) > 256 || len(s.Comp.Results) != 1 {
+			return unsupported("signature arity")
+		}
+		for _, v := range append(append([]wasm.ValType(nil), s.Comp.Params...), s.Comp.Results...) {
+			if !wasm.EqualValType(v, wasm.I32) && !wasm.EqualValType(v, wasm.I64) {
+				return unsupported("noninteger signature")
+			}
+		}
+	}
+	for _, ex := range m.Exports {
+		if ex.Index.Kind != wasm.ExternFunc {
+			return unsupported("nonfunction export")
+		}
+	}
+	return nil
+}
+
+func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompType, summary shared.ScalarSummary, regs []uint8) ([]byte, FunctionInfo, error) {
+	var widths [256]bool
+	nlocals := len(ft.Params)
+	for i, t := range ft.Params {
+		widths[i] = wasm.EqualValType(t, wasm.I64)
+	}
+	for _, run := range fn.Locals.Runs {
+		for i := uint32(0); i < run.Count; i++ {
+			widths[nlocals] = wasm.EqualValType(run.Type, wasm.I64)
+			nlocals++
+		}
+	}
+	f := target{regs: regs, nlocals: nlocals}
+	slots, err := worker.CompileScalar(fn.BodyBytes, summary, widths[:nlocals], len(ft.Params), &f)
+	if err != nil {
+		return nil, FunctionInfo{}, err
+	}
+	if f.err != nil {
+		return nil, FunctionInfo{}, f.err
+	}
+	if f.a.Err() != nil {
+		return nil, FunctionInfo{}, f.a.Err()
+	}
+	frame := (16 + 8*nlocals + 8*slots + 15) &^ 15
+	if frame > MaxFrameBytes {
+		return nil, FunctionInfo{}, fmt.Errorf("frame exceeds %d bytes", MaxFrameBytes)
+	}
+	var entry target
+	reversed := entry.a.BranchLong(enc.LTU, enc.SP, enc.X13)
+	entry.a.Constant64(enc.Scratch0, int64(frame))
+	entry.a.Sub(enc.Scratch1, enc.SP, enc.X13)
+	bad := entry.a.BranchLong(enc.LTU, enc.Scratch1, enc.Scratch0)
+	entry.a.Sub(enc.SP, enc.SP, enc.Scratch0)
+	entry.a.Sd(enc.RA, enc.SP, 0)
+	entry.a.Sd(enc.X11, enc.SP, 8)
+	for i := range ft.Params {
+		entry.a.Ld(enc.Scratch0, enc.X10, int32(i*8))
+		entry.Store(entry.LocalOffset(i), uint8(enc.Scratch0), widths[i])
+	}
+	entry.a.B = append(entry.a.B, f.a.B...)
+	entry.a.Ld(enc.RA, enc.SP, 0)
+	entry.a.Constant64(enc.Scratch0, int64(frame))
+	entry.a.Add(enc.SP, enc.SP, enc.Scratch0)
+	entry.a.Ret()
+	if err = entry.a.PatchLong(bad, int64(entry.a.Len())); err != nil {
+		return nil, FunctionInfo{}, err
+	}
+	if err = entry.a.PatchLong(reversed, int64(entry.a.Len())); err != nil {
+		return nil, FunctionInfo{}, err
+	}
+	// The failure edge occurs before body allocation; original a2 and RA/SP
+	// are still valid. No stack writes or SP changes precede this edge.
+	entry.a.Addi(enc.Scratch0, enc.Zero, 1)
+	entry.a.Sw(enc.Scratch0, enc.X12, 0)
+	entry.a.Addi(enc.X10, enc.Zero, 0)
+	entry.a.Ret()
+	if entry.a.Err() != nil {
+		return nil, FunctionInfo{}, entry.a.Err()
+	}
+	return entry.a.B, FunctionInfo{Params: len(ft.Params), FrameBytes: frame, SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64)}, nil
+}
+
+// Instance owns all executable and call resources. It accepts noncancelable
+// contexts; deadlines and host reentry are unsupported.
+type Instance struct {
+	mu       sync.Mutex
+	closed   bool
+	program  *native.Program
+	engine   *native.Engine
+	call     *native.CallFrame
+	compiled *Compiled
+}
+
+// Instantiate publishes only previously admitted RV64 code. On error a nonnil
+// Instance is closed and retains failed cleanup ownership; call Close to retry.
+func (c *Compiled) Instantiate(stackBytes int) (*Instance, error) {
+	if c == nil || len(c.code) == 0 {
+		return nil, fmt.Errorf("rv64: empty compiled module")
+	}
+	i := &Instance{compiled: c}
+	var err error
+	i.engine, err = native.NewEngine(stackBytes)
+	if err == nil {
+		capacity := 0
+		for _, f := range c.functions {
+			capacity = max(capacity, f.Params)
+		}
+		i.call, err = native.NewCallFrame(capacity)
+	}
+	if err == nil {
+		i.program, err = native.MapCode(c.code)
+	}
+	if err != nil {
+		if cleanup := i.Close(); cleanup != nil {
+			return i, errors.Join(err, cleanup)
+		}
+		return nil, err
+	}
+	return i, nil
+}
+
+func (i *Instance) Invoke(ctx context.Context, name string, args ...uint64) (uint64, error) {
+	if i == nil {
+		return 0, native.ErrClosed
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.closed || i.compiled == nil || i.engine == nil || i.program == nil || i.call == nil {
+		return 0, native.ErrClosed
+	}
+	if ctx == nil {
+		return 0, fmt.Errorf("rv64: nil invocation context")
+	}
+	_, deadline := ctx.Deadline()
+	if ctx.Done() != nil || deadline || ctx.Err() != nil {
+		return 0, ErrCancelable
+	}
+	index, ok := i.compiled.exports[name]
+	if !ok {
+		return 0, fmt.Errorf("rv64: unknown scalar export %q", name)
+	}
+	f := i.compiled.functions[index]
+	if len(args) != f.Params {
+		return 0, fmt.Errorf("rv64: export %q expects %d arguments, got %d", name, f.Params, len(args))
+	}
+	return i.call.Call(i.engine, i.program, f.Entry, args, f.FrameBytes)
+}
+
+// Close waits for invocation completion and retries any retained failed unmaps.
+func (i *Instance) Close() error {
+	if i == nil {
+		return nil
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.closed = true
+	return errors.Join(i.program.Close(), i.engine.Close(), i.call.Close())
+}

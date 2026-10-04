@@ -6,6 +6,10 @@ The approved next-stage scope is the minimal runtime bridge, publication/cache
 synchronization, stack/ABI qualification and independent review, with another
 checkpoint before shared-scalar integration.
 
+This records the runtime-boundary checkpoint at `e0ff238b`. The subsequent
+[scalar checkpoint](riscv64-scalar-checkpoint.md) admits and executes bounded
+modules through this boundary; the scope below describes the earlier acceptance.
+
 ## Implemented boundary
 
 `src/core/runtime/riscv64` is an isolated experimental package. The existing
