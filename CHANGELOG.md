@@ -73,6 +73,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - AMD64 no longer skips code after a `try_table` that is exited by a branch to
   its own end (for example `br 0`), which previously ran the exception handler
   instead and could return early or report an unhandled exception.
+- Full-access AMD64 plugins can declare every optional CPU feature exposed by
+  the encoder, and compiled artifacts preserve those admission requirements.
 - Dropping a null `exnref` produced by the fallthrough of a `catch_ref` or
   `catch_all_ref` target no longer crashes the process on AMD64 or ARM64.
 - A module declaring an unused exception tag with more than eight parameters is

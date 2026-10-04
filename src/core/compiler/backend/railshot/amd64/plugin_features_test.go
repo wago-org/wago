@@ -75,11 +75,18 @@ func TestExplicitPluginCPUFeatures(t *testing.T) {
 			accept   bool
 			want     shared.AMD64Features
 		}{
+			{"missing-popcnt", shared.AMD64KnownFeatures &^ shared.AMD64POPCNT, plugincodegen.FeaturePOPCNT, false, 0},
+			{"popcnt", shared.AMD64KnownFeatures, plugincodegen.FeaturePOPCNT, true, shared.AMD64POPCNT},
+			{"missing-sse41", shared.AMD64KnownFeatures &^ shared.AMD64SSE41, plugincodegen.FeatureSSE41, false, 0},
+			{"sse41", shared.AMD64KnownFeatures, plugincodegen.FeatureSSE41, true, shared.AMD64SSE41},
+			{"missing-fma-avx", shared.AMD64FMA, plugincodegen.FeatureFMA, false, 0},
+			{"fma", shared.AMD64KnownFeatures, plugincodegen.FeatureFMA, true, shared.AMD64AVX | shared.AMD64FMA},
 			{"missing-avx2", shared.AMD64ModernBaseline, plugincodegen.FeatureAVX2, false, 0},
 			{"avx2", shared.AMD64ModernBaseline | shared.AMD64AVX2, plugincodegen.FeatureAVX2, true, shared.AMD64AVX | shared.AMD64AVX2},
 			{"missing-avx-state", shared.AMD64AVX2, plugincodegen.FeatureAVX2, false, 0},
 			{"missing-avx512", shared.AMD64ModernBaseline, plugincodegen.FeatureAVX512, false, 0},
 			{"avx512", shared.AMD64KnownFeatures, plugincodegen.FeatureAVX512, true, shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512},
+			{"all", shared.AMD64KnownFeatures, plugincodegen.FeatureAVX2 | plugincodegen.FeatureAVX512 | plugincodegen.FeatureSSSE3 | plugincodegen.FeatureSSE41 | plugincodegen.FeatureSSE42 | plugincodegen.FeatureAVX | plugincodegen.FeatureBMI1 | plugincodegen.FeatureBMI2 | plugincodegen.FeatureLZCNT | plugincodegen.FeaturePOPCNT | plugincodegen.FeatureFMA, true, shared.AMD64KnownFeatures},
 			{"unknown", shared.AMD64KnownFeatures, 1 << 20, false, 0},
 			{"ordinary", shared.AMD64ModernBaseline, 0, true, 0},
 		} {
