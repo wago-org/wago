@@ -296,8 +296,16 @@ class Experiment:
                     '-count=1', '-v', *tags, '-run=SharedScalar|Scalar|TrapOrder', './src/wago'], cwd=tree)
             if self.args.full_tests:
                 for checked in [False, True]:
+                    # The named installer test intentionally installs the sibling
+                    # workspace module. Other tests create standalone modules and
+                    # need workspace discovery disabled for their child commands.
+                    tags = ['-tags=wago_regalloccheck'] if checked else []
+                    self.run('workspace-installer-test-' + rev + '-' + str(checked),
+                        ['go', 'test', '-p', '1', '-count=1', '-v', *tags,
+                         '-run=^TestGoInstallBuildsNamedInstallerCommand$', '.'], cwd=tree,
+                        extra={'GOWORK': str(tree / 'go.work'), 'TERM': 'dumb'})
                     self.run('full-tests-' + rev + '-' + str(checked), ['go', 'test', '-p', '1',
-                        '-count=1', '-v', *(['-tags=wago_regalloccheck'] if checked else []), './...'], cwd=tree,
+                        '-count=1', '-v', *tags, '-skip=^TestGoInstallBuildsNamedInstallerCommand$', './...'], cwd=tree,
                         extra={'GOWORK': 'off', 'TERM': 'dumb'})
         self.manifest['binaries'] = {f.name: dict(sha256=sha(f), bytes=f.stat().st_size)
                                      for f in sorted((self.out / 'bin').iterdir())}

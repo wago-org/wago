@@ -97,3 +97,32 @@ func TestScalarRawIncomingReturnNormalization(t *testing.T) {
 		scalarAssertFreeList(t, &state)
 	}
 }
+
+func TestScalarTerminalInterleavedAliasGroups(t *testing.T) {
+	target := &scalarParameterTarget{}
+	var state ScalarState
+	state.target, state.regs = target, scalarTestRegs
+	state.add(scalarNode{})
+	// A has four local roots and the final result root. B has two local roots
+	// sharing one spill slot. Earlier groups must not free either value twice.
+	a := state.add(scalarNode{kind: ScalarRegister, reg: 3, constant: 1, refs: 5})
+	b := state.add(scalarNode{kind: ScalarFrame, slot: 0, refs: 2})
+	state.locals = []scalarID{a, a, b, b, a, a}
+	state.owners[3] = a
+	state.nextSlot, state.maxSlot = 1, 1
+	state.returnValue(a)
+	if target.returned != 3 || target.normalizations != 1 || len(state.freeSlots) != 1 || state.freeSlots[0] != 0 {
+		t.Fatalf("return/slot state: target=%+v freeSlots=%v", target, state.freeSlots)
+	}
+	for _, id := range state.locals {
+		if id != 0 {
+			t.Fatal("terminal local still bound")
+		}
+	}
+	for _, id := range state.owners {
+		if id != 0 {
+			t.Fatal("terminal register still owned")
+		}
+	}
+	scalarAssertFreeList(t, &state)
+}
