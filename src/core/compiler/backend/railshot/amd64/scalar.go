@@ -135,6 +135,12 @@ func (f *fn) Binary(op shared.IntOp, w bool, d, l uint8, r shared.ScalarOperand)
 		f.a.SetccReg(scalarCondition(op), dst)
 		return
 	}
+	if op == shared.IntAdd && dst != left && r.Kind == shared.ScalarConstant {
+		// A live source need not be copied before adding an immediate. Operand
+		// legality already restricts wide constants to signed displacements.
+		f.a.LeaDispW(dst, left, int32(r.Constant), w)
+		return
+	}
 	f.Move(d, l, w)
 	if op == shared.IntMul {
 		switch r.Kind {
