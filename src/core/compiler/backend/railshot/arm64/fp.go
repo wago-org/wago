@@ -620,10 +620,14 @@ func (f *fn) fminmaxInto(dst Reg, f64, isMax bool) {
 			dst = f.allocFReg(maskOf(xa, xb))
 		}
 	}
-	if dst != xa {
-		f.a.FmovReg(dst, xa, f64)
+	if dst == xb && dst != xa {
+		f.scalarFMinMaxInto(dst, xa, f64, isMax)
+	} else {
+		if dst != xa {
+			f.a.FmovReg(dst, xa, f64)
+		}
+		f.scalarFMinMaxInto(dst, xb, f64, isMax)
 	}
-	f.scalarFMinMaxInto(dst, xb, f64, isMax)
 	if xaOwned && dst != xa {
 		f.releaseF(xa)
 	}

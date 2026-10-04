@@ -49,6 +49,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   initializer is evaluated once, so every slot holds the same object.
 - AMD64 nullability refinements preserve whether a reference belongs to the
   compact collector, so native function references are not scanned as GC roots.
+- ARM64 scalar `min`/`max` local sinking now preserves an aliased right operand
+  instead of overwriting it with the left operand before the comparison.
 - Non-nullable bottom reference types such as `(ref noextern)` are accepted.
 - `Global.GetValue`/`SetValue` work for `externref` globals holding converted
   GC references.
