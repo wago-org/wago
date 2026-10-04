@@ -43,12 +43,23 @@ func (c *pluginAMD64Context) requireCPU(features shared.AMD64Features) error {
 	return c.featureError
 }
 
-func (c *pluginAMD64Context) InputI32(index int) (x86.Reg, error) {
+func (c *pluginAMD64Context) scalarInputSlot(index int) (int, error) {
 	if index < 0 || index >= len(c.paramSlots) {
 		return 0, fmt.Errorf("amd64 plugin input %d out of range", index)
 	}
+	if index < len(c.paramCustom) && !c.paramCustom[index].IsZero() {
+		return 0, fmt.Errorf("amd64 plugin input %d is custom", index)
+	}
+	return c.paramSlots[index], nil
+}
+
+func (c *pluginAMD64Context) InputI32(index int) (x86.Reg, error) {
+	slot, err := c.scalarInputSlot(index)
+	if err != nil {
+		return 0, err
+	}
 	r := c.AllocGP()
-	c.f.a.Load64(r, RSP, c.f.spillOff(c.paramSlots[index]))
+	c.f.a.Load64(r, RSP, c.f.spillOff(slot))
 	if width := c.paramWidth[index]; width < 32 {
 		c.f.a.AluRI(4, r, int32((uint64(1)<<uint(width))-1), false)
 	}
@@ -234,13 +245,14 @@ func (c *pluginAMD64Context) ReleaseVector(reg x86.Reg) {
 func (*pluginAMD64Context) MemoryBase() x86.Reg { return RBX }
 
 func (c *pluginAMD64Context) CheckedMemory(input int, offset uint32, size int) (x86.Reg, x86.Reg, int32, error) {
-	if input < 0 || input >= len(c.paramSlots) {
-		return 0, 0, 0, fmt.Errorf("amd64 plugin memory input %d out of range", input)
+	slot, err := c.scalarInputSlot(input)
+	if err != nil {
+		return 0, 0, 0, err
 	}
 	if size <= 0 {
 		return 0, 0, 0, fmt.Errorf("amd64 plugin memory access has invalid size %d", size)
 	}
-	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(c.paramSlots[input])})
+	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(slot)})
 	ea, owned, _, disp := c.f.memAddr(offset, size, true, 0)
 	if owned {
 		c.f.pinned = c.f.pinned.add(ea)
