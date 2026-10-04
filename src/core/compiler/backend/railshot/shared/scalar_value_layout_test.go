@@ -10,14 +10,14 @@ func TestScalarValueBoundsAndLayout(t *testing.T) {
 		t.Fatal("admission no longer fits compact counters")
 	}
 	type previous struct {
-		constant          int64
-		left, right       scalarID
-		refs, slot        int32
-		op                IntOp
-		kind              ScalarLocation
-		reg, depth        uint8
-		wide, operandWide bool
-		home              uint16
+		Constant          int64
+		Left, Right       scalarID
+		Refs, Slot        int32
+		Op                IntOp
+		Kind              ScalarLocation
+		Reg, Depth        uint8
+		Wide, OperandWide bool
+		Home              uint16
 	}
 	if unsafe.Sizeof(scalarNode{}) != unsafe.Sizeof(previous{}) {
 		t.Fatalf("node size grew from %d to %d", unsafe.Sizeof(previous{}), unsafe.Sizeof(scalarNode{}))

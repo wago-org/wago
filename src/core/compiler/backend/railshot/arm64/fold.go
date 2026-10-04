@@ -14,8 +14,6 @@ import (
 
 // foldBin folds `a op b` for two integer constants. w selects i64 (else i32).
 func foldBin(op wOp, a, b int64, w bool) int64 { return shared.FoldBin(shared.IntOp(op), a, b, w) }
-func foldI32(op wOp, a, b uint32) uint32       { return shared.FoldI32(shared.IntOp(op), a, b) }
-func foldI64(op wOp, a, b int64) int64         { return shared.FoldI64(shared.IntOp(op), a, b) }
 func foldable(op wOp) bool                     { return shared.Foldable(shared.IntOp(op)) }
 func foldCompare(op wOp, a, b int64, w bool) int64 {
 	return shared.FoldCompare(shared.IntOp(op), a, b, w)
