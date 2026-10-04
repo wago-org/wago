@@ -1,0 +1,447 @@
+[
+  {
+    "name": "G-width-before-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-width-before.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/pr-head",
+    "exit": 0
+  },
+  {
+    "name": "G-width-before",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-width-before.test",
+      "-test.run=^TestSharedScalarScaledAddWidths$",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/pr-head",
+    "exit": 1
+  },
+  {
+    "name": "arm64-wago-ordinary-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-wago-ordinary.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-wago-ordinary",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-wago-ordinary.test",
+      "-test.run=^TestSharedScalar",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-arm64-ordinary-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-arm64-ordinary.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-arm64-ordinary",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-arm64-ordinary.test",
+      "-test.run=TestScalar|TestShared",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-shared-ordinary-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-shared-ordinary.test",
+      "./src/core/compiler/backend/railshot/shared"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-shared-ordinary",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-shared-ordinary.test",
+      "-test.run=TestScalar",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "darwin-amd64-suite-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/darwin-amd64-suite-ordinary.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "darwin-amd64-amd64-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/darwin-amd64-amd64-ordinary.test",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "darwin-arm64-suite-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/darwin-arm64-suite-ordinary.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "darwin-arm64-arm64-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/darwin-arm64-arm64-ordinary.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "windows-amd64-suite-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/windows-amd64-suite-ordinary.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "windows-amd64-amd64-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/windows-amd64-amd64-ordinary.test",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "windows-arm64-suite-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/windows-arm64-suite-ordinary.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "windows-arm64-arm64-ordinary",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/windows-arm64-arm64-ordinary.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-wago-checked-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-wago-checked.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-wago-checked",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-wago-checked.test",
+      "-test.run=^TestSharedScalar",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-arm64-checked-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-arm64-checked.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-arm64-checked",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-arm64-checked.test",
+      "-test.run=TestScalar|TestShared",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-shared-checked-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-shared-checked.test",
+      "./src/core/compiler/backend/railshot/shared"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "arm64-shared-checked",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/arm64-shared-checked.test",
+      "-test.run=TestScalar",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "darwin-amd64-suite-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/darwin-amd64-suite-checked.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "darwin-amd64-amd64-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/darwin-amd64-amd64-checked.test",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "darwin-arm64-suite-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/darwin-arm64-suite-checked.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "darwin-arm64-arm64-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/darwin-arm64-arm64-checked.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "windows-amd64-suite-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/windows-amd64-suite-checked.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "windows-amd64-amd64-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/windows-amd64-amd64-checked.test",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "windows-arm64-suite-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/windows-arm64-suite-checked.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "windows-arm64-arm64-checked",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/windows-arm64-arm64-checked.test",
+      "./src/core/compiler/backend/railshot/arm64"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  },
+  {
+    "name": "identity-required",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./bench/suite",
+      "-run",
+      "TestBench(NativeMappingRelease|MappingIdentity)",
+      "-v",
+      "-count=1"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 1
+  },
+  {
+    "name": "G-allocation-before",
+    "command": [
+      "go",
+      "test",
+      "./src/core/compiler/backend/railshot/shared",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "TestScalarControlColdAllocationBudget|TestSharedFallbackStackInitializedInPlace",
+      "-count=1"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/pr-head",
+    "exit": 1
+  },
+  {
+    "name": "G-zero-before",
+    "command": [
+      "go",
+      "test",
+      "./src/core/compiler/backend/railshot/amd64",
+      "-run",
+      "TestSharedScalarZeroLocal",
+      "-count=1"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/pr-head",
+    "exit": 1
+  },
+  {
+    "name": "H-focused",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/shared",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/wago",
+      "-run",
+      "TestScalar|TestShared",
+      "-count=1"
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo",
+    "exit": 0
+  }
+]

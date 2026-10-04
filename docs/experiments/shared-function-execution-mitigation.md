@@ -1,5 +1,7 @@
 # Shared function compilation: execution mitigation
 
+> Accounting correction (PR #802 review): historical `mapped_bytes_page_accounting` values below count page-rounded code payload, not owned mapping capacity. The raw historical files are preserved. Corrected A/G/H measurements and remaining qualification are in [the review follow-up](shared-function-review-fixes.md). Actual retained A/G mapping capacity is 606,208 bytes; the historical 278,528 bytes understated it by 327,680 bytes. No corrected mapping capacity is asserted for unrerun intermediate revisions.
+
 The execution-focused follow-up removes the deep-block regression. Across the eight fixed migrated synthetic workloads, execution is **12.45% faster than the original pilot and 3.94% faster than the frozen baseline**. This is an equal-weight geometric mean, not production-weighted throughput. Conditional joins remain slower than baseline, and pressure execution remains noisy. Keep these mitigations on the experiment branch; continue revising the pilot before merging.
 
 This supplements [the initial experiment](shared-function-compilation.md). Its frozen corpus, shared ownership boundary, fallback rules, original A/B/C comparison and limitations still apply. No rebase, corpus selection change, merge or remote publication occurred.
@@ -78,7 +80,7 @@ Pressure C→D code decreases 270 bytes (30.65%), frame decreases 336 bytes (57.
 
 ## Fixed-work memory
 
-Identical memory runners execute 270 compile-and-close operations, then three batches of 36 retained modules followed by Close, reference removal and GC with Runtime alive, then Runtime teardown. A separate native-output scenario records mapped memory. All GC observations are outside latency timing. Inputs stay alive equivalently. No forced OS memory release is used. Six fresh processes per revision run both scenarios; all lifecycle phases, HeapAlloc/Inuse/Objects/Released, allocation deltas, current RSS, code and mappings are preserved in `memory-samples.json` and `memory-summary.json`.
+Identical memory runners execute 270 compile-and-close operations, then three batches of 36 retained modules followed by Close, reference removal and GC with Runtime alive, then Runtime teardown. A separate native-output scenario records page-rounded code payload. All GC observations are outside latency timing. Inputs stay alive equivalently. No forced OS memory release is used. Six fresh processes per revision run both scenarios; all lifecycle phases, HeapAlloc/Inuse/Objects/Released, allocation deltas, current RSS, code and page-rounded payload are preserved in `memory-samples.json` and `memory-summary.json`.
 
 | Measurement | A median | C median | D median | C→D |
 |---|---:|---:|---:|---:|
@@ -87,13 +89,13 @@ Identical memory runners execute 270 compile-and-close operations, then three ba
 | Native compile/release allocated bytes, 270 compiles | 19,245,136 | 16,287,360 | 16,287,360 | 0 |
 | Native compile/release allocation count | 6,295 | 6,925 | 6,925 | 0 |
 | Retained 36-module native code bytes | 167,268 | 176,484 | 171,772 | −4,712 (−2.67%) |
-| Retained native mapped bytes | 278,528 | 294,912 | 294,912 | 0 |
+| Retained native page-rounded payload | 278,528 | 294,912 | 294,912 | 0 |
 | Public HeapAlloc after Runtime release | 211,248 | 206,168 | 205,928 | −240 (−0.12%), overlapping spread |
 | Native HeapAlloc after third batch release | 370,488 | 365,408 | 365,168 | −240 (−0.07%), overlapping spread |
 | Peak process RSS, KiB | 22,656 | 23,156 | 23,046 | −110 (−0.48%), inconclusive |
 | Peak RSS min–max, KiB | 20,432–22,788 | 23,000–25,144 | 21,748–25,072 | Six processes each |
 
-Fractional allocation-count medians arise from an even sample count. Go allocations omit native mappings. Less code does not reduce mappings here because of page rounding. Frame reduction is native function storage, not an equivalent retained-Go-heap saving. Common scratch allocation and retained legacy reservations remain; HasIf fits summary padding and adds no allocated array or per-operation object. Scratch accounting remains an envelope of worker high-water counters, not a simultaneous process peak.
+Fractional allocation-count medians arise from an even sample count. Go allocations omit native mappings. Less code does not reduce page-rounded payload here. Owned mapping capacity was not measured by this historical runner. Frame reduction is native function storage, not an equivalent retained-Go-heap saving. Common scratch allocation and retained legacy reservations remain; HasIf fits summary padding and adds no allocated array or per-operation object. Scratch accounting remains an envelope of worker high-water counters, not a simultaneous process peak.
 
 Public single-GC release observations plateau around 1.55 MB; the prior report's extra-GC diagnostic showed delayed output reclamation with Runtime still alive. This follow-up does not reclassify that as engine cache or shared scratch. There is no observed continued per-cycle heap growth in this fixed run. The tiny final-heap differences and overlapping RSS ranges do not establish a retained-memory fix. Current RSS can reflect resident code and retained allocator pages. The earlier 9.6% RSS increase belongs to a different sample set and must not be mixed with these new measurements. No new heap profile was needed to attribute a substantial new retained difference; original profiles remain preserved.
 
@@ -108,7 +110,7 @@ ARM64 cross-build and focused execution under QEMU pass, including the new tests
 1. **Conditional/leaf state handling:** join execution remains 4.53% slower than baseline; join frames are 16 bytes larger. Many small functions retain ingress/return frame overhead. Preserve clean local homes and improve frame elision next.
 2. **Pressure:** slot and code storage improve substantially, but execution remains about 1.8% above baseline and improvement versus C is inconclusive even in the longer run. Frames still exceed baseline by 16 bytes. Investigate physical allocation/ingress choices before claiming parity.
 3. **Compiler allocation:** many-locals native allocation remains 58,888 versus 29,192 B/op (+29,696, 101.73%). Shared state and legacy reservations still coexist. Native fixed-work allocation counts remain 630 above A (+10.01%). Make fallback scratch reservation lazy without weakening admission/fallback contracts.
-4. **Retained native/process storage:** fixed-batch mapped bytes remain 16,384 above baseline (+5.88%). Code is 4,504 bytes above baseline (+2.69%). RSS ranges overlap; exact residency attribution remains incomplete.
+4. **Retained native/process storage:** fixed-batch page-rounded payload remains 16,384 above baseline (+5.88%). Code is 4,504 bytes above baseline (+2.69%). RSS ranges overlap; exact residency attribution remains incomplete.
 
 The dominant deep-block execution regression is resolved for this corpus. Keep these three changes, but **revise the overall pilot before merge**. No expanded subset, native ARM64 measurements, four-worker rerun, strict JSON-AS per-call state reset, or transfer-level checker for the shared allocator is claimed. Prior full-root installer/CLI failures and the baseline-reproducing full ARM64 QEMU backend crash were not rerun; those qualification gaps remain as documented in the initial report.
 

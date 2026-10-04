@@ -1,5 +1,7 @@
 # Shared function compilation: further regression investigation
 
+> Accounting correction (PR #802 review): historical `mapped_bytes_page_accounting` values below count page-rounded code payload, not owned mapping capacity. The raw historical files are preserved. Corrected A/G/H measurements and remaining qualification are in [the review follow-up](shared-function-review-fixes.md). Actual retained A/G mapping capacity is 606,208 bytes; the historical 278,528 bytes understated it by 327,680 bytes. No corrected mapping capacity is asserted for unrerun intermediate revisions.
+
 **Keep the experiment unaccepted.** This pass removes substantial allocation and frame regressions, but does not establish an acceptably small execution regression. Pressure execution has an unfavorable median in both final timing cohorts, with uncertainty too wide to bound it. A nonsignificant difference is not an equivalence proof.
 
 This supplements [the initial experiment](shared-function-compilation.md) and [the first execution mitigation](shared-function-execution-mitigation.md). Their frozen baseline, subset, correctness exclusions and original helper-only comparison remain intact. No rebase, merge, push, or workload selection change occurred.
@@ -133,7 +135,7 @@ Primary memory runs are separate from latency: 270 compile/close operations, the
 | Native compile/release allocated bytes | 19,245,136 | 9,283,664 | −9,961,472 (−51.76%) |
 | Native compile/release allocations | 6,295 | 6,055 | −240 (−3.81%) |
 | Retained native code bytes, 36 modules | 167,268 | 163,060 | −4,208 (−2.52%) |
-| Retained native mapped bytes | 278,528 | 278,528 | 0 |
+| Retained native page-rounded payload | 278,528 | 278,528 | 0 |
 | Public HeapAlloc after Runtime release | 206,392 | 206,088 | −304 (−0.15%), overlapping spread |
 | Native HeapAlloc after third release | 365,632 | 365,328 | −304 (−0.08%), overlapping spread |
 | Peak process RSS, KiB | 20,986 | 23,082 | +2,096 (+9.99%) |
@@ -141,7 +143,7 @@ Primary memory runs are separate from latency: 270 compile/close operations, the
 
 All lifecycle metrics, including allocation deltas, HeapInuse/Objects/Released and current RSS, appear with spreads in the external memory tables/JSON. Public release-phase heap plateaus rather than growing each cycle. The initial report's delayed-output-reclamation/extra-GC caveat remains; the later heap drop cannot be assigned solely to engine teardown. Sampled retained heap profiles again identify compiled metadata/snapshots; their stochastic profile totals are not exact cross-revision heap deltas.
 
-The normal RSS increase is a real measurement and remains in the primary table. It is not explained by compiler scratch or native mappings: initial median RSS, before any compile, was 12,464,128 bytes in A and 16,422,912 in F, despite nearly equal live Go heap.
+The normal RSS increase is a real measurement and remains in the primary table. The historical scratch and page-rounded payload counters do not explain it: initial median RSS, before any compile, was 12,464,128 bytes in A and 16,422,912 in F, despite nearly equal live Go heap.
 
 Separate, identical `/proc/self/smaps` and heap-profile overlays establish a startup-residency contributor. This host has transparent huge pages set to `always`. Candidate BSS mapping `011be000-03213000` carries an extra 2,048 KiB anonymous huge page. Test-binary text grows about 49.9 KB and BSS only 32 bytes; segment placement changes physical residency in 2 MiB units. Setting `GODEBUG=disablethp=1` removes Go-heap huge pages but leaves that BSS page in F. The diagnostic is binary/layout-specific and does not establish that every deployed runtime has the same offset.
 
@@ -162,7 +164,7 @@ The ranges overlap; F is not shown to reduce physical process memory. Additional
 3. **Leaf storage is still conservative.** Small/deep functions retain 24-byte frames where A has none; many functions retain 12,288 summed frame bytes and 1,536 extra code bytes (+10.33%). Join retains five extra code bytes.
 4. **Some allocation counts and fallback overhead remain.** Pressure adds five allocations (27.78%), deep four (18.18%), and many locals one (4.76%). Fallback adds 336 B/op and one allocation. Aggregate allocation totals improve substantially, but do not erase these cases.
 
-**Recommendation: retain the fixes on the isolated experiment branch, but do not accept or merge the shared pilot yet.** Correctness, allocated bytes, mapped native storage, and two important frame regressions have stronger evidence now. Execution equivalence or a suitably small regression has not been demonstrated. Native ARM64, additional worker policies, full ARM64 backend emulation (baseline-reproducing crash), the known unrelated root CLI/installer failures, strict JSON-AS state reset, and transfer-level instrumentation of the shared allocator remain incomplete. Admission timing counters are preserved separately, but the old copied standalone admission microbenchmark was excluded because it predates the tighter sizing logic.
+**Recommendation: retain the fixes on the isolated experiment branch, but do not accept or merge the shared pilot yet.** Correctness, allocated bytes, page-rounded native payload, and two important frame regressions have stronger evidence now. Execution equivalence or a suitably small regression has not been demonstrated. Native ARM64, additional worker policies, full ARM64 backend emulation (baseline-reproducing crash), the known unrelated root CLI/installer failures, strict JSON-AS state reset, and transfer-level instrumentation of the shared allocator remain incomplete. Admission timing counters are preserved separately, but the old copied standalone admission microbenchmark was excluded because it predates the tighter sizing logic.
 
 ## Reproduction and preserved evidence
 

@@ -1,0 +1,24 @@
+File: A-suite.test
+Build ID: 6333658d0bbea39f9b57fd9dfa5fba69a26be32a
+Type: alloc_objects
+Time: 2026-10-04 00:47:57 EDT
+Showing nodes accounting for 150017, 99.06% of 151435 total
+Dropped 180 nodes (cum <= 757)
+      flat  flat%   sum%        cum   cum%
+     30003 19.81% 19.81%      30003 19.81%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*scratch).reserveLocalScratch (inline)
+     30003 19.81% 39.62%      30003 19.81%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newStackWithCap
+     20002 13.21% 52.83%      20002 13.21%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.computeModuleHintsWithWorkersResidencyPolicy
+     20002 13.21% 66.04%      50005 33.02%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newScratchWithStackCap
+     10001  6.60% 72.65%     150662 99.49%  github.com/wago-org/wago/bench/suite.benchCompileModuleWorkers
+     10001  6.60% 79.25%      10001  6.60%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).runBody
+     10001  6.60% 85.85%     140661 92.89%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+     10001  6.60% 92.46%      10001  6.60%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.ModuleEntries (inline)
+     10001  6.60% 99.06%      10002  6.60%  github.com/wago-org/wago/src/core/runtime.NewCodeBuffer
+         2 0.0013% 99.06%     151096 99.78%  testing.(*B).runN
+         0     0% 99.06%     150722 99.53%  github.com/wago-org/wago/bench/suite.BenchmarkSharingZeroLocals.func1
+         0     0% 99.06%     150662 99.49%  github.com/wago-org/wago/bench/suite.benchCompileModule (inline)
+         0     0% 99.06%      10001  6.60%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitRegABI
+         0     0% 99.06%     140661 92.89%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith
+         0     0% 99.06%      10001  6.60%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFunc
+         0     0% 99.06%      10001  6.60%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFuncAttempt
+         0     0% 99.06%     150677 99.50%  testing.(*B).launch

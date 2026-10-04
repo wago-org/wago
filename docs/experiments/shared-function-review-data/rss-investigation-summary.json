@@ -1,0 +1,152 @@
+{
+  "rss-repeat": {
+    "A": {
+      "median": 22562.0,
+      "min": 20528,
+      "max": 22796,
+      "n": 6
+    },
+    "G": {
+      "median": 22520.0,
+      "min": 21964,
+      "max": 22928,
+      "n": 6
+    },
+    "H": {
+      "median": 23496.0,
+      "min": 22416,
+      "max": 24588,
+      "n": 6
+    }
+  },
+  "nothp": {
+    "A": {
+      "median": 19540.0,
+      "min": 19196,
+      "max": 19608,
+      "n": 6
+    },
+    "G": {
+      "median": 19232.0,
+      "min": 19108,
+      "max": 19660,
+      "n": 6
+    },
+    "H": {
+      "median": 19274.0,
+      "min": 19076,
+      "max": 19500,
+      "n": 6
+    }
+  },
+  "smaps": [
+    {
+      "revision": "A",
+      "mode": "normal",
+      "samples": 86,
+      "exit": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/A-suite.test",
+        "-test.run=^TestSharing(Memory|MappedMemory)$",
+        "-test.v",
+        "-test.count=1"
+      ],
+      "rss_kib": 22628,
+      "anon_huge_kib": 2048
+    },
+    {
+      "revision": "G",
+      "mode": "normal",
+      "samples": 57,
+      "exit": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-suite.test",
+        "-test.run=^TestSharing(Memory|MappedMemory)$",
+        "-test.v",
+        "-test.count=1"
+      ],
+      "rss_kib": 19248,
+      "anon_huge_kib": 0
+    },
+    {
+      "revision": "H",
+      "mode": "normal",
+      "samples": 74,
+      "exit": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "4",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/H-suite.test",
+        "-test.run=^TestSharing(Memory|MappedMemory)$",
+        "-test.v",
+        "-test.count=1"
+      ],
+      "rss_kib": 19328,
+      "anon_huge_kib": 0
+    },
+    {
+      "revision": "A",
+      "mode": "nothp",
+      "samples": 92,
+      "exit": 0,
+      "command": [
+        "python3",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/without_thp.py",
+        "taskset",
+        "-c",
+        "4",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/A-suite.test",
+        "-test.run=^TestSharing(Memory|MappedMemory)$",
+        "-test.v",
+        "-test.count=1"
+      ],
+      "rss_kib": 19440,
+      "anon_huge_kib": 0
+    },
+    {
+      "revision": "G",
+      "mode": "nothp",
+      "samples": 82,
+      "exit": 0,
+      "command": [
+        "python3",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/without_thp.py",
+        "taskset",
+        "-c",
+        "4",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-suite.test",
+        "-test.run=^TestSharing(Memory|MappedMemory)$",
+        "-test.v",
+        "-test.count=1"
+      ],
+      "rss_kib": 19264,
+      "anon_huge_kib": 0
+    },
+    {
+      "revision": "H",
+      "mode": "nothp",
+      "samples": 82,
+      "exit": 0,
+      "command": [
+        "python3",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/without_thp.py",
+        "taskset",
+        "-c",
+        "4",
+        "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/H-suite.test",
+        "-test.run=^TestSharing(Memory|MappedMemory)$",
+        "-test.v",
+        "-test.count=1"
+      ],
+      "rss_kib": 19252,
+      "anon_huge_kib": 0
+    }
+  ]
+}

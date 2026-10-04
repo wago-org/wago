@@ -1,8 +1,10 @@
 # Shared function compilation: spill-policy experiment
 
+> Accounting correction (PR #802 review): historical `mapped_bytes_page_accounting` values below count page-rounded code payload, not owned mapping capacity. The raw historical files are preserved. Corrected A/G/H measurements and remaining qualification are in [the review follow-up](shared-function-review-fixes.md). Actual retained A/G mapping capacity is 606,208 bytes; the historical 278,528 bytes understated it by 327,680 bytes. No corrected mapping capacity is asserted for unrerun intermediate revisions.
+
 **Keep this mitigation on the isolated branch; continue revising the overall pilot.** Changing spill-victim selection improves the pressure workload by about 4% relative to the previous pilot in two separate timing cohorts. Its execution median is now within 0.5% of the frozen baseline. A longer run supports a pointwise upper bound of +1.53% for this workload's median regression under the measured conditions. This is stronger evidence than a nonsignificant comparison, but it is not a claim of equivalence across architectures or workloads.
 
-The tradeoff is more compilation work when registers are full and 59 additional pressure-function code bytes. No measured allocation, scratch, frame, spill-slot, or native-mapping increase accompanies the new policy. Existing leaf frames, allocation-event regressions, and normal-process RSS differences remain. This report supplements [the initial experiment](shared-function-compilation.md), [the first mitigation](shared-function-execution-mitigation.md), and [the preceding investigation](shared-function-regression-investigation.md); it does not replace their evidence or limitations.
+The tradeoff is more compilation work when registers are full and 59 additional pressure-function code bytes. No measured allocation, scratch, frame, spill-slot, or page-rounded-payload increase accompanies the new policy. Existing leaf frames, allocation-event regressions, and normal-process RSS differences remain. This report supplements [the initial experiment](shared-function-compilation.md), [the first mitigation](shared-function-execution-mitigation.md), and [the preceding investigation](shared-function-regression-investigation.md); it does not replace their evidence or limitations.
 
 ## Frozen sources and boundary
 
@@ -103,7 +105,7 @@ All other measured F/G code hashes, function frames, spill-slot counts and scrat
 
 ## Fixed-work memory
 
-Each fresh process performs 270 compile/close operations, then three batches of 36 retained modules (4,128 functions), closing outputs, removing references and observing GC with Runtime alive; then it closes Runtime. A separate native-output scenario measures executable mappings. Inputs remain retained equally. No forced page release or finalizer assumption is used. Complete HeapAlloc/Inuse/Objects/Released, RSS, peaks, allocation deltas, code and mapped bytes at every phase, with min/max spread, are in `memory-tables.md` and `results/memory-summary.json`.
+Each fresh process performs 270 compile/close operations, then three batches of 36 retained modules (4,128 functions), closing outputs, removing references and observing GC with Runtime alive; then it closes Runtime. A separate native-output scenario records page-rounded code payload. Inputs remain retained equally. No forced page release or finalizer assumption is used. Complete HeapAlloc/Inuse/Objects/Released, RSS, peaks, allocation deltas, code and page-rounded payload at every phase, with min/max spread, are in `memory-tables.md` and `results/memory-summary.json`.
 
 | Normal-process measurement, n=6 | A median | F median | G median | A→G |
 |---|---:|---:|---:|---:|
@@ -112,13 +114,13 @@ Each fresh process performs 270 compile/close operations, then three batches of 
 | Native compile/release allocated bytes | 19,245,144 | 9,283,664 | 9,283,664 | −9,961,480 / −51.76% |
 | Native allocation count | 6,295 | 6,055 | 6,055 | −240 / −3.81% |
 | Retained native code, 36 modules | 167,268 | 163,060 | 163,296 | −3,972 / −2.37% |
-| Retained mapped bytes | 278,528 | 278,528 | 278,528 | 0 |
+| Retained page-rounded payload | 278,528 | 278,528 | 278,528 | 0 |
 | HeapAlloc after Runtime release | 211,248 | 205,848 | 206,248 | −5,000 / −2.37%; overlapping ranges |
 | Native HeapAlloc after third release | 370,488 | 365,088 | 365,488 | −5,000 / −1.35%; overlapping ranges |
 | Peak RSS, KiB | 21,978 | 22,942 | 23,234 | +1,256 / +5.72% |
 | Peak RSS min–max, KiB | 20,620–23,140 | 22,652–25,188 | 22,460–24,900 | Overlapping ranges |
 
-F→G retained code grows 236 bytes (+0.145%) and mappings do not grow. Public allocation delta grows 160 bytes (+0.00058%), within run spread; native allocation medians are identical. Final HeapAlloc differs by 400 bytes F→G (about +0.19% public, +0.11% native), with overlapping ranges of several KiB. G released-phase medians plateau at 1,547,232 bytes in all three public cycles and 365,488 bytes in all three native cycles. That establishes no continued growth over this fixed observation, not a general lifetime proof. The earlier extra-GC/reclamation caveat remains: the later public heap drop cannot be assigned solely to engine release. No new heap profile was needed to explain an additional retained-growth trend; prior retained-metadata profiles remain preserved.
+F→G retained code grows 236 bytes (+0.145%) and page-rounded payload does not grow. Public allocation delta grows 160 bytes (+0.00058%), within run spread; native allocation medians are identical. Final HeapAlloc differs by 400 bytes F→G (about +0.19% public, +0.11% native), with overlapping ranges of several KiB. G released-phase medians plateau at 1,547,232 bytes in all three public cycles and 365,488 bytes in all three native cycles. That establishes no continued growth over this fixed observation, not a general lifetime proof. The earlier extra-GC/reclamation caveat remains: the later public heap drop cannot be assigned solely to engine release. No new heap profile was needed to explain an additional retained-growth trend; prior retained-metadata profiles remain preserved.
 
 Normal peak RSS grows 292 KiB (+1.27%) F→G with overlapping ranges. As in the preceding investigation, startup RSS differs before any compilation on this host with THP=`always`. A separate child-local `PR_SET_THP_DISABLE` run uses the same unmodified binaries and fixed work, without changing global OS policy or forcing release. Peak RSS is A **19,614 [19,272–20,488]**, F **19,514 [19,236–19,888]**, G **19,476 [19,316–19,656] KiB**, n=6. These ranges overlap. This is consistent with the previously observed BSS/huge-page layout contribution; it does not replace normal results, establish deployment-binary RSS parity, or recommend disabling THP in production. Go allocation totals omit native mappings, and RSS includes reusable resident pages.
 

@@ -1,0 +1,74 @@
+{
+  "interval_seconds": 5,
+  "cpu_activity": {
+    "cpu": {
+      "total_ticks": 8002,
+      "busy_percent": 8.910272431892027
+    },
+    "cpu0": {
+      "total_ticks": 540,
+      "busy_percent": 22.59259259259259
+    },
+    "cpu1": {
+      "total_ticks": 503,
+      "busy_percent": 1.1928429423459244
+    },
+    "cpu2": {
+      "total_ticks": 494,
+      "busy_percent": 31.17408906882591
+    },
+    "cpu3": {
+      "total_ticks": 497,
+      "busy_percent": 2.816901408450704
+    },
+    "cpu4": {
+      "total_ticks": 500,
+      "busy_percent": 6.2
+    },
+    "cpu5": {
+      "total_ticks": 497,
+      "busy_percent": 4.82897384305835
+    },
+    "cpu6": {
+      "total_ticks": 491,
+      "busy_percent": 18.73727087576375
+    },
+    "cpu7": {
+      "total_ticks": 500,
+      "busy_percent": 18.2
+    },
+    "cpu8": {
+      "total_ticks": 497,
+      "busy_percent": 11.066398390342052
+    },
+    "cpu9": {
+      "total_ticks": 501,
+      "busy_percent": 0.5988023952095808
+    },
+    "cpu10": {
+      "total_ticks": 495,
+      "busy_percent": 6.262626262626263
+    },
+    "cpu11": {
+      "total_ticks": 499,
+      "busy_percent": 0.20040080160320642
+    },
+    "cpu12": {
+      "total_ticks": 498,
+      "busy_percent": 5.622489959839357
+    },
+    "cpu13": {
+      "total_ticks": 498,
+      "busy_percent": 0.40160642570281124
+    },
+    "cpu14": {
+      "total_ticks": 491,
+      "busy_percent": 11.405295315682281
+    },
+    "cpu15": {
+      "total_ticks": 498,
+      "busy_percent": 0.40160642570281124
+    }
+  },
+  "note": "Aggregate CPU activity only; unrelated process command lines are excluded."
+}
