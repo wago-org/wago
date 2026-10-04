@@ -58,6 +58,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   call made inside a `try_table`, and accepts tail calls from register-ABI to
   result-bearing wrapper-ABI functions. ARM64 mixed register/wrapper tail
   loops no longer grow the stack.
+- Managed code-generation plugins can no longer type-assert their restricted
+  callback context to the full raw-encoder context on AMD64 or ARM64.
 - A `try_table` may have up to 1,024 catch clauses (previously 8).
 - ARM64 tail calls from a function with reference-typed parameters into a
   numeric register-ABI function no longer lose the callee's updates to
