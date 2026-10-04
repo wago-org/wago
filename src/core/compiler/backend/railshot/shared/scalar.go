@@ -20,11 +20,11 @@ const scalarMaxNodes = 16384
 // Indexed block signatures, loops, arbitrary branches, calls, effects, refs and
 // mixed register banks stay on the established function compiler.
 func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) ScalarSummary {
-	s := ScalarSummary{Nodes: len(localTypes) + 1}
+	s := ScalarSummary{Nodes: len(ft.Params) + 1}
 	// Preserve the pilot's admission budget independently of the tighter
 	// allocation bound. Reducing over-reservation must not expand the subset.
-	budget := s.Nodes
-	if len(code) == 0 || len(code) > 64<<10 || len(localTypes) > 256 || len(ft.Results) != 1 {
+	budget := len(localTypes) + 1
+	if len(code) == 0 || len(code) > 64<<10 || len(localTypes) > 256 || len(ft.Params) > len(localTypes) || len(ft.Results) != 1 {
 		return s
 	}
 	integer := func(t wasm.ValType) bool { return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) }
@@ -39,6 +39,20 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 	for _, t := range localTypes {
 		if !integer(t) {
 			return s
+		}
+	}
+	// Declared locals initially share one zero value per width. A binding and
+	// every live read retain independent references to that value; parameters
+	// keep distinct borrowed identities and control restores remain distinct.
+	var zeroWidths [2]bool
+	for _, t := range localTypes[len(ft.Params):] {
+		width := 0
+		if wasm.EqualValType(t, wasm.I64) {
+			width = 1
+		}
+		if !zeroWidths[width] {
+			zeroWidths[width] = true
+			s.Nodes++
 		}
 	}
 	type frame struct {
@@ -663,14 +677,23 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 	s.Reloads = 0
 	s.target = target
 	s.regs, s.reserved = target.Registers()
+	var zeros [2]scalarID
 	for i, wide := range localWide {
-		n := scalarNode{kind: ScalarConstant, wide: wide, refs: 1}
 		if i < nParams {
-			n.kind = scalarBorrow
-			n.slot = int32(i)
-			n.home = uint16(i + 1)
+			s.locals = append(s.locals, s.add(scalarNode{kind: scalarBorrow, wide: wide, refs: 1, slot: int32(i), home: uint16(i + 1)}))
+			continue
 		}
-		s.locals = append(s.locals, s.add(n))
+		width := 0
+		if wide {
+			width = 1
+		}
+		id := zeros[width]
+		if id == 0 {
+			id = s.add(scalarNode{kind: ScalarConstant, wide: wide})
+			zeros[width] = id
+		}
+		s.node(id).refs++
+		s.locals = append(s.locals, id)
 	}
 	r := wasm.ReaderFrom(code)
 	returned := false
