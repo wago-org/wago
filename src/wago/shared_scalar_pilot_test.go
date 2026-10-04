@@ -395,3 +395,52 @@ func TestSharedScalarFallbackScratchTransitions(t *testing.T) {
 		}
 	}
 }
+
+// Exercise victim changes while nested fixed-register operations, an older
+// local version, and a later control agreement are all live at once.
+func TestSharedScalarPressureFixedOperandsAndJoin(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		typ, constant, add, shl, ne, result := wasm.I32, byte(0x41), byte(0x6a), byte(0x74), byte(0x47), byte(0x7f)
+		mask, shiftMask := uint64(0xffffffff), uint64(31)
+		if wide {
+			typ, constant, add, shl, ne, result = wasm.I64, 0x42, 0x7c, 0x86, 0x52, 0x7e
+			mask, shiftMask = ^uint64(0), 63
+		}
+		body := []byte{0x20, 0}
+		for k := byte(1); k <= 40; k++ {
+			body = append(body, 0x20, 0, constant, k, add, 0x22, 1)
+		}
+		body = append(body, 0x20, 0, 0x20, 0, constant, 1, add, 0x20, 0, constant, 2, add, shl, 0x20, 0, constant, 3, add, 0x20, 0, constant, 4, add, shl, add, add, 0x22, 2)
+		body = append(body, constant, 7, 0x21, 0, 0x20, 2, constant, 0, ne, 0x04, result, constant, 11, 0x05, constant, 13, 0x0b)
+		for k := 0; k < 42; k++ {
+			body = append(body, add)
+		}
+		body = append(body, 0x20, 0, add, 0x0b)
+		for _, regABI := range []bool{true, false} {
+			c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), scalarPilotModule(typ, body, 2))
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				c.Close()
+				t.Fatal(err)
+			}
+			for _, x := range []uint64{0, 1, 3, 29, 31, 61, 63, 0x80000000, 0xffffffff, 0x8000000000000000, ^uint64(0)} {
+				x &= mask
+				nested := (x + (((x + 1) & mask) << ((x + 2) & shiftMask)) + (((x + 3) & mask) << ((x + 4) & shiftMask))) & mask
+				branch := uint64(11)
+				if nested == 0 {
+					branch = 13
+				}
+				want := (41*x + 820 + nested + branch + 7) & mask
+				got, err := in.Invoke("run", x)
+				if err != nil || len(got) != 1 || got[0] != want {
+					t.Fatalf("wide=%v regABI=%v x=%x got=%v err=%v want=%x", wide, regABI, x, got, err, want)
+				}
+			}
+			in.Close()
+			c.Close()
+		}
+	}
+}

@@ -347,11 +347,28 @@ func (s *ScalarState) alloc(avoid uint64) uint8 {
 			return r
 		}
 	}
+	var victim scalarID
+	var reg uint8
+	protected := true
 	for _, r := range s.regs {
-		if avoid&(1<<r) == 0 && s.owners[r] != 0 {
-			s.spill(s.owners[r])
-			return r
+		id := s.owners[r]
+		if avoid&(1<<r) != 0 || id == 0 {
+			continue
 		}
+		n := s.node(id)
+		keep := n.home != 0 || n.refs > 1
+		// Stable IDs increase in bytecode order. Among equally reusable
+		// values, evict an older value so recent stack results can begin a
+		// reduction in registers. Homes and multiple references suggest reuse;
+		// neither is a promise about future uses. This scans only the register
+		// bank and leaves active operands and fixed registers excluded above.
+		if victim == 0 || protected && !keep || protected == keep && id < victim {
+			victim, reg, protected = id, r, keep
+		}
+	}
+	if victim != 0 {
+		s.spill(victim)
+		return reg
 	}
 	panic("shared scalar: physical register constraints exhausted")
 }
