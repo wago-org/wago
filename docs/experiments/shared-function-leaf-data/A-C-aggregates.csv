@@ -1,0 +1,8 @@
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/A-aggregates.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-aggregates.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P
+Aggregate/AllNative,5.873028561138501e-05,1%,5.148947467533651e-05,1%,-12.33%,p=0.002 n=6
+Aggregate/MigratedNative,5.4071100081162505e-05,1%,4.19612514463075e-05,1%,-22.40%,p=0.002 n=6
+Aggregate/AllFull,7.38820123904365e-05,3%,6.82229470025845e-05,1%,-7.66%,p=0.002 n=6
+Aggregate/AllExec,2.69857091548e-07,1%,2.5648413050000003e-07,1%,-4.96%,p=0.002 n=6
+Aggregate/MigratedExec,4.3048354713000005e-08,1%,3.92719355305e-08,2%,-8.77%,p=0.002 n=6
+geomean,4.865094556264406e-06,,4.308519221065673e-06,,-11.44%,

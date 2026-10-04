@@ -1,0 +1,83 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingExec/small         	80310829	        15.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure      	24077972	        46.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join          	78270548	        15.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals        	15028743	        80.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many          	78835286	        15.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small         	 5014501	       234.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     591	        14.83 ns/op	    136219 calls/batch
+BenchmarkExec/many_funcs.run                  	     590	        14.69 ns/op	    140150 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingExec/small         	79955352	        15.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure      	26219924	        46.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join          	79261478	        15.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals        	14707444	        80.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many          	79590975	        15.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small         	 5049279	       240.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     589	        14.78 ns/op	    136429 calls/batch
+BenchmarkExec/many_funcs.run                  	     576	        14.74 ns/op	    141498 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingExec/small         	80010789	        15.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure      	26227519	        46.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join          	78090469	        15.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals        	14959882	        80.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many          	77368834	        15.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small         	 4926594	       232.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     616	        14.83 ns/op	    138217 calls/batch
+BenchmarkExec/many_funcs.run                  	     589	        14.67 ns/op	    140955 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingExec/small         	80828888	        15.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure      	26487480	        46.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join          	77778580	        15.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals        	14950009	        80.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many          	79994884	        15.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small         	 5220301	       235.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     591	        14.90 ns/op	    138724 calls/batch
+BenchmarkExec/many_funcs.run                  	     576	        14.72 ns/op	    138264 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingExec/small         	78027104	        15.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure      	26031420	        46.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join          	79026212	        15.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals        	14864827	        80.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many          	78884794	        15.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small         	 5161189	       235.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     576	        14.79 ns/op	    137264 calls/batch
+BenchmarkExec/many_funcs.run                  	     585	        14.75 ns/op	    139683 calls/batch
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingExec/small         	78858906	        15.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/pressure      	26177857	        46.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/join          	78248256	        15.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/locals        	15030140	        82.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/many          	80659081	        15.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSharingExec/large_then_small         	 5049807	       236.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExec/tiny.add                        	     585	        14.79 ns/op	    137715 calls/batch
+BenchmarkExec/many_funcs.run                  	     598	        17.16 ns/op	    118291 calls/batch
+PASS

@@ -1,0 +1,297 @@
+File: R-suite.test
+Build ID: a642e19ec6418fb1c5b2eb6508730e4f20a89429
+Type: cpu
+Time: 2026-10-04 16:14:31 EDT
+Duration: 11.81s, Total samples = 11.66s (98.77%)
+Showing nodes accounting for 11.66s, 100% of 11.66s total
+      flat  flat%   sum%        cum   cum%
+     3.96s 33.96% 33.96%      3.96s 33.96%  internal/runtime/syscall/linux.Syscall6
+     1.01s  8.66% 42.62%      4.98s 42.71%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFuncAttempt
+     0.96s  8.23% 50.86%      0.98s  8.40%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).emit (inline)
+     0.39s  3.34% 54.20%      0.41s  3.52%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).assignPinnedLocals
+     0.32s  2.74% 56.95%      0.55s  4.72%  github.com/wago-org/wago/src/core/compiler/wasm.equalValType
+     0.26s  2.23% 59.18%      0.30s  2.57%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).retain (inline)
+     0.23s  1.97% 61.15%      0.29s  2.49%  runtime.tryDeferToSpanScan
+     0.21s  1.80% 62.95%      0.21s  1.80%  runtime.memclrNoHeapPointers
+     0.20s  1.72% 64.67%      0.97s  8.32%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).CompileScalar
+     0.20s  1.72% 66.38%      0.29s  2.49%  runtime.typePointers.next
+     0.18s  1.54% 67.92%      0.88s  7.55%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.mtOf
+     0.18s  1.54% 69.47%      0.31s  2.66%  runtime.scanblock
+     0.16s  1.37% 70.84%      0.16s  1.37%  github.com/wago-org/wago/src/core/compiler/wasm.ValType.Kind (inline)
+     0.15s  1.29% 72.13%      0.71s  6.09%  github.com/wago-org/wago/src/core/compiler/wasm.EqualValType (inline)
+     0.14s  1.20% 73.33%      8.48s 72.73%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+     0.14s  1.20% 74.53%      0.14s  1.20%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.machineType.stackSlots (inline)
+     0.12s  1.03% 75.56%      0.47s  4.03%  runtime.scanObject
+     0.10s  0.86% 76.42%      1.07s  9.18%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).scalarBody
+     0.10s  0.86% 77.27%      0.17s  1.46%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).returnValue
+     0.09s  0.77% 78.04%      0.09s  0.77%  runtime.typePointers.nextFast (inline)
+     0.08s  0.69% 78.73%      0.27s  2.32%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.computeModuleHintsWithWorkersResidencyPolicy
+     0.08s  0.69% 79.42%      0.08s  0.69%  runtime.asyncPreempt
+     0.07s   0.6% 80.02%      0.07s   0.6%  runtime.nextFreeFast (inline)
+     0.06s  0.51% 80.53%      0.06s  0.51%  github.com/wago-org/wago/src/core/compiler/optimization.(*Bindings).ResolveSnapshot
+     0.06s  0.51% 81.05%      0.07s   0.6%  github.com/wago-org/wago/src/core/compiler/wasm.ValType.Num (inline)
+     0.06s  0.51% 81.56%      0.77s  6.60%  runtime.makeslice
+     0.05s  0.43% 81.99%      0.06s  0.51%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.scanBodyBytesWithLoopIntConsts
+     0.05s  0.43% 82.42%      1.63s 13.98%  runtime.mallocgc
+     0.05s  0.43% 82.85%      0.06s  0.51%  runtime.scanObjectsSmall
+     0.04s  0.34% 83.19%      0.05s  0.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFuncAttempt.func2
+     0.04s  0.34% 83.53%      0.05s  0.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.funcHintSidecar.viewAt
+     0.04s  0.34% 83.88%      0.04s  0.34%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).node (inline)
+     0.04s  0.34% 84.22%      0.05s  0.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.admitScalar
+     0.04s  0.34% 84.56%      0.11s  0.94%  runtime.(*wbBuf).get2 (inline)
+     0.04s  0.34% 84.91%      0.29s  2.49%  runtime.mallocgcSmallScanHeader
+     0.04s  0.34% 85.25%      0.24s  2.06%  runtime.mallocgcSmallScanSlowPath
+     0.04s  0.34% 85.59%      0.12s  1.03%  runtime.wbBufFlush1
+     0.03s  0.26% 85.85%      3.08s 26.42%  github.com/wago-org/wago/bench/suite.(*benchCompiledModule).Close
+     0.03s  0.26% 86.11%     11.64s 99.83%  github.com/wago-org/wago/bench/suite.BenchmarkSharingZeroLocals.func1
+     0.03s  0.26% 86.36%      0.03s  0.26%  github.com/wago-org/wago/src/core/compiler/wasm.moduleMemargWidths
+     0.03s  0.26% 86.62%      0.03s  0.26%  runtime.(*mspan).refillAllocCache
+     0.03s  0.26% 86.88%      0.18s  1.54%  runtime.bulkBarrierPreWrite
+     0.03s  0.26% 87.14%      0.03s  0.26%  runtime.heapArenaOf (inline)
+     0.03s  0.26% 87.39%      0.07s   0.6%  runtime.pcvalue
+     0.03s  0.26% 87.65%      1.11s  9.52%  syscall.(*mmapper).Mmap
+     0.02s  0.17% 87.82%      0.03s  0.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).Move
+     0.02s  0.17% 87.99%      0.02s  0.17%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitNativeGCStubs
+     0.02s  0.17% 88.16%      2.17s 18.61%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitRegABI
+     0.02s  0.17% 88.34%      0.03s  0.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitTrapStubs
+     0.02s  0.17% 88.51%      0.03s  0.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).finalizeNativeCode
+     0.02s  0.17% 88.68%      0.02s  0.17%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*funcHintFlags).assign
+     0.02s  0.17% 88.85%      0.02s  0.17%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*scratch).reset
+     0.02s  0.17% 89.02%      8.50s 72.90%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith
+     0.02s  0.17% 89.19%      0.02s  0.17%  github.com/wago-org/wago/src/core/compiler/optimization.Selection.EnabledOption (inline)
+     0.02s  0.17% 89.37%      0.02s  0.17%  github.com/wago-org/wago/src/core/compiler/wasm.(*Module).importCount
+     0.02s  0.17% 89.54%      0.05s  0.43%  github.com/wago-org/wago/src/core/compiler/wasm.NewModuleInstructionClassifier (inline)
+     0.02s  0.17% 89.71%      0.04s  0.34%  runtime.(*_panic).nextDefer
+     0.02s  0.17% 89.88%      0.25s  2.14%  runtime.(*mcache).nextFree
+     0.02s  0.17% 90.05%      0.02s  0.17%  runtime.(*mspan).init
+     0.02s  0.17% 90.22%      0.03s  0.26%  runtime.(*spanSet).push
+     0.02s  0.17% 90.39%      0.09s  0.77%  runtime.(*sweepLocked).sweep
+     0.02s  0.17% 90.57%      0.02s  0.17%  runtime.(*sysMemStat).add
+     0.02s  0.17% 90.74%      0.05s  0.43%  runtime.growslice
+     0.02s  0.17% 90.91%      0.28s  2.40%  runtime.mallocgcSmallNoscan
+     0.02s  0.17% 91.08%      0.11s  0.94%  runtime.mallocgcSmallScanNoHeaderSC7
+     0.02s  0.17% 91.25%      0.02s  0.17%  runtime.nanotime (inline)
+     0.02s  0.17% 91.42%      0.03s  0.26%  runtime.step
+     0.02s  0.17% 91.60%      1.34s 11.49%  runtime.systemstack
+     0.02s  0.17% 91.77%      0.02s  0.17%  runtime.unlock2
+     0.02s  0.17% 91.94%      3.98s 34.13%  syscall.RawSyscall6
+     0.01s 0.086% 92.02%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*byteBodyScanner).scanExpr
+     0.01s 0.086% 92.11%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).Registers
+     0.01s 0.086% 92.20%      0.06s  0.51%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).admitScalar
+     0.01s 0.086% 92.28%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).derivePinnedGlobals
+     0.01s 0.086% 92.37%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitTrapStubs.func1
+     0.01s 0.086% 92.45%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).preloadLoopIntConsts
+     0.01s 0.086% 92.54%      0.43s  3.69%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*scratch).reserveLocalScratch (inline)
+     0.01s 0.086% 92.62%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.buildInlineCallerPlan
+     0.01s 0.086% 92.71%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.finalizeOmittedInlineEntriesAMD64
+     0.01s 0.086% 92.80%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.funcHintFlags.has
+     0.01s 0.086% 92.88%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.machineType.isFloat
+     0.01s 0.086% 92.97%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.mapAMD64FinalOffset
+     0.01s 0.086% 93.05%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.markDirectPrepared
+     0.01s 0.086% 93.14%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.pickModuleGlobals
+     0.01s 0.086% 93.22%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.retainedLocalScoreCount
+     0.01s 0.086% 93.31%      0.07s   0.6%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.scanFuncBodyWithLoopIntConsts
+     0.01s 0.086% 93.40%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.sigFitsRegABI
+     0.01s 0.086% 93.48%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.stackArenaCapForBody
+     0.01s 0.086% 93.57%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).add
+     0.01s 0.086% 93.65%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).alloc
+     0.01s 0.086% 93.74%      0.03s  0.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).materialize
+     0.01s 0.086% 93.83%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).release
+     0.01s 0.086% 93.91%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.DefaultCodegenPolicy
+     0.01s 0.086% 94.00%      0.03s  0.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.HostAdapterSet
+     0.01s 0.086% 94.08%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Module).MemoryType
+     0.01s 0.086% 94.17%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Module).typeFunc
+     0.01s 0.086% 94.25%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Reader).Byte
+     0.01s 0.086% 94.34%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Reader).leb128
+     0.01s 0.086% 94.43%         1s  8.58%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).MovReg64
+     0.01s 0.086% 94.51%      0.01s 0.086%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).SubRsp
+     0.01s 0.086% 94.60%      0.01s 0.086%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).recordLocalRef
+     0.01s 0.086% 94.68%      0.01s 0.086%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).rexPrefix
+     0.01s 0.086% 94.77%      0.01s 0.086%  github.com/wago-org/wago/src/core/runtime.(*CodeBuffer).AppendTail
+     0.01s 0.086% 94.85%      0.01s 0.086%  github.com/wago-org/wago/src/core/runtime.(*CodeBuffer).CommitTail
+     0.01s 0.086% 94.94%      1.12s  9.61%  github.com/wago-org/wago/src/core/runtime.mmapRW
+     0.01s 0.086% 95.03%      0.01s 0.086%  internal/abi.(*MapType).IndirectKey
+     0.01s 0.086% 95.11%      0.01s 0.086%  internal/chacha8rand.block
+     0.01s 0.086% 95.20%      0.01s 0.086%  internal/runtime/atomic.(*Uint32).Add
+     0.01s 0.086% 95.28%      0.01s 0.086%  internal/runtime/atomic.(*Uint32).CompareAndSwap
+     0.01s 0.086% 95.37%      0.01s 0.086%  internal/runtime/gc/scan.scanSpanPackedAVX512
+     0.01s 0.086% 95.45%      0.01s 0.086%  internal/runtime/maps.ctrlGroup.matchFull
+     0.01s 0.086% 95.54%      0.01s 0.086%  internal/sync.(*Mutex).Unlock
+     0.01s 0.086% 95.63%      0.01s 0.086%  runtime.(*_panic).nextFrame
+     0.01s 0.086% 95.71%      0.01s 0.086%  runtime.(*gcControllerState).update
+     0.01s 0.086% 95.80%      0.01s 0.086%  runtime.(*gcWork).tryGetSpan
+     0.01s 0.086% 95.88%      0.23s  1.97%  runtime.(*mcache).refill
+     0.01s 0.086% 95.97%      0.21s  1.80%  runtime.(*mcentral).cacheSpan
+     0.01s 0.086% 96.05%      0.01s 0.086%  runtime.(*mcentral).fullUnswept
+     0.01s 0.086% 96.14%      0.01s 0.086%  runtime.(*mheap).allocNeedsZero
+     0.01s 0.086% 96.23%      0.01s 0.086%  runtime.(*moduledata).textAddr
+     0.01s 0.086% 96.31%      0.01s 0.086%  runtime.(*mspan).base
+     0.01s 0.086% 96.40%      0.01s 0.086%  runtime.(*mspan).divideByElemSize
+     0.01s 0.086% 96.48%      0.01s 0.086%  runtime.(*mspan).writeHeapBitsSmall
+     0.01s 0.086% 96.57%      0.01s 0.086%  runtime.(*pageAlloc).find
+     0.01s 0.086% 96.66%      0.03s  0.26%  runtime.(*pageAlloc).free
+     0.01s 0.086% 96.74%      0.02s  0.17%  runtime.(*pallocBits).summarize
+     0.01s 0.086% 96.83%      0.01s 0.086%  runtime.(*scavengeIndex).free
+     0.01s 0.086% 96.91%      0.02s  0.17%  runtime.(*spanInlineMarkBits).tryAcquire
+     0.01s 0.086% 97.00%      0.01s 0.086%  runtime.(*spanScanOwnership).or
+     0.01s 0.086% 97.08%      0.02s  0.17%  runtime.(*spanSet).pop
+     0.01s 0.086% 97.17%      0.01s 0.086%  runtime.(*spanSet).reset
+     0.01s 0.086% 97.26%      0.01s 0.086%  runtime.(*sweepLocker).tryAcquire
+     0.01s 0.086% 97.34%      0.06s  0.51%  runtime.(*unwinder).resolveInternal
+     0.01s 0.086% 97.43%      0.01s 0.086%  runtime.add
+     0.01s 0.086% 97.51%      0.01s 0.086%  runtime.alignDown
+     0.01s 0.086% 97.60%      0.01s 0.086%  runtime.binarySearchTree
+     0.01s 0.086% 97.68%      0.01s 0.086%  runtime.bool2int
+     0.01s 0.086% 97.77%      0.03s  0.26%  runtime.exitsyscall
+     0.01s 0.086% 97.86%      0.02s  0.17%  runtime.findObject
+     0.01s 0.086% 97.94%      0.01s 0.086%  runtime.findfunc
+     0.01s 0.086% 98.03%      0.01s 0.086%  runtime.funcdata
+     0.01s 0.086% 98.11%      1.01s  8.66%  runtime.gcAssistAlloc1
+     0.01s 0.086% 98.20%      0.01s 0.086%  runtime.gcMarkTermination.func4
+     0.01s 0.086% 98.28%      0.03s  0.26%  runtime.gcmarknewobject
+     0.01s 0.086% 98.37%      0.01s 0.086%  runtime.getGCMaskOnDemand
+     0.01s 0.086% 98.46%      0.01s 0.086%  runtime.getcallerfp
+     0.01s 0.086% 98.54%      0.01s 0.086%  runtime.mProf_FlushLocked
+     0.01s 0.086% 98.63%      0.03s  0.26%  runtime.mallocgcSmallNoScanSC2
+     0.01s 0.086% 98.71%      0.04s  0.34%  runtime.mallocgcSmallNoScanSlowPath
+     0.01s 0.086% 98.80%      0.14s  1.20%  runtime.mallocgcSmallScanNoHeaderSC5
+     0.01s 0.086% 98.89%      0.01s 0.086%  runtime.markBits.isMarked
+     0.01s 0.086% 98.97%      0.01s 0.086%  runtime.newArenaMayUnlock
+     0.01s 0.086% 99.06%      0.01s 0.086%  runtime.objptr.spanBase
+     0.01s 0.086% 99.14%      0.01s 0.086%  runtime.packPallocSum
+     0.01s 0.086% 99.23%      0.01s 0.086%  runtime.readUintptr
+     0.01s 0.086% 99.31%      0.01s 0.086%  runtime.readvarint
+     0.01s 0.086% 99.40%      0.01s 0.086%  runtime.releasem
+     0.01s 0.086% 99.49%      0.12s  1.03%  runtime.scanSpan
+     0.01s 0.086% 99.57%      0.01s 0.086%  runtime.spanOf
+     0.01s 0.086% 99.66%      0.01s 0.086%  runtime.traceAcquire
+     0.01s 0.086% 99.74%      0.14s  1.20%  runtime.wbMove
+     0.01s 0.086% 99.83%      0.01s 0.086%  slices.pdqsortOrdered[go.shape.uint32]
+     0.01s 0.086% 99.91%      2.97s 25.47%  syscall.Syscall
+     0.01s 0.086%   100%      1.07s  9.18%  syscall.mmap
+         0     0%   100%      0.04s  0.34%  gcWriteBarrier
+         0     0%   100%      8.53s 73.16%  github.com/wago-org/wago/bench/suite.benchCompileModule (inline)
+         0     0%   100%      8.53s 73.16%  github.com/wago-org/wago/bench/suite.benchCompileModuleWorkers
+         0     0%   100%      0.03s  0.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).Return
+         0     0%   100%      1.07s  9.18%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).runBody
+         0     0%   100%      4.98s 42.71%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFunc
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.computeImmutableTableHints
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.isIntValType
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.moduleStackArenaCap
+         0     0%   100%      0.94s  8.06%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newCompileScratch (inline)
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.preparedDirectIntSig
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.serialStackArenaCap
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*GlobalHintAccumulator).AppendTo
+         0     0%   100%      0.05s  0.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.AdmitScalarFunction
+         0     0%   100%      0.02s  0.17%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.CodegenPolicy.EnabledOption
+         0     0%   100%      0.05s  0.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.ModuleEntries (inline)
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Module).GlobalCount
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Module).ImportedFuncCount
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Module).ImportedGlobalCount
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Module).LocalFuncType
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/compiler/wasm.(*Reader).U32
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).Store64
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).baseAddr
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).memOp
+         0     0%   100%      0.01s 0.086%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).rex
+         0     0%   100%      3.05s 26.16%  github.com/wago-org/wago/src/core/runtime.(*CodeBuffer).Close
+         0     0%   100%      1.26s 10.81%  github.com/wago-org/wago/src/core/runtime.NewCodeBuffer
+         0     0%   100%      1.12s  9.61%  github.com/wago-org/wago/src/core/runtime.mmapCodeRW (inline)
+         0     0%   100%      3.05s 26.16%  github.com/wago-org/wago/src/core/runtime.munmap (inline)
+         0     0%   100%      0.01s 0.086%  internal/chacha8rand.(*State).Refill
+         0     0%   100%      0.01s 0.086%  internal/runtime/gc/scan.ScanSpanPacked
+         0     0%   100%      0.01s 0.086%  internal/runtime/gc/scan.ScanSpanPackedAVX512
+         0     0%   100%      0.07s   0.6%  internal/runtime/maps.(*Map).Delete
+         0     0%   100%      0.06s  0.51%  internal/runtime/maps.(*Map).deleteSmall
+         0     0%   100%      0.01s 0.086%  internal/runtime/maps.rand
+         0     0%   100%      0.05s  0.43%  internal/runtime/maps.typedmemclr
+         0     0%   100%      0.01s 0.086%  runtime.(*inlineUnwinder).resolveInternal
+         0     0%   100%      0.02s  0.17%  runtime.(*mcache).prepareForSweep
+         0     0%   100%      0.02s  0.17%  runtime.(*mcache).releaseAll
+         0     0%   100%      0.08s  0.69%  runtime.(*mcentral).grow
+         0     0%   100%      0.02s  0.17%  runtime.(*mcentral).uncacheSpan
+         0     0%   100%      0.08s  0.69%  runtime.(*mheap).alloc
+         0     0%   100%      0.08s  0.69%  runtime.(*mheap).alloc.func1
+         0     0%   100%      0.08s  0.69%  runtime.(*mheap).allocSpan
+         0     0%   100%      0.03s  0.26%  runtime.(*mheap).freeSpan (inline)
+         0     0%   100%      0.03s  0.26%  runtime.(*mheap).freeSpan.func1
+         0     0%   100%      0.03s  0.26%  runtime.(*mheap).freeSpanLocked
+         0     0%   100%      0.04s  0.34%  runtime.(*mheap).initSpan
+         0     0%   100%      0.02s  0.17%  runtime.(*mheap).nextSpanForSweep
+         0     0%   100%      0.01s 0.086%  runtime.(*mspan).objIndex
+         0     0%   100%      0.01s 0.086%  runtime.(*mspan).typePointersOfType
+         0     0%   100%      0.01s 0.086%  runtime.(*pageAlloc).alloc
+         0     0%   100%      0.01s 0.086%  runtime.(*pageAlloc).allocToCache
+         0     0%   100%      0.02s  0.17%  runtime.(*pageAlloc).update
+         0     0%   100%      0.01s 0.086%  runtime.(*stackScanState).buildIndex
+         0     0%   100%      0.01s 0.086%  runtime.(*stkframe).getStackMap
+         0     0%   100%      0.01s 0.086%  runtime.(*unwinder).init
+         0     0%   100%      0.01s 0.086%  runtime.(*unwinder).initAt
+         0     0%   100%      0.06s  0.51%  runtime.(*unwinder).next
+         0     0%   100%      0.01s 0.086%  runtime.(*wbBuf).get1
+         0     0%   100%      0.01s 0.086%  runtime.bgsweep
+         0     0%   100%      0.04s  0.34%  runtime.callers
+         0     0%   100%      0.04s  0.34%  runtime.callers.func1
+         0     0%   100%      0.01s 0.086%  runtime.clearpools
+         0     0%   100%      0.86s  7.38%  runtime.deductAssistCredit
+         0     0%   100%      0.08s  0.69%  runtime.deductSweepCredit
+         0     0%   100%      0.01s 0.086%  runtime.entersyscall
+         0     0%   100%      0.01s 0.086%  runtime.finishsweep_m
+         0     0%   100%      0.01s 0.086%  runtime.forEachP
+         0     0%   100%      0.01s 0.086%  runtime.forEachP.func1
+         0     0%   100%      0.01s 0.086%  runtime.forEachPInternal
+         0     0%   100%      0.01s 0.086%  runtime.funcInfo.entry
+         0     0%   100%      0.05s  0.43%  runtime.funcspdelta (inline)
+         0     0%   100%      1.06s  9.09%  runtime.gcAssistAlloc
+         0     0%   100%      1.01s  8.66%  runtime.gcAssistAlloc.func2
+         0     0%   100%      0.98s  8.40%  runtime.gcDrainN
+         0     0%   100%      0.04s  0.34%  runtime.gcMarkDone
+         0     0%   100%      0.04s  0.34%  runtime.gcMarkTermination
+         0     0%   100%      0.02s  0.17%  runtime.gcMarkTermination.func3
+         0     0%   100%      0.02s  0.17%  runtime.gcStart
+         0     0%   100%      0.01s 0.086%  runtime.gcStart.func3
+         0     0%   100%      0.01s 0.086%  runtime.getGCMask
+         0     0%   100%      0.01s 0.086%  runtime.greyobject
+         0     0%   100%      0.01s 0.086%  runtime.heapSetTypeNoHeader
+         0     0%   100%      0.01s 0.086%  runtime.mProf_Flush
+         0     0%   100%      0.04s  0.34%  runtime.mProf_Malloc
+         0     0%   100%      0.01s 0.086%  runtime.makeSpanClass
+         0     0%   100%      0.03s  0.26%  runtime.mallocgcSmallNoScanSC6
+         0     0%   100%      0.07s   0.6%  runtime.mallocgcSmallScanNoHeader
+         0     0%   100%      0.03s  0.26%  runtime.mallocgcSmallScanNoHeaderSC6
+         0     0%   100%      0.02s  0.17%  runtime.mallocgcTinySC2
+         0     0%   100%      0.02s  0.17%  runtime.mallocgcTinySlowPath
+         0     0%   100%      0.01s 0.086%  runtime.mapaccess1_fast64
+         0     0%   100%      0.01s 0.086%  runtime.mapaccess2_fast64
+         0     0%   100%      0.07s   0.6%  runtime.mapdelete_fast64
+         0     0%   100%      0.38s  3.26%  runtime.markroot
+         0     0%   100%      0.08s  0.69%  runtime.markroot.func1
+         0     0%   100%      0.30s  2.57%  runtime.markrootBlock
+         0     0%   100%      0.02s  0.17%  runtime.newInlineUnwinder
+         0     0%   100%      0.01s 0.086%  runtime.newMarkBits
+         0     0%   100%      0.90s  7.72%  runtime.newobject
+         0     0%   100%      0.01s 0.086%  runtime.pcdatavalue
+         0     0%   100%      0.01s 0.086%  runtime.pcdatavalue1
+         0     0%   100%      0.01s 0.086%  runtime.popDefer
+         0     0%   100%      0.02s  0.17%  runtime.procresize
+         0     0%   100%      0.04s  0.34%  runtime.profilealloc
+         0     0%   100%      0.01s 0.086%  runtime.rand
+         0     0%   100%      0.02s  0.17%  runtime.scanframeworker
+         0     0%   100%      0.08s  0.69%  runtime.scanstack
+         0     0%   100%      0.02s  0.17%  runtime.startTheWorldWithSema
+         0     0%   100%      0.09s  0.77%  runtime.sweepone
+         0     0%   100%      0.04s  0.34%  runtime.tracebackPCs
+         0     0%   100%      0.05s  0.43%  runtime.typedmemclr
+         0     0%   100%      0.02s  0.17%  runtime.unlock
+         0     0%   100%      0.02s  0.17%  runtime.unlockWithRank (inline)
+         0     0%   100%      0.12s  1.03%  runtime.wbBufFlush
+         0     0%   100%      0.12s  1.03%  runtime.wbBufFlush.func1
+         0     0%   100%      0.01s 0.086%  slices.Sort[go.shape.[]uint32,go.shape.uint32]
+         0     0%   100%      0.01s 0.086%  sync.(*Mutex).Unlock
+         0     0%   100%      3.05s 26.16%  syscall.(*mmapper).Munmap
+         0     0%   100%      1.11s  9.52%  syscall.Mmap (inline)
+         0     0%   100%      3.05s 26.16%  syscall.Munmap (inline)
+         0     0%   100%      1.06s  9.09%  syscall.Syscall6
+         0     0%   100%      2.97s 25.47%  syscall.munmap
+         0     0%   100%     11.64s 99.83%  testing.(*B).launch
+         0     0%   100%     11.64s 99.83%  testing.(*B).runN
