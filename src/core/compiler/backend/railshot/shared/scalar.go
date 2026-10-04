@@ -20,38 +20,67 @@ const scalarMaxNodes = 16384
 // Indexed block signatures, loops, arbitrary branches, calls, effects, refs and
 // mixed register banks stay on the established function compiler.
 func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) ScalarSummary {
+	if len(localTypes) < len(ft.Params) {
+		return ScalarSummary{}
+	}
+	var zeros [2]bool
+	for i, t := range localTypes {
+		if !scalarInteger(t) {
+			return ScalarSummary{}
+		}
+		if i >= len(ft.Params) {
+			if wasm.EqualValType(t, wasm.I64) {
+				zeros[1] = true
+			} else {
+				zeros[0] = true
+			}
+		}
+	}
+	return admitScalar(code, ft, len(localTypes), zeros)
+}
+
+func scalarInteger(t wasm.ValType) bool {
+	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
+}
+
+// AdmitScalarFunction reads the existing run-length declarations directly.
+// Admission needs only the count and zero widths, not an expanded type array.
+func AdmitScalarFunction(c *wasm.Func, ft *wasm.CompType) ScalarSummary {
+	nLocals := len(ft.Params)
+	var zeros [2]bool
+	for _, run := range c.Locals.Runs {
+		if !scalarInteger(run.Type) || run.Count > 256 || nLocals > 256-int(run.Count) {
+			return ScalarSummary{}
+		}
+		nLocals += int(run.Count)
+		if run.Count != 0 {
+			if wasm.EqualValType(run.Type, wasm.I64) {
+				zeros[1] = true
+			} else {
+				zeros[0] = true
+			}
+		}
+	}
+	return admitScalar(c.BodyBytes, ft, nLocals, zeros)
+}
+
+func admitScalar(code []byte, ft *wasm.CompType, nLocals int, zeroWidths [2]bool) ScalarSummary {
 	s := ScalarSummary{Nodes: len(ft.Params) + 1}
-	// Preserve the pilot's admission budget independently of the tighter
-	// allocation bound. Reducing over-reservation must not expand the subset.
-	budget := len(localTypes) + 1
-	if len(code) == 0 || len(code) > 64<<10 || len(localTypes) > 256 || len(ft.Params) > len(localTypes) || len(ft.Results) != 1 {
+	// Preserve the pilot's admission budget independently of storage bounds.
+	budget := nLocals + 1
+	if len(code) == 0 || len(code) > 64<<10 || nLocals > 256 || len(ft.Results) != 1 {
 		return s
 	}
-	integer := func(t wasm.ValType) bool { return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64) }
 	for _, t := range ft.Params {
-		if !integer(t) {
+		if !scalarInteger(t) {
 			return s
 		}
 	}
-	if !integer(ft.Results[0]) {
+	if !scalarInteger(ft.Results[0]) {
 		return s
 	}
-	for _, t := range localTypes {
-		if !integer(t) {
-			return s
-		}
-	}
-	// Declared locals initially share one zero value per width. A binding and
-	// every live read retain independent references to that value; parameters
-	// keep distinct borrowed identities and control restores remain distinct.
-	var zeroWidths [2]bool
-	for _, t := range localTypes[len(ft.Params):] {
-		width := 0
-		if wasm.EqualValType(t, wasm.I64) {
-			width = 1
-		}
-		if !zeroWidths[width] {
-			zeroWidths[width] = true
+	for _, present := range zeroWidths {
+		if present {
 			s.Nodes++
 		}
 	}
@@ -88,7 +117,7 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 			stack++
 		case 0x20, 0x21, 0x22:
 			x, e := r.U32()
-			if e != nil || int(x) >= len(localTypes) {
+			if e != nil || int(x) >= nLocals {
 				return s
 			}
 			if op == 0x20 {
@@ -99,7 +128,7 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 		case 0x1a:
 			stack--
 		case 0x02, 0x04:
-			budget += len(localTypes) + 2*s.MaxStack
+			budget += nLocals + 2*s.MaxStack
 			t, e := r.Byte()
 			if e != nil || depth == len(ctrl) {
 				return s
@@ -113,7 +142,7 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 			if op == 0x04 {
 				s.HasIf = true
 				stack--
-				s.Nodes += len(localTypes) + stack
+				s.Nodes += nLocals + stack
 			}
 			ctrl[depth] = frame{base: stack, result: result, isIf: op == 0x04}
 			// Exclude the function frame: CompileScalar stores only explicit
@@ -123,22 +152,22 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 			}
 			depth++
 		case 0x05:
-			budget += 2 * (len(localTypes) + s.MaxStack)
+			budget += 2 * (nLocals + s.MaxStack)
 			f := &ctrl[depth-1]
 			if !f.isIf || f.hasElse || stack != f.base+f.result {
 				return s
 			}
-			s.Nodes += 2*len(localTypes) + stack + f.base
+			s.Nodes += 2*nLocals + stack + f.base
 			f.hasElse = true
 			stack = f.base
 		case 0x0b:
-			budget += len(localTypes) + s.MaxStack
+			budget += nLocals + s.MaxStack
 			f := ctrl[depth-1]
 			if stack != f.base+f.result || f.isIf && f.result != 0 && !f.hasElse {
 				return s
 			}
 			if f.isIf {
-				s.Nodes += len(localTypes) + stack
+				s.Nodes += nLocals + stack
 			}
 			depth--
 		case 0x0f:
@@ -259,8 +288,11 @@ type scalarNode struct {
 	home uint16
 }
 type scalarControl struct {
-	base, result       int
-	isIf, hasElse      bool
+	base, result  int
+	isIf, hasElse bool
+	// One result/local alias, encoded as local index + 1, is enough to
+	// preserve a common tee across both incoming edges without a state map.
+	resultLocal        uint16
 	falseSite, endSite int
 }
 
@@ -644,6 +676,28 @@ func (s *ScalarState) canonicalize(registerResult bool) {
 		s.owners[resultReg] = id
 	}
 }
+
+// resultLocal records an identity relation, never a physical register. The
+// second edge must independently prove the same relation before it survives.
+func (s *ScalarState) resultLocal() uint16 {
+	id := s.stack[len(s.stack)-1]
+	for i, local := range s.locals {
+		if local == id {
+			return uint16(i + 1)
+		}
+	}
+	return 0
+}
+
+func (s *ScalarState) restoreResultLocal(local uint16) {
+	id := s.stack[len(s.stack)-1]
+	s.release(s.locals[local-1])
+	s.retain(id)
+	s.locals[local-1] = id
+	// canonicalize wrote this home on each incoming edge.
+	s.node(id).home = local
+}
+
 func (s *ScalarState) restore(depth int) {
 	// Stack types are retained through the agreement. Each else restores only the
 	// pre-split prefix, whose types cannot change in a validated scalar body.
@@ -828,6 +882,9 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 		case 0x05:
 			i := len(s.controls) - 1
 			fr := &s.controls[i]
+			if fr.result == 1 {
+				fr.resultLocal = s.resultLocal()
+			}
 			s.canonicalize(fr.result == 1)
 			fr.endSite = s.target.Jump()
 			if e := s.target.Patch(fr.falseSite, s.target.Position()); e != nil {
@@ -853,7 +910,14 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			i := len(s.controls) - 1
 			fr := s.controls[i]
 			if fr.isIf {
+				alias := fr.resultLocal
+				if alias != 0 && s.locals[alias-1] != s.stack[len(s.stack)-1] {
+					alias = 0
+				}
 				s.canonicalize(fr.result == 1)
+				if alias != 0 {
+					s.restoreResultLocal(alias)
+				}
 				site := fr.falseSite
 				if fr.hasElse {
 					site = fr.endSite

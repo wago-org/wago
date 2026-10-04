@@ -29,15 +29,7 @@ func (f *fn) admitScalar(c *wasm.Func) shared.ScalarSummary {
 	if diagnosticsEnabled && f.stats != nil {
 		begin = time.Now()
 	}
-	var types [256]wasm.ValType
-	i := copy(types[:], f.ft.Params)
-	for _, run := range c.Locals.Runs {
-		for k := uint32(0); k < run.Count; k++ {
-			types[i] = run.Type
-			i++
-		}
-	}
-	summary := shared.AdmitScalar(c.BodyBytes, f.ft, types[:i])
+	summary := shared.AdmitScalarFunction(c, f.ft)
 	if diagnosticsEnabled && f.stats != nil {
 		f.stats.ScalarAdmissionNanos = uint64(time.Since(begin))
 		f.stats.ScalarBodyBytes = len(c.BodyBytes)
