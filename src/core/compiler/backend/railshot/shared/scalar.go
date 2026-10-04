@@ -325,6 +325,14 @@ func (s *ScalarState) slot() int {
 }
 func (s *ScalarState) spill(id scalarID) {
 	n := s.node(id)
+	if n.home != 0 {
+		// The unchanged local home is already a valid backing copy. Eviction
+		// needs no store or temporary slot; identity and references stay intact.
+		s.owners[n.reg] = 0
+		n.kind = scalarBorrow
+		n.slot = int32(n.home - 1)
+		return
+	}
 	slot := s.slot()
 	s.target.Store(s.target.SpillOffset(slot), n.reg, n.wide)
 	s.owners[n.reg] = 0
@@ -670,7 +678,13 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 				// Release the overwritten binding before realization. Older stack reads
 				// and deferred edges retain their own references, so only an unborrowed
 				// source becomes available for in-place lowering at this sink.
-				s.release(s.locals[x])
+				old := s.locals[x]
+				if old != id && s.node(old).home == uint16(x+1) {
+					// An older version may remain live. Stop using this home as
+					// an eviction copy before a later agreement overwrites it.
+					s.node(old).home = 0
+				}
+				s.release(old)
 				s.materialize(id, 0)
 				s.locals[x] = id
 				if op == 0x22 {
