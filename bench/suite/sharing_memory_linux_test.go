@@ -20,6 +20,21 @@ import (
 	core "github.com/wago-org/wago/src/core/runtime"
 )
 
+// sharingMemoryWorkers keeps memory diagnostics fixed-work while allowing the
+// same corpus and lifecycle to qualify explicit and automatic worker policies.
+func sharingMemoryWorkers(t *testing.T) int {
+	t.Helper()
+	value := os.Getenv("WAGO_SHARING_WORKERS")
+	if value == "" {
+		return 1
+	}
+	workers, err := strconv.Atoi(value)
+	if err != nil || workers < 0 {
+		t.Fatalf("invalid WAGO_SHARING_WORKERS %q", value)
+	}
+	return workers
+}
+
 func sharingSnapshot(t *testing.T, phase string, outputs []*wago.Module) {
 	runtime.GC()
 	var m runtime.MemStats
@@ -56,7 +71,7 @@ func TestSharingMemory(t *testing.T) {
 		t.Skip("diagnostic")
 	}
 	fs := sharingFixtures()
-	cfg := wago.NewRuntimeConfig().WithFunctionWorkers(1)
+	cfg := wago.NewRuntimeConfig().WithFunctionWorkers(sharingMemoryWorkers(t))
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	sharingSnapshot(t, "initial", nil)
 	for i := 0; i < 30; i++ {
@@ -108,6 +123,7 @@ func TestSharingMappedMemory(t *testing.T) {
 		t.Skip("diagnostic")
 	}
 	fs := sharingFixtures()
+	workers := sharingMemoryWorkers(t)
 	mods := make([]*wasm.Module, len(fs))
 	functions := 0
 	for i, f := range fs {
@@ -141,7 +157,7 @@ func TestSharingMappedMemory(t *testing.T) {
 	snapshot("initial", nil)
 	for i := 0; i < 30; i++ {
 		for _, m := range mods {
-			c, e := benchCompileModuleWorkers(m, 1)
+			c, e := benchCompileModuleWorkers(m, workers)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -155,7 +171,7 @@ func TestSharingMappedMemory(t *testing.T) {
 		var out []*benchCompiledModule
 		for i := 0; i < 4; i++ {
 			for _, m := range mods {
-				c, e := benchCompileModuleWorkers(m, 1)
+				c, e := benchCompileModuleWorkers(m, workers)
 				if e != nil {
 					t.Fatal(e)
 				}
