@@ -158,11 +158,14 @@ class Experiment:
 
     def run(self, name, command, cwd=None, extra=None, kind='setup', revision='', block=0, optional=False):
         command = [str(x) for x in command]
-        env = dict(self.env, **(extra or {}))
+        env = dict(self.env)
         if cwd and (Path(cwd) / 'go.work').exists():
             env['GOWORK'] = str(Path(cwd) / 'go.work')
         elif cwd and (Path(cwd).parent.parent / 'go.work').exists():
             env['GOWORK'] = str(Path(cwd).parent.parent / 'go.work')
+        # Explicit per-command overrides must win over workspace discovery.
+        # Full-root tests build temporary standalone modules in child processes.
+        env.update(extra or {})
         log = self.out / 'logs' / (name + '.txt')
         print(time.strftime('%H:%M:%S') + ' ' + name, flush=True)
         start = time.time()
@@ -182,12 +185,17 @@ class Experiment:
                    elapsed_seconds=time.time() - start, peak_rss_bytes=usage.ru_maxrss,
                    user_seconds=usage.ru_utime, system_seconds=usage.ru_stime,
                    minor_faults=usage.ru_minflt, major_faults=usage.ru_majflt,
-                   GOMAXPROCS=env['GOMAXPROCS'], workers=env.get('WAGO_SHARING_WORKERS', ''),
+                   GOMAXPROCS=env['GOMAXPROCS'], GOWORK=env.get('GOWORK', ''),
+                   TERM=env.get('TERM', ''), workers=env.get('WAGO_SHARING_WORKERS', ''),
                    log=str(log.relative_to(self.out)))
         self.runs.append(row)
         write_json(self.out / 'runs.json', self.runs)
         if proc.returncode and not optional:
-            raise RuntimeError(name + ' failed. See ' + str(log) + '\n' + log.read_text()[-3000:])
+            contents = log.read_text()
+            failures = [line for line in contents.splitlines()
+                        if re.match(r'^(--- FAIL:|FAIL\s|panic:|fatal error:)', line)]
+            excerpt = '\n'.join(failures[:20]) + '\n' + contents[-1000:]
+            raise RuntimeError(name + ' failed. See ' + str(log) + '\n' + excerpt)
         return log.read_text()
 
     def setup(self):
@@ -284,7 +292,8 @@ class Experiment:
             if self.args.full_tests:
                 for checked in [False, True]:
                     self.run('full-tests-' + rev + '-' + str(checked), ['go', 'test', '-p', '1',
-                        '-count=1', '-v', *(['-tags=wago_regalloccheck'] if checked else []), './...'], cwd=tree)
+                        '-count=1', '-v', *(['-tags=wago_regalloccheck'] if checked else []), './...'], cwd=tree,
+                        extra={'GOWORK': 'off', 'TERM': 'dumb'})
         self.manifest['binaries'] = {f.name: dict(sha256=sha(f), bytes=f.stat().st_size)
                                      for f in sorted((self.out / 'bin').iterdir())}
         # Module preparation may update dependency sums. Verify actual built
