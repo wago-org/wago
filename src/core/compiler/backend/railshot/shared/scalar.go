@@ -247,7 +247,7 @@ type scalarID uint32
 type scalarNode struct {
 	constant          int64
 	left, right       scalarID
-	refs              int32
+	refs, order       uint16
 	slot              int32
 	op                IntOp
 	kind              ScalarLocation
@@ -286,14 +286,39 @@ func (s *ScalarState) Memory() uint64 {
 }
 func (s *ScalarState) node(id scalarID) *scalarNode { return &s.nodes[id] }
 func (s *ScalarState) add(n scalarNode) scalarID {
+	if len(s.nodes) != 0 {
+		// Node zero is the sentinel. Its order field counts creation events;
+		// live nodes retain that age across materialization and eviction.
+		if scalarValueChecks && int(s.nodes[0].order) >= scalarMaxNodes {
+			panic("shared scalar: admitted creation bound exceeded")
+		}
+		s.nodes[0].order++
+		n.order = s.nodes[0].order
+	}
 	s.nodes = append(s.nodes, n)
 	return scalarID(len(s.nodes) - 1)
+}
+
+// Admission bounds all references by two deferred edges per node plus at most
+// 256 local bindings and 512 operand roots. That fits uint16 without widening
+// scalarNode; the unchanged 16,384-node creation budget also bounds its order.
+const scalarMaxReferences = 2*scalarMaxNodes + 256 + 512
+
+func (s *ScalarState) retain(id scalarID) {
+	n := s.node(id)
+	if scalarValueChecks && (id == 0 || n.refs == 0 || int(n.refs) >= scalarMaxReferences) {
+		panic("shared scalar: invalid retained reference")
+	}
+	n.refs++
 }
 func (s *ScalarState) release(id scalarID) {
 	if id == 0 {
 		return
 	}
 	n := s.node(id)
+	if scalarValueChecks && n.refs == 0 {
+		panic("shared scalar: released dead value")
+	}
 	n.refs--
 	if n.refs != 0 {
 		return
@@ -368,6 +393,7 @@ func (s *ScalarState) alloc(avoid uint64) uint8 {
 		}
 	}
 	var victim scalarID
+	var victimOrder uint16
 	var reg uint8
 	protected := true
 	for _, r := range s.regs {
@@ -377,13 +403,13 @@ func (s *ScalarState) alloc(avoid uint64) uint8 {
 		}
 		n := s.node(id)
 		keep := n.home != 0 || n.refs > 1
-		// Stable IDs increase in bytecode order. Among equally reusable
+		// Creation order increases in bytecode order. Among equally reusable
 		// values, evict an older value so recent stack results can begin a
 		// reduction in registers. Homes and multiple references suggest reuse;
 		// neither is a promise about future uses. This scans only the register
 		// bank and leaves active operands and fixed registers excluded above.
-		if victim == 0 || protected && !keep || protected == keep && id < victim {
-			victim, reg, protected = id, r, keep
+		if victim == 0 || protected && !keep || protected == keep && n.order < victimOrder {
+			victim, victimOrder, reg, protected = id, n.order, r, keep
 		}
 	}
 	if victim != 0 {
@@ -689,10 +715,11 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 		}
 		id := zeros[width]
 		if id == 0 {
-			id = s.add(scalarNode{kind: ScalarConstant, wide: wide})
+			id = s.add(scalarNode{kind: ScalarConstant, wide: wide, refs: 1})
 			zeros[width] = id
+		} else {
+			s.retain(id)
 		}
-		s.node(id).refs++
 		s.locals = append(s.locals, id)
 	}
 	r := wasm.ReaderFrom(code)
@@ -723,7 +750,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			}
 			if op == 0x20 {
 				id := s.locals[x]
-				s.node(id).refs++
+				s.retain(id)
 				s.stack = append(s.stack, id)
 			} else {
 				id := s.pop()
@@ -740,7 +767,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 				s.materialize(id, 0)
 				s.locals[x] = id
 				if op == 0x22 {
-					s.node(id).refs++
+					s.retain(id)
 					s.stack = append(s.stack, id)
 				}
 			}

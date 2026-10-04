@@ -31,7 +31,7 @@ func TestScalarDeclaredZeroStorage(t *testing.T) {
 		if len(state.nodes) > 4 || state.Memory() > 1536 {
 			t.Fatalf("mixed=%v nodes=%d memory=%d", mixed, len(state.nodes), state.Memory())
 		}
-		bindings := make(map[scalarID]int32)
+		bindings := make(map[scalarID]uint16)
 		for _, id := range state.locals {
 			bindings[id]++
 		}
