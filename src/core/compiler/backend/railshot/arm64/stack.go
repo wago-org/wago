@@ -265,17 +265,24 @@ const (
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
 
 func newStackWithCap(capHint int) *stack {
+	s := &stack{}
+	s.initWithCap(capHint)
+	return s
+}
+
+// initWithCap initializes an empty stack without replacing its address. The
+// function compiler may already hold an alias when fallback first needs it.
+func (s *stack) initWithCap(capHint int) {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
 	next, geometric := stackArenaGrowthCaps(capHint)
-	s := &stack{
+	*s = stack{
 		chunks:           [][]elem{make([]elem, 0, capHint)},
 		nextChunkCap:     uint16(next),
 		nextGeometricCap: uint16(geometric),
 	}
 	s.initSentinel()
-	return s
 }
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {

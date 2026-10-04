@@ -772,7 +772,7 @@ func (sc *scratch) ensureTargetStack() {
 	if len(sc.stack.chunks) != 0 {
 		return
 	}
-	*sc.stack = *newStackWithCap(sc.stackCap)
+	sc.stack.initWithCap(sc.stackCap)
 	_, reserved := sc.stack.nodeMemory()
 	sc.nodeScratchReserved = reserved
 	sc.nodeScratchPeak = reserved
