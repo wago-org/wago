@@ -242,7 +242,8 @@ type ScalarTarget interface {
 
 type scalarID uint32
 
-// Every node has exactly one authoritative location and a stable identity.
+// Every live value has one authoritative location and a stable arena index.
+// An index may be reused only after its last reference and deferred edges die.
 // refs includes local owners, logical roots and deferred-parent edges.
 type scalarNode struct {
 	constant          int64
@@ -287,13 +288,28 @@ func (s *ScalarState) Memory() uint64 {
 func (s *ScalarState) node(id scalarID) *scalarNode { return &s.nodes[id] }
 func (s *ScalarState) add(n scalarNode) scalarID {
 	if len(s.nodes) != 0 {
-		// Node zero is the sentinel. Its order field counts creation events;
-		// live nodes retain that age across materialization and eviction.
+		// The sentinel owns creation order and the free-list head. Reusing a
+		// dead index never changes the age or location of a live value.
 		if scalarValueChecks && int(s.nodes[0].order) >= scalarMaxNodes {
 			panic("shared scalar: admitted creation bound exceeded")
 		}
 		s.nodes[0].order++
 		n.order = s.nodes[0].order
+		if id := s.nodes[0].left; id != 0 {
+			if scalarValueChecks && s.node(id).refs != 0 {
+				panic("shared scalar: live value in free list")
+			}
+			s.nodes[0].left = s.node(id).left
+			s.nodes[id] = n
+			return id
+		}
+	}
+	if len(s.nodes) == cap(s.nodes) {
+		capacity := max(1, 2*cap(s.nodes))
+		nodes := make([]scalarNode, len(s.nodes), capacity)
+		copy(nodes, s.nodes)
+		s.Discarded += uint64(cap(s.nodes)) * uint64(unsafe.Sizeof(scalarNode{}))
+		s.nodes = nodes
 	}
 	s.nodes = append(s.nodes, n)
 	return scalarID(len(s.nodes) - 1)
@@ -335,6 +351,10 @@ func (s *ScalarState) release(id scalarID) {
 		s.release(l)
 		s.release(r)
 	}
+	// Deferred children are released before their fields become allocator
+	// linkage. No local, root or parent may retain this index now.
+	n.left = s.nodes[0].left
+	s.nodes[0].left = id
 }
 func (s *ScalarState) pop() scalarID {
 	i := len(s.stack) - 1
@@ -667,8 +687,11 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 		s.nodes = nil
 		s.Discarded += old - s.Memory()
 	}
-	if cap(s.nodes) < summary.Nodes {
-		s.nodes = make([]scalarNode, 0, summary.Nodes)
+	// The summary bounds total creation events, not simultaneous live values.
+	// Start small and grow geometrically only when live references require it.
+	if needed := min(summary.Nodes, 64); cap(s.nodes) < needed {
+		s.Discarded += uint64(cap(s.nodes)) * uint64(unsafe.Sizeof(scalarNode{}))
+		s.nodes = make([]scalarNode, 0, needed)
 	}
 	s.nodes = s.nodes[:0]
 	s.add(scalarNode{})
