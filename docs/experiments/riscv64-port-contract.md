@@ -1,8 +1,11 @@
-# RV64 encoder checkpoint
+# RV64 port contract
 
-This is encoder infrastructure for an experimental Linux/RV64 port. It does not
-enable an RV64 compiler, runtime, CLI target, artifact architecture, or Wasm
-feature. Generated code has not executed through a Wago RV64 runtime.
+This experimental Linux/RV64 port has an encoder and an isolated integer
+runtime boundary. Generated framed snippets execute under QEMU through that
+boundary; see the [runtime checkpoint](riscv64-runtime-checkpoint.md).
+It does not enable a production RV64 compiler, CLI target, artifact architecture,
+or Wasm feature. The [encoder checkpoint](riscv64-encoder-checkpoint.md) records
+the earlier encoder-only acceptance.
 
 ## Baseline and provenance
 

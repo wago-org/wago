@@ -4,6 +4,10 @@ Baseline: `03a2db03ac06bcf20d5411272a7dce80a2138fae` (#802 squash).
 Branch: `feat/rv64-encoder-checkpoint`. See the
 [port contract](riscv64-port-contract.md) for scope and subsequent gates.
 
+This records the encoder-only checkpoint at `139ef4a8`. The subsequent
+[runtime checkpoint](riscv64-runtime-checkpoint.md) adds QEMU execution evidence;
+the execution limits below describe the earlier checkpoint only.
+
 The change adds only `src/core/encoder/riscv64` and these experiment documents.
 It is not imported by a production backend. Existing targets, public features,
 runtime assembly and native artifact IDs are unchanged. No #284 code was used.
