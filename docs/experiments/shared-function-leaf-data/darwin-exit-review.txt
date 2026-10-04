@@ -1,0 +1,9 @@
+Independent contract review, /root/contract_review, 2026-10-04
+Reviewed HEAD441ec972 plus final Darwin CI repair diff. Read-only; no builds or edits.
+Initial findings: predicate-only tests did not cover the polling loop; acceptance preceded deadline checking.
+Resolved: injected-query tests cover exiting-to-zombie/empty, later live member, query failure retaining both errors, already-expired budget and slow query. Deadline is checked before querying and before accepting an inert snapshot.
+Final verdict: no unresolved findings. P_WEXIT only permits polling, never directly normalizes EPERM; zombie/empty proof is still required. Reap and PID/PGID ownership ordering remains unchanged. The deadline controls acceptance/polling, not interruption of an in-flight kernel query.
+SHA256:
+6f5abb9dea8aa590e628e0e7a19c9a70a3f37ae4fdb8e2187bbe7331020919e0 group_signal_darwin.go
+23f2247fc1f770d57496f192d1ff788b2d13c432e787fb99181a700900108da3 group_signal_darwin_test.go
+4d026e82392de152b6b5884680c1bc99c99ac07d5fe5be4667ede6a9050c1875 exit_kqueue_darwin_test.go
