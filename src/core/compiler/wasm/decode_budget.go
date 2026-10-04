@@ -43,6 +43,16 @@ func (r *reader) reserve(count, width uint64) error {
 	r.budget.remaining -= count * width
 	return nil
 }
+
+// reserveOwnedBytes accounts for one exact byte/string allocation plus size
+// class or page rounding, rather than charging twice for large owned buffers.
+func (r *reader) reserveOwnedBytes(count uint64) error {
+	if err := r.reserve(count, 1); err != nil {
+		return err
+	}
+	return r.reserve(1, min(count, 8192))
+}
+
 func reserveDecodedSlice[T any](r *reader, n uint32) error {
 	var value T
 	// Include old growth buffers, pointer sidecars and allocator rounding.

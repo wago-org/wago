@@ -397,20 +397,20 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional branch.
 func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
-	return f.brIfFusedSet(top, labelIdx, regNone)
+	return f.brIfFusedSet(top, labelIdx, regNone, -1)
 }
 
 // brIfFusedSet is brIfFused with an optional `local.tee` destination. CSET is
 // flag-transparent, so storing the compare result between CMP and B.cond keeps
 // the flags live and avoids rematerializing/re-comparing the boolean.
-func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
+func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg, setLocal int) error {
 	fi := len(f.ctrl) - 1 - int(labelIdx)
 	if fi < 0 {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
 	reconcileMark := f.a.Len()
-	canDefer := f.callFreeLoopExit(fi)
+	canDefer := setDst == regNone && f.callFreeLoopExit(fi)
 	var saved localStateSnapshot
 	if canDefer {
 		saved, canDefer = f.snapshotLocalStates()
@@ -429,6 +429,11 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	cc := f.condenseToFlags(top)
 	if setDst != regNone {
 		f.a.Cset32(setDst, cc)
+		// The branch target must receive the newly assigned local, not the
+		// slot value reconciled before evaluating the comparison. Local
+		// reconciliation uses flag-transparent loads/stores.
+		f.markLocalDirty(setLocal)
+		f.convergeBranchLocals(fr)
 	}
 	a := fr.branchArity()
 	// Emit the edge and measure it. The edge helpers emit only LDR/STR/MOV, which

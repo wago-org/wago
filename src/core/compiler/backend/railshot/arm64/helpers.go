@@ -94,6 +94,37 @@ func (f *fn) ldst(store bool, size int, rt, base Reg, disp int32) {
 			f.a.ObserveRegalloc(previous)
 			f.a.AddSP64(16)
 		}
+	case !store:
+		// Global slot tables and other metadata bases can exceed the scaled
+		// load immediate. The destination owns the temporary address, even
+		// when it initially also holds the base pointer.
+		remaining := uint32(disp)
+		if disp < 0 {
+			remaining = uint32(-int64(disp))
+		}
+		from := base
+		for remaining >= 0x1000 {
+			step := min(remaining&^uint32(0xfff), uint32(0xfff000))
+			if disp < 0 {
+				f.a.SubImm64LSL12(rt, from, step)
+			} else {
+				f.a.AddImm64LSL12(rt, from, step)
+			}
+			remaining -= step
+			from = rt
+		}
+		if remaining != 0 {
+			if disp < 0 {
+				f.a.SubImm64(rt, from, remaining)
+			} else {
+				f.a.AddImm64(rt, from, remaining)
+			}
+		}
+		if size == 8 {
+			f.a.Load64(rt, rt, 0)
+		} else {
+			f.a.Load32(rt, rt, 0)
+		}
 	default:
 		panic("arm64 ldst: byte offset out of range for a single load/store")
 	}

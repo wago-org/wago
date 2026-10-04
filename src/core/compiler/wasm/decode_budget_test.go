@@ -113,14 +113,14 @@ func TestDecodeLargeValidNameWithinBudget(t *testing.T) {
 	payload = binary.AppendUvarint(payload, uint64(len(sub)))
 	payload = append(payload, sub...)
 	data := module(section(secCustom, payload...))
-	dm, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{}, DecodeLimits{MaxMetadataBytes: 16 << 20})
+	dm, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{}, DecodeLimits{MaxMetadataBytes: 7 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if dm.Module.NameSec == nil || dm.Module.NameSec.ModuleName == nil || *dm.Module.NameSec.ModuleName != name {
 		t.Fatal("module name changed")
 	}
-	if _, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{}, DecodeLimits{MaxMetadataBytes: 8 << 20}); err == nil || !strings.Contains(err.Error(), "allocation limit") {
+	if _, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{}, DecodeLimits{MaxMetadataBytes: 6 << 20}); err == nil || !strings.Contains(err.Error(), "allocation limit") {
 		t.Fatalf("shared budget: %v", err)
 	}
 }

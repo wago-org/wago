@@ -307,7 +307,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 	}
 	// Every custom payload retains one owned byte copy. Structured decoders
 	// separately reserve their exact containers through the same parent budget.
-	if err := r.reserve(uint64(r.left()), 2); err != nil {
+	if err := r.reserveOwnedBytes(uint64(r.left())); err != nil {
 		return err
 	}
 	payload, err := r.bytes(r.left())

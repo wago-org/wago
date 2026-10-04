@@ -83,7 +83,7 @@ func decodeSection(m *Module, r *reader, id byte) error {
 			}
 			m.NameSec = ns
 		}
-		if err := r.reserve(uint64(len(payload)), 2); err != nil {
+		if err := r.reserveOwnedBytes(uint64(len(payload))); err != nil {
 			return err
 		}
 		ownedPayload := append([]byte(nil), payload...)

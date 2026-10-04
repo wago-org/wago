@@ -142,7 +142,7 @@ func (r *reader) name() (string, error) {
 	if !utf8.Valid(b) {
 		return "", &DecodeError{Code: ErrInvalidSection, Offset: start}
 	}
-	if err := r.reserve(uint64(len(b)), 2); err != nil {
+	if err := r.reserveOwnedBytes(uint64(len(b))); err != nil {
 		return "", err
 	}
 	return string(b), nil

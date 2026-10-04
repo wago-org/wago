@@ -814,7 +814,7 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 		return false, err
 	}
 	f.invalidateBoundsCertFor(1, uint32(x))
-	if err := f.brIfFusedSet(top, idx, pr); err != nil {
+	if err := f.brIfFusedSet(top, idx, pr, x); err != nil {
 		return false, err
 	}
 	f.markLocalDirty(x)
