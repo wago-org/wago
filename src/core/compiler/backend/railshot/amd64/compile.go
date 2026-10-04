@@ -4480,6 +4480,12 @@ func (f *fn) prologue(localScores []uint32) {
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 	f.zeroEHGCRootLanes()
+	if f.scalarSummary.Eligible {
+		// Shared locals start as zero constants. Its control agreements store
+		// every dirty local before borrowing a frame home. Admission excludes
+		// GC, EH and effects; extending it requires revisiting this invariant.
+		return
+	}
 	if f.nLocals <= f.nParams {
 		return
 	}
