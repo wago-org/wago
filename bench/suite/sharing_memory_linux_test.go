@@ -127,18 +127,14 @@ func TestSharingMappedMemory(t *testing.T) {
 		runtime.ReadMemStats(&m)
 		var u syscall.Rusage
 		syscall.Getrusage(syscall.RUSAGE_SELF, &u)
-		code, mapped := 0, 0
-		for _, c := range out {
-			code += len(c.Code)
-			mapped += (len(c.Code) + 4095) &^ 4095
-		}
+		code, mapped, payloadRounded := sharingNativeStorage(t, out)
 		rss, _ := os.ReadFile("/proc/self/statm")
 		parts := strings.Fields(string(rss))
 		pages := uint64(0)
 		if len(parts) > 1 {
 			pages, _ = strconv.ParseUint(parts[1], 10, 64)
 		}
-		d, _ := json.Marshal(map[string]any{"phase": phase, "modules": len(out), "functions_per_corpus": functions, "code_bytes": code, "mapped_bytes_page_accounting": mapped, "heap_alloc": m.HeapAlloc, "heap_inuse": m.HeapInuse, "heap_objects": m.HeapObjects, "heap_released": m.HeapReleased, "total_alloc": m.TotalAlloc, "mallocs": m.Mallocs, "rss_bytes": pages * uint64(os.Getpagesize()), "peak_rss_kib": u.Maxrss})
+		d, _ := json.Marshal(map[string]any{"phase": phase, "modules": len(out), "functions_per_corpus": functions, "code_bytes": code, "mapped_bytes": mapped, "payload_bytes_page_rounded": payloadRounded, "heap_alloc": m.HeapAlloc, "heap_inuse": m.HeapInuse, "heap_objects": m.HeapObjects, "heap_released": m.HeapReleased, "total_alloc": m.TotalAlloc, "mallocs": m.Mallocs, "rss_bytes": pages * uint64(os.Getpagesize()), "peak_rss_kib": u.Maxrss})
 		t.Log(string(d))
 		runtime.KeepAlive(out)
 	}
@@ -177,4 +173,38 @@ func TestSharingMappedMemory(t *testing.T) {
 	}
 	runtime.KeepAlive(mods)
 	runtime.KeepAlive(fs)
+}
+
+// The owned mapping retains reserved capacity beyond the final payload. Neither
+// mapping capacity nor rounded payload is a physical RSS measurement.
+func sharingNativeStorage(t testing.TB, outputs []*benchCompiledModule) (code, mapped, payloadRounded int) {
+	t.Helper()
+	page := os.Getpagesize()
+	for _, c := range outputs {
+		owner, ok := c.image.(*core.CodeBuffer)
+		if !ok {
+			t.Fatal("native diagnostic output has no CodeBuffer owner")
+		}
+		code += len(c.Code)
+		mapped += len(owner.Mapping())
+		payloadRounded += (len(c.Code) + page - 1) / page * page
+	}
+	return
+}
+
+func TestSharingMappedStorageUsesOwnerCapacity(t *testing.T) {
+	page := os.Getpagesize()
+	owner, err := core.NewCodeBuffer(3 * page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	if err = owner.AppendZeros(17); err != nil {
+		t.Fatal(err)
+	}
+	c := &benchCompiledModule{Code: owner.Bytes(), image: owner}
+	code, mapped, payload := sharingNativeStorage(t, []*benchCompiledModule{c})
+	if code != 17 || mapped != 3*page || payload != page {
+		t.Fatalf("code/mapped/payload=%d/%d/%d, want 17/%d/%d", code, mapped, payload, 3*page, page)
+	}
 }
