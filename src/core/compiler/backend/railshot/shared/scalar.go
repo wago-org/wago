@@ -198,6 +198,14 @@ func admitScalar(code []byte, ft *wasm.CompType, nLocals int, zeroWidths [2]bool
 	if budget > scalarMaxNodes {
 		return ScalarSummary{}
 	}
+	// The established compiler keeps simple multi-argument leaves in their
+	// incoming registers. This pilot currently starts parameters at frame homes;
+	// prefer that established lowering when there is no declared local, control,
+	// or more than one newly created value to amortize the entry cost. Use the
+	// semantic summary rather than byte length, so nop padding cannot bypass it.
+	if len(ft.Params) > 1 && nLocals == len(ft.Params) && s.MaxControlDepth == 0 && s.Nodes <= len(ft.Params)+2 {
+		return s
+	}
 	s.Eligible = true
 	return s
 }
