@@ -500,9 +500,19 @@ jobs:
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: scripts/check-regalloc-code.sh
 
+      # Existing peephole counters describe the established target driver.
+      # Keep its diagnostics and the admitted shared pilot independently checked.
       - name: Compiler diagnostic tests
         if: matrix.runtime
+        env:
+          WAGO_SHARED_SCALAR: "0"
         run: go test -count=1 -tags wago_codegenstats ./src/core/compiler/backend/railshot/... ./src/wago ./cli/runtime/internal/artifactcache
+
+      - name: Shared scalar diagnostic tests
+        if: matrix.runtime
+        env:
+          WAGO_SHARED_SCALAR: "1"
+        run: go test -count=1 -tags wago_codegenstats -run '^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)' ./src/core/compiler/backend/railshot/... ./src/wago
 
       - name: Profiling metadata and capture tests
         if: matrix.runtime

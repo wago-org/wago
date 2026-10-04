@@ -1,0 +1,163 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-timing.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-timing.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P
+SharingNative/small,8.362e-06,3%,8.445499999999999e-06,13%,~,p=0.589 n=6
+SharingNative/pressure,1.79615e-05,4%,1.83775e-05,6%,~,p=0.132 n=6
+SharingNative/join,9.0145e-06,3%,9.1935e-06,11%,~,p=0.310 n=6
+SharingNative/large,0.000124307,3%,0.000124469,2%,~,p=0.937 n=6
+SharingNative/deep,9.3575e-06,4%,9.41e-06,12%,~,p=0.485 n=6
+SharingNative/locals,1.8134e-05,2%,1.80945e-05,2%,~,p=0.394 n=6
+SharingNative/many,0.0005241730000000001,3%,0.0005281095000000001,2%,~,p=0.240 n=6
+SharingNative/large_then_small,0.000641611,3%,0.0006362435,3%,~,p=1.000 n=6
+SharingNative/fallback,8.737000000000001e-06,20%,8.942e-06,15%,~,p=0.589 n=6
+SharingFull/small,9.0455e-06,4%,8.878000000000002e-06,6%,~,p=0.240 n=6
+SharingFull/pressure,2.5286500000000003e-05,3%,2.48305e-05,3%,-1.80%,p=0.026 n=6
+SharingFull/join,1.0398000000000001e-05,5%,1.0229e-05,4%,~,p=0.093 n=6
+SharingFull/large,0.00023195700000000003,2%,0.000237936,6%,+2.58%,p=0.004 n=6
+SharingFull/deep,1.2740500000000001e-05,2%,1.23105e-05,10%,~,p=0.065 n=6
+SharingFull/locals,2.9657e-05,1%,3.0209e-05,5%,+1.86%,p=0.041 n=6
+SharingFull/many,0.0007251935,2%,0.0007302480000000001,5%,~,p=0.394 n=6
+SharingFull/large_then_small,0.0009599015,2%,0.000951998,1%,~,p=0.180 n=6
+SharingFull/fallback,9.463e-06,1%,9.4035e-06,2%,~,p=0.589 n=6
+SharingExec/small,1.5305e-08,1%,1.5280000000000002e-08,2%,~,p=0.584 n=6
+SharingExec/pressure,4.5285000000000005e-08,2%,4.611e-08,73%,~,p=0.589 n=6
+SharingExec/join,1.567e-08,1%,1.5680000000000002e-08,2%,~,p=0.814 n=6
+SharingExec/large,2.3835000000000001e-07,5%,2.3875000000000004e-07,2%,~,p=1.000 n=6
+SharingExec/deep,1.5305000000000004e-08,2%,1.5190000000000002e-08,1%,~,p=0.102 n=6
+SharingExec/locals,3.9535e-08,6%,3.9530000000000004e-08,1%,~,p=0.937 n=6
+SharingExec/many,1.5355e-08,5%,1.5315000000000002e-08,2%,~,p=0.615 n=6
+SharingExec/large_then_small,2.3860000000000003e-07,3%,2.3815e-07,3%,~,p=0.853 n=6
+SharingExec/fallback,1.56e-08,1%,1.554e-08,1%,~,p=0.223 n=6
+SharingZeroLocals/1,9.7175e-06,15%,9.393e-06,9%,~,p=0.240 n=6
+SharingZeroLocals/8,9.594e-06,21%,9.6835e-06,15%,~,p=0.818 n=6
+SharingZeroLocals/64,1.0044500000000002e-05,9%,1.0384000000000001e-05,14%,~,p=0.937 n=6
+SharingZeroLocals/256,1.24035e-05,10%,1.2351500000000002e-05,10%,~,p=0.818 n=6
+Compile/tiny,1.17405e-05,12%,1.1524e-05,14%,~,p=0.699 n=6
+Compile/fib_rec,2.1229500000000004e-05,11%,2.02115e-05,9%,~,p=0.132 n=6
+Compile/many_funcs,0.0003746115,3%,0.00036554100000000004,3%,~,p=0.132 n=6
+Compile/json-as,0.0011255945000000001,5%,0.0010951585000000001,3%,~,p=0.132 n=6
+Compile/xxhash,0.00010654450000000001,5%,0.0001046555,1%,-1.77%,p=0.041 n=6
+CompileFull/tiny,1.45095e-05,3%,1.4503e-05,3%,~,p=0.937 n=6
+CompileFull/fib_rec,2.1934000000000004e-05,1%,2.1372e-05,2%,-2.56%,p=0.002 n=6
+CompileFull/many_funcs,0.0004883795,2%,0.0004917105000000001,2%,~,p=0.699 n=6
+CompileFull/json-as,0.0016646015,3%,0.0016610885,2%,~,p=0.937 n=6
+CompileFull/xxhash,0.00013234800000000001,4%,0.000130091,2%,~,p=0.065 n=6
+Exec/tiny.add,1.4915e-08,1%,1.4935e-08,96%,~,p=0.550 n=6
+Exec/fib_rec.fib,0.0006652425000000001,1%,0.0006636385,3%,~,p=1.000 n=6
+Exec/many_funcs.run,1.4935e-08,2%,1.478e-08,3%,~,p=0.394 n=6
+Exec/json-as.serializeN,2.15265e-05,2%,2.12555e-05,2%,~,p=0.132 n=6
+Exec/json-as.deserializeN,4.05685e-05,1%,4.0284500000000004e-05,2%,~,p=0.310 n=6
+Exec/xxhash.xxhash_run,0.00012088000000000001,3%,0.00012131050000000001,3%,~,p=0.394 n=6
+geomean,9.003138025628636e-06,,8.97083927328206e-06,,-0.36%,
+
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-timing.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-timing.txt,,,
+,B/op,CI,B/op,CI,vs base,P
+SharingNative/small,7536,0%,7536,0%,~,p=1.000 n=6
+SharingNative/pressure,10072,0%,10072,0%,~,p=1.000 n=6
+SharingNative/join,7936,0%,7936,0%,~,p=1.000 n=6
+SharingNative/large,9416,0%,9416,0%,~,p=1.000 n=6
+SharingNative/deep,8496,0%,8496,0%,~,p=1.000 n=6
+SharingNative/locals,14160,0%,14160,0%,~,p=1.000 n=6
+SharingNative/many,49888,0%,49888,0%,~,p=1.000 n=6
+SharingNative/large_then_small,56192,0%,56192,0%,~,p=1.000 n=6
+SharingNative/fallback,8504,0%,8504,0%,~,p=1.000 n=6
+SharingFull/small,15064,0%,15064,0%,~,p=1.000 n=6
+SharingFull/pressure,22033,0%,22033,0%,~,p=1.000 n=6
+SharingFull/join,15472,0%,15472,0%,~,p=1.000 n=6
+SharingFull/large,95524,0%,95524,0%,~,p=0.636 n=6
+SharingFull/deep,21953,0%,21953,0%,~,p=1.000 n=6
+SharingFull/locals,26217,0%,26217,0%,~,p=1.000 n=6
+SharingFull/many,243188,0%,243187,0%,~,p=0.242 n=6
+SharingFull/large_then_small,295103,0%,295103,0%,~,p=0.455 n=6
+SharingFull/fallback,16032,0%,16032,0%,~,p=1.000 n=6
+SharingExec/small,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/pressure,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/join,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/large,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/deep,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/locals,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/many,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/large_then_small,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/fallback,0,0%,0,0%,~,p=1.000 n=6
+SharingZeroLocals/1,7416,0%,7416,0%,~,p=1.000 n=6
+SharingZeroLocals/8,7544,0%,7544,0%,~,p=1.000 n=6
+SharingZeroLocals/64,8520,0%,8520,0%,~,p=1.000 n=6
+SharingZeroLocals/256,11976,0%,11976,0%,~,p=1.000 n=6
+Compile/tiny,8672,0%,8672,0%,~,p=1.000 n=6
+Compile/fib_rec,27048,0%,27048,0%,~,p=1.000 n=6
+Compile/many_funcs,69680,0%,69680,0%,~,p=1.000 n=6
+Compile/json-as,134880,0%,134880,0%,~,p=1.000 n=6
+Compile/xxhash,65976,0%,65976,0%,~,p=1.000 n=6
+CompileFull/tiny,18752,0%,18752,0%,~,p=1.000 n=6
+CompileFull/fib_rec,35753,0%,35753,0%,~,p=1.000 n=6
+CompileFull/many_funcs,179745,0%,179745,0%,~,p=1.000 n=6
+CompileFull/json-as,309929,0%,309930,0%,~,p=0.242 n=6
+CompileFull/xxhash,107500,0%,107500,0%,~,p=1.000 n=6
+geomean,,,,,-0.00%,
+
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-timing.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-timing.txt,,,
+,allocs/op,CI,allocs/op,CI,vs base,P
+SharingNative/small,20,0%,20,0%,~,p=1.000 n=6
+SharingNative/pressure,23,0%,23,0%,~,p=1.000 n=6
+SharingNative/join,21,0%,21,0%,~,p=1.000 n=6
+SharingNative/large,18,0%,18,0%,~,p=1.000 n=6
+SharingNative/deep,21,0%,21,0%,~,p=1.000 n=6
+SharingNative/locals,22,0%,22,0%,~,p=1.000 n=6
+SharingNative/many,23,0%,23,0%,~,p=1.000 n=6
+SharingNative/large_then_small,24,0%,24,0%,~,p=1.000 n=6
+SharingNative/fallback,21,0%,21,0%,~,p=1.000 n=6
+SharingFull/small,73,0%,73,0%,~,p=1.000 n=6
+SharingFull/pressure,80,0%,80,0%,~,p=1.000 n=6
+SharingFull/join,75,0%,75,0%,~,p=1.000 n=6
+SharingFull/large,81,0%,81,0%,~,p=1.000 n=6
+SharingFull/deep,82,0%,82,0%,~,p=1.000 n=6
+SharingFull/locals,74,0%,74,0%,~,p=1.000 n=6
+SharingFull/many,587,0%,587,0%,~,p=1.000 n=6
+SharingFull/large_then_small,589,0%,589,0%,~,p=1.000 n=6
+SharingFull/fallback,74,0%,74,0%,~,p=1.000 n=6
+SharingExec/small,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/pressure,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/join,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/large,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/deep,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/locals,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/many,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/large_then_small,0,0%,0,0%,~,p=1.000 n=6
+SharingExec/fallback,0,0%,0,0%,~,p=1.000 n=6
+SharingZeroLocals/1,20,0%,20,0%,~,p=1.000 n=6
+SharingZeroLocals/8,20,0%,20,0%,~,p=1.000 n=6
+SharingZeroLocals/64,17,0%,17,0%,~,p=1.000 n=6
+SharingZeroLocals/256,17,0%,17,0%,~,p=1.000 n=6
+Compile/tiny,24,0%,24,0%,~,p=1.000 n=6
+Compile/fib_rec,50,0%,50,0%,~,p=1.000 n=6
+Compile/many_funcs,35,0%,35,0%,~,p=1.000 n=6
+Compile/json-as,125,0%,125,0%,~,p=1.000 n=6
+Compile/xxhash,58,0%,58,0%,~,p=1.000 n=6
+CompileFull/tiny,93,0%,93,0%,~,p=1.000 n=6
+CompileFull/fib_rec,107,0%,107,0%,~,p=1.000 n=6
+CompileFull/many_funcs,89,0%,89,0%,~,p=1.000 n=6
+CompileFull/json-as,399,0%,399,0%,~,p=1.000 n=6
+CompileFull/xxhash,146,0%,146,0%,~,p=1.000 n=6
+geomean,,,,,+0.00%,
+
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-timing.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-timing.txt,,,
+,code-B,CI,code-B,CI,vs base,P
+CompileFull/tiny,96,0%,96,0%,~,p=1.000 n=6
+CompileFull/fib_rec,320,0%,320,0%,~,p=1.000 n=6
+CompileFull/many_funcs,8363,0%,8363,0%,~,p=1.000 n=6
+CompileFull/json-as,67398,0%,67398,0%,~,p=1.000 n=6
+CompileFull/xxhash,3301,0%,3301,0%,~,p=1.000 n=6
+geomean,2246.0280117808834,,2246.0280117808834,,+0.00%,
+
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-timing.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-timing.txt,,,
+,calls/batch,CI,calls/batch,CI,vs base,P
+Exec/tiny.add,135671.5,2%,135844.5,49%,~,p=0.937 n=6
+Exec/fib_rec.fib,4,0%,4,0%,~,p=1.000 n=6
+Exec/many_funcs.run,137702.5,3%,137921.5,2%,~,p=0.937 n=6
+Exec/json-as.serializeN,97.5,4%,99,3%,~,p=0.348 n=6
+Exec/json-as.deserializeN,61,15%,58.5,9%,~,p=0.554 n=6
+Exec/xxhash.xxhash_run,17.5,3%,17,6%,~,p=1.000 n=6
+geomean,445.120049959967,,441.2272578239724,,-0.87%,

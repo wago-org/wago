@@ -1,0 +1,40 @@
+[
+  {
+    "name": "root",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/merge-check",
+    "exit": 0
+  },
+  {
+    "name": "root-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/merge-check",
+    "exit": 0
+  },
+  {
+    "name": "bench-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/merge-check/bench",
+    "exit": 0
+  }
+]

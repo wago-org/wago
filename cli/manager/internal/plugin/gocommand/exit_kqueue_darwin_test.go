@@ -12,7 +12,7 @@ import (
 )
 
 func TestDarwinExitObserverCatchesImmediateLeaderExit(t *testing.T) {
-	for i := 0; i < 32; i++ {
+	for i := 0; i < 256; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		command := &Command{Cmd: exec.CommandContext(ctx, "sh", "-c", "exit 0"), ctx: ctx}
 		err := command.Run()

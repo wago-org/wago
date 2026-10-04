@@ -1,0 +1,13 @@
+cohort,scope,phase,comparison,metric,before,after,absolute_delta,percent_delta,before_n,after_n,before_min,before_max,after_min,after_max,bootstrap_95_low,bootstrap_95_high
+memory,combined,process,A/R,peak_rss_kib,19456.0,19496.0,40.0,0.20559210526316374,6,6,19128,21320,19248,21264,,
+memory,combined,process,C/R,peak_rss_kib,19282.0,19496.0,214.0,1.109843377243025,6,6,18720,19624,19248,21264,,
+memory,combined,process,A/C,peak_rss_kib,19456.0,19282.0,-174.0,-0.8943256578947345,6,6,19128,21320,18720,19624,,
+memory-auto,combined,process,A/R,peak_rss_kib,20602.0,20476.0,-126.0,-0.6115911076594482,6,6,18828,21068,18748,20664,,
+memory-auto,combined,process,C/R,peak_rss_kib,20496.0,20476.0,-20.0,-0.09758001561279706,6,6,18632,21124,18748,20664,,
+memory-auto,combined,process,A/C,peak_rss_kib,20602.0,20496.0,-106.0,-0.5145131540627124,6,6,18828,21068,18632,21124,,
+runtime,runtime,process,A/R,peak_rss_kib,90508.0,89246.0,-1262.0,-1.394351880496747,6,6,89292,91780,88436,90940,,
+runtime,runtime,process,C/R,peak_rss_kib,88736.0,89246.0,510.0,0.5747385503065194,6,6,88560,90884,88436,90940,,
+runtime,runtime,process,A/C,peak_rss_kib,90508.0,88736.0,-1772.0,-1.9578379811729385,6,6,89292,91780,88560,90884,,
+runtime-auto,runtime,process,A/R,peak_rss_kib,90542.0,90936.0,394.0,0.4351571646307839,6,6,89112,91540,90824,91168,,
+runtime-auto,runtime,process,C/R,peak_rss_kib,90898.0,90936.0,38.0,0.04180510022222528,6,6,90640,91092,90824,91168,,
+runtime-auto,runtime,process,A/C,peak_rss_kib,90542.0,90898.0,356.0,0.3931876918998878,6,6,89112,91540,90640,91092,,

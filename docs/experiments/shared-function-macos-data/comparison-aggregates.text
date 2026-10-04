@@ -1,0 +1,8 @@
+                                  │ /Users/work/Code/Wago/pr802-results-20261004/results/main-aggregates.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-aggregates.txt │
+                                  │                                  sec/op                                  │                     sec/op                       vs base               │
+Aggregate/AllNative                                                                             35.97µ ±  6%                                       32.42µ ± 1%   -9.87% (p=0.002 n=6)
+Aggregate/MigratedSyntheticNative                                                               34.31µ ±  3%                                       28.68µ ± 2%  -16.39% (p=0.002 n=6)
+Aggregate/AllFull                                                                               54.59µ ± 19%                                       51.77µ ± 4%   -5.17% (p=0.004 n=6)
+Aggregate/AllExec                                                                               238.8n ±  2%                                       232.6n ± 1%   -2.59% (p=0.002 n=6)
+Aggregate/MigratedSyntheticExec                                                                 39.93n ±  2%                                       38.17n ± 1%   -4.39% (p=0.002 n=6)
+geomean                                                                                         3.644µ                                             3.359µ        -7.82%

@@ -1,0 +1,63 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: Apple M4 Max
+                             │ /Users/work/Code/Wago/pr802-results-20261004/results/main-execution.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-execution.txt │
+                             │                                 sec/op                                  │                     sec/op                      vs base               │
+SharingExec/small                                                                          11.41n ± 3%                                     11.34n ±  2%        ~ (p=0.589 n=6)
+SharingExec/pressure                                                                       57.74n ± 2%                                     57.12n ±  1%        ~ (p=0.258 n=6)
+SharingExec/join                                                                           11.46n ± 2%                                     11.48n ±  2%        ~ (p=0.485 n=6)
+SharingExec/large                                                                          269.2n ± 4%                                     268.8n ±  2%        ~ (p=1.000 n=6)
+SharingExec/deep                                                                           11.39n ± 3%                                     11.37n ±  2%        ~ (p=0.619 n=6)
+SharingExec/locals                                                                         90.80n ± 3%                                     65.01n ±  1%  -28.40% (p=0.002 n=6)
+SharingExec/many                                                                           11.40n ± 2%                                     11.43n ±  2%        ~ (p=0.974 n=6)
+SharingExec/large_then_small                                                               272.0n ± 3%                                     269.2n ±  3%        ~ (p=0.394 n=6)
+SharingExec/fallback                                                                       11.50n ± 3%                                     11.11n ±  2%   -3.35% (p=0.004 n=6)
+Exec/tiny.add                                                                              10.44n ± 3%                                     10.22n ±  2%        ~ (p=0.180 n=6)
+Exec/fib_rec.fib                                                                           570.8µ ± 4%                                     564.4µ ±  5%        ~ (p=0.699 n=6)
+Exec/many_funcs.run                                                                        20.91n ± 4%                                     20.94n ±  2%        ~ (p=0.937 n=6)
+Exec/json-as.serializeN                                                                    15.93µ ± 1%                                     16.01µ ± 17%        ~ (p=0.485 n=6)
+Exec/json-as.deserializeN                                                                  32.72µ ± 1%                                     32.73µ ± 11%        ~ (p=0.729 n=6)
+Exec/xxhash.xxhash_run                                                                     96.35µ ± 3%                                     96.23µ ±  0%        ~ (p=0.589 n=6)
+geomean                                                                                    238.8n                                          232.2n         -2.76%
+
+                             │ /Users/work/Code/Wago/pr802-results-20261004/results/main-execution.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-execution.txt │
+                             │                                  B/op                                   │                     B/op                       vs base                │
+SharingExec/small                                                                         0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/pressure                                                                      0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/join                                                                          0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/large                                                                         0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/deep                                                                          0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/locals                                                                        0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/many                                                                          0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/large_then_small                                                              0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/fallback                                                                      0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                              ²                                                  +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                             │ /Users/work/Code/Wago/pr802-results-20261004/results/main-execution.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-execution.txt │
+                             │                                allocs/op                                │                   allocs/op                    vs base                │
+SharingExec/small                                                                         0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/pressure                                                                      0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/join                                                                          0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/large                                                                         0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/deep                                                                          0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/locals                                                                        0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/many                                                                          0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/large_then_small                                                              0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+SharingExec/fallback                                                                      0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                              ²                                                  +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                          │ /Users/work/Code/Wago/pr802-results-20261004/results/main-execution.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-execution.txt │
+                          │                               calls/batch                               │                  calls/batch                   vs base                │
+Exec/tiny.add                                                                           191.1k ± 5%                                    196.9k ±  3%       ~ (p=0.394 n=6)
+Exec/fib_rec.fib                                                                         4.000 ± 0%                                     4.000 ±  0%       ~ (p=1.000 n=6) ¹
+Exec/many_funcs.run                                                                     95.12k ± 5%                                    96.29k ±  5%       ~ (p=0.818 n=6)
+Exec/json-as.serializeN                                                                  139.5 ± 6%                                     134.0 ±  7%       ~ (p=0.281 n=6)
+Exec/json-as.deserializeN                                                                80.00 ± 6%                                     72.50 ± 16%       ~ (p=0.353 n=6)
+Exec/xxhash.xxhash_run                                                                   21.00 ± 5%                                     20.50 ±  2%       ~ (p=0.364 n=6)
+geomean                                                                                  507.3                                          497.2        -1.99%
+¹ all samples are equal

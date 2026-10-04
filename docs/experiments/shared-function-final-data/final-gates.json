@@ -1,0 +1,84 @@
+[
+  {
+    "revision": "M",
+    "name": "root",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-main",
+    "exit": 0
+  },
+  {
+    "revision": "M",
+    "name": "root-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-main",
+    "exit": 0
+  },
+  {
+    "revision": "M",
+    "name": "bench-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-main/bench",
+    "exit": 0
+  },
+  {
+    "revision": "P",
+    "name": "root",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "revision": "P",
+    "name": "root-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "revision": "P",
+    "name": "bench-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final/bench",
+    "exit": 0
+  }
+]

@@ -1,0 +1,21 @@
+File: F-suite.test
+Build ID: 353b96d8b35a3799e078e9eaf2b1f53e14c13af6
+Type: inuse_space
+Time: 2026-10-04 09:40:17 EDT
+Showing nodes accounting for 2108.59kB, 100% of 2108.59kB total
+      flat  flat%   sum%        cum   cum%
+ 1056.33kB 50.10% 50.10%  1056.33kB 50.10%  github.com/wago-org/wago/src/wago.compileModuleMetadata
+  528.17kB 25.05% 75.14%   528.17kB 25.05%  github.com/wago-org/wago/src/wago.cloneCompiledMetadata
+  524.09kB 24.86%   100%   524.09kB 24.86%  github.com/wago-org/wago/src/core/runtime.NewHeapCodeBuffer
+         0     0%   100%  2108.59kB   100%  github.com/wago-org/wago/bench/suite.TestSharingMemory
+         0     0%   100%   524.09kB 24.86%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith
+         0     0%   100%   524.09kB 24.86%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+         0     0%   100%   528.17kB 25.05%  github.com/wago-org/wago/src/wago.(*Compiled).freezeExecution
+         0     0%   100%  2108.59kB   100%  github.com/wago-org/wago/src/wago.(*PreparedCompile).Compile
+         0     0%   100%  2108.59kB   100%  github.com/wago-org/wago/src/wago.(*Runtime).Compile (inline)
+         0     0%   100%  2108.59kB   100%  github.com/wago-org/wago/src/wago.(*Runtime).compile
+         0     0%   100%  2108.59kB   100%  github.com/wago-org/wago/src/wago.compileWithConfigAndInstructions
+         0     0%   100%  2108.59kB   100%  github.com/wago-org/wago/src/wago.compileWithFrontendFeaturesAndInstructions
+         0     0%   100%   528.17kB 25.05%  github.com/wago-org/wago/src/wago.publishCompilerCompiled
+         0     0%   100%   524.09kB 24.86%  github.com/wago-org/wago/src/wago.railshotCompileModuleWith
+         0     0%   100%  2108.59kB   100%  testing.tRunner

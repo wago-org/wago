@@ -1,0 +1,43 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-workers.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-workers.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P
+CompileFullWorkers/tiny/p1-4,1.82955e-05,24%,1.82245e-05,12%,~,p=0.485 n=6
+CompileFullWorkers/tiny/auto-4,1.8118e-05,11%,1.8711e-05,13%,~,p=0.699 n=6
+CompileFullWorkers/many_funcs/p1-4,0.00042372450000000006,5%,0.00042464550000000003,2%,~,p=0.699 n=6
+CompileFullWorkers/many_funcs/auto-4,0.00033237300000000007,8%,0.000333723,1%,~,p=0.937 n=6
+CompileFullWorkers/json-as/p1-4,0.0013782830000000001,2%,0.0013827450000000001,3%,~,p=0.937 n=6
+CompileFullWorkers/json-as/auto-4,0.000974406,2%,0.0009695750000000001,1%,~,p=0.589 n=6
+geomean,0.00019931517565189707,,0.00020040788216880515,,+0.55%,
+
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-workers.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-workers.txt,,,
+,code-B,CI,code-B,CI,vs base,P
+CompileFullWorkers/tiny/p1-4,96,0%,96,0%,~,p=1.000 n=6
+CompileFullWorkers/tiny/auto-4,96,0%,96,0%,~,p=1.000 n=6
+CompileFullWorkers/many_funcs/p1-4,8363,0%,8363,0%,~,p=1.000 n=6
+CompileFullWorkers/many_funcs/auto-4,8363,0%,8363,0%,~,p=1.000 n=6
+CompileFullWorkers/json-as/p1-4,67398,0%,67398,0%,~,p=1.000 n=6
+CompileFullWorkers/json-as/auto-4,67398,0%,67398,0%,~,p=1.000 n=6
+geomean,3782.336058316802,,3782.336058316802,,+0.00%,
+
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-workers.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-workers.txt,,,
+,B/op,CI,B/op,CI,vs base,P
+CompileFullWorkers/tiny/p1-4,18612,0%,18612,0%,~,p=1.000 n=6
+CompileFullWorkers/tiny/auto-4,18612,0%,18612,0%,~,p=1.000 n=6
+CompileFullWorkers/many_funcs/p1-4,179631,0%,179632,0%,~,p=0.221 n=6
+CompileFullWorkers/many_funcs/auto-4,241062,0%,241066.5,0%,~,p=0.818 n=6
+CompileFullWorkers/json-as/p1-4,309837.5,0%,309838.5,0%,~,p=0.496 n=6
+CompileFullWorkers/json-as/auto-4,648027,0%,648418,1%,~,p=0.132 n=6
+geomean,120172.16034854093,,120184.7921005533,,+0.01%,
+
+,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/C-workers.txt,,/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/leaf-repair-20261004/final-analysis/R-workers.txt,,,
+,allocs/op,CI,allocs/op,CI,vs base,P
+CompileFullWorkers/tiny/p1-4,92,0%,92,0%,~,p=1.000 n=6
+CompileFullWorkers/tiny/auto-4,92,0%,92,0%,~,p=1.000 n=6
+CompileFullWorkers/many_funcs/p1-4,88,0%,88,0%,~,p=1.000 n=6
+CompileFullWorkers/many_funcs/auto-4,149,0%,149,0%,~,p=1.000 n=6
+CompileFullWorkers/json-as/p1-4,398,0%,398,0%,~,p=1.000 n=6
+CompileFullWorkers/json-as/auto-4,672.5,1%,671.5,0%,~,p=0.437 n=6
+geomean,175.98270653389838,,175.93906543331488,,-0.02%,

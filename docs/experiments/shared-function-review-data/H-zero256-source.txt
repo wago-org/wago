@@ -1,0 +1,31 @@
+Total: 204.03MB
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.(*ScalarState).CompileScalar in /home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/repo/src/core/compiler/backend/railshot/shared/scalar.go
+  102.62MB   102.62MB (flat, cum) 50.30% of Total
+         .          .    621:func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWide []bool, nParams int, target ScalarTarget) (int, error) {
+         .          .    622:	if !summary.Eligible {
+         .          .    623:		return 0, fmt.Errorf("shared scalar: unadmitted function")
+         .          .    624:	}
+         .          .    625:	old := s.Memory()
+         .          .    626:	if cap(s.nodes) > 4096 && summary.Nodes < cap(s.nodes)/4 {
+         .          .    627:		s.nodes = nil
+         .          .    628:		s.Discarded += old - s.Memory()
+         .          .    629:	}
+         .          .    630:	if cap(s.nodes) < summary.Nodes {
+   90.34MB    90.34MB    631:		s.nodes = make([]scalarNode, 0, summary.Nodes)
+         .          .    632:	}
+         .          .    633:	s.nodes = s.nodes[:0]
+         .          .    634:	s.add(scalarNode{})
+         .          .    635:	if cap(s.stack) < summary.MaxStack {
+   67.89kB    67.89kB    636:		s.stack = make([]scalarID, 0, summary.MaxStack)
+         .          .    637:	}
+         .          .    638:	if cap(s.locals) < len(localWide) {
+    9.77MB     9.77MB    639:		s.locals = make([]scalarID, 0, len(localWide))
+         .          .    640:	}
+         .          .    641:	s.stack = s.stack[:0]
+         .          .    642:	s.locals = s.locals[:0]
+    2.44MB     2.44MB    643:	s.widths = append(s.widths[:0], localWide...)
+         .          .    644:	if needed := int(summary.MaxControlDepth); cap(s.controls) < needed {
+         .          .    645:		capacity := max(needed, 2*cap(s.controls))
+         .          .    646:		capacity = min(capacity, 32)
+         .          .    647:		s.controls = make([]scalarControl, 0, capacity)
+         .          .    648:	}

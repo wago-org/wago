@@ -1,0 +1,20 @@
+[
+  {
+    "revision": "M",
+    "command": [
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/M-suite.test",
+      "-test.run=^TestSharingZeroLocals$",
+      "-test.v"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "R",
+    "command": [
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final-evidence/R-suite.test",
+      "-test.run=^TestSharingZeroLocals$",
+      "-test.v"
+    ],
+    "exit": 0
+  }
+]

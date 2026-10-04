@@ -1,0 +1,182 @@
+[
+  {
+    "revision": "B",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/B-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "F",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "F",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "B",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/B-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "B",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/B-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "F",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "F",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "B",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/B-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "B",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/B-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "F",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "F",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "B",
+    "command": [
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/B-suite.test",
+      "-test.run=^$",
+      "-test.bench=^(BenchmarkSharing(Native|Full|Exec|ZeroLocals)|BenchmarkCompile|BenchmarkCompileFull|BenchmarkExec)$",
+      "-test.benchtime=200ms",
+      "-test.count=1",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  }
+]

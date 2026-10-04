@@ -2,7 +2,7 @@
 
 package arm64
 
-import "math/bits"
+import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 // Parallel register-move resolution (WARP's RegisterCopyResolver): placing N
 // values, each already live in some register, into their target registers is a
@@ -90,50 +90,5 @@ func resolveRegMovesWindow(moves []regMove, emitMove func(dst, src Reg), emitSwa
 // register number keeps emitted code independent of Go map iteration order and
 // therefore identical between serial and parallel function compilation.
 func resolveRegMoves(moves []regMove, emitMove func(dst, src Reg), emitSwap func(a, b Reg)) {
-	var src [64]Reg
-	var pending regMask
-	for _, m := range moves {
-		if m.dst != m.src {
-			src[m.dst] = m.src
-			pending = pending.add(m.dst)
-		}
-	}
-	isSource := func(r Reg) bool {
-		for d := uint64(pending); d != 0; d &= d - 1 {
-			if src[bits.TrailingZeros64(d)] == r {
-				return true
-			}
-		}
-		return false
-	}
-	for pending != 0 {
-		moved := false
-		for d := uint64(pending); d != 0; d &= d - 1 {
-			dst := Reg(bits.TrailingZeros64(d))
-			if !isSource(dst) {
-				emitMove(dst, src[dst])
-				pending = pending.remove(dst)
-				moved = true
-				break
-			}
-		}
-		if moved {
-			continue
-		}
-		// Residual graph is pure cycles; break the lowest-destination cycle.
-		dst := Reg(bits.TrailingZeros64(uint64(pending)))
-		s := src[dst]
-		emitSwap(dst, s)
-		pending = pending.remove(dst)
-		for d := uint64(pending); d != 0; d &= d - 1 {
-			dd := Reg(bits.TrailingZeros64(d))
-			if src[dd] == dst {
-				if dd == s {
-					pending = pending.remove(dd)
-				} else {
-					src[dd] = s
-				}
-			}
-		}
-	}
+	shared.ResolveRegMoves(len(moves), func(i int) (Reg, Reg) { return moves[i].dst, moves[i].src }, emitMove, emitSwap)
 }

@@ -1,0 +1,122 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: Apple M4 Max
+                               │ /Users/work/Code/Wago/pr802-results-20261004/results/main-compile.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-compile.txt │
+                               │                                sec/op                                 │                    sec/op                     vs base               │
+SharingNative/small                                                                      4.087µ ±   3%                                   4.182µ ±  5%        ~ (p=0.132 n=6)
+SharingNative/pressure                                                                   17.49µ ±   2%                                   14.23µ ±  4%  -18.62% (p=0.002 n=6)
+SharingNative/join                                                                       4.984µ ±   4%                                   4.587µ ±  5%   -7.97% (p=0.002 n=6)
+SharingNative/large                                                                      129.7µ ±   3%                                   121.5µ ±  3%   -6.31% (p=0.002 n=6)
+SharingNative/deep                                                                       8.363µ ±   6%                                   5.010µ ±  4%  -40.10% (p=0.002 n=6)
+SharingNative/locals                                                                     25.60µ ±   3%                                   15.36µ ±  4%  -39.99% (p=0.002 n=6)
+SharingNative/many                                                                       380.9µ ±   8%                                   380.1µ ±  4%        ~ (p=0.818 n=6)
+SharingNative/large_then_small                                                           510.7µ ±  23%                                   493.7µ ±  2%   -3.33% (p=0.002 n=6)
+SharingNative/fallback                                                                   4.130µ ±   5%                                   4.370µ ±  4%   +5.82% (p=0.002 n=6)
+SharingFull/small                                                                        6.812µ ±   3%                                   6.976µ ±  3%        ~ (p=0.240 n=6)
+SharingFull/pressure                                                                     24.79µ ±   3%                                   21.50µ ±  4%  -13.27% (p=0.002 n=6)
+SharingFull/join                                                                         7.999µ ±   3%                                   7.753µ ±  6%        ~ (p=0.240 n=6)
+SharingFull/large                                                                        200.7µ ±   3%                                   195.0µ ±  2%        ~ (p=0.065 n=6)
+SharingFull/deep                                                                         13.04µ ±   3%                                   10.06µ ±  5%  -22.88% (p=0.002 n=6)
+SharingFull/locals                                                                       35.98µ ±   3%                                   25.57µ ± 62%        ~ (p=0.065 n=6)
+SharingFull/many                                                                         554.0µ ±   3%                                   571.3µ ±  2%   +3.12% (p=0.009 n=6)
+SharingFull/large_then_small                                                             740.7µ ±   4%                                   750.1µ ±  3%        ~ (p=0.132 n=6)
+SharingFull/fallback                                                                     7.007µ ±  42%                                   7.168µ ±  2%        ~ (p=0.132 n=6)
+SharingZeroLocals/1                                                                      3.911µ ±  47%                                   3.923µ ±  3%        ~ (p=0.937 n=6)
+SharingZeroLocals/8                                                                      4.110µ ±  14%                                   4.025µ ±  4%        ~ (p=0.132 n=6)
+SharingZeroLocals/64                                                                     6.287µ ±  28%                                   4.872µ ± 18%  -22.50% (p=0.002 n=6)
+SharingZeroLocals/256                                                                    8.175µ ±  19%                                   8.742µ ±  4%        ~ (p=0.065 n=6)
+Compile/tiny                                                                             5.103µ ±   7%                                   5.460µ ±  5%   +7.01% (p=0.015 n=6)
+Compile/fib_rec                                                                          10.72µ ±   8%                                   10.38µ ±  2%        ~ (p=0.240 n=6)
+Compile/many_funcs                                                                       249.5µ ±   7%                                   261.7µ ±  2%   +4.92% (p=0.041 n=6)
+Compile/json-as                                                                          779.2µ ±  40%                                   775.6µ ±  5%        ~ (p=0.699 n=6)
+Compile/xxhash                                                                           63.26µ ±  73%                                   61.88µ ±  3%        ~ (p=0.093 n=6)
+CompileFull/tiny                                                                         10.56µ ± 288%                                   10.29µ ±  3%        ~ (p=0.394 n=6)
+CompileFull/fib_rec                                                                      14.29µ ± 103%                                   14.27µ ±  5%        ~ (p=0.937 n=6)
+CompileFull/many_funcs                                                                   345.8µ ±  64%                                   361.8µ ±  2%        ~ (p=0.310 n=6)
+CompileFull/json-as                                                                      1.151m ±   5%                                   1.146m ±  6%        ~ (p=0.699 n=6)
+CompileFull/xxhash                                                                       86.68µ ±   2%                                   85.44µ ±  2%        ~ (p=0.132 n=6)
+geomean                                                                                  33.80µ                                          31.55µ         -6.64%
+
+                               │ /Users/work/Code/Wago/pr802-results-20261004/results/main-compile.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-compile.txt │
+                               │                                 B/op                                  │                     B/op                      vs base               │
+SharingNative/small                                                                       11.15Ki ± 0%                                   11.34Ki ± 0%   +1.75% (p=0.002 n=6)
+SharingNative/pressure                                                                    17.00Ki ± 0%                                   13.82Ki ± 0%  -18.70% (p=0.002 n=6)
+SharingNative/join                                                                        12.96Ki ± 0%                                   11.73Ki ± 0%   -9.46% (p=0.002 n=6)
+SharingNative/large                                                                       66.78Ki ± 0%                                   13.18Ki ± 0%  -80.26% (p=0.002 n=6)
+SharingNative/deep                                                                        13.82Ki ± 0%                                   12.28Ki ± 0%  -11.14% (p=0.002 n=6)
+SharingNative/locals                                                                      28.98Ki ± 0%                                   17.81Ki ± 0%  -38.54% (p=0.002 n=6)
+SharingNative/many                                                                        41.49Ki ± 0%                                   41.69Ki ± 0%   +0.47% (p=0.002 n=6)
+SharingNative/large_then_small                                                           101.45Ki ± 0%                                   47.84Ki ± 0%  -52.84% (p=0.002 n=6)
+SharingNative/fallback                                                                    11.15Ki ± 0%                                   11.77Ki ± 0%   +5.61% (p=0.002 n=6)
+SharingFull/small                                                                         18.48Ki ± 0%                                   18.68Ki ± 0%   +1.06% (p=0.002 n=6)
+SharingFull/pressure                                                                      28.31Ki ± 0%                                   25.13Ki ± 0%  -11.23% (p=0.002 n=6)
+SharingFull/join                                                                          20.31Ki ± 0%                                   19.08Ki ± 0%   -6.05% (p=0.002 n=6)
+SharingFull/large                                                                        140.03Ki ± 0%                                   86.44Ki ± 0%  -38.27% (p=0.002 n=6)
+SharingFull/deep                                                                          26.87Ki ± 0%                                   25.33Ki ± 0%   -5.73% (p=0.002 n=6)
+SharingFull/locals                                                                        39.38Ki ± 0%                                   28.20Ki ± 0%  -28.37% (p=0.002 n=6)
+SharingFull/many                                                                          275.5Ki ± 0%                                   275.7Ki ± 0%   +0.07% (p=0.002 n=6)
+SharingFull/large_then_small                                                              318.8Ki ± 0%                                   265.2Ki ± 0%  -16.82% (p=0.002 n=6)
+SharingFull/fallback                                                                      18.48Ki ± 0%                                   19.11Ki ± 0%   +3.38% (p=0.002 n=6)
+SharingZeroLocals/1                                                                       11.12Ki ± 0%                                   11.23Ki ± 0%   +0.91% (p=0.002 n=6)
+SharingZeroLocals/8                                                                       11.21Ki ± 0%                                   11.34Ki ± 0%   +1.18% (p=0.002 n=6)
+SharingZeroLocals/64                                                                      11.96Ki ± 0%                                   12.30Ki ± 0%   +2.81% (p=0.002 n=6)
+SharingZeroLocals/256                                                                     15.34Ki ± 0%                                   14.92Ki ± 0%   -2.70% (p=0.002 n=6)
+Compile/tiny                                                                              11.20Ki ± 0%                                   11.89Ki ± 0%   +6.21% (p=0.002 n=6)
+Compile/fib_rec                                                                           21.30Ki ± 0%                                   21.93Ki ± 0%   +2.93% (p=0.002 n=6)
+Compile/many_funcs                                                                        58.73Ki ± 0%                                   59.50Ki ± 0%   +1.32% (p=0.002 n=6)
+Compile/json-as                                                                           52.87Ki ± 0%                                   53.49Ki ± 0%   +1.18% (p=0.002 n=6)
+Compile/xxhash                                                                            22.01Ki ± 0%                                   22.63Ki ± 0%   +2.84% (p=0.002 n=6)
+CompileFull/tiny                                                                          20.95Ki ± 0%                                   21.94Ki ± 0%   +4.70% (p=0.002 n=6)
+CompileFull/fib_rec                                                                       29.64Ki ± 0%                                   30.27Ki ± 0%   +2.11% (p=0.002 n=6)
+CompileFull/many_funcs                                                                    163.5Ki ± 0%                                   190.9Ki ± 0%  +16.76% (p=0.002 n=6)
+CompileFull/json-as                                                                       343.8Ki ± 0%                                   344.4Ki ± 0%   +0.18% (p=0.002 n=6)
+CompileFull/xxhash                                                                        60.97Ki ± 0%                                   61.61Ki ± 0%   +1.05% (p=0.002 n=6)
+geomean                                                                                   33.49Ki                                        29.54Ki       -11.77%
+
+                               │ /Users/work/Code/Wago/pr802-results-20261004/results/main-compile.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-compile.txt │
+                               │                               allocs/op                               │                 allocs/op                   vs base                 │
+SharingNative/small                                                                         21.00 ± 0%                                   21.00 ± 0%        ~ (p=1.000 n=6) ¹
+SharingNative/pressure                                                                      18.00 ± 0%                                   24.00 ± 0%  +33.33% (p=0.002 n=6)
+SharingNative/join                                                                          22.00 ± 0%                                   22.00 ± 0%        ~ (p=1.000 n=6) ¹
+SharingNative/large                                                                         23.00 ± 0%                                   19.00 ± 0%  -17.39% (p=0.002 n=6)
+SharingNative/deep                                                                          21.00 ± 0%                                   22.00 ± 0%   +4.76% (p=0.002 n=6)
+SharingNative/locals                                                                        24.00 ± 0%                                   23.00 ± 0%   -4.17% (p=0.002 n=6)
+SharingNative/many                                                                          23.00 ± 0%                                   23.00 ± 0%        ~ (p=1.000 n=6) ¹
+SharingNative/large_then_small                                                              28.00 ± 0%                                   24.00 ± 0%  -14.29% (p=0.002 n=6)
+SharingNative/fallback                                                                      21.00 ± 0%                                   21.00 ± 0%        ~ (p=1.000 n=6) ¹
+SharingFull/small                                                                           74.00 ± 0%                                   74.00 ± 0%        ~ (p=1.000 n=6) ¹
+SharingFull/pressure                                                                        75.00 ± 0%                                   81.00 ± 0%   +8.00% (p=0.002 n=6)
+SharingFull/join                                                                            76.00 ± 0%                                   76.00 ± 0%        ~ (p=1.000 n=6) ¹
+SharingFull/large                                                                           85.00 ± 0%                                   81.00 ± 0%   -4.71% (p=0.002 n=6)
+SharingFull/deep                                                                            82.00 ± 0%                                   83.00 ± 0%   +1.22% (p=0.002 n=6)
+SharingFull/locals                                                                          76.00 ± 0%                                   75.00 ± 0%   -1.32% (p=0.002 n=6)
+SharingFull/many                                                                            588.0 ± 0%                                   588.0 ± 0%        ~ (p=1.000 n=6) ¹
+SharingFull/large_then_small                                                                593.0 ± 0%                                   589.0 ± 0%   -0.67% (p=0.002 n=6)
+SharingFull/fallback                                                                        74.00 ± 0%                                   74.00 ± 0%        ~ (p=1.000 n=6) ¹
+SharingZeroLocals/1                                                                         20.00 ± 0%                                   21.00 ± 0%   +5.00% (p=0.002 n=6)
+SharingZeroLocals/8                                                                         20.00 ± 0%                                   21.00 ± 0%   +5.00% (p=0.002 n=6)
+SharingZeroLocals/64                                                                        17.00 ± 0%                                   18.00 ± 0%   +5.88% (p=0.002 n=6)
+SharingZeroLocals/256                                                                       17.00 ± 0%                                   18.00 ± 0%   +5.88% (p=0.002 n=6)
+Compile/tiny                                                                                21.00 ± 0%                                   23.00 ± 0%   +9.52% (p=0.002 n=6)
+Compile/fib_rec                                                                             42.00 ± 0%                                   42.00 ± 0%        ~ (p=1.000 n=6) ¹
+Compile/many_funcs                                                                          37.00 ± 0%                                   41.00 ± 0%  +10.81% (p=0.002 n=6)
+Compile/json-as                                                                             92.00 ± 0%                                   92.00 ± 0%        ~ (p=1.000 n=6) ¹
+Compile/xxhash                                                                              34.00 ± 0%                                   34.00 ± 0%        ~ (p=1.000 n=6) ¹
+CompileFull/tiny                                                                            89.00 ± 0%                                   92.00 ± 0%   +3.37% (p=0.002 n=6)
+CompileFull/fib_rec                                                                         99.00 ± 0%                                   99.00 ± 0%        ~ (p=1.000 n=6) ¹
+CompileFull/many_funcs                                                                      91.00 ± 0%                                   96.00 ± 0%   +5.49% (p=0.002 n=6)
+CompileFull/json-as                                                                         367.0 ± 0%                                   367.0 ± 0%        ~ (p=1.000 n=6) ¹
+CompileFull/xxhash                                                                          121.0 ± 0%                                   121.0 ± 0%        ~ (p=1.000 n=6) ¹
+geomean                                                                                     50.48                                        51.21        +1.45%
+¹ all samples are equal
+
+                       │ /Users/work/Code/Wago/pr802-results-20261004/results/main-compile.txt │ /Users/work/Code/Wago/pr802-results-20261004/results/pr-compile.txt │
+                       │                                code-B                                 │                   code-B                    vs base                 │
+CompileFull/tiny                                                                    128.0 ± 0%                                   144.0 ± 0%  +12.50% (p=0.002 n=6)
+CompileFull/fib_rec                                                                 356.0 ± 0%                                   356.0 ± 0%        ~ (p=1.000 n=6) ¹
+CompileFull/many_funcs                                                            9.504Ki ± 0%                                13.020Ki ± 0%  +36.99% (p=0.002 n=6)
+CompileFull/json-as                                                               68.24Ki ± 0%                                 68.24Ki ± 0%        ~ (p=1.000 n=6) ¹
+CompileFull/xxhash                                                                4.102Ki ± 0%                                 4.102Ki ± 0%        ~ (p=1.000 n=6) ¹
+geomean                                                                           2.586Ki                                      2.819Ki        +9.04%
+¹ all samples are equal

@@ -1,0 +1,205 @@
+[
+  {
+    "name": "suite-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-suite.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "diagnostic-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_codegenstats",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-diagnostic.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "runtime-build",
+    "command": [
+      "go",
+      "build",
+      "-trimpath",
+      "-ldflags=-s -w",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-runtime-memory",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/runtime_memory.go"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-wagoFalse-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-wagoFalse.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-wagoFalse",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-wagoFalse.test",
+      "-test.run=^TestSharedScalar",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-sharedFalse-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-sharedFalse.test",
+      "./src/core/compiler/backend/railshot/shared"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-sharedFalse",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-sharedFalse.test",
+      "-test.run=TestScalar",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-wagoTrue-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-wagoTrue.test",
+      "./src/wago"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-wagoTrue",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-wagoTrue.test",
+      "-test.run=^TestSharedScalar",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-sharedTrue-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_regalloccheck",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-sharedTrue.test",
+      "./src/core/compiler/backend/railshot/shared"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-sharedTrue",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/arm64-sharedTrue.test",
+      "-test.run=TestScalar",
+      "-test.v"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-diagnostic-build",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-tags=wago_codegenstats",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-arm64-diagnostic.test",
+      "./bench/suite"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "arm64-diagnostic",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/spike-final/F-arm64-diagnostic.test",
+      "-test.run=^TestSharingDiagnostic$",
+      "-test.v",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "root",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "root-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final",
+    "exit": 0
+  },
+  {
+    "name": "bench-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "1",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final/bench",
+    "exit": 0
+  }
+]

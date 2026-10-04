@@ -1,0 +1,28 @@
+[
+  {
+    "revision": "M",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-overlay=/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/M-dump-overlay.json",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/M-dump.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  },
+  {
+    "revision": "P",
+    "command": [
+      "go",
+      "test",
+      "-c",
+      "-overlay=/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/P-dump-overlay.json",
+      "-o",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/P-dump.test",
+      "./bench/suite"
+    ],
+    "exit": 0
+  }
+]

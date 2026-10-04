@@ -1,0 +1,6 @@
+{
+  "recovered_head": "107c5fdbc4db6cbacf68967221c34c3bd80b39c4",
+  "lost": "Previous /tmp clone, binaries, full logs and raw samples removed on restart. Earlier reported timing values are not used as raw evidence for the fresh runs.",
+  "source": "Session history recovered exact source trees and commit objects; SHA-1 identities match all nine original commits.",
+  "persistent_root": "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery"
+}

@@ -1,0 +1,108 @@
+{
+  "T": {
+    "source": "5c46cccf00f3f2aa1a57a950445ad3d86621ba59",
+    "harness": {
+      "bench/suite/sharing_diagnostic_arm64_test.go": "5910db2adad450de5207ba31d246a8ea8bd3b007406e9a2235e1ee46f44d635e",
+      "bench/suite/sharing_gc_observation_linux_test.go": "1a64993833a983bf33fba00c230b48c4da81601d934d9f1831c71f4438036405",
+      "bench/suite/sharing_admission_test.go": "ddd91755e79a9ca8619d4a1a697a9f5444a2d023f702f400cecd94eb00b1e6fe",
+      "bench/suite/sharing_zero_locals_test.go": "b86abdd4df03ce0838a06bb6ba38b6faaca0d75af569079e34238d45aed16dc8",
+      "bench/suite/sharing_experiment_test.go": "4f0d885466780610871ec4a1198cb327cea90257ee7631593cf347f26648a95d",
+      "bench/suite/sharing_memory_linux_test.go": "292f4dfb23f9824c9cb2c3281f977fc52688de18098806edde00af4abef6d007",
+      "bench/suite/sharing_diagnostic_amd64_test.go": "db765235fb42541ec6f5269998c6e7a5c0b33048e57d115381abaf374cbeb760"
+    },
+    "suite": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/T-suite.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "4600a141c9854152a5aa2bc1fe7ec19128d1458652c25a2d21e8ff658c0d5321",
+      "bytes": 21254804
+    },
+    "diagnostic": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-tags=wago_codegenstats",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/T-diagnostic.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "5e9ba4267e60938af1ee3e4f83db22544f01771a2558f9855d90035e0331a2ee",
+      "bytes": 21414819
+    },
+    "runtime-memory": {
+      "command": [
+        "go",
+        "build",
+        "-trimpath",
+        "-ldflags=-s -w",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/T-runtime-memory",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/runtime_memory.go"
+      ],
+      "exit": 0,
+      "sha256": "6cf8b9186919782d1939d6d19cf342efe75d000aeb18dce70e4acccd65b474a8",
+      "bytes": 8495264
+    }
+  },
+  "P": {
+    "source": "95732e7454186fccd788b9c4e883354e6772a31a",
+    "harness": {
+      "bench/suite/sharing_diagnostic_arm64_test.go": "5910db2adad450de5207ba31d246a8ea8bd3b007406e9a2235e1ee46f44d635e",
+      "bench/suite/sharing_gc_observation_linux_test.go": "1a64993833a983bf33fba00c230b48c4da81601d934d9f1831c71f4438036405",
+      "bench/suite/sharing_admission_test.go": "ddd91755e79a9ca8619d4a1a697a9f5444a2d023f702f400cecd94eb00b1e6fe",
+      "bench/suite/sharing_zero_locals_test.go": "b86abdd4df03ce0838a06bb6ba38b6faaca0d75af569079e34238d45aed16dc8",
+      "bench/suite/sharing_experiment_test.go": "4f0d885466780610871ec4a1198cb327cea90257ee7631593cf347f26648a95d",
+      "bench/suite/sharing_memory_linux_test.go": "292f4dfb23f9824c9cb2c3281f977fc52688de18098806edde00af4abef6d007",
+      "bench/suite/sharing_diagnostic_amd64_test.go": "db765235fb42541ec6f5269998c6e7a5c0b33048e57d115381abaf374cbeb760"
+    },
+    "suite": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/P-suite.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "1028352a44bd562d800d17b55d386ca2b808c64ee79fb767df91f49e42c040ac",
+      "bytes": 21249282
+    },
+    "diagnostic": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-tags=wago_codegenstats",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/P-diagnostic.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "09ff43893d76cd0a018b9440b57866a11ff6c58c975168ff10717a26bc3cca26",
+      "bytes": 21414233
+    },
+    "runtime-memory": {
+      "command": [
+        "go",
+        "build",
+        "-trimpath",
+        "-ldflags=-s -w",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/P-runtime-memory",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/runtime_memory.go"
+      ],
+      "exit": 0,
+      "sha256": "8c15207babb08e5a431de443fa0ea195cc0bc1deea17020a159bdda53b5b1835",
+      "bytes": 8495264
+    }
+  }
+}

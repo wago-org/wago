@@ -1,0 +1,34 @@
+[
+  {
+    "name": "helper-focused",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./src/core/compiler/backend/railshot/shared",
+      "./src/core/compiler/backend/railshot/amd64"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "amd64-diagnostic",
+    "command": [
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/B-diagnostic.test",
+      "-test.run=^TestSharingDiagnostic$",
+      "-test.v",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "arm64-diagnostic",
+    "command": [
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/qemu/usr/bin/qemu-aarch64",
+      "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/B-arm64-diagnostic.test",
+      "-test.run=^TestSharingDiagnostic$",
+      "-test.v",
+      "-wago.corpus=tiny,fib_rec,many_funcs,xxhash,json-as"
+    ],
+    "exit": 0
+  }
+]

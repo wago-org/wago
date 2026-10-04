@@ -1,0 +1,380 @@
+[
+  {
+    "kind": "memory",
+    "block": 1,
+    "sequence": 1,
+    "revision": "A",
+    "start": 1791089513.1833072,
+    "elapsed": 0.21336817741394043,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block1-1-A.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/A-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 1,
+    "sequence": 2,
+    "revision": "G",
+    "start": 1791089513.3968647,
+    "elapsed": 0.18193840980529785,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block1-2-G.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 1,
+    "sequence": 3,
+    "revision": "H",
+    "start": 1791089513.5790224,
+    "elapsed": 0.18747305870056152,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block1-3-H.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/H-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 1,
+    "sequence": 4,
+    "revision": "H",
+    "start": 1791089513.7667227,
+    "elapsed": 0.19221925735473633,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block1-4-H.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/H-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 1,
+    "sequence": 5,
+    "revision": "G",
+    "start": 1791089513.9591713,
+    "elapsed": 0.1851804256439209,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block1-5-G.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 1,
+    "sequence": 6,
+    "revision": "A",
+    "start": 1791089514.1445894,
+    "elapsed": 0.22763657569885254,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block1-6-A.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/A-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 2,
+    "sequence": 1,
+    "revision": "A",
+    "start": 1791089514.3725748,
+    "elapsed": 0.22609806060791016,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block2-1-A.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/A-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 2,
+    "sequence": 2,
+    "revision": "G",
+    "start": 1791089514.598935,
+    "elapsed": 0.21009135246276855,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block2-2-G.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 2,
+    "sequence": 3,
+    "revision": "H",
+    "start": 1791089514.8093379,
+    "elapsed": 0.23337554931640625,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block2-3-H.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/H-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 2,
+    "sequence": 4,
+    "revision": "H",
+    "start": 1791089515.0429661,
+    "elapsed": 0.19062352180480957,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block2-4-H.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/H-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 2,
+    "sequence": 5,
+    "revision": "G",
+    "start": 1791089515.2338245,
+    "elapsed": 0.18868613243103027,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block2-5-G.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 2,
+    "sequence": 6,
+    "revision": "A",
+    "start": 1791089515.4227347,
+    "elapsed": 0.2158811092376709,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block2-6-A.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/A-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 3,
+    "sequence": 1,
+    "revision": "A",
+    "start": 1791089515.6388693,
+    "elapsed": 0.21662497520446777,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block3-1-A.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/A-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 3,
+    "sequence": 2,
+    "revision": "G",
+    "start": 1791089515.8557522,
+    "elapsed": 0.18475675582885742,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block3-2-G.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 3,
+    "sequence": 3,
+    "revision": "H",
+    "start": 1791089516.0407746,
+    "elapsed": 0.18738293647766113,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block3-3-H.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/H-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 3,
+    "sequence": 4,
+    "revision": "H",
+    "start": 1791089516.2284784,
+    "elapsed": 0.18764948844909668,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block3-4-H.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/H-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 3,
+    "sequence": 5,
+    "revision": "G",
+    "start": 1791089516.4164383,
+    "elapsed": 0.18533825874328613,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block3-5-G.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/G-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  },
+  {
+    "kind": "memory",
+    "block": 3,
+    "sequence": 6,
+    "revision": "A",
+    "start": 1791089516.60208,
+    "elapsed": 0.22081494331359863,
+    "exit": 0,
+    "command": [
+      "python3",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/resource_wrapper.py",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/rss-repeat-memory-block3-6-A.resource.json",
+      "taskset",
+      "-c",
+      "4",
+      "/home/jtenner/.codex/visualizations/2026/10/03/01a103ee-af5e-7f11-a74d-8c68fd8e53a4/wago-pr802-recovery/evidence/A-suite.test",
+      "-test.run=^TestSharing(Memory|MappedMemory)$",
+      "-test.v",
+      "-test.count=1"
+    ]
+  }
+]

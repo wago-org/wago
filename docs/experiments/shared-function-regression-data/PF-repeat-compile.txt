@@ -1,0 +1,17 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                     │ EVIDENCE/spike-final/results/P-repeat-compile.txt │ EVIDENCE/spike-final/results/F-repeat-compile.txt │
+                     │                                                                    sec/op                                                                     │                                                            sec/op                                                             vs base         │
+SharingFull/fallback                                                                                                                                     10.73µ ± 5%                                                                                                                    10.71µ ± 8%  ~ (p=0.818 n=6)
+
+                     │ EVIDENCE/spike-final/results/P-repeat-compile.txt │ EVIDENCE/spike-final/results/F-repeat-compile.txt │
+                     │                                                                     B/op                                                                      │                                                            B/op                                                             vs base           │
+SharingFull/fallback                                                                                                                                    15.66Ki ± 0%                                                                                                                 15.66Ki ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal
+
+                     │ EVIDENCE/spike-final/results/P-repeat-compile.txt │ EVIDENCE/spike-final/results/F-repeat-compile.txt │
+                     │                                                                   allocs/op                                                                   │                                                         allocs/op                                                           vs base           │
+SharingFull/fallback                                                                                                                                      74.00 ± 0%                                                                                                                   74.00 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal

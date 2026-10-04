@@ -1,0 +1,5 @@
+profile	target	bytes	budget_bytes	delta_bytes
+manager	linux/amd64	9846944	9950000	""
+runtime-standard	linux/amd64	9658528	9670000	""
+runtime-minimal	linux/amd64	9285792	9300000	""
+runtime-minimal-tiny	linux/amd64	2817584	2820000	""

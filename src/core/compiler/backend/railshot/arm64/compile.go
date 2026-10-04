@@ -167,6 +167,10 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	scalarSummary shared.ScalarSummary
+	// Physical frame access emitted by the shared lowerer, not logical state.
+	scalarFrameUsed bool
+
 	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
 	regallocFnState
 	profileFnState
@@ -621,7 +625,11 @@ func asmCapForBody(bodyLen int) int {
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
+	scalar shared.ScalarState
+
 	stack                 *stack   // the valent-block operand stack
+	stackCap              int      // deferred initial reservation for function-level fallback
+	controlCap            int      // target control frames, reserved with the first fallback
 	asm                   *a64.Asm // the AArch64 encoder byte buffer
 	fnState               fn       // per-function compiler state, reused across the module
 	classifier            wasm.ModuleInstructionClassifier
@@ -756,8 +764,30 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: stack, asm: &a64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
 }
 
+// newCompileScratch defers target operand storage until the first fallback.
+// The empty stack object remains available to diagnostics and worker teardown.
+func newCompileScratch(stackCap int) *scratch {
+	return &scratch{stack: &stack{}, stackCap: stackCap, asm: &a64.Asm{}}
+}
+
+func (sc *scratch) ensureTargetStack() {
+	if len(sc.stack.chunks) != 0 {
+		return
+	}
+	sc.stack.initWithCap(sc.stackCap)
+	_, reserved := sc.stack.nodeMemory()
+	sc.nodeScratchReserved = reserved
+	sc.nodeScratchPeak = reserved
+	sc.reserveControlFrames(sc.controlCap)
+	sc.controlCap = 0
+}
+
 func (sc *scratch) reserveControlFrames(capacity int) {
 	if capacity <= 0 {
+		return
+	}
+	if len(sc.stack.chunks) == 0 {
+		sc.controlCap = capacity
 		return
 	}
 	sc.ctrl = make([]ctrlFrame, 0, capacity)
@@ -913,7 +943,9 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
-	sc.stack.reset()
+	if len(sc.stack.chunks) != 0 {
+		sc.stack.reset()
+	}
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.LogicalMoveImmediates = 0
 	sc.asm.CompactMoveImmediates32 = 0
@@ -969,6 +1001,8 @@ func (sc *scratch) finishStackFunction() {
 // worker's final function. The join needs only worker code arenas and scalar
 // metadata; operand nodes cannot be reused again.
 func (sc *scratch) finishStackWorker() {
+	sc.scalar.FinishWorker()
+
 	sc.clearNodeReferences()
 	_, retained := sc.stack.nodeMemory()
 	sc.nodeScratchDiscarded += retained
@@ -1282,6 +1316,19 @@ func (f *fn) frameSize() int {
 }
 
 func (f *fn) elideRegisterOnlyFrame() bool {
+	if f.scalarSummary.Eligible {
+		// Shared register-ABI entry leaves incoming parameters in registers and
+		// declared zeros deferred. Loads/stores (including control agreements)
+		// mark the frame as used; spill accounting alone cannot prove this.
+		if !f.compactFrameHeader || !f.singleRegResult || f.makesCalls || f.scalarFrameUsed || f.maxSpill != 0 ||
+			(!f.preserveCallerPins && !f.opt(optFrameElideRegHomed)) {
+			return false
+		}
+		f.frameElided = true
+		f.stats.peep("frame-adjust-elide")
+		return true
+	}
+
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || voidResult
 	if f.moduleEH || !registerResult || f.makesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
@@ -1686,7 +1733,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts)
-		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
 		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
@@ -1883,7 +1930,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
-		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
 		states[i].scratch.reserveLocalScratch(localCap)
@@ -3126,6 +3173,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.compactFrameHeader {
 		f.stats.peep("frame-header-elide")
 	}
+	f.scalarSummary = f.admitScalar(c)
+	if f.scalarSummary.Eligible {
+		pinLocals = false
+	} else {
+		sc.ensureTargetStack()
+	}
 	var gpPoolStorage [24]Reg
 	gpPool := gpPinPoolWithPolicy(gpPoolStorage[:0], regABI, f.nParams, !hasCall, policy)
 	if f.memLimitReg != regNone {
@@ -3278,7 +3331,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// internal-entry arg-to-local moves.  This is deliberately leaf-only: a
 	// callee that itself makes a call must retain the normal callee-saved local
 	// model for its own call boundaries.
-	if f.preserveCallerPins {
+	if f.preserveCallerPins && !f.scalarSummary.Eligible {
 		f.pinLeafRegABIIntParams()
 	}
 	if f.pinnedLocalMask.has(mergeReg) {
@@ -3416,6 +3469,11 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the current epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
+	if f.scalarSummary.Eligible {
+		f.ctrl = f.sc.ctrl[:0]
+		return f.scalarBody(c)
+	}
+
 	sc := f.scratchState()
 	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
 	if len(resultTypes) <= len(sc.functionResultTypeArena) {
@@ -4031,6 +4089,10 @@ func (f *fn) flushWrapperParamHome(p pendingWrapperParamHome) {
 // where reads materialize zero on demand and control-flow reconciliation stores it
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
+	if f.scalarSummary.Eligible {
+		// ScalarState owns zero values and establishes homes only when needed.
+		return
+	}
 	f.zeroEHGCRootLanes()
 	if f.nLocals <= f.nParams {
 		return
@@ -4305,6 +4367,13 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 				a.FStoreDisp(SP, f.localOff(i), src, mt == mtF64)
 			}
 			fp++
+		} else if f.scalarSummary.Eligible {
+			// Transfer the untouched incoming register to shared ownership. There
+			// is no valid frame copy until the shared state explicitly stores one.
+			if f.canonicalI32Local(i) {
+				a.MovReg32(intArgRegs[gp], intArgRegs[gp])
+				f.stats.peep("entry-i32-param-canonicalize")
+			}
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			if f.canonicalI32Local(i) {
 				a.MovReg32(intArgRegs[gp], intArgRegs[gp])

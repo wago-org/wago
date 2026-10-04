@@ -290,6 +290,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	scalarSummary shared.ScalarSummary
+
 	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
 	regallocFnState
 	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
@@ -786,9 +788,13 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 }
 
 type scratch struct {
+	scalar shared.ScalarState
+
 	amd64Features         shared.AMD64Features
 	usedAMD64Features     shared.AMD64Features
 	stack                 *stack     // the valent-block operand stack
+	stackCap              int        // deferred initial reservation for function-level fallback
+	controlCap            int        // target control frames, reserved with the first fallback
 	asm                   *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared        bool
 	directPreparedBounded bool
@@ -865,8 +871,30 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: stack, asm: &amd64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
 }
 
+// newCompileScratch defers target operand storage until the first fallback.
+// The empty stack object remains available to diagnostics and worker teardown.
+func newCompileScratch(stackCap int) *scratch {
+	return &scratch{stack: &stack{}, stackCap: stackCap, asm: &amd64.Asm{}}
+}
+
+func (sc *scratch) ensureTargetStack() {
+	if len(sc.stack.chunks) != 0 {
+		return
+	}
+	sc.stack.initWithCap(sc.stackCap)
+	_, reserved := sc.stack.nodeMemory()
+	sc.nodeScratchReserved = reserved
+	sc.nodeScratchPeak = reserved
+	sc.reserveControlFrames(sc.controlCap)
+	sc.controlCap = 0
+}
+
 func (sc *scratch) reserveControlFrames(capacity int) {
 	if capacity <= 0 {
+		return
+	}
+	if len(sc.stack.chunks) == 0 {
+		sc.controlCap = capacity
 		return
 	}
 	sc.ctrl = make([]ctrlFrame, 0, capacity)
@@ -1034,7 +1062,9 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 
 func (sc *scratch) reset() {
 	sc.usedAMD64Features = 0
-	sc.stack.reset()
+	if len(sc.stack.chunks) != 0 {
+		sc.stack.reset()
+	}
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
 	sc.asm.BitCountState &= 0x07
@@ -1097,6 +1127,8 @@ func (sc *scratch) finishStackFunction() {
 // worker's final function. The join needs only worker code/literal arenas and
 // scalar feature flags; operand nodes cannot be reused again.
 func (sc *scratch) finishStackWorker() {
+	sc.scalar.FinishWorker()
+
 	sc.clearNodeReferences()
 	_, retained := sc.stack.nodeMemory()
 	sc.nodeScratchDiscarded += retained
@@ -1881,7 +1913,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts, policy)
-		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.amd64Features = opts.AMD64Features
 		sc.asm.BitCountState = opts.BitCountFeatures & 0x07
 		sc.policy = policy
@@ -2136,7 +2168,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
-		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.amd64Features = opts.AMD64Features
 		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
@@ -3514,6 +3546,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.compactFrameHeader {
 		f.stats.peep("frame-header-elide")
 	}
+	f.scalarSummary = f.admitScalar(c)
+	if f.scalarSummary.Eligible {
+		pinLocals = false
+	} else {
+		sc.ensureTargetStack()
+	}
 	var gpPoolStorage [16]Reg
 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
 	if compactLowPinEnabled && f.policy.CompactNative && !hasCall && !hints.flags.has(hintHasControlFlow) {
@@ -3955,6 +3993,11 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
+	if f.scalarSummary.Eligible {
+		f.ctrl = f.sc.ctrl[:0]
+		return f.scalarBody(c)
+	}
+
 	sc := f.scratchState()
 	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
 	if len(resultTypes) <= len(sc.functionResultTypeArena) {
@@ -4437,6 +4480,12 @@ func (f *fn) prologue(localScores []uint32) {
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 	f.zeroEHGCRootLanes()
+	if f.scalarSummary.Eligible {
+		// Shared locals start as zero constants. Its control agreements store
+		// every dirty local before borrowing a frame home. Admission excludes
+		// GC, EH and effects; extending it requires revisiting this invariant.
+		return
+	}
 	if f.nLocals <= f.nParams {
 		return
 	}

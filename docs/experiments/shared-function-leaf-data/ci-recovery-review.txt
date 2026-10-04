@@ -1,0 +1,18 @@
+Independent CI recovery review, contract_review agent, 2026-10-04
+Reviewed HEAD 34553b3f770c443e8d93f7e6c7fb35effe384ecb plus uncommitted profiling fallback changes.
+Source-only review; no builds, tests, profiling or file edits performed.
+
+Verdict: no unresolved source-review findings.
+- Profiling/TinyGo fallback tags are complementary to the full adapters. Zero admission selects legacy compilation before pin/prologue/body emission; shared-only parameter, zero-home and frame behavior stays disabled. Recorded and unrecorded profiling functions therefore select the same compiler.
+- Review caught an ARM64 width-test build blocker: its call to the excluded ScaledAdd adapter needed !wago_profile. Resolved; both adapter-specific test files now exclude that configuration.
+- The scratch test accepts 1-4 active fallback workers' initial reservation multiples. Depth-40 guarantees fallback. Peak-envelope, release and node-storage bounds remain enforced. GOMAXPROCS is restored afterward.
+- Standard Go production adapter behavior is unchanged. Profiling builds validate legacy compilation; shared pilot correctness stays covered by ordinary/check builds.
+
+SHA-256 of reviewed files:
+AMD64 scalar.go          27f91debca0ea20eae4e405dcf30b07aea90fbc869c11b78a0efbc683cb1a4e6
+AMD64 scalar_fallback.go 3f3ae9cfe27861a9a306d7f27df6cd76df55c73b1347adca8d7a4f6dcb393db4
+AMD64 compile_test.go    24cf64ce28276f56903776dfbc0bffc8e5088ac277a49e458d874715c104b418
+ARM64 scalar.go          c95d3f42d56fd1278928bdaf6cfae8e0ce383784c9e4d3e8e3b99d8c3d071e9f
+ARM64 scalar_fallback.go cd60e88dfd04a4b84feffe8eb02cf0fcfe908bdbd6bb328f8477ba5d01e388f1
+ARM64 parameter test    f9ae09396ae2f7300247a3a05cd24b3e7a8cef12f63c508023260c6e67eca2ce
+ARM64 width test        67acde90c47991bae4417f2df7fd619fe977e3f36e57d4b2cba9892612e3947a

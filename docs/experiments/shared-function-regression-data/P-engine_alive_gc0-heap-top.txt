@@ -1,0 +1,37 @@
+File: P-suite.test
+Build ID: c078bd7d0f6e6bd788bb3526da11ae5052e853a7
+Type: inuse_space
+Time: 2026-10-04 09:40:14 EDT
+Showing nodes accounting for 2645.17kB, 100% of 2645.17kB total
+      flat  flat%   sum%        cum   cum%
+ 1056.33kB 39.93% 39.93%  1056.33kB 39.93%  github.com/wago-org/wago/src/wago.cloneCompiledMetadata
+  544.67kB 20.59% 60.53%   544.67kB 20.59%  github.com/wago-org/wago/src/core/runtime.NewHeapCodeBuffer
+  528.17kB 19.97% 80.49%   528.17kB 19.97%  github.com/wago-org/wago/src/wago.compileModuleMetadata
+  516.01kB 19.51%   100%   516.01kB 19.51%  hash/crc32.slicingMakeTable
+         0     0%   100%   516.01kB 19.51%  compress/gzip.(*Writer).Write
+         0     0%   100%  2645.17kB   100%  github.com/wago-org/wago/bench/suite.TestSharingGCObservation
+         0     0%   100%   516.01kB 19.51%  github.com/wago-org/wago/bench/suite.sharingSnapshot
+         0     0%   100%   544.67kB 20.59%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith
+         0     0%   100%   544.67kB 20.59%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+         0     0%   100%  1056.33kB 39.93%  github.com/wago-org/wago/src/wago.(*Compiled).freezeExecution
+         0     0%   100%  2129.17kB 80.49%  github.com/wago-org/wago/src/wago.(*PreparedCompile).Compile
+         0     0%   100%  2129.17kB 80.49%  github.com/wago-org/wago/src/wago.(*Runtime).Compile (inline)
+         0     0%   100%  2129.17kB 80.49%  github.com/wago-org/wago/src/wago.(*Runtime).compile
+         0     0%   100%  2129.17kB 80.49%  github.com/wago-org/wago/src/wago.compileWithConfigAndInstructions
+         0     0%   100%  2129.17kB 80.49%  github.com/wago-org/wago/src/wago.compileWithFrontendFeaturesAndInstructions
+         0     0%   100%  1056.33kB 39.93%  github.com/wago-org/wago/src/wago.publishCompilerCompiled
+         0     0%   100%   544.67kB 20.59%  github.com/wago-org/wago/src/wago.railshotCompileModuleWith
+         0     0%   100%   516.01kB 19.51%  hash/crc32.Update (inline)
+         0     0%   100%   516.01kB 19.51%  hash/crc32.archInitIEEE (inline)
+         0     0%   100%   516.01kB 19.51%  hash/crc32.init.func2
+         0     0%   100%   516.01kB 19.51%  hash/crc32.update
+         0     0%   100%   516.01kB 19.51%  runtime/pprof.(*profileBuilder).build
+         0     0%   100%   516.01kB 19.51%  runtime/pprof.WriteHeapProfile (inline)
+         0     0%   100%   516.01kB 19.51%  runtime/pprof.writeHeap (inline)
+         0     0%   100%   516.01kB 19.51%  runtime/pprof.writeHeapInternal
+         0     0%   100%   516.01kB 19.51%  runtime/pprof.writeHeapProto
+         0     0%   100%   516.01kB 19.51%  sync.(*Once).Do
+         0     0%   100%   516.01kB 19.51%  sync.(*Once).doSlow
+         0     0%   100%   516.01kB 19.51%  sync.OnceFunc.func1
+         0     0%   100%   516.01kB 19.51%  sync.OnceFunc.func1.1
+         0     0%   100%  2645.17kB   100%  testing.tRunner
