@@ -10,6 +10,7 @@ import (
 // performed on validated bytecode before any function instruction is emitted.
 type ScalarSummary struct {
 	Eligible, HasIf bool
+	MaxControlDepth uint8
 	MaxStack, Nodes int
 }
 
@@ -101,6 +102,11 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 				s.Nodes += len(localTypes) + stack
 			}
 			ctrl[depth] = frame{base: stack, result: result, isIf: op == 0x04}
+			// Exclude the function frame: CompileScalar stores only explicit
+			// block/if controls. This fits the existing 32-control bound.
+			if depth > int(s.MaxControlDepth) {
+				s.MaxControlDepth = uint8(depth)
+			}
 			depth++
 		case 0x05:
 			budget += 2 * (len(localTypes) + s.MaxStack)
@@ -635,6 +641,11 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 	s.stack = s.stack[:0]
 	s.locals = s.locals[:0]
 	s.widths = append(s.widths[:0], localWide...)
+	if needed := int(summary.MaxControlDepth); cap(s.controls) < needed {
+		capacity := max(needed, 2*cap(s.controls))
+		capacity = min(capacity, 32)
+		s.controls = make([]scalarControl, 0, capacity)
+	}
 	s.controls = s.controls[:0]
 	s.freeSlots = s.freeSlots[:0]
 	s.owners = [64]scalarID{}
