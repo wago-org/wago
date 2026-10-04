@@ -794,6 +794,7 @@ type scratch struct {
 	usedAMD64Features     shared.AMD64Features
 	stack                 *stack     // the valent-block operand stack
 	stackCap              int        // deferred initial reservation for function-level fallback
+	controlCap            int        // target control frames, reserved with the first fallback
 	asm                   *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared        bool
 	directPreparedBounded bool
@@ -884,10 +885,16 @@ func (sc *scratch) ensureTargetStack() {
 	_, reserved := sc.stack.nodeMemory()
 	sc.nodeScratchReserved = reserved
 	sc.nodeScratchPeak = reserved
+	sc.reserveControlFrames(sc.controlCap)
+	sc.controlCap = 0
 }
 
 func (sc *scratch) reserveControlFrames(capacity int) {
 	if capacity <= 0 {
+		return
+	}
+	if len(sc.stack.chunks) == 0 {
+		sc.controlCap = capacity
 		return
 	}
 	sc.ctrl = make([]ctrlFrame, 0, capacity)

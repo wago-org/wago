@@ -627,6 +627,7 @@ type scratch struct {
 
 	stack                 *stack   // the valent-block operand stack
 	stackCap              int      // deferred initial reservation for function-level fallback
+	controlCap            int      // target control frames, reserved with the first fallback
 	asm                   *a64.Asm // the AArch64 encoder byte buffer
 	fnState               fn       // per-function compiler state, reused across the module
 	classifier            wasm.ModuleInstructionClassifier
@@ -775,10 +776,16 @@ func (sc *scratch) ensureTargetStack() {
 	_, reserved := sc.stack.nodeMemory()
 	sc.nodeScratchReserved = reserved
 	sc.nodeScratchPeak = reserved
+	sc.reserveControlFrames(sc.controlCap)
+	sc.controlCap = 0
 }
 
 func (sc *scratch) reserveControlFrames(capacity int) {
 	if capacity <= 0 {
+		return
+	}
+	if len(sc.stack.chunks) == 0 {
+		sc.controlCap = capacity
 		return
 	}
 	sc.ctrl = make([]ctrlFrame, 0, capacity)
