@@ -57,6 +57,15 @@ func (f *fn) scalarBody(c *wasm.Func) error {
 func (f *fn) Registers() ([]uint8, uint64) {
 	return scalarRegisterOrder, uint64(f.reserved.union(f.pinned))
 }
+func (f *fn) ParameterRegister(local int) (uint8, bool) {
+	// Compact headers are used only by register-ABI entries. Admission already
+	// excludes calls, effects and noninteger parameters. No target local pin
+	// owns these registers: CompileScalar becomes their sole allocator.
+	if f.compactFrameHeader {
+		return uint8(intArgRegs[local]), true
+	}
+	return 0, false
+}
 func (f *fn) SpillOffset(slot int) int32 { return f.spillOff(slot) }
 func (f *fn) Position() int              { return f.a.Len() }
 
@@ -77,7 +86,9 @@ func (f *fn) Move(d, s uint8, w bool) {
 		}
 	}
 }
+func (f *fn) NormalizeI32(r uint8) { f.a.MovReg32(Reg(r), Reg(r)) }
 func (f *fn) Load(r uint8, off int32, w bool) {
+	f.scalarFrameUsed = true
 	if w {
 		f.ld64(Reg(r), SP, off)
 	} else {
@@ -85,6 +96,7 @@ func (f *fn) Load(r uint8, off int32, w bool) {
 	}
 }
 func (f *fn) Store(off int32, r uint8, w bool) {
+	f.scalarFrameUsed = true
 	if w {
 		f.st64(SP, off, Reg(r))
 	} else {

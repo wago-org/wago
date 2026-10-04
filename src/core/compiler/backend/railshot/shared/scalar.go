@@ -262,10 +262,16 @@ type ScalarOperand struct {
 // retain operands or maintain logical stack, local, control or allocator state.
 type ScalarTarget interface {
 	Registers() ([]uint8, uint64)
+	// ParameterRegister transfers an incoming GP register to shared ownership.
+	// False means the entry code established a valid LocalOffset memory home.
+	// A transferred register has no memory copy and must be allocatable, unique,
+	// and unreserved. Entry code must preserve it until CompileScalar starts.
+	ParameterRegister(int) (uint8, bool)
 	LocalOffset(int) int32
 	SpillOffset(int) int32
 	Constant(uint8, int64, bool)
 	Move(uint8, uint8, bool)
+	NormalizeI32(uint8)
 	Load(uint8, int32, bool)
 	Store(int32, uint8, bool)
 	Clobbers(IntOp) uint64
@@ -286,6 +292,9 @@ type scalarID uint32
 // An index may be reused only after its last reference and deferred edges die.
 // refs includes local owners, logical roots and deferred-parent edges.
 type scalarNode struct {
+	// Tagged payload: the integer for ScalarConstant; for ScalarRegister,
+	// 1 marks an incoming i32 carrier whose upper bits are not yet zeroed.
+	// Other locations do not consult it. Reusing this word keeps nodes 32B.
 	constant          int64
 	left, right       scalarID
 	refs, order       uint16
@@ -513,8 +522,29 @@ func (s *ScalarState) materialize(id scalarID, avoid uint64) uint8 {
 	s.node(id).kind = ScalarRegister
 	s.node(id).reg = r
 	s.node(id).depth = 0
+	s.node(id).constant = 0 // moves and loads normalize i32 into the new register
 	s.owners[r] = id
 	return r
+}
+
+// At the admitted final return, locals are no longer observable. Drop only
+// their owning references before materialization: stack roots and deferred
+// edges still keep older local versions alive. This permits an incoming/result
+// register to be the expression accumulator without creating a second owner.
+func (s *ScalarState) returnValue(id scalarID) {
+	for i, local := range s.locals {
+		s.release(local)
+		s.locals[i] = 0
+	}
+	reg := s.materialize(id, 0)
+	if n := s.node(id); !n.wide && n.constant == 1 {
+		// W-register arithmetic already zeroes upper bits. A direct incoming
+		// i32 return has no such instruction, so normalize only that carrier.
+		s.target.NormalizeI32(reg)
+		n.constant = 0
+	}
+	s.target.Return(reg, s.node(id).wide, s.maxSlot)
+	s.release(id)
 }
 func (s *ScalarState) operands(n scalarNode, avoid uint64) (uint8, ScalarOperand) {
 	left := s.materialize(n.left, avoid)
@@ -554,6 +584,7 @@ func (s *ScalarState) expression(id scalarID, avoid uint64) uint8 {
 					v.kind = ScalarRegister
 					v.reg = dst
 					v.depth = 0
+					v.constant = 0
 					v.left = 0
 					v.right = 0
 					s.owners[dst] = id
@@ -588,6 +619,7 @@ func (s *ScalarState) expression(id scalarID, avoid uint64) uint8 {
 	s.release(n.right)
 	value := s.node(id)
 	value.kind = ScalarRegister
+	value.constant = 0
 	value.reg = dst
 	value.depth = 0
 	value.left = 0
@@ -794,7 +826,22 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 	var zeros [2]scalarID
 	for i, wide := range localWide {
 		if i < nParams {
-			s.locals = append(s.locals, s.add(scalarNode{kind: scalarBorrow, wide: wide, refs: 1, slot: int32(i), home: uint16(i + 1)}))
+			n := scalarNode{kind: scalarBorrow, wide: wide, refs: 1, slot: int32(i), home: uint16(i + 1)}
+			reg, incoming := target.ParameterRegister(i)
+			if incoming {
+				if scalarValueChecks && (reg >= 64 || s.reserved&(1<<reg) != 0 || s.owners[reg] != 0) {
+					panic("shared scalar: invalid incoming parameter register")
+				}
+				n.kind, n.reg, n.home = ScalarRegister, reg, 0
+				if !wide {
+					n.constant = 1
+				}
+			}
+			id := s.add(n)
+			s.locals = append(s.locals, id)
+			if incoming {
+				s.owners[reg] = id
+			}
 			continue
 		}
 		width := 0
@@ -907,9 +954,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			if len(s.controls) == 0 {
 				if !returned {
 					id := s.pop()
-					reg := s.materialize(id, 0)
-					s.target.Return(reg, s.node(id).wide, s.maxSlot)
-					s.release(id)
+					s.returnValue(id)
 				}
 				s.target = nil
 				s.regs = nil
@@ -940,9 +985,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			s.controls = s.controls[:i]
 		case 0x0f:
 			id := s.pop()
-			reg := s.materialize(id, 0)
-			s.target.Return(reg, s.node(id).wide, s.maxSlot)
-			s.release(id)
+			s.returnValue(id)
 			returned = true
 		default:
 			operation, wide, ok := ScalarOpcode(op)

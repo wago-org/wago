@@ -11,10 +11,12 @@ var scalarTestRegs = []uint8{1, 2, 3}
 type scalarTestTarget struct{}
 
 func (*scalarTestTarget) Registers() ([]uint8, uint64)                        { return scalarTestRegs, 0 }
+func (*scalarTestTarget) ParameterRegister(int) (uint8, bool)                 { return 0, false }
 func (*scalarTestTarget) LocalOffset(i int) int32                             { return int32(i * 8) }
 func (*scalarTestTarget) SpillOffset(i int) int32                             { return int32(i * 8) }
 func (*scalarTestTarget) Constant(uint8, int64, bool)                         {}
 func (*scalarTestTarget) Move(uint8, uint8, bool)                             {}
+func (*scalarTestTarget) NormalizeI32(uint8)                                  {}
 func (*scalarTestTarget) Load(uint8, int32, bool)                             {}
 func (*scalarTestTarget) Store(int32, uint8, bool)                            {}
 func (*scalarTestTarget) Clobbers(IntOp) uint64                               { return 0 }

@@ -55,8 +55,11 @@ func (f *fn) scalarBody(c *wasm.Func) error {
 func (f *fn) Registers() ([]uint8, uint64) {
 	return scalarRegisterOrder, uint64(f.reserved.union(f.pinned))
 }
-func (f *fn) SpillOffset(slot int) int32 { return f.spillOff(slot) }
-func (f *fn) Position() int              { return f.a.Len() }
+
+// AMD64 entry code continues to establish parameter frame homes.
+func (f *fn) ParameterRegister(int) (uint8, bool) { return 0, false }
+func (f *fn) SpillOffset(slot int) int32          { return f.spillOff(slot) }
+func (f *fn) Position() int                       { return f.a.Len() }
 
 func (f *fn) LocalOffset(local int) int32 { return f.localAddr(local) }
 func (f *fn) Constant(r uint8, v int64, wide bool) {
@@ -75,6 +78,7 @@ func (f *fn) Move(d, s uint8, w bool) {
 		}
 	}
 }
+func (f *fn) NormalizeI32(r uint8) { f.a.MovRegReg32(Reg(r), Reg(r)) }
 func (f *fn) Load(r uint8, off int32, w bool) {
 	if w {
 		f.a.Load64(Reg(r), RSP, off)

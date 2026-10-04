@@ -31,14 +31,16 @@ func TestScalarDeclaredZeroStorage(t *testing.T) {
 		if len(state.nodes) > 4 || state.Memory() > 1536 {
 			t.Fatalf("mixed=%v nodes=%d memory=%d", mixed, len(state.nodes), state.Memory())
 		}
-		bindings := make(map[scalarID]uint16)
 		for _, id := range state.locals {
-			bindings[id]++
-		}
-		for id, n := range state.nodes {
-			if n.refs != bindings[scalarID(id)] {
-				t.Fatalf("value %d references=%d local bindings=%d", id, n.refs, bindings[scalarID(id)])
+			if id != 0 {
+				t.Fatal("return retained a local binding")
 			}
 		}
+		for id, n := range state.nodes {
+			if n.refs != 0 {
+				t.Fatalf("value %d still has %d references after return", id, n.refs)
+			}
+		}
+		scalarAssertFreeList(t, &state)
 	}
 }

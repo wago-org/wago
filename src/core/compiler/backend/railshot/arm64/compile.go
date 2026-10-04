@@ -168,6 +168,8 @@ const (
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
 	scalarSummary shared.ScalarSummary
+	// Physical frame access emitted by the shared lowerer, not logical state.
+	scalarFrameUsed bool
 
 	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
 	regallocFnState
@@ -1315,7 +1317,16 @@ func (f *fn) frameSize() int {
 
 func (f *fn) elideRegisterOnlyFrame() bool {
 	if f.scalarSummary.Eligible {
-		return false
+		// Shared register-ABI entry leaves incoming parameters in registers and
+		// declared zeros deferred. Loads/stores (including control agreements)
+		// mark the frame as used; spill accounting alone cannot prove this.
+		if !f.compactFrameHeader || !f.singleRegResult || f.makesCalls || f.scalarFrameUsed || f.maxSpill != 0 ||
+			(!f.preserveCallerPins && !f.opt(optFrameElideRegHomed)) {
+			return false
+		}
+		f.frameElided = true
+		f.stats.peep("frame-adjust-elide")
+		return true
 	}
 
 	voidResult := len(f.ft.Results) == 0
@@ -4078,6 +4089,10 @@ func (f *fn) flushWrapperParamHome(p pendingWrapperParamHome) {
 // where reads materialize zero on demand and control-flow reconciliation stores it
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
+	if f.scalarSummary.Eligible {
+		// ScalarState owns zero values and establishes homes only when needed.
+		return
+	}
 	f.zeroEHGCRootLanes()
 	if f.nLocals <= f.nParams {
 		return
@@ -4352,6 +4367,13 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 				a.FStoreDisp(SP, f.localOff(i), src, mt == mtF64)
 			}
 			fp++
+		} else if f.scalarSummary.Eligible {
+			// Transfer the untouched incoming register to shared ownership. There
+			// is no valid frame copy until the shared state explicitly stores one.
+			if f.canonicalI32Local(i) {
+				a.MovReg32(intArgRegs[gp], intArgRegs[gp])
+				f.stats.peep("entry-i32-param-canonicalize")
+			}
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			if f.canonicalI32Local(i) {
 				a.MovReg32(intArgRegs[gp], intArgRegs[gp])
