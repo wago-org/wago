@@ -626,6 +626,7 @@ type scratch struct {
 	scalar shared.ScalarState
 
 	stack                 *stack   // the valent-block operand stack
+	stackCap              int      // deferred initial reservation for function-level fallback
 	asm                   *a64.Asm // the AArch64 encoder byte buffer
 	fnState               fn       // per-function compiler state, reused across the module
 	classifier            wasm.ModuleInstructionClassifier
@@ -758,6 +759,22 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	stack := newStackWithCap(stackCap)
 	_, reserved := stack.nodeMemory()
 	return &scratch{stack: stack, asm: &a64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
+}
+
+// newCompileScratch defers target operand storage until the first fallback.
+// The empty stack object remains available to diagnostics and worker teardown.
+func newCompileScratch(stackCap int) *scratch {
+	return &scratch{stack: &stack{}, stackCap: stackCap, asm: &a64.Asm{}}
+}
+
+func (sc *scratch) ensureTargetStack() {
+	if len(sc.stack.chunks) != 0 {
+		return
+	}
+	*sc.stack = *newStackWithCap(sc.stackCap)
+	_, reserved := sc.stack.nodeMemory()
+	sc.nodeScratchReserved = reserved
+	sc.nodeScratchPeak = reserved
 }
 
 func (sc *scratch) reserveControlFrames(capacity int) {
@@ -917,7 +934,9 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
-	sc.stack.reset()
+	if len(sc.stack.chunks) != 0 {
+		sc.stack.reset()
+	}
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.LogicalMoveImmediates = 0
 	sc.asm.CompactMoveImmediates32 = 0
@@ -1696,7 +1715,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts)
-		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
 		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
@@ -1893,7 +1912,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
-		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
 		states[i].scratch.reserveLocalScratch(localCap)
@@ -3139,6 +3158,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.scalarSummary = f.admitScalar(c)
 	if f.scalarSummary.Eligible {
 		pinLocals = false
+	} else {
+		sc.ensureTargetStack()
 	}
 	var gpPoolStorage [24]Reg
 	gpPool := gpPinPoolWithPolicy(gpPoolStorage[:0], regABI, f.nParams, !hasCall, policy)

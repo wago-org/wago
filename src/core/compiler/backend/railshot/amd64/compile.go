@@ -793,6 +793,7 @@ type scratch struct {
 	amd64Features         shared.AMD64Features
 	usedAMD64Features     shared.AMD64Features
 	stack                 *stack     // the valent-block operand stack
+	stackCap              int        // deferred initial reservation for function-level fallback
 	asm                   *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared        bool
 	directPreparedBounded bool
@@ -867,6 +868,22 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	stack := newStackWithCap(stackCap)
 	_, reserved := stack.nodeMemory()
 	return &scratch{stack: stack, asm: &amd64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
+}
+
+// newCompileScratch defers target operand storage until the first fallback.
+// The empty stack object remains available to diagnostics and worker teardown.
+func newCompileScratch(stackCap int) *scratch {
+	return &scratch{stack: &stack{}, stackCap: stackCap, asm: &amd64.Asm{}}
+}
+
+func (sc *scratch) ensureTargetStack() {
+	if len(sc.stack.chunks) != 0 {
+		return
+	}
+	*sc.stack = *newStackWithCap(sc.stackCap)
+	_, reserved := sc.stack.nodeMemory()
+	sc.nodeScratchReserved = reserved
+	sc.nodeScratchPeak = reserved
 }
 
 func (sc *scratch) reserveControlFrames(capacity int) {
@@ -1038,7 +1055,9 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 
 func (sc *scratch) reset() {
 	sc.usedAMD64Features = 0
-	sc.stack.reset()
+	if len(sc.stack.chunks) != 0 {
+		sc.stack.reset()
+	}
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
 	sc.asm.BitCountState &= 0x07
@@ -1887,7 +1906,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts, policy)
-		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.amd64Features = opts.AMD64Features
 		sc.asm.BitCountState = opts.BitCountFeatures & 0x07
 		sc.policy = policy
@@ -2142,7 +2161,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
-		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.amd64Features = opts.AMD64Features
 		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
@@ -3523,6 +3542,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.scalarSummary = f.admitScalar(c)
 	if f.scalarSummary.Eligible {
 		pinLocals = false
+	} else {
+		sc.ensureTargetStack()
 	}
 	var gpPoolStorage [16]Reg
 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))

@@ -313,3 +313,83 @@ func TestSharedScalarCleanHomesAndResultRegisters(t *testing.T) {
 		c.Close()
 	}
 }
+
+func TestSharedScalarOldHomeUnderPressure(t *testing.T) {
+	for _, typ := range []wasm.ValType{wasm.I32, wasm.I64} {
+		constant, add, mask := byte(0x41), byte(0x6a), uint64(0xffffffff)
+		if wasm.EqualValType(typ, wasm.I64) {
+			constant, add, mask = 0x42, 0x7c, ^uint64(0)
+		}
+		body := []byte{0x20, 0}
+		for k := byte(1); k <= 40; k++ {
+			body = append(body, 0x20, 0, constant, k, add, 0x22, 1)
+		}
+		// A clean parameter evicted under pressure remains live below the
+		// stack. Overwrite its binding, then force a home agreement.
+		body = append(body, constant, 7, 0x21, 0, 0x41, 1, 0x04, 0x40, 0x01, 0x0b)
+		for k := 0; k < 40; k++ {
+			body = append(body, add)
+		}
+		body = append(body, 0x0b)
+		c, err := Compile(nil, scalarPilotModule(typ, body, 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(c)
+		if err != nil {
+			c.Close()
+			t.Fatal(err)
+		}
+		for _, x := range []uint64{0, 3, 0xffffffff, 0x8000000000000000, ^uint64(0)} {
+			x &= mask
+			got, err := in.Invoke("run", x)
+			want := (41*x + 820) & mask
+			if err != nil || len(got) != 1 || got[0] != want {
+				t.Fatalf("type=%v x=%x got=%v err=%v want=%x", typ, x, got, err, want)
+			}
+		}
+		in.Close()
+		c.Close()
+	}
+}
+
+func TestSharedScalarFallbackScratchTransitions(t *testing.T) {
+	shared := []byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}
+	fallback := []byte{0x20, 0, 0x41, 2, 0x6d, 0x0b}
+	for _, firstShared := range []bool{true, false} {
+		var funcs, exports, bodies [][]byte
+		for i := 0; i < 3; i++ {
+			body := fallback
+			if (i%2 == 0) == firstShared {
+				body = shared
+			}
+			funcs = append(funcs, wasmtest.ULEB(0))
+			exports = append(exports, wasmtest.ExportEntry(string(rune('a'+i)), 0, uint32(i)))
+			bodies = append(bodies, wasmtest.Code(body))
+		}
+		module := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec(funcs...)), wasmtest.Section(7, wasmtest.Vec(exports...)), wasmtest.Section(10, wasmtest.Vec(bodies...)))
+		for _, workers := range []int{1, 2} {
+			c, err := Compile(NewRuntimeConfig().WithFunctionWorkers(workers), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				c.Close()
+				t.Fatal(err)
+			}
+			for i := 0; i < 3; i++ {
+				want := uint64(21)
+				if (i%2 == 0) == firstShared {
+					want = 43
+				}
+				got, err := in.Invoke(string(rune('a'+i)), 42)
+				if err != nil || len(got) != 1 || got[0] != want {
+					t.Fatalf("firstShared=%v workers=%d func=%d got=%v err=%v want=%d", firstShared, workers, i, got, err, want)
+				}
+			}
+			in.Close()
+			c.Close()
+		}
+	}
+}
