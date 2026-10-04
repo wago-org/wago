@@ -222,6 +222,9 @@ type scalarNode struct {
 	kind              ScalarLocation
 	reg, depth        uint8
 	wide, operandWide bool
+	// home is a still-valid local-memory copy, encoded as local index + 1.
+	// Zero means no copy; it is independent of the authoritative location.
+	home uint16
 }
 type scalarControl struct {
 	base, result       int
@@ -481,10 +484,10 @@ func (s *ScalarState) binary(op IntOp, wide bool) {
 
 // canonicalize first captures borrowed and agreement-slot values, then writes
 // the new local/stack image. That two-phase ordering prevents alias overwrite.
-func (s *ScalarState) canonicalize() {
+func (s *ScalarState) canonicalize(registerResult bool) {
 	capture := func(id scalarID) {
 		n := s.node(id)
-		if n.kind == scalarBorrow || n.kind == ScalarFrame && int(n.slot) < s.tempBase {
+		if n.kind == scalarBorrow && s.locals[n.slot] != id || n.kind == ScalarFrame && int(n.slot) < s.tempBase {
 			s.materialize(id, 0)
 		}
 	}
@@ -505,17 +508,39 @@ func (s *ScalarState) canonicalize() {
 		}
 	}
 	for i, id := range s.locals {
+		if s.node(id).home == uint16(i+1) {
+			continue
+		}
 		r := s.materialize(id, 0)
 		s.target.Store(s.target.LocalOffset(i), r, s.node(id).wide)
 	}
+	var resultReg uint8
+	for _, r := range s.regs {
+		if s.reserved&(1<<r) == 0 {
+			resultReg = r
+			break
+		}
+	}
 	for i, id := range s.stack {
 		r := s.materialize(id, 0)
+		if registerResult && i == len(s.stack)-1 {
+			// Both exits select the same physical register. All remaining owners
+			// are released by restore; no live logical state needs this register.
+			s.target.Move(resultReg, r, s.node(id).wide)
+			continue
+		}
 		s.target.Store(s.target.SpillOffset(i+1), r, s.node(id).wide)
 		if i+2 > s.maxSlot {
 			s.maxSlot = i + 2
 		}
 	}
 	s.restore(len(s.stack))
+	if registerResult {
+		id := s.stack[len(s.stack)-1]
+		s.node(id).kind = ScalarRegister
+		s.node(id).reg = resultReg
+		s.owners[resultReg] = id
+	}
 }
 func (s *ScalarState) restore(depth int) {
 	// Stack types are retained through the agreement. Each else restores only the
@@ -532,7 +557,7 @@ func (s *ScalarState) restore(depth int) {
 	}
 	s.stack = s.stack[:depth]
 	for i, wide := range s.widths {
-		s.locals[i] = s.add(scalarNode{kind: scalarBorrow, slot: int32(i), wide: wide, refs: 1})
+		s.locals[i] = s.add(scalarNode{kind: scalarBorrow, slot: int32(i), home: uint16(i + 1), wide: wide, refs: 1})
 	}
 }
 func (s *ScalarState) condition(id scalarID) int {
@@ -589,6 +614,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 		if i < nParams {
 			n.kind = scalarBorrow
 			n.slot = int32(i)
+			n.home = uint16(i + 1)
 		}
 		s.locals = append(s.locals, s.add(n))
 	}
@@ -660,7 +686,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			}
 			fr.base = len(s.stack)
 			if fr.isIf {
-				s.canonicalize()
+				s.canonicalize(false)
 				fr.falseSite = s.condition(cond)
 			}
 			// Admission excludes br/br_if/br_table. A plain block therefore has
@@ -669,7 +695,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 		case 0x05:
 			i := len(s.controls) - 1
 			fr := &s.controls[i]
-			s.canonicalize()
+			s.canonicalize(fr.result == 1)
 			fr.endSite = s.target.Jump()
 			if e := s.target.Patch(fr.falseSite, s.target.Position()); e != nil {
 				return 0, e
@@ -694,7 +720,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			i := len(s.controls) - 1
 			fr := s.controls[i]
 			if fr.isIf {
-				s.canonicalize()
+				s.canonicalize(fr.result == 1)
 				site := fr.falseSite
 				if fr.hasElse {
 					site = fr.endSite

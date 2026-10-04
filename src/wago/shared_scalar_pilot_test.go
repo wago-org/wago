@@ -272,3 +272,44 @@ func TestSharedScalarPressureWithoutJoin(t *testing.T) {
 		c.Close()
 	}
 }
+
+func TestSharedScalarCleanHomesAndResultRegisters(t *testing.T) {
+	for _, typ := range []wasm.ValType{wasm.I32, wasm.I64} {
+		constant, add, ne, result, mask := byte(0x41), byte(0x6a), byte(0x47), byte(0x7f), uint64(0xffffffff)
+		if wasm.EqualValType(typ, wasm.I64) {
+			constant, add, ne, result, mask = 0x42, 0x7c, 0x52, 0x7e, ^uint64(0)
+		}
+		condition := []byte{0x20, 0, constant, 0, ne}
+		// Preserve an old local version below nested if results. Both arms
+		// overwrite its source home while another local still owns that value.
+		body := []byte{0x20, 0, 0x22, 1}
+		body = append(body, condition...)
+		body = append(body, 0x04, result, constant, 7, 0x21, 0)
+		body = append(body, condition...)
+		body = append(body, 0x04, result, 0x20, 1, 0x05, constant, 9, 0x0b)
+		body = append(body, 0x05, constant, 11, 0x21, 0, 0x20, 1, 0x0b, add, 0x20, 0, add, 0x0b)
+		c, err := Compile(nil, scalarPilotModule(typ, body, 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(c)
+		if err != nil {
+			c.Close()
+			t.Fatal(err)
+		}
+		for _, x := range []uint64{0, 1, 3, 0xffffffff, 0x8000000000000000, ^uint64(0)} {
+			x &= mask
+			v := uint64(7)
+			if x == 0 {
+				v = 11
+			}
+			want := (2*x + v) & mask
+			got, err := in.Invoke("run", x)
+			if err != nil || len(got) != 1 || got[0] != want {
+				t.Fatalf("type=%v x=%x got=%v err=%v want=%x", typ, x, got, err, want)
+			}
+		}
+		in.Close()
+		c.Close()
+	}
+}
