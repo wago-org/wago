@@ -621,10 +621,11 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 	s.controls = s.controls[:0]
 	s.freeSlots = s.freeSlots[:0]
 	s.owners = [64]scalarID{}
-	// Plain blocks have only fallthrough in the admitted subset. Reserve
-	// canonical operand homes only when a conditional actually needs them;
-	// slot zero remains available to the target's single-result return ABI.
-	s.tempBase = 1
+	// Plain blocks have only fallthrough. Without an if, temporary spills may
+	// use slot zero: return materializes its only result before overwriting
+	// that slot, and no local or operand is consumed afterward. Conditional
+	// agreements retain their disjoint operand-home range.
+	s.tempBase = 0
 	if summary.HasIf {
 		s.tempBase = summary.MaxStack + 1
 	}

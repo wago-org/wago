@@ -251,25 +251,27 @@ func TestSharedScalarPressureWithoutJoin(t *testing.T) {
 			body = append(body, add)
 		}
 		body = append(body, 0x0b)
-		c, err := Compile(nil, scalarPilotModule(typ, body, 1))
-		if err != nil {
-			t.Fatal(err)
-		}
-		in, err := Instantiate(c)
-		if err != nil {
-			c.Close()
-			t.Fatal(err)
-		}
-		for _, x := range []uint64{0, 1, 3, 0x80000000, 0xffffffff, 0x8000000000000000, ^uint64(0)} {
-			x &= mask
-			got, err := in.Invoke("run", x)
-			want := (40*x + 820) & mask
-			if err != nil || len(got) != 1 || got[0] != want {
-				t.Fatalf("type=%v x=%x: got %v %v, want %x", typ, x, got, err, want)
+		for _, regABI := range []bool{true, false} {
+			c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), scalarPilotModule(typ, body, 1))
+			if err != nil {
+				t.Fatal(err)
 			}
+			in, err := Instantiate(c)
+			if err != nil {
+				c.Close()
+				t.Fatal(err)
+			}
+			for _, x := range []uint64{0, 1, 3, 0x80000000, 0xffffffff, 0x8000000000000000, ^uint64(0)} {
+				x &= mask
+				got, err := in.Invoke("run", x)
+				want := (40*x + 820) & mask
+				if err != nil || len(got) != 1 || got[0] != want {
+					t.Fatalf("type=%v x=%x: got %v %v, want %x", typ, x, got, err, want)
+				}
+			}
+			in.Close()
+			c.Close()
 		}
-		in.Close()
-		c.Close()
 	}
 }
 
