@@ -25,7 +25,7 @@ func TestSharedScalarJoinResultLocalAlias(t *testing.T) {
 			{"different-locals", []byte{constant, 7, 0x22, 1}, []byte{constant, 9, 0x22, 2}, []byte{0x20, 1, add}, 14, 9},
 			{"overwrite-before-join", []byte{constant, 7, 0x22, 1}, []byte{constant, 9, 0x22, 1, constant, 3, 0x21, 1}, []byte{0x20, 1, add}, 14, 12},
 			{"overwrite-after-join", []byte{constant, 7, 0x22, 1}, []byte{constant, 9, 0x22, 1}, []byte{constant, 3, 0x21, 1, 0x20, 1, add}, 10, 12},
-			{"nested", []byte{0x20, 0, 0x04, result, constant, 7, 0x22, 1, 0x05, constant, 5, 0x22, 1, 0x0b}, []byte{constant, 9, 0x22, 1}, []byte{0x20, 1, add}, 14, 18},
+			{"nested", []byte{0x20, 0, 0x41, 1, 0x46, 0x04, result, constant, 7, 0x22, 1, 0x05, constant, 5, 0x22, 1, 0x0b}, []byte{constant, 9, 0x22, 1}, []byte{0x20, 1, add}, 14, 18},
 		} {
 			body := append([]byte{0x20, 0, 0x04, result}, tc.then...)
 			body = append(body, 0x05)
@@ -55,6 +55,9 @@ func TestSharedScalarJoinResultLocalAlias(t *testing.T) {
 						want := tc.yes
 						if condition == 0 {
 							want = tc.no
+						}
+						if tc.name == "nested" && condition == 0xffffffff {
+							want = 10
 						}
 						got, err := in.Invoke("run", condition)
 						if err != nil || len(got) != 1 || got[0] != want {

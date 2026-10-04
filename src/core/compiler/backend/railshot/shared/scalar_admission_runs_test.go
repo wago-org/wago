@@ -16,10 +16,6 @@ func TestScalarAdmissionRunDeclarations(t *testing.T) {
 				types = append(types, typ)
 			}
 			got, want := AdmitScalarFunction(c, ft), AdmitScalar(c.BodyBytes, ft, types)
-			// An invalid zero-count run is conservatively rejected by the run scanner.
-			if count == 0 && !scalarInteger(typ) {
-				continue
-			}
 			if got.Eligible != want.Eligible || got.Eligible && !reflect.DeepEqual(got, want) {
 				t.Fatalf("count=%d type=%v got=%+v want=%+v", count, typ, got, want)
 			}

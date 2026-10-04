@@ -49,6 +49,9 @@ func AdmitScalarFunction(c *wasm.Func, ft *wasm.CompType) ScalarSummary {
 	nLocals := len(ft.Params)
 	var zeros [2]bool
 	for _, run := range c.Locals.Runs {
+		if run.Count == 0 {
+			continue // Validated zero-count runs introduce no values or widths.
+		}
 		if !scalarInteger(run.Type) || run.Count > 256 || nLocals > 256-int(run.Count) {
 			return ScalarSummary{}
 		}
