@@ -20,6 +20,9 @@ const scalarMaxNodes = 16384
 // mixed register banks stay on the established function compiler.
 func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) ScalarSummary {
 	s := ScalarSummary{Nodes: len(localTypes) + 1}
+	// Preserve the pilot's admission budget independently of the tighter
+	// allocation bound. Reducing over-reservation must not expand the subset.
+	budget := s.Nodes
 	if len(code) == 0 || len(code) > 64<<10 || len(localTypes) > 256 || len(ft.Results) != 1 {
 		return s
 	}
@@ -50,18 +53,20 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 		if e != nil {
 			return s
 		}
-		s.Nodes++
-		if s.Nodes > scalarMaxNodes {
+		budget++
+		if budget > scalarMaxNodes {
 			return s
 		}
 		switch op {
 		case 0x01:
 		case 0x41:
+			s.Nodes++
 			if _, e = r.I32(); e != nil {
 				return s
 			}
 			stack++
 		case 0x42:
+			s.Nodes++
 			if _, e = r.I64(); e != nil {
 				return s
 			}
@@ -79,7 +84,7 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 		case 0x1a:
 			stack--
 		case 0x02, 0x04:
-			s.Nodes += len(localTypes) + 2*s.MaxStack
+			budget += len(localTypes) + 2*s.MaxStack
 			t, e := r.Byte()
 			if e != nil || depth == len(ctrl) {
 				return s
@@ -93,22 +98,27 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 			if op == 0x04 {
 				s.HasIf = true
 				stack--
+				s.Nodes += len(localTypes) + stack
 			}
 			ctrl[depth] = frame{base: stack, result: result, isIf: op == 0x04}
 			depth++
 		case 0x05:
-			s.Nodes += 2 * (len(localTypes) + s.MaxStack)
+			budget += 2 * (len(localTypes) + s.MaxStack)
 			f := &ctrl[depth-1]
 			if !f.isIf || f.hasElse || stack != f.base+f.result {
 				return s
 			}
+			s.Nodes += 2*len(localTypes) + stack + f.base
 			f.hasElse = true
 			stack = f.base
 		case 0x0b:
-			s.Nodes += len(localTypes) + s.MaxStack
+			budget += len(localTypes) + s.MaxStack
 			f := ctrl[depth-1]
 			if stack != f.base+f.result || f.isIf && f.result != 0 && !f.hasElse {
 				return s
+			}
+			if f.isIf {
+				s.Nodes += len(localTypes) + stack
 			}
 			depth--
 		case 0x0f:
@@ -120,6 +130,7 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 			if _, _, ok := ScalarOpcode(op); !ok {
 				return s
 			}
+			s.Nodes++
 			stack--
 		}
 		if stack < 0 || stack > 512 {
@@ -132,7 +143,7 @@ func AdmitScalar(code []byte, ft *wasm.CompType, localTypes []wasm.ValType) Scal
 	if r.Offset() != len(code) {
 		return s
 	}
-	if s.Nodes > scalarMaxNodes {
+	if budget > scalarMaxNodes {
 		return ScalarSummary{}
 	}
 	s.Eligible = true
@@ -590,6 +601,12 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 	}
 	s.nodes = s.nodes[:0]
 	s.add(scalarNode{})
+	if cap(s.stack) < summary.MaxStack {
+		s.stack = make([]scalarID, 0, summary.MaxStack)
+	}
+	if cap(s.locals) < len(localWide) {
+		s.locals = make([]scalarID, 0, len(localWide))
+	}
 	s.stack = s.stack[:0]
 	s.locals = s.locals[:0]
 	s.widths = append(s.widths[:0], localWide...)
