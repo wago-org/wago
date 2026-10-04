@@ -56,8 +56,10 @@ a physical call. They have no spill/reload protocol, so a call that destroys one
 is an error even if a call-presence hint says otherwise. Integer reservations use
 an independent encoder-write observer, so transfer-window observation cannot mask
 a write. Every reported write to a reserved GP register is rejected immediately;
-a later restore cannot repair it. Terminal trap stubs end the cache lifetime on
-that path and restore the body reservation when emission leaves the stub scope.
+a later restore cannot repair it. Terminal trap stubs and AMD64 normal-return
+epilogues end the cache lifetime on that path and restore the body reservation
+when emission leaves the terminal scope. Return results are already canonical
+before result marshaling may overwrite a body cache register.
 Function-attempt cleanup restores the enclosing observer on success and panic.
 AMD64 loop-scoped float caches retire their expectations at the loop's lexical
 end, when their registers stop being reserved. Outer cache expectations remain

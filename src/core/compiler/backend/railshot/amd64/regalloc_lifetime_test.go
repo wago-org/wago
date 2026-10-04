@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/amd64"
 	"testing"
 )
@@ -133,4 +134,13 @@ func TestRegallocImmutableGPReleaseAllowsWrites(t *testing.T) {
 	reg := f.iconsts[0].reg
 	f.checkReleaseImmutable(reg, false)
 	f.a.MovImm64(reg, 0)
+}
+
+func TestRegallocImmutableGPAllowsTerminalReturnAndRestoresBody(t *testing.T) {
+	f := cachedLifetimeFunction(t)
+	f.ft = &wasm.CompType{Results: []wasm.ValType{wasm.I64}}
+	f.a.MovImm64(RDI, 42)
+	f.checkImmutable(RDI, false, 8)
+	f.epilogue()
+	requireAllocationFailure(t, "immutable GP", func() { f.a.MovImm64(RDI, 0) })
 }
