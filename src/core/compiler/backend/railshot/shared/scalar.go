@@ -532,10 +532,25 @@ func (s *ScalarState) materialize(id scalarID, avoid uint64) uint8 {
 // edges still keep older local versions alive. This permits an incoming/result
 // register to be the expression accumulator without creating a second owner.
 func (s *ScalarState) returnValue(id scalarID) {
-	for i, local := range s.locals {
+	for i := 0; i < len(s.locals); {
+		local := s.locals[i]
+		end := i + 1
+		for end < len(s.locals) && s.locals[end] == local {
+			end++
+		}
+		// Declared-zero pools and local.tee commonly bind the same value to
+		// many consecutive locals. Remove those roots with one release, keeping
+		// the final release responsible for register/slot/deferred-edge cleanup.
+		n := s.node(local)
+		count := end - i
+		if scalarValueChecks && int(n.refs) < count {
+			panic("shared scalar: terminal local roots exceed references")
+		}
+		n.refs -= uint16(count - 1)
 		s.release(local)
-		s.locals[i] = 0
+		i = end
 	}
+	clear(s.locals)
 	reg := s.materialize(id, 0)
 	if n := s.node(id); !n.wide && n.constant == 1 {
 		// W-register arithmetic already zeroes upper bits. A direct incoming
