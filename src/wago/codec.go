@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	compiledSectionCode     = 1
-	compiledSectionMetadata = 2
-	compiledSectionCount    = 2
+	compiledSectionCode          = 1
+	compiledSectionMetadata      = 2
+	compiledSectionCount         = 2
+	compiledHeader               = compiledArchitecture<<4 | compiledSectionCount
+	_                       byte = 15 - compiledSectionCount
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
@@ -110,7 +112,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w := compiledWriter{buf: make([]byte, 0, len(c.code)+len(metadata)+32)}
 	w.buf = append(w.buf, wagoMagic...)
 	w.u8(wagoVersion)
-	w.u8(compiledSectionCount)
+	w.u8(compiledHeader)
 	w.section(compiledSectionCode, c.code)
 	w.section(compiledSectionMetadata, metadata)
 	return w.buf, nil
@@ -136,7 +138,7 @@ func writeCompiled(w io.Writer, c *Compiled) (int64, error) {
 		}
 		return nil
 	}
-	if err := write([]byte{wagoMagic[0], wagoMagic[1], wagoMagic[2], wagoMagic[3], wagoVersion, compiledSectionCount}); err != nil {
+	if err := write([]byte{wagoMagic[0], wagoMagic[1], wagoMagic[2], wagoMagic[3], wagoVersion, compiledHeader}); err != nil {
 		return written, err
 	}
 	var header [1 + binary.MaxVarintLen64]byte
@@ -211,8 +213,8 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	if header[4] != wagoVersion {
 		return decoded, nil, 0, fmt.Errorf("wago module version %d unsupported (want %d)", header[4], wagoVersion)
 	}
-	if header[5] != compiledSectionCount {
-		return decoded, nil, 0, fmt.Errorf("compiled section count %d unsupported (want %d)", header[5], compiledSectionCount)
+	if err = validateCompiledHeader(header[5]); err != nil {
+		return decoded, nil, 0, err
 	}
 	readSectionHeader := func(want byte, label string, limit int64) (int, error) {
 		var id [1]byte
@@ -885,12 +887,12 @@ func (w *compiledWriter) gcTypeDescs(v []gc.TypeDesc) {
 
 func unmarshalCompiled(c *Compiled, data []byte) error {
 	r := compiledReader{data: data}
-	count, err := r.u8()
+	header, err := r.u8()
 	if err != nil {
-		return wrapContextError("compiled section count", err)
+		return wrapContextError("compiled artifact target and section count", err)
 	}
-	if count != compiledSectionCount {
-		return fmt.Errorf("compiled section count %d unsupported (want %d)", count, compiledSectionCount)
+	if err := validateCompiledHeader(header); err != nil {
+		return err
 	}
 	code, err := r.requiredSection(compiledSectionCode, "code")
 	if err != nil {
@@ -905,6 +907,18 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	}
 	c.code = code
 	return unmarshalCompiledMetadata(c, metadata)
+}
+
+func validateCompiledHeader(header byte) error {
+	count := header & 0x0f
+	if count != compiledSectionCount {
+		return fmt.Errorf("compiled section count %d unsupported (want %d)", count, compiledSectionCount)
+	}
+	architecture := header >> 4
+	if architecture != compiledArchitecture {
+		return fmt.Errorf("compiled architecture %d unsupported (want %d)", architecture, compiledArchitecture)
+	}
+	return nil
 }
 
 func unmarshalCompiledMetadata(c *Compiled, data []byte) error {

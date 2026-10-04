@@ -3456,12 +3456,13 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 1 is the initial public compiled-artifact format. Version 5 rejects
-// v4 native images because their instructions embed the former EH tag-directory
-// basedata offset; loading one against the new runtime would read the wrong cell.
+// Version 1 is the initial public compiled-artifact format. Version 6 records
+// the native architecture in the header so foreign-ISA instructions are rejected
+// before allocating an executable image. Version 5 rejected v4 native images
+// after the EH tag-directory basedata offset moved.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 5
+const wagoVersion = 6
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 // Published modules serialize their frozen execution metadata; edits to the
