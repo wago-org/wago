@@ -43,8 +43,8 @@ var guardCallPinEnabled = os.Getenv("WAGO_AMD64_GUARD_CALL_PIN") != "0"
 // scratch contracts. Set WAGO_AMD64_SECOND_CALL_PIN=0 for comparison.
 var guardSecondCallPinEnabled = os.Getenv("WAGO_AMD64_SECOND_CALL_PIN") != "0"
 
-// R9 has fixed uses in bulk table lowering. Its local lease excludes bulk
-// memory, table mutation, and inlined callees with unpropagated scratch uses.
+// Keep the guarded R9 local lease conservative around bulk memory, table
+// mutation, and inlined callees with unpropagated scratch uses.
 var guardThirdCallPinEnabled = os.Getenv("WAGO_AMD64_THIRD_CALL_PIN") != "0"
 
 func thirdCallPinEligible(flags funcHintFlags, inlineCallees int) bool {
@@ -3594,8 +3594,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			// Ordinary calls spill local homes before staging fixed R10 uses;
 			// GC, EH, and custom lowering have separate scratch contracts.
 			gpPool = append(gpPool, R10)
-			// Inline callees do not propagate their table-mutation flag into
-			// the caller hints. Keep their fixed R9 scratch outside this lease.
+			// Inline callees do not propagate their scratch flags into the
+			// caller hints. Keep R9 outside this conservative lease.
 			if guardThirdCallPinEnabled && thirdCallPinEligible(hints.flags, len(inlinedCallees)) {
 				gpPool = append(gpPool, R9)
 			}
