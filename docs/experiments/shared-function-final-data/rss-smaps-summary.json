@@ -1,0 +1,197 @@
+[
+  {
+    "revision": "M",
+    "phase": "initial",
+    "metrics_kib": {
+      "Rss": 7736,
+      "Pss": 7728,
+      "Anonymous": 2640,
+      "AnonHugePages": 2048,
+      "Private_Dirty": 7728,
+      "Private_Clean": 0,
+      "Size": 1266992
+    }
+  },
+  {
+    "revision": "M",
+    "phase": "compile_release_270",
+    "metrics_kib": {
+      "Rss": 15652,
+      "Pss": 15644,
+      "Anonymous": 7996,
+      "AnonHugePages": 6144,
+      "Private_Dirty": 15644,
+      "Private_Clean": 0,
+      "Size": 1268088
+    }
+  },
+  {
+    "revision": "M",
+    "phase": "retained_0",
+    "metrics_kib": {
+      "Rss": 90324,
+      "Pss": 90316,
+      "Anonymous": 82348,
+      "AnonHugePages": 79872,
+      "Private_Dirty": 90316,
+      "Private_Clean": 0,
+      "Size": 1418412
+    }
+  },
+  {
+    "revision": "M",
+    "phase": "released_0",
+    "metrics_kib": {
+      "Rss": 15604,
+      "Pss": 15596,
+      "Anonymous": 7564,
+      "AnonHugePages": 2048,
+      "Private_Dirty": 15596,
+      "Private_Clean": 0,
+      "Size": 1272260
+    }
+  },
+  {
+    "revision": "M",
+    "phase": "runtime_released",
+    "metrics_kib": {
+      "Rss": 15280,
+      "Pss": 15272,
+      "Anonymous": 7240,
+      "AnonHugePages": 2048,
+      "Private_Dirty": 15272,
+      "Private_Clean": 0,
+      "Size": 1272260
+    }
+  },
+  {
+    "revision": "R",
+    "phase": "initial",
+    "metrics_kib": {
+      "Rss": 9964,
+      "Pss": 9956,
+      "Anonymous": 4692,
+      "AnonHugePages": 4096,
+      "Private_Dirty": 9956,
+      "Private_Clean": 0,
+      "Size": 1267040
+    }
+  },
+  {
+    "revision": "R",
+    "phase": "compile_release_270",
+    "metrics_kib": {
+      "Rss": 16328,
+      "Pss": 16320,
+      "Anonymous": 8688,
+      "AnonHugePages": 4096,
+      "Private_Dirty": 16320,
+      "Private_Clean": 0,
+      "Size": 1268136
+    }
+  },
+  {
+    "revision": "R",
+    "phase": "retained_0",
+    "metrics_kib": {
+      "Rss": 65396,
+      "Pss": 65388,
+      "Anonymous": 57308,
+      "AnonHugePages": 51200,
+      "Private_Dirty": 65388,
+      "Private_Clean": 0,
+      "Size": 1418444
+    }
+  },
+  {
+    "revision": "R",
+    "phase": "released_0",
+    "metrics_kib": {
+      "Rss": 17168,
+      "Pss": 17160,
+      "Anonymous": 9080,
+      "AnonHugePages": 2048,
+      "Private_Dirty": 17160,
+      "Private_Clean": 0,
+      "Size": 1272308
+    }
+  },
+  {
+    "revision": "R",
+    "phase": "runtime_released",
+    "metrics_kib": {
+      "Rss": 17560,
+      "Pss": 17552,
+      "Anonymous": 9472,
+      "AnonHugePages": 2048,
+      "Private_Dirty": 17552,
+      "Private_Clean": 0,
+      "Size": 1272308
+    }
+  },
+  {
+    "revision": "P",
+    "phase": "initial",
+    "metrics_kib": {
+      "Rss": 9908,
+      "Pss": 9900,
+      "Anonymous": 4696,
+      "AnonHugePages": 4096,
+      "Private_Dirty": 9900,
+      "Private_Clean": 0,
+      "Size": 1267044
+    }
+  },
+  {
+    "revision": "P",
+    "phase": "compile_release_270",
+    "metrics_kib": {
+      "Rss": 15832,
+      "Pss": 15824,
+      "Anonymous": 8124,
+      "AnonHugePages": 6144,
+      "Private_Dirty": 15824,
+      "Private_Clean": 0,
+      "Size": 1268140
+    }
+  },
+  {
+    "revision": "P",
+    "phase": "retained_0",
+    "metrics_kib": {
+      "Rss": 80280,
+      "Pss": 80272,
+      "Anonymous": 72188,
+      "AnonHugePages": 69632,
+      "Private_Dirty": 80272,
+      "Private_Clean": 0,
+      "Size": 1418448
+    }
+  },
+  {
+    "revision": "P",
+    "phase": "released_0",
+    "metrics_kib": {
+      "Rss": 16024,
+      "Pss": 16016,
+      "Anonymous": 7932,
+      "AnonHugePages": 2048,
+      "Private_Dirty": 16016,
+      "Private_Clean": 0,
+      "Size": 1272312
+    }
+  },
+  {
+    "revision": "P",
+    "phase": "runtime_released",
+    "metrics_kib": {
+      "Rss": 16412,
+      "Pss": 16404,
+      "Anonymous": 8256,
+      "AnonHugePages": 2048,
+      "Private_Dirty": 16404,
+      "Private_Clean": 0,
+      "Size": 1272312
+    }
+  }
+]

@@ -1,5 +1,7 @@
 # Shared function compilation experiment — initial result
 
+> Historical report: the current post-rebase results and recommendation are in [the final qualification](shared-function-final-qualification.md).
+
 > Accounting correction (PR #802 review): historical `mapped_bytes_page_accounting` values below count page-rounded code payload, not owned mapping capacity. The raw historical files are preserved. Corrected A/G/H measurements and remaining qualification are in [the review follow-up](shared-function-review-fixes.md). Actual retained A/G mapping capacity is 606,208 bytes; the historical 278,528 bytes understated it by 327,680 bytes. No corrected mapping capacity is asserted for unrerun intermediate revisions.
 
 **Recommendation: keep the shared helper extraction; revise the scalar pilot before proposing a merge.** The pilot proves that both targets can use one streaming semantic driver. It improves compilation in this fixed sample, but does not preserve execution speed or memory efficiency uniformly. The current experiment is retained as measured. No merge or remote publication was performed.

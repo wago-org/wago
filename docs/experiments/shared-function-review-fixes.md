@@ -1,5 +1,7 @@
 # Shared function compilation: PR #802 review fixes
 
+> Historical report: the current post-rebase results and recommendation are in [the final qualification](shared-function-final-qualification.md).
+
 **Keep the PR in draft.** This follow-up implements the confirmed correctness and measurement fixes and the three bounded mitigations from the external review. It retains the streaming shared/target boundary and unchanged admission subset. Parameter ingress, leaf-frame removal, broader ARM64 instruction selection, and a transition-level common checker remain separate design work; admission is not expanded here.
 
 ## Sources and reproducibility

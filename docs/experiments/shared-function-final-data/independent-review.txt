@@ -1,0 +1,73 @@
+Independent review of shared scalar live-node reuse
+Reviewer: contract_review agent
+Date: 2026-10-04
+Repository: /home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final
+Base reviewed HEAD: 5c46cccf00f3f2aa1a57a950445ad3d86621ba59
+Reviewed uncommitted scalar.go reuse diff and new scalar_reuse_test.go.
+Method: source inspection and git diff --check only; no builds/tests/profiles.
+
+Verdict: no concrete correctness defect found. Earlier focused-test coverage
+findings are resolved by the new tests. Execution success is reported by the
+parent; it was not independently run by this reviewer.
+
+Ownership and identity
+release only enqueues a value after its final reference. Deferred child IDs are
+copied before recursive release, and free-list linkage is written afterward.
+release cannot grow node backing, so its node pointer remains valid throughout
+that recursion. add only consumes a zero-reference free index, fully replaces
+the node, and assigns a fresh creation order. Node zero is never released.
+Live arena indices remain stable through spills/materialization. Expression
+lowering works with copied node descriptors and never releases its own live
+result root when releasing its children.
+
+Restore and local versions
+restore reads each old stack type before releasing its root. A future stack
+entry, retained old local read, deferred edge, or detached condition still
+contributes references, so its index cannot be recycled prematurely. Locals
+released earlier in restore are not subsequently consulted before overwrite.
+local.set/tee invalidates an old clean home before release/materialization;
+older live versions keep independent references. Shared initial zeros have
+home zero, with one reference per binding/read and separate integer widths.
+Control restore creates distinct borrowed IDs only after physical agreement.
+
+Effect/control contracts
+Admission and physical lowering are unchanged by reuse. The supported subset
+still excludes trapping/effectful bodies and arbitrary branches. Two-phase
+agreements capture old borrowed roots before local-home stores. Plain blocks
+remain fallthrough; conditional entry/exit and return preparation retain their
+previous ordering. No new native instruction or target-state owner is added.
+
+Bounds and allocation
+The unchanged admission budget bounds creation events by 16384; actual node
+creation accounting is no greater at any admission step. Deferred edges plus
+256 local bindings and 512 operand roots fit the stated reference envelope
+33536, below uint16. Sentinel order/free head reset with the fresh sentinel
+at every CompileScalar start. Spill comparison uses stored creation order,
+which survives materialization and eviction; recycled low indices therefore
+do not look artificially old. Initial capacity is at most 64 and growth is
+geometric. Replaced node backing is recorded in Discarded. Those payload
+counters are not RSS and do not describe simultaneous old/new backing during
+growth; fixed-work process measurements remain necessary.
+
+Test assessment
+- Shared-child cascade: the same child occupies both deferred edges; release
+  must enqueue parent/child once each, and add reuses them uniquely.
+- Spill age: the fixture deliberately reverses arena-index and age order and
+  asserts eviction of the older creation, guarding the new policy contract.
+- Large-then-small lifetime: 6000+ creation events retain bounded live storage,
+  reset order/free state across repeated compilation, and verify worker release
+  accounting. The helper checks that all and only zero-reference nodes appear
+  once in the free list and that register owners never point to dead values.
+These address the three previously requested coverage gaps. The mock target
+is appropriate for allocator-state tests; existing real-target executions are
+still required for guest semantic proof. No new blocker remains from this
+source review. Native ARM64 and OS mapping identity qualification remain
+separate limitations recorded in earlier reviews.
+
+Reviewed SHA-256
+shared/scalar.go:
+3fcfcce43564b317c59c150c6bc80b06471b4f800d899cabceb19de174e413ab
+shared/scalar_reuse_test.go:
+7f74e0c52d8da5f028e6c1a372f55db14f3be4e71416f25c3f202b7e2b3ae461
+shared/scalar_value_layout_test.go:
+5ebb3348964d20559984b484431de9fb8e223441edfd19b689c610b2a169b7ba

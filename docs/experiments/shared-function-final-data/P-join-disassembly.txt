@@ -1,0 +1,30 @@
+
+/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/P-join-dump/join.code:     file format binary
+
+
+Disassembly of section .data:
+
+0000000000000000 <.data>:
+   0:	48 89 f3             	mov    %rsi,%rbx
+   3:	51                   	push   %rcx
+   4:	48 8b 07             	mov    (%rdi),%rax
+   7:	e8 05 00 00 00       	call   0x11
+   c:	59                   	pop    %rcx
+   d:	48 89 01             	mov    %rax,(%rcx)
+  10:	c3                   	ret
+  11:	48 81 ec 18 00 00 00 	sub    $0x18,%rsp
+  18:	89 04 24             	mov    %eax,(%rsp)
+  1b:	8b 3c 24             	mov    (%rsp),%edi
+  1e:	be 00 00 00 00       	mov    $0x0,%esi
+  23:	89 74 24 04          	mov    %esi,0x4(%rsp)
+  27:	85 ff                	test   %edi,%edi
+  29:	0f 84 0e 00 00 00    	je     0x3d
+  2f:	bf 07 00 00 00       	mov    $0x7,%edi
+  34:	89 7c 24 04          	mov    %edi,0x4(%rsp)
+  38:	e9 09 00 00 00       	jmp    0x46
+  3d:	bf 09 00 00 00       	mov    $0x9,%edi
+  42:	89 7c 24 04          	mov    %edi,0x4(%rsp)
+  46:	03 7c 24 04          	add    0x4(%rsp),%edi
+  4a:	89 f8                	mov    %edi,%eax
+  4c:	48 81 c4 18 00 00 00 	add    $0x18,%rsp
+  53:	c3                   	ret

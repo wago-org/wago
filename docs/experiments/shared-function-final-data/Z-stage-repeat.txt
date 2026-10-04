@@ -1,0 +1,77 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   26358	      9535 ns/op	    7536 B/op	      20 allocs/op
+BenchmarkSharingNative/pressure      	   12157	     19601 ns/op	   12120 B/op	      23 allocs/op
+BenchmarkSharingNative/large         	    1724	    129608 ns/op	   72904 B/op	      18 allocs/op
+BenchmarkSharingNative/deep          	   22971	     10552 ns/op	    8496 B/op	      21 allocs/op
+BenchmarkSharingNative/locals        	   10000	     20487 ns/op	   14160 B/op	      22 allocs/op
+BenchmarkSharingNative/many          	     436	    532146 ns/op	   49888 B/op	      23 allocs/op
+BenchmarkSharingNative/large_then_small         	     360	    669871 ns/op	  119680 B/op	      24 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   25598	      9495 ns/op	    7536 B/op	      20 allocs/op
+BenchmarkSharingNative/pressure      	   12054	     20531 ns/op	   12120 B/op	      23 allocs/op
+BenchmarkSharingNative/large         	    1582	    130913 ns/op	   72904 B/op	      18 allocs/op
+BenchmarkSharingNative/deep          	   22610	     10365 ns/op	    8496 B/op	      21 allocs/op
+BenchmarkSharingNative/locals        	   10000	     20633 ns/op	   14160 B/op	      22 allocs/op
+BenchmarkSharingNative/many          	     463	    542444 ns/op	   49888 B/op	      23 allocs/op
+BenchmarkSharingNative/large_then_small         	     351	    700088 ns/op	  119680 B/op	      24 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   26227	      9378 ns/op	    7536 B/op	      20 allocs/op
+BenchmarkSharingNative/pressure      	   12166	     19608 ns/op	   12120 B/op	      23 allocs/op
+BenchmarkSharingNative/large         	    1722	    129652 ns/op	   72904 B/op	      18 allocs/op
+BenchmarkSharingNative/deep          	   23773	     10199 ns/op	    8496 B/op	      21 allocs/op
+BenchmarkSharingNative/locals        	   10000	     20163 ns/op	   14160 B/op	      22 allocs/op
+BenchmarkSharingNative/many          	     462	    549444 ns/op	   49888 B/op	      23 allocs/op
+BenchmarkSharingNative/large_then_small         	     355	    670173 ns/op	  119680 B/op	      24 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   26025	      9383 ns/op	    7536 B/op	      20 allocs/op
+BenchmarkSharingNative/pressure      	   10000	     20092 ns/op	   12120 B/op	      23 allocs/op
+BenchmarkSharingNative/large         	    1809	    126289 ns/op	   72904 B/op	      18 allocs/op
+BenchmarkSharingNative/deep          	   23092	     10237 ns/op	    8496 B/op	      21 allocs/op
+BenchmarkSharingNative/locals        	   10000	     20118 ns/op	   14160 B/op	      22 allocs/op
+BenchmarkSharingNative/many          	     428	    566475 ns/op	   49888 B/op	      23 allocs/op
+BenchmarkSharingNative/large_then_small         	     348	    712378 ns/op	  119680 B/op	      24 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   26294	      9405 ns/op	    7536 B/op	      20 allocs/op
+BenchmarkSharingNative/pressure      	   12298	     19223 ns/op	   12120 B/op	      23 allocs/op
+BenchmarkSharingNative/large         	    1795	    126519 ns/op	   72904 B/op	      18 allocs/op
+BenchmarkSharingNative/deep          	   23389	     10176 ns/op	    8496 B/op	      21 allocs/op
+BenchmarkSharingNative/locals        	   10000	     20752 ns/op	   14160 B/op	      22 allocs/op
+BenchmarkSharingNative/many          	     450	    578754 ns/op	   49888 B/op	      23 allocs/op
+BenchmarkSharingNative/large_then_small         	     354	    683672 ns/op	  119680 B/op	      24 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkSharingNative/small         	   27050	      9301 ns/op	    7536 B/op	      20 allocs/op
+BenchmarkSharingNative/pressure      	   12450	     18999 ns/op	   12120 B/op	      23 allocs/op
+BenchmarkSharingNative/large         	    1740	    126483 ns/op	   72904 B/op	      18 allocs/op
+BenchmarkSharingNative/deep          	   23546	     10334 ns/op	    8496 B/op	      21 allocs/op
+BenchmarkSharingNative/locals        	   10000	     20491 ns/op	   14160 B/op	      22 allocs/op
+BenchmarkSharingNative/many          	     466	    533470 ns/op	   49888 B/op	      23 allocs/op
+BenchmarkSharingNative/large_then_small         	     348	    677309 ns/op	  119680 B/op	      24 allocs/op
+PASS

@@ -1,0 +1,113 @@
+{
+  "M": {
+    "source": "0ef007c70581bf56155a4daf6fce8bda3f2c5ff1",
+    "harness": {
+      "bench/suite/sharing_diagnostic_arm64_test.go": "5910db2adad450de5207ba31d246a8ea8bd3b007406e9a2235e1ee46f44d635e",
+      "bench/suite/sharing_gc_observation_linux_test.go": "1a64993833a983bf33fba00c230b48c4da81601d934d9f1831c71f4438036405",
+      "bench/suite/sharing_admission_test.go": "ddd91755e79a9ca8619d4a1a697a9f5444a2d023f702f400cecd94eb00b1e6fe",
+      "bench/suite/sharing_zero_locals_test.go": "b86abdd4df03ce0838a06bb6ba38b6faaca0d75af569079e34238d45aed16dc8",
+      "bench/suite/sharing_experiment_test.go": "4f0d885466780610871ec4a1198cb327cea90257ee7631593cf347f26648a95d",
+      "bench/suite/sharing_memory_linux_test.go": "292f4dfb23f9824c9cb2c3281f977fc52688de18098806edde00af4abef6d007",
+      "bench/suite/sharing_diagnostic_amd64_test.go": "db765235fb42541ec6f5269998c6e7a5c0b33048e57d115381abaf374cbeb760"
+    },
+    "suite": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/M-suite.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "330a0a37075366212567a15ff5b8e8f526f49558c1334866d4c0fe6512f420b5"
+    },
+    "diagnostic": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-tags=wago_codegenstats",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/M-diagnostic.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "29e8357f4080297a3e3fd05b427b723316adb820980bbc852285e70d9aed9fa0"
+    }
+  },
+  "R": {
+    "source": "8849505d1ba7b59b14de16302f077f32516d896f",
+    "harness": {
+      "bench/suite/sharing_diagnostic_arm64_test.go": "5910db2adad450de5207ba31d246a8ea8bd3b007406e9a2235e1ee46f44d635e",
+      "bench/suite/sharing_gc_observation_linux_test.go": "1a64993833a983bf33fba00c230b48c4da81601d934d9f1831c71f4438036405",
+      "bench/suite/sharing_admission_test.go": "ddd91755e79a9ca8619d4a1a697a9f5444a2d023f702f400cecd94eb00b1e6fe",
+      "bench/suite/sharing_zero_locals_test.go": "b86abdd4df03ce0838a06bb6ba38b6faaca0d75af569079e34238d45aed16dc8",
+      "bench/suite/sharing_experiment_test.go": "4f0d885466780610871ec4a1198cb327cea90257ee7631593cf347f26648a95d",
+      "bench/suite/sharing_memory_linux_test.go": "292f4dfb23f9824c9cb2c3281f977fc52688de18098806edde00af4abef6d007",
+      "bench/suite/sharing_diagnostic_amd64_test.go": "db765235fb42541ec6f5269998c6e7a5c0b33048e57d115381abaf374cbeb760"
+    },
+    "suite": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/R-suite.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "56fb93794a4399130a46275cf9b1bf734c1529584542facb1580f70340948795"
+    },
+    "diagnostic": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-tags=wago_codegenstats",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/R-diagnostic.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "247cf1c08db392073c1ce23537cb232995ef788817cf5a1f3e4e514382e0ba9a"
+    }
+  },
+  "Z": {
+    "source": "d6e0ff12f056166eae2f426b6653f38f5fd843e5",
+    "harness": {
+      "bench/suite/sharing_diagnostic_arm64_test.go": "5910db2adad450de5207ba31d246a8ea8bd3b007406e9a2235e1ee46f44d635e",
+      "bench/suite/sharing_gc_observation_linux_test.go": "1a64993833a983bf33fba00c230b48c4da81601d934d9f1831c71f4438036405",
+      "bench/suite/sharing_admission_test.go": "ddd91755e79a9ca8619d4a1a697a9f5444a2d023f702f400cecd94eb00b1e6fe",
+      "bench/suite/sharing_zero_locals_test.go": "b86abdd4df03ce0838a06bb6ba38b6faaca0d75af569079e34238d45aed16dc8",
+      "bench/suite/sharing_experiment_test.go": "4f0d885466780610871ec4a1198cb327cea90257ee7631593cf347f26648a95d",
+      "bench/suite/sharing_memory_linux_test.go": "292f4dfb23f9824c9cb2c3281f977fc52688de18098806edde00af4abef6d007",
+      "bench/suite/sharing_diagnostic_amd64_test.go": "db765235fb42541ec6f5269998c6e7a5c0b33048e57d115381abaf374cbeb760"
+    },
+    "suite": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/Z-suite.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "95bd97fcca493f9ab0065ef022597c475cef1072a72f52613a7def810bddb9fc"
+    },
+    "diagnostic": {
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-tags=wago_codegenstats",
+        "-o",
+        "/home/jtenner/.codex/worktrees/1791067335-346105/wago/.worktrees/pr802-final/../pr802-final-evidence/Z-diagnostic.test",
+        "./bench/suite"
+      ],
+      "exit": 0,
+      "sha256": "9b2913f6d4af0a9dbd7e24420efae8e9665beddaf8b9bf051668322c0547478a"
+    }
+  }
+}
