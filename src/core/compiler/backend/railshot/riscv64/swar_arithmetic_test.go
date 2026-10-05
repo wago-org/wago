@@ -33,8 +33,8 @@ func TestSWARWrappingArithmeticAdmission(t *testing.T) {
 			}
 		}
 	}
-	// Narrowing and fixed-point multiplication remain pending.
-	for _, kind := range []uint32{101, 102, 130, 133, 134} {
+	// Narrowing and widening multiply families remain pending.
+	for _, kind := range []uint32{101, 102, 133, 134, 156} {
 		fn, ft := swarValidatedFunction(t, swarArithmeticFixture(kind))
 		if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
 			t.Fatal("pending arithmetic emitted", kind, err)

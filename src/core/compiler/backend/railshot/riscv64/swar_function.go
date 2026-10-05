@@ -274,7 +274,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				return swarSummary{}, err
 			}
 			bound := 512
-			if kind == 0 || kind == 11 {
+			if kind == 0 || kind == 11 || kind == 130 || kind == 186 {
 				bound = 1024
 			} else if kind == 13 {
 				bound = 768
@@ -293,6 +293,30 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
+			}
+			if kind == 98 {
+				if h == 0 || stackClasses[h-1] != swarV128 {
+					return swarSummary{}, unsupported("SWAR popcount carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-1), swarPair{enc.X6, enc.X7})
+					emit.swarPopcnt()
+					emit.swarStore(spill(h-1), swarPair{enc.X6, enc.X7})
+				}
+				continue
+			}
+			if kind == 130 || kind == 186 {
+				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+					return swarSummary{}, unsupported("SWAR special multiply carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-2), left)
+					emit.swarLoad(spill(h-1), right)
+					emit.swarSpecialMultiply(kind)
+					emit.swarStore(spill(h-2), left)
+				}
+				h--
+				continue
 			}
 			if width, operation, ok := swarSaturationOpcode(kind); ok {
 				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {

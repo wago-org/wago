@@ -87,7 +87,7 @@ func TestSWARWholeFunctionMemoryAdmissionAndResources(t *testing.T) {
 		{0x20, 0, 0xfd, 0, 0, 0x80},                               // continued offset truncated at EOF
 		{0x20, 0, 0xfd, 0, 0, 0},                                  // complete memarg, missing function end
 		{0x20, 0, 0xfd, 1, 0, 0, 0x0b},                            // widening load not lowered
-		{0x20, 0, 0xfd, 0, 0, 0, 0xfd, 98, 0x0b},                  // unsupported op after load
+		{0x20, 0, 0xfd, 0, 0, 0, 0xfd, 227, 1, 0x0b},              // unsupported op after load
 	} {
 		bad := *fn
 		bad.BodyBytes = body
