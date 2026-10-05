@@ -281,6 +281,8 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			_, memoryOp := swarMemoryOpcode(kind)
 			if memoryOp || kind == 130 || kind == 186 {
 				bound = 1024
+			} else if _, ok := swarFloatConversionOpcode(kind); ok {
+				bound = 1024
 			} else if _, _, ok := swarFloatRoundOpcode(kind); ok {
 				bound = 1024
 			} else if _, _, _, ok := swarFloatMinMaxOpcode(kind); ok {
@@ -304,6 +306,18 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
+			}
+			if _, ok := swarFloatConversionOpcode(kind); ok {
+				usesFP = true
+				if h < 1 || stackClasses[h-1] != swarV128 {
+					return swarSummary{}, unsupported("SWAR floating conversion carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-1), left)
+					emit.swarFloatConvert(kind)
+					emit.swarStore(spill(h-1), left)
+				}
+				continue
 			}
 			if width, mode, ok := swarFloatRoundOpcode(kind); ok {
 				usesFP = true
