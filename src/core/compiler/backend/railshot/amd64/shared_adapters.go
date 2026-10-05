@@ -102,7 +102,7 @@ func shareAdaptersAMD64(code []byte, entry, internalEntry []int, relocs [][]call
 
 func planSharedAdaptersAMD64(code []byte, entry []int, infos []sharedAdapterInfo) ([]sharedAdapterGroup, []sharedAdapterInfo, int) {
 	groups := make([]sharedAdapterGroup, 0, 16)
-	byKey := make(map[sharedAdapterKey][]int, 16)
+	byKey := make(map[sharedAdapterKey]int, 16)
 	for infoIndex := range infos {
 		info := &infos[infoIndex]
 		info.group = ^uint32(0)
@@ -118,7 +118,9 @@ func planSharedAdaptersAMD64(code []byte, entry []int, infos []sharedAdapterInfo
 		adapter := code[start:end]
 		key := sharedAdapterKey{hash: shared.AdapterShapeHash(adapter, dispOff, 4), length: len(adapter), dispOff: dispOff}
 		group := -1
-		for _, candidate := range byKey[key] {
+		// sharedOff temporarily links hash collisions; admission overwrites it.
+		for link := byKey[key]; link != 0; link = groups[link-1].sharedOff {
+			candidate := link - 1
 			g := &groups[candidate]
 			if equalSharedAdapterAMD64(adapter, code[g.templateOff:g.templateOff+g.length], dispOff) {
 				group = candidate
@@ -127,17 +129,17 @@ func planSharedAdaptersAMD64(code []byte, entry []int, infos []sharedAdapterInfo
 		}
 		if group < 0 {
 			group = len(groups)
-			groups = append(groups, sharedAdapterGroup{templateOff: start, length: len(adapter), dispOff: dispOff})
-			byKey[key] = append(byKey[key], group)
+			groups = append(groups, sharedAdapterGroup{templateOff: start, length: len(adapter), dispOff: dispOff, sharedOff: byKey[key]})
+			byKey[key] = group + 1
 		}
 		groups[group].count++
 		info.group = uint32(group)
 	}
 
 	sharedBytes := 0
-	admitted := make([]bool, len(groups))
 	for i := range groups {
 		g := &groups[i]
+		g.sharedOff = -1
 		legacyLength := g.length - sharedAdapterCallShrinkAMD64
 		if g.count*g.length <= g.count*legacySharedAdapterThunkBytesAMD64+legacyLength {
 			continue
@@ -146,7 +148,6 @@ func planSharedAdaptersAMD64(code []byte, entry []int, infos []sharedAdapterInfo
 		// thunks are the first exact crossover against the legacy LEA/JMP form.
 		g.stackDelta = stackDeltaAdapterThunkEnabled && g.count >= 6
 		sharedLength := g.sharedLength()
-		admitted[i] = true
 		g.sharedOff = sharedBytes
 		sharedBytes += sharedLength
 	}
@@ -155,7 +156,7 @@ func planSharedAdaptersAMD64(code []byte, entry []int, infos []sharedAdapterInfo
 	}
 	admittedInfos := infos[:0]
 	for _, info := range infos {
-		if int(info.group) < len(admitted) && admitted[info.group] {
+		if int(info.group) < len(groups) && groups[info.group].sharedOff >= 0 {
 			admittedInfos = append(admittedInfos, info)
 		}
 	}
