@@ -1734,7 +1734,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.Profile && opts.Stats == nil {
 		return nil, fmt.Errorf("amd64: profiling requires a ModuleStats destination")
 	}
-	compiled, err := compileSourceModuleWith(m, opts)
+	var compiled *amd64.CompiledModule
+	var err error
+	if codegen.SourceChecks {
+		compiled, err = compileSourceModuleWith(m, opts)
+	} else {
+		compiled, err = compileModuleWith(m, opts)
+	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
 	return compiled, err
