@@ -153,7 +153,7 @@ func LoadFile(path string) (Config, error) {
 
 func Save(config Config) error { return SaveFile(Path(), config) }
 
-var replaceSettingsFile = atomicfile.ReplaceFile
+var replaceSettingsFile = atomicfile.ReplaceFileWithMode
 
 func SaveFile(path string, config Config) error {
 	lock, err := filelock.Acquire(context.Background(), path+".lock")

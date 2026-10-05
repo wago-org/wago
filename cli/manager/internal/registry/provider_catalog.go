@@ -53,7 +53,7 @@ func generateProviderCatalog(ctx context.Context, request CatalogRequest) error 
 		fmt.Printf("%s %s is current (%d provider%s)\n", cyan("✓"), catalog.path, len(catalog.providers), pluralRegistry(len(catalog.providers)))
 		return nil
 	}
-	if err := atomicfile.ReplaceFile(catalog.path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+	if err := atomicfile.ReplaceFileWithMode(catalog.path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 		_, err := writer.Write(catalog.generated)
 		return err
 	}); err != nil {

@@ -74,17 +74,65 @@ func newError(message string) error {
 // ReplaceFile writes a unique restrictive temporary file in the destination
 // directory, finalizes it, and atomically replaces destination. Existing
 // directories, symlinks, and non-regular files are rejected.
-func ReplaceFile(destination string, options Options, write func(io.Writer) error) (resultErr error) {
-	if write == nil {
-		return newError("atomic file writer is nil")
-	}
-	if err := validateDestination(destination); err != nil {
+func ReplaceFile(destination string, options Options, write func(io.Writer) error) error {
+	if err := validateReplacement(destination, write); err != nil {
 		return err
 	}
-	file, finalizeOptions, reservation, err := createReplacementTemp(destination, options)
+	file, finalizeOptions, reservation, err := createReservedReplacementTemp(destination, options)
 	if err != nil {
 		return err
 	}
+	return replaceFile(destination, options, write, file, finalizeOptions, reservation)
+}
+
+// ReplaceFileWithMode publishes an ordinary file using the supplied final mode
+// (0600 when omitted). It shares ReplaceFile's validation and commit sequence,
+// but rejects ApplyUmask and RetainReplaceHandle. Callers needing those build
+// staging policies must use ReplaceFile.
+func ReplaceFileWithMode(destination string, options Options, write func(io.Writer) error) error {
+	if options.ApplyUmask || options.RetainReplaceHandle {
+		return newError("atomic file staging policies require ReplaceFile")
+	}
+	if err := validateReplacement(destination, write); err != nil {
+		return err
+	}
+	file, err := createTempWithParentPolicy(destination, options.RequireExistingParent)
+	if err != nil {
+		return err
+	}
+	return replaceFile(destination, options, write, file, options, replacementReservation{})
+}
+
+// Keep platform policy behind construction so ordinary publication does not link
+// build-only staging machinery. Method expressions avoid closures and interface
+// boxing of the retained handle, including Windows' integer handle.
+type replacementReservation struct {
+	handle  retainedReplaceHandle
+	remove  func(retainedReplaceHandle) error
+	close   func(retainedReplaceHandle) error
+	replace func(retainedReplaceHandle, string) error
+}
+
+func createReservedReplacementTemp(destination string, options Options) (*os.File, Options, replacementReservation, error) {
+	file, options, handle, err := createReplacementTemp(destination, options)
+	reservation := replacementReservation{}
+	if handle.valid() {
+		reservation = replacementReservation{
+			handle: handle, remove: retainedReplaceHandle.remove,
+			close: retainedReplaceHandle.close, replace: retainedReplaceHandle.replace,
+		}
+	}
+	return file, options, reservation, err
+}
+
+func validateReplacement(destination string, write func(io.Writer) error) error {
+	if write == nil {
+		return newError("atomic file writer is nil")
+	}
+	return validateDestination(destination)
+}
+
+func replaceFile(destination string, options Options, write func(io.Writer) error, file *os.File, finalizeOptions Options, reservation replacementReservation) (resultErr error) {
 	temporary := file.Name()
 	closed := false
 	committed := false
@@ -94,13 +142,16 @@ func ReplaceFile(destination string, options Options, write func(io.Writer) erro
 			closeFileErr = file.Close()
 		}
 		if !committed {
-			if reservation.valid() {
-				cleanupErr = reservation.remove()
+			if reservation.remove != nil {
+				cleanupErr = reservation.remove(reservation.handle)
 			} else {
 				cleanupErr = os.Remove(temporary)
 			}
 		}
-		closeReservationErr := reservation.close()
+		var closeReservationErr error
+		if reservation.close != nil {
+			closeReservationErr = reservation.close(reservation.handle)
+		}
 		if closeFileErr != nil {
 			resultErr = joinErrors(resultErr, formatErrorE("close temporary file during cleanup: %w", closeFileErr))
 		}
@@ -190,7 +241,7 @@ func CommitTempFile(temporary, destination string, options Options) error {
 	if err := validateBeforeReplace(options, destination); err != nil {
 		return err
 	}
-	if err := replace(options, retainedReplaceHandle{}, temporary, destination); err != nil {
+	if err := replace(options, replacementReservation{}, temporary, destination); err != nil {
 		return formatErrorSE("replace %s: %w", destination, err)
 	}
 	committed = true
@@ -294,12 +345,12 @@ func validateBeforeReplace(options Options, destination string) error {
 	return nil
 }
 
-func replace(options Options, reservation retainedReplaceHandle, source, destination string) error {
+func replace(options Options, reservation replacementReservation, source, destination string) error {
 	if options.Hooks != nil && options.Hooks.Replace != nil {
 		return options.Hooks.Replace(source, destination)
 	}
-	if reservation.valid() {
-		return reservation.replace(destination)
+	if reservation.replace != nil {
+		return reservation.replace(reservation.handle, destination)
 	}
 	return replaceExisting(source, destination)
 }

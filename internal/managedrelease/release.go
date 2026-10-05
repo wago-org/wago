@@ -92,7 +92,7 @@ func Prepare(launcher, version string, write func(binary, source string) error, 
 		return nil, err
 	}
 	// The receipt binds source discovery to the immutable executable location.
-	if err := atomicfile.ReplaceFile(filepath.Join(directory, "release.json"), atomicfile.Options{Mode: 0644, Sync: true}, func(w io.Writer) error {
+	if err := atomicfile.ReplaceFileWithMode(filepath.Join(directory, "release.json"), atomicfile.Options{Mode: 0644, Sync: true}, func(w io.Writer) error {
 		return json.NewEncoder(w).Encode(struct {
 			Version string `json:"version"`
 		}{version})
@@ -160,7 +160,7 @@ func Publish(r *Release, bootstrap func() (func() error, error), hooks *atomicfi
 		record.Previous = old.Previous
 	}
 	path := filepath.Join(r.Root, pointerFile)
-	if err := atomicfile.ReplaceFile(path, atomicfile.Options{Mode: 0644, Sync: true, Hooks: hooks}, func(w io.Writer) error { return json.NewEncoder(w).Encode(record) }); err != nil {
+	if err := atomicfile.ReplaceFileWithMode(path, atomicfile.Options{Mode: 0644, Sync: true, Hooks: hooks}, func(w io.Writer) error { return json.NewEncoder(w).Encode(record) }); err != nil {
 		return err
 	}
 	var undoBootstrap func() error
@@ -169,7 +169,7 @@ func Publish(r *Release, bootstrap func() (func() error, error), hooks *atomicfi
 		if oldData == nil {
 			rollback = os.Remove(path)
 		} else {
-			rollback = atomicfile.ReplaceFile(path, atomicfile.Options{Mode: 0644, Sync: true}, func(w io.Writer) error { _, e := w.Write(oldData); return e })
+			rollback = atomicfile.ReplaceFileWithMode(path, atomicfile.Options{Mode: 0644, Sync: true}, func(w io.Writer) error { _, e := w.Write(oldData); return e })
 		}
 		if rollback != nil {
 			cause = errors.Join(cause, fmt.Errorf("restore release pointer (staged pair retained at %s): %w", r.Directory, rollback))
@@ -190,7 +190,7 @@ func Publish(r *Release, bootstrap func() (func() error, error), hooks *atomicfi
 	if err := syncDirectory(r.Root); err != nil {
 		return rollbackSelection(err)
 	}
-	if err := atomicfile.ReplaceFile(filepath.Join(r.Directory, publishedFile), atomicfile.Options{Mode: 0644, Sync: true}, func(w io.Writer) error { return nil }); err != nil {
+	if err := atomicfile.ReplaceFileWithMode(filepath.Join(r.Directory, publishedFile), atomicfile.Options{Mode: 0644, Sync: true}, func(w io.Writer) error { return nil }); err != nil {
 		return rollbackSelection(err)
 	}
 	if err := syncDirectory(r.Directory); err != nil {
@@ -308,7 +308,7 @@ func copyFileMode(source, destination string, mode fs.FileMode) error {
 		return err
 	}
 	defer input.Close()
-	return atomicfile.ReplaceFile(destination, atomicfile.Options{Mode: mode, Sync: true}, func(w io.Writer) error { _, err := io.Copy(w, input); return err })
+	return atomicfile.ReplaceFileWithMode(destination, atomicfile.Options{Mode: mode, Sync: true}, func(w io.Writer) error { _, err := io.Copy(w, input); return err })
 }
 
 func syncTree(root string) error {

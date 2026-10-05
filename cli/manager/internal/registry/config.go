@@ -248,7 +248,7 @@ func writeCredentials(creds map[string]credential) error {
 }
 
 var (
-	replaceCredentialFile = atomicfile.ReplaceFile
+	replaceCredentialFile = atomicfile.ReplaceFileWithMode
 	credentialAtomicHooks *atomicfile.Hooks
 )
 
