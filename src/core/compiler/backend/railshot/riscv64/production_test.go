@@ -67,9 +67,9 @@ func TestProductionEnvelopeOwnershipAndConservativeEntries(t *testing.T) {
 	}
 }
 
-func TestProductionEnvelopeRejectsStateBeforeImage(t *testing.T) {
+func TestProductionEnvelopeRejectsUnsupportedBeforeImage(t *testing.T) {
 	base := binaryModule(fixtureFunc{result: 0x7f, body: []byte{0x41, 42, 0x0b}})
-	for _, id := range []byte{2, 4, 5, 6, 9, 11, 12, 13} {
+	for _, id := range []byte{2, 4, 9, 13} {
 		before := byte(7)
 		if id == 2 {
 			before = 3
@@ -101,7 +101,35 @@ func TestProductionEnvelopeRejectsStateBeforeImage(t *testing.T) {
 	if err := image.CodeImage.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CompileProduction(modifySection(base, 7, 5, []byte{0}, false), ProductionOptions{}); !errors.Is(err, ErrUnsupported) {
+	if _, err := CompileProduction(modifySection(base, 7, 4, []byte{0}, false), ProductionOptions{}); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("unsupported section did not fail closed", err)
+	}
+}
+
+func TestProductionStateAdmissionMemory32AndFailClosed(t *testing.T) {
+	fs := []fixtureFunc{memoryFixture(0x2d, 0), growFixture()}
+	data := stateModule(fs, false, 65536, 65536, true, nil, nil)
+	image, err := CompileProduction(data, ProductionOptions{DeferCodeMapping: true})
+	if err != nil {
+		t.Fatal("production full memory32 limit rejected", err)
+	}
+	if err := image.CodeImage.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Compile(data); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("experimental runtime limit was silently widened", err)
+	}
+	base := stateModule(fs, false, 0, 1, true, nil, nil)
+	for _, data := range [][]byte{
+		stateModule(fs, true, 0, 1, true, nil, nil),
+		modifySection(base, 5, 5, []byte{1, 3, 0, 1}, true),          // shared
+		modifySection(base, 5, 5, []byte{1, 5, 0, 1}, true),          // memory64
+		modifySection(base, 5, 5, []byte{2, 1, 0, 1, 1, 0, 1}, true), // multiple
+		modifySection(binaryModule(fixtureFunc{body: []byte{0x0b}}), 10, 8, []byte{0}, false),
+	} {
+		image, err := CompileProduction(data, ProductionOptions{})
+		if image != nil || err == nil {
+			t.Fatal("unsupported state acquired an image", image, err)
+		}
 	}
 }

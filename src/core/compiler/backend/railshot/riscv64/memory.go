@@ -64,6 +64,10 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	return v, nil
 }
 func admitState(m *wasm.Module) (moduleState, error) {
+	return admitStateMode(m, false)
+}
+
+func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	s := moduleState{memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	var mt *wasm.MemType
 	if len(m.Imports) > 1 || len(m.Memories) > 1 || len(m.Imports)+len(m.Memories) > 1 {
@@ -82,7 +86,11 @@ func admitState(m *wasm.Module) (moduleState, error) {
 		s.memory = &memorySpec{}
 	}
 	if mt != nil {
-		if mt.Shared || mt.Limits.Addr64 || mt.Limits.Min > native.MaxMemoryPages {
+		maxPages := uint64(native.MaxMemoryPages)
+		if production {
+			maxPages = 65536
+		}
+		if mt.Shared || mt.Limits.Addr64 || mt.Limits.Min > maxPages {
 			return s, unsupported("shared/memory64/initial memory bound")
 		}
 		s.memory.min = uint32(mt.Limits.Min)
@@ -278,6 +286,10 @@ func (f *integerEmitter) contextAddress(offset int32) (enc.Reg, int32) {
 	return enc.Scratch1, 0
 }
 func (f *integerEmitter) global(index uint32, wide, store bool) {
+	if f.mode.production {
+		f.productionGlobal(index, wide, store)
+		return
+	}
 	base, off := f.contextAddress(int32(8 + index*8))
 	if store {
 		if wide {
@@ -299,13 +311,21 @@ func (f *integerEmitter) global(index uint32, wide, store bool) {
 func (f *integerEmitter) memoryAccess(offset uint64, size int, wide, signed, store bool) {
 	f.a.Constant64(enc.X7, int64(offset))
 	f.a.Add(enc.X5, enc.X5, enc.X7)
-	f.a.Ld(enc.X28, enc.X24, 0)
-	f.a.Ld(enc.X29, enc.X28, 8)
+	if f.mode.production {
+		f.productionMemorySize(enc.X29)
+	} else {
+		f.a.Ld(enc.X28, enc.X24, 0)
+		f.a.Ld(enc.X29, enc.X28, 8)
+	}
 	f.a.Addi(enc.X7, enc.Zero, int32(size))
 	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X7))
 	f.a.Sub(enc.X29, enc.X29, enc.X7)
 	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X5))
-	f.a.Ld(enc.X28, enc.X28, 0)
+	if f.mode.production {
+		f.a.Addi(enc.X28, enc.X25, 0)
+	} else {
+		f.a.Ld(enc.X28, enc.X28, 0)
+	}
 	f.a.Add(enc.X5, enc.X28, enc.X5)
 	if store {
 		for j := 0; j < size; j++ {
@@ -335,6 +355,10 @@ func (f *integerEmitter) memoryAccess(offset uint64, size int, wide, signed, sto
 	}
 }
 func (f *integerEmitter) memorySizeGrow(grow bool) {
+	if f.mode.production {
+		f.productionMemorySizeGrow(grow)
+		return
+	}
 	f.a.Ld(enc.X28, enc.X24, 0)
 	f.a.Ld(enc.X6, enc.X28, 8)
 	f.a.Srli(enc.X6, enc.X6, 16)

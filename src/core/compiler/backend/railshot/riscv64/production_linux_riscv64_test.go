@@ -17,6 +17,8 @@ type productionCallFixture struct {
 	args, trap, results []byte
 	base                uintptr
 	entries             []int
+	globalCells         [][]byte
+	passiveDescriptors  []byte
 }
 
 func productionCalls(t *testing.T, data []byte, force bool) *productionCallFixture {
@@ -67,15 +69,7 @@ func productionCallsWithOptions(t *testing.T, data []byte, opts ProductionOption
 			t.Error(err)
 		}
 	})
-	j, err := coreruntime.NewJobMemory(0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := j.Close(); err != nil {
-			t.Error(err)
-		}
-	})
+	j, cells, descriptors := productionStateFixture(t, data)
 	j.SetStackFence(e.StackLimit())
 	arena, err := coreruntime.NewArena(8192)
 	if err != nil {
@@ -86,7 +80,7 @@ func productionCallsWithOptions(t *testing.T, data []byte, opts ProductionOption
 			t.Error(err)
 		}
 	})
-	return &productionCallFixture{engine: e, memory: j, args: arena.Alloc(256 * 8), trap: arena.Alloc(coreruntime.TrapBufferBytes), results: arena.Alloc(256 * 8), base: base, entries: m.Entry}
+	return &productionCallFixture{engine: e, memory: j, args: arena.Alloc(256 * 8), trap: arena.Alloc(coreruntime.TrapBufferBytes), results: arena.Alloc(256 * 8), base: base, entries: m.Entry, globalCells: cells, passiveDescriptors: descriptors}
 }
 
 // This fixture stages Go-owned carriers through the real production boundary.

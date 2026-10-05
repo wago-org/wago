@@ -18,9 +18,9 @@ import (
 // ACTIVE_STACK_OVERFLOW_CHECK=1, BUILTIN_FUNCTIONS=0, no stacktrace,
 // STACKSIZE_LEFT_BEFORE_NATIVE_CALL=0).
 const (
-	offLinMemWasmSize         = 4                                // u32 (pages)
-	offActualLinMemByteSize   = 8                                // legacy u32 byte-size cache
-	offMaxLinMemPages         = 12                               // u32 (pages); grow ceiling
+	offLinMemWasmSize         = abi.LinMemCurrentPagesOffset     // u32 (pages)
+	offActualLinMemByteSize   = abi.LinMemLegacyBytesOffset      // legacy u32 byte-size cache
+	offMaxLinMemPages         = abi.LinMemMaxPagesOffset         // u32 (pages); grow ceiling
 	offActualLinMemByteSize64 = abi.ActualLinMemByteSize64Offset // authoritative u64 bytes
 	offTrapHandlerPtr         = 16                               // u64
 	offTrapStackReentry       = 24                               // u64

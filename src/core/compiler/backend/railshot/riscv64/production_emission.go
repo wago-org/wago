@@ -8,8 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// The first production envelope admits only integer functions/exports and
-// inert metadata. State-bearing sections require production descriptor lowering.
+// Admission follows the production lowerings implemented below. Imports,
+// starts, tables and noninteger features still fail before image creation.
 func admitProductionWire(data []byte) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
@@ -22,7 +22,7 @@ func admitProductionWire(data []byte) error {
 			return err
 		}
 		switch id {
-		case 0, 1, 3, 7, 10:
+		case 0, 1, 3, 5, 6, 7, 10, 11, 12:
 		default:
 			return unsupported("production state/feature lowering is pending")
 		}

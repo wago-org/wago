@@ -10,8 +10,8 @@ production parity. No remote publication is authorized.
 | --- | --- | --- |
 | Integer/control | RV64 integer arithmetic/comparisons, structured/indexed control, zero/multiple results, stateless production compiler envelope | Public backend binding and configured limits |
 | Calls | Defined same-instance direct/recursive integer calls, mixed/wide result vectors, production wrapper slots and cold traps | Stateful context transfer, imports, indirect/cross-instance calls, tail calls, call_ref |
-| Production runtime | Linux/RV64 Engine/JobMemory bridge, central W^X/process-wide cache synchronization, framed normal/cold return, shared publication/cleanup ownership, stateless compiler integration | Stateful compiler integration, host/guard/signal paths |
-| Memory/globals/bulk | One bounded wasm32 memory, integer flat globals, active/passive data and bulk operations | JobMemory/basedata directories, full memory32 size, aliased imported global cells, extended initializers/start, multiple/shared/memory64 memories |
+| Production runtime | Linux/RV64 Engine/JobMemory bridge, central W^X/process-wide cache synchronization, framed normal/cold return, shared publication/cleanup ownership, integer/state compiler integration | Public instantiation integration, host/guard/signal paths |
+| Memory/globals/bulk | Experimental bounded memory plus true production JobMemory memory32, aliased integer global-cell directory, active/passive data and bulk descriptors, full 4-GiB bounds/quota growth | Public descriptor/payload ownership, imported resources, extended initializers/start, multiple/shared/memory64 memories |
 | Tables/references | Rejected before publication | Production descriptors, exact type identities, element/table lifecycle, externref and typed references, resource-root retention |
 | FP | Rejected before publication | Scalar FP, conversions, NaN/trap semantics, FCSR and ABI boundary audit |
 | Host calls | Rejected before publication | Parked Go callbacks, wide slots, save/resume, panic/trap paths, re-entry, policies |
@@ -25,8 +25,8 @@ production parity. No remote publication is authorized.
 The integer multivalue/typed-control slice uses bounded argument/result arenas,
 a fixed context header independent of module arity, and zero-normalized i32 cells.
 It now also executes through the production wrapper, without enabling the public
-backend. The next slice must implement production state directories and reconcile
-context/resource contracts before table dispatch.
+backend. The next slice must bind the public compiler/instantiation envelope and
+reconcile context/resource contracts before table dispatch.
 
 Independent runtime inventory found production contracts that subsequent slices
 must reuse: 32-byte table entries, 40-byte canonical funcref descriptors with
@@ -50,5 +50,8 @@ contract is ready for compiler integration; public backend binding remains disab
 The subsequent [publication ownership checkpoint](riscv64-publication-ownership-checkpoint.md)
 retains failed raw mappings and public/private thunk cleanup through retries.
 The [production compiler envelope checkpoint](riscv64-production-compiler-checkpoint.md)
-executes supported stateless modules through that runtime; stateful modules and
-unsupported features still fail closed before image creation.
+first executed supported stateless modules through that runtime; unsupported
+features fail closed before image creation.
+The subsequent [production state checkpoint](riscv64-production-state-checkpoint.md)
+adds defined memory32, globals and data/bulk lowering through real JobMemory
+directories, without enabling public binding or imported-resource ownership.

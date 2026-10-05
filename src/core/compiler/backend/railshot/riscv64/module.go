@@ -94,7 +94,7 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 	if err = admitShape(m); err != nil {
 		return nil, err
 	}
-	state, err := admitState(m)
+	state, err := admitStateMode(m, opts.production)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 			entry.a.Sd(enc.X13, enc.SP, 32)
 		}
 	}
-	if contextOffset != -1 {
+	if contextOffset != -1 && !info.mode.production {
 		if contextOffset <= 2047 {
 			entry.a.Ld(enc.X24, enc.X10, int32(contextOffset))
 		} else {

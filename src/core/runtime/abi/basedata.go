@@ -34,6 +34,9 @@ const (
 
 // Basedata offsets are byte distances below the linear-memory base.
 const (
+	LinMemCurrentPagesOffset = 4
+	LinMemLegacyBytesOffset  = 8
+	LinMemMaxPagesOffset     = 12
 	// MemoryDirPtrOffset points at indexed-memory entries. Ordinary memory-0
 	// accesses keep the direct RBX/basedata hot path; memory.grow also consults
 	// entry 0 when an optional per-instance quota directory is present. Offset 64

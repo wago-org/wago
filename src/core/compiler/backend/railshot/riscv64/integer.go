@@ -512,6 +512,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			contextUsed = true
 			dataOffset := int32((len(state.globals)+1)*8 + int(imm.Index)*16)
+			if emit != nil && emit.mode.production {
+				dataOffset = int32(imm.Index) * 16
+			}
 			if imm.Kind == wasm.InstrDataDrop {
 				if live && emit != nil {
 					emit.dataDrop(dataOffset)

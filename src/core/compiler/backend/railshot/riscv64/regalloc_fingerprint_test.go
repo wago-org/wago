@@ -27,12 +27,14 @@ func TestRegallocCheckEmissionFingerprint(t *testing.T) {
 		}
 	}
 	for _, tc := range cases {
-		for _, force := range []bool{false, true} {
-			c, err := CompileWithOptions(tc.data, CompileOptions{ForceFallback: force})
-			if err != nil {
-				t.Fatal(tc.name, err)
+		for _, production := range []bool{false, true} {
+			for _, force := range []bool{false, true} {
+				c, err := compileOptions(tc.data, scalarRegisters[:], CompileOptions{ForceFallback: force, production: production})
+				if err != nil {
+					t.Fatal(tc.name, err)
+				}
+				t.Logf("REGALLOC_CODE %s production=%v force=%v bytes=%d sha256=%x", tc.name, production, force, len(c.code), sha256.Sum256(c.code))
 			}
-			t.Logf("REGALLOC_CODE %s force=%v bytes=%d sha256=%x", tc.name, force, len(c.code), sha256.Sum256(c.code))
 		}
 	}
 }

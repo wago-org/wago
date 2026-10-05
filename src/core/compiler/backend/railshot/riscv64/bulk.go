@@ -8,6 +8,11 @@ import (
 )
 
 func (f *integerEmitter) dataDrop(offset int32) {
+	if f.mode.production {
+		f.productionDataAddress(offset, enc.X28)
+		f.a.Sw(enc.Zero, enc.X28, 8)
+		return
+	}
 	base, off := f.contextAddress(offset + 8)
 	f.a.Sd(enc.Zero, base, off)
 }
@@ -17,19 +22,32 @@ func (f *integerEmitter) dataDrop(offset int32) {
 // the only additional temporaries. All complete ranges are checked before the
 // zero-count exit, any byte access, or the first mutation.
 func (f *integerEmitter) memoryBulk(kind wasm.InstrKind, dataOffset int32) {
-	f.a.Ld(enc.X28, enc.X24, 0)
-	f.a.Ld(enc.X29, enc.X28, 8)
+	if f.mode.production {
+		f.productionMemorySize(enc.X29)
+	} else {
+		f.a.Ld(enc.X28, enc.X24, 0)
+		f.a.Ld(enc.X29, enc.X28, 8)
+	}
 	f.bulkRange(enc.X5)
 	if kind == wasm.InstrMemoryCopy {
 		// The same memory and count leave the same length-count residual.
 		f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X6))
 	} else if kind == wasm.InstrMemoryInit {
-		base, off := f.contextAddress(dataOffset + 8)
-		f.a.Ld(enc.X29, base, off)
+		if f.mode.production {
+			f.productionDataAddress(dataOffset, enc.X28)
+			f.a.Lwu(enc.X29, enc.X28, 8)
+		} else {
+			base, off := f.contextAddress(dataOffset + 8)
+			f.a.Ld(enc.X29, base, off)
+		}
 		f.bulkRange(enc.X6)
 	}
 	zero := f.a.BranchLong(enc.EQ, enc.X7, enc.Zero)
-	f.a.Ld(enc.X28, enc.X28, 0)
+	if f.mode.production {
+		f.a.Addi(enc.X28, enc.X25, 0)
+	} else {
+		f.a.Ld(enc.X28, enc.X28, 0)
+	}
 	f.a.Add(enc.X5, enc.X28, enc.X5)
 	if kind == wasm.InstrMemoryFill {
 		f.bulkLoop(true, false)
@@ -38,8 +56,13 @@ func (f *integerEmitter) memoryBulk(kind wasm.InstrKind, dataOffset int32) {
 	}
 	if kind == wasm.InstrMemoryInit {
 		// Recompute the address after branches: long transfers clobber X31.
-		base, off := f.contextAddress(dataOffset)
-		f.a.Ld(enc.X29, base, off)
+		if f.mode.production {
+			f.productionDataAddress(dataOffset, enc.X29)
+			f.a.Ld(enc.X29, enc.X29, 0)
+		} else {
+			base, off := f.contextAddress(dataOffset)
+			f.a.Ld(enc.X29, base, off)
+		}
 		f.a.Add(enc.X6, enc.X29, enc.X6)
 		f.bulkLoop(false, false)
 		f.patchBulk(zero)
