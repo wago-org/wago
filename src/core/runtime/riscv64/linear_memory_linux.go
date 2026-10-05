@@ -256,20 +256,20 @@ func (l *MemoryLease) Initialize(segments []MemoryInitializer) error {
 	}
 	return nil
 }
-func (l *MemoryLease) call(f *CallFrame, e *Engine, p *Program, offset int, args []uint64, frame int, context, descriptor uint64) (uint64, error) {
+func (l *MemoryLease) callInto(f *CallFrame, e *Engine, p *Program, offset int, args, results []uint64, frame int, context, descriptor uint64) error {
 	if l == nil || l.memory == nil || l.token == nil {
-		return 0, ErrClosed
+		return ErrClosed
 	}
 	m := l.memory
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if l.token.closed || len(m.descriptor) < 24 {
-		return 0, ErrClosed
+		return ErrClosed
 	}
 	if descriptor != uint64(pointer(m.descriptor)) {
-		return 0, fmt.Errorf("rv64: context memory lease mismatch")
+		return fmt.Errorf("rv64: context memory lease mismatch")
 	}
-	return f.CallWithContext(e, p, offset, args, frame, context)
+	return f.CallIntoWithContext(e, p, offset, args, results, frame, context)
 }
 func (l *MemoryLease) Close() error {
 	if l == nil || l.memory == nil || l.token == nil {
@@ -395,22 +395,27 @@ func (c *GuestContext) Global(index int) (uint64, error) {
 	return binary.LittleEndian.Uint64(c.mem[(index+1)*8:]), nil
 }
 func (c *GuestContext) Call(l *MemoryLease, f *CallFrame, e *Engine, p *Program, offset int, args []uint64, frame int) (uint64, error) {
+	var result [1]uint64
+	err := c.CallInto(l, f, e, p, offset, args, result[:], frame)
+	return result[0], err
+}
+func (c *GuestContext) CallInto(l *MemoryLease, f *CallFrame, e *Engine, p *Program, offset int, args, results []uint64, frame int) error {
 	if c == nil {
-		return 0, ErrClosed
+		return ErrClosed
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed || len(c.mem) == 0 {
-		return 0, ErrClosed
+		return ErrClosed
 	}
 	context := uint64(pointer(c.mem))
 	if l != nil {
-		return l.call(f, e, p, offset, args, frame, context, binary.LittleEndian.Uint64(c.mem))
+		return l.callInto(f, e, p, offset, args, results, frame, context, binary.LittleEndian.Uint64(c.mem))
 	}
 	if binary.LittleEndian.Uint64(c.mem) != 0 {
-		return 0, fmt.Errorf("rv64: context memory requires a lease")
+		return fmt.Errorf("rv64: context memory requires a lease")
 	}
-	return f.CallWithContext(e, p, offset, args, frame, context)
+	return f.CallIntoWithContext(e, p, offset, args, results, frame, context)
 }
 func (c *GuestContext) Close() error {
 	if c == nil {
