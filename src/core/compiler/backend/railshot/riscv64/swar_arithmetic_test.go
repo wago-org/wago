@@ -33,8 +33,8 @@ func TestSWARWrappingArithmeticAdmission(t *testing.T) {
 			}
 		}
 	}
-	// Valid adjacent saturation families still need actual lowering.
-	for _, kind := range []uint32{111, 112, 114, 115, 143, 144, 146, 147} {
+	// Narrowing and fixed-point multiplication remain pending.
+	for _, kind := range []uint32{101, 102, 130, 133, 134} {
 		fn, ft := swarValidatedFunction(t, swarArithmeticFixture(kind))
 		if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
 			t.Fatal("pending arithmetic emitted", kind, err)
