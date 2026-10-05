@@ -488,6 +488,12 @@ jobs:
         if: matrix.runtime && runner.os != 'Windows'
         run: just test unit
 
+      # Preserve per-case PASS/SKIP evidence for the publication regressions;
+      # ordinary package output alone cannot establish native ACL qualification.
+      - name: Native build publication regressions
+        if: matrix.runtime
+        run: go test -v -count=1 -run '^TestBuild(OutputSnapshotRejectsTargetDisappearance|DarwinFilesOnlyDirectoryExplainsPrivateStageRequirement|NewWindowsOutputPreservesWriteOnlyInheritance)$' ./cli/runtime/commands/build
+
       - name: Diagnostic dead-code elimination
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: scripts/check-diagnostic-dce.sh
