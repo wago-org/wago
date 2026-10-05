@@ -22,7 +22,7 @@ wago-runtime-minimal-tiny
 # Local performance lab notebooks, profiles, and raw benchmark captures.
 .perf/
 
-# Repository-local documents are archived in wago-org/knowledge.
+# Keep local documents out of the code repository.
 /docs/
 
 # Locally-generated benchmark charts (published to the wago-org/docs repo)

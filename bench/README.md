@@ -44,7 +44,7 @@ silently changing the selected corpus.
 
 ## Workload profiling
 
-Use [`wagoprof`](https://github.com/wago-org/wago/blob/9eff75d8bcd8349958fe9ec9e4887840a8f49bd3/docs/profiling.md) for reproducible phase captures, native
+Use `wagoprof` for reproducible phase captures, native
 code-image lifetimes, perf/jitdump and Samply export, and sampled hotness joined
 to Railshot compiler statistics. Build from the repository root with
 `scripts/build-profiler.sh /tmp/wagoprof`; run from `bench/` with

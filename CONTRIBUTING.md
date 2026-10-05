@@ -128,8 +128,7 @@ Take extra care in runtime code. It crosses into native execution.
 
 Start with the smallest relevant test. `just test` correctness recipes enable
 the debug allocation-transfer checker; `just test unit` also runs the ordinary
-build. Raw `go test` needs `-tags=wago_regalloccheck` explicitly. See
-[the checker contract and coverage limits](https://github.com/wago-org/wago/blob/9eff75d8bcd8349958fe9ec9e4887840a8f49bd3/docs/register-allocation-checker.md).
+build. Raw `go test` needs `-tags=wago_regalloccheck` explicitly.
 Before you open a pull request, run:
 
 ```bash
@@ -218,16 +217,14 @@ unsupported WebAssembly feature just to improve an optimization result.
 For synchronous host-boundary work, run `BenchmarkInvokeHostFuncDirect` and
 `BenchmarkHostRoundtripLoop` in `./src/wago`, including the independent-instance
 parallel cases. Compare counts on the same host-capable export and subtract the
-matched guest-loop slope. Record each stage separately. See the
-[host-call measurement and safety rules](https://github.com/wago-org/knowledge/blob/main/docs/host-roundtrip-performance.md).
+matched guest-loop slope. Record each stage separately.
 Also compare `BenchmarkInvokeCallerHostFuncDirect`,
 `BenchmarkHostRoundtripLoopCaller`, `BenchmarkCallerGCLoop`,
 `BenchmarkCallerDomainLoop`, and `BenchmarkCallerArity` when changing concrete
-callback dispatch. Record medians and ranges, not just the fastest sample. See
-the [concrete caller invariants](https://github.com/wago-org/knowledge/blob/main/docs/host-caller-performance.md). Run profiles
-and benchmarks without concurrent builds. The full race suite starts many
-subprocesses; `GORACE=atexit_sleep_ms=0` avoids the race runtime's fixed exit
-delay while retaining race checks.
+callback dispatch. Record medians and ranges, not just the fastest sample.
+Run profiles and benchmarks without concurrent builds. The full race suite
+starts many subprocesses; `GORACE=atexit_sleep_ms=0` avoids the race runtime's
+fixed exit delay while retaining race checks.
 
 ## Make a Commit
 
