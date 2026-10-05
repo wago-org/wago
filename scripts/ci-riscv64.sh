@@ -16,7 +16,7 @@ case "$mode" in
     go test ./src/core/runtime/riscv64 -count=1 -parallel=2 -timeout=3m \
       -run 'Test(NativeGrownImagePublication|NativeABIRegistersAndAlignment|RawStackBoundsBeforeWrites|NativeArithmeticTrapAndReuse|NativeCrossThreadPublicationAndGC|PublicationOrderAndWX|PublicationFailuresAndCleanupRetry)$' -v
     go test ./src/core/compiler/backend/railshot/riscv64 -count=1 -parallel=2 -timeout=3m \
-      -run 'TestNative(RawReturnHookAndPrologueFence|IntegerControl|IntegerDeepFrameAndZeroAlloc|MemoryZeroLength|MemoryHighCapacityContextAndAllocations|GlobalsOnlyI32WidthsAndImmutability)$' -v
+      -run 'TestNative(RawReturnHookAndPrologueFence|IntegerControl|IntegerDeepFrameAndZeroAlloc|MemoryZeroLength|MemoryHighCapacityContextAndAllocations|GlobalsOnlyI32WidthsAndImmutability|BulkZeroMemoryAndGrowth|BulkPassiveOnlyDrop)$' -v
     ;;
   supported)
     go test ./src/core/encoder/riscv64 ./src/core/runtime/riscv64 \
