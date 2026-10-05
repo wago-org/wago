@@ -830,28 +830,28 @@ func (a *Asm) Leave() {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(1<<RSP | 1<<RBP)
 	}
-	a.B = append(a.B, 0xC9)
+	a.emit(0xC9)
 }
 func (a *Asm) Ret() {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(1 << RSP)
 	}
-	a.B = append(a.B, 0xC3)
+	a.emit(0xC3)
 }
 
 func (a *Asm) Prologue() {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(1<<RSP | 1<<RBP)
 	}
-	a.B = append(a.B, 0x55, a.rexPrefix(0x48), 0x89, 0xE5)
+	a.emit(0x55, a.rexPrefix(0x48), 0x89, 0xE5)
 } // push rbp; mov rbp,rsp
 
 func (a *Asm) SubRsp(v int32) {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(1 << RSP)
 	}
-	a.B = append(a.B, a.rexPrefix(0x48), 0x81, 0xEC)
-	a.B = append(a.B, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+	a.emit(a.rexPrefix(0x48), 0x81, 0xEC)
+	a.imm32(v)
 }
 
 func (a *Asm) AluRR(rrOpcode byte, dst, src Reg, w bool) { a.alu(rrOpcode, dst, src, w) }
@@ -1064,8 +1064,8 @@ func (a *Asm) AddRsp(v int32) {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(1 << RSP)
 	}
-	a.B = append(a.B, a.rexPrefix(0x48), 0x81, 0xC4)
-	a.B = append(a.B, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+	a.emit(a.rexPrefix(0x48), 0x81, 0xC4)
+	a.imm32(v)
 }
 
 func (a *Asm) rspMem(opcode byte, reg byte, disp int32, w bool) {
@@ -1107,9 +1107,9 @@ func (a *Asm) CallRel32() int {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(0xffff)
 	}
-	a.B = append(a.B, 0xE8)
+	a.emit(0xE8)
 	off := len(a.B)
-	a.B = append(a.B, 0, 0, 0, 0)
+	a.imm32(0)
 	return off
 }
 
@@ -1173,13 +1173,13 @@ func (a *Asm) RepMovsb() {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(1<<RCX | 1<<RSI | 1<<RDI)
 	}
-	a.B = append(a.B, 0xF3, 0xA4)
+	a.emit(0xF3, 0xA4)
 } // rep movs byte [RDI] <- [RSI], RCX times
 func (a *Asm) RepStosb() {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(1<<RCX | 1<<RDI)
 	}
-	a.B = append(a.B, 0xF3, 0xAA)
+	a.emit(0xF3, 0xAA)
 }                   // rep stos byte [RDI] <- AL, RCX times
 func (a *Asm) Std() { a.emit(0xFD) } // set direction flag (decrement)
 func (a *Asm) Cld() { a.emit(0xFC) } // clear direction flag (increment)

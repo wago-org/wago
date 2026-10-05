@@ -23,5 +23,8 @@ func (*fn) checkInputs(*elem) {}
 
 func (*fn) checkEndLifetimes() {}
 
-func (*fn) checkTerminalGPWrites() uint32 { return 0 }
-func (*fn) checkRestoreGPWrites(uint32)   {}
+// Ordinary trap scopes must not capture a diagnostic mask in a defer.
+type regallocGPWriteMask struct{}
+
+func (*fn) checkTerminalGPWrites() regallocGPWriteMask { return regallocGPWriteMask{} }
+func (*fn) checkRestoreGPWrites(regallocGPWriteMask)   {}

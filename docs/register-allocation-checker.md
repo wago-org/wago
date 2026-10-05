@@ -101,6 +101,10 @@ reflection-based tests are excluded under TinyGo, which does not implement
 reflect.StructOf; the ordinary production placeholders remain zero-sized.
 `scripts/check-diagnostic-dce.sh` also rejects retained checker implementation
 symbols in ordinary manager, runtime, minimal-runtime and embedding binaries.
+Checker cleanup reuses existing unwind scopes: an additional conditional `defer`
+can change TinyGo lowering even when its guard is false. Terminal mask tokens
+are zero-sized in ordinary builds so existing deferred scopes capture no
+diagnostic payload. Keep existing emission helpers to preserve compiler inlining.
 
 Before qualifying a change, run both builds, compare generated guest-code
 fingerprints, inspect ordinary hot-path disassembly and compare matched compile

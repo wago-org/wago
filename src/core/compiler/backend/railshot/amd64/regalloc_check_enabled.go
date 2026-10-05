@@ -364,9 +364,11 @@ func (f *fn) checkEndLifetimes() {
 
 // Trap stubs are terminal edges: they unwind directly to Go and cannot return
 // to a cache use. Restore the body reservation for other emitted paths.
-func (f *fn) checkTerminalGPWrites() uint32 {
+type regallocGPWriteMask = uint32
+
+func (f *fn) checkTerminalGPWrites() regallocGPWriteMask {
 	saved := f.immutableGPMask
 	f.immutableGPMask = 0
 	return saved
 }
-func (f *fn) checkRestoreGPWrites(saved uint32) { f.immutableGPMask = saved }
+func (f *fn) checkRestoreGPWrites(saved regallocGPWriteMask) { f.immutableGPMask = saved }

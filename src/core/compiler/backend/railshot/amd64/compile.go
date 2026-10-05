@@ -3354,6 +3354,11 @@ func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *rai
 func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var state *fn
 	defer func() {
+		// Reuse the existing unwind scope: even a disabled conditional defer
+		// changes TinyGo defer lowering in ordinary builds.
+		if regallocCheckEnabled && state != nil {
+			state.checkEndLifetimes()
+		}
 		if recovered := recover(); recovered != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
 				panic(recovered)
@@ -3405,9 +3410,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
 	state = f
-	if regallocCheckEnabled {
-		defer f.checkEndLifetimes()
-	}
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
 	} else if f.nParams != 0 {
@@ -4738,7 +4740,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	}
 	// Results are canonical now; this terminal return cannot use body caches.
 	// Attempt cleanup owns observer restoration if epilogue emission panics.
-	var returnGPWrites uint32
+	var returnGPWrites regallocGPWriteMask
 	if regallocCheckEnabled {
 		returnGPWrites = f.checkTerminalGPWrites()
 	}
@@ -4882,7 +4884,7 @@ func (f *fn) patchFrameSize() error {
 // the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
 	// On panic, compileFuncAttempt retires the abandoned function's observer.
-	var returnGPWrites uint32
+	var returnGPWrites regallocGPWriteMask
 	if regallocCheckEnabled {
 		returnGPWrites = f.checkTerminalGPWrites()
 	}

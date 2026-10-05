@@ -441,9 +441,8 @@ func (a *Asm) CmpSP64(rm Reg) { a.word(0xEB2063FF | r(rm)<<16) } // CMP SP, Xm (
 // Bl emits BL with a zero displacement, returning its byte offset (patch with
 // PatchBranch26 at module layout — same imm26 field as B).
 func (a *Asm) Bl() int {
-	at := len(a.B)
-	// Inline the fixed word to preserve the ordinary-build instruction layout.
-	a.B = append(a.B, 0x00, 0x00, 0x00, 0x94)
+	at := a.Len()
+	a.word(0x94000000)
 	if regallocCheckEnabled {
 		a.regallocGPWrites(^uint32(0))
 	}
