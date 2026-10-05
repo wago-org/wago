@@ -272,6 +272,11 @@ func selectedModulesContext(ctx context.Context, dir string) ([]resolvedModuleId
 				}
 				return fmt.Errorf("decode selected module graph: %w", err)
 			}
+			// The generated module is moved from its staging directory to the
+			// active build directory without changing any build input.
+			if module.Main {
+				module.Dir = ""
+			}
 			modules = append(modules, module)
 		}
 	})
