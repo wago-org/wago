@@ -248,9 +248,29 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				bound = 1024
 			} else if _, _, ok := swarShiftOpcode(kind); ok {
 				bound = 768
+			} else if _, operation, ok := swarUnaryOpcode(kind); ok && (operation == swarAbs || operation == swarNeg) {
+				bound = 768
 			}
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
+			}
+			if width, operation, ok := swarUnaryOpcode(kind); ok {
+				if h == 0 || !stackVectors[h-1] {
+					return swarSummary{}, unsupported("SWAR unary carrier class/underflow")
+				}
+				scalar := operation == swarAllTrue || operation == swarBitmask
+				if emit != nil {
+					emit.swarLoad(spill(h-1), swarPair{enc.X6, enc.X7})
+					emit.swarUnary(width, operation)
+					if scalar {
+						emit.a.Addi(enc.X6, enc.Zero, 0)
+						emit.swarStore(spill(h-1), swarPair{enc.X5, enc.X6})
+					} else {
+						emit.swarStore(spill(h-1), swarPair{enc.X6, enc.X7})
+					}
+				}
+				stackVectors[h-1] = !scalar
+				continue
 			}
 			if kind == 13 || kind == 14 {
 				var indices [16]byte
