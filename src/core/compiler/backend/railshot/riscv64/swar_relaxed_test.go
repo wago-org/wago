@@ -19,7 +19,7 @@ func swarRelaxedFixture(kind uint32) fixtureFunc {
 	arity := 2
 	if kind >= 257 && kind <= 260 {
 		arity = 1
-	} else if kind >= 265 && kind <= 268 {
+	} else if kind >= 261 && kind <= 268 {
 		arity = 3
 	}
 	fixture := fixtureFunc{params: bytes.Repeat([]byte{0x7b}, arity), result: 0x7b}
