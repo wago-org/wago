@@ -18,14 +18,10 @@ import (
 func catchAllPayloadRootKinds(m *wasm.Module) ([shared.EHPayloadLanes]nativeabi.RootKind, [shared.EHPayloadLanes]bool, error) {
 	var kinds [shared.EHPayloadLanes]nativeabi.RootKind
 	var roots, scalars [shared.EHPayloadLanes]bool
-	for tag := uint32(0); tag < uint32(m.TagCount()); tag++ {
-		tagType, ok := moduleTagType(m, tag)
-		if !ok {
-			return kinds, roots, fmt.Errorf("tag %d is unavailable", tag)
-		}
+	mergeTag := func(tagType wasm.TagType, tag uint32) error {
 		var ft wasm.CompType
 		if !m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > ehMaxPayloadWords {
-			return kinds, roots, fmt.Errorf("tag %d payload is unsupported", tag)
+			return fmt.Errorf("tag %d payload is unsupported", tag)
 		}
 		for payload, typ := range ft.Params {
 			lane := shared.EHPayloadLane(m, typ, payload)
@@ -33,15 +29,33 @@ func catchAllPayloadRootKinds(m *wasm.Module) ([shared.EHPayloadLanes]nativeabi.
 			if !isReference {
 				scalars[lane] = true
 				if roots[lane] {
-					return kinds, roots, fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
+					return fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
 				}
 				continue
 			}
 			if scalars[lane] {
-				return kinds, roots, fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
+				return fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
 			}
 			kinds[lane], roots[lane] = kind, true
 		}
+		return nil
+	}
+	tag := uint32(0)
+	for i := range m.Imports {
+		im := &m.Imports[i]
+		if im.Type.Kind != wasm.ExternTag {
+			continue
+		}
+		if err := mergeTag(im.Type.TagType(), tag); err != nil {
+			return kinds, roots, err
+		}
+		tag++
+	}
+	for _, tagType := range m.Tags {
+		if err := mergeTag(tagType, tag); err != nil {
+			return kinds, roots, err
+		}
+		tag++
 	}
 	for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
 		kinds[lane], roots[lane] = nativeabi.RootGCRef, true
@@ -59,6 +73,9 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 	}
 	maps := make([]nativeabi.FunctionRootMap, 0, len(m.Code))
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	var catchAllKinds [shared.EHPayloadLanes]nativeabi.RootKind
+	var catchAllRoots [shared.EHPayloadLanes]bool
+	catchAllReady := false
 	for function := range m.Code {
 		ft, ok := m.LocalFuncType(function)
 		if !ok {
@@ -85,9 +102,6 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		frameBytes := frameHdrBytes + 8*nLocalSlots + (shape.TryRecords*ehRecordSlots+shape.RootRecords*ehRootSlots)*8
 		rootCount := 0
 		var slots []nativeabi.RootSlot
-		var catchAllKinds [shared.EHPayloadLanes]nativeabi.RootKind
-		var catchAllRoots [shared.EHPayloadLanes]bool
-		catchAllReady := false
 		r := wasm.NewReader(m.Code[function].BodyBytes)
 		var imm wasm.InstructionImmediate
 		for r.HasNext() {
