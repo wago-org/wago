@@ -19,9 +19,9 @@ type ProductionOptions struct {
 }
 
 // CompileProduction admits the whole module before producing any native image.
-// It supports integer/control/direct calls, one defined nonshared memory32,
-// integer globals and data/bulk operations through production descriptors.
-// Public Wago backend binding and broader feature lowering remain separate.
+// It supports scalar integer/FP, control/direct calls, one defined nonshared
+// memory32, scalar globals and data/bulk through production descriptors.
+// The opt-in public binding retains the same bounded whole-module policy.
 func CompileProduction(data []byte, opts ProductionOptions) (*enc.CompiledModule, error) {
 	c, err := compileOptions(data, scalarRegisters[:], CompileOptions{ForceFallback: opts.ForceFallback, Interruptible: opts.Interruptible, production: true})
 	if err != nil {

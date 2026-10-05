@@ -85,7 +85,6 @@ func TestProductionEnvelopeRejectsUnsupportedBeforeImage(t *testing.T) {
 		}
 	}
 	for _, f := range []fixtureFunc{
-		{result: 0x7c, body: []byte{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b}},
 		{unexported: true, body: []byte{0xfd, 0, 0x0b}},
 	} {
 		image, err := CompileProduction(binaryModule(fixtureFunc{result: 0x7f, body: []byte{0x41, 42, 0x0b}}, f), ProductionOptions{})

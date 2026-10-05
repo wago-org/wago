@@ -9,7 +9,7 @@ import (
 )
 
 // Admission follows the production lowerings implemented below. Imports,
-// starts, tables and noninteger features still fail before image creation.
+// starts, tables and nonscalar features still fail before image creation.
 func admitProductionWire(data []byte) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
@@ -46,6 +46,8 @@ func productionTrapCode(code int) int {
 		return abi.TrapDivOverflow
 	case TrapMemoryBounds:
 		return abi.TrapLinMemOutOfBounds
+	case trapFloatConversion:
+		return abi.TrapTruncOverflow
 	case trapCooperativeInterrupt:
 		return abi.TrapInterrupted
 	default:

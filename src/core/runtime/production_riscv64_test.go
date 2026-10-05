@@ -202,6 +202,31 @@ func TestProductionRV64FcsrRestoredOnNormalColdAndRejectedEntry(t *testing.T) {
 	}
 }
 
+func TestProductionRV64StaticRoundingIgnoresCallerFrm(t *testing.T) {
+	goruntime.LockOSThread()
+	defer goruntime.UnlockOSThread()
+	e, j, arena := productionFixtureRV64(t, 0)
+	args, trap, results := arena.Alloc(8), arena.Alloc(TrapBufferBytes), arena.Alloc(8)
+	var a enc.Asm
+	// probeNativeFcsr seeds RUP. 1 + half an f32 ULP must still use static RNE.
+	a.WriteFflags(enc.Zero)
+	a.Constant32(enc.X5, 0x3f800000)
+	a.Constant32(enc.X6, 0x33800000)
+	a.FmvWX(enc.F0, enc.X5)
+	a.FmvWX(enc.F1, enc.X6)
+	a.FaddS(enc.F0, enc.F0, enc.F1, enc.RNE)
+	a.FmvXW(enc.X5, enc.F0)
+	a.ZeroExtend32(enc.X5, enc.X5)
+	a.Sd(enc.X5, enc.X13, 0)
+	a.Ret()
+	entry := productionImageRV64(t, &a)
+	for range 32 {
+		if value := probeNativeFcsr(entry, slicePtr(args), j.LinMemBase(), slicePtr(trap), slicePtr(results), e.stackTop); value != 0x7f || binary.LittleEndian.Uint64(results) != 0x3f800000 {
+			t.Fatal("static RNE or ambient FCSR changed", value, results)
+		}
+	}
+}
+
 //go:nosplit
 func probeNativeWrapper(code, trace, linMem, trap, results, top uintptr) uint64 {
 	nativeEnterSyscall()

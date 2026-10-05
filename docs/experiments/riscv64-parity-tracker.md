@@ -13,7 +13,7 @@ production parity. No remote publication is authorized.
 | Production runtime | Linux/RV64 Engine/JobMemory bridge, central W^X/process-wide cache synchronization, framed normal/cold return, shared publication/cleanup ownership, experimental public instantiation | Host/guard/signal paths and native qualification |
 | Memory/globals/bulk | True production JobMemory memory32, aliased integer global-cell directory, public active/passive descriptor/payload lifetime, bulk operations, full 4-GiB bounds/quota growth | Imported resources, extended initializers/start, multiple/shared/memory64 memories |
 | Tables/references | Rejected before publication | Production descriptors, exact type identities, element/table lifecycle, externref and typed references, resource-root retention |
-| FP | Reviewed fixed-width F/D encoder and production FCSR boundary; FP modules rejected before publication | Genuine scalar lowering/conversions, NaN/trap semantics and broader FP ABI qualification |
+| FP | Reviewed F/D encoder, FCSR boundary and production/public scalar lowering, conversions, raw transport, globals/memory and cold traps | Broader official FP suites and native qualification; host/register ABI paths |
 | Host calls | Rejected before publication | Parked Go callbacks, wide slots, save/resume, panic/trap paths, re-entry, policies |
 | SIMD | Rejected before publication | v128 two-slot representation, SWAR core/relaxed SIMD, spills/calls |
 | GC/EH | Rejected before publication | Exact roots/frame/safepoint metadata, native views, exception tags/handlers/unwinding |
@@ -62,3 +62,5 @@ compiler to ordinary Wago APIs and artifact identity 3; the broader production
 port remains unfinished.
 The [scalar FP encoder checkpoint](riscv64-float-encoder-checkpoint.md) adds F/D
 instructions and independent encoding/observer controls before admitting FP.
+The [scalar FP execution checkpoint](riscv64-scalar-float-checkpoint.md) adds
+genuine F32/F64 lowering and bounded public admission after the FCSR boundary.

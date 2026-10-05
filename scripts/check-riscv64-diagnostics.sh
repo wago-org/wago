@@ -9,8 +9,8 @@ package=./src/core/compiler/backend/railshot/riscv64
 for variant in ordinary checked; do
   tags=(-tags=)
   [[ "$variant" == ordinary ]] || tags=(-tags=wago_regalloccheck)
-  go test "${tags[@]}" -count=1 -run '^TestRegallocCheckEmissionFingerprint$' -v "$package" > "$check_dir/$variant.log"
-  rg 'REGALLOC_CODE ' "$check_dir/$variant.log" > "$check_dir/$variant.code"
+  go test "${tags[@]}" -count=1 -run '^(TestRegallocCheckEmissionFingerprint|TestProductionFloatStaticRoundingAndFingerprint)$' -v "$package" > "$check_dir/$variant.log"
+  rg 'REGALLOC_CODE |FLOAT_CODE ' "$check_dir/$variant.log" > "$check_dir/$variant.code"
 done
 diff -u "$check_dir/ordinary.code" "$check_dir/checked.code"
 cat "$check_dir/ordinary.code"

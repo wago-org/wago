@@ -46,20 +46,21 @@ type integerEmitter struct {
 // slots, not shared value identities or a second register allocator. One walker
 // performs complete pre-emission admission and then lowering of the same bytes.
 func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *integerEmitter) (integerSummary, error) {
+	floating := state != nil && state.production
 	var locals [256]bool
 	nlocals := len(ft.Params)
 	for i, t := range ft.Params {
-		locals[i] = wasm.EqualValType(t, wasm.I64)
+		locals[i] = scalarWide(t)
 	}
 	for _, run := range fn.Locals.Runs {
-		if run.Count != 0 && !wasm.EqualValType(run.Type, wasm.I32) && !wasm.EqualValType(run.Type, wasm.I64) {
+		if run.Count != 0 && !scalarType(run.Type, floating) {
 			return integerSummary{}, unsupported("noninteger local")
 		}
 		if int(run.Count) > 256-nlocals {
 			return integerSummary{}, unsupported("local bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
-			locals[nlocals] = wasm.EqualValType(run.Type, wasm.I64)
+			locals[nlocals] = scalarWide(run.Type)
 			nlocals++
 		}
 	}
@@ -70,7 +71,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	var ctrl [33]integerControl
 	var rootResults [256]bool
 	for j, t := range ft.Results {
-		rootResults[j] = wasm.EqualValType(t, wasm.I64)
+		rootResults[j] = scalarWide(t)
 	}
 	var inlineResults = [2][1]bool{{false}, {true}}
 	ctrl[0] = integerControl{kind: 0xff, results: rootResults[:len(ft.Results)], entry: true}
@@ -184,6 +185,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				results = inlineResults[0][:]
 			case -2:
 				results = inlineResults[1][:]
+			case -3, -4:
+				if !floating {
+					return integerSummary{}, unsupported("FP block outside production")
+				}
+				if bt == -3 {
+					results = inlineResults[0][:]
+				} else {
+					results = inlineResults[1][:]
+				}
 			default:
 				if bt < 0 || state == nil || bt >= int64(len(state.types)) {
 					return integerSummary{}, unsupported("noninteger block signature")
@@ -367,10 +377,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if n != 1 || bt != 0x7f && bt != 0x7e {
+				if n != 1 || bt != 0x7f && bt != 0x7e && (!floating || bt != 0x7d && bt != 0x7c) {
 					return integerSummary{}, unsupported("noninteger typed select")
 				}
-				typedWide = bt == 0x7e
+				typedWide = bt == 0x7e || bt == 0x7c
 			}
 			if _, err = pop(); err != nil {
 				return integerSummary{}, err
@@ -498,6 +508,21 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = wasm.ClassifyInstructionImmediateIntoWithFeatures(&r, op, &imm, false, false); err != nil {
 				return integerSummary{}, err
 			}
+			if sub, ok := saturatingFloatKind(imm.Kind); ok && floating {
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+				w, resultWide := sub&2 != 0, sub&4 != 0
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), w)
+					emit.floatTrunc(w, resultWide, sub&1 != 0, true)
+					emit.Store(emit.SpillOffset(h), 5, resultWide)
+				}
+				if err = push(resultWide); err != nil {
+					return integerSummary{}, err
+				}
+				continue
+			}
 			if state == nil {
 				return integerSummary{}, unsupported("bulk instruction without state")
 			}
@@ -538,7 +563,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if live && emit != nil {
 				emit.memoryBulk(imm.Kind, dataOffset)
 			}
-		case 0x28, 0x29, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
+		case 0x28, 0x29, 0x2a, 0x2b, 0x38, 0x39, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
+			if !floating && (op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39) {
+				return integerSummary{}, unsupported("FP memory outside production")
+			}
 			if state == nil || state.memory == nil {
 				return integerSummary{}, unsupported("memory instruction without memory")
 			}
@@ -596,6 +624,29 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 
+		case 0x43, 0x44:
+			if !floating {
+				return integerSummary{}, unsupported("FP constant outside production")
+			}
+			w := op == 0x44
+			var v uint64
+			if w {
+				v, err = r.LEU64()
+			} else {
+				var x uint32
+				x, err = r.LEU32()
+				v = uint64(x)
+			}
+			if err != nil {
+				return integerSummary{}, err
+			}
+			if live && emit != nil {
+				emit.Constant(5, int64(v), w)
+				emit.Store(emit.SpillOffset(h), 5, w)
+			}
+			if err = push(w); err != nil {
+				return integerSummary{}, err
+			}
 		case 0x41, 0x42:
 			w := op == 0x42
 			var v int64
@@ -617,6 +668,28 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, err
 			}
 		default:
+			if w, unary, resultWide, ok := floatOpcode(op); ok && floating {
+				if !unary {
+					if _, err = pop(); err != nil {
+						return integerSummary{}, err
+					}
+					if live && emit != nil {
+						emit.Load(6, emit.SpillOffset(h), w)
+					}
+				}
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), w)
+					emit.floatOperation(op)
+					emit.Store(emit.SpillOffset(h), 5, resultWide)
+				}
+				if err = push(resultWide); err != nil {
+					return integerSummary{}, err
+				}
+				continue
+			}
 			operation, w, unary, resultWide, ok := integerOpcode(op)
 			if !ok {
 				return integerSummary{}, unsupported(fmt.Sprintf("integer opcode 0x%x", op))
@@ -827,11 +900,11 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	var widths [256]bool
 	n := len(ft.Params)
 	for i, t := range ft.Params {
-		widths[i] = wasm.EqualValType(t, wasm.I64)
+		widths[i] = scalarWide(t)
 	}
 	for _, run := range fn.Locals.Runs {
 		for i := uint32(0); i < run.Count; i++ {
-			widths[n] = wasm.EqualValType(run.Type, wasm.I64)
+			widths[n] = scalarWide(run.Type)
 			n++
 		}
 	}
@@ -897,7 +970,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, nil, f.a.Err()
 	}
-	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.I64), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
+	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && scalarWide(ft.Results[0]), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
 	contextOffset := -1
 	if summary.context {
 		contextOffset = -8

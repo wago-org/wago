@@ -55,8 +55,8 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 {
-					return reject("noninteger signature")
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+					return reject("nonscalar signature")
 				}
 			}
 		}
@@ -73,14 +73,14 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
 			for _, value := range values {
-				if value.Kind != ValueTypeI32 && value.Kind != ValueTypeI64 {
-					return reject("noninteger type")
+				if value.Kind != ValueTypeI32 && value.Kind != ValueTypeI64 && value.Kind != ValueTypeF32 && value.Kind != ValueTypeF64 {
+					return reject("nonscalar type")
 				}
 			}
 		}
 	}
 	for _, global := range c.Globals {
-		if (global.Type != ValI32 && global.Type != ValI64) || global.HasInitGlobal || global.HasInitFunc || len(global.InitExpr) != 0 {
+		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64) || global.HasInitGlobal || global.HasInitFunc || len(global.InitExpr) != 0 {
 			return reject("global initializer lowering is pending")
 		}
 	}

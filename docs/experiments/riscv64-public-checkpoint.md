@@ -14,7 +14,7 @@ visibility. Every public source compilation forces cooperative polls. Artifact
 architecture identity 3 denotes the framed, polling RV64G wrapper ABI; other
 architecture images and encoded prepared-entry proofs are rejected.
 
-Supported modules contain bounded integer functions, direct same-instance calls,
+This initial checkpoint supported bounded integer functions, direct same-instance calls,
 structured/indexed control and multivalue results, one defined nonshared memory32,
 integer globals, literal active/passive data, and bulk memory operations. Raw i32
 upper bits are handled by the backend and public boundary. Configured memory,
@@ -69,3 +69,7 @@ The complete public/full-feature suite, compiler-free
 accepted RV64 scope. QEMU establishes functional correctness; native multicore
 cache, signal and performance qualification remains unrun. Remaining work is
 tracked in [the parity tracker](riscv64-parity-tracker.md).
+The subsequent [scalar FP checkpoint](riscv64-scalar-float-checkpoint.md) widens
+bounded production/public admission to F32/F64 and nontrapping conversions after
+independently reviewing FCSR preservation and genuine FP lowering. Other
+unsupported resource and feature gates remain in force.

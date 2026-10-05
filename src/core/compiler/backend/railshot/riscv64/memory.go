@@ -26,6 +26,7 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
+	production     bool
 	memory         *memorySpec
 	globals        []globalSpec
 	data           []native.MemoryInitializer
@@ -64,7 +65,7 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	return v, nil
 }
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
-	s := moduleState{memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
+	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	var mt *wasm.MemType
 	if len(m.Imports) > 1 || len(m.Memories) > 1 || len(m.Imports)+len(m.Memories) > 1 {
 		return s, unsupported("multiple imports/memories")
@@ -97,11 +98,11 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 		return s, unsupported("state count bound")
 	}
 	for _, g := range m.Globals {
-		w := wasm.EqualValType(g.Type.Type, wasm.I64)
-		if !w && !wasm.EqualValType(g.Type.Type, wasm.I32) {
+		w := scalarWide(g.Type.Type)
+		if !scalarType(g.Type.Type, production) {
 			return s, unsupported("noninteger global")
 		}
-		v, err := plainConst(g.Init, w)
+		v, err := plainScalarConst(g.Init, g.Type.Type, production)
 		if err != nil {
 			return s, err
 		}
@@ -137,10 +138,10 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results))}
 		for k, t := range ft.Params {
-			fn.params[k] = wasm.EqualValType(t, wasm.I64)
+			fn.params[k] = scalarWide(t)
 		}
 		for k, t := range ft.Results {
-			fn.results[k] = wasm.EqualValType(t, wasm.I64)
+			fn.results[k] = scalarWide(t)
 		}
 		s.types = append(s.types, fn)
 	}
@@ -232,9 +233,9 @@ func (i *Instance) Global(name string) (uint64, error) {
 
 func memoryOpcode(op byte) (size int, wide, signed, store, ok bool) {
 	switch op {
-	case 0x28:
+	case 0x28, 0x2a:
 		return 4, false, false, false, true
-	case 0x29:
+	case 0x29, 0x2b:
 		return 8, true, false, false, true
 	case 0x2c:
 		return 1, false, true, false, true
@@ -256,9 +257,9 @@ func memoryOpcode(op byte) (size int, wide, signed, store, ok bool) {
 		return 4, true, true, false, true
 	case 0x35:
 		return 4, true, false, false, true
-	case 0x36:
+	case 0x36, 0x38:
 		return 4, false, false, true, true
-	case 0x37:
+	case 0x37, 0x39:
 		return 8, true, false, true, true
 	case 0x3a:
 		return 1, false, false, true, true

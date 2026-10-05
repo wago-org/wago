@@ -232,7 +232,6 @@ func TestRV64PublicAdmissionRejectsBeforeMapping(t *testing.T) {
 		name string
 		data []byte
 	}{
-		{"float", scalarFloatAddModule()},
 		{"import", importMemModule()},
 		{"empty-import-section", emptySectionModule(2)},
 		{"empty-table-section", emptySectionModule(4)},
@@ -261,5 +260,66 @@ func TestRV64PublicAdmissionRejectsBeforeMapping(t *testing.T) {
 	}
 	if c.codeCache.base != 0 || len(c.codeCache.mem) != 0 {
 		t.Fatal("metadata admission published executable code")
+	}
+}
+
+func TestRV64PublicActiveFloatCancellationAndColdReuse(t *testing.T) {
+	previous := runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(previous)
+	// FP accumulator homes must remain valid around a cooperative backedge poll.
+	body := []byte{1, 1, 0x7c, 3, 0x40, 0x20, 0, 0x44}
+	body = append(body, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f)
+	body = append(body, 0xa0, 0x21, 0, 0x41, 0, 0x41, 1, 0x36, 2, 0, 0x0c, 0, 0x0b, 0x00, 0x0b)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{1, 0, 1}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("spin", 0, 0), wasmtest.ExportEntry("value", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...), wasmtest.Code([]byte{0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0x0b}))),
+	)
+	c, err := Compile(nil, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadTrustedArtifact(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	in, err := Instantiate(loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := in.InvokeContext(ctx, "spin"); done <- err }()
+	flag := (*uint32)(unsafe.Pointer(&in.jm.CurrentBytes()[0]))
+	deadline := time.Now().Add(5 * time.Second)
+	for atomic.LoadUint32(flag) == 0 && time.Now().Before(deadline) {
+		runtime.Gosched()
+	}
+	entered := atomic.LoadUint32(flag) != 0
+	cancel()
+	select {
+	case err := <-done:
+		if !entered || !errors.Is(err, context.Canceled) {
+			t.Fatal("FP loop active cancellation", entered, err)
+		}
+	case <-time.After(5 * time.Second):
+		stop := coreruntime.RequestInterruptAsync(in.trap)
+		<-done
+		stop()
+		t.Fatal("FP loop cancellation timed out")
+	}
+	got, err := in.Invoke("value")
+	if err != nil || !slices.Equal(got, []uint64{0x3ff0000000000000}) {
+		t.Fatal("FP cancellation cold reuse", got, err)
 	}
 }

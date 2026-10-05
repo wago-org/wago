@@ -81,7 +81,7 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 	if err = wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
 		return nil, err
 	}
-	if err = admitWire(owned); err != nil {
+	if err = admitWireMode(owned, opts.production); err != nil {
 		return nil, err
 	}
 	if opts.production {
@@ -99,7 +99,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		return nil, fmt.Errorf("rv64: nil module")
 	}
 	var err error
-	if err = admitShape(m); err != nil {
+	if err = admitShapeMode(m, opts.production); err != nil {
 		return nil, err
 	}
 	state, err := admitStateMode(m, opts.production)
@@ -182,7 +182,9 @@ func unsupported(detail string) error { return fmt.Errorf("%w: %s", ErrUnsupport
 // The wire allowlist also rejects present-but-empty unsupported sections and
 // explicit singleton rec groups whose provenance the decoded Module loses.
 // Normal decoding/validation always runs first; this is an execution policy.
-func admitWire(data []byte) error {
+func admitWire(data []byte) error { return admitWireMode(data, false) }
+
+func admitWireMode(data []byte, floating bool) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
 		id, err := r.Byte()
@@ -227,7 +229,7 @@ func admitWire(data []byte) error {
 						if err != nil {
 							return err
 						}
-						if t != 0x7f && t != 0x7e {
+						if t != 0x7f && t != 0x7e && (!floating || t != 0x7d && t != 0x7c) {
 							return unsupported("noninteger type")
 						}
 					}
@@ -246,7 +248,9 @@ func admitWire(data []byte) error {
 	return nil
 }
 
-func admitShape(m *wasm.Module) error {
+func admitShape(m *wasm.Module) error { return admitShapeMode(m, false) }
+
+func admitShapeMode(m *wasm.Module, floating bool) error {
 	if len(m.Code) == 0 || len(m.Code) > MaxFunctions {
 		return unsupported("function count outside 1..1024")
 	}
@@ -270,7 +274,7 @@ func admitShape(m *wasm.Module) error {
 			return unsupported("signature arity")
 		}
 		for _, v := range append(append([]wasm.ValType(nil), s.Comp.Params...), s.Comp.Results...) {
-			if !wasm.EqualValType(v, wasm.I32) && !wasm.EqualValType(v, wasm.I64) {
+			if !scalarType(v, floating) {
 				return unsupported("noninteger signature")
 			}
 		}
