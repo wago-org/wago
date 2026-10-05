@@ -485,7 +485,7 @@ func writeMain(dir string, input Input, config Config, buildIdentity string) err
 	if err != nil {
 		return err
 	}
-	return atomicfile.ReplaceFile(filepath.Join(dir, "main.go"), atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+	return atomicfile.ReplaceFileWithMode(filepath.Join(dir, "main.go"), atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 		_, err := writer.Write(data)
 		return err
 	})
@@ -609,7 +609,7 @@ func ensureBinaryContext(ctx context.Context, dir string, input Input, force, ve
 						if err := verify(ctx, bin); err != nil {
 							return "", false, err
 						}
-						if err := atomicfile.ReplaceFile(verifiedFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+						if err := atomicfile.ReplaceFileWithMode(verifiedFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 							_, err := io.WriteString(writer, marker)
 							return err
 						}); err != nil {
@@ -687,14 +687,14 @@ func ensureBinaryContext(ctx context.Context, dir string, input Input, force, ve
 	if !cacheable || !afterCacheable {
 		return bin, false, nil
 	}
-	if err := atomicfile.ReplaceFile(hashFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+	if err := atomicfile.ReplaceFileWithMode(hashFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 		_, err := io.WriteString(writer, want)
 		return err
 	}); err != nil {
 		return "", false, fmt.Errorf("publish plugin build hash: %w", err)
 	}
 	if verify != nil {
-		if err := atomicfile.ReplaceFile(verifiedFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+		if err := atomicfile.ReplaceFileWithMode(verifiedFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 			_, err := io.WriteString(writer, marker)
 			return err
 		}); err != nil {

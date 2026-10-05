@@ -137,7 +137,7 @@ func downloadReleaseAssetWithProgressContext(ctx context.Context, baseURL, ver, 
 		return &httpclient.BodyTooLargeError{URL: address, Limit: releaseAssetMaximum, ContentLength: response.ContentLength}
 	}
 
-	err = atomicfile.ReplaceFile(dest, atomicfile.Options{Mode: 0o755, Sync: true}, func(writer io.Writer) error {
+	err = atomicfile.ReplaceFileWithMode(dest, atomicfile.Options{Mode: 0o755, Sync: true}, func(writer io.Writer) error {
 		hash := sha256.New()
 		output := io.MultiWriter(writer, hash)
 		limited := &io.LimitedReader{R: response.Body, N: releaseAssetMaximum + 1}

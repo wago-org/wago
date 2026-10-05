@@ -182,7 +182,7 @@ func (cache Cache) pruneAndMark() error {
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	return atomicfile.ReplaceFile(marker, atomicfile.Options{Mode: 0o600}, func(io.Writer) error { return nil })
+	return atomicfile.ReplaceFileWithMode(marker, atomicfile.Options{Mode: 0o600}, func(io.Writer) error { return nil })
 }
 
 func (cache Cache) report(err error) {
@@ -491,7 +491,7 @@ func loadOpenedArtifact(path string, file *os.File, opened os.FileInfo) (*wago.C
 }
 
 func writeAtomic(path string, compiled *wago.Compiled) error {
-	return atomicfile.ReplaceFile(path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+	return atomicfile.ReplaceFileWithMode(path, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 		_, err := compiled.WriteTo(writer)
 		return err
 	})

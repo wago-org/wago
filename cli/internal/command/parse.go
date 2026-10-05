@@ -137,6 +137,9 @@ func ConfigureAutomation(c *Cmd, args []string) {
 	automation.Configure(options)
 }
 
+// Share flag assembly across command setup and help paths.
+//
+//go:noinline
 func (c *Cmd) AllFlags() []Flag {
 	flags := append([]Flag(nil), c.Flags...)
 	flags = append(flags, c.automationFlags()...)

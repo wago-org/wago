@@ -444,6 +444,11 @@ func (w *compiledWriter) u8(v byte) {
 	w.tmp[0] = v
 	w.appendBytes(w.tmp[:1])
 }
+
+// Share scalar metadata encoding across artifact-writing paths, with buffer
+// appends inline inside each encoder.
+//
+//go:noinline
 func (w *compiledWriter) bool(v bool) {
 	if v {
 		w.u8(1)
@@ -451,6 +456,8 @@ func (w *compiledWriter) bool(v bool) {
 		w.u8(0)
 	}
 }
+
+//go:noinline
 func (w *compiledWriter) uvar(v uint64) {
 	n := binary.PutUvarint(w.tmp[:], v)
 	w.appendBytes(w.tmp[:n])
@@ -459,10 +466,14 @@ func (w *compiledWriter) ivar(v int) {
 	n := binary.PutVarint(w.tmp[:], int64(v))
 	w.appendBytes(w.tmp[:n])
 }
+
+//go:noinline
 func (w *compiledWriter) u32(v uint32) {
 	binary.LittleEndian.PutUint32(w.tmp[:4], v)
 	w.appendBytes(w.tmp[:4])
 }
+
+//go:noinline
 func (w *compiledWriter) u64(v uint64) {
 	binary.LittleEndian.PutUint64(w.tmp[:8], v)
 	w.appendBytes(w.tmp[:8])
