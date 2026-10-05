@@ -214,6 +214,60 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			if err != nil {
 				return swarSummary{}, err
 			}
+			if kind >= 15 && kind <= 17 {
+				if h == 0 || stackVectors[h-1] {
+					return swarSummary{}, unsupported("SWAR splat carrier class/underflow")
+				}
+				if emit != nil {
+					emit.Load(5, spill(h-1), false)
+					emit.swarSplat(uint8(8 << (kind - 15)))
+					emit.swarStore(spill(h-1), swarPair{enc.X6, enc.X7})
+				}
+				stackVectors[h-1] = true
+				continue
+			}
+			if kind >= 21 && kind <= 28 {
+				lane, err := r.Byte()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				width := uint8(8)
+				if kind >= 24 {
+					width = 16
+				}
+				if kind >= 27 {
+					width = 32
+				}
+				if lane >= 128/width {
+					return swarSummary{}, unsupported("SWAR lane immediate bound")
+				}
+				replace := kind == 23 || kind == 26 || kind == 28
+				arity := 1
+				if replace {
+					arity = 2
+				}
+				if h < arity || !stackVectors[h-arity] || (replace && stackVectors[h-1]) {
+					return swarSummary{}, unsupported("SWAR lane carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-arity), swarPair{enc.X6, enc.X7})
+					if replace {
+						emit.Load(5, spill(h-1), false)
+						emit.swarReplace(width, lane)
+						emit.swarStore(spill(h-2), swarPair{enc.X6, enc.X7})
+					} else {
+						emit.swarExtract(width, lane, kind == 21 || kind == 24)
+						emit.a.Addi(enc.X6, enc.Zero, 0)
+						emit.swarStore(spill(h-1), swarPair{enc.X5, enc.X6})
+					}
+				}
+				if replace {
+					h--
+				} else {
+					stackVectors[h-1] = false
+				}
+				continue
+			}
 			if kind == 0 || kind == 11 {
 				if !memory32 {
 					return swarSummary{}, unsupported("SWAR memory32 descriptor is required")
