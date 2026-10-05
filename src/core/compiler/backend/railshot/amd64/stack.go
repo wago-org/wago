@@ -545,6 +545,9 @@ func (s *stack) erase(e *elem) {
 	}
 	e.prev.next, e.next.prev = e.next, e.prev
 	e.prev, e.next = nil, nil
+	if s.head.next == s.head {
+		s.pendingEffects &^= pendingLocalRef
+	}
 }
 
 // exposeLogicalRoot restores a deferred operand that an optimization peeled
@@ -860,11 +863,15 @@ func (s *stack) firstUnspilled() *elem {
 const (
 	pendingTrap uint8 = 1 << iota
 	pendingLoad
+	pendingLocalRef
 )
 
 // Summaries may be stale positives after a discard, never stale negatives.
 func (s *stack) recordStorageEffects(st storage) {
 	if st.kind == stMemRef {
 		s.pendingEffects |= pendingLoad
+	}
+	if st.kind == stLocalRef || st.kind == stLocalReg || st.kind == stMemRef && st.memBorrow() >= 0 {
+		s.pendingEffects |= pendingLocalRef
 	}
 }
