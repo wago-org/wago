@@ -227,6 +227,19 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				h--
 				continue
 			}
+			if width, direction, ok := swarShiftOpcode(kind); ok {
+				if h < 2 || !stackVectors[h-2] || stackVectors[h-1] {
+					return swarSummary{}, unsupported("SWAR shift carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-2), swarPair{enc.X6, enc.X7})
+					emit.Load(5, spill(h-1), false)
+					emit.swarShift(width, direction)
+					emit.swarStore(spill(h-2), swarPair{enc.X6, enc.X7})
+				}
+				h--
+				continue
+			}
 			if kind >= 15 && kind <= 17 {
 				if h == 0 || stackVectors[h-1] {
 					return swarSummary{}, unsupported("SWAR splat carrier class/underflow")
