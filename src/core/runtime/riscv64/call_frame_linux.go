@@ -12,8 +12,9 @@ import (
 const MaxSerializedParams = 256
 
 // CallFrame owns serialized eight-byte argument cells followed by one result
-// cell. The guest receives their addresses in a0/a1; no Go heap pointer crosses
-// the native boundary. Calls and Close on this frame serialize.
+// cell and one hidden context cell. The guest receives argument/result addresses
+// in a0/a1; no Go heap pointer crosses the native boundary. Calls and Close on
+// this frame serialize.
 type CallFrame struct {
 	mu       sync.Mutex
 	mem      []byte
@@ -30,7 +31,8 @@ func newCallFrame(capacity int, ops *memoryOps) (*CallFrame, error) {
 	if capacity < 0 || capacity > MaxSerializedParams {
 		return nil, fmt.Errorf("rv64: serialized parameter capacity outside 0..256")
 	}
-	mem, err := ops.mapRW((capacity + 1) * 8)
+	// Preserve argument/result offsets; one hidden context cell follows result.
+	mem, err := ops.mapRW((capacity + 2) * 8)
 	if err != nil {
 		return nil, err
 	}
@@ -41,6 +43,12 @@ func newCallFrame(capacity int, ops *memoryOps) (*CallFrame, error) {
 // The caller validates function arity; this layer checks storage capacity.
 // Guest code must write all eight result bytes, including normalized i32 bits.
 func (f *CallFrame) Call(e *Engine, p *Program, offset int, args []uint64, frameBytes int) (uint64, error) {
+	return f.CallWithContext(e, p, offset, args, frameBytes, 0)
+}
+
+// CallWithContext stores a compiler-owned off-heap context address after the
+// fixed result cell. Its lifetime must cover this call. ABI0 entry is unchanged.
+func (f *CallFrame) CallWithContext(e *Engine, p *Program, offset int, args []uint64, frameBytes int, context uint64) (uint64, error) {
 	if f == nil {
 		return 0, ErrClosed
 	}
@@ -57,6 +65,7 @@ func (f *CallFrame) Call(e *Engine, p *Program, offset int, args []uint64, frame
 	}
 	result := f.mem[f.capacity*8:]
 	clear(result[:8])
+	binary.LittleEndian.PutUint64(result[8:], context)
 	if _, err := e.Call(p, offset, uint64(pointer(f.mem)), uint64(pointer(result)), frameBytes); err != nil {
 		return 0, err
 	}
