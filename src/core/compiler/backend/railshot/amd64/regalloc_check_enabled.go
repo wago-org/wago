@@ -16,6 +16,7 @@ const regallocCheckEnabled = true
 // admission is checked at calls. Neither state is whole-function dataflow.
 type regallocFnState struct {
 	sourceLeaf         *shared.SourceLeaf
+	sourceBranch       *shared.SourceBranch
 	sourceRestore      func()
 	allocationCheck    *allocationRegion
 	immutableCheck     regalloccheck.State
