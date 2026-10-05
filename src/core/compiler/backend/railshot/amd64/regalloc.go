@@ -475,6 +475,13 @@ func (f *fn) materializePendingEffects(loads bool) {
 }
 
 func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
+	mask := pendingTrap
+	if loads {
+		mask |= pendingLoad
+	}
+	if f.s.pendingEffects&mask == 0 {
+		return
+	}
 	// The physical stack is in postfix/bytecode order. Visit individual trapping
 	// nodes so pure ancestors stay deferred and nested traps cannot be reordered.
 	for e := f.s.head.next; e != limit; e = e.next {
@@ -485,6 +492,11 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
 			f.materializeByType(e)
 		}
 	}
+	// A partial barrier can leave relevant effects above its limit.
+	if limit == f.s.head {
+		f.s.pendingEffects &^= mask
+	}
+
 }
 
 // loadConst emits an immediate load of st's constant into r.

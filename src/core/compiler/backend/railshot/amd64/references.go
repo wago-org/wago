@@ -47,6 +47,7 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	}
 	e.st = st
 	if e.prev != nil && e.next != nil {
+		f.s.recordStorageEffects(st)
 		f.s.noteSpill(st)
 	}
 }
