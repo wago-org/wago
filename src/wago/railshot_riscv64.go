@@ -49,11 +49,13 @@ func railshotGCNativeCodeTelemetry(*railshotModuleStats) GCNativeCodeTelemetry {
 	return GCNativeCodeTelemetry{}
 }
 
-// Deferred events and owned host references retain pre-publication gates.
+// Deferred events retain pre-publication gates.
 func railshotHostIndirectThunk(uint32) []byte { return nil }
 func railshotHostIndirectSyncThunk(index uint32, params, results int) []byte {
 	return railshot.HostIndirectSyncThunk(index, params, results)
 }
-func railshotHostIndirectOwnedSyncThunk(uint32, int, int) []byte { return nil }
+func railshotHostIndirectOwnedSyncThunk(index uint32, params, results int) []byte {
+	return railshot.HostIndirectOwnedSyncThunk(index, params, results)
+}
 
 func railshotAdmitSource(data []byte) error { return railshot.AdmitProductionSource(data) }

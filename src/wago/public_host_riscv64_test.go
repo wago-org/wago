@@ -380,7 +380,7 @@ func TestRV64PublicSynchronousHostFrozenMetadataBindingPolicy(t *testing.T) {
 					t.Fatal(got, err)
 				}
 				instance.Close()
-			} else if instance != nil || !errors.Is(err, railshot.ErrUnsupported) || c.codeCache.base != beforeBase || len(c.codeCache.mem) != beforeBytes || c.codeCache.refs != beforeRefs || c.codeCache.sealed {
+			} else if instance != nil || err == nil || (i != 2 && !errors.Is(err, railshot.ErrUnsupported)) || c.codeCache.base != beforeBase || len(c.codeCache.mem) != beforeBytes || c.codeCache.refs != beforeRefs || c.codeCache.sealed {
 				t.Fatal("mutable metadata bypassed frozen binding policy", loaded, i, err)
 			}
 			c.Close()

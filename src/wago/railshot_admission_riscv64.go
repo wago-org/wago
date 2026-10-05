@@ -144,9 +144,9 @@ func railshotValidateCompiled(c *Compiled) error {
 func railshotNeedsImportContextHeader(count int) bool { return count > 0 }
 
 // Binding policy runs before prepareCodeMapping, including trusted artifacts.
-// This milestone admits ordinary synchronous callbacks only; unsupported target
-// ownership and replay protocols cannot produce a callable thunk.
-func railshotValidateResolvedImports(c *Compiled, imports resolvedImports) error {
+// This milestone admits synchronous scalar callbacks and owned host handles.
+// Unsupported foreign targets and replay protocols cannot publish a thunk.
+func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store *referenceStore) error {
 	c = c.executionView()
 	if c.NumImports == 0 && len(c.Imports) == 0 {
 		return nil
@@ -156,8 +156,15 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports) error
 	}
 	for i, key := range c.Imports {
 		value := imports[c.functionImportBindingKey(i)]
-		switch value.(type) {
-		case *InstanceExport, *HostFuncRef, I32HostEvent, gatedI32HostEvent:
+		switch value := value.(type) {
+		case *HostFuncRef:
+			// The shared attachment path repeats this check under its ownership
+			// lock before retaining the handle; reject invalid input before mapping.
+			if err := value.validateImport(store, c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
+			continue
+		case *InstanceExport, I32HostEvent, gatedI32HostEvent:
 			return fmt.Errorf("%w: public RV64 import %q target ownership/protocol is pending", railshot.ErrUnsupported, key)
 		}
 		if _, err := bindSyncHostImport(value, c.importFuncSigs[i]); err != nil {

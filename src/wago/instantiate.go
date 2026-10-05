@@ -166,7 +166,7 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := railshotValidateResolvedImports(c, imports); err != nil {
+	if err := railshotValidateResolvedImports(c, imports, opts.store); err != nil {
 		return nil, err
 	}
 	if opts.forceSyncHost {
