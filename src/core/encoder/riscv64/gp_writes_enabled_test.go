@@ -30,6 +30,22 @@ func decodedGPWrites(t *testing.T, b []byte) []uint32 {
 				masks = append(masks, ^uint32(1))
 			}
 		case 0x23, 0x63, 0x0f:
+		case 0x53:
+			// OP-FP comparisons (10100), FP-to-int conversions (11000),
+			// class and FP-to-GP moves (11100) write the integer file.
+			switch (w >> 27) & 31 {
+			case 0x14, 0x18, 0x1c:
+				if dst != 0 {
+					masks = append(masks, 1<<dst)
+				}
+			}
+		case 0x73:
+			if (w>>12)&7 == 0 {
+				t.Fatalf("unmodeled SYSTEM instruction %#x", w)
+			}
+			if dst != 0 {
+				masks = append(masks, 1<<dst)
+			}
 		default:
 			t.Fatalf("unmodeled instruction %#x", w)
 		}
@@ -98,6 +114,15 @@ func TestGPWritesEveryTypedEmitter(t *testing.T) {
 		{"Nop", func(a *Asm, d Reg) { a.Nop() }},
 		{"Fence", func(a *Asm, d Reg) { a.Fence(FenceRead, FenceRead|FenceWrite) }},
 	}
+	for _, fc := range floatEncodingCases {
+		fc := fc
+		cases = append(cases, struct {
+			name string
+			emit func(*Asm, Reg)
+		}{
+			fc.name, func(a *Asm, d Reg) { fc.emit(a, d, FReg(d)) },
+		})
+	}
 	audited := map[string]bool{"Err": true, "Len": true, "ObserveGPWrites": true, "ObserveRegalloc": true, "PatchLong": true}
 	for _, tc := range cases {
 		audited[tc.name] = true
@@ -117,7 +142,7 @@ func TestGPWritesEveryTypedEmitter(t *testing.T) {
 		}
 	}
 	// A new public typed emitter must receive its own independent decoder control.
-	for _, path := range []string{"asm.go", "branch.go", "constant.go"} {
+	for _, path := range []string{"asm.go", "branch.go", "constant.go", "float.go"} {
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -218,5 +243,79 @@ func TestRegallocTransfersWidthsAndIndependentScopes(t *testing.T) {
 	// Physical calls conservatively kill both banks in symbolic windows too.
 	if !reflect.DeepEqual(state.Read(fp, 8), make(regalloccheck.Value, 8)) {
 		t.Fatal("call retained FP identity")
+	}
+}
+
+func TestFloatEffectsValidateBeforeObservation(t *testing.T) {
+	for _, bad := range invalidFloatEmitters() {
+		var a Asm
+		a.ObserveGPWrites(func(uint32) { t.Fatal("invalid float physical effect") })
+		a.ObserveRegalloc(func(regalloccheck.Effect) { t.Fatal("invalid float symbolic effect") })
+		bad(&a)
+		for _, c := range floatEncodingCases {
+			c.emit(&a, X5, F5)
+		}
+		if a.Err() == nil || len(a.B) != 0 {
+			t.Fatal("invalid/sticky float emission")
+		}
+	}
+	for _, c := range floatEncodingCases {
+		a := Asm{B: []byte{1}}
+		a.ObserveGPWrites(func(uint32) { t.Fatal("unaligned float physical effect") })
+		a.ObserveRegalloc(func(regalloccheck.Effect) { t.Fatal("unaligned float symbolic effect") })
+		c.emit(&a, X5, F5)
+		if a.Err() == nil || len(a.B) != 1 {
+			t.Fatalf("unaligned %s emitted", c.name)
+		}
+	}
+}
+
+func TestFloatDefinitionsKillOnlyTheirRegisterFile(t *testing.T) {
+	for _, emit := range []func(*Asm){
+		func(a *Asm) { a.FaddS(F9, F10, F11, RNE) },
+		func(a *Asm) { a.FmvWX(F9, X10) },
+		func(a *Asm) { a.FcvtDL(F9, X10, RNE) },
+	} {
+		var a Asm
+		var state regalloccheck.State
+		gp9 := regalloccheck.Register(regalloccheck.GP, 9)
+		fp9 := regalloccheck.Register(regalloccheck.FP, 9)
+		gpValue := state.Seed(gp9, 8)
+		state.Seed(fp9, 8)
+		a.ObserveRegalloc(state.Apply)
+		a.ObserveGPWrites(func(uint32) { t.Fatal("FP definition reported GP write") })
+		emit(&a)
+		state.Expect("same-numbered GP survives FP definition", gp9, gpValue)
+		if !reflect.DeepEqual(state.Read(fp9, 8), make(regalloccheck.Value, 8)) {
+			t.Fatal("FP definition retained old FLEN identity")
+		}
+	}
+	var a Asm
+	var state regalloccheck.State
+	fp9 := regalloccheck.Register(regalloccheck.FP, 9)
+	fpValue := state.Seed(fp9, 8)
+	state.Seed(regalloccheck.Register(regalloccheck.GP, 9), 8)
+	a.ObserveRegalloc(state.Apply)
+	a.FmvXW(X9, F9)
+	state.Expect("GP definition preserves FP source", fp9, fpValue)
+	if !reflect.DeepEqual(state.Read(regalloccheck.Register(regalloccheck.GP, 9), 8), make(regalloccheck.Value, 8)) {
+		t.Fatal("FP-to-GP definition retained GP identity")
+	}
+	// Unlike x0, f0 is writable. Both ends of the FP bank have full FLEN
+	// identities even when the newly defined value is single precision.
+	for _, dst := range []FReg{F0, F31} {
+		var a Asm
+		var state regalloccheck.State
+		f := regalloccheck.Register(regalloccheck.FP, uint8(dst))
+		g := regalloccheck.Register(regalloccheck.GP, uint8(dst))
+		state.Seed(f, 8)
+		value := state.Seed(g, 8)
+		a.ObserveRegalloc(state.Apply)
+		a.ObserveGPWrites(func(uint32) { t.Fatal("single-precision definition wrote GP") })
+		a.FaddS(dst, F6, F7, RNE)
+		state.Expect("GP survives FP edge-register definition", g, value)
+		if !reflect.DeepEqual(state.Read(f, 8), make(regalloccheck.Value, 8)) {
+			t.Fatal("single-precision FP definition retained upper identity")
+		}
 	}
 }

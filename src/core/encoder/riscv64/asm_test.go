@@ -93,15 +93,27 @@ func TestEncodings(t *testing.T) {
 }
 
 func TestAssembler(t *testing.T) {
+	want := assembledBytes(t, "scalar")
+	var a Asm
+	for _, c := range encodingCases {
+		c.emit(&a)
+	}
+	if a.Err() != nil || !bytes.Equal(a.B, want) {
+		t.Fatalf("assembler comparison: err=%v\nencoder %x\nclang   %x", a.Err(), a.B, want)
+	}
+}
+
+func assembledBytes(t *testing.T, name string) []byte {
+	t.Helper()
 	// Enable this independent tool gate explicitly; ordinary package tests also
 	// run on hosts without an assembler. A configured but broken tool is a failure.
 	clang := os.Getenv("WAGO_RV64_CLANG")
 	if clang == "" {
 		t.Skip("set WAGO_RV64_CLANG to a RISC-V-capable clang for live assembler comparison")
 	}
-	obj := filepath.Join(t.TempDir(), "scalar.o")
+	obj := filepath.Join(t.TempDir(), name+".o")
 	cmd := exec.Command(clang, "--target=riscv64-linux-gnu", "-march=rv64g", "-mabi=lp64d",
-		"-c", "testdata/scalar.s", "-o", obj)
+		"-c", "testdata/"+name+".s", "-o", obj)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("assembler: %v\n%s", err, out)
 	}
@@ -126,13 +138,7 @@ func TestAssembler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var a Asm
-	for _, c := range encodingCases {
-		c.emit(&a)
-	}
-	if a.Err() != nil || !bytes.Equal(a.B, want) {
-		t.Fatalf("assembler comparison: err=%v\nencoder %x\nclang   %x", a.Err(), a.B, want)
-	}
+	return want
 }
 
 func TestInvalidOperandsDoNotEmit(t *testing.T) {

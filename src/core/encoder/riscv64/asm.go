@@ -1,4 +1,4 @@
-// Package riscv64 encodes fixed-width little-endian RV64I/M instructions.
+// Package riscv64 encodes fixed-width little-endian RV64I/M/F/D instructions.
 // It does not allocate registers, publish executable memory, or implement Wasm.
 package riscv64
 

@@ -60,6 +60,13 @@ func (a *Asm) regallocDefinition(dst Reg, call bool) {
 	}
 }
 
+func (a *Asm) regallocFloatDefinition(dst FReg) {
+	if a.regallocObserver != nil {
+		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Kill,
+			Dst: regalloccheck.Register(regalloccheck.FP, uint8(dst)), Size: 8})
+	}
+}
+
 func (a *Asm) regallocImmediate(op, f3 uint32, dst, src Reg, imm int32) {
 	call := op == 0x67 && dst != Zero
 	a.regallocWrite(dst, call)

@@ -20,5 +20,9 @@ func main() {
 	var a enc.Asm
 	a.Constant64(enc.X9, int64(len(os.Args)))
 	a.Addw(enc.X9, enc.X9, enc.X10)
+	a.FmvDX(enc.F0, enc.X9)
+	a.FaddD(enc.F0, enc.F0, enc.F0, enc.RNE)
+	a.FmvXD(enc.X9, enc.F0)
+	a.ReadFflags(enc.X10)
 	fmt.Println(c.Functions(), a.Len(), a.Err())
 }
