@@ -24,6 +24,11 @@ func swarOwnedTableFixtureRV64(t *testing.T, j *coreruntime.JobMemory, entry uin
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 128}); err != nil {
 		t.Fatal(err)
 	}
+	return swarOwnedTableModuleRV64(t, j, entry, m)
+}
+
+func swarOwnedTableModuleRV64(t *testing.T, j *coreruntime.JobMemory, entry uintptr, m *wasm.Module) ([]byte, []byte) {
+	t.Helper()
 	functions := make([]*wasm.CompType, len(m.Code))
 	for i := range functions {
 		functions[i], _ = m.LocalFuncType(i)

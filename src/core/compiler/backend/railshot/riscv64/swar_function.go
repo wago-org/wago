@@ -54,6 +54,13 @@ func walkSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 }
 
 func walkSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithElements(fn, ft, memory32, types, functions, globals, dataCount, table, typeKeys, 0, emit)
+}
+
+func walkSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount int, emit *integerEmitter) (swarSummary, error) {
+	if elementCount < 0 || elementCount > MaxOwnedElementSegments || elementCount != 0 && table == nil {
+		return swarSummary{}, unsupported("SWAR owned element directory bound/table")
+	}
 	if typeKeys != nil && (table == nil || len(typeKeys) != len(types) || len(types) == 0 || len(functions) == 0) {
 		return swarSummary{}, unsupported("SWAR indirect type identity directory/owner")
 	}
@@ -715,6 +722,56 @@ func walkSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory32 bo
 			sub, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
+			}
+			if sub == 12 || sub == 13 {
+				index, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				if table == nil || uint64(index) >= uint64(elementCount) {
+					return swarSummary{}, unsupported("SWAR owned element index/table")
+				}
+				usesTraps = true
+				if sub == 13 {
+					if err := reserve(512); err != nil {
+						return swarSummary{}, err
+					}
+					if emit != nil {
+						emit.privateElementDrop(index)
+					}
+					continue
+				}
+				tableIndex, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				if tableIndex != 0 {
+					return swarSummary{}, unsupported("SWAR table.init table index")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if err := flow.prepareRepeatedDead(swarI32, 3); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 3
+				if base < flow.floor() {
+					return swarSummary{}, unsupported("SWAR table.init operand underflow")
+				}
+				for i := 0; i < 3; i++ {
+					if stackClasses[base+i] != swarI32 {
+						return swarSummary{}, unsupported("SWAR table.init carrier class")
+					}
+				}
+				flow.usesLoops = true
+				if emit != nil {
+					emit.Load(6, spill(base), false)
+					emit.Load(7, spill(base+1), false)
+					emit.Load(5, spill(base+2), false)
+					emit.privateTableInit(index)
+				}
+				h = base
+				continue
 			}
 			if sub >= 14 && sub <= 17 {
 				if table == nil || sub == 15 && !table.Limits.HasMax && table.Limits.Min > MaxOwnedTableEntries/2 {
@@ -1604,6 +1661,12 @@ func compileSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Me
 // typeKeys must be the immutable checked identities for the exact flattened
 // frontend type directory. Neither hashes nor signature provenance are guessed.
 func compileSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	return compileSWARPairsWithElements(fn, ft, memory, types, functions, globals, dataCount, table, typeKeys, 0, mode)
+}
+
+// elementCount names immutable original indices of a trusted live owned16-byte
+// descriptor directory; payloads are complete same-instance canonical32B rows.
+func compileSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount int, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
 	if table != nil && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR owned table requires production owner")
 	}
@@ -1620,7 +1683,7 @@ func compileSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory *
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairsWithIndirectKeys(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, nil)
+	summary, err := walkSWARPairsWithElements(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1638,7 +1701,7 @@ func compileSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory *
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithIndirectKeys(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, &f)
+	actual, err := walkSWARPairsWithElements(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
