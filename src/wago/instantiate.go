@@ -111,19 +111,20 @@ type instanceBuilder struct {
 	opts    InstantiateOptions
 	imports resolvedImports
 
-	collector           *gc.Collector
-	collectorShared     bool
-	gcDomain            *gcStoreDomain
-	gcDomainID          uint64
-	gcTypeMap           *gcTypeMapping
-	success             bool
-	registeredInstance  *Instance
-	functionAttachments functionImportAttachments
-	hostAttachments     hostFuncRefAttachments
-	tableAttachments    tableImportAttachments
-	globalAttachments   globalImportAttachments
-	tagAttachments      tagImportAttachments
-	moduleUse           *Module
+	collector                  *gc.Collector
+	constructionGCDomainLocked bool
+	collectorShared            bool
+	gcDomain                   *gcStoreDomain
+	gcDomainID                 uint64
+	gcTypeMap                  *gcTypeMapping
+	success                    bool
+	registeredInstance         *Instance
+	functionAttachments        functionImportAttachments
+	hostAttachments            hostFuncRefAttachments
+	tableAttachments           tableImportAttachments
+	globalAttachments          globalImportAttachments
+	tagAttachments             tagImportAttachments
+	moduleUse                  *Module
 }
 
 // instantiateCore maps code and applies explicit instance options.
@@ -343,7 +344,7 @@ func (b *instanceBuilder) prepareCollector() error {
 }
 
 func (b *instanceBuilder) buildNativeGCInstanceView(localTypes []gc.TypeID) (*gc.NativeInstanceView, error) {
-	if b.gcDomain != nil {
+	if b.gcDomain != nil && !b.constructionGCDomainLocked {
 		b.gcDomain.invocationMu.Lock()
 		defer b.gcDomain.invocationMu.Unlock()
 	}
@@ -652,44 +653,6 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
-	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
-	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
-	if needsMemoryDir {
-		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
-		for i, memory := range memoryObjs {
-			memoryJM := memory.jobMemory()
-			if memoryJM == nil {
-				runtime.ReleaseArena(ar)
-				closeMem()
-				runtime.ReleaseEngine(eng)
-				return nil, fmt.Errorf("memory %d owner closed during instantiation", i)
-			}
-			entry := nativeMemoryDir[i*abi.MemoryDirEntryBytes:]
-			binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(memoryJM.LinMemBase()))
-			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(len(memoryJM.HostBytes())))
-			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], memoryJM.CurrentPages())
-			binary.LittleEndian.PutUint32(entry[abi.MemoryDirPolicyMaxPagesOffset:], opts.memoryLimitPages)
-		}
-		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
-	}
-	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		nativeTagIDs = ar.Alloc(len(c.memoryDir.ehTags) * 8)
-		for i, def := range c.memoryDir.ehTags {
-			identity := uint64(uintptr(unsafe.Pointer(&nativeTagIDs[i*8])))
-			if def.ImportKey != "" {
-				tag, ok := imports.tag(c.tagImportBindingKey(i))
-				if !ok {
-					runtime.ReleaseArena(ar)
-					closeMem()
-					runtime.ReleaseEngine(eng)
-					return nil, fmt.Errorf("imported tag %q is unavailable during native identity setup", def.ImportKey)
-				}
-				identity = tag.identityValue()
-			}
-			binary.LittleEndian.PutUint64(nativeTagIDs[i*8:], identity)
-		}
-		jm.SetEHTagDirPtr(uintptr(unsafe.Pointer(&nativeTagIDs[0])))
-	}
 	base, err := mappingOwner.acquireCode()
 	if err != nil {
 		runtime.ReleaseArena(ar)
@@ -710,6 +673,77 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		closeMem()
 		runtime.ReleaseEngine(eng)
 	}()
+	// An ordinary imported memory shares its basedata with the provider and
+	// other importers. Construction must own the same lease as native entries,
+	// including active data writes. Start from an empty instance context so
+	// absent metadata cannot inherit another tenant's arena pointers.
+	var finishMemoryContext func(bool)
+	if c.memoryImport != "" && !threadedControl {
+		// Shared collector activations acquire domain then native execution.
+		// Keep construction in that order and avoid relocking in view creation.
+		if b.gcDomain != nil {
+			b.gcDomain.invocationMu.Lock()
+			b.constructionGCDomainLocked = true
+		}
+		nativeExecutionMu.Lock()
+		var previous, empty [runtime.InstanceContextBytes]byte
+		jm.CaptureInstanceContextBytes(previous[:])
+		binary.LittleEndian.PutUint64(previous[runtime.InstanceContextGCNativeViewOffset:], uint64(jm.GCNativeViewPtr()))
+		finishMemoryContext = func(initialized bool) {
+			if !initialized {
+				jm.BindInstanceContextBytes(previous[:])
+			}
+			nativeExecutionMu.Unlock()
+			if b.constructionGCDomainLocked {
+				b.constructionGCDomainLocked = false
+				b.gcDomain.invocationMu.Unlock()
+			}
+		}
+		// Restore and unlock before failure cleanup frees new arena pointers or
+		// detaches the final resource root. Success releases before callbacks.
+		defer func() {
+			if finishMemoryContext != nil {
+				finishMemoryContext(false)
+			}
+		}()
+		// The backing may have grown while this constructor waited for a lease.
+		if err := enforceMemoryPageQuota(c, imports, opts.memoryLimitPages); err != nil {
+			return nil, err
+		}
+		jm.BindInstanceContextBytes(empty[:])
+	}
+	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
+	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
+	if needsMemoryDir {
+		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
+		for i, memory := range memoryObjs {
+			memoryJM := memory.jobMemory()
+			if memoryJM == nil {
+				return nil, fmt.Errorf("memory %d owner closed during instantiation", i)
+			}
+			entry := nativeMemoryDir[i*abi.MemoryDirEntryBytes:]
+			binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(memoryJM.LinMemBase()))
+			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(len(memoryJM.HostBytes())))
+			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], memoryJM.CurrentPages())
+			binary.LittleEndian.PutUint32(entry[abi.MemoryDirPolicyMaxPagesOffset:], opts.memoryLimitPages)
+		}
+		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
+	}
+	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		nativeTagIDs = ar.Alloc(len(c.memoryDir.ehTags) * 8)
+		for i, def := range c.memoryDir.ehTags {
+			identity := uint64(uintptr(unsafe.Pointer(&nativeTagIDs[i*8])))
+			if def.ImportKey != "" {
+				tag, ok := imports.tag(c.tagImportBindingKey(i))
+				if !ok {
+					return nil, fmt.Errorf("imported tag %q is unavailable during native identity setup", def.ImportKey)
+				}
+				identity = tag.identityValue()
+			}
+			binary.LittleEndian.PutUint64(nativeTagIDs[i*8:], identity)
+		}
+		jm.SetEHTagDirPtr(uintptr(unsafe.Pointer(&nativeTagIDs[0])))
+	}
 	// The builder now owns a compiled-code reference. Release the Module lease
 	// before lifecycle and start callbacks; Module.Close may close the Compiled
 	// while this reference keeps its native mapping live.
@@ -1645,6 +1679,10 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCDomainOffset:], b.gcDomainID)
 	if gcNativeView != nil {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
+	}
+	if finishMemoryContext != nil {
+		finishMemoryContext(initErr == nil)
+		finishMemoryContext = nil
 	}
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
