@@ -2,7 +2,10 @@
 
 package wasm
 
-import "github.com/wago-org/wago/internal/regalloccheck"
+import (
+	"encoding/binary"
+	"github.com/wago-org/wago/internal/regalloccheck"
+)
 
 // SourceValueID identifies an original Wasm definition or alias. It never names
 // an allocator owner. IDs are one based and private to one SourceLedger.
@@ -17,11 +20,12 @@ const (
 	SourceBlockParameter
 )
 
-// SourceValue is pointer free. Constant Bits retain signed zero and NaN payloads.
+// SourceValue is pointer free. Constants retain exact bits, including vector
+// high halves, signed zero and NaN payloads. Scalars always have BitsHigh zero.
 type SourceValue struct {
-	Type ValType
-	Kind SourceValueKind
-	Bits uint64
+	Type           ValType
+	Kind           SourceValueKind
+	Bits, BitsHigh uint64
 }
 
 // SourceEvent retains source coordinates relative to Func.BodyBytes, before
@@ -36,6 +40,8 @@ type SourceEvent struct {
 	Index, Index2           uint32
 	MemoryOffset            uint64
 	MemoryAlign             uint32
+	Lane                    LaneIdx
+	Lanes                   [16]LaneIdx // copied shuffle immediate, never decoder scratch
 	InputCount, OutputCount int
 	FunctionEnd, Terminal   bool
 	Block                   int
@@ -126,8 +132,8 @@ func (l *SourceLedger) Close() {
 
 type sourceLedgerLimit struct{}
 type sourceLiteral struct {
-	typ  ValType
-	bits uint64
+	typ        ValType
+	bits, high uint64
 }
 type sourceLedgerBuilder struct {
 	ledger        *SourceLedger
@@ -154,12 +160,17 @@ func (b *sourceLedgerBuilder) value(t ValType, kind SourceValueKind, bits uint64
 	return SourceValueID(len(b.ledger.values))
 }
 func (b *sourceLedgerBuilder) literal(t ValType, bits uint64) SourceValueID {
-	key := sourceLiteral{t, bits}
+	return b.literalBits(t, bits, 0)
+}
+
+func (b *sourceLedgerBuilder) literalBits(t ValType, bits, high uint64) SourceValueID {
+	key := sourceLiteral{t, bits, high}
 	if id := b.literals[key]; id != 0 {
 		b.charge(1)
 		return id
 	}
 	id := b.value(t, SourceConstant, bits)
+	b.ledger.values[int(id)-1].BitsHigh = high
 	b.literals[key] = id
 	return id
 }
@@ -202,7 +213,7 @@ func sourceLimits(request SourceLedgerLimits) (SourceLedgerLimits, bool) {
 // BuildSourceLedger reuses the authoritative direct decoder and funcValidator
 // type semantics. The checked-only identity layer classifies aliases and arity;
 // stack-height differences alone do not establish consumed values. The current
-// admission is primitive numeric code, core structured control, and ordinary
+// admission is scalar/SIMD numeric code, core structured control, and ordinary
 // direct/indirect calls. Unsupported polymorphic block types, tail calls,
 // references, and proposal instructions return SourceIncomplete with no ledger.
 // features must be the same profile used to produce analysis; analysis itself
@@ -322,7 +333,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 	for i := range b.locals {
 		b.charge(1)
 		t, found := v.localType(uint32(i))
-		if !found || !sourcePrimitive(t) || t == V128 {
+		if !found || !sourcePrimitive(t) {
 			result.Reason = regalloccheck.UnsupportedOperation
 			result.Message = "unsupported entry local type"
 			return
@@ -405,7 +416,19 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 			return
 		}
 		e := SourceEvent{PC: b.pc, EndPC: v.rd.off(), Kind: op.instr.Kind, Index: op.instr.Index, Index2: op.instr.Index2,
-			Block: b.cfg.current, Unreachable: !b.cfg.reachable()}
+			Block: b.cfg.current, Unreachable: !b.cfg.reachable(), Lane: op.instr.Lane}
+		if op.instr.Kind == InstrI8x16Shuffle {
+			b.charge(16)
+			e.Lanes = op.instr.Lanes()
+		}
+		if sourceMemoryInstruction(op.instr.Kind) {
+			ma := op.instr.MemArg()
+			e.MemoryOffset = ma.Offset
+			e.MemoryAlign = ma.Align
+			if ma.Mem != nil {
+				e.Index = uint32(*ma.Mem)
+			}
+		}
 		if handled, supported, err := b.cfg.control(&op, &e); handled {
 			if err != nil {
 				validationErr = err
@@ -469,14 +492,6 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 		e.InputCount = inputs
 		e.OutputCount = outputs
 		e.inputStart = b.appendOperands(b.stack[base:])
-		if effect := opEffects[op.instr.Kind]; effect.cat == effLoad || effect.cat == effStore {
-			ma := op.instr.MemArg()
-			e.MemoryOffset = ma.Offset
-			e.MemoryAlign = ma.Align
-			if ma.Mem != nil {
-				e.Index = uint32(*ma.Mem)
-			}
-		}
 		if err := v.stepDirectOp(&op); err != nil {
 			validationErr = err
 			result.Coverage = SourceInvalid
@@ -523,8 +538,11 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 				}
 				id := preserved
 				if id == 0 {
-					if bits, constant := sourceConstant(&op.instr); constant {
-						id = b.literal(t, bits)
+					if op.instr.Kind == InstrV128Const {
+						b.charge(16)
+					}
+					if bits, high, constant := sourceConstant(&op.instr); constant {
+						id = b.literalBits(t, bits, high)
 					} else {
 						id = b.value(t, SourceResult, 0)
 					}
@@ -555,32 +573,69 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 
 func sourceUnsupportedOpcode(opcode byte) bool {
 	switch opcode {
-	case 0x08, 0x12, 0x13, 0x14, 0x15, 0x1f, 0xfb, 0xfd, 0xfe:
+	case 0x08, 0x12, 0x13, 0x14, 0x15, 0x1f, 0xfb, 0xfe:
 		return true
 	default:
 		return false
 	}
 }
 
-func sourceConstant(in *Instruction) (uint64, bool) {
+func sourceConstant(in *Instruction) (uint64, uint64, bool) {
 	switch in.Kind {
 	case InstrI32Const:
-		return uint64(uint32(in.I32)), true
+		return uint64(uint32(in.I32)), 0, true
 	case InstrI64Const:
-		return uint64(in.I64), true
+		return uint64(in.I64), 0, true
 	case InstrF32Const:
-		return uint64(in.F32Bits), true
+		return uint64(in.F32Bits), 0, true
 	case InstrF64Const:
-		return in.F64Bits, true
+		return in.F64Bits, 0, true
+	case InstrV128Const:
+		lanes := in.Lanes()
+		var bits [16]byte
+		for i, lane := range lanes {
+			bits[i] = byte(lane)
+		}
+		return binary.LittleEndian.Uint64(bits[:8]), binary.LittleEndian.Uint64(bits[8:]), true
 	default:
-		return 0, false
+		return 0, 0, false
 	}
+}
+
+func sourceMemoryInstruction(kind InstrKind) bool {
+	if int(kind) >= len(opEffects) {
+		return false
+	}
+	if e := opEffects[kind]; e.cat == effLoad || e.cat == effStore {
+		return true
+	}
+	switch simdEffects[kind].cat {
+	case simdEffLoad, simdEffStore, simdEffMemLoadLane, simdEffMemStoreLane:
+		return true
+	}
+	return false
 }
 
 // signature uses the validator's authoritative primitive effects. Explicit
 // cases describe original alias/call semantics, not allocator state transitions.
 func (b *sourceLedgerBuilder) signature(in *Instruction, ft *CompType) (inputs, outputs int, alias, supported bool) {
 	if int(in.Kind) >= len(opEffects) {
+		return
+	}
+	switch simdEffects[in.Kind].cat {
+	case simdEffLoad, simdEffSplat, simdEffExtract, simdEffUnary, simdPopV128PushI32:
+		return 1, 1, false, true
+	case simdEffStore, simdEffMemStoreLane:
+		return 2, 0, false, true
+	case simdEffMemLoadLane, simdEffReplace, simdEffShift, simdEffBinary:
+		return 2, 1, false, true
+	case simdEffTernary, simdBitselect:
+		return 3, 1, false, true
+	case simdConst:
+		return 0, 1, false, true
+	case simdNone:
+		// Only non-SIMD instructions may use the scalar/control rules below.
+	default:
 		return
 	}
 	switch opEffects[in.Kind].cat {
