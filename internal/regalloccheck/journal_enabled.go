@@ -269,6 +269,25 @@ func (j *EmissionJournal) Commit(m JournalMark) bool {
 	return true
 }
 
+// Abandon releases one owned LIFO mark on unwind without claiming actual byte
+// truncation. The journal remains invalid, even if an enclosing mark survives.
+// Unlike ordinary recording, cleanup must also work after quota exhaustion.
+// Checkpoint's caller reserves cleanup work; this operation allocates nothing.
+func (j *EmissionJournal) Abandon(m JournalMark) bool {
+	if j == nil || j.closed {
+		return false
+	}
+	if j.finalizing || len(j.transactions) == 0 || m.owner != j || m.depth != len(j.transactions) || j.transactions[len(j.transactions)-1].mark != m {
+		j.fail(InvalidGraph, "foreign or non-LIFO journal abandonment")
+		return false
+	}
+	j.transactions[len(j.transactions)-1] = journalCheckpoint{}
+	j.transactions = j.transactions[:len(j.transactions)-1]
+	j.active = false // any active span began inside this owned checkpoint
+	j.fail(InvalidGraph, "abandoned journal transaction")
+	return true
+}
+
 // Rollback follows actual byte truncation. The caller supplies its new byte
 // length, which must match the checkpoint. No retained prefix rewrite is proved.
 func (j *EmissionJournal) Rollback(m JournalMark, truncatedCursor int) bool {

@@ -14,6 +14,7 @@ type SourceAttempt struct {
 	module   *wasm.Module
 	function int
 	ledger   *wasm.SourceLedger
+	plan     *sourceRecipePlan
 }
 
 // SetSourceContext borrows compile-scoped facts after worker cleanup is installed.
@@ -103,6 +104,7 @@ func EndSourceAttempt(t *SourceAttempt) {
 	if t.owner.sourceAttempt != t {
 		panic("regalloccheck: foreign source attempt owner")
 	}
+	CloseSourcePlan(SourcePlanToken{t.plan})
 	t.ledger.Close()
 	t.owner.sourceAttempt = nil
 	*t = SourceAttempt{}
