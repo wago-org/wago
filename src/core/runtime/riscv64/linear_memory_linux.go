@@ -321,9 +321,10 @@ func (m *LinearMemory) Close() error {
 	return nil
 }
 
-// GuestContext owns a stable off-heap memory-descriptor cell and integer global
-// cells. Its lock covers guest entry, global access and Close. No heap pointer is
-// passed to generated code. The compiler owns and validates cell interpretation.
+// GuestContext owns a stable off-heap memory-descriptor cell, integer globals,
+// data-segment descriptors and copied passive bytes in one RW mapping. Its lock
+// covers guest entry, global access and Close. No heap pointer is passed to
+// generated code. The compiler owns and validates cell interpretation.
 type GuestContext struct {
 	mu     sync.Mutex
 	mem    []byte
@@ -333,10 +334,36 @@ type GuestContext struct {
 }
 
 func NewGuestContext(memoryDescriptor uint64, globals []uint64) (*GuestContext, error) {
+	return NewGuestContextWithData(memoryDescriptor, globals, nil)
+}
+
+const MaxDataSegments = 256
+const MaxGuestDataBytes = 1 << 20
+
+// NewGuestContextWithData appends (base,length) descriptors in module data-index
+// order, then owned passive bytes. Active/dropped entries are supplied as nil.
+// Empty entries never need a base. Dropping clears a descriptor length; storage
+// stays owned until Close, bounding resources without guest callbacks.
+func NewGuestContextWithData(memoryDescriptor uint64, globals []uint64, data [][]byte) (*GuestContext, error) {
+	return newGuestContextWithData(memoryDescriptor, globals, data, &linuxMemory)
+}
+func newGuestContextWithData(memoryDescriptor uint64, globals []uint64, data [][]byte, ops *memoryOps) (*GuestContext, error) {
 	if len(globals) > 256 {
 		return nil, fmt.Errorf("rv64: too many scalar globals")
 	}
-	mem, err := linuxMemory.mapRW((len(globals) + 1) * 8)
+	if len(data) > MaxDataSegments {
+		return nil, fmt.Errorf("rv64: too many data segments")
+	}
+	bytes := 0
+	for _, b := range data {
+		if len(b) > MaxGuestDataBytes-bytes {
+			return nil, fmt.Errorf("rv64: passive data exceeds context bound")
+		}
+		bytes += len(b)
+	}
+	dataOffset := (len(globals) + 1) * 8
+	payload := dataOffset + len(data)*16
+	mem, err := ops.mapRW(payload + bytes)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +371,17 @@ func NewGuestContext(memoryDescriptor uint64, globals []uint64) (*GuestContext, 
 	for j, v := range globals {
 		binary.LittleEndian.PutUint64(mem[(j+1)*8:], v)
 	}
-	return &GuestContext{mem: mem, n: len(globals), ops: &linuxMemory}, nil
+	for j, b := range data {
+		if len(b) == 0 {
+			continue
+		}
+		desc := dataOffset + j*16
+		binary.LittleEndian.PutUint64(mem[desc:], uint64(pointer(mem[payload:])))
+		binary.LittleEndian.PutUint64(mem[desc+8:], uint64(len(b)))
+		copy(mem[payload:], b)
+		payload += len(b)
+	}
+	return &GuestContext{mem: mem, n: len(globals), ops: ops}, nil
 }
 func (c *GuestContext) Global(index int) (uint64, error) {
 	if c == nil {
