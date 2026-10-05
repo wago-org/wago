@@ -19,9 +19,9 @@ type swarSummary struct {
 }
 
 // This private whole-function pilot consumes a frontend-validated function.
-// It admits V128 and four scalar carriers, straight-line local/scalar integer,
-// vector operations and select. An explicitly supplied nonshared memory32 descriptor also admits
-// vector loads/stores. FP instructions and traps require their production bridges.
+// It admits V128 and four scalar carriers, straight-line local/scalar/vector
+// operations and select. An explicitly supplied nonshared memory32 descriptor
+// also admits vector loads/stores. FP and traps require their production bridges.
 // Module policy remains closed to SIMD; structured control and calls need lowering.
 // Admission and emission walk every byte with identical bounded stack rules.
 func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *integerEmitter) (swarSummary, error) {
@@ -117,11 +117,14 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 		if err != nil {
 			return swarSummary{}, err
 		}
-		if op != 0xfd && op != 0x01 && op != 0x0b && op != 0x1a {
+		if op != 0xfd && op != 0xfc && op != 0x01 && op != 0x0b && op != 0x1a {
 			bound := 256
 			_, _, _, _, integer := integerOpcode(op)
 			if op == 0x1b || op == 0x1c || integer {
 				bound = 512
+			}
+			if _, floating := swarScalarFloatOpcode(op); floating {
+				bound = 1024
 			}
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
@@ -274,6 +277,29 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				emit.swarStore(spill(h-3), left)
 			}
 			h -= 2
+		case 0xfc:
+			sub, err := r.U32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			conversion, ok := swarSaturatingFloatOpcode(sub)
+			if !ok {
+				return swarSummary{}, unsupported("SWAR non-conversion prefixed scalar lowering is pending")
+			}
+			if err := reserve(1024); err != nil {
+				return swarSummary{}, err
+			}
+			if h == 0 || stackClasses[h-1] != conversion.input {
+				return swarSummary{}, unsupported("SWAR saturating scalar conversion carrier class/underflow")
+			}
+			usesFP = true
+			if emit != nil {
+				emit.Load(5, spill(h-1), !conversion.input.narrow())
+				emit.floatTrunc(conversion.input == swarF64, conversion.output == swarI64, sub&1 != 0, true)
+				emit.Store(spill(h-1), 5, true)
+				emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
+			}
+			stackClasses[h-1] = conversion.output
 		case 0xfd:
 			kind, err := r.U32()
 			if err != nil {
@@ -798,6 +824,37 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			h -= arity - 1
 		default:
+			if scalar, ok := swarScalarFloatOpcode(op); ok {
+				arity := 2
+				if scalar.unary {
+					arity = 1
+				}
+				if h < arity {
+					return swarSummary{}, unsupported("SWAR scalar FP underflow")
+				}
+				for j := h - arity; j < h; j++ {
+					if stackClasses[j] != scalar.input {
+						return swarSummary{}, unsupported("SWAR scalar FP carrier class")
+					}
+				}
+				usesFP = usesFP || scalar.fp
+				usesTraps = usesTraps || scalar.trapping
+				if emit != nil {
+					emit.Load(5, spill(h-arity), !scalar.input.narrow())
+					if !scalar.unary {
+						emit.Load(6, spill(h-1), !scalar.input.narrow())
+					}
+					emit.floatOperation(op)
+					if scalar.output.narrow() {
+						emit.NormalizeI32(5)
+					}
+					emit.Store(spill(h-arity), 5, true)
+					emit.Store(spill(h-arity)+8, uint8(enc.Zero), true)
+				}
+				h -= arity - 1
+				stackClasses[h-1] = scalar.output
+				continue
+			}
 			operation, wide, unary, resultWide, ok := integerOpcode(op)
 			if !ok {
 				return swarSummary{}, unsupported("SWAR control/call/scalar lowering is pending")
