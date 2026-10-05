@@ -97,12 +97,8 @@ func walkSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory32 bool, t
 			return swarSummary{}, err
 		}
 		if i < importedFunctions {
-			for _, list := range [][]wasm.ValType{typ.Params, typ.Results} {
-				for _, carrier := range list {
-					if swarClassOf(carrier) == swarV128 {
-						return swarSummary{}, unsupported("SWAR host scalar signature")
-					}
-				}
+			if err := swarScalarHostSignature(typ); err != nil {
+				return swarSummary{}, err
 			}
 		}
 	}
