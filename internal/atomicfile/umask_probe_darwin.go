@@ -100,6 +100,11 @@ func createDarwinPrivateDirectory(parent, prefix string) (darwinPrivateDirectory
 		if err := unix.Mkdirat(parentFD, name, 0o700); errors.Is(err, unix.EEXIST) {
 			continue
 		} else if err != nil {
+			if errors.Is(err, unix.EACCES) || errors.Is(err, unix.EPERM) {
+				return darwinPrivateDirectory{}, errors.Join(
+					fmt.Errorf("atomic publication requires permission to create a private staging subdirectory in %s: %w", parent, err),
+					parentFile.Close())
+			}
 			return darwinPrivateDirectory{}, errors.Join(
 				fmt.Errorf("create private atomic directory: %w", err), parentFile.Close())
 		}

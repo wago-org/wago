@@ -9,9 +9,12 @@ import (
 const maxModeledBuildOutputXattrNamesSize = 128
 
 func hasUnpreservedBuildOutputXattrs(fd int) (bool, error) {
-	// Atomic replacement cannot retain arbitrary inode metadata. Inspect names
-	// through the already identity-checked descriptor and fail closed instead of
-	// copying stale signatures, quarantine data, resource forks, or user payloads.
+	// Atomic replacement cannot retain arbitrary inode metadata. Reject names
+	// visible through the identity-checked descriptor instead of copying stale
+	// signatures, quarantine data, resource forks, or user payloads. On Linux,
+	// flistxattr filters privileged namespaces (notably trusted.*) for ordinary
+	// users. This is a bounded visible-metadata check, not a complete inventory
+	// or a promise to preserve attributes the caller cannot enumerate.
 	// The fixed buffer holds all six unique modeled Linux names (126 bytes with
 	// terminators), and Darwin models only one. ERANGE therefore proves that at
 	// least one unmodeled name exists and can fail closed without an allocation.
