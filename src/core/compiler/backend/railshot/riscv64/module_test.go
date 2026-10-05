@@ -130,11 +130,8 @@ func TestCompileAdmissionAndImmutableMetadata(t *testing.T) {
 func TestRejectCompleteModule(t *testing.T) {
 	good := fixtureFunc{result: 0x7f, body: []byte{0x41, 1, 0x0b}}
 	for name, bad := range map[string]fixtureFunc{
-		"hidden-loop":        {result: 0x7f, body: []byte{0x03, 0x40, 0x0b, 0x41, 0, 0x0b}},
-		"hidden-fp":          {result: 0x7d, body: []byte{0x43, 0, 0, 0, 0, 0x0b}},
-		"cost-rejected-leaf": {params: []byte{0x7f, 0x7f}, result: 0x7f, body: []byte{0x20, 0, 0x20, 1, 0x6a, 0x0b}},
-		"hidden-div":         {params: []byte{0x7f, 0x7f}, result: 0x7f, body: []byte{0x20, 0, 0x20, 1, 0x6e, 0x0b}},
-		"hidden-call":        {result: 0x7f, body: []byte{0x10, 0, 0x0b}},
+		"hidden-fp":   {result: 0x7d, body: []byte{0x43, 0, 0, 0, 0, 0x0b}},
+		"hidden-call": {result: 0x7f, body: []byte{0x10, 0, 0x0b}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			bad.unexported = true

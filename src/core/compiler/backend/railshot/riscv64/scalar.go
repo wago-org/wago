@@ -1,7 +1,8 @@
 //go:build linux && !tinygo
 
-// Package riscv64 is an experimental shared-scalar-only compiler. It is not a
-// public Wago backend and has no fallback for functions outside shared admission.
+// Package riscv64 is an experimental integer/control compiler. It uses shared
+// scalar compilation and genuine RV64 whole-function lowering, without a public
+// Wago target or non-RV machine-code fallback.
 package riscv64
 
 import (

@@ -21,13 +21,14 @@ const (
 	MaxFrameBytes  = 128 << 10
 )
 
-var ErrUnsupported = errors.New("rv64: unsupported experimental scalar shape")
+var ErrUnsupported = errors.New("rv64: unsupported experimental integer shape")
 var ErrCancelable = errors.New("rv64: cancelable invocation is not implemented")
 
-// FunctionInfo describes genuine shared compilation, not an admission guess.
+// FunctionInfo describes the emitted whole-function path and frame.
 type FunctionInfo struct {
 	Entry, CodeBytes, Params, FrameBytes, SpillSlots, Spills, Reloads int
 	Result64                                                          bool
+	Fallback                                                          bool
 }
 
 // Compiled owns immutable heap code and metadata, never executable mappings.
@@ -46,11 +47,23 @@ func (c *Compiled) Functions() []FunctionInfo {
 }
 
 // Compile snapshots a bounded Wasm binary, normally decodes and validates it,
-// admits the complete module, then uses shared.CompileScalar for every function.
+// admits the complete module, then selects shared scalar or integer fallback
+// lowering for each whole function before emitting any code.
 // Caller input must not be mutated concurrently with the initial snapshot.
-func Compile(data []byte) (*Compiled, error) { return compile(data, scalarRegisters[:]) }
+func Compile(data []byte) (*Compiled, error) { return CompileWithOptions(data, CompileOptions{}) }
+
+// CompileOptions is an experimental diagnostic, not a public Wago setting.
+// ForceFallback bypasses shared selection for overlap differential testing.
+type CompileOptions struct{ ForceFallback bool }
+
+func CompileWithOptions(data []byte, opts CompileOptions) (*Compiled, error) {
+	return compileOptions(data, scalarRegisters[:], opts)
+}
 
 func compile(data []byte, regs []uint8) (*Compiled, error) {
+	return compileOptions(data, regs, CompileOptions{})
+}
+func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, error) {
 	if len(data) > MaxModuleBytes {
 		return nil, fmt.Errorf("rv64: module exceeds %d bytes", MaxModuleBytes)
 	}
@@ -70,11 +83,17 @@ func compile(data []byte, regs []uint8) (*Compiled, error) {
 		return nil, err
 	}
 	summaries := make([]shared.ScalarSummary, len(m.Code))
+	integerSummaries := make([]integerSummary, len(m.Code))
+	fallback := make([]bool, len(m.Code))
 	for i := range m.Code {
 		ft, _ := m.LocalFuncType(i)
 		summaries[i] = shared.AdmitScalarFunction(&m.Code[i], ft)
-		if !summaries[i].Eligible {
-			return nil, fmt.Errorf("%w: function %d outside shared admission", ErrUnsupported, i)
+		fallback[i] = opts.ForceFallback || !summaries[i].Eligible
+		if fallback[i] {
+			integerSummaries[i], err = walkInteger(&m.Code[i], ft, nil)
+			if err != nil {
+				return nil, fmt.Errorf("rv64: function %d: %w", i, err)
+			}
 		}
 	}
 	c := &Compiled{functions: make([]FunctionInfo, len(m.Code)), exports: make(map[string]int, len(m.Exports))}
@@ -82,7 +101,13 @@ func compile(data []byte, regs []uint8) (*Compiled, error) {
 	defer worker.FinishWorker()
 	for i := range m.Code {
 		ft, _ := m.LocalFuncType(i)
-		code, info, err := compileFunction(&worker, &m.Code[i], ft, summaries[i], regs)
+		var code []byte
+		var info FunctionInfo
+		if fallback[i] {
+			code, info, err = compileInteger(&m.Code[i], ft, integerSummaries[i])
+		} else {
+			code, info, err = compileFunction(&worker, &m.Code[i], ft, summaries[i], regs)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("rv64: function %d: %w", i, err)
 		}
@@ -229,6 +254,12 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, f.a.Err()
 	}
+	info := FunctionInfo{Params: len(ft.Params), SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64)}
+	return frameFunction(f.a.B, widths[:nlocals], len(ft.Params), slots, false, info)
+}
+
+func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bool, info FunctionInfo) ([]byte, FunctionInfo, error) {
+	nlocals := len(widths)
 	frame := (16 + 8*nlocals + 8*slots + 15) &^ 15
 	if frame > MaxFrameBytes {
 		return nil, FunctionInfo{}, fmt.Errorf("frame exceeds %d bytes", MaxFrameBytes)
@@ -241,19 +272,24 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 	entry.a.Sub(enc.SP, enc.SP, enc.Scratch0)
 	entry.a.Sd(enc.RA, enc.SP, 0)
 	entry.a.Sd(enc.X11, enc.SP, 8)
-	for i := range ft.Params {
+	for i := 0; i < nparams; i++ {
 		entry.a.Ld(enc.Scratch0, enc.X10, int32(i*8))
 		entry.Store(entry.LocalOffset(i), uint8(enc.Scratch0), widths[i])
 	}
-	entry.a.B = append(entry.a.B, f.a.B...)
+	if initialize {
+		for i := nparams; i < nlocals; i++ {
+			entry.Store(entry.LocalOffset(i), uint8(enc.Zero), widths[i])
+		}
+	}
+	entry.a.B = append(entry.a.B, body...)
 	entry.a.Ld(enc.RA, enc.SP, 0)
 	entry.a.Constant64(enc.Scratch0, int64(frame))
 	entry.a.Add(enc.SP, enc.SP, enc.Scratch0)
 	entry.a.Ret()
-	if err = entry.a.PatchLong(bad, int64(entry.a.Len())); err != nil {
+	if err := entry.a.PatchLong(bad, int64(entry.a.Len())); err != nil {
 		return nil, FunctionInfo{}, err
 	}
-	if err = entry.a.PatchLong(reversed, int64(entry.a.Len())); err != nil {
+	if err := entry.a.PatchLong(reversed, int64(entry.a.Len())); err != nil {
 		return nil, FunctionInfo{}, err
 	}
 	// The failure edge occurs before body allocation; original a2 and RA/SP
@@ -265,7 +301,8 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 	if entry.a.Err() != nil {
 		return nil, FunctionInfo{}, entry.a.Err()
 	}
-	return entry.a.B, FunctionInfo{Params: len(ft.Params), FrameBytes: frame, SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64)}, nil
+	info.FrameBytes = frame
+	return entry.a.B, info, nil
 }
 
 // Instance owns all executable and call resources. It accepts noncancelable

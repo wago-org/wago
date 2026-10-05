@@ -76,3 +76,47 @@ func TestEstablishedAMD64SameScalarFixtures(t *testing.T) {
 		}
 	}
 }
+
+func TestEstablishedAMD64SameIntegerControls(t *testing.T) {
+	for _, tc := range integerControls() {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := wago.Compile(binaryModule(tc.f))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			i, err := wago.Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer i.Close()
+			for range 3 {
+				for _, call := range tc.calls {
+					got, err := i.Invoke("a", call.args...)
+					if call.trap != 0 {
+						if err == nil {
+							t.Fatal("expected trap", got)
+						}
+						continue
+					}
+					if err != nil || len(got) != 1 || got[0] != call.want {
+						t.Fatal(got, call.want, err)
+					}
+				}
+			}
+		})
+	}
+	c, err := wago.Compile(binaryModule(deepIntegerFixture()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	i, err := wago.Instantiate(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer i.Close()
+	if got, err := i.Invoke("a"); err != nil || len(got) != 1 || got[0] != 320 {
+		t.Fatal(got, err)
+	}
+}
