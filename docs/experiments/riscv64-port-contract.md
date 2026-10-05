@@ -1,8 +1,9 @@
 # RV64 port contract
 
 This experimental Linux/RV64 port has an encoder, an isolated integer runtime
-boundary, shared scalar compilation and bounded whole-function integer/control
-lowering. Generated code executes under QEMU; see the
+boundary, shared scalar compilation, bounded whole-function integer/control
+lowering and single-memory/integer-global execution. Generated code executes
+under QEMU; see the [memory checkpoint](riscv64-memory-checkpoint.md),
 [integer checkpoint](riscv64-integer-checkpoint.md),
 [scalar checkpoint](riscv64-scalar-checkpoint.md) and
 [runtime checkpoint](riscv64-runtime-checkpoint.md).
@@ -25,6 +26,9 @@ checkout and its active worktrees were left unchanged; the new worktree uses
 a separate local object-sharing clone. No code or commits were copied from
 historical #284. Open #284/#285 and checker work #798/#799/#800 are separate;
 none was modified. The checker enhancements are not assumed to be merged.
+
+The later memory checkpoint records the readonly main refresh after #799 and
+the separate open #803; those changes were checked without modifying either PR.
 
 ## Merged shared contract
 

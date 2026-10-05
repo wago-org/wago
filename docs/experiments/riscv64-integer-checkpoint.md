@@ -5,6 +5,9 @@ isolated branch from #802's squash `03a2db03ac06bcf20d5411272a7dce80a2138fae`.
 It adds genuine whole-function RV64 lowering for validated integer/control
 functions outside shared scalar admission. This remains an experimental package,
 without a public Wago compiler target, CLI target or artifact architecture.
+This document records Stage 4a; the later
+[memory checkpoint](riscv64-memory-checkpoint.md) extends its state allowlist
+and serialized context layout.
 
 ## Selection and bounded admission
 
