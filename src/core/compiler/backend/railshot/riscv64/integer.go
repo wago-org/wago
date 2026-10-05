@@ -473,6 +473,41 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			}
+		case 0x11:
+			typeIndex, e := r.U32()
+			if e != nil {
+				return integerSummary{}, e
+			}
+			tableIndex, e := r.U32()
+			if e != nil {
+				return integerSummary{}, e
+			}
+			if state == nil || !state.production || !state.ownedTable || tableIndex != 0 || uint64(typeIndex) >= uint64(len(state.types)) {
+				return integerSummary{}, unsupported("private table call_indirect shape")
+			}
+			sig := state.types[typeIndex]
+			callCount++
+			budget += len(sig.params) + len(sig.results)
+			if callCount > maxDirectCalls || budget > integerBudget {
+				return integerSummary{}, unsupported("indirect call count/slot budget")
+			}
+			if _, err = pop(); err != nil {
+				return integerSummary{}, err
+			}
+			indexSlot := h
+			for range sig.params {
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+			}
+			if live && emit != nil {
+				emit.indirectCall(sig, h, indexSlot)
+			}
+			for _, wide := range sig.results {
+				if err = push(wide); err != nil {
+					return integerSummary{}, err
+				}
+			}
 		case 0x23, 0x24:
 			idx, e := r.U32()
 			if e != nil {

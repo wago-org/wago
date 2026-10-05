@@ -9,10 +9,10 @@ production parity. No remote publication is authorized.
 | Area | Current implementation | Remaining production work |
 | --- | --- | --- |
 | Integer/control | RV64 integer arithmetic/comparisons, structured/indexed control, zero/multiple results, production compiler and experimental public binding/configured limits | Broader qualification and removal of development bounds |
-| Calls | Defined same-instance direct/recursive integer and FP calls, mixed/wide result vectors, production wrapper slots and cold traps | Stateful context transfer, imports, indirect/cross-instance calls, tail calls, call_ref |
+| Calls | Defined same-instance direct/recursive and private-table indirect integer/FP calls, mixed/wide result vectors, production wrapper slots and cold traps | Stateful context transfer, imports, cross-instance calls, tail calls, call_ref |
 | Production runtime | Linux/RV64 Engine/JobMemory bridge, central W^X/process-wide cache synchronization, framed normal/cold return, shared publication/cleanup ownership, experimental public instantiation | Host/guard/signal paths and native qualification |
 | Memory/globals/bulk | True production JobMemory memory32, aliased scalar global-cell directory, public active/passive descriptor/payload lifetime, bulk operations, full 4-GiB bounds/quota growth, one imported ordinary memory32 plus scalar global imports with context/ownership lifecycle; immutable scalar import copies and I32 active offsets | Extended initializers/start, multiple/shared/memory64 memories |
-| Tables/references | Rejected before publication | Production descriptors, exact type identities, element/table lifecycle, externref and typed references, resource-root retention |
+| Tables/references | One private default-null funcref table32, active legacy elements, existing owned canonical descriptors, exact scalar keys/context checks and numeric call_indirect | Imports/exports/mutation, passive/typed elements, guest reference values, externref/typed refs, foreign resource roots |
 | FP | Reviewed F/D encoder, FCSR boundary and production/public scalar lowering, conversions, raw transport, globals/memory and cold traps | Broader official FP suites and native qualification; host/register ABI paths |
 | Host calls | Rejected before publication | Parked Go callbacks, wide slots, save/resume, panic/trap paths, re-entry, policies |
 | SIMD | Rejected before publication | v128 two-slot representation, SWAR core/relaxed SIMD, spills/calls |
@@ -70,6 +70,8 @@ The [scalar global import checkpoint](riscv64-imported-global-checkpoint.md) add
 aliased four-type globals and value-import re-export lifetime ownership.
 The [immutable imported-global initializer checkpoint](riscv64-imported-initializer-checkpoint.md)
 adds exact scalar copies and I32 active-data offsets through retained cells.
+The [private table and indirect-call checkpoint](riscv64-owned-table-checkpoint.md)
+adds framed numeric dispatch with pre-marshalling signature/ownership checks.
 
 Josh requires completion of shared graph PR #807 before RV64 publication. Its
 current optional checked bridge leaves local compilation available. Target-side

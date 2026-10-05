@@ -33,7 +33,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		remaining -= len(data.Bytes)
 	}
-	if c.NumImports != 0 || len(c.Imports) != 0 || c.memoryImportCount() > 1 || c.tableCount() != 0 || c.HasStart || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.NeedsFuncRefDescs || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
+	if c.NumImports != 0 || len(c.Imports) != 0 || c.memoryImportCount() > 1 || c.HasStart || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
 		return reject("resource/host/reference lowering is pending")
 	}
 	if len(c.GlobalImports) > len(c.Globals) {
@@ -86,6 +86,9 @@ func railshotValidateCompiled(c *Compiled) error {
 				}
 			}
 		}
+	}
+	if err := rv64ValidateOwnedTable(c); err != nil {
+		return reject(err.Error())
 	}
 	for i, global := range c.Globals {
 		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64) || global.HasInitFunc || len(global.InitExpr) != 0 {

@@ -202,6 +202,10 @@ func admitWireMode(data []byte, floating bool) error {
 		end := start + int(n)
 		switch id {
 		case 0, 2, 3, 5, 6, 7, 10, 11, 12:
+		case 4, 9:
+			if !floating {
+				return unsupported("isolated table/element sections")
+			}
 		case 1:
 			s := wasm.ReaderFrom(data[8+start : 8+end])
 			count, err := s.U32()
@@ -254,7 +258,7 @@ func admitShapeMode(m *wasm.Module, floating bool) error {
 	if len(m.Code) == 0 || len(m.Code) > MaxFunctions {
 		return unsupported("function count outside 1..1024")
 	}
-	if m.UsesCompactImports || len(m.Tables) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) != 0 || len(m.BranchHints) != 0 {
+	if m.UsesCompactImports || (!floating && (len(m.Tables) != 0 || len(m.Elements) != 0)) || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.BranchHints) != 0 {
 		return unsupported("imports, state, initializers or feature metadata")
 	}
 	for _, custom := range m.Customs {

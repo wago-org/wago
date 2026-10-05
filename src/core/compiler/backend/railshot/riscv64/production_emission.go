@@ -9,7 +9,8 @@ import (
 )
 
 // Admission follows the production lowerings implemented below. Ordinary
-// memory and scalar global imports are supported; host imports, starts and tables remain gated.
+// memory and scalar global imports and private tables are supported; host imports
+// and starts remain gated.
 func admitProductionWire(data []byte) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
@@ -22,7 +23,7 @@ func admitProductionWire(data []byte) error {
 			return err
 		}
 		switch id {
-		case 0, 1, 2, 3, 5, 6, 7, 10, 11, 12:
+		case 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12:
 		default:
 			return unsupported("production state/feature lowering is pending")
 		}
@@ -36,6 +37,17 @@ func admitProductionWire(data []byte) error {
 				return unsupported("production requires 1..257 resource imports when an import section is present")
 			}
 			// Decoded admission checks every import's kind/type and aggregate bounds.
+		}
+		if id == 4 || id == 9 {
+			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
+			count, err := section.U32()
+			limit := uint32(1)
+			if id == 9 {
+				limit = MaxOwnedElementSegments
+			}
+			if err != nil || count == 0 || count > limit {
+				return unsupported("bounded private table/element section")
+			}
 		}
 		if err := r.JumpTo(r.Offset() + int(n)); err != nil {
 			return err
@@ -58,6 +70,10 @@ func productionTrapCode(code int) int {
 		return abi.TrapTruncOverflow
 	case trapCooperativeInterrupt:
 		return abi.TrapInterrupted
+	case trapIndirectBounds:
+		return abi.TrapIndirectOutOfBounds
+	case trapIndirectSignature:
+		return abi.TrapIndirectWrongSig
 	default:
 		panic("rv64: unknown admitted integer trap")
 	}

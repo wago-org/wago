@@ -19,6 +19,7 @@ type globalSpec struct {
 }
 type functionSpec struct {
 	params, results []bool
+	key             uint64
 }
 type memorySpec struct {
 	min              uint32
@@ -28,6 +29,7 @@ type memorySpec struct {
 }
 type moduleState struct {
 	production     bool
+	ownedTable     bool
 	memory         *memorySpec
 	globals        []globalSpec
 	data           []native.MemoryInitializer
@@ -67,6 +69,11 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 }
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
+	var tableErr error
+	s.ownedTable, tableErr = admitOwnedTable(m, production)
+	if tableErr != nil {
+		return s, tableErr
+	}
 	maxImports := 1
 	if production {
 		maxImports = 257
@@ -154,9 +161,16 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 			return s, unsupported("noninteger state export")
 		}
 	}
-	for _, rec := range m.Types {
+	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results))}
+		if s.ownedTable {
+			var ok bool
+			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
+			if !ok {
+				return s, unsupported("bounded table signature identity")
+			}
+		}
 		for k, t := range ft.Params {
 			fn.params[k] = scalarWide(t)
 		}
