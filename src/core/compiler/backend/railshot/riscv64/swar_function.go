@@ -716,6 +716,82 @@ func walkSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory32 bo
 			if err != nil {
 				return swarSummary{}, err
 			}
+			if sub >= 14 && sub <= 17 {
+				if table == nil || sub == 15 && !table.Limits.HasMax && table.Limits.Min > MaxOwnedTableEntries/2 {
+					return swarSummary{}, unsupported("SWAR owned table mutation/reserve")
+				}
+				indices := 1
+				if sub == 14 {
+					indices = 2
+				}
+				for i := 0; i < indices; i++ {
+					index, err := r.U32()
+					if err != nil {
+						return swarSummary{}, err
+					}
+					if index != 0 {
+						return swarSummary{}, unsupported("SWAR bulk table index")
+					}
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				var operands []swarClass
+				switch sub {
+				case 14:
+					operands = []swarClass{swarI32, swarI32, swarI32}
+				case 15:
+					operands = []swarClass{swarFuncRef, swarI32}
+				case 17:
+					operands = []swarClass{swarI32, swarFuncRef, swarI32}
+				}
+				if err := flow.prepareDead(operands...); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - len(operands)
+				if base < flow.floor() {
+					return swarSummary{}, unsupported("SWAR bulk table operand underflow")
+				}
+				for i, class := range operands {
+					if stackClasses[base+i] != class {
+						return swarSummary{}, unsupported("SWAR bulk table carrier class")
+					}
+				}
+				usesTraps = true
+				flow.usesLoops = flow.usesLoops || sub != 16
+				if emit != nil {
+					switch sub {
+					case 14, 17:
+						emit.Load(6, spill(base), false)
+						emit.Load(7, spill(base+1), sub == 17)
+						emit.Load(5, spill(base+2), false)
+						if sub == 14 {
+							emit.privateTableCopy()
+						} else {
+							emit.privateTableFill()
+						}
+					case 15:
+						emit.Load(7, spill(base), true)
+						emit.Load(5, spill(base+1), false)
+						emit.privateTableGrowAt(spill(base + 1))
+					case 16:
+						emit.a.Ld(enc.X6, enc.X25, -80)
+						emit.trap(trapTableBounds, emit.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
+						emit.a.Lwu(enc.X5, enc.X6, 0)
+					}
+					if sub == 15 || sub == 16 {
+						emit.Store(spill(base), 5, true)
+						emit.Store(spill(base)+8, uint8(enc.Zero), true)
+					}
+				}
+				h = base
+				if sub == 15 || sub == 16 {
+					if err := push(swarI32); err != nil {
+						return swarSummary{}, err
+					}
+				}
+				continue
+			}
 			dataOffset := int32(0)
 			if sub == 8 || sub == 9 {
 				index, err := r.U32()

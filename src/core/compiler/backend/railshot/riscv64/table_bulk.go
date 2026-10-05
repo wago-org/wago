@@ -124,6 +124,11 @@ func (f *integerEmitter) privateCopyEntries(step int32) {
 }
 
 func (f *integerEmitter) privateTableGrow(deltaSlot int) {
+	f.privateTableGrowAt(f.SpillOffset(deltaSlot))
+}
+
+// The offset belongs to the caller's spill layout; SWAR uses16-byte homes.
+func (f *integerEmitter) privateTableGrowAt(deltaOffset int32) {
 	f.a.Ld(enc.X28, enc.X25, -80)
 	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
 	f.a.Lwu(enc.X30, enc.X28, 0)
@@ -137,7 +142,7 @@ func (f *integerEmitter) privateTableGrow(deltaSlot int) {
 	f.a.Addi(enc.X6, enc.X6, 8)
 	f.privateFillEntries()
 	// Initialization and all entry polls finish before the new length is visible.
-	f.Load(5, f.SpillOffset(deltaSlot), false)
+	f.Load(5, deltaOffset, false)
 	f.a.Add(enc.X5, enc.X30, enc.X5)
 	f.a.Ld(enc.X6, enc.X25, -80)
 	f.a.Sw(enc.X5, enc.X6, 0)

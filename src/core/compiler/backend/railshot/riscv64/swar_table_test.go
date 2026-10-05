@@ -94,7 +94,7 @@ func TestSWAROwnedReferenceControlAndDeadTyping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tail := range [][]byte{{0xd0, 0x70, 0x1a}, {0xd1, 0x1a}, {0xd2, 1, 0x1a}, {0x25, 0, 0x1a}, {0x26, 0}, {2, 0x70, 0xd0, 0x70, 0x0b, 0x1a}} {
+	for _, tail := range [][]byte{{0xd0, 0x70, 0x1a}, {0xd1, 0x1a}, {0xd2, 1, 0x1a}, {0x25, 0, 0x1a}, {0x26, 0}, {2, 0x70, 0xd0, 0x70, 0x0b, 0x1a}, {0xfc, 16, 0, 0x1a}} {
 		fn.BodyBytes = append(append([]byte(nil), baselineBody[:len(baselineBody)-1]...), append(tail, 0x0b)...)
 		code, actual, _, err := compileSWARPairsWithTable(fn, ft, nil, nil, functions, nil, 0, table, emissionMode{production: true})
 		if err != nil || !bytes.Equal(code, baseline) || actual.FrameBytes != info.FrameBytes || actual.SpillSlots != info.SpillSlots {
@@ -106,7 +106,7 @@ func TestSWAROwnedReferenceControlAndDeadTyping(t *testing.T) {
 		{0x42, 0, 0xd1, 0x1a}, {0xd0, 0x70, 0x50, 0x1a},
 		{2, 0x40, 0xd1, 0x1a, 0x0b},
 		{0xd0, 0x70, 0xd0, 0x70, 0x41, 0, 0x1b, 0x1a}, // reference select must be typed
-		{0xfc, 16, 0, 0x1a}, {0x11, 0, 0, 0x1a},       // size/indirect lowering remains closed
+		{0x11, 0, 0, 0x1a},                            // indirect identity directory remains required
 	} {
 		fn.BodyBytes = append(append([]byte(nil), baselineBody[:len(baselineBody)-1]...), append(tail, 0x0b)...)
 		if code, _, _, err := compileSWARPairsWithTable(fn, ft, nil, nil, functions, nil, 0, table, emissionMode{production: true}); code != nil || err == nil {
