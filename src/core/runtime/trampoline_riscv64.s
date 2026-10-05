@@ -39,6 +39,9 @@ TEXT ·enterNativeRaw(SB),NOSPLIT|NOFRAME,$0-48
  MOV X25, nativeWrapperSaveFrame_S9(T1)
  MOV CTXT, nativeWrapperSaveFrame_CTXT(T1)
  MOV g, nativeWrapperSaveFrame_G(T1)
+ // CSRRS X31,fcsr,X0. Preserve accrued flags and the caller's rounding mode.
+ WORD $0x00302ff3
+ MOV T6, nativeWrapperSaveFrame_FCSR(T1)
  MOV serArgs+8(FP), A0
  MOV results+32(FP), A3
  MOV A1, X25
@@ -48,6 +51,9 @@ TEXT ·enterNativeRaw(SB),NOSPLIT|NOFRAME,$0-48
  JAL RA, callNative
 
 afterNativeCall:
+ MOV nativeWrapperSaveFrame_FCSR(X2), T6
+ // CSRRW X0,fcsr,X31. Normal and cold-trap returns share this restoration.
+ WORD $0x003f9073
  MOV nativeWrapperSaveFrame_RA(X2), RA
  MOV nativeWrapperSaveFrame_GP(X2), GP
  MOV nativeWrapperSaveFrame_TP(X2), TP

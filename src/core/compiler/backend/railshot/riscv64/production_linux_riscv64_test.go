@@ -198,9 +198,9 @@ func TestProductionEnvelopeHeapPublicationAndExactFrameBounds(t *testing.T) {
 	for _, heap := range []bool{false, true} {
 		data := binaryModule(fixtureFunc{params: []byte{0x7f}, result: 0x7f, body: []byte{0x20, 0, 0x0b}})
 		f := productionCallsWithOptions(t, data, ProductionOptions{DeferCodeMapping: heap})
-		// The bridge saves 128 bytes, and this fully framed identity needs 32.
+		// The bridge saves 144 bytes, and this fully framed identity needs 32.
 		// Leave 16: the bridge check passes but the guest must reject its frame.
-		f.memory.SetStackFence(f.engine.StackTop() - 128 - 16)
+		f.memory.SetStackFence(f.engine.StackTop() - 144 - 16)
 		result := []uint64{0x5555}
 		args := []uint64{dirty(41)}
 		var trap *coreruntime.TrapError
@@ -208,7 +208,7 @@ func TestProductionEnvelopeHeapPublicationAndExactFrameBounds(t *testing.T) {
 		if !errors.As(err, &trap) || trap.Code != coreruntime.TrapStackFenceBreached || result[0] != 0x5555 {
 			t.Fatal("guest frame exceeded available stack", result, err)
 		}
-		f.memory.SetStackFence(f.engine.StackTop() - 128 - 32)
+		f.memory.SetStackFence(f.engine.StackTop() - 144 - 32)
 		if err := f.invoke(0, args, result); err != nil || result[0] != 41 {
 			t.Fatal("exact guest frame capacity rejected", result, err)
 		}

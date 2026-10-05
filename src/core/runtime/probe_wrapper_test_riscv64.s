@@ -135,3 +135,31 @@ probe_aligned:
 	MOV 160(X2), CTXT
 	MOV T0, ret+48(FP)
 	RET
+
+// FCSR sentinel is restored before any Go instruction outside this ABI0 probe.
+// Use RUP with every accrued flag set, so both fields detect guest corruption.
+TEXT ·probeNativeFcsrRaw(SB),NOSPLIT,$80-56
+	WORD $0x00302ff3 // CSRRS X31,fcsr,X0
+	MOV T6, 56(X2)
+	MOV code+0(FP), T0
+	MOV T0, 8(X2)
+	MOV args+8(FP), T0
+	MOV T0, 16(X2)
+	MOV linMem+16(FP), T0
+	MOV T0, 24(X2)
+	MOV trap+24(FP), T0
+	MOV T0, 32(X2)
+	MOV results+32(FP), T0
+	MOV T0, 40(X2)
+	MOV top+40(FP), T0
+	MOV T0, 48(X2)
+	MOV $0x7f, T6
+	WORD $0x003f9073 // CSRRW X0,fcsr,X31
+	CALL ·enterNativeRaw(SB)
+	WORD $0x00302ff3
+	MOV T6, 64(X2)
+	MOV 56(X2), T6
+	WORD $0x003f9073
+	MOV 64(X2), T0
+	MOV T0, ret+48(FP)
+	RET

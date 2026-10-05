@@ -9,8 +9,10 @@ runtime remains separate.
 
 The production wrapper passes A0=serialized arguments, A1=linear-memory home,
 A2=trap buffer, A3=result slots, and pins the home in X25. The guest stack begins
-with a 128-byte wrapper save area preserving the Go stack pointer, RA, GP, TP,
-callee-saved GPRs, CTXT and g. Alignment and available stack capacity are checked
+with a 144-byte wrapper save area preserving the Go stack pointer, RA, GP, TP,
+callee-saved GPRs, CTXT, g and FCSR. The initial integer checkpoint used 128 bytes;
+the subsequent FP-state boundary added FCSR and alignment padding.
+Alignment and available stack capacity are checked
 before any foreign-stack write. The compiler must separately check its complete
 guest frame before writing it. Normal returns and cold traps restore the same
 wrapper state; cold traps use basedata offsets 24/32, avoiding the maximum-page
@@ -44,6 +46,19 @@ passed with the race detector. Host and RV64 vet passed, and ARM64 runtime tests
 cross-compiled. Two independent source reviewers accepted the bridge; the runtime
 reviewer additionally accepted the active-GC and cross-thread fixtures after fixes.
 Logs are in the task workspace's `evidence/production-runtime-*.log` files.
+
+The subsequent FCSR boundary preserves the complete rounding-mode/exception
+state before switching stacks and restores it on the shared normal/cold-return
+path. The sizeof-driven guard includes the complete 144-byte save area plus the
+minimum guest header. An ABI0 probe seeds RUP and all accrued flags, runs actual
+FP arithmetic that changes both fields, checks normal and cold return, then
+restores its original state before Go resumes. Rejected entry retains FCSR and
+all foreign-stack bytes. Exact compiler-frame boundary fixtures use the expanded
+area. Independent source review accepted this change. Runtime sentinels, full
+compiler and focused public QEMU regressions passed three runs in ordinary and
+checked modes; RV64 vet and staticcheck (excluding existing unused diagnostics)
+passed. Logs are `evidence/float-runtime-*.log`. FP Wasm admission and the full
+guest FP-register ABI remain separate work; this bridge change enables neither.
 
 QEMU used RV64G with Zba/Zbb/Zbs/Zicond/V disabled. These results establish
 emulated correctness only. Native multicore cache and performance qualification

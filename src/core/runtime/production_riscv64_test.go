@@ -146,6 +146,61 @@ func TestProductionRV64UnsupportedHostAndGuard(t *testing.T) {
 }
 
 func probeNativeWrapperRaw(code, trace, linMem, trap, results, top uintptr) uint64
+func probeNativeFcsrRaw(code, args, linMem, trap, results, top uintptr) uint64
+
+//go:nosplit
+func probeNativeFcsr(code, args, linMem, trap, results, top uintptr) uint64 {
+	nativeEnterSyscall()
+	value := probeNativeFcsrRaw(code, args, linMem, trap, results, top)
+	nativeExitSyscall()
+	return value
+}
+
+func TestProductionRV64FcsrRestoredOnNormalColdAndRejectedEntry(t *testing.T) {
+	goruntime.LockOSThread()
+	defer goruntime.UnlockOSThread()
+	e, j, arena := productionFixtureRV64(t, 0)
+	args, trap, results := arena.Alloc(8), arena.Alloc(TrapBufferBytes), arena.Alloc(8)
+	for _, cold := range []bool{false, true} {
+		var a enc.Asm
+		a.ReadFcsr(enc.X5)
+		a.Sd(enc.X5, enc.X10, 0)
+		// Change both FRM and flags, then raise NV using actual FP arithmetic.
+		a.WriteFcsr(enc.Zero)
+		a.FmvDX(enc.F0, enc.Zero)
+		a.FdivD(enc.F0, enc.F0, enc.F0, enc.RNE)
+		a.ReadFflags(enc.X5)
+		a.Sd(enc.X5, enc.X13, 0)
+		if cold {
+			a.Addi(enc.SP, enc.SP, -32)
+			a.Addi(enc.X5, enc.Zero, int32(TrapUnreachable))
+			a.Sw(enc.X5, enc.X12, 0)
+			a.Ld(enc.SP, enc.X25, -int32(RV64TrapReentrySPOffset))
+			a.Ld(enc.X5, enc.X25, -int32(RV64TrapContinuationOffset))
+			a.Jalr(enc.Zero, enc.X5, 0)
+		} else {
+			a.Ret()
+		}
+		entry := productionImageRV64(t, &a)
+		for range 32 {
+			clear(trap)
+			if got := probeNativeFcsr(entry, slicePtr(args), j.LinMemBase(), slicePtr(trap), slicePtr(results), e.stackTop); got != 0x7f {
+				t.Fatalf("cold=%t leaked guest FCSR %#x", cold, got)
+			}
+			if binary.LittleEndian.Uint64(args) != 0x7f || binary.LittleEndian.Uint64(results) != 0x10 {
+				t.Fatalf("cold=%t FCSR input/actual NV flag: args=%x result=%x", cold, args, results)
+			}
+			if (loadTrap(trap) != 0) != cold {
+				t.Fatalf("cold=%t trap=%d", cold, loadTrap(trap))
+			}
+		}
+		// A rejected bridge must leave both the foreign stack and FCSR untouched.
+		before := append([]byte(nil), e.stack...)
+		if got := probeNativeFcsr(entry, slicePtr(args), j.LinMemBase(), slicePtr(trap), slicePtr(results), e.stackTop-1); got != 0x7f || !bytes.Equal(before, e.stack) {
+			t.Fatal("pre-write rejection changed FCSR or foreign stack", got)
+		}
+	}
+}
 
 //go:nosplit
 func probeNativeWrapper(code, trace, linMem, trap, results, top uintptr) uint64 {
