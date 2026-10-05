@@ -10,7 +10,7 @@ import (
 
 func cachedLifetimeFunction(t *testing.T) *fn {
 	t.Helper()
-	f := &fn{a: &enc.Asm{}, s: newStack(), policy: currentCodegenPolicy()}
+	f := &fn{a: &enc.Asm{}, s: newStack(), policy: immutableCacheTestPolicy(t)}
 	h := funcHintView{loopIntConsts: &loopIntConstHintEntry{bits: [2]int64{0x123456789abcdef}, count: 1}}
 	f.preloadLoopIntConsts(&h)
 	if f.iconstN != 1 {

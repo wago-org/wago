@@ -11,6 +11,17 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func immutableCacheTestPolicy(t *testing.T) CodegenPolicy {
+	t.Helper()
+	// The optimization defaults off on Windows and Darwin. Checker fixtures
+	// explicitly exercise cache admission without changing platform defaults.
+	selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{"wide-loop-int-const": true}, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return shared.DefaultCodegenPolicy(selection)
+}
+
 func TestImmutableIntegerCacheAllowsTerminalMultiResultReturn(t *testing.T) {
 	// Eight incoming arguments keep R9/R10 out of the pin pool. Repeated loop
 	// updates pin the callee-saved registers, placing body constants in R9/R10.
@@ -35,8 +46,8 @@ func TestImmutableIntegerCacheAllowsTerminalMultiResultReturn(t *testing.T) {
 	}
 	body = append(body, 0x0b)
 	m := modFuncs(t, funcDef{params: params, results: results, body: body})
-	policy := currentCodegenPolicy()
-	hints, sidecar, _, err := computeModuleHints(m, 0, 0, nil, false)
+	policy := immutableCacheTestPolicy(t)
+	hints, sidecar, _, err := computeModuleHintsWithPolicy(m, 0, 0, nil, false, policy, false)
 	if err != nil {
 		t.Fatal(err)
 	}
