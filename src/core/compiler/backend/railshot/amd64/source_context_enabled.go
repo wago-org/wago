@@ -12,5 +12,19 @@ import (
 // custom lowering callback. This scope starts after public option validation.
 func compileSourceModuleWith(m *wasm.Module, opts CompileOptions) (*encoder.CompiledModule, error) {
 	defer codegen.CloseSourceContext(opts.Codegen, m)
-	return compileModuleWith(m, opts)
+	cm, err := compileModuleWith(m, opts)
+	if err != nil {
+		return nil, err
+	}
+	keep := false
+	defer func() {
+		if !keep && cm != nil && cm.CodeImage != nil {
+			_ = cm.CodeImage.Close()
+		}
+	}()
+	if err := checkSourceCallsFinal(m, opts, cm); err != nil {
+		return nil, err
+	}
+	keep = true
+	return cm, nil
 }

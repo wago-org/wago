@@ -10,9 +10,15 @@ import (
 // Decode a GP MOV or owned direct-RSP frame transfer. Both source bridges use
 // final operands and widths; no caller-supplied home or allocator pin is trusted.
 func decodeSourceTransferAMD64(code []byte, at, end int, frame uint64, section uint8) (sourceBranchInstruction, int, string, bool) {
+	return decodeSourceTransferPinsAMD64(code, at, end, frame, section, 12)
+}
+
+// The final call recipe also admits R12/R13 argument pins. Other source
+// families retain their original register ceiling, including observer coverage.
+func decodeSourceTransferPinsAMD64(code []byte, at, end int, frame uint64, section uint8, ceiling uint8) (sourceBranchInstruction, int, string, bool) {
 	pc := at
 	invalid := ""
-	allowed := func(reg uint8) bool { return reg < 12 && reg != 3 && reg != 4 }
+	allowed := func(reg uint8) bool { return reg < ceiling && reg != 3 && reg != 4 }
 	in := sourceBranchInstruction{section: section, copy: true}
 	rex := byte(0)
 	if pc < end && code[pc] >= 0x40 && code[pc] <= 0x4f {

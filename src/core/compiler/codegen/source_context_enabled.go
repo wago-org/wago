@@ -31,6 +31,9 @@ type SourceContext struct {
 	reportMu sync.Mutex
 	reporter func(SourceReport)
 	reports  []regalloccheck.Result
+	// A separate final pass runs after worker quotas have retired. These fixed
+	// compile-scoped credits are historical, including failed attempts.
+	finalWork, finalStorage int
 }
 
 // SourceReport describes one local function's independent source/machine proof.
@@ -91,7 +94,23 @@ func AttachSourceContext(opts *Options, m *wasm.Module, analysis *wasm.Validated
 	if m == nil || !analysis.ValidFor(m) {
 		return false
 	}
-	opts.source = &SourceContext{module: m, analysis: analysis, features: features}
+	opts.source = &SourceContext{module: m, analysis: analysis, features: features, finalWork: 16384, finalStorage: 8192}
+	return true
+}
+
+// ReserveFinalSourcePass charges the one bounded post-layout proof before any
+// ledger/model allocation. Zero credits remain exhausted; nothing is refunded.
+func ReserveFinalSourcePass(ctx *SourceContext, m *wasm.Module) bool {
+	if _, _, ok := ValidatedSourceContext(ctx, m); !ok {
+		return false
+	}
+	ctx.reportMu.Lock()
+	defer ctx.reportMu.Unlock()
+	if ctx.finalWork < 16384 || ctx.finalStorage < 8192 {
+		return false
+	}
+	ctx.finalWork -= 16384
+	ctx.finalStorage -= 8192
 	return true
 }
 
