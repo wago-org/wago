@@ -73,6 +73,8 @@ var encodingCases = []struct {
 	{"remuw", func(a *Asm) { a.Remuw(X5, X6, X7) }, 0x027372bb},
 	{"lbu", func(a *Asm) { a.Lbu(X5, X6, 7) }, 0x00734283},
 	{"sb", func(a *Asm) { a.Sb(X5, X6, 7) }, 0x005303a3},
+	{"fence acquire", func(a *Asm) { a.Fence(FenceRead, FenceRead|FenceWrite) }, 0x0230000f},
+	{"fence full", func(a *Asm) { a.Fence(15, 15) }, 0x0ff0000f},
 }
 
 func TestEncodings(t *testing.T) {
@@ -163,6 +165,8 @@ func TestInvalidOperandsDoNotEmit(t *testing.T) {
 		{"jal alignment", func(a *Asm) { a.Jal(X1, -2) }},
 		{"jal min", func(a *Asm) { a.Jal(X1, -1048580) }},
 		{"jal max", func(a *Asm) { a.Jal(X1, 1048576) }},
+		{"fence predecessor", func(a *Asm) { a.Fence(16, 3) }},
+		{"fence successor", func(a *Asm) { a.Fence(3, 255) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

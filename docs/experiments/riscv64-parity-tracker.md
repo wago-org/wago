@@ -18,7 +18,7 @@ production parity. No remote publication is authorized.
 | SIMD | Rejected before publication | v128 two-slot representation, SWAR core/relaxed SIMD, spills/calls |
 | GC/EH | Rejected before publication | Exact roots/frame/safepoint metadata, native views, exception tags/handlers/unwinding |
 | Threads/atomics | Rejected before publication | Alignment/order, LR/SC/fences, wait/notify, shared-memory lifecycle |
-| Cancellation/close | Serialized synchronous calls and cleanup | Cancelable gate waits, polls, parked-host interruption, deferred release, RV64 Linux signal/context support |
+| Cancellation/close | Serialized synchronous calls and cleanup, cooperative production entry/guest-loop/bulk-loop polls | Public context/gate/close binding and qualification, parked-host interruption, deferred release, RV64 Linux signal/context support |
 | Public APIs/artifacts | Experimental compiler/runtime packages | Backend binding, Compiled/CodeImage metadata and ownership, feature/configuration authority, artifact ISA identity/cache/load, generated facades and CLI assets |
 | Qualification | Focused host and QEMU regressions, existing-target checks | Official full-feature suites and native multicore cache/signal/lifecycle qualification; native performance remains unmeasured |
 
@@ -55,3 +55,5 @@ features fail closed before image creation.
 The subsequent [production state checkpoint](riscv64-production-state-checkpoint.md)
 adds defined memory32, globals and data/bulk lowering through real JobMemory
 directories, without enabling public binding or imported-resource ownership.
+The [cooperative cancellation checkpoint](riscv64-production-polls-checkpoint.md)
+adds production polls and active interruption fixtures before public binding.

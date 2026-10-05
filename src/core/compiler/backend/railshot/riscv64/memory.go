@@ -63,10 +63,6 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	}
 	return v, nil
 }
-func admitState(m *wasm.Module) (moduleState, error) {
-	return admitStateMode(m, false)
-}
-
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	s := moduleState{memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	var mt *wasm.MemType

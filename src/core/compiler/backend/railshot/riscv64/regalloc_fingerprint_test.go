@@ -29,7 +29,7 @@ func TestRegallocCheckEmissionFingerprint(t *testing.T) {
 	for _, tc := range cases {
 		for _, production := range []bool{false, true} {
 			for _, force := range []bool{false, true} {
-				c, err := compileOptions(tc.data, scalarRegisters[:], CompileOptions{ForceFallback: force, production: production})
+				c, err := compileOptions(tc.data, scalarRegisters[:], CompileOptions{ForceFallback: force, Interruptible: production, production: production})
 				if err != nil {
 					t.Fatal(tc.name, err)
 				}

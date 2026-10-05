@@ -58,3 +58,5 @@ remw x5,x6,x7
 remuw x5,x6,x7
 lbu x5,7(x6)
 sb x5,7(x6)
+fence r,rw
+fence iorw,iorw

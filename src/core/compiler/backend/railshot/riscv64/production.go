@@ -15,6 +15,7 @@ import (
 type ProductionOptions struct {
 	DeferCodeMapping bool
 	ForceFallback    bool
+	Interruptible    bool
 }
 
 // CompileProduction admits the whole module before producing any native image.
@@ -22,7 +23,7 @@ type ProductionOptions struct {
 // integer globals and data/bulk operations through production descriptors.
 // Public Wago backend binding and broader feature lowering remain separate.
 func CompileProduction(data []byte, opts ProductionOptions) (*enc.CompiledModule, error) {
-	c, err := compileOptions(data, scalarRegisters[:], CompileOptions{ForceFallback: opts.ForceFallback, production: true})
+	c, err := compileOptions(data, scalarRegisters[:], CompileOptions{ForceFallback: opts.ForceFallback, Interruptible: opts.Interruptible, production: true})
 	if err != nil {
 		return nil, err
 	}

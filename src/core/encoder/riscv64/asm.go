@@ -185,6 +185,23 @@ func (a *Asm) Addiw(dst, src Reg, imm int32) { a.i(0x1b, 0, dst, src, imm) }
 func (a *Asm) Xori(dst, src Reg, imm int32)  { a.i(0x13, 4, dst, src, imm) }
 func (a *Asm) Sltiu(dst, src Reg, imm int32) { a.i(0x13, 3, dst, src, imm) }
 
+const (
+	FenceWrite  uint8 = 1
+	FenceRead   uint8 = 2
+	FenceOutput uint8 = 4
+	FenceInput  uint8 = 8
+)
+
+// Fence emits the ordinary fm=0 memory/I/O ordering instruction. It neither
+// changes GP registers nor substitutes for process-wide instruction-cache sync.
+func (a *Asm) Fence(predecessor, successor uint8) {
+	if predecessor > 15 || successor > 15 {
+		a.fail("fence set outside four-bit field")
+		return
+	}
+	a.word(0x0f | uint32(predecessor)<<24 | uint32(successor)<<20)
+}
+
 // Lui and Auipc take the unsigned encoded high-20 field; it is sign-extended
 // after shifting by 12. They do not accept an unshifted 32-bit byte displacement.
 func (a *Asm) Lui(dst Reg, imm20 uint32)   { a.u(0x37, dst, imm20) }

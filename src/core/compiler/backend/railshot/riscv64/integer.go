@@ -211,6 +211,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			fr := integerControl{base: h, kind: op, params: params, results: results, entry: live, start: position(), falseSite: -1}
+			if op == 0x03 && live && emit != nil {
+				emit.emitProductionInterruptPoll()
+			}
 			if op == 0x04 && live && emit != nil {
 				fr.falseSite = emit.BranchZero(5)
 			}

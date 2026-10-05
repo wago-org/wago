@@ -26,6 +26,7 @@ type target struct {
 
 type emissionMode struct {
 	production    bool
+	interruptible bool
 	functionIndex uint32
 	entryPC       uint32
 }

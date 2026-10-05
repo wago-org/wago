@@ -88,6 +88,7 @@ func (f *integerEmitter) bulkRange(offset enc.Reg) {
 
 func (f *integerEmitter) bulkLoop(fill, backward bool) {
 	loop := f.Position()
+	f.emitProductionInterruptPoll()
 	if backward {
 		f.a.Addi(enc.X5, enc.X5, -1)
 		f.a.Addi(enc.X6, enc.X6, -1)

@@ -235,7 +235,7 @@ func TestProductionBulkDescriptorsBoundsOverlapAndDrop(t *testing.T) {
 	fs := []fixtureFunc{bulkFixture(8, 129), bulkFixture(9, 129), bulkFixture(10, 0), bulkFixture(11, 0), bulkFixture(8, 0), bulkFixture(8, 128)}
 	data := withBulkData(stateModule(fs, false, 1, 1, true, []globalFixture{{value: 9}}, nil), segments, true)
 	for _, heap := range []bool{false, true} {
-		f := productionCallsWithOptions(t, data, ProductionOptions{DeferCodeMapping: heap})
+		f := productionCallsWithOptions(t, data, ProductionOptions{DeferCodeMapping: heap, Interruptible: true})
 		memory := f.memory.HostBytes()
 		if !bytes.Equal(memory[20:22], []byte{7, 8}) {
 			t.Fatal("active fixture initialization")

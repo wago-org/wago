@@ -60,6 +60,7 @@ func Compile(data []byte) (*Compiled, error) { return CompileWithOptions(data, C
 // ForceFallback bypasses shared selection for overlap differential testing.
 type CompileOptions struct {
 	ForceFallback bool
+	Interruptible bool
 	production    bool
 }
 
@@ -71,6 +72,9 @@ func compile(data []byte, regs []uint8) (*Compiled, error) {
 	return compileOptions(data, regs, CompileOptions{})
 }
 func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.Interruptible && !opts.production {
+		return nil, unsupported("cooperative polls require the production trap ABI")
+	}
 	if len(data) > MaxModuleBytes {
 		return nil, fmt.Errorf("rv64: module exceeds %d bytes", MaxModuleBytes)
 	}
@@ -121,7 +125,7 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{production: opts.production}
+		mode := emissionMode{production: opts.production, interruptible: opts.Interruptible}
 		if opts.production {
 			mode.functionIndex = uint32(i)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
@@ -326,6 +330,7 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 	entry.a.Constant64(enc.Scratch0, int64(frame))
 	entry.a.Sub(enc.Scratch1, enc.SP, fence)
 	bad := entry.a.BranchLong(enc.LTU, enc.Scratch1, enc.Scratch0)
+	entry.emitProductionEntryPoll()
 	entry.a.Sub(enc.SP, enc.SP, enc.Scratch0)
 	entry.a.Sd(enc.RA, enc.SP, 0)
 	result := enc.X11
@@ -383,6 +388,9 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 		entry.a.Sw(enc.Scratch0, enc.X12, 0)
 		entry.a.Addi(enc.X10, enc.Zero, 0)
 		entry.a.Ret()
+	}
+	if entry.err != nil {
+		return nil, FunctionInfo{}, entry.err
 	}
 	if entry.a.Err() != nil {
 		return nil, FunctionInfo{}, entry.a.Err()

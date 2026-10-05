@@ -46,6 +46,8 @@ func productionTrapCode(code int) int {
 		return abi.TrapDivOverflow
 	case TrapMemoryBounds:
 		return abi.TrapLinMemOutOfBounds
+	case trapCooperativeInterrupt:
+		return abi.TrapInterrupted
 	default:
 		panic("rv64: unknown admitted integer trap")
 	}

@@ -29,7 +29,7 @@ func decodedGPWrites(t *testing.T, b []byte) []uint32 {
 			if dst != 0 {
 				masks = append(masks, ^uint32(1))
 			}
-		case 0x23, 0x63:
+		case 0x23, 0x63, 0x0f:
 		default:
 			t.Fatalf("unmodeled instruction %#x", w)
 		}
@@ -96,6 +96,7 @@ func TestGPWritesEveryTypedEmitter(t *testing.T) {
 		{"JumpLong", func(a *Asm, d Reg) { a.JumpLong(d != Zero) }},
 		{"Ret", func(a *Asm, d Reg) { a.Ret() }},
 		{"Nop", func(a *Asm, d Reg) { a.Nop() }},
+		{"Fence", func(a *Asm, d Reg) { a.Fence(FenceRead, FenceRead|FenceWrite) }},
 	}
 	audited := map[string]bool{"Err": true, "Len": true, "ObserveGPWrites": true, "ObserveRegalloc": true, "PatchLong": true}
 	for _, tc := range cases {
