@@ -116,3 +116,14 @@ func (a *Asm) regallocStore(src, base Reg, off int32, f3 uint32) {
 	}
 	a.regallocObserver(e)
 }
+
+// LR/SC definitions destroy all prior GP identity, including sign-extended W
+// results. A conditional direct-SP store may fail, so conservatively kill its
+// frame range rather than report an unconditional Copy. Dynamic addresses remain
+// outside this bounded frame-transfer channel.
+func (a *Asm) regallocAtomic(dst, base Reg, store bool, size int) {
+	a.regallocDefinition(dst, false)
+	if store && base == SP && a.regallocObserver != nil {
+		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Kill, Dst: regalloccheck.Slot(0), Size: size})
+	}
+}

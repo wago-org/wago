@@ -21,7 +21,7 @@ func decodedGPWrites(t *testing.T, b []byte) []uint32 {
 		op := w & 127
 		dst := (w >> 7) & 31
 		switch op {
-		case 0x33, 0x3b, 0x13, 0x1b, 0x37, 0x17, 0x03:
+		case 0x33, 0x3b, 0x13, 0x1b, 0x37, 0x17, 0x03, 0x2f:
 			if dst != 0 {
 				masks = append(masks, 1<<dst)
 			}
@@ -58,6 +58,10 @@ func TestGPWritesEveryTypedEmitter(t *testing.T) {
 		name string
 		emit func(*Asm, Reg)
 	}{
+		{"LrW", func(a *Asm, d Reg) { a.LrW(d, X10, AtomicAcquire) }},
+		{"LrD", func(a *Asm, d Reg) { a.LrD(d, X10, AtomicAcquire) }},
+		{"ScW", func(a *Asm, d Reg) { a.ScW(d, X11, X10, AtomicRelease) }},
+		{"ScD", func(a *Asm, d Reg) { a.ScD(d, X11, X10, AtomicRelease) }},
 		{"Add", func(a *Asm, d Reg) { a.Add(d, X10, X11) }},
 		{"Sub", func(a *Asm, d Reg) { a.Sub(d, X10, X11) }},
 		{"Mul", func(a *Asm, d Reg) { a.Mul(d, X10, X11) }},
