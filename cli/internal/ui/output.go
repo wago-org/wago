@@ -22,6 +22,10 @@ func colorEnabled() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
+// Styling is CLI presentation work. Share its plumbing across command callers
+// rather than expanding it into each command body.
+//
+//go:noinline
 func paint(code, s string) string {
 	if !useColor {
 		return s
@@ -29,27 +33,42 @@ func paint(code, s string) string {
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
+//go:noinline
 func Bold(s string) string { return paint("1", s) }
-func Dim(s string) string  { return paint("2", s) }
-func Red(s string) string  { return paint("31", s) }
+
+//go:noinline
+func Dim(s string) string { return paint("2", s) }
+
+//go:noinline
+func Red(s string) string { return paint("31", s) }
+
+//go:noinline
 func Cyan(s string) string { return paint("36", s) }
 
+// Failure forwarding is a cold, terminating path. Keep formatting and exit
+// behavior shared across the CLI's many error sites.
+//
+//go:noinline
 func Fatal(format string, args ...any) {
 	Fail(1, "operational_error", format, args...)
 }
 
+//go:noinline
 func Usage(format string, args ...any) {
 	Fail(2, "usage_error", format, args...)
 }
 
+//go:noinline
 func FatalHint(hint, format string, args ...any) {
 	FailHint(1, "operational_error", hint, format, args...)
 }
 
+//go:noinline
 func UsageHint(hint, format string, args ...any) {
 	FailHint(2, "usage_error", hint, format, args...)
 }
 
+//go:noinline
 func Fail(exitCode int, code, format string, args ...any) {
 	FailHint(exitCode, code, "", format, args...)
 }

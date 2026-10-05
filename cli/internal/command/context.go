@@ -31,6 +31,9 @@ func NewContext(args []string, strs map[string]string, bools map[string]bool) *C
 	return &Ctx{Args: args, strs: values, bools: bools}
 }
 
+// String flag lookup is command setup; share it across command bodies.
+//
+//go:noinline
 func (c *Ctx) Str(name string) string {
 	values := c.strs[name]
 	if len(values) == 0 {

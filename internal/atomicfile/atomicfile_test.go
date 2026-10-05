@@ -42,6 +42,62 @@ func TestReplaceFileCreatesAndReplaces(t *testing.T) {
 	assertNoTemps(t, directory)
 }
 
+func TestReplaceFileCreatesMissingParentByDefault(t *testing.T) {
+	destination := filepath.Join(t.TempDir(), "nested", "value")
+	if err := ReplaceFile(destination, Options{}, writeString("contents")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(destination); err != nil || string(got) != "contents" {
+		t.Fatalf("destination = %q, %v", got, err)
+	}
+}
+
+func TestBeforeReplaceRejectsReplaceFileAndCommitTempFile(t *testing.T) {
+	rejected := errors.New("destination identity changed")
+	for _, commitTemp := range []bool{false, true} {
+		name := "replace-file"
+		if commitTemp {
+			name = "commit-temp-file"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			destination := filepath.Join(dir, "value")
+			if err := os.WriteFile(destination, []byte("old"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			options := Options{BeforeReplace: func(path string) error {
+				if path != destination {
+					t.Fatalf("BeforeReplace path = %q, want %q", path, destination)
+				}
+				return rejected
+			}}
+			var err error
+			if commitTemp {
+				temporary, createErr := CreateTemp(destination)
+				if createErr != nil {
+					t.Fatal(createErr)
+				}
+				if _, writeErr := io.WriteString(temporary, "new"); writeErr != nil {
+					t.Fatal(writeErr)
+				}
+				if closeErr := temporary.Close(); closeErr != nil {
+					t.Fatal(closeErr)
+				}
+				err = CommitTempFile(temporary.Name(), destination, options)
+			} else {
+				err = ReplaceFile(destination, options, writeString("new"))
+			}
+			if !errors.Is(err, rejected) {
+				t.Fatalf("BeforeReplace error = %v", err)
+			}
+			if got, readErr := os.ReadFile(destination); readErr != nil || string(got) != "old" {
+				t.Fatalf("destination = %q, %v", got, readErr)
+			}
+			assertNoTemps(t, dir)
+		})
+	}
+}
+
 func TestReplaceFileFailuresPreserveDestination(t *testing.T) {
 	injected := errors.New("injected failure")
 	tests := []struct {
@@ -197,6 +253,26 @@ func TestCommitTempFileReplacesExisting(t *testing.T) {
 		t.Fatalf("destination = %q, %v", data, err)
 	}
 	assertNoTemps(t, directory)
+}
+
+func TestCommitTempFileRejectedApplyUmaskRemovesTemporary(t *testing.T) {
+	directory := t.TempDir()
+	destination := filepath.Join(directory, "value")
+	temporary, err := CreateTemp(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := CommitTempFile(name, destination, Options{Mode: 0o600, ApplyUmask: true}); err == nil {
+		t.Fatal("CommitTempFile accepted ApplyUmask")
+	}
+	if _, err := os.Lstat(name); !os.IsNotExist(err) {
+		t.Fatalf("rejected temporary was not removed: %v", err)
+	}
 }
 
 func FuzzReplaceFileContents(f *testing.F) {
