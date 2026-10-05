@@ -48,16 +48,16 @@ func TestSWARScalarLanesWholeFunctionAdmission(t *testing.T) {
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}, Results: []wasm.ValType{wasm.I32}}
 	for _, body := range [][]byte{
-		{0xfd, 15, 0x0b},                                     // splat underflow
-		{0x20, 0, 0xfd, 15, 0x0b},                            // vector in splat
-		{0xfd, 21, 0, 0x0b},                                  // extract underflow
-		{0x41, 0, 0xfd, 21, 0, 0x0b},                         // scalar in extract
-		{0x20, 0, 0xfd, 21},                                  // missing lane immediate
-		{0x20, 0, 0xfd, 23, 0, 0x0b},                         // replace underflow
-		{0x20, 0, 0x20, 0, 0xfd, 23, 0, 0x0b},                // vector replacement value
-		{0x41, 0, 0x41, 0, 0xfd, 23, 0, 0x0b},                // scalar vector input
-		{0x20, 0, 0xfd, 29, 0, 0x0b},                         // I64 result where I32 is required
-		{0x20, 0, 0xfd, 21, 0, 0xfd, 15, 0xfd, 227, 1, 0x0b}, // unsupported later operation
+		{0xfd, 15, 0x0b},                                  // splat underflow
+		{0x20, 0, 0xfd, 15, 0x0b},                         // vector in splat
+		{0xfd, 21, 0, 0x0b},                               // extract underflow
+		{0x41, 0, 0xfd, 21, 0, 0x0b},                      // scalar in extract
+		{0x20, 0, 0xfd, 21},                               // missing lane immediate
+		{0x20, 0, 0xfd, 23, 0, 0x0b},                      // replace underflow
+		{0x20, 0, 0x20, 0, 0xfd, 23, 0, 0x0b},             // vector replacement value
+		{0x41, 0, 0x41, 0, 0xfd, 23, 0, 0x0b},             // scalar vector input
+		{0x20, 0, 0xfd, 29, 0, 0x0b},                      // I64 result where I32 is required
+		{0x20, 0, 0xfd, 21, 0, 0xfd, 15, 0xfd, 103, 0x0b}, // unsupported later operation
 	} {
 		if code, _, err := compileSWARPairs(&wasm.Func{BodyBytes: body}, ft, emissionMode{production: true}); code != nil || err == nil {
 			t.Fatal("malformed/unsupported scalar lane emitted", body, err)

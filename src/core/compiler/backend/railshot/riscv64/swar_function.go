@@ -301,6 +301,26 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
 			}
+			if width, operation, unary, ok := swarFloatMathOpcode(kind); ok {
+				usesFP = usesFP || operation >= swarFloatSqrt
+				arity := 2
+				if unary {
+					arity = 1
+				}
+				if h < arity || stackClasses[h-arity] != swarV128 || (!unary && stackClasses[h-1] != swarV128) {
+					return swarSummary{}, unsupported("SWAR floating arithmetic carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-arity), left)
+					if !unary {
+						emit.swarLoad(spill(h-1), right)
+					}
+					emit.swarFloatMath(width, operation)
+					emit.swarStore(spill(h-arity), left)
+				}
+				h -= arity - 1
+				continue
+			}
 			if width, relation, ok := swarFloatComparisonOpcode(kind); ok {
 				usesFP = true
 				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {

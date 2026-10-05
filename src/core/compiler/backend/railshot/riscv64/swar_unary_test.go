@@ -44,9 +44,9 @@ func TestSWARUnaryIntegerAdmissionAndResultClasses(t *testing.T) {
 			}
 		}
 	}
-	fn, ft := swarValidatedFunction(t, swarUnaryFixture(227, false))
+	fn, ft := swarValidatedFunction(t, swarUnaryFixture(103, false))
 	if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
-		t.Fatal("pending vector FP sqrt emitted", err)
+		t.Fatal("pending vector FP rounding emitted", err)
 	}
 }
 
