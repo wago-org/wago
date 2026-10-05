@@ -166,6 +166,9 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := railshotValidateResolvedImports(c, imports); err != nil {
+		return nil, err
+	}
 	if opts.forceSyncHost {
 		if _, err := runtime.HostCtrlFrameBytesForSlots(runtime.MaxHostArity); err != nil {
 			return nil, wrapContextError("instantiate: synchronous host protocol", err)

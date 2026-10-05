@@ -8,6 +8,7 @@ import (
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 type railshotImportBinding = railshot.ImportBinding
@@ -27,8 +28,16 @@ func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
 func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
 
 func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {
-	if len(opts.ImportBindings) != 0 {
-		return nil, fmt.Errorf("%w: public function-import admission is pending", railshot.ErrUnsupported)
+	if m == nil {
+		return railshot.CompileModuleWith(m, opts)
+	}
+	for i, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternFunc {
+			ft, ok := m.ImportFuncType(i)
+			if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
+				return nil, fmt.Errorf("%w: public host signature arity", railshot.ErrUnsupported)
+			}
+		}
 	}
 	// Callable public artifacts use the cooperative ABI unconditionally. The
 	// new RV64 architecture identity denotes this framed, polling RV64G ABI.
@@ -40,10 +49,11 @@ func railshotGCNativeCodeTelemetry(*railshotModuleStats) GCNativeCodeTelemetry {
 	return GCNativeCodeTelemetry{}
 }
 
-// Unsupported import metadata is rejected before instantiation can request
-// these thunks. An empty blob also cannot be published as executable code.
-func railshotHostIndirectThunk(uint32) []byte                    { return nil }
-func railshotHostIndirectSyncThunk(uint32, int, int) []byte      { return nil }
+// Deferred events and owned host references retain pre-publication gates.
+func railshotHostIndirectThunk(uint32) []byte { return nil }
+func railshotHostIndirectSyncThunk(index uint32, params, results int) []byte {
+	return railshot.HostIndirectSyncThunk(index, params, results)
+}
 func railshotHostIndirectOwnedSyncThunk(uint32, int, int) []byte { return nil }
 
 func railshotAdmitSource(data []byte) error { return railshot.AdmitProductionSource(data) }

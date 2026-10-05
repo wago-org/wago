@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 	rv64runtime "github.com/wago-org/wago/src/core/runtime/riscv64"
 )
@@ -33,7 +34,32 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		remaining -= len(data.Bytes)
 	}
-	if c.NumImports != 0 || len(c.Imports) != 0 || c.memoryImportCount() > 1 || c.HasStart || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.NumImports+len(c.Funcs) > railshot.MaxFunctions || c.dynamicImports != (c.NumImports > 0) {
+		return reject("dynamic function import shape")
+	}
+	if c.NumImports != 0 {
+		if !c.needsFuncRefContextHeader || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+			return reject("host imports require an instance context anchor without tables")
+		}
+		for _, index := range c.Exports {
+			if index < c.NumImports {
+				return reject("imported-function reexport lowering is pending")
+			}
+		}
+		for _, sig := range c.importFuncSigs {
+			if len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
+				return reject("host signature arity")
+			}
+			for _, values := range [][]ValType{sig.Params, sig.Results} {
+				for _, typ := range values {
+					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+						return reject("nonscalar host signature")
+					}
+				}
+			}
+		}
+	}
+	if c.memoryImportCount() > 1 || c.HasStart || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
 		return reject("resource/host/reference lowering is pending")
 	}
 	if len(c.GlobalImports) > len(c.Globals) {
@@ -111,6 +137,32 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 || len(c.memoryDir.gcArrayGlobals) != 0 || c.memoryDir.gcArrayElement != nil || c.memoryDir.gcI31TableInit != nil) {
 		return reject("GC/EH initializer lowering is pending")
+	}
+	return nil
+}
+
+func railshotNeedsImportContextHeader(count int) bool { return count > 0 }
+
+// Binding policy runs before prepareCodeMapping, including trusted artifacts.
+// This milestone admits ordinary synchronous callbacks only; unsupported target
+// ownership and replay protocols cannot produce a callable thunk.
+func railshotValidateResolvedImports(c *Compiled, imports resolvedImports) error {
+	c = c.executionView()
+	if c.NumImports == 0 && len(c.Imports) == 0 {
+		return nil
+	}
+	if err := railshotValidateCompiled(c); err != nil {
+		return err
+	}
+	for i, key := range c.Imports {
+		value := imports[c.functionImportBindingKey(i)]
+		switch value.(type) {
+		case *InstanceExport, *HostFuncRef, I32HostEvent, gatedI32HostEvent:
+			return fmt.Errorf("%w: public RV64 import %q target ownership/protocol is pending", railshot.ErrUnsupported, key)
+		}
+		if _, err := bindSyncHostImport(value, c.importFuncSigs[i]); err != nil {
+			return fmt.Errorf("public RV64 import %q: %w", key, err)
+		}
 	}
 	return nil
 }
