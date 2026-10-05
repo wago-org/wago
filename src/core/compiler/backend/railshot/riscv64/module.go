@@ -154,7 +154,7 @@ func admitWire(data []byte) error {
 		start := r.Offset()
 		end := start + int(n)
 		switch id {
-		case 0, 2, 3, 5, 6, 7, 10, 11:
+		case 0, 2, 3, 5, 6, 7, 10, 11, 12:
 		case 1:
 			s := wasm.ReaderFrom(data[8+start : 8+end])
 			count, err := s.U32()
@@ -205,7 +205,7 @@ func admitShape(m *wasm.Module) error {
 	if len(m.Code) == 0 || len(m.Code) > MaxFunctions {
 		return unsupported("function count outside 1..1024")
 	}
-	if m.UsesCompactImports || len(m.Tables) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.BranchHints) != 0 {
+	if m.UsesCompactImports || len(m.Tables) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) != 0 || len(m.BranchHints) != 0 {
 		return unsupported("imports, state, initializers or feature metadata")
 	}
 	for _, custom := range m.Customs {
@@ -349,7 +349,7 @@ func (c *Compiled) InstantiateWithOptions(stackBytes int, opts InstantiateOption
 	if err == nil {
 		i.call, err = native.NewCallFrame(c.state.capacity)
 	}
-	if err == nil && (i.memory != nil || len(c.state.globals) != 0) {
+	if err == nil && (i.memory != nil || len(c.state.globals) != 0 || len(c.state.passiveData) != 0) {
 		var descriptor uint64
 		if i.lease != nil {
 			descriptor, err = i.lease.Descriptor()
@@ -359,7 +359,7 @@ func (c *Compiled) InstantiateWithOptions(stackBytes int, opts InstantiateOption
 			for j, g := range c.state.globals {
 				values[j] = g.value
 			}
-			i.context, err = native.NewGuestContext(descriptor, values)
+			i.context, err = native.NewGuestContextWithData(descriptor, values, c.state.passiveData)
 		}
 	}
 	if err == nil && i.lease != nil {

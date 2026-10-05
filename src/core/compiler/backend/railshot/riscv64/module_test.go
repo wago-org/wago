@@ -157,7 +157,7 @@ func TestRejectCompleteModule(t *testing.T) {
 			t.Fatalf("custom %s %v", name, err)
 		}
 	}
-	for _, id := range []byte{4, 9, 12, 13} {
+	for _, id := range []byte{4, 9, 13} {
 		// Wire policy rejects unsupported sections even when semantically empty.
 		if err := admitWire(section(append([]byte(nil), base...), id, []byte{0})); !errors.Is(err, ErrUnsupported) {
 			t.Fatalf("section %d: %v", id, err)
@@ -231,8 +231,6 @@ func TestValidatedUnsupportedSectionsAndUnusedSignatures(t *testing.T) {
 		{"fp-global", 7, 6, []byte{1, 0x7d, 0, 0x43, 0, 0, 0, 0, 0x0b}},
 		{"empty-tags", 7, 13, []byte{0}},
 		{"passive-element", 10, 9, []byte{1, 1, 0, 0}},
-		{"present-zero-datacount", 10, 12, []byte{0}},
-		{"passive-data", 255, 11, []byte{1, 1, 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := modifySection(base, tc.before, tc.id, tc.payload, false)
@@ -431,7 +429,7 @@ func TestShapeChecksEveryFieldAndUnusedType(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*wasm.Module){
-		func(m *wasm.Module) { m.UsesCompactImports = true }, func(m *wasm.Module) { m.StringRefs = [][]byte{{1}} }, func(m *wasm.Module) { z := uint32(0); m.DataCount = &z }, func(m *wasm.Module) { z := wasm.FuncIdx(0); m.Start = &z },
+		func(m *wasm.Module) { m.UsesCompactImports = true }, func(m *wasm.Module) { m.StringRefs = [][]byte{{1}} }, func(m *wasm.Module) { z := wasm.FuncIdx(0); m.Start = &z },
 		func(m *wasm.Module) {
 			m.Types = append(append([]wasm.RecType(nil), m.Types...), wasm.RecType{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.F32}}}}})
 		},

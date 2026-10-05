@@ -399,6 +399,48 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			}
+		case 0xfc:
+			var imm wasm.InstructionImmediate
+			if err = wasm.ClassifyInstructionImmediateIntoWithFeatures(&r, op, &imm, false, false); err != nil {
+				return integerSummary{}, err
+			}
+			if state == nil {
+				return integerSummary{}, unsupported("bulk instruction without state")
+			}
+			switch imm.Kind {
+			case wasm.InstrMemoryInit, wasm.InstrDataDrop:
+				if int(imm.Index) >= len(state.passiveData) || imm.Index2 != 0 {
+					return integerSummary{}, unsupported("bulk data/memory index")
+				}
+			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+				if imm.Index != 0 || imm.Index2 != 0 {
+					return integerSummary{}, unsupported("bulk memory index")
+				}
+			default:
+				return integerSummary{}, unsupported("unsupported prefixed instruction")
+			}
+			contextUsed = true
+			dataOffset := int32((len(state.globals)+1)*8 + int(imm.Index)*16)
+			if imm.Kind == wasm.InstrDataDrop {
+				if live && emit != nil {
+					emit.dataDrop(dataOffset)
+				}
+				break
+			}
+			if state.memory == nil {
+				return integerSummary{}, unsupported("bulk instruction without memory")
+			}
+			for _, reg := range []uint8{7, 6, 5} {
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(reg, emit.SpillOffset(h), false)
+				}
+			}
+			if live && emit != nil {
+				emit.memoryBulk(imm.Kind, dataOffset)
+			}
 		case 0x28, 0x29, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
 			if state == nil || state.memory == nil {
 				return integerSummary{}, unsupported("memory instruction without memory")

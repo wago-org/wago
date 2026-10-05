@@ -26,6 +26,7 @@ type moduleState struct {
 	memory        *memorySpec
 	globals       []globalSpec
 	data          []native.MemoryInitializer
+	passiveData   [][]byte // all Wasm data indices; active entries are dropped/nil
 	capacity      int
 	memoryExports map[string]bool
 	globalExports map[string]int
@@ -82,7 +83,7 @@ func admitState(m *wasm.Module) (moduleState, error) {
 		s.memory.max = mt.Limits.Max
 		s.memory.hasMax = mt.Limits.HasMax
 	}
-	if len(m.Globals) > 256 || len(m.Data) > 256 {
+	if len(m.Globals) > 256 || len(m.Data) > native.MaxDataSegments {
 		return s, unsupported("state count bound")
 	}
 	for _, g := range m.Globals {
@@ -97,14 +98,19 @@ func admitState(m *wasm.Module) (moduleState, error) {
 		s.globals = append(s.globals, globalSpec{w, g.Type.Mutable, v})
 	}
 	for _, d := range m.Data {
+		if d.Mode.Kind == wasm.DataPassive {
+			s.passiveData = append(s.passiveData, append([]byte(nil), d.Init...))
+			continue
+		}
 		if s.memory == nil || d.Mode.Kind != wasm.DataActive || d.Mode.Mem != 0 {
-			return s, unsupported("passive/indexed data")
+			return s, unsupported("indexed/unsupported active data")
 		}
 		off, err := plainConst(d.Mode.Offset, false)
 		if err != nil {
 			return s, err
 		}
 		s.data = append(s.data, native.MemoryInitializer{Offset: uint32(off), Bytes: append([]byte(nil), d.Init...)})
+		s.passiveData = append(s.passiveData, nil)
 	}
 	for _, ex := range m.Exports {
 		switch ex.Index.Kind {

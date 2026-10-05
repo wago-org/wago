@@ -15,21 +15,12 @@ import (
 func TestMemoryStateAdmissionMatrix(t *testing.T) {
 	good := fixtureFunc{result: 0x7f, body: []byte{0x41, 0, 0x0b}}
 	base := stateModule([]fixtureFunc{good}, false, 1, 2, true, nil, nil)
-	bulk := func(sub byte) []byte {
-		body := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, sub, 0}
-		if sub == 10 {
-			body = append(body, 0)
-		}
-		body = append(body, 0x41, 0, 0x0b)
-		return stateModule([]fixtureFunc{{params: []byte{0x7f, 0x7f, 0x7f}, result: 0x7f, body: body}}, false, 1, 2, true, nil, nil)
-	}
 	manyG := make([]globalFixture, 257)
 	manyData := make([]native.MemoryInitializer, 257)
 	matrix := map[string][]byte{
-		"shared":    modifySection(base, 5, 5, []byte{1, 3, 1, 2}, true),
-		"memory64":  modifySection(base, 5, 5, []byte{1, 5, 1, 2}, true),
-		"multiple":  modifySection(base, 5, 5, []byte{2, 1, 1, 2, 1, 1, 2}, true),
-		"bulk-copy": bulk(10), "bulk-fill": bulk(11),
+		"shared":          modifySection(base, 5, 5, []byte{1, 3, 1, 2}, true),
+		"memory64":        modifySection(base, 5, 5, []byte{1, 5, 1, 2}, true),
+		"multiple":        modifySection(base, 5, 5, []byte{2, 1, 1, 2, 1, 1, 2}, true),
 		"FP-load":         stateModule([]fixtureFunc{{params: []byte{0x7f}, result: 0x7f, body: []byte{0x20, 0, 0x2a, 2, 0, 0x1a, 0x41, 0, 0x0b}}}, false, 1, 2, true, nil, nil),
 		"257-globals":     stateModule([]fixtureFunc{good}, false, 1, 2, true, manyG, nil),
 		"257-data":        stateModule([]fixtureFunc{good}, false, 1, 2, true, nil, manyData),
