@@ -293,7 +293,7 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			if op == 0x1b {
 				class = stackClasses[h-3]
-				if class == swarV128 || class == swarInvalid {
+				if class == swarInvalid {
 					return swarSummary{}, unsupported("SWAR untyped select carrier")
 				}
 			}

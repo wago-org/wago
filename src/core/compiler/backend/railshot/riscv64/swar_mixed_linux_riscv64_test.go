@@ -76,7 +76,7 @@ func TestSWARRV64TypedSelectAndAnyTrueWidth(t *testing.T) {
 	for _, test := range []struct {
 		typ   byte
 		typed bool
-	}{{0x7b, true}, {0x7f, true}, {0x7f, false}} {
+	}{{0x7b, true}, {0x7b, false}, {0x7f, true}, {0x7f, false}} {
 		typ := test.typ
 		body := []byte{0x20, 0, 0x20, 1, 0x20, 2}
 		if test.typed {
