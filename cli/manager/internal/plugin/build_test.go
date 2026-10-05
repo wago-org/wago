@@ -81,6 +81,27 @@ func TestPluginRuntimeBinaryResolvesGlobalBuild(t *testing.T) {
 	}
 }
 
+func TestPublishedStagedRuntimeKeepsItsVerification(t *testing.T) {
+	buildDir, manifestDir := prepareTestPluginRuntime(t)
+	manifest := map[string]any{"$schema": project.SchemaURI, "plugins": map[string]any{}}
+	lock := project.NewLockDocument()
+	config := pluginbuild.Config{RuntimeVersion: "test", Profile: "standard"}
+	ctx := context.Background()
+	if err := project.WithMutation(ctx, manifestDir, func(mutation *project.Mutation) error {
+		return stageAndPublishLockedState(ctx, mutation, manifestDir, buildDir, manifest, lock, false, config)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	verifications := 0
+	_, cached, err := pluginbuild.EnsureVerifiedBinaryContext(ctx, buildDir, pluginbuild.Input{}, false, false, config, func(context.Context, string) error {
+		verifications++
+		return nil
+	})
+	if err != nil || !cached || verifications != 0 {
+		t.Fatalf("first selection after publication: cached %v, verifications %d, err %v", cached, verifications, err)
+	}
+}
+
 func TestPluginRuntimeBinaryBlocksConcurrentPublication(t *testing.T) {
 	buildDir, manifestDir := prepareTestPluginRuntime(t)
 	buildLock := buildDir + ".lock"
