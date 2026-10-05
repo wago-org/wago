@@ -26,6 +26,10 @@ const (
 	ARM64SyncHostCallSavedLROffset = 96
 	ARM64SyncHostCallSavedBytes    = 176
 	AMD64CallReturnAddressBytes    = 8
+	// RV64 cold traps restore the production bridge stack and continuation.
+	// Offset 16 is occupied by the memory maximum-pages cache.
+	RV64TrapContinuationOffset = 32
+	RV64TrapReentrySPOffset    = 24
 )
 
 // Basedata offsets are byte distances below the linear-memory base.

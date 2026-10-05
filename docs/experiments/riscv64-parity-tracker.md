@@ -10,6 +10,7 @@ production parity. No remote publication is authorized.
 | --- | --- | --- |
 | Integer/control | RV64 integer arithmetic/comparisons, structured/indexed control, zero/multiple results | Production compiler envelope and configured limits |
 | Calls | Defined same-instance direct/recursive integer calls, mixed/wide result vectors | Production caller slots/context ABI, imports, indirect/cross-instance calls, tail calls, call_ref |
+| Production runtime | Linux/RV64 Engine/JobMemory bridge, central W^X/process-wide cache synchronization, framed normal/cold return | Compiler integration, raw MapCode/public lifecycle rollback ownership, host/guard/signal paths |
 | Memory/globals/bulk | One bounded wasm32 memory, integer flat globals, active/passive data and bulk operations | JobMemory/basedata directories, full memory32 size, aliased imported global cells, extended initializers/start, multiple/shared/memory64 memories |
 | Tables/references | Rejected before publication | Production descriptors, exact type identities, element/table lifecycle, externref and typed references, resource-root retention |
 | FP | Rejected before publication | Scalar FP, conversions, NaN/trap semantics, FCSR and ABI boundary audit |
@@ -40,3 +41,8 @@ Production stack/unreachable/divide-zero/overflow/memory trap codes are
 13/1/9/10/3, and the trap/control area includes parked control and source location.
 These differences must be reconciled before public integration; the current
 experimental package must not be advertised as interchangeable.
+
+The shared production runtime now has a separately reviewed
+[bridge checkpoint](riscv64-production-runtime-checkpoint.md), including active
+Go GC and cross-thread grown-code execution under QEMU. Its wrapper and trap
+contract is ready for compiler integration; public backend binding remains disabled.
