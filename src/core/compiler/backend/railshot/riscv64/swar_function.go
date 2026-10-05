@@ -46,6 +46,14 @@ func walkSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory32 bool, t
 }
 
 func walkSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithTable(fn, ft, memory32, types, functions, globals, dataCount, nil, emit)
+}
+
+func walkSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, emit *integerEmitter) (swarSummary, error) {
+	if err := swarOwnedTableType(table); err != nil {
+		return swarSummary{}, err
+	}
+	privateRefs := table != nil
 	if dataCount < 0 || dataCount > 256 {
 		return swarSummary{}, unsupported("SWAR passive data directory bound")
 	}
@@ -103,11 +111,14 @@ func walkSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory32 bool, type
 	}
 	nlocals := len(ft.Params)
 	for _, run := range fn.Locals.Runs {
-		if !swarCarrierType(run.Type) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
+		if (!swarCarrierType(run.Type) && !(privateRefs && wasm.EqualValType(run.Type, wasm.FuncRef))) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
 			return swarSummary{}, unsupported("SWAR local type/bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
 			localClasses[nlocals] = swarClassOf(run.Type)
+			if privateRefs && wasm.EqualValType(run.Type, wasm.FuncRef) {
+				localClasses[nlocals] = swarFuncRef
+			}
 			nlocals++
 		}
 	}
@@ -149,7 +160,7 @@ func walkSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory32 bool, type
 		}
 		return nil
 	}
-	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types}
+	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types, privateRefs: privateRefs}
 	flow.frames[0] = swarControl{kind: 0xff, entry: true}
 	for _, typ := range ft.Results {
 		flow.frames[0].results = append(flow.frames[0].results, swarClassOf(typ))
@@ -501,6 +512,9 @@ func walkSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory32 bool, type
 					return swarSummary{}, err
 				}
 				class = swarByteClass(typ)
+				if privateRefs && typ == 0x70 {
+					class = swarFuncRef
+				}
 				if class == swarInvalid {
 					return swarSummary{}, unsupported("SWAR select carrier")
 				}
@@ -524,7 +538,7 @@ func walkSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory32 bool, type
 			}
 			if op == 0x1b {
 				class = stackClasses[h-3]
-				if class == swarInvalid {
+				if class == swarInvalid || class == swarFuncRef {
 					return swarSummary{}, unsupported("SWAR untyped select carrier")
 				}
 			}
@@ -546,6 +560,102 @@ func walkSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory32 bool, type
 				emit.swarStore(spill(h-3), left)
 			}
 			h -= 2
+		case 0xd0, 0xd1, 0xd2, 0x25, 0x26:
+			if !privateRefs {
+				return swarSummary{}, unsupported("SWAR reference instruction without owned table")
+			}
+			if err := reserve(1024); err != nil {
+				return swarSummary{}, err
+			}
+			switch op {
+			case 0xd0:
+				heap, err := r.S33()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				if heap != -16 {
+					return swarSummary{}, unsupported("SWAR private nullable abstract funcref only")
+				}
+				if err := push(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.Store(spill(h-1), uint8(enc.Zero), true)
+					emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
+				}
+			case 0xd1:
+				if err := flow.prepareDead(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				if h == flow.floor() || stackClasses[h-1] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR ref.is_null operand class/underflow")
+				}
+				if emit != nil {
+					emit.Load(5, spill(h-1), true)
+					emit.a.Sltiu(enc.X5, enc.X5, 1)
+					emit.Store(spill(h-1), 5, true)
+					emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
+				}
+				stackClasses[h-1] = swarI32
+			case 0xd2:
+				index, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				if uint64(index) >= uint64(len(functions)) {
+					return swarSummary{}, unsupported("SWAR owned ref.func index")
+				}
+				usesTraps = true
+				if err := push(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.functionReference(index)
+					emit.Store(spill(h-1), 5, true)
+					emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
+				}
+			case 0x25, 0x26:
+				index, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				if index != 0 {
+					return swarSummary{}, unsupported("SWAR owned table index")
+				}
+				arity := 1
+				operands := [2]swarClass{swarI32, swarFuncRef}
+				if op == 0x26 {
+					arity = 2
+				}
+				if err := flow.prepareDead(operands[:arity]...); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - arity
+				if base < flow.floor() || stackClasses[base] != swarI32 || arity == 2 && stackClasses[base+1] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR table operand class/underflow")
+				}
+				usesTraps = true
+				if emit != nil {
+					if arity == 2 {
+						emit.Load(28, spill(base+1), true)
+					}
+					emit.Load(5, spill(base), false)
+					emit.privateTableEntry()
+					if arity == 1 {
+						emit.a.Ld(enc.X5, enc.X6, 24)
+						emit.Store(spill(base), 5, true)
+						emit.Store(spill(base)+8, uint8(enc.Zero), true)
+					} else {
+						emit.storePrivateReference()
+					}
+				}
+				h = base
+				if arity == 1 {
+					if err := push(swarFuncRef); err != nil {
+						return swarSummary{}, err
+					}
+				}
+			}
 		case 0xfc:
 			sub, err := r.U32()
 			if err != nil {
@@ -1350,6 +1460,16 @@ func compileSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory *wasm.
 
 // dataCount names the immutable directory shape of owned passive descriptors.
 func compileSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	return compileSWARPairsWithTable(fn, ft, memory, types, functions, globals, dataCount, nil, mode)
+}
+
+// table is an immutable declaration for a trusted live owned table and canonical
+// function descriptors. References remain internal local/control values; public
+// signatures, globals, table instantiation and indirect calls remain gated.
+func compileSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if table != nil && !mode.production {
+		return nil, FunctionInfo{}, nil, unsupported("SWAR owned table requires production owner")
+	}
 	if dataCount != 0 && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR passive data requires production owner")
 	}
@@ -1363,7 +1483,7 @@ func compileSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Mem
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairsWithData(fn, ft, memory != nil, types, functions, globals, dataCount, nil)
+	summary, err := walkSWARPairsWithTable(fn, ft, memory != nil, types, functions, globals, dataCount, table, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1381,7 +1501,7 @@ func compileSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Mem
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithData(fn, ft, memory != nil, types, functions, globals, dataCount, &f)
+	actual, err := walkSWARPairsWithTable(fn, ft, memory != nil, types, functions, globals, dataCount, table, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

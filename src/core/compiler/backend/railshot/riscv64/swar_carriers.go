@@ -14,6 +14,7 @@ const (
 	swarV128
 	swarInvalid
 	swarUnknown // Stack-polymorphic operand only; never a declared carrier.
+	swarFuncRef // Private owned-table local/control value; never a numeric carrier.
 )
 
 func swarClassOf(typ wasm.ValType) swarClass {

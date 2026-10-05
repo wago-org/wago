@@ -34,6 +34,7 @@ type swarFlow struct {
 	emit            *integerEmitter
 	types           []*wasm.CompType
 	usesLoops       bool
+	privateRefs     bool
 }
 
 func (flow *swarFlow) floor() int { return flow.frames[flow.depth-1].base }
@@ -210,10 +211,14 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 					results = append(results, swarClassOf(typ))
 				}
 			} else {
-				if bt < -5 || bt > -1 {
+				if (bt < -5 || bt > -1) && !(flow.privateRefs && bt == -16) {
 					return false, false, unsupported("SWAR control carrier signature")
 				}
-				results = []swarClass{swarByteClass(byte(bt & 0x7f))}
+				class := swarByteClass(byte(bt & 0x7f))
+				if bt == -16 {
+					class = swarFuncRef
+				}
+				results = []swarClass{class}
 			}
 		}
 		*flow.budget += len(params) + len(results)
