@@ -26,6 +26,12 @@ func swarCallSignature(sig *wasm.CompType) error {
 // complete cell, and vector halves remain raw. Only same-image framed entries
 // are relocation targets; the production trap bridge unwinds nested frames.
 func (f *integerEmitter) swarDirectCall(index uint32, sig *wasm.CompType, base int, spill func(int) int32) {
+	f.swarCallArguments(sig, base, spill)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), callee: index})
+	f.swarCallResults(sig, base, spill)
+}
+
+func (f *integerEmitter) swarCallArguments(sig *wasm.CompType, base int, spill func(int) int32) {
 	f.restoreCallTransport()
 	offset := int32(0)
 	for i, typ := range sig.Params {
@@ -39,9 +45,11 @@ func (f *integerEmitter) swarDirectCall(index uint32, sig *wasm.CompType, base i
 			offset += 8
 		}
 	}
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), callee: index})
+}
+
+func (f *integerEmitter) swarCallResults(sig *wasm.CompType, base int, spill func(int) int32) {
 	f.restoreCallTransport()
-	offset = 0
+	offset := int32(0)
 	for i, typ := range sig.Results {
 		class := swarClassOf(typ)
 		if class.narrow() {
@@ -59,4 +67,12 @@ func (f *integerEmitter) swarDirectCall(index uint32, sig *wasm.CompType, base i
 		}
 		f.Store(spill(base+i)+8, 6, true)
 	}
+}
+
+func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, indexSlot int, spill func(int) int32) {
+	f.Load(5, spill(indexSlot), false)
+	f.ownedIndirectTarget(key)
+	f.swarCallArguments(sig, base, spill)
+	f.a.Jalr(enc.RA, enc.X28, 0)
+	f.swarCallResults(sig, base, spill)
 }

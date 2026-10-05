@@ -78,32 +78,7 @@ func admitOwnedTable(m *wasm.Module, production bool) (bool, error) {
 
 func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int) {
 	f.Load(5, f.SpillOffset(indexSlot), false) // zero-normalize dirty incoming i32
-	f.a.Ld(enc.X6, enc.X25, -80)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
-	f.a.Lwu(enc.X7, enc.X6, 0)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.GEU, enc.X5, enc.X7))
-	f.a.Slli(enc.X5, enc.X5, 5)
-	f.a.Add(enc.X6, enc.X6, enc.X5)
-	// The descriptor's eight-byte header precedes 32-byte entries.
-	f.a.Ld(enc.X28, enc.X6, 8)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
-	f.a.Ld(enc.X7, enc.X6, 16)
-	f.a.Constant64(enc.X5, int64(sig.key))
-	f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
-	// Preserve the framed local-wrapper and exact instance identity contracts.
-	// Sharing linear memory does not make two consumers the same instance.
-	f.a.Ld(enc.X7, enc.X6, 24)
-	f.a.Constant64(enc.X5, int64(abi.FuncRefLocalWrapperHomeTag))
-	f.a.Or(enc.X5, enc.X5, enc.X25)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
-	f.a.Ld(enc.X7, enc.X6, 32)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X7, enc.Zero))
-	f.a.Ld(enc.X7, enc.X7, 32)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X7, enc.Zero))
-	f.a.Ld(enc.X6, enc.X25, -abi.FuncRefDescPtrOffset)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
-	f.a.Ld(enc.X6, enc.X6, 32)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X6))
+	f.ownedIndirectTarget(sig.key)
 	// All dynamic guards precede writes to potentially smaller shared call arenas.
 	f.restoreCallTransport()
 	for j, wide := range sig.params {
@@ -120,6 +95,37 @@ func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int) {
 		}
 		f.Store(f.SpillOffset(base+j), 5, wide)
 	}
+}
+
+// X5 is the normalized table index on entry; X28 is the guarded framed
+// target on success. All guards finish before either call arena is written.
+func (f *integerEmitter) ownedIndirectTarget(key uint64) {
+	f.a.Ld(enc.X6, enc.X25, -80)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
+	f.a.Lwu(enc.X7, enc.X6, 0)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.GEU, enc.X5, enc.X7))
+	f.a.Slli(enc.X5, enc.X5, 5)
+	f.a.Add(enc.X6, enc.X6, enc.X5)
+	// The descriptor's eight-byte header precedes 32-byte entries.
+	f.a.Ld(enc.X28, enc.X6, 8)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
+	f.a.Ld(enc.X7, enc.X6, 16)
+	f.a.Constant64(enc.X5, int64(key))
+	f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	// Preserve the framed local-wrapper and exact instance identity contracts.
+	// Sharing linear memory does not make two consumers the same instance.
+	f.a.Ld(enc.X7, enc.X6, 24)
+	f.a.Constant64(enc.X5, int64(abi.FuncRefLocalWrapperHomeTag))
+	f.a.Or(enc.X5, enc.X5, enc.X25)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	f.a.Ld(enc.X7, enc.X6, 32)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X7, enc.Zero))
+	f.a.Ld(enc.X7, enc.X7, 32)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X7, enc.Zero))
+	f.a.Ld(enc.X6, enc.X25, -abi.FuncRefDescPtrOffset)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
+	f.a.Ld(enc.X6, enc.X6, 32)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X6))
 }
 
 // Private references are immutable canonical descriptor handles, never numeric

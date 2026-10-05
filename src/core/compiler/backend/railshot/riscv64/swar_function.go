@@ -50,6 +50,13 @@ func walkSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory32 bool, type
 }
 
 func walkSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithIndirectKeys(fn, ft, memory32, types, functions, globals, dataCount, table, nil, emit)
+}
+
+func walkSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, emit *integerEmitter) (swarSummary, error) {
+	if typeKeys != nil && (table == nil || len(typeKeys) != len(types) || len(types) == 0 || len(functions) == 0) {
+		return swarSummary{}, unsupported("SWAR indirect type identity directory/owner")
+	}
 	if err := swarOwnedTableType(table); err != nil {
 		return swarSummary{}, err
 	}
@@ -289,6 +296,54 @@ func walkSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			if emit != nil {
 				emit.swarDirectCall(index, sig, base, spill)
+			}
+			h = base
+			for _, typ := range sig.Results {
+				if err := push(swarClassOf(typ)); err != nil {
+					return swarSummary{}, err
+				}
+			}
+		case 0x11:
+			typeIndex, err := r.U32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			tableIndex, err := r.U32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			if table == nil || typeKeys == nil || uint64(typeIndex) >= uint64(len(types)) || tableIndex != 0 {
+				return swarSummary{}, unsupported("SWAR indirect signature/table identity")
+			}
+			sig := types[typeIndex]
+			calls++
+			budget += len(sig.Params) + len(sig.Results) + 1
+			if calls > maxDirectCalls || budget > integerBudget {
+				return swarSummary{}, unsupported("SWAR indirect call count/transfer budget")
+			}
+			if err := reserve(128*(len(sig.Params)+len(sig.Results)) + 1024); err != nil {
+				return swarSummary{}, err
+			}
+			operands := make([]swarClass, len(sig.Params)+1)
+			for i, typ := range sig.Params {
+				operands[i] = swarClassOf(typ)
+			}
+			operands[len(sig.Params)] = swarI32
+			if err := flow.prepareDead(operands...); err != nil {
+				return swarSummary{}, err
+			}
+			base := h - len(operands)
+			if base < flow.floor() {
+				return swarSummary{}, unsupported("SWAR indirect call operand underflow")
+			}
+			for i, class := range operands {
+				if stackClasses[base+i] != class {
+					return swarSummary{}, unsupported("SWAR indirect call carrier class")
+				}
+			}
+			usesTraps = true
+			if emit != nil {
+				emit.swarIndirectCall(sig, typeKeys[typeIndex], base, h-1, spill)
 			}
 			h = base
 			for _, typ := range sig.Results {
@@ -1467,6 +1522,12 @@ func compileSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Mem
 // function descriptors. References remain internal local/control values; public
 // signatures, globals, table instantiation and indirect calls remain gated.
 func compileSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	return compileSWARPairsWithIndirectKeys(fn, ft, memory, types, functions, globals, dataCount, table, nil, mode)
+}
+
+// typeKeys must be the immutable checked identities for the exact flattened
+// frontend type directory. Neither hashes nor signature provenance are guessed.
+func compileSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
 	if table != nil && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR owned table requires production owner")
 	}
@@ -1483,7 +1544,7 @@ func compileSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Me
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairsWithTable(fn, ft, memory != nil, types, functions, globals, dataCount, table, nil)
+	summary, err := walkSWARPairsWithIndirectKeys(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1501,7 +1562,7 @@ func compileSWARPairsWithTable(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Me
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithTable(fn, ft, memory != nil, types, functions, globals, dataCount, table, &f)
+	actual, err := walkSWARPairsWithIndirectKeys(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
