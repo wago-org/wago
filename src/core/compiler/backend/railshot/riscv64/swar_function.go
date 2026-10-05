@@ -14,9 +14,9 @@ import (
 const maxSWARLocals = 128
 
 type swarSummary struct {
-	locals, peak, codeBound int
-	usesFP, usesTraps       bool
-	usesLoops               bool
+	locals, peak, codeBound, calls int
+	usesFP, usesTraps              bool
+	usesLoops                      bool
 }
 
 // This private whole-function pilot consumes a frontend-validated function.
@@ -25,13 +25,26 @@ type swarSummary struct {
 // also admits vector loads/stores. FP and traps require their production bridges.
 // Structured control uses exact classes and canonical branch homes; indexed
 // signatures require an explicit type directory and loops require interruption.
-// Module policy remains closed to SIMD; calls are pending.
+// Module policy remains closed to SIMD. Direct calls require an explicit
+// same-instance function directory and the production call bridge.
 // Admission and emission walk every byte with identical bounded stack rules.
 func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *integerEmitter) (swarSummary, error) {
 	return walkSWARPairsWithTypes(fn, ft, memory32, nil, emit)
 }
 
 func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types []*wasm.CompType, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithCalls(fn, ft, memory32, types, nil, emit)
+}
+
+func walkSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, emit *integerEmitter) (swarSummary, error) {
+	if len(functions) > MaxFunctions {
+		return swarSummary{}, unsupported("SWAR function directory bound")
+	}
+	for _, typ := range functions {
+		if err := swarCallSignature(typ); err != nil {
+			return swarSummary{}, err
+		}
+	}
 	if len(types) > 1024 {
 		return swarSummary{}, unsupported("SWAR control type bound")
 	}
@@ -84,6 +97,11 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 	r := wasm.ReaderFrom(fn.BodyBytes)
 	h, peak, budget := 0, 0, 0
 	usesFP, usesTraps := false, false
+	calls := 0
+	header := 16
+	if len(functions) != 0 {
+		header = callFrameHeader
+	}
 	// Covers bounded parameter expansion, frame/zero initialization, compact
 	// result serialization and framing. Per-op bounds include escaped homes
 	// and cold trap islands. Admission computes this before allocating code.
@@ -96,8 +114,8 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 		return nil
 	}
 	left, right, mask := swarPair{enc.X5, enc.X6}, swarPair{enc.X7, enc.X9}, swarPair{enc.X10, enc.X11}
-	local := func(i int) int32 { return int32(16 + 16*i) }
-	spill := func(i int) int32 { return int32(16 + 16*nlocals + 16*i) }
+	local := func(i int) int32 { return int32(header + 16*i) }
+	spill := func(i int) int32 { return int32(header + 16*nlocals + 16*i) }
 	var stackClasses [256]swarClass
 	var flow swarFlow
 	push := func(class swarClass) error {
@@ -121,7 +139,7 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 	// the still unread halves of a later vector argument.
 	if emit != nil && incomingSlots != len(ft.Params)*2 {
 		for i := len(ft.Params) - 1; i >= 0; i-- {
-			src := int32(16 + 8*paramSlots[i])
+			src := int32(header + 8*paramSlots[i])
 			if localClasses[i] == swarV128 {
 				emit.swarLoad(src, left)
 				emit.swarStore(local(i), left)
@@ -201,7 +219,52 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 					}
 				}
 			}
-			return swarSummary{nlocals, peak, codeBound, usesFP, usesTraps, flow.usesLoops}, nil
+			return swarSummary{nlocals, peak, codeBound, calls, usesFP, usesTraps, flow.usesLoops}, nil
+		case 0x10:
+			index, err := r.U32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			if uint64(index) >= uint64(len(functions)) {
+				return swarSummary{}, unsupported("SWAR direct call directory/index")
+			}
+			sig := functions[index]
+			calls++
+			budget += len(sig.Params) + len(sig.Results)
+			if calls > maxDirectCalls || budget > integerBudget {
+				return swarSummary{}, unsupported("SWAR direct call count/transfer budget")
+			}
+			if err := reserve(128*(len(sig.Params)+len(sig.Results)) + 128); err != nil {
+				return swarSummary{}, err
+			}
+			params := make([]swarClass, len(sig.Params))
+			for i, typ := range sig.Params {
+				params[i] = swarClassOf(typ)
+			}
+			if err := flow.prepareDead(params...); err != nil {
+				return swarSummary{}, err
+			}
+			base := h - len(params)
+			if base < flow.floor() {
+				return swarSummary{}, unsupported("SWAR direct call operand underflow")
+			}
+			for i, class := range params {
+				if stackClasses[base+i] != class {
+					return swarSummary{}, unsupported("SWAR direct call carrier class")
+				}
+			}
+			if base+len(sig.Results) > len(stackClasses) {
+				return swarSummary{}, unsupported("SWAR direct call result operand bound")
+			}
+			if emit != nil {
+				emit.swarDirectCall(index, sig, base, spill)
+			}
+			h = base
+			for _, typ := range sig.Results {
+				if err := push(swarClassOf(typ)); err != nil {
+					return swarSummary{}, err
+				}
+			}
 		case 0x1a:
 			if err := flow.prepareDead(swarUnknown); err != nil {
 				return swarSummary{}, err
@@ -1057,64 +1120,78 @@ func compileSWARPairsWithMemory(fn *wasm.Func, ft *wasm.CompType, memory *wasm.M
 // types is the caller's immutable frontend-validated, flattened function-type
 // directory. Indexed signatures are never guessed from the current function.
 func compileSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types []*wasm.CompType, mode emissionMode) ([]byte, FunctionInfo, error) {
+	code, info, _, err := compileSWARPairsWithCalls(fn, ft, memory, types, nil, mode)
+	return code, info, err
+}
+
+// functions contains only the current instance's defined functions. Imports,
+// cross-instance entries, executable pointers and guessed signatures are absent.
+// All entries must be admitted by the module owner before publishing this code.
+func compileSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if len(functions) != 0 && !mode.production {
+		return nil, FunctionInfo{}, nil, unsupported("SWAR direct calls require production bridge")
+	}
 	if memory != nil && (!mode.production || memory.Shared || memory.Limits.Addr64 || memory.Limits.Min > 65536 ||
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
-		return nil, FunctionInfo{}, unsupported("SWAR production memory32 resource")
+		return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairsWithTypes(fn, ft, memory != nil, types, nil)
+	summary, err := walkSWARPairsWithCalls(fn, ft, memory != nil, types, functions, nil)
 	if err != nil {
-		return nil, FunctionInfo{}, err
+		return nil, FunctionInfo{}, nil, err
 	}
 	if summary.usesFP && !mode.production {
 		// The isolated integer bridge does not preserve accrued FP flags/FCSR.
-		return nil, FunctionInfo{}, unsupported("SWAR FP requires production FCSR bridge")
+		return nil, FunctionInfo{}, nil, unsupported("SWAR FP requires production FCSR bridge")
 	}
 	if summary.usesLoops && (!mode.production || !mode.interruptible) {
-		return nil, FunctionInfo{}, unsupported("SWAR loops require production interruption bridge")
+		return nil, FunctionInfo{}, nil, unsupported("SWAR loops require production interruption bridge")
 	}
 	if summary.usesTraps && !mode.production {
-		return nil, FunctionInfo{}, unsupported("SWAR traps require production trap bridge")
+		return nil, FunctionInfo{}, nil, unsupported("SWAR traps require production trap bridge")
 	}
 	f := integerEmitter{target: target{mode: mode}}
-	actual, err := walkSWARPairsWithTypes(fn, ft, memory != nil, types, &f)
+	if len(functions) != 0 {
+		f.header = callFrameHeader
+	}
+	actual, err := walkSWARPairsWithCalls(fn, ft, memory != nil, types, functions, &f)
 	if err != nil {
-		return nil, FunctionInfo{}, err
+		return nil, FunctionInfo{}, nil, err
 	}
 	if actual != summary {
-		return nil, FunctionInfo{}, fmt.Errorf("rv64: SWAR admission changed")
+		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: SWAR admission changed")
 	}
 	if len(f.traps) != 0 {
 		end := f.Jump()
 		for _, tr := range f.traps {
 			if err := f.Patch(tr.site, f.Position()); err != nil {
-				return nil, FunctionInfo{}, err
+				return nil, FunctionInfo{}, nil, err
 			}
 			f.emitProductionTrap(productionTrapCode(tr.code), tr.sourcePC)
 		}
 		if err := f.Patch(end, f.Position()); err != nil {
-			return nil, FunctionInfo{}, err
+			return nil, FunctionInfo{}, nil, err
 		}
 	}
 	if f.err != nil {
-		return nil, FunctionInfo{}, f.err
+		return nil, FunctionInfo{}, nil, f.err
 	}
 	if f.a.Err() != nil {
-		return nil, FunctionInfo{}, f.a.Err()
+		return nil, FunctionInfo{}, nil, f.a.Err()
 	}
 	widths := make([]bool, summary.locals*2)
 	for i := range widths {
 		widths[i] = true
 	}
 	params, results := swarSignatureSlots(ft.Params), swarSignatureSlots(ft.Results)
-	info := FunctionInfo{Params: params, Results: results, SpillSlots: summary.peak * 2, FrameHeaderBytes: 16, Fallback: true, mode: mode}
-	code, info, err := frameFunction(f.a.B, widths, params, summary.peak*2, true, -1, info)
+	info := FunctionInfo{Params: params, Results: results, SpillSlots: summary.peak * 2, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), Fallback: true, mode: mode}
+	code, info, err := frameFunctionCalls(f.a.B, widths, params, summary.peak*2, true, -1, info, f.calls)
 	if err != nil {
-		return nil, FunctionInfo{}, err
+		return nil, FunctionInfo{}, nil, err
 	}
 	if len(code) > summary.codeBound {
-		return nil, FunctionInfo{}, fmt.Errorf("rv64: SWAR code exceeded its admitted bound")
+		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: SWAR code exceeded its admitted bound")
 	}
-	return code, info, nil
+	return code, info, f.calls, nil
 }
 
 func swarCarrierType(typ wasm.ValType) bool {
