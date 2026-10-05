@@ -2,8 +2,10 @@
 
 This experimental Linux/RV64 port has an encoder, an isolated integer runtime
 boundary, shared scalar compilation, bounded whole-function integer/control
-lowering, single-memory/integer-global execution and bulk memory/passive data.
+lowering, single-memory/integer-global execution, bulk memory/passive data and
+defined same-instance direct/recursive integer calls.
 Generated code executes under QEMU; see the
+[direct-call checkpoint](riscv64-direct-call-checkpoint.md),
 [bulk checkpoint](riscv64-bulk-checkpoint.md),
 [memory checkpoint](riscv64-memory-checkpoint.md),
 [integer checkpoint](riscv64-integer-checkpoint.md),

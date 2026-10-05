@@ -9,6 +9,9 @@ Calls, tables/elements, FP, SIMD, memory64, shared/multiple memories, starts,
 extended initializers and other unsupported features remain excluded.
 No production Wago target, CLI or artifact architecture is enabled.
 
+The later [direct-call checkpoint](riscv64-direct-call-checkpoint.md) extends
+this historical scope with defined same-instance direct and recursive calls.
+
 ## Admission and owned segment state
 
 Normal decoding/validation establishes data-count consistency and requires it
