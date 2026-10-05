@@ -294,6 +294,17 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
 			}
+			if width, signed, high, pairwise, ok := swarWidenOpcode(kind); ok {
+				if h == 0 || stackClasses[h-1] != swarV128 {
+					return swarSummary{}, unsupported("SWAR widening carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-1), swarPair{enc.X6, enc.X7})
+					emit.swarWiden(width, signed, high, pairwise)
+					emit.swarStore(spill(h-1), swarPair{enc.X6, enc.X7})
+				}
+				continue
+			}
 			if kind == 98 {
 				if h == 0 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR popcount carrier class/underflow")
