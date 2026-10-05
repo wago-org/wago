@@ -218,10 +218,10 @@ func (snapshot buildOutputSnapshot) validateBeforeReplace(destination string, ex
 		return formatBuildError("output changed before publication: %s -> %s", destination, publicationPath)
 	}
 	if expectedInfo == nil {
-		// A missing Windows output inherits access policy from its parent. Re-sample
+		// Missing Windows and Darwin outputs inherit access policy from their parent. Re-sample
 		// that metadata at the final boundary so a concurrent permission tightening
-		// is not undone by publishing the earlier snapshot. Other platforms return
-		// the zero metadata value here.
+		// is not undone by publishing the earlier snapshot. Windows and Darwin
+		// capture inherited metadata; other platforms return the zero value here.
 		currentMetadata, err := captureNewBuildOutputMetadata(publicationPath)
 		if err != nil {
 			return buildErrorE("output metadata changed before publication: %w", err)
@@ -464,11 +464,11 @@ func (snapshot buildOutputSnapshot) revalidate() (path string, mode os.FileMode,
 		}
 		return snapshot.publicationPath, 0o644, false, nil, nil
 	}
+	if targetInfo == nil || !sameBuildPath(resolved, snapshot.publicationPath) || !sameBuildFileIdentity(snapshot.targetIdentity, targetIdentity) {
+		return "", 0, false, nil, newBuildError("output symlink changed during build")
+	}
 	if err := validateBuildOutputPublication(resolved, targetInfo, targetIdentity); err != nil {
 		return "", 0, false, nil, err
-	}
-	if !sameBuildPath(resolved, snapshot.publicationPath) || !sameBuildFileIdentity(snapshot.targetIdentity, targetIdentity) {
-		return "", 0, false, nil, newBuildError("output symlink changed during build")
 	}
 	return snapshot.publicationPath, targetInfo.Mode().Perm(), true, targetInfo, nil
 }
