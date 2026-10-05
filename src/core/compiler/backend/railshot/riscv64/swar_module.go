@@ -10,16 +10,18 @@ import (
 )
 
 type swarModuleImage struct {
-	code      []byte
-	functions []FunctionInfo
-	globals   []swarGlobalInitializer
-	data      [][]byte
+	code       []byte
+	functions  []FunctionInfo
+	globals    []swarGlobalInitializer
+	data       [][]byte
+	activeData []swarActiveData
+	memory     *wasm.MemType
 }
 
 // This private module pilot owns a bounded source snapshot and admits every
 // function before allocating an image. It has no production compiler entry or
 // public feature gate. Only defined functions, their exports, inert metadata
-// one optional nonshared memory32 bounded literal globals and passive data are supported.
+// one optional nonshared memory32 bounded literal globals and active/passive data are supported.
 // Global cells are initialized separately by the private idle execution owner.
 // The execution owner must provide matching call arenas and JobMemory layout.
 func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error) {
@@ -73,7 +75,7 @@ func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error)
 			return nil, unsupported("SWAR module memory32 resource")
 		}
 	}
-	dataSegments, err := swarPassiveData(m.Data)
+	dataSegments, activeData, err := swarModuleData(m.Data, memory)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +110,11 @@ func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error)
 		}
 		bound += summaries[i].codeBound + 15
 	}
-	image := &swarModuleImage{functions: make([]FunctionInfo, len(functions)), globals: globals, data: dataSegments}
+	image := &swarModuleImage{functions: make([]FunctionInfo, len(functions)), globals: globals, data: dataSegments, activeData: activeData}
+	if memory != nil {
+		ownedMemory := *memory
+		image.memory = &ownedMemory
+	}
 	var calls []directCall
 	for i := range functions {
 		functionMode := mode

@@ -4,6 +4,7 @@ package riscv64
 
 import (
 	"encoding/binary"
+	"fmt"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -39,6 +40,12 @@ type swarDataOwner struct {
 }
 
 func (image *swarModuleImage) instantiateData(job *coreruntime.JobMemory) (*swarDataOwner, error) {
+	return image.instantiateDataWithArena(job, coreruntime.NewArena)
+}
+
+// Production uses NewArena; a local allocator allows prepublication failure
+// ordering to be tested without changing process-wide runtime hooks.
+func (image *swarModuleImage) instantiateDataWithArena(job *coreruntime.JobMemory, allocate func(int) (*coreruntime.Arena, error)) (*swarDataOwner, error) {
 	if image == nil || job == nil || len(image.data) > 256 {
 		return nil, unsupported("SWAR passive data owner image/job/bound")
 	}
@@ -55,11 +62,32 @@ func (image *swarModuleImage) instantiateData(job *coreruntime.JobMemory) (*swar
 		// payload lengths. Overestimating trailing padding remains bounded.
 		arenaBytes += (len(payload) + 7) &^ 7
 	}
+	var memory []byte
+	if len(image.activeData) != 0 {
+		if image.memory == nil || image.memory.Shared || image.memory.Limits.Addr64 {
+			return nil, unsupported("SWAR active data owner memory32")
+		}
+		memory = job.CurrentBytes()
+	}
+	previousIndex := -1
+	for _, active := range image.activeData {
+		if uint64(active.index) >= uint64(len(image.data)) || int(active.index) <= previousIndex || len(image.data[active.index]) != 0 || len(active.bytes) > MaxModuleBytes-payloadBytes {
+			return nil, unsupported("SWAR active data owner index/byte bound")
+		}
+		previousIndex = int(active.index)
+		payloadBytes += len(active.bytes)
+		// Check every complete range before arena allocation, publication or
+		// even the first initializer write, including zero-length segments.
+		offset := uint64(active.offset)
+		if offset > uint64(len(memory)) || uint64(len(active.bytes)) > uint64(len(memory))-offset {
+			return nil, fmt.Errorf("rv64: active data segment %d out of bounds", active.index)
+		}
+	}
 	owner := &swarDataOwner{}
 	if arenaBytes == 0 {
 		return owner, nil
 	}
-	arena, err := coreruntime.NewArena(arenaBytes)
+	arena, err := allocate(arenaBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +102,12 @@ func (image *swarModuleImage) instantiateData(job *coreruntime.JobMemory) (*swar
 		binary.LittleEndian.PutUint64(directory[i*16:], pointer)
 		binary.LittleEndian.PutUint32(directory[i*16+8:], uint32(len(cell)))
 		binary.LittleEndian.PutUint32(directory[i*16+12:], 0)
+	}
+	// Source order is significant for overlapping initializers. All remaining
+	// operations are infallible under the private exclusive live-job contract.
+	for _, active := range image.activeData {
+		start := int(active.offset)
+		copy(memory[start:start+len(active.bytes)], active.bytes)
 	}
 	owner.arena, owner.job = arena, job
 	owner.directory = uintptr(unsafe.Pointer(&directory[0]))

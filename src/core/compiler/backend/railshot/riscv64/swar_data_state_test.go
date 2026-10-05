@@ -119,12 +119,11 @@ func TestSWARPassiveDataModuleAdmissionAndDeadTyping(t *testing.T) {
 	good := fixtureFunc{body: []byte{0x0b}}
 	base := swarDataSource([]fixtureFunc{good}, true, [][]byte{{1}})
 	for _, data := range [][]byte{
-		modifySection(base, 11, 11, []byte{1, 0, 0x41, 0, 0x0b, 1, 1}, true), // active initializer
-		modifySection(base, 12, 12, []byte{0}, true),                         // wrong data count
+		modifySection(base, 12, 12, []byte{0}, true), // wrong data count
 		swarDataSource([]fixtureFunc{good}, false, make([][]byte, 257)),
 	} {
 		if image, err := compileSWARModule(data, emissionMode{production: true}); image != nil || err == nil {
-			t.Fatal("unsupported active/excess/mismatched data", err)
+			t.Fatal("unsupported excess/mismatched data", err)
 		}
 	}
 }
