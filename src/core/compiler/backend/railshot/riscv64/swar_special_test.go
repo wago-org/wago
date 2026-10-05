@@ -36,10 +36,10 @@ func TestSWARSpecialArithmeticAdmission(t *testing.T) {
 			}
 		}
 	}
-	for _, kind := range []uint32{156, 157, 158, 159, 188, 189, 190, 191, 220, 221, 222, 223} {
+	for _, kind := range []uint32{232, 233, 244, 245} {
 		fn, ft := swarValidatedFunction(t, swarArithmeticFixture(kind))
 		if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
-			t.Fatal("pending widening multiply admitted", kind, err)
+			t.Fatal("pending vector FP admitted", kind, err)
 		}
 	}
 }

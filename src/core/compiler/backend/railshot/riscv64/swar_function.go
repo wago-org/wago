@@ -282,6 +282,8 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				bound = 2048
 			} else if _, _, ok := swarComparisonOpcode(kind); ok {
 				bound = 1024
+			} else if _, _, ok := swarNarrowOpcode(kind); ok {
+				bound = 2048
 			} else if _, _, ok := swarSaturationOpcode(kind); ok {
 				bound = 2048
 			} else if _, _, ok := swarProductOpcode(kind); ok {
@@ -293,6 +295,32 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
+			}
+			if width, signed, high, ok := swarExtmultiplyOpcode(kind); ok {
+				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+					return swarSummary{}, unsupported("SWAR extmultiply carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-2), left)
+					emit.swarLoad(spill(h-1), right)
+					emit.swarExtmultiply(width, signed, high)
+					emit.swarStore(spill(h-2), left)
+				}
+				h--
+				continue
+			}
+			if width, signed, ok := swarNarrowOpcode(kind); ok {
+				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+					return swarSummary{}, unsupported("SWAR narrowing carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-2), left)
+					emit.swarLoad(spill(h-1), right)
+					emit.swarNarrow(width, signed)
+					emit.swarStore(spill(h-2), left)
+				}
+				h--
+				continue
 			}
 			if width, signed, high, pairwise, ok := swarWidenOpcode(kind); ok {
 				if h == 0 || stackClasses[h-1] != swarV128 {
