@@ -25,8 +25,10 @@ go test -tags=wago_regalloccheck,wago_guardpage ./src/wago
   source/destination ranges
 - Resolved ABI/entry parallel-register shuffles, including swaps, cycles and
   ARM64 swap-chain rewrites
-- Immutable integer, scalar-float and vector cache admissions versus later
-  physical calls, including helper calls
+- Immutable integer-cache reservations versus typed GP writes, including
+  implicit/partial destinations, generic SIMD-to-GP selectors and physical calls
+- Immutable scalar-float and vector cache admissions versus later physical
+  calls, including helper calls
 
 The machine-state model names physical register bytes and frame bytes. GP and
 FP banks are separate. Each input/definition receives an opaque symbolic value;
@@ -51,7 +53,14 @@ its final encoder-reported transfers, including GP/FP bank and scratch-frame
 addresses, rather than its mutable resolution graph or requested callbacks.
 Immutable cache identities start at the actual preload and are never reseeded at
 a physical call. They have no spill/reload protocol, so a call that destroys one
-is an error even if a call-presence hint says otherwise.
+is an error even if a call-presence hint says otherwise. Integer reservations use
+an independent encoder-write observer, so transfer-window observation cannot mask
+a write. Every reported write to a reserved GP register is rejected immediately;
+a later restore cannot repair it. Terminal trap stubs and AMD64 normal-return
+epilogues end the cache lifetime on that path and restore the body reservation
+when emission leaves the terminal scope. Return results are already canonical
+before result marshaling may overwrite a body cache register.
+Function-attempt cleanup restores the enclosing observer on success and panic.
 AMD64 loop-scoped float caches retire their expectations at the loop's lexical
 end, when their registers stop being reserved. Outer cache expectations remain
 live; a physical call inside the scope still fails.
@@ -69,10 +78,13 @@ paths compute the same value. The shared state model supplies intersection for
 join facts, but the backend currently verifies edge placement, not a whole-CFG
 fixed point.
 
-Arithmetic/ISA semantics, arbitrary non-transfer scratch clobbers, deferred
-memory/trap ordering, full pinned-local lifetime analysis and unmodeled lowering
+Arithmetic/ISA semantics, scratch clobbers outside immutable GP reservations,
+deferred memory/trap ordering, full pinned-local lifetime analysis and unmodeled lowering
 outside these windows remain covered by existing execution/regression tests.
-Encoder byte selection is trusted. Incorrect incoming metadata may therefore be
+The GP observer covers the typed instruction methods and generic selector
+vocabulary used by the backends. Custom raw bytes, direct code-buffer writes,
+and unsupported generic opcodes are outside its contract. Encoder byte selection
+is trusted. Incorrect incoming metadata may therefore be
 outside this first checker's coverage. Expanding coverage requires an explicit
 semantic input/use/definition contract; do not seed a new symbol after a failed
 reload, infer correctness from matching allocator bookkeeping, or silently claim
@@ -89,6 +101,10 @@ reflection-based tests are excluded under TinyGo, which does not implement
 reflect.StructOf; the ordinary production placeholders remain zero-sized.
 `scripts/check-diagnostic-dce.sh` also rejects retained checker implementation
 symbols in ordinary manager, runtime, minimal-runtime and embedding binaries.
+Checker cleanup reuses existing unwind scopes: an additional conditional `defer`
+can change TinyGo lowering even when its guard is false. Terminal mask tokens
+are zero-sized in ordinary builds so existing deferred scopes capture no
+diagnostic payload. Keep existing emission helpers to preserve compiler inlining.
 
 Before qualifying a change, run both builds, compare generated guest-code
 fingerprints, inspect ordinary hot-path disassembly and compare matched compile
@@ -98,7 +114,7 @@ compiler overhead is expected and is not a production performance result.
 Negative tests corrupt physical effects while leaving allocator ownership
 plausible: reload the wrong slot, overwrite a later operand's spill during
 canonicalization, partially overwrite a vector, clobber a preloaded constant with
-a call, copy overlapping slots in the wrong direction, consume corrupted deferred
+a typed write or call (including inside nested transfer windows), copy overlapping slots in the wrong direction, consume corrupted deferred
 inputs, emit no-op/wrong-bank ABI shuffles, and reload the wrong FP swap slot.
 These must fail
 without relying on guest execution. Keep execution regressions as an independent

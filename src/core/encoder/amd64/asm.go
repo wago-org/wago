@@ -487,6 +487,9 @@ func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 			a.regallocStore(base, disp, Reg(regField), false, regallocWidth(w))
 		}
 	}
+	if regallocCheckEnabled {
+		a.regallocGPMem(opcode, Reg(regField), w || regField >= 8 || base >= 8)
+	}
 
 	rb := base >= 8
 	rr := regField >= 8
@@ -498,6 +501,10 @@ func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 }
 
 func (a *Asm) Push(r Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << RSP)
+	}
+
 	if r >= 8 {
 		a.emit(a.rexPrefix(0x41))
 	}
@@ -505,6 +512,10 @@ func (a *Asm) Push(r Reg) {
 }
 
 func (a *Asm) Pop(r Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RSP | 1<<r)
+	}
+
 	if r >= 8 {
 		a.emit(a.rexPrefix(0x41))
 	}
@@ -512,6 +523,10 @@ func (a *Asm) Pop(r Reg) {
 }
 
 func (a *Asm) MovImm32(r Reg, v int32) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << r)
+	}
+
 	if a.EncodingStats != nil {
 		a.EncodingStats.MovImm32++
 	}
@@ -526,6 +541,9 @@ func (a *Asm) MovRegReg32(dst, src Reg) {
 	if regallocCheckEnabled {
 		a.regallocCopy(dst, src, false, 4)
 	}
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
 
 	rr := src >= 8
 	rb := dst >= 8
@@ -537,6 +555,10 @@ func (a *Asm) MovRegReg32(dst, src Reg) {
 }
 
 func (a *Asm) sseBitOp(opcode byte, dst, src Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	a.emit(0xF3)
 	if w || dst >= 8 || src >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, src >= 8))
@@ -552,6 +574,10 @@ func (a *Asm) Popcnt(dst, src Reg, w bool) { a.sseBitOp(0xB8, dst, src, w) }
 func (a *Asm) Bsr(dst, src Reg, w bool) { a.bitScan(0xBD, dst, src, w) }
 func (a *Asm) Bsf(dst, src Reg, w bool) { a.bitScan(0xBC, dst, src, w) }
 func (a *Asm) bitScan(opcode byte, dst, src Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || src >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, src >= 8))
 	}
@@ -562,6 +588,9 @@ func (a *Asm) MovReg64(dst, src Reg) {
 	if regallocCheckEnabled {
 		a.regallocCopy(dst, src, false, 8)
 	}
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
 
 	a.emit(a.rex(true, src >= 8, false, dst >= 8), 0x89, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
 }
@@ -571,11 +600,18 @@ func (a *Asm) Xchg64(x, y Reg) {
 	if regallocCheckEnabled {
 		a.regallocSwap(x, y, 8)
 	}
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<x | 1<<y)
+	}
 
 	a.emit(a.rex(true, x >= 8, false, y >= 8), 0x87, 0xC0|((byte(x)&7)<<3)|byte(y&7))
 }
 
 func (a *Asm) Movsxd(dst, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	a.emit(a.rex(true, dst >= 8, false, src >= 8), 0x63, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
 }
 
@@ -583,6 +619,10 @@ func (a *Asm) Movsxd(dst, src Reg) {
 // A byte source of SPL/BPL/SIL/DIL (regs 4–7) requires a mandatory REX prefix to
 // select the low-byte encoding instead of the legacy AH/CH/DH/BH.
 func (a *Asm) Movsx8(dst, src Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || src >= 4 {
 		a.emit(a.rex(w, dst >= 8, false, src >= 8))
 	}
@@ -591,6 +631,10 @@ func (a *Asm) Movsx8(dst, src Reg, w bool) {
 
 // Movsx16 sign-extends the low word of src into dst; w selects a 64-bit dest.
 func (a *Asm) Movsx16(dst, src Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || src >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, src >= 8))
 	}
@@ -644,6 +688,10 @@ func (a *Asm) StoreImmIdx(base, index Reg, disp int32, imm int32, size int) {
 }
 
 func (a *Asm) alu(opcode byte, dst, src Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPRR(opcode, dst, src, w || src >= 8 || dst >= 8)
+	}
+
 	if w || src >= 8 || dst >= 8 {
 		a.emit(a.rex(w, src >= 8, false, dst >= 8))
 	}
@@ -661,6 +709,10 @@ func (a *Asm) Cmp32(dst, src Reg) { a.alu(0x39, dst, src, false) }
 // Inc/Dec emit the compact r/m register forms. They preserve the arithmetic
 // result and every status flag except CF; callers must prove CF dead.
 func (a *Asm) Inc(r Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << r)
+	}
+
 	if w || r >= 8 {
 		a.emit(a.rex(w, false, false, r >= 8))
 	}
@@ -668,6 +720,10 @@ func (a *Asm) Inc(r Reg, w bool) {
 }
 
 func (a *Asm) Dec(r Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << r)
+	}
+
 	if w || r >= 8 {
 		a.emit(a.rex(w, false, false, r >= 8))
 	}
@@ -675,6 +731,10 @@ func (a *Asm) Dec(r Reg, w bool) {
 }
 
 func (a *Asm) IMul(dst, src Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || src >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, src >= 8))
 	}
@@ -683,6 +743,10 @@ func (a *Asm) IMul(dst, src Reg, w bool) {
 }
 
 func (a *Asm) shiftCL(digit byte, r Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << r)
+	}
+
 	if w || r >= 8 {
 		a.emit(a.rex(w, false, false, r >= 8))
 	}
@@ -754,22 +818,51 @@ const (
 )
 
 func (a *Asm) SetccAL(c Cond) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << RAX)
+	}
+
 	a.emit(0x0F, 0x90|byte(c), 0xC0) // setcc al (ModRM 11 000 000)
 	a.emit(0x0F, 0xB6, 0xC0)         // movzx eax, al
 }
 
-func (a *Asm) Leave() { a.emit(0xC9) }
-func (a *Asm) Ret()   { a.emit(0xC3) }
+func (a *Asm) Leave() {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RSP | 1<<RBP)
+	}
+	a.emit(0xC9)
+}
+func (a *Asm) Ret() {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << RSP)
+	}
+	a.emit(0xC3)
+}
 
-func (a *Asm) Prologue() { a.emit(0x55, a.rexPrefix(0x48), 0x89, 0xE5) } // push rbp; mov rbp,rsp
+func (a *Asm) Prologue() {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RSP | 1<<RBP)
+	}
+	a.emit(0x55, a.rexPrefix(0x48), 0x89, 0xE5)
+} // push rbp; mov rbp,rsp
 
-func (a *Asm) SubRsp(v int32) { a.emit(a.rexPrefix(0x48), 0x81, 0xEC); a.imm32(v) }
+func (a *Asm) SubRsp(v int32) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << RSP)
+	}
+	a.emit(a.rexPrefix(0x48), 0x81, 0xEC)
+	a.imm32(v)
+}
 
 func (a *Asm) AluRR(rrOpcode byte, dst, src Reg, w bool) { a.alu(rrOpcode, dst, src, w) }
 
 // AluRR8 emits an 8-bit register ALU operation in r/m,reg form. A REX prefix is
 // required not only for extended registers but also for SPL/BPL/SIL/DIL.
 func (a *Asm) AluRR8(rrOpcode byte, dst, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPRR(rrOpcode, dst, src, dst >= 4 || src >= 4)
+	}
+
 	if dst >= 4 || src >= 4 {
 		a.emit(a.rex(false, src >= 8, false, dst >= 8))
 	}
@@ -786,6 +879,10 @@ func (a *Asm) AluRM(rmOpcode byte, dst, base Reg, disp int32, w bool) {
 // AluIdx emits `dst = dst <op> [base + index + disp]` (reg,r/m form) — folding a
 // bounds-checked memory operand into an ALU op. rmOpcode is the reg,r/m opcode.
 func (a *Asm) AluIdx(rmOpcode byte, dst, base, index Reg, disp int32, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPMem(rmOpcode, dst, w || dst >= 8 || base >= 8 || index >= 8)
+	}
+
 	if w || dst >= 8 || index >= 8 || base >= 8 {
 		a.emit(a.rex(w, dst >= 8, index >= 8, base >= 8))
 	}
@@ -795,6 +892,10 @@ func (a *Asm) AluIdx(rmOpcode byte, dst, base, index Reg, disp int32, w bool) {
 
 // ImulIdx emits `dst = dst * [base + index + disp]`.
 func (a *Asm) ImulIdx(dst, base, index Reg, disp int32, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || index >= 8 || base >= 8 {
 		a.emit(a.rex(w, dst >= 8, index >= 8, base >= 8))
 	}
@@ -804,6 +905,12 @@ func (a *Asm) ImulIdx(dst, base, index Reg, disp int32, w bool) {
 
 // digit selects add/or/and/sub/xor/cmp.
 func (a *Asm) AluRI(digit byte, dst Reg, imm int32, w bool) {
+	if regallocCheckEnabled {
+		if digit != 7 {
+			a.regallocGPWrite(1 << dst)
+		}
+	}
+
 	if w || dst >= 8 {
 		a.emit(a.rex(w, false, false, dst >= 8))
 	}
@@ -827,6 +934,10 @@ func (a *Asm) ImulRM(dst, base Reg, disp int32, w bool) {
 	if regallocCheckEnabled {
 		a.regallocRead(base, disp, regallocWidth(w))
 	}
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || base >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, base >= 8))
 	}
@@ -835,6 +946,10 @@ func (a *Asm) ImulRM(dst, base Reg, disp int32, w bool) {
 }
 
 func (a *Asm) ImulRI(dst Reg, imm int32, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, dst >= 8))
 	}
@@ -850,6 +965,10 @@ func (a *Asm) ImulRI(dst Reg, imm int32, w bool) {
 // ImulRRI is the three-operand IMUL: dst = src * imm (src a distinct register),
 // avoiding a preceding mov dst,src that the two-operand ImulRI would require.
 func (a *Asm) ImulRRI(dst, src Reg, imm int32, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || src >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, src >= 8))
 	}
@@ -872,6 +991,9 @@ func (a *Asm) ShiftImm(digit byte, dst Reg, count byte, w bool) {
 			}
 		}
 		return
+	}
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
 	}
 	if w || dst >= 8 {
 		a.emit(a.rex(w, false, false, dst >= 8))
@@ -909,6 +1031,9 @@ func (a *Asm) MovImm64(r Reg, v uint64) {
 		a.MovImm32(r, int32(v))
 		return
 	}
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << r)
+	}
 	if uint64(int64(int32(v))) == v {
 		if a.EncodingStats != nil {
 			a.EncodingStats.MovImm32Sext++
@@ -935,7 +1060,13 @@ func (a *Asm) MovImm64(r Reg, v uint64) {
 	a.B = append(a.B, t[:]...)
 }
 
-func (a *Asm) AddRsp(v int32) { a.emit(a.rexPrefix(0x48), 0x81, 0xC4); a.imm32(v) }
+func (a *Asm) AddRsp(v int32) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << RSP)
+	}
+	a.emit(a.rexPrefix(0x48), 0x81, 0xC4)
+	a.imm32(v)
+}
 
 func (a *Asm) rspMem(opcode byte, reg byte, disp int32, w bool) {
 	if regallocCheckEnabled {
@@ -944,6 +1075,9 @@ func (a *Asm) rspMem(opcode byte, reg byte, disp int32, w bool) {
 		} else if opcode == 0x89 {
 			a.regallocStore(RSP, disp, Reg(reg), false, regallocWidth(w))
 		}
+	}
+	if regallocCheckEnabled {
+		a.regallocGPMem(opcode, Reg(reg), w || reg >= 8)
 	}
 
 	rr := reg >= 8
@@ -962,16 +1096,32 @@ func (a *Asm) LoadRsp64(dst Reg, disp int32)  { a.rspMem(0x8B, byte(dst), disp, 
 func (a *Asm) LeaRsp(dst Reg, disp int32) { a.rspMem(0x8D, byte(dst), disp, true) }
 
 func (a *Asm) MovFromRsp(dst Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	a.emit(a.rex(true, false, false, dst >= 8), 0x89, 0xC0|(4<<3)|byte(dst&7))
 }
 
-func (a *Asm) CallRel32() int { a.emit(0xE8); off := a.Len(); a.imm32(0); return off }
+func (a *Asm) CallRel32() int {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(0xffff)
+	}
+	a.emit(0xE8)
+	off := len(a.B)
+	a.imm32(0)
+	return off
+}
 
 // CallMem emits CALL qword [base+disp] (FF /2) — an indirect call through a
 // memory-resident code pointer, leaving all registers free for arguments.
 func (a *Asm) CallMem(base Reg, disp int32) { a.memOp(0xFF, 2, base, disp, false) }
 
 func (a *Asm) CallReg(r Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(0xffff)
+	}
+
 	if r >= 8 {
 		a.emit(a.rexPrefix(0x41))
 	}
@@ -986,6 +1136,10 @@ func (a *Asm) LeaScaled(dst, base, index Reg, scaleLog uint8, disp int32) {
 // 32-bit result (the address is computed in 64-bit and truncated+zero-extended),
 // which matches i32 wraparound arithmetic.
 func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int32, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || index >= 8 || base >= 8 {
 		a.emit(a.rex(w, dst >= 8, index >= 8, base >= 8))
 	}
@@ -1000,6 +1154,10 @@ func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int32, w boo
 func (a *Asm) LeaDispW(dst, base Reg, disp int32, w bool) { a.memOp(0x8D, byte(dst), base, disp, w) }
 
 func (a *Asm) Add64(dst, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	a.emit(a.rex(true, src >= 8, false, dst >= 8), 0x01, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
 }
 
@@ -1011,10 +1169,20 @@ func (a *Asm) LeaDisp(dst, base Reg, disp int32) { a.memOp(0x8D, byte(dst), base
 
 // String ops for bulk memory. In 64-bit mode these use RSI/RDI (64-bit
 // pointers) and RCX (64-bit count); rep stosb stores AL. Direction is DF.
-func (a *Asm) RepMovsb() { a.emit(0xF3, 0xA4) } // rep movs byte [RDI] <- [RSI], RCX times
-func (a *Asm) RepStosb() { a.emit(0xF3, 0xAA) } // rep stos byte [RDI] <- AL, RCX times
-func (a *Asm) Std()      { a.emit(0xFD) }       // set direction flag (decrement)
-func (a *Asm) Cld()      { a.emit(0xFC) }       // clear direction flag (increment)
+func (a *Asm) RepMovsb() {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RCX | 1<<RSI | 1<<RDI)
+	}
+	a.emit(0xF3, 0xA4)
+} // rep movs byte [RDI] <- [RSI], RCX times
+func (a *Asm) RepStosb() {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RCX | 1<<RDI)
+	}
+	a.emit(0xF3, 0xAA)
+}                   // rep stos byte [RDI] <- AL, RCX times
+func (a *Asm) Std() { a.emit(0xFD) } // set direction flag (decrement)
+func (a *Asm) Cld() { a.emit(0xFC) } // clear direction flag (increment)
 
 // LoadIdx loads `size` bytes from [base+index] into dst. signed selects sign-
 // vs zero-extension; wide selects a 64-bit destination (i64), so signed
@@ -1031,6 +1199,10 @@ func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
 }
 
 func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wide bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	var op []byte
 	rexW := false
 	switch {
@@ -1078,6 +1250,10 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 // src with the operand's previous value. The LOCK prefix supplies the Wasm
 // threads proposal's sequentially consistent ordering on x86-64.
 func (a *Asm) LockXaddIdx32(base, index, src Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << src)
+	}
+
 	a.emit(0xF0)
 	if src >= 8 || index >= 8 || base >= 8 {
 		a.emit(a.rex(false, src >= 8, index >= 8, base >= 8))
@@ -1087,6 +1263,10 @@ func (a *Asm) LockXaddIdx32(base, index, src Reg, disp int32) {
 }
 
 func (a *Asm) LockXaddIdx(base, index, src Reg, disp int32, size int) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << src)
+	}
+
 	if size == 2 {
 		a.emit(0x66)
 	}
@@ -1120,6 +1300,10 @@ func (a *Asm) LockAluIdx(opcode byte, base, index, src Reg, disp int32, size int
 }
 
 func (a *Asm) Movzx8(dst, src Reg, wide bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if wide || dst >= 8 || src >= 4 {
 		a.emit(a.rex(wide, dst >= 8, false, src >= 8))
 	}
@@ -1127,6 +1311,10 @@ func (a *Asm) Movzx8(dst, src Reg, wide bool) {
 }
 
 func (a *Asm) Movzx16(dst, src Reg, wide bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if wide || dst >= 8 || src >= 8 {
 		a.emit(a.rex(wide, dst >= 8, false, src >= 8))
 	}
@@ -1137,6 +1325,10 @@ func (a *Asm) Movzx16(dst, src Reg, wide bool) {
 // implicitly locked and is the x86-64 sequentially consistent atomic-store
 // primitive; src receives the discarded old value.
 func (a *Asm) XchgIdx(base, index, src Reg, disp int32, size int) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << src)
+	}
+
 	if size == 2 {
 		a.emit(0x66)
 	}
@@ -1158,6 +1350,10 @@ func (a *Asm) Mfence() { a.emit(0x0F, 0xAE, 0xF0) }
 // stores src. On failure it loads the observed memory value into the matching
 // accumulator width and clears ZF.
 func (a *Asm) LockCmpxchgIdx(base, index, src Reg, disp int32, size int) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << RAX)
+	}
+
 	if size == 2 {
 		a.emit(0x66)
 	}
@@ -1175,6 +1371,10 @@ func (a *Asm) LockCmpxchgIdx(base, index, src Reg, disp int32, size int) {
 }
 
 func (a *Asm) Cdq(w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << RDX)
+	}
+
 	if w {
 		a.emit(a.rexPrefix(0x48))
 	}
@@ -1182,6 +1382,10 @@ func (a *Asm) Cdq(w bool) {
 }
 
 func (a *Asm) Idiv(r Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RAX | 1<<RDX)
+	}
+
 	if w || r >= 8 {
 		a.emit(a.rex(w, false, false, r >= 8))
 	}
@@ -1189,6 +1393,10 @@ func (a *Asm) Idiv(r Reg, w bool) {
 }
 
 func (a *Asm) Div(r Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RAX | 1<<RDX)
+	}
+
 	if w || r >= 8 {
 		a.emit(a.rex(w, false, false, r >= 8))
 	}
@@ -1198,6 +1406,10 @@ func (a *Asm) Div(r Reg, w bool) {
 // Mul computes RDX:RAX = RAX * r (unsigned); the high half lands in RDX. Used by
 // magic division to take the high half of a widening multiply.
 func (a *Asm) Mul(r Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RAX | 1<<RDX)
+	}
+
 	if w || r >= 8 {
 		a.emit(a.rex(w, false, false, r >= 8))
 	}
@@ -1206,6 +1418,10 @@ func (a *Asm) Mul(r Reg, w bool) {
 
 // IMulHigh computes RDX:RAX = RAX * r (signed); the high half lands in RDX.
 func (a *Asm) IMulHigh(r Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RAX | 1<<RDX)
+	}
+
 	if w || r >= 8 {
 		a.emit(a.rex(w, false, false, r >= 8))
 	}
@@ -1319,6 +1535,10 @@ func (a *Asm) KeepRel32Long(at int) {
 }
 
 func (a *Asm) Cmovcc(cc Cond, dst, src Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if w || dst >= 8 || src >= 8 {
 		a.emit(a.rex(w, dst >= 8, false, src >= 8))
 	}
@@ -1336,6 +1556,10 @@ func (a *Asm) SetccReg(c Cond, dst Reg) {
 // SetccReg8 writes only dst's low byte. Callers may use it when the next sink
 // observes exactly that byte; the rest of dst remains unspecified.
 func (a *Asm) SetccReg8(c Cond, dst Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	if dst >= 4 {
 		a.emit(a.rex(false, false, false, dst >= 8))
 	}
@@ -1407,6 +1631,10 @@ func (a *Asm) JmpReg(r Reg) {
 // returns the displacement's byte offset for PatchRel32 (the displacement is
 // relative to the end of the instruction, exactly like a jump's rel32).
 func (a *Asm) LeaRipPlaceholder(dst Reg) int {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << dst)
+	}
+
 	rex := byte(0x48)
 	if dst >= 8 {
 		rex |= 0x04 // REX.R
@@ -1420,6 +1648,10 @@ func (a *Asm) LeaRipPlaceholder(dst Reg) int {
 
 // Neg emits NEG r (F7 /3): two's-complement negation.
 func (a *Asm) Neg(r Reg, w bool) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << r)
+	}
+
 	rex := byte(0x40)
 	if w {
 		rex |= 0x08
@@ -1436,6 +1668,10 @@ func (a *Asm) Neg(r Reg, w bool) {
 // Bswap32 reverses the four bytes in a 32-bit register and zero-extends the
 // result to the full GPR, matching Wasm i32 carrier semantics.
 func (a *Asm) Bswap32(r Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1 << r)
+	}
+
 	if r >= 8 {
 		a.emit(a.rex(false, false, false, true))
 	}

@@ -21,3 +21,10 @@ func (*Asm) regallocRead(Reg, int32, int) {}
 
 func (*Asm) regallocCrossCopy(Reg, Reg, bool, int) {}
 func (*Asm) regallocKillFP(Reg)                    {}
+
+func (*Asm) ObserveGPWrites(func(uint32)) func(uint32)      { return nil }
+func (*Asm) regallocGPWrite(uint32)                         {}
+func (*Asm) regallocGPRR(byte, Reg, Reg, bool)              {}
+func (*Asm) regallocGPMem(byte, Reg, bool)                  {}
+func (*Asm) regallocGPSSE(byte, byte, byte, Reg, Reg, bool) {}
+func (*Asm) regallocGPVEX(byte, byte, byte, Reg, Reg, bool) {}

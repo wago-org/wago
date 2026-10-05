@@ -47,6 +47,9 @@ func (a *Asm) sseMapRR(format uint32, op byte, reg, rm Reg) {
 			a.regallocCopy(reg, rm, true, 16)
 		}
 	}
+	if regallocCheckEnabled {
+		a.regallocGPSSE(byte(format), byte(format>>8), op, reg, rm, false)
+	}
 
 	prefix, opcodeMap, w := byte(format), byte(format>>8), format&(1<<16) != 0
 	if prefix != 0 {
@@ -135,6 +138,10 @@ func vexFormat(opcodeMap, pp, l byte, w bool) uint16 {
 
 //go:noinline
 func (a *Asm) vexRR(format uint16, op byte, dst, src1, src2 Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPVEX(byte(format)&0x1f, byte(format>>8)&3, op, dst, src2, false)
+	}
+
 	rBit, bBit := byte(1), byte(1)
 	if dst >= 8 {
 		rBit = 0
@@ -210,6 +217,10 @@ func (a *Asm) vex3MemDisp(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 boo
 }
 
 func (a *Asm) vex3MemDispL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, disp int32, l byte) {
+	if regallocCheckEnabled {
+		a.regallocGPVEX(opcodeMap, pp, op, reg, 0, true)
+	}
+
 	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, hasSrc1, base, 0, false, l)
 	a.emit(op)
 	a.baseAddr(byte(reg), base, disp)
@@ -220,12 +231,20 @@ func (a *Asm) vex3MemIdx(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool
 }
 
 func (a *Asm) vex3MemIdxL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base, index Reg, disp int32, l byte) {
+	if regallocCheckEnabled {
+		a.regallocGPVEX(opcodeMap, pp, op, reg, 0, true)
+	}
+
 	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, hasSrc1, base, index, true, l)
 	a.emit(op)
 	a.sibAddr(reg, base, index, disp)
 }
 
 func (a *Asm) vex3MemRipPlaceholder(opcodeMap, pp, op byte, reg, src1 Reg) int {
+	if regallocCheckEnabled {
+		a.regallocGPVEX(opcodeMap, pp, op, reg, 0, true)
+	}
+
 	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, true, RAX, 0, false, 0)
 	a.emit(op, ((byte(reg)&7)<<3)|0x05) // mod=00, r/m=101: RIP + disp32
 	a.recordRipAddress()
@@ -756,6 +775,9 @@ func (a *Asm) fmemDisp(op byte, xmm, base Reg, disp int32, f64 bool) {
 			a.regallocStore(base, disp, xmm, true, 16)
 		}
 	}
+	if regallocCheckEnabled {
+		a.regallocGPSSE(sdPrefix(f64), 0, op, xmm, 0, true)
+	}
 
 	a.emit(sdPrefix(f64))
 	if xmm >= 8 || base >= 8 {
@@ -771,6 +793,10 @@ func (a *Asm) FStoreDisp(base Reg, disp int32, xmm Reg, f64 bool) {
 }
 
 func (a *Asm) fmemIdx(op byte, xmm, base, index Reg, disp int32, f64 bool) {
+	if regallocCheckEnabled {
+		a.regallocGPSSE(sdPrefix(f64), 0, op, xmm, 0, true)
+	}
+
 	a.emit(sdPrefix(f64))
 	if xmm >= 8 || index >= 8 || base >= 8 {
 		a.emit(a.rex(false, xmm >= 8, index >= 8, base >= 8))
@@ -793,6 +819,10 @@ func (a *Asm) FStoreIdx(base, index, xmm Reg, disp int32, f64 bool) {
 // scalar float ALU memory folds (addss/addsd/etc.) and packed logical/min/max
 // forms where the caller chooses the exact legacy prefix.
 func (a *Asm) SseIdx(prefix, op byte, xmm, base, index Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocGPSSE(prefix, 0, op, xmm, 0, true)
+	}
+
 	if prefix != 0 {
 		a.emit(prefix)
 	}

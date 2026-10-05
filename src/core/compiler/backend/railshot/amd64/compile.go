@@ -3354,6 +3354,11 @@ func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *rai
 func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var state *fn
 	defer func() {
+		// Reuse the existing unwind scope: even a disabled conditional defer
+		// changes TinyGo defer lowering in ordinary builds.
+		if regallocCheckEnabled && state != nil {
+			state.checkEndLifetimes()
+		}
 		if recovered := recover(); recovered != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
 				panic(recovered)
@@ -4733,6 +4738,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
+	// Results are canonical now; this terminal return cannot use body caches.
+	// Attempt cleanup owns observer restoration if epilogue emission panics.
+	var returnGPWrites regallocGPWriteMask
+	if regallocCheckEnabled {
+		returnGPWrites = f.checkTerminalGPWrites()
+	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
@@ -4786,6 +4797,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreGPWrites(returnGPWrites)
+	}
 	f.emitNativeGCStubs()
 	if profileEnabled {
 		f.collectProfileSources(internalOff)
@@ -4869,6 +4883,11 @@ func (f *fn) patchFrameSize() error {
 // the trap slot, and return. Every reaching path (fallthrough end, return, br to
 // the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
+	// On panic, compileFuncAttempt retires the abandoned function's observer.
+	var returnGPWrites regallocGPWriteMask
+	if regallocCheckEnabled {
+		returnGPWrites = f.checkTerminalGPWrites()
+	}
 	a := f.a
 	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
 	a.Load64(RDI, RSP, frResultsOff) // results ptr
@@ -4889,6 +4908,9 @@ func (f *fn) epilogue() {
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreGPWrites(returnGPWrites)
+	}
 }
 
 func abiValOff(ts []wasm.ValType, idx int) int32 {

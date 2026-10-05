@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compare exact AMD64 fixture guest bytes in ordinary and checked builds.
+# Compare exact native fixture guest bytes in ordinary and checked builds.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
@@ -7,7 +7,8 @@ trap 'rm -rf "$tmp"' EXIT
 arch=$(go env GOARCH)
 case "$arch" in
   amd64) package=./src/core/compiler/backend/railshot/amd64 ;;
-  *) echo 'code-image fingerprint fixture currently requires amd64' >&2; exit 2 ;;
+  arm64) package=./src/core/compiler/backend/railshot/arm64 ;;
+  *) echo 'code-image fingerprint fixture requires amd64 or arm64' >&2; exit 2 ;;
 esac
 for variant in ordinary checked; do
   tags=(-tags=)

@@ -2988,6 +2988,11 @@ func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *rai
 func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleeHints []funcHints, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var state *fn
 	defer func() {
+		// Reuse the existing unwind scope: even a disabled conditional defer
+		// changes TinyGo defer lowering in ordinary builds.
+		if regallocCheckEnabled && state != nil {
+			state.checkEndLifetimes()
+		}
 		if recovered := recover(); recovered != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
 				panic(recovered)
