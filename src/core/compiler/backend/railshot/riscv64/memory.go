@@ -31,6 +31,7 @@ type moduleState struct {
 	production       bool
 	ownedTable       bool
 	ownedTableGrowth bool
+	elementCount     int
 	memory           *memorySpec
 	globals          []globalSpec
 	data             []native.MemoryInitializer
@@ -73,6 +74,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	var tableErr error
 	s.ownedTable, tableErr = admitOwnedTable(m, production)
 	if s.ownedTable {
+		s.elementCount = len(m.Elements)
 		// The frontend reserves max(1024,2*min) for observable no-max growth.
 		s.ownedTableGrowth = m.Tables[0].Type.Limits.HasMax || m.Tables[0].Type.Limits.Min <= MaxOwnedTableEntries/2
 	}

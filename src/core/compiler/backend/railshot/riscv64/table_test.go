@@ -72,8 +72,8 @@ func TestProductionPrivateTableRejectsShapesBeforeStaging(t *testing.T) {
 		{"too-large-max", func(m *wasm.Module) { m.Tables[0].Type.Limits.HasMax = true; m.Tables[0].Type.Limits.Max = 1025 }},
 		{"nonnull-init", func(m *wasm.Module) { m.Tables[0].Init = &wasm.Expr{BodyBytes: []byte{0xd2, 1, 0x0b}} }},
 		{"externref", func(m *wasm.Module) { m.Tables[0].Type.Ref = wasm.ExternRef.Ref() }},
-		{"passive", func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemPassive }},
-		{"declarative", func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemDeclarative }},
+		{"inactive-offset", func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemPassive }},
+		{"unknown-mode", func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemModeKind(255) }},
 		{"indexed-table", func(m *wasm.Module) { m.Elements[0].Mode.Table = 1 }},
 		{"expression-elements", func(m *wasm.Module) {
 			m.Elements[0].Kind.Kind = wasm.ElemFuncExprs
@@ -239,5 +239,51 @@ func TestProductionPrivateTableGrowthCapacityBeforeStaging(t *testing.T) {
 		if _, err := walkInteger(&m.Code[0], ft, &state, nil); !errors.Is(err, ErrUnsupported) {
 			t.Fatal("dead growth reserve escaped", err)
 		}
+	}
+}
+
+func TestProductionPrivateElementsOriginalIndexAdmission(t *testing.T) {
+	m, err := wasm.DecodeModule(ownedTableFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	element := m.Elements[0]
+	element.Mode = wasm.ElemMode{Kind: wasm.ElemPassive}
+	m.Elements = make([]wasm.Elem, 256)
+	for i := range m.Elements {
+		m.Elements[i] = element
+	}
+	m.Code[0].BodyBytes = []byte{0x41, 0, 0x41, 0, 0x41, 1, 0xfc, 12, 0xff, 1, 0, 0xfc, 13, 0xff, 1, 0x20, 1, 0x0b}
+	c, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.CodeImage != nil {
+		t.Fatal("unexpected deferred mapping")
+	}
+	state, err := admitStateMode(m, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft, _ := m.LocalFuncType(0)
+	for _, body := range [][]byte{
+		{0x00, 0xfc, 12, 0x80, 2, 0, 0x0b}, // element256
+		{0x00, 0xfc, 13, 0x80, 2, 0x0b},
+		{0x00, 0xfc, 12, 0xff, 1, 1, 0x0b}, // table1
+	} {
+		m.Code[0].BodyBytes = body
+		if _, err := walkInteger(&m.Code[0], ft, &state, nil); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("dead element immediate escaped", body, err)
+		}
+	}
+	m.Elements[255].Mode.Kind = wasm.ElemDeclarative
+	if _, err := admitOwnedTable(m, true); err != nil {
+		t.Fatal("declarative legacy mode", err)
+	}
+	// Aggregate bounds include declaration payloads even though they are dropped.
+	m.Elements[255].Kind.Funcs = make([]wasm.FuncIdx, 1024)
+	pressure := 0
+	if c, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressure++ }}); c != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+		t.Fatal("aggregate reached staging", c, err, pressure)
 	}
 }

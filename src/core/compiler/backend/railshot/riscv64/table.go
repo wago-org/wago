@@ -57,11 +57,15 @@ func admitOwnedTable(m *wasm.Module, production bool) (bool, error) {
 		return false, unsupported("private nullable funcref table32 only")
 	}
 	for _, e := range m.Elements {
-		if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Exprs) != 0 {
-			return false, unsupported("active legacy function-index elements only")
+		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Exprs) != 0 {
+			return false, unsupported("private legacy function-index element mode")
 		}
-		if _, err := plainConst(e.Mode.Offset, false); err != nil {
-			return false, err
+		if e.Mode.Kind == wasm.ElemActive {
+			if _, err := plainConst(e.Mode.Offset, false); err != nil {
+				return false, err
+			}
+		} else if len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 {
+			return false, unsupported("inactive element offset")
 		}
 		for _, f := range e.Kind.Funcs {
 			if uint64(f) >= uint64(len(m.Code)) {

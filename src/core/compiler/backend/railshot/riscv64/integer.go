@@ -667,6 +667,29 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if state == nil {
 				return integerSummary{}, unsupported("bulk instruction without state")
 			}
+			if imm.Kind == wasm.InstrTableInit || imm.Kind == wasm.InstrElemDrop {
+				if !privateRefs || uint64(imm.Index) >= uint64(state.elementCount) || imm.Index2 != 0 {
+					return integerSummary{}, unsupported("private element index/shape")
+				}
+				if imm.Kind == wasm.InstrElemDrop {
+					if live && emit != nil {
+						emit.privateElementDrop(imm.Index)
+					}
+				} else {
+					for _, reg := range []uint8{5, 7, 6} {
+						if _, err = pop(); err != nil {
+							return integerSummary{}, err
+						}
+						if live && emit != nil {
+							emit.Load(reg, emit.SpillOffset(h), false)
+						}
+					}
+					if live && emit != nil {
+						emit.privateTableInit(imm.Index)
+					}
+				}
+				continue
+			}
 			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
 				if !privateRefs || imm.Index != 0 || imm.Index2 != 0 || (imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth) {
 					return integerSummary{}, unsupported("bounded private table mutation shape")

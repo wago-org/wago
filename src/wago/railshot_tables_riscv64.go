@@ -30,8 +30,8 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if c.TableSize < 0 || c.TableSize > railshot.MaxOwnedTableEntries || c.TableMax > railshot.MaxOwnedTableEntries || (c.TableHasMax && c.TableMax < uint64(c.TableSize)) || c.tableRuntimeCapacity(0) < c.TableSize || c.tableRuntimeCapacity(0) > railshot.MaxOwnedTableEntries {
 		return fmt.Errorf("private table capacity bound")
 	}
-	if len(c.Elems) > railshot.MaxOwnedElementSegments || len(c.passiveElems) != 0 {
-		return fmt.Errorf("active element descriptor bound")
+	if len(c.Elems) > railshot.MaxOwnedElementSegments || len(c.passiveElems) > railshot.MaxOwnedElementSegments {
+		return fmt.Errorf("element descriptor bound")
 	}
 	remaining := railshot.MaxOwnedTableEntries
 	for _, e := range c.Elems {
@@ -42,6 +42,23 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		for _, v := range e.Values {
 			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(len(c.Funcs)) {
 				return fmt.Errorf("element requires a defined local function")
+			}
+		}
+	}
+	if len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+		return fmt.Errorf("element state requires bulk feature metadata")
+	}
+	for _, e := range c.passiveElems {
+		if (e.Mode != ElemModeActive && e.Mode != ElemModePassive && e.Mode != ElemModeDeclarative) || e.TableIndex != 0 || e.HasValueType || (e.RefType != 0 && e.RefType != ValFuncRef) || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) > remaining {
+			return fmt.Errorf("bounded private element state required")
+		}
+		if e.Mode != ElemModePassive && len(e.Values) != 0 {
+			return fmt.Errorf("inactive element state must start dropped")
+		}
+		remaining -= len(e.Values)
+		for _, v := range e.Values {
+			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(len(c.Funcs)) {
+				return fmt.Errorf("element state requires a defined local function")
 			}
 		}
 	}
