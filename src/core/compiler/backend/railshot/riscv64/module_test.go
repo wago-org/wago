@@ -157,7 +157,7 @@ func TestRejectCompleteModule(t *testing.T) {
 			t.Fatalf("custom %s %v", name, err)
 		}
 	}
-	for _, id := range []byte{2, 4, 5, 6, 9, 11, 12, 13} {
+	for _, id := range []byte{4, 9, 12, 13} {
 		// Wire policy rejects unsupported sections even when semantically empty.
 		if err := admitWire(section(append([]byte(nil), base...), id, []byte{0})); !errors.Is(err, ErrUnsupported) {
 			t.Fatalf("section %d: %v", id, err)
@@ -225,10 +225,10 @@ func TestValidatedUnsupportedSectionsAndUnusedSignatures(t *testing.T) {
 		before, id byte
 		payload    []byte
 	}{
-		{"import", 3, 2, []byte{1, 1, 'm', 1, 'x', 2, 0, 0}},
+		{"import-global", 3, 2, []byte{1, 1, 'm', 1, 'x', 3, 0x7f, 0}},
 		{"table", 7, 4, []byte{1, 0x70, 0, 0}},
-		{"memory", 7, 5, []byte{1, 0, 0}},
-		{"global", 7, 6, []byte{1, 0x7f, 0, 0x41, 0, 0x0b}},
+		{"memory-quota", 7, 5, []byte{1, 0, 0x81, 2}},
+		{"fp-global", 7, 6, []byte{1, 0x7d, 0, 0x43, 0, 0, 0, 0, 0x0b}},
 		{"empty-tags", 7, 13, []byte{0}},
 		{"passive-element", 10, 9, []byte{1, 1, 0, 0}},
 		{"present-zero-datacount", 10, 12, []byte{0}},

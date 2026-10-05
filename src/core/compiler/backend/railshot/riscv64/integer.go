@@ -18,7 +18,10 @@ const (
 	maxTableEntries     = 1024
 )
 
-type integerSummary struct{ maxStack int }
+type integerSummary struct {
+	maxStack int
+	context  bool
+}
 type integerControl struct {
 	base                                         int
 	kind                                         byte
@@ -35,7 +38,7 @@ type integerEmitter struct {
 // The separate fallback uses fixed temporary registers and canonical operand
 // slots, not shared value identities or a second register allocator. One walker
 // performs complete pre-emission admission and then lowering of the same bytes.
-func walkInteger(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (integerSummary, error) {
+func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *integerEmitter) (integerSummary, error) {
 	var locals [256]bool
 	nlocals := len(ft.Params)
 	for i, t := range ft.Params {
@@ -61,6 +64,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (intege
 	ctrl[0] = integerControl{kind: 0xff, result: true, wide: wasm.EqualValType(ft.Results[0], wasm.I64), entry: true}
 	depth, h, peak, budget := 1, 0, 0, nlocals
 	live := true
+	contextUsed := false
 	pop := func() (bool, error) {
 		if h <= ctrl[depth-1].base {
 			if !live {
@@ -365,6 +369,94 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (intege
 					}
 				}
 			}
+		case 0x23, 0x24:
+			idx, e := r.U32()
+			if e != nil {
+				return integerSummary{}, e
+			}
+			if state == nil || int(idx) >= len(state.globals) {
+				return integerSummary{}, unsupported("global index")
+			}
+			g := state.globals[idx]
+			contextUsed = true
+			if op == 0x24 {
+				if !g.mutable {
+					return integerSummary{}, unsupported("immutable global set")
+				}
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), g.wide)
+					emit.global(idx, g.wide, true)
+				}
+			} else {
+				if live && emit != nil {
+					emit.global(idx, g.wide, false)
+					emit.Store(emit.SpillOffset(h), 5, g.wide)
+				}
+				if err = push(g.wide); err != nil {
+					return integerSummary{}, err
+				}
+			}
+		case 0x28, 0x29, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
+			if state == nil || state.memory == nil {
+				return integerSummary{}, unsupported("memory instruction without memory")
+			}
+			contextUsed = true
+			var imm wasm.InstructionImmediate
+			if err = wasm.ClassifyInstructionImmediateInto(&r, op, &imm); err != nil {
+				return integerSummary{}, err
+			}
+			if imm.MemIndex != 0 || imm.Index != 0 {
+				return integerSummary{}, unsupported("nonzero memory index")
+			}
+			if op == 0x3f || op == 0x40 {
+				if op == 0x40 {
+					if _, err = pop(); err != nil {
+						return integerSummary{}, err
+					}
+				}
+				if live && emit != nil {
+					if op == 0x40 {
+						emit.Load(5, emit.SpillOffset(h), false)
+					}
+					emit.memorySizeGrow(op == 0x40)
+					emit.Store(emit.SpillOffset(h), 5, false)
+				}
+				if err = push(false); err != nil {
+					return integerSummary{}, err
+				}
+			} else {
+				size, w, signed, store, ok := memoryOpcode(op)
+				if !ok {
+					return integerSummary{}, unsupported("noninteger memory access")
+				}
+				if store {
+					if _, err = pop(); err != nil {
+						return integerSummary{}, err
+					}
+					if live && emit != nil {
+						emit.Load(6, emit.SpillOffset(h), w)
+					}
+				}
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), false)
+					emit.memoryAccess(imm.MemOffset, size, w, signed, store)
+					if !store {
+						emit.Store(emit.SpillOffset(h), 5, w)
+					}
+				}
+				if !store {
+					if err = push(w); err != nil {
+						return integerSummary{}, err
+					}
+				}
+			}
+
 		case 0x41, 0x42:
 			w := op == 0x42
 			var v int64
@@ -414,7 +506,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (intege
 	if r.HasNext() {
 		return integerSummary{}, fmt.Errorf("rv64: trailing validated bytecode")
 	}
-	return integerSummary{peak}, nil
+	return integerSummary{maxStack: peak, context: contextUsed}, nil
 }
 
 func integerOpcode(op byte) (shared.IntOp, bool, bool, bool, bool) {
@@ -590,7 +682,7 @@ func (f *integerEmitter) operation(op shared.IntOp, w, unary, resultWide bool) {
 	}
 }
 
-func compileInteger(fn *wasm.Func, ft *wasm.CompType, summary integerSummary) ([]byte, FunctionInfo, error) {
+func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summary integerSummary) ([]byte, FunctionInfo, error) {
 	var widths [256]bool
 	n := len(ft.Params)
 	for i, t := range ft.Params {
@@ -603,7 +695,7 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, summary integerSummary) ([
 		}
 	}
 	f := integerEmitter{target: target{nlocals: n}}
-	actual, err := walkInteger(fn, ft, &f)
+	actual, err := walkInteger(fn, ft, state, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, err
 	}
@@ -611,7 +703,7 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, summary integerSummary) ([
 		return nil, FunctionInfo{}, fmt.Errorf("rv64: integer admission changed")
 	}
 	exits := []int{f.Jump()}
-	for code := TrapUnreachable; code <= TrapIntegerOverflow; code++ {
+	for code := TrapUnreachable; code <= TrapMemoryBounds; code++ {
 		pos := f.Position()
 		used := false
 		for _, tr := range f.traps {
@@ -641,5 +733,9 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, summary integerSummary) ([
 		return nil, FunctionInfo{}, f.a.Err()
 	}
 	info := FunctionInfo{Params: len(ft.Params), SpillSlots: summary.maxStack, Result64: wasm.EqualValType(ft.Results[0], wasm.I64), Fallback: true}
-	return frameFunction(f.a.B, widths[:n], len(ft.Params), summary.maxStack, true, info)
+	contextOffset := -1
+	if summary.context {
+		contextOffset = (state.capacity + 1) * 8
+	}
+	return frameFunction(f.a.B, widths[:n], len(ft.Params), summary.maxStack, true, contextOffset, info)
 }

@@ -37,6 +37,7 @@ type Compiled struct {
 	code      []byte
 	functions []FunctionInfo
 	exports   map[string]int
+	state     moduleState
 }
 
 func (c *Compiled) Functions() []FunctionInfo {
@@ -82,6 +83,10 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 	if err = admitShape(m); err != nil {
 		return nil, err
 	}
+	state, err := admitState(m)
+	if err != nil {
+		return nil, err
+	}
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	integerSummaries := make([]integerSummary, len(m.Code))
 	fallback := make([]bool, len(m.Code))
@@ -90,13 +95,13 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 		summaries[i] = shared.AdmitScalarFunction(&m.Code[i], ft)
 		fallback[i] = opts.ForceFallback || !summaries[i].Eligible
 		if fallback[i] {
-			integerSummaries[i], err = walkInteger(&m.Code[i], ft, nil)
+			integerSummaries[i], err = walkInteger(&m.Code[i], ft, &state, nil)
 			if err != nil {
 				return nil, fmt.Errorf("rv64: function %d: %w", i, err)
 			}
 		}
 	}
-	c := &Compiled{functions: make([]FunctionInfo, len(m.Code)), exports: make(map[string]int, len(m.Exports))}
+	c := &Compiled{state: state, functions: make([]FunctionInfo, len(m.Code)), exports: make(map[string]int, len(m.Exports))}
 	var worker shared.ScalarState
 	defer worker.FinishWorker()
 	for i := range m.Code {
@@ -104,7 +109,7 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 		var code []byte
 		var info FunctionInfo
 		if fallback[i] {
-			code, info, err = compileInteger(&m.Code[i], ft, integerSummaries[i])
+			code, info, err = compileInteger(&m.Code[i], ft, &state, integerSummaries[i])
 		} else {
 			code, info, err = compileFunction(&worker, &m.Code[i], ft, summaries[i], regs)
 		}
@@ -120,7 +125,9 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 		c.functions[i] = info
 	}
 	for _, ex := range m.Exports {
-		c.exports[ex.Name] = int(ex.Index.Index)
+		if ex.Index.Kind == wasm.ExternFunc {
+			c.exports[ex.Name] = int(ex.Index.Index)
+		}
 	}
 	return c, nil
 }
@@ -147,7 +154,7 @@ func admitWire(data []byte) error {
 		start := r.Offset()
 		end := start + int(n)
 		switch id {
-		case 0, 3, 7, 10:
+		case 0, 2, 3, 5, 6, 7, 10, 11:
 		case 1:
 			s := wasm.ReaderFrom(data[8+start : 8+end])
 			count, err := s.U32()
@@ -198,7 +205,7 @@ func admitShape(m *wasm.Module) error {
 	if len(m.Code) == 0 || len(m.Code) > MaxFunctions {
 		return unsupported("function count outside 1..1024")
 	}
-	if len(m.Imports) != 0 || m.UsesCompactImports || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Globals) != 0 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) != 0 || len(m.BranchHints) != 0 {
+	if m.UsesCompactImports || len(m.Tables) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.BranchHints) != 0 {
 		return unsupported("imports, state, initializers or feature metadata")
 	}
 	for _, custom := range m.Customs {
@@ -221,11 +228,6 @@ func admitShape(m *wasm.Module) error {
 			if !wasm.EqualValType(v, wasm.I32) && !wasm.EqualValType(v, wasm.I64) {
 				return unsupported("noninteger signature")
 			}
-		}
-	}
-	for _, ex := range m.Exports {
-		if ex.Index.Kind != wasm.ExternFunc {
-			return unsupported("nonfunction export")
 		}
 	}
 	return nil
@@ -255,10 +257,10 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 		return nil, FunctionInfo{}, f.a.Err()
 	}
 	info := FunctionInfo{Params: len(ft.Params), SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64)}
-	return frameFunction(f.a.B, widths[:nlocals], len(ft.Params), slots, false, info)
+	return frameFunction(f.a.B, widths[:nlocals], len(ft.Params), slots, false, -1, info)
 }
 
-func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bool, info FunctionInfo) ([]byte, FunctionInfo, error) {
+func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bool, contextOffset int, info FunctionInfo) ([]byte, FunctionInfo, error) {
 	nlocals := len(widths)
 	frame := (16 + 8*nlocals + 8*slots + 15) &^ 15
 	if frame > MaxFrameBytes {
@@ -272,6 +274,15 @@ func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bo
 	entry.a.Sub(enc.SP, enc.SP, enc.Scratch0)
 	entry.a.Sd(enc.RA, enc.SP, 0)
 	entry.a.Sd(enc.X11, enc.SP, 8)
+	if contextOffset >= 0 {
+		if contextOffset <= 2047 {
+			entry.a.Ld(enc.X24, enc.X10, int32(contextOffset))
+		} else {
+			entry.a.Constant64(enc.Scratch1, int64(contextOffset))
+			entry.a.Add(enc.Scratch1, enc.X10, enc.Scratch1)
+			entry.a.Ld(enc.X24, enc.Scratch1, 0)
+		}
+	}
 	for i := 0; i < nparams; i++ {
 		entry.a.Ld(enc.Scratch0, enc.X10, int32(i*8))
 		entry.Store(entry.LocalOffset(i), uint8(enc.Scratch0), widths[i])
@@ -308,29 +319,51 @@ func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bo
 // Instance owns all executable and call resources. It accepts noncancelable
 // contexts; deadlines and host reentry are unsupported.
 type Instance struct {
-	mu       sync.Mutex
-	closed   bool
-	program  *native.Program
-	engine   *native.Engine
-	call     *native.CallFrame
-	compiled *Compiled
+	mu        sync.Mutex
+	closed    bool
+	program   *native.Program
+	engine    *native.Engine
+	call      *native.CallFrame
+	compiled  *Compiled
+	memory    *native.LinearMemory
+	lease     *native.MemoryLease
+	context   *native.GuestContext
+	ownMemory bool
 }
 
 // Instantiate publishes only previously admitted RV64 code. On error a nonnil
 // Instance is closed and retains failed cleanup ownership; call Close to retry.
 func (c *Compiled) Instantiate(stackBytes int) (*Instance, error) {
+	return c.InstantiateWithOptions(stackBytes, InstantiateOptions{})
+}
+func (c *Compiled) InstantiateWithOptions(stackBytes int, opts InstantiateOptions) (*Instance, error) {
 	if c == nil || len(c.code) == 0 {
 		return nil, fmt.Errorf("rv64: empty compiled module")
 	}
 	i := &Instance{compiled: c}
 	var err error
-	i.engine, err = native.NewEngine(stackBytes)
+	i.memory, i.lease, i.ownMemory, err = c.state.bindMemory(opts)
 	if err == nil {
-		capacity := 0
-		for _, f := range c.functions {
-			capacity = max(capacity, f.Params)
+		i.engine, err = native.NewEngine(stackBytes)
+	}
+	if err == nil {
+		i.call, err = native.NewCallFrame(c.state.capacity)
+	}
+	if err == nil && (i.memory != nil || len(c.state.globals) != 0) {
+		var descriptor uint64
+		if i.lease != nil {
+			descriptor, err = i.lease.Descriptor()
 		}
-		i.call, err = native.NewCallFrame(capacity)
+		if err == nil {
+			values := make([]uint64, len(c.state.globals))
+			for j, g := range c.state.globals {
+				values[j] = g.value
+			}
+			i.context, err = native.NewGuestContext(descriptor, values)
+		}
+	}
+	if err == nil && i.lease != nil {
+		err = i.lease.Initialize(c.state.data)
 	}
 	if err == nil {
 		i.program, err = native.MapCode(c.code)
@@ -368,6 +401,9 @@ func (i *Instance) Invoke(ctx context.Context, name string, args ...uint64) (uin
 	if len(args) != f.Params {
 		return 0, fmt.Errorf("rv64: export %q expects %d arguments, got %d", name, f.Params, len(args))
 	}
+	if i.context != nil {
+		return i.context.Call(i.lease, i.call, i.engine, i.program, f.Entry, args, f.FrameBytes)
+	}
 	return i.call.Call(i.engine, i.program, f.Entry, args, f.FrameBytes)
 }
 
@@ -379,5 +415,9 @@ func (i *Instance) Close() error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.closed = true
-	return errors.Join(i.program.Close(), i.engine.Close(), i.call.Close())
+	var memoryErr error
+	if i.ownMemory {
+		memoryErr = i.memory.Close()
+	}
+	return errors.Join(i.program.Close(), i.engine.Close(), i.call.Close(), i.context.Close(), i.lease.Close(), memoryErr)
 }
