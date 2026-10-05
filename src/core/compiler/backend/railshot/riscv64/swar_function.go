@@ -58,6 +58,16 @@ func walkSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory32 bo
 }
 
 func walkSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount int, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithImports(fn, ft, memory32, types, functions, globals, dataCount, table, typeKeys, elementCount, 0, emit)
+}
+
+// importedFunctions is an explicit, immutable scalar-only prefix of the actual
+// validated function directory. Imports use live same-instance dynamic dispatch;
+// tables/imported references and foreign-instance dispatch remain unsupported.
+func walkSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, emit *integerEmitter) (swarSummary, error) {
+	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil || len(functions) == importedFunctions) {
+		return swarSummary{}, unsupported("SWAR scalar host prefix bound/defined functions/table")
+	}
 	if elementCount < 0 || elementCount > MaxOwnedElementSegments || elementCount != 0 && table == nil {
 		return swarSummary{}, unsupported("SWAR owned element directory bound/table")
 	}
@@ -82,9 +92,18 @@ func walkSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory32 bool, 
 	if len(functions) > MaxFunctions {
 		return swarSummary{}, unsupported("SWAR function directory bound")
 	}
-	for _, typ := range functions {
+	for i, typ := range functions {
 		if err := swarCallSignature(typ); err != nil {
 			return swarSummary{}, err
+		}
+		if i < importedFunctions {
+			for _, list := range [][]wasm.ValType{typ.Params, typ.Results} {
+				for _, carrier := range list {
+					if swarClassOf(carrier) == swarV128 {
+						return swarSummary{}, unsupported("SWAR host scalar signature")
+					}
+				}
+			}
 		}
 	}
 	if len(types) > 1024 {
@@ -279,7 +298,12 @@ func walkSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory32 bool, 
 			if calls > maxDirectCalls || budget > integerBudget {
 				return swarSummary{}, unsupported("SWAR direct call count/transfer budget")
 			}
-			if err := reserve(128*(len(sig.Params)+len(sig.Results)) + 128); err != nil {
+			callBound := 128
+			if index < uint32(importedFunctions) {
+				callBound = 1024 // dynamic guards and their source-attributed cold islands
+				usesTraps = true
+			}
+			if err := reserve(128*(len(sig.Params)+len(sig.Results)) + callBound); err != nil {
 				return swarSummary{}, err
 			}
 			params := make([]swarClass, len(sig.Params))
@@ -302,7 +326,11 @@ func walkSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory32 bool, 
 				return swarSummary{}, unsupported("SWAR direct call result operand bound")
 			}
 			if emit != nil {
-				emit.swarDirectCall(index, sig, base, spill)
+				if index < uint32(importedFunctions) {
+					emit.swarImportCall(index, sig, base, spill)
+				} else {
+					emit.swarDirectCall(index-uint32(importedFunctions), sig, base, spill)
+				}
 			}
 			h = base
 			for _, typ := range sig.Results {
@@ -1667,6 +1695,16 @@ func compileSWARPairsWithIndirectKeys(fn *wasm.Func, ft *wasm.CompType, memory *
 // elementCount names immutable original indices of a trusted live owned16-byte
 // descriptor directory; payloads are complete same-instance canonical32B rows.
 func compileSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount int, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	return compileSWARPairsWithImports(fn, ft, memory, types, functions, globals, dataCount, table, typeKeys, elementCount, 0, mode)
+}
+
+// Like the other private helpers, this requires an already validated immutable
+// module profile and live owner-provided dispatch/context directories. It does
+// not admit imports in either private module pilot or the public SIMD pipeline.
+func compileSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if importedFunctions != 0 && (!mode.production || !mode.interruptible) {
+		return nil, FunctionInfo{}, nil, unsupported("SWAR host calls require production interruption/park bridge")
+	}
 	if table != nil && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR owned table requires production owner")
 	}
@@ -1683,7 +1721,7 @@ func compileSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory *wasm
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairsWithElements(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, nil)
+	summary, err := walkSWARPairsWithImports(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1701,7 +1739,7 @@ func compileSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory *wasm
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithElements(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, &f)
+	actual, err := walkSWARPairsWithImports(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

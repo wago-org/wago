@@ -76,3 +76,13 @@ func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, 
 	f.a.Jalr(enc.RA, enc.X28, 0)
 	f.swarCallResults(sig, base, spill)
 }
+
+// The qualified scalar import guards establish code, home and exact current
+// context identity before compact argument writes. X28 survives escaped stack
+// homes; raw vector values stay in caller homes across the parked host bridge.
+func (f *integerEmitter) swarImportCall(index uint32, sig *wasm.CompType, base int, spill func(int) int32) {
+	f.importCallTarget(index)
+	f.swarCallArguments(sig, base, spill)
+	f.a.Jalr(enc.RA, enc.X28, 0)
+	f.swarCallResults(sig, base, spill)
+}
