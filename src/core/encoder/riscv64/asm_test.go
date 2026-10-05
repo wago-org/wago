@@ -63,6 +63,14 @@ var encodingCases = []struct {
 	{"bgeu", func(a *Asm) { a.Branch(GEU, X31, X30, 0) }, 0x01eff063},
 	{"jal max", func(a *Asm) { a.Jal(Zero, 1048572) }, 0x7fdff06f},
 	{"jal min", func(a *Asm) { a.Jal(RA, -1048576) }, 0x800000ef},
+	{"div", func(a *Asm) { a.Div(X5, X6, X7) }, 0x027342b3},
+	{"divu", func(a *Asm) { a.Divu(X5, X6, X7) }, 0x027352b3},
+	{"rem", func(a *Asm) { a.Rem(X5, X6, X7) }, 0x027362b3},
+	{"remu", func(a *Asm) { a.Remu(X5, X6, X7) }, 0x027372b3},
+	{"divw", func(a *Asm) { a.Divw(X5, X6, X7) }, 0x027342bb},
+	{"divuw", func(a *Asm) { a.Divuw(X5, X6, X7) }, 0x027352bb},
+	{"remw", func(a *Asm) { a.Remw(X5, X6, X7) }, 0x027362bb},
+	{"remuw", func(a *Asm) { a.Remuw(X5, X6, X7) }, 0x027372bb},
 }
 
 func TestEncodings(t *testing.T) {

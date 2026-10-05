@@ -48,3 +48,11 @@ bltu x31,x30,4
 bgeu x31,x30,0
 jal x0,1048572
 jal x1,-1048576
+div x5,x6,x7
+divu x5,x6,x7
+rem x5,x6,x7
+remu x5,x6,x7
+divw x5,x6,x7
+divuw x5,x6,x7
+remw x5,x6,x7
+remuw x5,x6,x7

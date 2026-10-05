@@ -145,6 +145,10 @@ func (a *Asm) u(op uint32, dst Reg, imm20 uint32) {
 func (a *Asm) Add(dst, left, right Reg)  { a.r(0x33, 0, 0, dst, left, right) }
 func (a *Asm) Sub(dst, left, right Reg)  { a.r(0x33, 0, 0x20, dst, left, right) }
 func (a *Asm) Mul(dst, left, right Reg)  { a.r(0x33, 0, 1, dst, left, right) }
+func (a *Asm) Div(dst, left, right Reg)  { a.r(0x33, 4, 1, dst, left, right) }
+func (a *Asm) Divu(dst, left, right Reg) { a.r(0x33, 5, 1, dst, left, right) }
+func (a *Asm) Rem(dst, left, right Reg)  { a.r(0x33, 6, 1, dst, left, right) }
+func (a *Asm) Remu(dst, left, right Reg) { a.r(0x33, 7, 1, dst, left, right) }
 func (a *Asm) And(dst, left, right Reg)  { a.r(0x33, 7, 0, dst, left, right) }
 func (a *Asm) Or(dst, left, right Reg)   { a.r(0x33, 6, 0, dst, left, right) }
 func (a *Asm) Xor(dst, left, right Reg)  { a.r(0x33, 4, 0, dst, left, right) }
@@ -155,12 +159,16 @@ func (a *Asm) Srl(dst, left, right Reg)  { a.r(0x33, 5, 0, dst, left, right) }
 func (a *Asm) Sra(dst, left, right Reg)  { a.r(0x33, 5, 0x20, dst, left, right) }
 
 // Word instructions sign-extend their result; shared i32 lowering must normalize.
-func (a *Asm) Addw(dst, left, right Reg) { a.r(0x3b, 0, 0, dst, left, right) }
-func (a *Asm) Subw(dst, left, right Reg) { a.r(0x3b, 0, 0x20, dst, left, right) }
-func (a *Asm) Mulw(dst, left, right Reg) { a.r(0x3b, 0, 1, dst, left, right) }
-func (a *Asm) Sllw(dst, left, right Reg) { a.r(0x3b, 1, 0, dst, left, right) }
-func (a *Asm) Srlw(dst, left, right Reg) { a.r(0x3b, 5, 0, dst, left, right) }
-func (a *Asm) Sraw(dst, left, right Reg) { a.r(0x3b, 5, 0x20, dst, left, right) }
+func (a *Asm) Addw(dst, left, right Reg)  { a.r(0x3b, 0, 0, dst, left, right) }
+func (a *Asm) Subw(dst, left, right Reg)  { a.r(0x3b, 0, 0x20, dst, left, right) }
+func (a *Asm) Mulw(dst, left, right Reg)  { a.r(0x3b, 0, 1, dst, left, right) }
+func (a *Asm) Divw(dst, left, right Reg)  { a.r(0x3b, 4, 1, dst, left, right) }
+func (a *Asm) Divuw(dst, left, right Reg) { a.r(0x3b, 5, 1, dst, left, right) }
+func (a *Asm) Remw(dst, left, right Reg)  { a.r(0x3b, 6, 1, dst, left, right) }
+func (a *Asm) Remuw(dst, left, right Reg) { a.r(0x3b, 7, 1, dst, left, right) }
+func (a *Asm) Sllw(dst, left, right Reg)  { a.r(0x3b, 1, 0, dst, left, right) }
+func (a *Asm) Srlw(dst, left, right Reg)  { a.r(0x3b, 5, 0, dst, left, right) }
+func (a *Asm) Sraw(dst, left, right Reg)  { a.r(0x3b, 5, 0x20, dst, left, right) }
 
 func (a *Asm) Addi(dst, src Reg, imm int32)  { a.i(0x13, 0, dst, src, imm) }
 func (a *Asm) Addiw(dst, src Reg, imm int32) { a.i(0x1b, 0, dst, src, imm) }
