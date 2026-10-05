@@ -38,6 +38,18 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 }
 
 func walkSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithGlobals(fn, ft, memory32, types, functions, nil, emit)
+}
+
+func walkSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, emit *integerEmitter) (swarSummary, error) {
+	if len(globals) > 256 {
+		return swarSummary{}, unsupported("SWAR global directory bound")
+	}
+	for _, global := range globals {
+		if !swarCarrierType(global.Type) {
+			return swarSummary{}, unsupported("SWAR global carrier")
+		}
+	}
 	if len(functions) > MaxFunctions {
 		return swarSummary{}, unsupported("SWAR function directory bound")
 	}
@@ -264,6 +276,44 @@ func walkSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			for _, typ := range sig.Results {
 				if err := push(swarClassOf(typ)); err != nil {
 					return swarSummary{}, err
+				}
+			}
+		case 0x23, 0x24:
+			index, err := r.U32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			if uint64(index) >= uint64(len(globals)) {
+				return swarSummary{}, unsupported("SWAR global directory/index")
+			}
+			global := globals[index]
+			class := swarClassOf(global.Type)
+			if op == 0x24 {
+				if !global.Mutable {
+					return swarSummary{}, unsupported("SWAR immutable global write")
+				}
+				if err := flow.prepareDead(class); err != nil {
+					return swarSummary{}, err
+				}
+				if h == flow.floor() || stackClasses[h-1] != class {
+					return swarSummary{}, unsupported("SWAR global write carrier/underflow")
+				}
+				h--
+				if emit != nil {
+					emit.Load(5, spill(h), !class.narrow())
+					if class == swarV128 {
+						emit.Load(6, spill(h)+8, true)
+					}
+					emit.swarGlobal(index, class, true)
+				}
+			} else {
+				if err := push(class); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarGlobal(index, class, false)
+					emit.Store(spill(h-1), 5, true)
+					emit.Store(spill(h-1)+8, 6, true)
 				}
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
@@ -1259,6 +1309,16 @@ func compileSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Me
 // cross-instance entries, executable pointers and guessed signatures are absent.
 // All entries must be admitted by the module owner before publishing this code.
 func compileSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	return compileSWARPairsWithGlobals(fn, ft, memory, types, functions, nil, mode)
+}
+
+// globals is the immutable declared type directory for the owner's aliased
+// scalar (8-byte) and vector (16-byte) cells behind JobMemory.GlobalsPtr.
+// This private helper does not admit global initializers or module state.
+func compileSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if len(globals) != 0 && !mode.production {
+		return nil, FunctionInfo{}, nil, unsupported("SWAR globals require production owner")
+	}
 	if len(functions) != 0 && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR direct calls require production bridge")
 	}
@@ -1266,7 +1326,7 @@ func compileSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Me
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairsWithCalls(fn, ft, memory != nil, types, functions, nil)
+	summary, err := walkSWARPairsWithGlobals(fn, ft, memory != nil, types, functions, globals, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1284,7 +1344,7 @@ func compileSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Me
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithCalls(fn, ft, memory != nil, types, functions, &f)
+	actual, err := walkSWARPairsWithGlobals(fn, ft, memory != nil, types, functions, globals, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
