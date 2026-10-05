@@ -1,0 +1,79 @@
+name: Experimental RV64 / RISE
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/riscv64.yml"
+      - "scripts/ci-riscv64.sh"
+      - "src/core/compiler/backend/railshot/riscv64/**"
+      - "src/core/compiler/backend/railshot/shared/**"
+      - "src/core/compiler/wasm/**"
+      - "src/core/encoder/riscv64/**"
+      - "src/core/runtime/riscv64/**"
+      - "src/core/codeimage/**"
+      - "go.mod"
+      - "go.sum"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: riscv64-rise-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Experimental JIT / native Linux RV64
+    # RISE requires exactly this single label; adding self-hosted breaks routing.
+    # Org owner must install the RISE App and permit this repository first.
+    runs-on: ubuntu-24.04-riscv
+    timeout-minutes: 20
+    # Fork PRs need an explicitly approved same-repository branch for this
+    # self-hosted service. Do not use pull_request_target or expose secrets.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      GO_VERSION: "1.27.1"
+      GOWORK: "off"
+      GOTOOLCHAIN: local
+      GORISCV64: rva20u64
+      CGO_ENABLED: "0"
+      GOMAXPROCS: "2"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify native runner and install pinned Go
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = riscv64
+          uname -a
+          cat /etc/os-release
+          # Verify the official release checksum before extracting to job-local
+          # storage. No sudo, persistent installation or setup-go architecture
+          # assumption is needed on the RISE runner.
+          tools_dir="$RUNNER_TEMP/wago-rv64-tools"
+          mkdir -p "$tools_dir"
+          curl --fail --silent --show-error --location --retry 2 --max-time 60 \
+            'https://go.dev/dl/?mode=json&include=all' > "$tools_dir/releases.json"
+          jq -er --arg version "go$GO_VERSION" \
+            '[.[] | select(.version == $version) | .files[] |
+              select(.os == "linux" and .arch == "riscv64" and .kind == "archive")] |
+              if length == 1 then .[0] | [.filename,.sha256] | @tsv else error("Go release unavailable") end' \
+            "$tools_dir/releases.json" > "$tools_dir/release.tsv"
+          read -r archive checksum < "$tools_dir/release.tsv"
+          test "$archive" = "go$GO_VERSION.linux-riscv64.tar.gz"
+          curl --fail --silent --show-error --location --retry 2 --max-time 180 \
+            "https://go.dev/dl/$archive" -o "$tools_dir/$archive"
+          (cd "$tools_dir" && printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --strict)
+          tar -C "$tools_dir" -xzf "$tools_dir/$archive"
+          echo "$tools_dir/go/bin" >> "$GITHUB_PATH"
+          echo "GOCACHE=$RUNNER_TEMP/wago-rv64-go-cache" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$RUNNER_TEMP/wago-rv64-module-cache" >> "$GITHUB_ENV"
+      - name: Native runtime and JIT smoke
+        run: scripts/ci-riscv64.sh smoke
+      - name: Supported scalar and integer correctness
+        run: scripts/ci-riscv64.sh supported
+
