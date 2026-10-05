@@ -62,7 +62,12 @@ func createRetainedReplacementTemp(destination string, requireExistingParent boo
 	}
 	var stageStat syscall.Stat_t
 	if err := syscall.Fstat(fd, &stageStat); err != nil {
-		return nil, retainedReplaceHandle{}, joinErrors(err, syscall.Close(fd), closeUnusedLinuxPrivateDirectory(state))
+		// An unverified entry must not be unlinked. If cleanup cannot remove the
+		// private directory, expose the empty stage's path for manual recovery.
+		return nil, retainedReplaceHandle{}, joinErrors(formatErrorSE(
+			"inspect empty atomic stage at %s; recover this path if cleanup fails: %w",
+			filepath.Join(directory, private.name, "artifact"), err),
+			syscall.Close(fd), closeUnusedLinuxPrivateDirectory(state))
 	}
 	state.stage = linuxFileIdentity{dev: uint64(stageStat.Dev), ino: uint64(stageStat.Ino)}
 	// fd came from a successful Openat above and is therefore valid for NewFile.

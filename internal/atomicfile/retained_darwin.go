@@ -60,7 +60,11 @@ func createRetainedReplacementTemp(destination string, requireExistingParent boo
 		private: private, temporary: temporary, destination: filepath.Clean(destination),
 	}
 	if err := unix.Fstat(fd, &state.stageStat); err != nil {
-		return nil, retainedReplaceHandle{}, errors.Join(err, file.Close(), private.removeAndClose())
+		// Without a verified identity, retain the empty entry rather than unlink
+		// a substituted file. Report its path if directory cleanup also fails.
+		return nil, retainedReplaceHandle{}, errors.Join(fmt.Errorf(
+			"inspect empty atomic stage at %s; recover this path if cleanup fails: %w", path, err),
+			file.Close(), private.removeAndClose())
 	}
 	return file, retainedReplaceHandle{state: state}, nil
 }
