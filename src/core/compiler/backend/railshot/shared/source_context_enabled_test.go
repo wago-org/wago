@@ -24,6 +24,53 @@ func sourceWorkerFixture(t *testing.T) (*wasm.Module, *wasm.ValidatedModuleAnaly
 	return m, a, codegen.SourceContextFor(opts, m)
 }
 
+func TestSourceWorkerCompilationQuotaPartitions(t *testing.T) {
+	_, _, ctx := sourceWorkerFixture(t)
+	for _, workers := range []int{1, 2, 3, 17} {
+		work, storage := 0, 0
+		for worker := 0; worker < workers; worker++ {
+			var s ScalarState
+			PrepareSourceWorker(&s, worker, workers)
+			SetSourceContext(&s, ctx)
+			work += s.sourceWork
+			storage += s.sourceStorage
+			s.sourceWork--
+			s.sourceStorage--
+			beforeWork, beforeStorage := s.sourceWork, s.sourceStorage
+			func() {
+				defer func() {
+					if recover() == nil {
+						t.Fatal("worker quota reinitialized")
+					}
+				}()
+				SetSourceContext(&s, ctx)
+			}()
+			if s.sourceWork != beforeWork || s.sourceStorage != beforeStorage {
+				t.Fatal("duplicate setter refunded history")
+			}
+			s.FinishWorker()
+			if s.sourceWork != 0 || s.sourceStorage != 0 || s.sourceBudgetSet {
+				t.Fatal("worker credits retained")
+			}
+			PrepareSourceWorker(&s, worker, workers)
+			SetSourceContext(&s, ctx)
+			s.FinishWorker()
+		}
+		if work != 1<<20 || storage != 1<<20 {
+			t.Fatalf("partition sum workers=%d work=%d storage=%d", workers, work, storage)
+		}
+	}
+	for _, partition := range [][2]int{{0, 0}, {-1, 2}, {2, 2}, {0, -1}} {
+		var s ScalarState
+		PrepareSourceWorker(&s, partition[0], partition[1])
+		SetSourceContext(&s, ctx)
+		if s.sourceWork != 0 || s.sourceStorage != 0 {
+			t.Fatal("invalid partition received credits")
+		}
+		s.FinishWorker()
+	}
+}
+
 func sourceWorkerLedger(t *testing.T, m *wasm.Module, a *wasm.ValidatedModuleAnalysis) *wasm.SourceLedger {
 	t.Helper()
 	l, result, err := wasm.BuildSourceLedger(m, a, 0, wasm.ValidationFeatures{}, wasm.SourceLedgerLimits{})

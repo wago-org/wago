@@ -9,7 +9,10 @@ import (
 
 type SourceAttempt struct{}
 
-func SetSourceContext(*ScalarState, *codegen.SourceContext)             {}
-func BeginSourceAttempt(*ScalarState, *wasm.Module, int) *SourceAttempt { return nil }
-func EndSourceAttempt(*SourceAttempt)                                   {}
-func finishSourceWorker(*ScalarState)                                   {}
+func PrepareSourceWorker(*ScalarState, int, int) {}
+
+func SetSourceContext(*ScalarState, *codegen.SourceContext)                 {}
+func SetSourceWorkerContext(*ScalarState, *codegen.SourceContext, int, int) {}
+func BeginSourceAttempt(*ScalarState, *wasm.Module, int) *SourceAttempt     { return nil }
+func EndSourceAttempt(*SourceAttempt)                                       {}
+func finishSourceWorker(*ScalarState)                                       {}

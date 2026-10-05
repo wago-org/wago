@@ -18,10 +18,46 @@ type SourceAttempt struct {
 
 // SetSourceContext borrows compile-scoped facts after worker cleanup is installed.
 func SetSourceContext(s *ScalarState, ctx *codegen.SourceContext) {
+	if s.sourcePartitionSet {
+		SetSourceWorkerContext(s, ctx, s.sourcePartition[0], s.sourcePartition[1])
+		return
+	}
+	SetSourceWorkerContext(s, ctx, 0, 1)
+}
+
+// PrepareSourceWorker records partition coordinates before launch, without
+// borrowing facts or allocating pools. SetSourceContext still starts ownership
+// after worker cleanup is installed. Keeping workers out of the runWorker
+// closure also preserves TinyGo's ordinary pre-DCE capture layout.
+func PrepareSourceWorker(s *ScalarState, worker, workers int) {
+	if s.sourceBudgetSet || s.sourcePartitionSet {
+		panic("regalloccheck: source worker partition initialized twice")
+	}
+	s.sourcePartition = [2]int{worker, workers}
+	s.sourcePartitionSet = true
+}
+
+// SetSourceWorkerContext partitions fixed compilation-wide history credits once.
+// Function reset and retry never replenish them. Scheduling can affect which
+// functions receive coverage after exhaustion, never the meaning of Verified.
+func SetSourceWorkerContext(s *ScalarState, ctx *codegen.SourceContext, worker, workers int) {
 	if s.sourceAttempt != nil {
 		panic("regalloccheck: source context changed during active attempt")
 	}
+	if s.sourceBudgetSet {
+		panic("regalloccheck: source worker initialized twice")
+	}
+	s.sourceBudgetSet = true
 	s.sourceContext = ctx
+	s.sourceWork, s.sourceStorage = 0, 0
+	if ctx != nil && workers > 0 && worker >= 0 && worker < workers {
+		s.sourceWork = (1 << 20) / workers
+		s.sourceStorage = (1 << 20) / workers
+		if worker < (1<<20)%workers {
+			s.sourceWork++
+			s.sourceStorage++
+		}
+	}
 }
 
 // BeginSourceAttempt rejects reentrancy without replacing the enclosing owner.
@@ -75,4 +111,8 @@ func EndSourceAttempt(t *SourceAttempt) {
 func finishSourceWorker(s *ScalarState) {
 	EndSourceAttempt(s.sourceAttempt)
 	s.sourceContext = nil
+	s.sourceWork, s.sourceStorage = 0, 0
+	s.sourceBudgetSet = false
+	s.sourcePartition = [2]int{}
+	s.sourcePartitionSet = false
 }

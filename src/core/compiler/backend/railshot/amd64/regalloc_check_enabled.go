@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/internal/regalloccheck"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
 const regallocCheckEnabled = true
@@ -14,6 +15,8 @@ const regallocCheckEnabled = true
 // Immutable GP reservations observe all typed encoder writes; FP cache
 // admission is checked at calls. Neither state is whole-function dataflow.
 type regallocFnState struct {
+	sourceLeaf         *shared.SourceLeaf
+	sourceRestore      func()
 	allocationCheck    *allocationRegion
 	immutableCheck     regalloccheck.State
 	immutableValues    []allocationGoal
@@ -363,6 +366,7 @@ func (f *fn) checkEndLifetimes() {
 		f.gpObserverActive = false
 	}
 	f.immutableGPMask = 0
+	checkSourceClose(f)
 }
 
 // Trap stubs are terminal edges: they unwind directly to Go and cannot return

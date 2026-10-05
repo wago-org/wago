@@ -3,7 +3,9 @@
 package codegen
 
 import (
+	"github.com/wago-org/wago/internal/regalloccheck"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -17,6 +19,77 @@ func validatedContextModule(t *testing.T) (*wasm.Module, *wasm.ValidatedModuleAn
 		t.Fatal(err)
 	}
 	return m, a
+}
+
+func TestSourceReporterJoinedOrderingAndClearedFacts(t *testing.T) {
+	m, a := validatedContextModule(t)
+	for i := 1; i < 8; i++ {
+		m.FuncTypes = append(m.FuncTypes, m.FuncTypes[0])
+		m.Code = append(m.Code, m.Code[0])
+	}
+	if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, a); err != nil {
+		t.Fatal(err)
+	}
+	opts := SourceOptions(Options{}, m, a, wasm.ValidationFeatures{})
+	ctx := SourceContextFor(opts, m)
+	var reports []SourceReport
+	if !SetSourceReporter(opts, m, func(r SourceReport) {
+		if ctx.module != nil || ctx.analysis != nil || ctx.reporter != nil || ctx.reports != nil {
+			t.Fatal("report delivered before fact release")
+		}
+		reports = append(reports, r)
+	}) {
+		t.Fatal("collector unavailable")
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 7; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			RecordSourceResult(ctx, index, regalloccheck.Result{Verdict: regalloccheck.Verified, Work: index})
+		}(i)
+	}
+	wg.Wait()
+	if len(reports) != 0 {
+		t.Fatal("reports delivered before join/close")
+	}
+	CloseSourceContext(opts, m)
+	CloseSourceContext(opts, m)
+	if len(reports) != 8 || !a.ValidFor(m) {
+		t.Fatal("missing reports or changed analysis")
+	}
+	for i, r := range reports {
+		if r.LocalFunction != i {
+			t.Fatal("report order changed")
+		}
+		if i < 7 && (r.Result.Verdict != regalloccheck.Verified || r.Result.Work != i) {
+			t.Fatal("concurrent report lost")
+		}
+	}
+	if reports[7].Result.Verdict != regalloccheck.Inconclusive || reports[7].Result.Reason != regalloccheck.UnsupportedOperation {
+		t.Fatal("omitted function became verified")
+	}
+	RecordSourceResult(ctx, 0, regalloccheck.Result{Verdict: regalloccheck.Verified})
+	if len(reports) != 8 {
+		t.Fatal("retired collector reused")
+	}
+}
+
+func TestSourceReporterRefusesUnboundedCollector(t *testing.T) {
+	m, a := validatedContextModule(t)
+	for i := 1; i < 4097; i++ {
+		m.FuncTypes = append(m.FuncTypes, m.FuncTypes[0])
+		m.Code = append(m.Code, m.Code[0])
+	}
+	if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, a); err != nil {
+		t.Fatal(err)
+	}
+	opts := SourceOptions(Options{}, m, a, wasm.ValidationFeatures{})
+	ctx := SourceContextFor(opts, m)
+	if SetSourceReporter(opts, m, func(SourceReport) { t.Fatal("oversized report") }) || ctx.reporter != nil || ctx.reports != nil {
+		t.Fatal("oversized collector allocated")
+	}
+	CloseSourceContext(opts, m)
 }
 
 func TestSourceContextExactProfileAndOptionsCopy(t *testing.T) {

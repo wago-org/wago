@@ -1955,7 +1955,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 		}()
 		if regallocCheckEnabled {
-			shared.SetSourceContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m))
+			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
 		}
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
@@ -2183,6 +2183,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
+		if regallocCheckEnabled {
+			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
+		}
 		states[i].scratch.amd64Features = opts.AMD64Features
 		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
@@ -3907,6 +3910,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.RecordUnwind = !moduleEH && len(custom) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil && len(inlinedCallees) == 0 && !hints.flags.has(hintHasTailCall|hintUsesBulkMem|hintMutatesTable|hintHasJumpTableData|hintGCSharedResolver|hintGCDeferredResolver)
 	}
 
+	if regallocCheckEnabled {
+		checkSourceBegin(f, hostAdapter || !regABI)
+	}
+
 	if regABI {
 		// The prepared trampoline establishes RBX, and every admitted function was
 		// compiled without the unsaved R12-R15 set. The module finalizer below
@@ -3921,9 +3928,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			return nil, nil, 0, err
 		}
 		f.emitV128ConstPool()
+		if regallocCheckEnabled {
+			checkSourceFinishEmission(f)
+		}
 		internalOff, err = f.finalizeNativeCode(internalOff)
 		if err != nil {
 			return nil, nil, 0, err
+		}
+		if regallocCheckEnabled {
+			checkSourceVerify(f)
 		}
 		f.finalizeStats(len(f.a.B))
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {

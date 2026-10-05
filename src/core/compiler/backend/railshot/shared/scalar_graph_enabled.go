@@ -24,9 +24,13 @@ type ScalarGraphTarget interface {
 
 // ScalarState adds function-local graph state only in checked builds.
 type ScalarState struct {
-	graph         *scalarGraphRecorder
-	sourceContext *codegen.SourceContext
-	sourceAttempt *SourceAttempt
+	graph                     *scalarGraphRecorder
+	sourceContext             *codegen.SourceContext
+	sourceAttempt             *SourceAttempt
+	sourceWork, sourceStorage int
+	sourceBudgetSet           bool
+	sourcePartition           [2]int
+	sourcePartitionSet        bool
 	scalarState
 }
 type scalarGraphImage struct{ locals, stack []regalloccheck.ValueID }

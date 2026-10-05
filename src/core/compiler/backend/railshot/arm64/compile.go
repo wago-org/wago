@@ -1762,7 +1762,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}()
 		if regallocCheckEnabled {
-			shared.SetSourceContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m))
+			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
 		}
 		pressureDone := false
 		var directPrepared, directPreparedLight, directPreparedBounded []uint64
@@ -1939,6 +1939,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
+		if regallocCheckEnabled {
+			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
+		}
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
 		states[i].scratch.reserveLocalScratch(localCap)
@@ -3408,6 +3411,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		return nil, nil, 0, err
 	}
 
+	if regallocCheckEnabled {
+		checkSourceBegin(f, hostAdapter || !regABI)
+	}
+
 	if regABI {
 		internalOff, err := f.emitRegABI(c, hostAdapter, hints.localScore, hints.flags.has(hintHasFloatConst), hints)
 		if err != nil {
@@ -3423,9 +3430,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		if err := f.emitFloatConstPool(); err != nil {
 			return nil, nil, 0, err
 		}
+		if regallocCheckEnabled {
+			checkSourceFinishEmission(f)
+		}
 		internalOff, err = f.finalizeNativeCode(internalOff)
 		if err != nil {
 			return nil, nil, 0, err
+		}
+		if regallocCheckEnabled {
+			checkSourceVerify(f)
 		}
 		f.finalizeStats(len(f.a.B))
 		return f.a.B, f.relocs, internalOff, nil
