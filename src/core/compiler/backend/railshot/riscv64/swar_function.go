@@ -15,9 +15,9 @@ const maxSWARLocals = 128
 type swarSummary struct{ locals, peak int }
 
 // This private whole-function pilot consumes a frontend-validated function.
-// It deliberately admits straight-line V128-only signatures/locals and the
-// complete small bit-operation family. Module policy remains closed to SIMD;
-// control, scalar/vector mixtures, memory and calls need their own lowering.
+// It admits V128/i32 carriers, straight-line local/bit operations and typed
+// select. Module policy remains closed to SIMD; structured control, memory
+// and calls still require complete lowering.
 // Admission and emission walk every byte with identical bounded stack rules.
 func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swarSummary, error) {
 	if fn == nil || ft == nil || ft.Kind != wasm.CompFunc || len(ft.Params) > maxSWARLocals || len(ft.Results) > maxSWARLocals {
@@ -25,17 +25,31 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 	}
 	for _, types := range [][]wasm.ValType{ft.Params, ft.Results} {
 		for _, typ := range types {
-			if !wasm.EqualValType(typ, wasm.V128) {
-				return swarSummary{}, unsupported("SWAR pilot requires vector-only signatures")
+			if !swarCarrierType(typ) {
+				return swarSummary{}, unsupported("SWAR pilot carrier type")
 			}
+		}
+	}
+	var localVectors [maxSWARLocals]bool
+	var paramSlots [maxSWARLocals]int
+	incomingSlots := 0
+	for i, typ := range ft.Params {
+		paramSlots[i] = incomingSlots
+		localVectors[i] = wasm.EqualValType(typ, wasm.V128)
+		incomingSlots++
+		if localVectors[i] {
+			incomingSlots++
 		}
 	}
 	nlocals := len(ft.Params)
 	for _, run := range fn.Locals.Runs {
-		if !wasm.EqualValType(run.Type, wasm.V128) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
+		if !swarCarrierType(run.Type) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
 			return swarSummary{}, unsupported("SWAR local type/bound")
 		}
-		nlocals += int(run.Count)
+		for i := uint32(0); i < run.Count; i++ {
+			localVectors[nlocals] = wasm.EqualValType(run.Type, wasm.V128)
+			nlocals++
+		}
 	}
 	if len(fn.BodyBytes) == 0 || len(fn.BodyBytes) > 64<<10 {
 		return swarSummary{}, unsupported("SWAR body bound")
@@ -45,13 +59,31 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 	left, right, mask := swarPair{enc.X5, enc.X6}, swarPair{enc.X7, enc.X9}, swarPair{enc.X10, enc.X11}
 	local := func(i int) int32 { return int32(16 + 16*i) }
 	spill := func(i int) int32 { return int32(16 + 16*nlocals + 16*i) }
-	push := func() error {
+	var stackVectors [256]bool
+	push := func(vector bool) error {
 		if h >= 256 {
 			return unsupported("SWAR operand bound")
 		}
+		stackVectors[h] = vector
 		h++
 		peak = max(peak, h)
 		return nil
+	}
+	// The shared frame helper copies compact serialized argument cells first.
+	// Expand padded local homes backwards so a one-cell i32 cannot overwrite
+	// the still unread halves of a later vector argument.
+	if emit != nil && incomingSlots != len(ft.Params)*2 {
+		for i := len(ft.Params) - 1; i >= 0; i-- {
+			src := int32(16 + 8*paramSlots[i])
+			if localVectors[i] {
+				emit.swarLoad(src, left)
+				emit.swarStore(local(i), left)
+			} else {
+				emit.Load(5, src, false)
+				emit.Store(local(i), 5, true)
+				emit.Store(local(i)+8, uint8(enc.Zero), true)
+			}
+		}
 	}
 	for r.HasNext() {
 		budget++
@@ -68,12 +100,25 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 			if r.HasNext() || h != len(ft.Results) {
 				return swarSummary{}, unsupported("SWAR terminal stack/bytes")
 			}
+			for j, typ := range ft.Results {
+				if stackVectors[j] != wasm.EqualValType(typ, wasm.V128) {
+					return swarSummary{}, unsupported("SWAR result carrier class")
+				}
+			}
 			if emit != nil {
+				out := int32(0)
 				for j := 0; j < h; j++ {
 					emit.swarLoad(spill(j), left)
+					if !stackVectors[j] {
+						emit.NormalizeI32(5)
+					}
 					emit.a.Ld(enc.Scratch1, enc.SP, 8)
-					emit.a.Sd(left.low, enc.Scratch1, int32(j*16))
-					emit.a.Sd(left.high, enc.Scratch1, int32(j*16+8))
+					emit.a.Sd(left.low, enc.Scratch1, out)
+					out += 8
+					if stackVectors[j] {
+						emit.a.Sd(left.high, enc.Scratch1, out)
+						out += 8
+					}
 				}
 			}
 			return swarSummary{nlocals, peak}, nil
@@ -91,7 +136,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 				return swarSummary{}, unsupported("SWAR local index")
 			}
 			if op == 0x20 {
-				if err := push(); err != nil {
+				if err := push(localVectors[index]); err != nil {
 					return swarSummary{}, err
 				}
 				if emit != nil {
@@ -99,8 +144,8 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 					emit.swarStore(spill(h-1), left)
 				}
 			} else {
-				if h == 0 {
-					return swarSummary{}, unsupported("SWAR local write underflow")
+				if h == 0 || stackVectors[h-1] != localVectors[index] {
+					return swarSummary{}, unsupported("SWAR local write carrier class/underflow")
 				}
 				if emit != nil {
 					emit.swarLoad(spill(h-1), left)
@@ -110,6 +155,56 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 					h--
 				}
 			}
+		case 0x41:
+			value, err := r.I32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			if err := push(false); err != nil {
+				return swarSummary{}, err
+			}
+			if emit != nil {
+				emit.a.Constant32(left.low, uint32(value))
+				emit.a.Addi(left.high, enc.Zero, 0)
+				emit.swarStore(spill(h-1), left)
+			}
+		case 0x1b, 0x1c:
+			vector := false
+			if op == 0x1c {
+				count, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				if count != 1 {
+					return swarSummary{}, unsupported("SWAR select type count")
+				}
+				typ, err := r.Byte()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				if typ != 0x7f && typ != 0x7b {
+					return swarSummary{}, unsupported("SWAR select carrier")
+				}
+				vector = typ == 0x7b
+			}
+			if h < 3 || stackVectors[h-1] || stackVectors[h-3] != vector || stackVectors[h-2] != vector {
+				return swarSummary{}, unsupported("SWAR select carrier class/underflow")
+			}
+			if emit != nil {
+				emit.Load(28, spill(h-1), false)
+				other := emit.a.BranchLong(enc.EQ, enc.X28, enc.Zero)
+				emit.swarLoad(spill(h-3), left)
+				end := emit.Jump()
+				if err := emit.Patch(other, emit.Position()); err != nil {
+					return swarSummary{}, err
+				}
+				emit.swarLoad(spill(h-2), left)
+				if err := emit.Patch(end, emit.Position()); err != nil {
+					return swarSummary{}, err
+				}
+				emit.swarStore(spill(h-3), left)
+			}
+			h -= 2
 		case 0xfd:
 			kind, err := r.U32()
 			if err != nil {
@@ -120,7 +215,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if err := push(); err != nil {
+				if err := push(true); err != nil {
 					return swarSummary{}, err
 				}
 				if emit != nil {
@@ -128,6 +223,20 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 					emit.a.Constant64(left.high, int64(binary.LittleEndian.Uint64(literal[8:])))
 					emit.swarStore(spill(h-1), left)
 				}
+				continue
+			}
+			if kind == 83 {
+				if h == 0 || !stackVectors[h-1] {
+					return swarSummary{}, unsupported("SWAR any_true carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-1), left)
+					emit.a.Or(left.low, left.low, left.high)
+					emit.a.Sltu(left.low, enc.Zero, left.low)
+					emit.a.Addi(left.high, enc.Zero, 0)
+					emit.swarStore(spill(h-1), left)
+				}
+				stackVectors[h-1] = false
 				continue
 			}
 			var semantic wasm.InstrKind
@@ -150,6 +259,11 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 			}
 			if h < arity {
 				return swarSummary{}, unsupported("SWAR bit operation underflow")
+			}
+			for j := h - arity; j < h; j++ {
+				if !stackVectors[j] {
+					return swarSummary{}, unsupported("SWAR bit operation carrier class")
+				}
 			}
 			if emit != nil {
 				emit.swarLoad(spill(h-arity), left)
@@ -193,6 +307,20 @@ func compileSWARPairs(fn *wasm.Func, ft *wasm.CompType, mode emissionMode) ([]by
 	for i := range widths {
 		widths[i] = true
 	}
-	info := FunctionInfo{Params: len(ft.Params) * 2, Results: len(ft.Results) * 2, SpillSlots: summary.peak * 2, FrameHeaderBytes: 16, Fallback: true, mode: mode}
-	return frameFunction(f.a.B, widths, len(ft.Params)*2, summary.peak*2, true, -1, info)
+	params, results := swarSignatureSlots(ft.Params), swarSignatureSlots(ft.Results)
+	info := FunctionInfo{Params: params, Results: results, SpillSlots: summary.peak * 2, FrameHeaderBytes: 16, Fallback: true, mode: mode}
+	return frameFunction(f.a.B, widths, params, summary.peak*2, true, -1, info)
+}
+
+func swarCarrierType(typ wasm.ValType) bool {
+	return wasm.EqualValType(typ, wasm.V128) || wasm.EqualValType(typ, wasm.I32)
+}
+func swarSignatureSlots(types []wasm.ValType) int {
+	slots := len(types)
+	for _, typ := range types {
+		if wasm.EqualValType(typ, wasm.V128) {
+			slots++
+		}
+	}
+	return slots
 }
