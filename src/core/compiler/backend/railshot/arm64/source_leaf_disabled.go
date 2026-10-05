@@ -5,4 +5,3 @@ package arm64
 func checkSourceBegin(*fn, bool)    {}
 func checkSourceFinishEmission(*fn) {}
 func checkSourceVerify(*fn)         {}
-func checkSourceClose(*fn)          {}

@@ -9,15 +9,14 @@ import (
 
 type sourceBranchInstruction struct {
 	effect                   regalloccheck.Effect
-	writes                   uint32
+	writes, journalWrites    uint32
 	section                  uint8 // entry, then, else, join, return
 	copy, condition, returns bool
 }
 type sourceBranchRecipe struct {
 	instructions           []sourceBranchInstruction
-	locals                 [2]regalloccheck.Location
 	thenResult, elseResult regalloccheck.Location
-	conditionReload        regalloccheck.Location
+	thenSource, elseSource regalloccheck.Location
 	invalid                string
 }
 
@@ -130,16 +129,12 @@ func decodeSourceBranchAMD64(code []byte) (sourceBranchRecipe, bool) {
 			if in.effect.Dst.Bank != regalloccheck.GP || in.effect.Src.Bank != regalloccheck.GP {
 				return r, false
 			}
-			r.locals[i] = in.effect.Dst
 		}
 		if i == 2 && (in.effect.Dst.Bank != regalloccheck.Frame || in.effect.Src.Bank != regalloccheck.GP) {
 			return r, false
 		}
 		if i == 3 && (in.effect.Src.Bank != regalloccheck.Frame || in.effect.Dst.Bank != regalloccheck.GP || in.effect.Size != 4) {
 			return r, false
-		}
-		if i == 3 {
-			r.conditionReload = in.effect.Dst
 		}
 		r.instructions = append(r.instructions, in)
 	}
@@ -175,7 +170,7 @@ func decodeSourceBranchAMD64(code []byte) (sourceBranchRecipe, bool) {
 	if !ok || thenMove.effect.Dst.Bank != regalloccheck.GP || thenMove.effect.Src.Bank != regalloccheck.GP {
 		return r, false
 	}
-	r.thenResult = thenMove.effect.Dst
+	r.thenSource, r.thenResult = thenMove.effect.Src, thenMove.effect.Dst
 	r.instructions = append(r.instructions, thenMove)
 	if pc+5 > end || code[pc] != 0xe9 {
 		return r, false
@@ -187,7 +182,7 @@ func decodeSourceBranchAMD64(code []byte) (sourceBranchRecipe, bool) {
 	if !ok || elseMove.effect.Dst.Bank != regalloccheck.GP || elseMove.effect.Src.Bank != regalloccheck.GP {
 		return r, false
 	}
-	r.elseResult = elseMove.effect.Dst
+	r.elseSource, r.elseResult = elseMove.effect.Src, elseMove.effect.Dst
 	r.instructions = append(r.instructions, elseMove)
 	joinStart := pc
 	returnMove, ok := copyInstruction(3)
@@ -195,17 +190,6 @@ func decodeSourceBranchAMD64(code []byte) (sourceBranchRecipe, bool) {
 		return r, false
 	}
 	r.instructions = append(r.instructions, returnMove, sourceBranchInstruction{section: 3, writes: 1 << 4}, sourceBranchInstruction{section: 4, writes: 1 << 4, returns: true})
-	// The source ledger preserves both local aliases at the join. This first
-	// bridge proves their unchanged pin carriers, rather than source liveness.
-	// Valid reuse of a dead pin needs another map and must stay Inconclusive.
-	if r.locals[0] == r.locals[1] {
-		return r, false
-	}
-	for _, local := range r.locals {
-		if local == r.conditionReload || local == r.thenResult || local == r.elseResult {
-			return r, false
-		}
-	}
 	if condition != 0x84 || falseTarget != int64(falseStart) || joinTarget != int64(joinStart) {
 		// Inverted predicates with swapped arms and preloaded result carriers
 		// can implement equivalent control flow. Only canonical destinations

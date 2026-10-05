@@ -39,7 +39,7 @@ func checkSourceFinishEmission(f *fn) {
 func checkSourceVerify(f *fn) {
 	if f.sourceLeaf == nil {
 		if f.sourceBranch != nil {
-			result := f.sourceBranch.Verify(f.a.B)
+			result := f.sourceBranch.Verify(f.a.B, false)
 			if result.Verdict == regalloccheck.Rejected {
 				panic("source allocation verification: " + result.Message)
 			}

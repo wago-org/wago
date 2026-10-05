@@ -3,13 +3,12 @@
 package shared
 
 import (
-	"bytes"
 	"github.com/wago-org/wago/internal/regalloccheck"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// SourceBranch proves only the framed AMD64 alias-if recipe. Its ledger names
+// SourceBranch proves only the bounded framed alias-if recipes. Its ledger names
 // are independent of pins and merge registers. Neither entering a block nor a
 // reload defines a semantic value: only proven simultaneous edges add aliases.
 type SourceBranch struct {
@@ -38,7 +37,7 @@ func BeginSourceBranch(s *ScalarState, m *wasm.Module, function int, admit bool)
 		return nil
 	}
 	s.sourceWork -= 32
-	if !admit || len(m.Code[function].Locals.Runs) != 0 || !bytes.Equal(m.Code[function].BodyBytes, []byte{0x20, 0, 0x04, 0x7f, 0x20, 1, 0x05, 0x20, 0, 0x0b, 0x0b}) {
+	if !admit || len(m.Code[function].Locals.Runs) != 0 || !sourceBranchBody(m.Code[function].BodyBytes) {
 		return nil
 	}
 	// Historical pool-entry credits cover the bounded source/journal/model pools
@@ -88,7 +87,9 @@ func BeginSourceBranch(s *ScalarState, m *wasm.Module, function int, admit bool)
 		}
 		seen[index] = true
 	}
-	if l.Input(1, 0) != l.EntryLocal(0) || l.Output(2, 0) != l.BlockParameter(b.then, 1) || l.Output(4, 0) != l.BlockParameter(b.otherwise, 0) ||
+	body := m.Code[function].BodyBytes
+	if l.Event(0).Index != uint32(body[1]) || l.Event(2).Index != uint32(body[5]) || l.Event(4).Index != uint32(body[8]) ||
+		l.Input(1, 0) != l.EntryLocal(int(body[1])) || l.Output(2, 0) != l.BlockParameter(b.then, int(body[5])) || l.Output(4, 0) != l.BlockParameter(b.otherwise, int(body[8])) ||
 		l.Input(6, 0) != l.BlockParameter(b.join, 2) || !l.Event(6).FunctionEnd {
 		return nil
 	}
@@ -104,12 +105,12 @@ func BeginSourceBranch(s *ScalarState, m *wasm.Module, function int, admit bool)
 		switch {
 		case e.From == b.entry && e.To == b.then:
 			bit = 1
-			if e.Arm != wasm.SourceThen || e.Condition != l.EntryLocal(0) || e.ArgumentCount != 2 {
+			if e.Arm != wasm.SourceThen || e.Condition != l.EntryLocal(int(body[1])) || e.ArgumentCount != 2 {
 				return nil
 			}
 		case e.From == b.entry && e.To == b.otherwise:
 			bit = 2
-			if e.Arm != wasm.SourceElse || e.Condition != l.EntryLocal(0) || e.ArgumentCount != 2 {
+			if e.Arm != wasm.SourceElse || e.Condition != l.EntryLocal(int(body[1])) || e.ArgumentCount != 2 {
 				return nil
 			}
 		case (e.From == b.then || e.From == b.otherwise) && e.To == b.join:
@@ -168,7 +169,7 @@ func (b *SourceBranch) Close() {
 	*b = SourceBranch{}
 }
 
-func (b *SourceBranch) Verify(code []byte) regalloccheck.Result {
+func (b *SourceBranch) Verify(code []byte, arm bool) regalloccheck.Result {
 	if b == nil || b.owner == nil || b.attempt == nil || b.attempt.owner != b.owner || b.owner.sourceAttempt != b.attempt || b.ledger == nil || b.attempt.ledger != b.ledger {
 		return sourceLeafUnavailable(regalloccheck.InvalidGraph, "framed source attempt closed")
 	}
@@ -192,6 +193,9 @@ func (b *SourceBranch) Verify(code []byte) regalloccheck.Result {
 		return r
 	}
 	decoded, ok := decodeSourceBranchAMD64(code)
+	if arm {
+		decoded, ok = decodeSourceBranchARM64(code)
+	}
 	if !ok {
 		return r
 	}
@@ -204,10 +208,14 @@ func (b *SourceBranch) Verify(code []byte) regalloccheck.Result {
 				return r
 			}
 		}
-		if in.writes != 0 {
+		writes := in.writes
+		if in.journalWrites != 0 {
+			writes = in.journalWrites
+		}
+		if writes != 0 {
 			e, found := b.journal.Event(observed)
 			observed++
-			if !found || e.Kind != regalloccheck.JournalGPWrites || e.GPWrites != in.writes {
+			if !found || e.Kind != regalloccheck.JournalGPWrites || e.GPWrites != writes {
 				return r
 			}
 		}
@@ -253,7 +261,7 @@ func (b *SourceBranch) Verify(code []byte) regalloccheck.Result {
 		}
 		// Copy already accounts for destination writes and partial widths.
 		if !in.copy && in.writes != 0 {
-			for reg := uint8(0); reg < 16; reg++ {
+			for reg := uint8(0); reg < 32; reg++ {
 				if in.writes&(1<<reg) != 0 {
 					*ops = append(*ops, regalloccheck.Operation{Kind: regalloccheck.Machine, Effect: regalloccheck.Effect{Kind: regalloccheck.Kill, Dst: leafReg(reg), Size: 8}})
 				}
@@ -262,20 +270,22 @@ func (b *SourceBranch) Verify(code []byte) regalloccheck.Result {
 	}
 	for i := 0; i < l.EdgeCount(); i++ {
 		e := l.Edge(i)
-		edge := regalloccheck.Edge{To: e.To, Parameters: make([]regalloccheck.Parameter, e.ArgumentCount)}
-		for j := 0; j < e.ArgumentCount; j++ {
-			location := leafReg(0)
-			if e.From != b.join {
-				if j < 2 {
-					location = decoded.locals[j]
-				} else if e.From == b.then {
-					location = decoded.thenResult
-				} else {
-					location = decoded.elseResult
-				}
-			}
-			edge.Parameters[j] = regalloccheck.Parameter{From: regalloccheck.ValueID(l.EdgeArgument(i, j)), To: regalloccheck.ValueID(l.BlockParameter(e.To, j)), Location: location}
+		// The exact source skeleton has one live operand per outgoing arm and
+		// one live result at the join. Other local phis are dead; preserving
+		// their original pins would forbid valid register reuse. Use only the
+		// authoritative selected source IDs and the final decoded carriers.
+		argument, location := 0, leafReg(0)
+		switch {
+		case e.From == b.entry && e.To == b.then:
+			argument, location = int(l.Event(2).Index), decoded.thenSource
+		case e.From == b.entry && e.To == b.otherwise:
+			argument, location = int(l.Event(4).Index), decoded.elseSource
+		case e.From == b.then:
+			argument, location = 2, decoded.thenResult
+		case e.From == b.otherwise:
+			argument, location = 2, decoded.elseResult
 		}
+		edge := regalloccheck.Edge{To: e.To, Parameters: []regalloccheck.Parameter{{From: regalloccheck.ValueID(l.EdgeArgument(i, argument)), To: regalloccheck.ValueID(l.BlockParameter(e.To, argument)), Location: location}}}
 		g.Blocks[e.From].Edges = append(g.Blocks[e.From].Edges, edge)
 	}
 	if b.owner.sourceWork < 1 {
@@ -285,4 +295,10 @@ func (b *SourceBranch) Verify(code []byte) regalloccheck.Result {
 	r = g.Verify(regalloccheck.Limits{Blocks: 5, Values: 10, Operations: 128, Facts: 4096, Work: min(65536, b.owner.sourceWork)})
 	b.owner.sourceWork -= r.Work
 	return r
+}
+
+// sourceBranchBody bounds the family before building any source metadata.
+func sourceBranchBody(body []byte) bool {
+	return len(body) == 11 && body[0] == 0x20 && body[1] < 2 && body[2] == 0x04 && body[3] == 0x7f &&
+		body[4] == 0x20 && body[5] < 2 && body[6] == 0x05 && body[7] == 0x20 && body[8] < 2 && body[9] == 0x0b && body[10] == 0x0b
 }

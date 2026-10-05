@@ -12,7 +12,12 @@ import (
 
 func sourceBranchFixture(t *testing.T) (*ScalarState, *wasm.Module) {
 	t.Helper()
-	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}}}}}, FuncTypes: []wasm.TypeIdx{{}}, Code: []wasm.Func{{BodyBytes: []byte{0x20, 0, 0x04, 0x7f, 0x20, 1, 0x05, 0x20, 0, 0x0b, 0x0b}}}}
+	return sourceBranchIndexedFixture(t, 0, 1, 0)
+}
+
+func sourceBranchIndexedFixture(t *testing.T, condition, then, otherwise byte) (*ScalarState, *wasm.Module) {
+	t.Helper()
+	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}}}}}, FuncTypes: []wasm.TypeIdx{{}}, Code: []wasm.Func{{BodyBytes: []byte{0x20, condition, 0x04, 0x7f, 0x20, then, 0x05, 0x20, otherwise, 0x0b, 0x0b}}}}
 	a := new(wasm.ValidatedModuleAnalysis)
 	if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, a); err != nil {
 		t.Fatal(err)
@@ -36,13 +41,13 @@ func TestSourceBranchEncoderProofControls(t *testing.T) {
 		{"wide condition", regalloccheck.Inconclusive},
 		{"different test operands", regalloccheck.Inconclusive},
 		{"aliased test operands", regalloccheck.Inconclusive},
-		{"reused condition pin", regalloccheck.Inconclusive},
-		{"reused merge pin", regalloccheck.Inconclusive},
+		{"reused condition pin", regalloccheck.Verified},
+		{"reused merge pin", regalloccheck.Verified},
 		{"large balanced frame", regalloccheck.Inconclusive},
 		{"wrong then", regalloccheck.Rejected},
 		{"wrong else", regalloccheck.Rejected},
 		{"wrong return", regalloccheck.Rejected},
-		{"duplicate pins", regalloccheck.Inconclusive},
+		{"duplicate pins", regalloccheck.Verified},
 		{"wrong predicate", regalloccheck.Inconclusive},
 		{"wrong false target", regalloccheck.Inconclusive},
 		{"wrong join target", regalloccheck.Inconclusive},
@@ -184,11 +189,11 @@ func TestSourceBranchEncoderProofControls(t *testing.T) {
 			if test.name == "changed length" {
 				code = code[:len(code)-1]
 			}
-			r := b.Verify(code)
+			r := b.Verify(code, false)
 			if r.Verdict != test.verdict {
 				t.Fatalf("result=%+v code=%x", r, code)
 			}
-			if again := b.Verify(code); again != r {
+			if again := b.Verify(code, false); again != r {
 				t.Fatal("duplicate verification changed result")
 			}
 			journal, ledger, token := b.journal, b.ledger, b.attempt
@@ -256,7 +261,7 @@ func TestSourceBranchRetiredWorkerCannotReuseProof(t *testing.T) {
 	codegen.RecordSourceResult(s.sourceContext, 0, regalloccheck.Result{Verdict: regalloccheck.Verified})
 	b.result = regalloccheck.Result{Verdict: regalloccheck.Rejected}
 	work, storage := s.sourceWork, s.sourceStorage
-	if r := b.Verify(make([]byte, 64)); r.Verdict != regalloccheck.Inconclusive || r.Reason != regalloccheck.InvalidGraph {
+	if r := b.Verify(make([]byte, 64), false); r.Verdict != regalloccheck.Inconclusive || r.Reason != regalloccheck.InvalidGraph {
 		t.Fatalf("retired proof=%+v", r)
 	}
 	b.Close()

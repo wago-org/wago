@@ -74,7 +74,7 @@ func TestSourceBranchNativeObserverPanicCleanup(t *testing.T) {
 	if failure == nil || !strings.Contains(failure.(string), "immutable GP reservation overwritten") {
 		t.Fatalf("panic changed: %v", failure)
 	}
-	if f.sourceBranch != nil || f.sourceRestore != nil || leaf.Verify(nil).Verdict == regalloccheck.Verified {
+	if f.sourceBranch != nil || f.sourceRestore != nil || leaf.Verify(nil, false).Verdict == regalloccheck.Verified {
 		t.Fatal("panic retained proof")
 	}
 	f.checkEndLifetimes()
