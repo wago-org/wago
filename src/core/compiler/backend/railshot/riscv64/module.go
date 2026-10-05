@@ -29,6 +29,7 @@ type FunctionInfo struct {
 	Entry, CodeBytes, Params, FrameBytes, SpillSlots, Spills, Reloads int
 	Result64                                                          bool
 	Fallback                                                          bool
+	FrameHeaderBytes, DirectCalls                                     int
 }
 
 // Compiled owns immutable heap code and metadata, never executable mappings.
@@ -103,13 +104,15 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 	}
 	c := &Compiled{state: state, functions: make([]FunctionInfo, len(m.Code)), exports: make(map[string]int, len(m.Exports))}
 	var worker shared.ScalarState
+	var relocations []directCall
 	defer worker.FinishWorker()
 	for i := range m.Code {
 		ft, _ := m.LocalFuncType(i)
 		var code []byte
 		var info FunctionInfo
+		var calls []directCall
 		if fallback[i] {
-			code, info, err = compileInteger(&m.Code[i], ft, &state, integerSummaries[i])
+			code, info, calls, err = compileInteger(&m.Code[i], ft, &state, integerSummaries[i])
 		} else {
 			code, info, err = compileFunction(&worker, &m.Code[i], ft, summaries[i], regs)
 		}
@@ -123,6 +126,18 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 		info.CodeBytes = len(code)
 		c.code = append(c.code, code...)
 		c.functions[i] = info
+		for j := range calls {
+			calls[j].site += info.Entry
+		}
+		relocations = append(relocations, calls...)
+	}
+	// All framed entries are now known. These remain image-relative transfers;
+	// no executable addresses or alternate-backend code are retained.
+	image := enc.Asm{B: c.code}
+	for _, call := range relocations {
+		if err := image.PatchLong(call.site, int64(c.functions[call.callee].Entry)); err != nil {
+			return nil, fmt.Errorf("rv64: direct call relocation: %w", err)
+		}
 	}
 	for _, ex := range m.Exports {
 		if ex.Index.Kind == wasm.ExternFunc {
@@ -261,12 +276,18 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 }
 
 func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bool, contextOffset int, info FunctionInfo) ([]byte, FunctionInfo, error) {
+	return frameFunctionCalls(body, widths, nparams, slots, initialize, contextOffset, info, nil)
+}
+func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initialize bool, contextOffset int, info FunctionInfo, calls []directCall) ([]byte, FunctionInfo, error) {
 	nlocals := len(widths)
-	frame := (16 + 8*nlocals + 8*slots + 15) &^ 15
+	if info.FrameHeaderBytes == 0 {
+		info.FrameHeaderBytes = 16
+	}
+	frame := (info.FrameHeaderBytes + 8*nlocals + 8*slots + 15) &^ 15
 	if frame > MaxFrameBytes {
 		return nil, FunctionInfo{}, fmt.Errorf("frame exceeds %d bytes", MaxFrameBytes)
 	}
-	var entry target
+	entry := target{header: info.FrameHeaderBytes}
 	reversed := entry.a.BranchLong(enc.LTU, enc.SP, enc.X13)
 	entry.a.Constant64(enc.Scratch0, int64(frame))
 	entry.a.Sub(enc.Scratch1, enc.SP, enc.X13)
@@ -274,6 +295,11 @@ func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bo
 	entry.a.Sub(enc.SP, enc.SP, enc.Scratch0)
 	entry.a.Sd(enc.RA, enc.SP, 0)
 	entry.a.Sd(enc.X11, enc.SP, 8)
+	if info.FrameHeaderBytes == callFrameHeader {
+		entry.a.Sd(enc.X10, enc.SP, 16)
+		entry.a.Sd(enc.X12, enc.SP, 24)
+		entry.a.Sd(enc.X13, enc.SP, 32)
+	}
 	if contextOffset >= 0 {
 		if contextOffset <= 2047 {
 			entry.a.Ld(enc.X24, enc.X10, int32(contextOffset))
@@ -291,6 +317,9 @@ func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bo
 		for i := nparams; i < nlocals; i++ {
 			entry.Store(entry.LocalOffset(i), uint8(enc.Zero), widths[i])
 		}
+	}
+	for j := range calls {
+		calls[j].site += entry.Position()
 	}
 	entry.a.B = append(entry.a.B, body...)
 	entry.a.Ld(enc.RA, enc.SP, 0)

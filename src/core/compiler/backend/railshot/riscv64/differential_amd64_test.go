@@ -77,6 +77,35 @@ func TestEstablishedAMD64SameScalarFixtures(t *testing.T) {
 	}
 }
 
+func TestEstablishedAMD64SameDirectCallFixtures(t *testing.T) {
+	x := uint32(0x80000000)
+	for _, tc := range []struct {
+		data []byte
+		args []uint64
+		want uint64
+	}{
+		{binaryModule(sumCallFixture(0)), []uint64{dirty(32)}, 528},
+		{binaryModule(mutualCallFixture(1, 1), mutualCallFixture(0, 0)), []uint64{dirty(31)}, 0},
+		{binaryModule(pressureCallFixture(), pressureFixture()), []uint64{dirty(x), dirty(3)}, uint64((x*98 + 2352) / 3)},
+	} {
+		c, err := wago.Compile(tc.data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i, err := wago.Instantiate(c)
+		if err != nil {
+			c.Close()
+			t.Fatal(err)
+		}
+		got, err := i.Invoke("a", tc.args...)
+		if err != nil || len(got) != 1 || got[0] != tc.want {
+			t.Fatal("established call result", got, tc.want, err)
+		}
+		i.Close()
+		c.Close()
+	}
+}
+
 func TestEstablishedAMD64SameIntegerControls(t *testing.T) {
 	for _, tc := range integerControls() {
 		t.Run(tc.name, func(t *testing.T) {

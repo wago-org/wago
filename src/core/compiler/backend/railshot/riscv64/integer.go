@@ -21,6 +21,7 @@ const (
 type integerSummary struct {
 	maxStack int
 	context  bool
+	calls    int
 }
 type integerControl struct {
 	base                                         int
@@ -32,7 +33,9 @@ type integerControl struct {
 type integerTrap struct{ site, code int }
 type integerEmitter struct {
 	target
-	traps []integerTrap
+	traps     []integerTrap
+	calls     []directCall
+	propagate []int
 }
 
 // The separate fallback uses fixed temporary registers and canonical operand
@@ -65,6 +68,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	depth, h, peak, budget := 1, 0, 0, nlocals
 	live := true
 	contextUsed := false
+	callCount := 0
 	pop := func() (bool, error) {
 		if h <= ctrl[depth-1].base {
 			if !live {
@@ -369,6 +373,31 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 				}
 			}
+		case 0x10:
+			idx, e := r.U32()
+			if e != nil {
+				return integerSummary{}, e
+			}
+			if state == nil || int(idx) >= len(state.functions) {
+				return integerSummary{}, unsupported("nonlocal direct call")
+			}
+			sig := state.functions[idx]
+			callCount++
+			budget += len(sig.params)
+			if callCount > maxDirectCalls || budget > integerBudget {
+				return integerSummary{}, unsupported("direct call count/parameter budget")
+			}
+			for range sig.params {
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+			}
+			if live && emit != nil {
+				emit.directCall(idx, sig, h)
+			}
+			if err = push(sig.result64); err != nil {
+				return integerSummary{}, err
+			}
 		case 0x23, 0x24:
 			idx, e := r.U32()
 			if e != nil {
@@ -548,7 +577,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	if r.HasNext() {
 		return integerSummary{}, fmt.Errorf("rv64: trailing validated bytecode")
 	}
-	return integerSummary{maxStack: peak, context: contextUsed}, nil
+	return integerSummary{maxStack: peak, context: contextUsed, calls: callCount}, nil
 }
 
 func integerOpcode(op byte) (shared.IntOp, bool, bool, bool, bool) {
@@ -724,7 +753,7 @@ func (f *integerEmitter) operation(op shared.IntOp, w, unary, resultWide bool) {
 	}
 }
 
-func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summary integerSummary) ([]byte, FunctionInfo, error) {
+func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summary integerSummary) ([]byte, FunctionInfo, []directCall, error) {
 	var widths [256]bool
 	n := len(ft.Params)
 	for i, t := range ft.Params {
@@ -737,12 +766,15 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summar
 		}
 	}
 	f := integerEmitter{target: target{nlocals: n}}
+	if summary.calls != 0 {
+		f.header = callFrameHeader
+	}
 	actual, err := walkInteger(fn, ft, state, &f)
 	if err != nil {
-		return nil, FunctionInfo{}, err
+		return nil, FunctionInfo{}, nil, err
 	}
 	if actual != summary {
-		return nil, FunctionInfo{}, fmt.Errorf("rv64: integer admission changed")
+		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: integer admission changed")
 	}
 	exits := []int{f.Jump()}
 	for code := TrapUnreachable; code <= TrapMemoryBounds; code++ {
@@ -751,7 +783,7 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summar
 		for _, tr := range f.traps {
 			if tr.code == code {
 				if err = f.Patch(tr.site, pos); err != nil {
-					return nil, FunctionInfo{}, err
+					return nil, FunctionInfo{}, nil, err
 				}
 				used = true
 			}
@@ -763,21 +795,31 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summar
 			exits = append(exits, f.Jump())
 		}
 	}
+	if len(f.propagate) != 0 {
+		for _, site := range f.propagate {
+			if err = f.Patch(site, f.Position()); err != nil {
+				return nil, FunctionInfo{}, nil, err
+			}
+		}
+		// Preserve the callee's trap code and serialized cell; just unwind.
+		f.Constant(10, 0, true)
+	}
 	for _, site := range exits {
 		if err = f.Patch(site, f.Position()); err != nil {
-			return nil, FunctionInfo{}, err
+			return nil, FunctionInfo{}, nil, err
 		}
 	}
 	if f.err != nil {
-		return nil, FunctionInfo{}, f.err
+		return nil, FunctionInfo{}, nil, f.err
 	}
 	if f.a.Err() != nil {
-		return nil, FunctionInfo{}, f.a.Err()
+		return nil, FunctionInfo{}, nil, f.a.Err()
 	}
-	info := FunctionInfo{Params: len(ft.Params), SpillSlots: summary.maxStack, Result64: wasm.EqualValType(ft.Results[0], wasm.I64), Fallback: true}
+	info := FunctionInfo{Params: len(ft.Params), SpillSlots: summary.maxStack, Result64: wasm.EqualValType(ft.Results[0], wasm.I64), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls)}
 	contextOffset := -1
 	if summary.context {
 		contextOffset = (state.capacity + 1) * 8
 	}
-	return frameFunction(f.a.B, widths[:n], len(ft.Params), summary.maxStack, true, contextOffset, info)
+	code, info, err := frameFunctionCalls(f.a.B, widths[:n], len(ft.Params), summary.maxStack, true, contextOffset, info, f.calls)
+	return code, info, f.calls, err
 }

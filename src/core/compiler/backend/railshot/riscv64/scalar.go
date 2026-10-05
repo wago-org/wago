@@ -17,6 +17,7 @@ type target struct {
 	a       enc.Asm
 	regs    []uint8
 	nlocals int
+	header  int
 	err     error
 }
 
@@ -24,8 +25,14 @@ var _ shared.ScalarTarget = (*target)(nil)
 
 func (f *target) Registers() ([]uint8, uint64)      { return f.regs, enc.ReservedMask }
 func (*target) ParameterRegister(int) (uint8, bool) { return 0, false }
-func (f *target) LocalOffset(i int) int32           { return int32(16 + 8*i) }
-func (f *target) SpillOffset(i int) int32           { return int32(16 + 8*f.nlocals + 8*i) }
+func (f *target) frameHeader() int {
+	if f.header == 0 {
+		return 16
+	}
+	return f.header
+}
+func (f *target) LocalOffset(i int) int32 { return int32(f.frameHeader() + 8*i) }
+func (f *target) SpillOffset(i int) int32 { return int32(f.frameHeader() + 8*f.nlocals + 8*i) }
 func (f *target) Constant(r uint8, v int64, w bool) {
 	if w {
 		f.a.Constant64(enc.Reg(r), v)

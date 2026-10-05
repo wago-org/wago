@@ -67,7 +67,11 @@ func binaryModule(fs ...fixtureFunc) []byte {
 		types = append(types, 0x60)
 		types = uleb(types, uint32(len(f.params)))
 		types = append(types, f.params...)
-		types = append(types, 1, f.result)
+		if f.result == 0 {
+			types = append(types, 0)
+		} else {
+			types = append(types, 1, f.result)
+		}
 		functions = uleb(functions, uint32(i))
 		if !f.unexported {
 			name := []byte{byte('a' + i)}
@@ -130,8 +134,8 @@ func TestCompileAdmissionAndImmutableMetadata(t *testing.T) {
 func TestRejectCompleteModule(t *testing.T) {
 	good := fixtureFunc{result: 0x7f, body: []byte{0x41, 1, 0x0b}}
 	for name, bad := range map[string]fixtureFunc{
-		"hidden-fp":   {result: 0x7d, body: []byte{0x43, 0, 0, 0, 0, 0x0b}},
-		"hidden-call": {result: 0x7f, body: []byte{0x10, 0, 0x0b}},
+		"hidden-fp":          {result: 0x7d, body: []byte{0x43, 0, 0, 0, 0, 0x0b}},
+		"hidden-return-call": {result: 0x7f, body: []byte{0x12, 0, 0x0b}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			bad.unexported = true

@@ -77,7 +77,9 @@ func (e *TrapError) Error() string { return fmt.Sprintf("rv64: native snippet tr
 // Call invokes a trusted, statically bounded integer snippet at a byte offset.
 // The experimental guest ABI is a0/a1 inputs, a0 result, a2 trap-cell pointer,
 // a3 stack fence. The snippet must preserve SP/RA and must not change gp/tp/g.
-// frameBytes is its proven maximum stack descent (at least 16, aligned to 16).
+// frameBytes is its proven entry frame (at least 16, aligned to 16). Any nested
+// guest frame must independently guard available stack before SP changes/writes;
+// the entry-frame check alone does not bound transitive or recursive descent.
 // This is not admission of arbitrary Wasm or untrusted native machine code.
 func (e *Engine) Call(p *Program, offset int, a0, a1 uint64, frameBytes int) (uint64, error) {
 	if e == nil || p == nil {

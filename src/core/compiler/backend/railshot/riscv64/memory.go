@@ -16,6 +16,10 @@ type globalSpec struct {
 	wide, mutable bool
 	value         uint64
 }
+type functionSpec struct {
+	params   []bool
+	result64 bool
+}
 type memorySpec struct {
 	min              uint32
 	max              uint64
@@ -27,6 +31,7 @@ type moduleState struct {
 	globals       []globalSpec
 	data          []native.MemoryInitializer
 	passiveData   [][]byte // all Wasm data indices; active entries are dropped/nil
+	functions     []functionSpec
 	capacity      int
 	memoryExports map[string]bool
 	globalExports map[string]int
@@ -126,6 +131,11 @@ func admitState(m *wasm.Module) (moduleState, error) {
 	for j := range m.Code {
 		ft, _ := m.LocalFuncType(j)
 		s.capacity = max(s.capacity, len(ft.Params))
+		fn := functionSpec{params: make([]bool, len(ft.Params)), result64: wasm.EqualValType(ft.Results[0], wasm.I64)}
+		for k, t := range ft.Params {
+			fn.params[k] = wasm.EqualValType(t, wasm.I64)
+		}
+		s.functions = append(s.functions, fn)
 	}
 	return s, nil
 }
