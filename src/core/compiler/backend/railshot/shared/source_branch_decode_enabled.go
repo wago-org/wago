@@ -17,6 +17,7 @@ type sourceBranchRecipe struct {
 	instructions           []sourceBranchInstruction
 	thenResult, elseResult regalloccheck.Location
 	thenSource, elseSource regalloccheck.Location
+	loopLocals             [3]regalloccheck.Location
 	invalid                string
 }
 
@@ -49,76 +50,12 @@ func decodeSourceBranchAMD64(code []byte) (sourceBranchRecipe, bool) {
 	// Decode only MOV register/register and direct RSP+disp stores/loads. REX
 	// index/base extensions and SIB scale/index are excluded before any facts.
 	copyInstruction := func(section uint8) (sourceBranchInstruction, bool) {
-		in := sourceBranchInstruction{section: section, copy: true}
-		rex := byte(0)
-		if pc < end && code[pc] >= 0x40 && code[pc] <= 0x4f {
-			rex = code[pc]
-			pc++
+		in, next, invalid, ok := decodeSourceTransferAMD64(code, pc, end, frame, section)
+		pc = next
+		if invalid != "" {
+			r.invalid = invalid
 		}
-		if pc+2 > end || rex&2 != 0 {
-			return in, false
-		}
-		op, modrm := code[pc], code[pc+1]
-		pc += 2
-		if op != 0x89 && op != 0x8b {
-			return in, false
-		}
-		reg := uint8((modrm>>3)&7) | ((rex>>2)&1)<<3
-		if !allowed(reg) {
-			return in, false
-		}
-		size := 4
-		if rex&8 != 0 {
-			size = 8
-		}
-		in.effect = regalloccheck.Effect{Kind: regalloccheck.Copy, Size: size}
-		if modrm&0xc0 == 0xc0 {
-			rm := uint8(modrm&7) | (rex&1)<<3
-			if !allowed(rm) {
-				return in, false
-			}
-			in.effect.Dst, in.effect.Src = leafReg(rm), leafReg(reg)
-			if op == 0x8b {
-				in.effect.Dst, in.effect.Src = in.effect.Src, in.effect.Dst
-			}
-			in.writes = 1 << uint8(in.effect.Dst.Index)
-			return in, true
-		}
-		if rex&1 != 0 || modrm&7 != 4 || pc >= end || code[pc] != 0x24 {
-			return in, false
-		}
-		pc++
-		var offset int32
-		switch modrm & 0xc0 {
-		case 0:
-			offset = 0
-		case 0x40:
-			if pc >= end {
-				return in, false
-			}
-			offset = int32(int8(code[pc]))
-			pc++
-		case 0x80:
-			if pc+4 > end {
-				return in, false
-			}
-			offset = int32(binary.LittleEndian.Uint32(code[pc : pc+4]))
-			pc += 4
-		default:
-			return in, false
-		}
-		if offset < 0 || uint64(offset)+uint64(size) > frame {
-			r.invalid = "frame Copy lies outside reserved body SP region"
-		}
-		in.effect.Dst, in.effect.Src = regalloccheck.Slot(offset), leafReg(reg)
-		if op == 0x8b {
-			in.effect.Dst, in.effect.Src = in.effect.Src, in.effect.Dst
-			in.writes = 1 << reg
-			if size == 4 {
-				in.effect.ClearTo = 8
-			}
-		}
-		return in, true
+		return in, ok
 	}
 	for i := 0; i < 4; i++ {
 		in, ok := copyInstruction(0)

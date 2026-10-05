@@ -8,17 +8,19 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// SourceBranch proves only the bounded framed alias-if recipes. Its ledger names
+// SourceBranch owns one bounded alias-if or alias-loop attempt. Its ledger names
 // are independent of pins and merge registers. Neither entering a block nor a
 // reload defines a semantic value: only proven simultaneous edges add aliases.
 type SourceBranch struct {
-	owner                              *ScalarState
-	attempt                            *SourceAttempt
-	ledger                             *wasm.SourceLedger
-	journal                            *regalloccheck.EmissionJournal
-	oldLen                             int
-	done                               bool
-	result                             regalloccheck.Result
+	owner      *ScalarState
+	attempt    *SourceAttempt
+	ledger     *wasm.SourceLedger
+	journal    *regalloccheck.EmissionJournal
+	oldLen     int
+	done, loop bool
+	result     regalloccheck.Result
+	// In the loop family, then is the header, otherwise is its false successor,
+	// and join is the block following the loop.
 	entry, then, otherwise, join, exit int
 }
 
@@ -182,19 +184,31 @@ func (b *SourceBranch) Verify(code []byte, arm bool) regalloccheck.Result {
 	if len(code) != b.oldLen || len(code) > 128 {
 		return r
 	}
-	if b.owner.sourceWork < 1024 {
+	decodeWork := 1024
+	if b.loop {
+		decodeWork = 4096
+	}
+	if b.owner.sourceWork < decodeWork {
 		r = sourceLeafUnavailable(regalloccheck.ResourceLimit, "framed native work exhausted")
 		return r
 	}
-	b.owner.sourceWork -= 1024
+	b.owner.sourceWork -= decodeWork
 	jr := b.journal.Finalize(b.oldLen, len(code), nil)
 	if jr.State != regalloccheck.JournalReady {
 		r = sourceLeafUnavailable(jr.Reason, jr.Message)
 		return r
 	}
-	decoded, ok := decodeSourceBranchAMD64(code)
-	if arm {
+	var decoded sourceBranchRecipe
+	var ok bool
+	switch {
+	case b.loop && !arm:
+		decoded, ok = decodeSourceLoopAMD64(code)
+	case b.loop:
+		return r
+	case arm:
 		decoded, ok = decodeSourceBranchARM64(code)
+	default:
+		decoded, ok = decodeSourceBranchAMD64(code)
 	}
 	if !ok {
 		return r
@@ -231,7 +245,14 @@ func (b *SourceBranch) Verify(code []byte, arm bool) regalloccheck.Result {
 	}
 	l := b.ledger
 	g := regalloccheck.Graph{Widths: make([]uint8, l.ValueCount()), Blocks: make([]regalloccheck.Block, l.BlockCount()), Entry: b.entry,
-		Inputs: []regalloccheck.Binding{{Location: leafReg(0), Value: regalloccheck.ValueID(l.EntryLocal(0))}, {Location: leafReg(1), Value: regalloccheck.ValueID(l.EntryLocal(1))}}}
+		Inputs: make([]regalloccheck.Binding, l.LocalCount())}
+	for i := range g.Inputs {
+		g.Inputs[i] = regalloccheck.Binding{Location: leafReg(uint8(i)), Value: regalloccheck.ValueID(l.EntryLocal(i))}
+	}
+	conditionEvent := 1
+	if b.loop {
+		conditionEvent = 6
+	}
 	for i := range g.Widths {
 		g.Widths[i] = 4
 	}
@@ -255,7 +276,7 @@ func (b *SourceBranch) Verify(code []byte, arm bool) regalloccheck.Result {
 			}
 			*ops = append(*ops, regalloccheck.Operation{Kind: regalloccheck.Machine, Effect: e})
 		} else if in.condition {
-			*ops = append(*ops, regalloccheck.Operation{Kind: regalloccheck.Use, Location: in.effect.Src, Value: regalloccheck.ValueID(l.Input(1, 0)), Where: "native if condition"})
+			*ops = append(*ops, regalloccheck.Operation{Kind: regalloccheck.Use, Location: in.effect.Src, Value: regalloccheck.ValueID(l.Input(conditionEvent, 0)), Where: "native source condition"})
 		} else if in.returns {
 			*ops = append(*ops, regalloccheck.Operation{Kind: regalloccheck.Use, Location: leafReg(0), Value: regalloccheck.ValueID(l.BlockParameter(b.exit, 0)), Where: "framed native return"})
 		}
@@ -270,6 +291,22 @@ func (b *SourceBranch) Verify(code []byte, arm bool) regalloccheck.Result {
 	}
 	for i := 0; i < l.EdgeCount(); i++ {
 		e := l.Edge(i)
+		if b.loop {
+			arguments := 1
+			if e.To == b.then {
+				arguments = 3
+			}
+			edge := regalloccheck.Edge{To: e.To, Parameters: make([]regalloccheck.Parameter, arguments)}
+			for j := 0; j < arguments; j++ {
+				location := decoded.loopLocals[j]
+				if e.From == b.join {
+					location = leafReg(0)
+				}
+				edge.Parameters[j] = regalloccheck.Parameter{From: regalloccheck.ValueID(l.EdgeArgument(i, j)), To: regalloccheck.ValueID(l.BlockParameter(e.To, j)), Location: location}
+			}
+			g.Blocks[e.From].Edges = append(g.Blocks[e.From].Edges, edge)
+			continue
+		}
 		// The exact source skeleton has one live operand per outgoing arm and
 		// one live result at the join. Other local phis are dead; preserving
 		// their original pins would forbid valid register reuse. Use only the
@@ -292,7 +329,7 @@ func (b *SourceBranch) Verify(code []byte, arm bool) regalloccheck.Result {
 		r = sourceLeafUnavailable(regalloccheck.ResourceLimit, "framed graph work exhausted")
 		return r
 	}
-	r = g.Verify(regalloccheck.Limits{Blocks: 5, Values: 10, Operations: 128, Facts: 4096, Work: min(65536, b.owner.sourceWork)})
+	r = g.Verify(regalloccheck.Limits{Blocks: 5, Values: 13, Operations: 128, Facts: 4096, Work: min(65536, b.owner.sourceWork)})
 	b.owner.sourceWork -= r.Work
 	return r
 }

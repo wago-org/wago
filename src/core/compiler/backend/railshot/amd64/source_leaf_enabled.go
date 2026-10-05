@@ -19,6 +19,11 @@ func checkSourceBegin(f *fn, hostAdapter bool) {
 		if f.sourceBranch != nil {
 			f.sourceRestore = f.ObserveScalarGraph(f.sourceBranch.ObserveEffect, f.sourceBranch.ObserveGPWrites)
 		}
+	} else if function >= 0 && function < len(f.m.Code) && len(f.m.Code[function].BodyBytes) == 18 {
+		f.sourceBranch = shared.BeginSourceLoop(&f.sc.scalar, f.m, function, admit)
+		if f.sourceBranch != nil {
+			f.sourceRestore = f.ObserveScalarGraph(f.sourceBranch.ObserveEffect, f.sourceBranch.ObserveGPWrites)
+		}
 	} else {
 		f.sourceLeaf = shared.BeginSourceLeaf(&f.sc.scalar, f.m, function, admit)
 		if f.sourceLeaf != nil {
