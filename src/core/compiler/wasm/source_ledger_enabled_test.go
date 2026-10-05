@@ -390,3 +390,61 @@ func TestSourceLedgerContractsWithObservedTransport(t *testing.T) {
 		}
 	}
 }
+
+// Canonical source literal IDs classify immutable definitions independently of
+// register owners. Actual typed materializations may preserve an earlier cache;
+// an intervening observed arithmetic write still destroys that cache's bytes.
+// Literal bits and the typed MovImm32 encoder are admitted here, not proved by
+// the transport graph. No emitted bytes are executed.
+func TestSourceLedgerCanonicalConstantsWithObservedMaterializations(t *testing.T) {
+	m := sourceModule(t, nil, []ValType{I32}, Instruction{Kind: InstrI32Const, I32: 7},
+		Instruction{Kind: InstrDrop}, Instruction{Kind: InstrI32Const, I32: 7})
+	l := sourceComplete(t, m, sourceAnalysis(t, m, ValidationFeatures{}), ValidationFeatures{})
+	id := l.Output(0, 0)
+	if id != l.Output(2, 0) || l.Value(id).Kind != SourceConstant || l.Value(id).Bits != 7 {
+		t.Fatal("literal identity not independently canonical")
+	}
+	for _, clobber := range []bool{false, true} {
+		g := regalloccheck.Graph{ConstValues: []regalloccheck.ValueID{regalloccheck.ValueID(id)}, Blocks: []regalloccheck.Block{{}}}
+		for i := 1; i <= l.ValueCount(); i++ {
+			g.Widths = append(g.Widths, 4)
+		}
+		appendOp := func(op regalloccheck.Operation) { g.Blocks[0].Operations = append(g.Blocks[0].Operations, op) }
+		var a enc.Asm
+		a.ObserveRegalloc(func(e regalloccheck.Effect) {
+			appendOp(regalloccheck.Operation{Kind: regalloccheck.Machine, Effect: e})
+		})
+		writes := uint32(0)
+		a.ObserveGPWrites(func(mask uint32) { writes |= mask })
+		materialize := func(reg enc.Reg) {
+			writes = 0
+			a.MovImm32(reg, int32(l.Value(id).Bits))
+			if writes != 1<<reg {
+				t.Fatal("unadmitted literal destination", writes)
+			}
+			appendOp(regalloccheck.Operation{Kind: regalloccheck.Machine, Effect: regalloccheck.Effect{Kind: regalloccheck.Kill, Dst: regalloccheck.Register(regalloccheck.GP, uint8(reg)), Size: 8}})
+			appendOp(regalloccheck.Operation{Kind: regalloccheck.DefineConstant, Location: regalloccheck.Register(regalloccheck.GP, uint8(reg)), Value: regalloccheck.ValueID(id)})
+		}
+		materialize(enc.R9)
+		a.MovRegReg32(enc.R10, enc.R9)
+		materialize(enc.RCX)
+		if clobber {
+			writes = 0
+			a.Add32(enc.R9, enc.RCX)
+			if writes != 1<<enc.R9 {
+				t.Fatal("unadmitted arithmetic destination", writes)
+			}
+			appendOp(regalloccheck.Operation{Kind: regalloccheck.Machine, Effect: regalloccheck.Effect{Kind: regalloccheck.Kill, Dst: regalloccheck.Register(regalloccheck.GP, uint8(enc.R9)), Size: 8}})
+		}
+		for _, reg := range []enc.Reg{enc.R9, enc.R10, enc.RCX} {
+			appendOp(regalloccheck.Operation{Kind: regalloccheck.Use, Location: regalloccheck.Register(regalloccheck.GP, uint8(reg)), Value: regalloccheck.ValueID(id)})
+		}
+		want := regalloccheck.Verified
+		if clobber {
+			want = regalloccheck.Rejected
+		}
+		if r := g.Verify(regalloccheck.Limits{}); r.Verdict != want {
+			t.Fatalf("clobber %v: %+v", clobber, r)
+		}
+	}
+}

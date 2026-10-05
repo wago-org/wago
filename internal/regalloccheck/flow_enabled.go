@@ -15,6 +15,7 @@ const (
 	Define
 	Use
 	Unsupported
+	DefineConstant // admitted immutable literal materialization; preserves other aliases
 )
 
 // Operation separates emitted effects from the semantic contract. Define is
@@ -51,9 +52,14 @@ type Block struct {
 // are its only entry assumptions. Clients must also bound graph construction.
 type Graph struct {
 	Widths []uint8
-	Blocks []Block
-	Entry  int
-	Inputs []Binding
+	// ConstValues classifies independently canonical type/bits identities.
+	// Classification does not prove literal bits or the emitted materialization.
+	// Those remain trusted source/recipe admission contracts. Immutable IDs may
+	// be used or copied, but never dynamically defined or renamed by an edge.
+	ConstValues []ValueID
+	Blocks      []Block
+	Entry       int
+	Inputs      []Binding
 }
 
 type Verdict uint8
@@ -353,6 +359,13 @@ func (s *flowImage) effect(e Effect) {
 func (s *flowImage) define(loc Location, id ValueID, width int) {
 	// Repeated loop definitions must not leave the previous iteration's aliases.
 	s.forget(id)
+	s.defineConstant(loc, id, width)
+}
+
+// A canonical constant's meaning cannot change on another materialization.
+// Clear the overwritten destination, retaining independently valid aliases.
+// Physical effects must precede this trusted semantic definition as usual.
+func (s *flowImage) defineConstant(loc Location, id ValueID, width int) {
 	s.clear(loc, width)
 	for i := 0; i < width; i++ {
 		s.add(loc.next(i), symbol{id, uint8(i)})
@@ -448,6 +461,26 @@ func (g *Graph) validate(b *flowBudget) string {
 			return "invalid semantic width"
 		}
 	}
+	if len(g.ConstValues) > len(g.Widths) {
+		return "invalid constant classification count"
+	}
+	var constants []bool
+	if len(g.ConstValues) != 0 {
+		// Values bounds the table before allocation, and Work accounts for its
+		// initialization as well as every classification inspected below.
+		b.charge(len(g.Widths) + 1)
+		constants = make([]bool, len(g.Widths)+1)
+		for _, id := range g.ConstValues {
+			b.charge(1)
+			if g.width(id) == 0 || constants[id] {
+				return "invalid or duplicate constant classification"
+			}
+			constants[id] = true
+		}
+	}
+	isConstant := func(id ValueID) bool {
+		return len(constants) != 0 && uint64(id) < uint64(len(constants)) && constants[id]
+	}
 	remaining := b.limits.Operations
 	consume := func(n int) bool {
 		if n > remaining {
@@ -472,9 +505,12 @@ func (g *Graph) validate(b *flowBudget) string {
 		}
 		for _, op := range block.Operations {
 			switch op.Kind {
-			case Define, Use:
+			case Define, DefineConstant, Use:
 				if !flowLocation(op.Location, g.width(op.Value), false) {
 					return "invalid semantic operation"
+				}
+				if op.Kind == DefineConstant && !isConstant(op.Value) || op.Kind == Define && isConstant(op.Value) {
+					return "definition violates constant classification"
 				}
 			case Machine:
 				e := op.Effect
@@ -513,7 +549,7 @@ func (g *Graph) validate(b *flowBudget) string {
 			}
 			seen := make(map[ValueID]bool)
 			for _, p := range edge.Parameters {
-				if g.width(p.From) == 0 || g.width(p.From) != g.width(p.To) || seen[p.To] || !flowLocation(p.Location, g.width(p.From), false) {
+				if g.width(p.From) == 0 || g.width(p.From) != g.width(p.To) || seen[p.To] || isConstant(p.To) || !flowLocation(p.Location, g.width(p.From), false) {
 					return "invalid or duplicate edge parameter"
 				}
 				seen[p.To] = true
@@ -531,6 +567,8 @@ func (g *Graph) run(s *flowImage, block int, check bool) *Result {
 			s.effect(op.Effect)
 		case Define:
 			s.define(op.Location, op.Value, g.width(op.Value))
+		case DefineConstant:
+			s.defineConstant(op.Location, op.Value, g.width(op.Value))
 		case Use:
 			if check {
 				if failure := g.check(s, op.Location, op.Value, op.Where, block, i); failure != nil {
