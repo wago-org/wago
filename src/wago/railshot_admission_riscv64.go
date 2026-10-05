@@ -87,13 +87,16 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	for _, global := range c.Globals {
-		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64) || global.HasInitGlobal || global.HasInitFunc || len(global.InitExpr) != 0 {
+	for i, global := range c.Globals {
+		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64) || global.HasInitFunc || len(global.InitExpr) != 0 {
 			return reject("global initializer lowering is pending")
+		}
+		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64ImportedInitializer(c, global.InitGlobal, global.Type)) {
+			return reject("global initializer requires an immutable scalar import of the exact type")
 		}
 	}
 	for _, data := range c.Data {
-		if data.MemoryIndex != 0 || data.Offset.HasGlobal || len(data.Offset.Expr) != 0 {
+		if c.memoryCount() != 1 || data.MemoryIndex != 0 || len(data.Offset.Expr) != 0 || (data.Offset.HasGlobal && !rv64ImportedInitializer(c, data.Offset.Global, ValI32)) {
 			return reject("data initializer lowering is pending")
 		}
 	}
@@ -107,4 +110,8 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("GC/EH initializer lowering is pending")
 	}
 	return nil
+}
+
+func rv64ImportedInitializer(c *Compiled, index int, typ ValType) bool {
+	return index >= 0 && index < len(c.GlobalImports) && !c.GlobalImports[index].Mutable && c.GlobalImports[index].Type == typ
 }

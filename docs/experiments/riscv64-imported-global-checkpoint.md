@@ -52,3 +52,7 @@ repository RV64 build and diagnostics/DCE/documentation checks. These establish
 bounded scalar correctness. Full production parity, official broad suites and
 native cache/performance qualification remain pending in the
 [parity tracker](riscv64-parity-tracker.md).
+
+The subsequent [immutable imported-global initializer checkpoint](riscv64-imported-initializer-checkpoint.md)
+admits exact scalar import copies and imported I32 active-data offsets. Its narrow
+initializer policy supersedes the literal-only restriction above.

@@ -15,6 +15,7 @@ const TrapMemoryBounds = 5
 type globalSpec struct {
 	wide, mutable bool
 	value         uint64
+	typ           wasm.ValType
 }
 type functionSpec struct {
 	params, results []bool
@@ -95,7 +96,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 			if !scalarType(g.Type, true) {
 				return s, unsupported("nonscalar global import")
 			}
-			s.globals = append(s.globals, globalSpec{scalarWide(g.Type), g.Mutable, 0})
+			s.globals = append(s.globals, globalSpec{wide: scalarWide(g.Type), mutable: g.Mutable, typ: g.Type})
 		default:
 			return s, unsupported("nonmemory/nonglobal import")
 		}
@@ -115,16 +116,17 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	if len(s.globals)+len(m.Globals) > 256 || len(m.Data) > native.MaxDataSegments {
 		return s, unsupported("state count bound")
 	}
+	importedGlobals := len(s.globals)
 	for _, g := range m.Globals {
 		w := scalarWide(g.Type.Type)
 		if !scalarType(g.Type.Type, production) {
 			return s, unsupported("noninteger global")
 		}
-		v, err := plainScalarConst(g.Init, g.Type.Type, production)
+		v, err := admittedScalarConst(g.Init, g.Type.Type, production, s.globals[:importedGlobals])
 		if err != nil {
 			return s, err
 		}
-		s.globals = append(s.globals, globalSpec{w, g.Type.Mutable, v})
+		s.globals = append(s.globals, globalSpec{wide: w, mutable: g.Type.Mutable, value: v, typ: g.Type.Type})
 	}
 	for _, d := range m.Data {
 		if d.Mode.Kind == wasm.DataPassive {
@@ -134,7 +136,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 		if s.memory == nil || d.Mode.Kind != wasm.DataActive || d.Mode.Mem != 0 {
 			return s, unsupported("indexed/unsupported active data")
 		}
-		off, err := plainConst(d.Mode.Offset, false)
+		off, err := admittedScalarConst(d.Mode.Offset, wasm.I32, production, s.globals[:importedGlobals])
 		if err != nil {
 			return s, err
 		}
