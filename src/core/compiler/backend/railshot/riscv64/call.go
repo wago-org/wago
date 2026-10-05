@@ -32,10 +32,12 @@ func (f *integerEmitter) directCall(index uint32, sig functionSpec, base int) {
 	f.restoreCallTransport()
 	f.a.Lwu(enc.X7, enc.X12, 0)
 	f.propagate = append(f.propagate, f.a.BranchLong(enc.NE, enc.X7, enc.Zero))
-	if sig.result64 {
-		f.a.Ld(enc.X5, enc.X11, 0)
-	} else {
-		f.a.Lwu(enc.X5, enc.X11, 0)
+	for j, wide := range sig.results {
+		if wide {
+			f.a.Ld(enc.X5, enc.X11, int32(j*8))
+		} else {
+			f.a.Lwu(enc.X5, enc.X11, int32(j*8))
+		}
+		f.Store(f.SpillOffset(base+j), 5, wide)
 	}
-	f.Store(f.SpillOffset(base), 5, sig.result64)
 }

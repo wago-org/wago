@@ -149,3 +149,31 @@ func TestEstablishedAMD64SameIntegerControls(t *testing.T) {
 		t.Fatal(got, err)
 	}
 }
+
+func TestEstablishedAMD64SameMultivalueInteger(t *testing.T) {
+	for _, tc := range multivalueCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := wago.Compile(binaryModule(tc.funcs...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			i, err := wago.Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer i.Close()
+			for _, call := range tc.calls {
+				got, err := i.Invoke("a", call.args...)
+				if err != nil || len(got) != len(call.want) {
+					t.Fatal(got, call.want, err)
+				}
+				for j, v := range got {
+					if v != call.want[j] {
+						t.Fatal(j, v, call.want[j])
+					}
+				}
+			}
+		})
+	}
+}

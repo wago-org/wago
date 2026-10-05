@@ -17,8 +17,7 @@ type globalSpec struct {
 	value         uint64
 }
 type functionSpec struct {
-	params   []bool
-	result64 bool
+	params, results []bool
 }
 type memorySpec struct {
 	min              uint32
@@ -27,14 +26,16 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
-	memory        *memorySpec
-	globals       []globalSpec
-	data          []native.MemoryInitializer
-	passiveData   [][]byte // all Wasm data indices; active entries are dropped/nil
-	functions     []functionSpec
-	capacity      int
-	memoryExports map[string]bool
-	globalExports map[string]int
+	memory         *memorySpec
+	globals        []globalSpec
+	data           []native.MemoryInitializer
+	passiveData    [][]byte // all Wasm data indices; active entries are dropped/nil
+	functions      []functionSpec
+	types          []functionSpec
+	resultCapacity int
+	capacity       int
+	memoryExports  map[string]bool
+	globalExports  map[string]int
 }
 
 func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
@@ -128,14 +129,22 @@ func admitState(m *wasm.Module) (moduleState, error) {
 			return s, unsupported("noninteger state export")
 		}
 	}
-	for j := range m.Code {
-		ft, _ := m.LocalFuncType(j)
-		s.capacity = max(s.capacity, len(ft.Params))
-		fn := functionSpec{params: make([]bool, len(ft.Params)), result64: wasm.EqualValType(ft.Results[0], wasm.I64)}
+	for _, rec := range m.Types {
+		ft := &rec.SubTypes[0].Comp
+		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results))}
 		for k, t := range ft.Params {
 			fn.params[k] = wasm.EqualValType(t, wasm.I64)
 		}
-		s.functions = append(s.functions, fn)
+		for k, t := range ft.Results {
+			fn.results[k] = wasm.EqualValType(t, wasm.I64)
+		}
+		s.types = append(s.types, fn)
+	}
+	for j := range m.Code {
+		ft, _ := m.LocalFuncType(j)
+		s.capacity = max(s.capacity, len(ft.Params))
+		s.resultCapacity = max(s.resultCapacity, len(ft.Results))
+		s.functions = append(s.functions, s.types[m.FuncTypes[j].Index])
 	}
 	return s, nil
 }

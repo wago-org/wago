@@ -101,11 +101,10 @@ func TestIntegerWholeFunctionSelection(t *testing.T) {
 
 func TestIntegerAdmissionBounds(t *testing.T) {
 	for name, body := range map[string][]byte{
-		"instructions":  append(append(makeNops(integerBudget+1), 0x41, 0), 0x0b),
-		"controls":      nestedBlocks(33),
-		"operands":      excessiveOperands(513),
-		"branch-table":  excessiveTable(maxTableEntries + 1),
-		"indexed-block": {2, 0, 0x41, 0, 0x0b, 0x0b},
+		"instructions": append(append(makeNops(integerBudget+1), 0x41, 0), 0x0b),
+		"controls":     nestedBlocks(33),
+		"operands":     excessiveOperands(513),
+		"branch-table": excessiveTable(maxTableEntries + 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if c, err := CompileWithOptions(binaryModule(fixtureFunc{result: 0x7f, body: body}), CompileOptions{ForceFallback: true}); c != nil || !errors.Is(err, ErrUnsupported) {

@@ -118,8 +118,8 @@ func TestDirectCallRelocationAndAdmissionBounds(t *testing.T) {
 	} else if err = wasm.ValidateModule(m); err != nil {
 		t.Fatal("void fixture validity", err)
 	}
-	if c, err := Compile(void); c != nil || !errors.Is(err, ErrUnsupported) {
-		t.Fatal("void calls silently enabled", c, err)
+	if c, err := Compile(void); c == nil || err != nil || c.functions[1].Results != 0 {
+		t.Fatal("void call admission", c, err)
 	}
 	if c, err := Compile(binaryModule(fixtureFunc{result: 0x7f, body: []byte{0x10, 7, 0x0b}})); c != nil || err == nil || errors.Is(err, ErrUnsupported) {
 		t.Fatal("invalid call skipped normal validation", c, err)

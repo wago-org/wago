@@ -26,10 +26,10 @@ var ErrCancelable = errors.New("rv64: cancelable invocation is not implemented")
 
 // FunctionInfo describes the emitted whole-function path and frame.
 type FunctionInfo struct {
-	Entry, CodeBytes, Params, FrameBytes, SpillSlots, Spills, Reloads int
-	Result64                                                          bool
-	Fallback                                                          bool
-	FrameHeaderBytes, DirectCalls                                     int
+	Entry, CodeBytes, Params, Results, FrameBytes, SpillSlots, Spills, Reloads int
+	Result64                                                                   bool
+	Fallback                                                                   bool
+	FrameHeaderBytes, DirectCalls                                              int
 }
 
 // Compiled owns immutable heap code and metadata, never executable mappings.
@@ -189,7 +189,7 @@ func admitWire(data []byte) error {
 					if err != nil {
 						return err
 					}
-					if n > 256 || v == 1 && n != 1 {
+					if n > 256 {
 						return unsupported("signature arity")
 					}
 					for j := uint32(0); j < n; j++ {
@@ -236,7 +236,7 @@ func admitShape(m *wasm.Module) error {
 		if !s.Final || s.HasPrefix || len(s.Supers) != 0 || s.Metadata.Describes.Present() || s.Metadata.Descriptor.Present() || s.Comp.Kind != wasm.CompFunc {
 			return unsupported("unsupported type metadata")
 		}
-		if len(s.Comp.Params) > 256 || len(s.Comp.Results) != 1 {
+		if len(s.Comp.Params) > 256 || len(s.Comp.Results) > 256 {
 			return unsupported("signature arity")
 		}
 		for _, v := range append(append([]wasm.ValType(nil), s.Comp.Params...), s.Comp.Results...) {
@@ -274,7 +274,7 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, f.a.Err()
 	}
-	info := FunctionInfo{Params: len(ft.Params), SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64)}
+	info := FunctionInfo{Params: len(ft.Params), Results: 1, SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64)}
 	return frameFunction(f.a.B, widths[:nlocals], len(ft.Params), slots, false, -1, info)
 }
 
@@ -303,7 +303,7 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 		entry.a.Sd(enc.X12, enc.SP, 24)
 		entry.a.Sd(enc.X13, enc.SP, 32)
 	}
-	if contextOffset >= 0 {
+	if contextOffset != -1 {
 		if contextOffset <= 2047 {
 			entry.a.Ld(enc.X24, enc.X10, int32(contextOffset))
 		} else {
@@ -379,7 +379,7 @@ func (c *Compiled) InstantiateWithOptions(stackBytes int, opts InstantiateOption
 		i.engine, err = native.NewEngine(stackBytes)
 	}
 	if err == nil {
-		i.call, err = native.NewCallFrame(c.state.capacity)
+		i.call, err = native.NewCallFrameLayout(c.state.capacity, c.state.resultCapacity)
 	}
 	if err == nil && (i.memory != nil || len(c.state.globals) != 0 || len(c.state.passiveData) != 0) {
 		var descriptor uint64
@@ -409,34 +409,47 @@ func (c *Compiled) InstantiateWithOptions(stackBytes int, opts InstantiateOption
 	return i, nil
 }
 
+// Invoke is the single-result convenience entry. It rejects other result arities
+// before executing guest code; use InvokeInto for void/multivalue functions.
 func (i *Instance) Invoke(ctx context.Context, name string, args ...uint64) (uint64, error) {
+	var result [1]uint64
+	err := i.InvokeInto(ctx, name, args, result[:])
+	return result[0], err
+}
+
+// InvokeInto uses caller-owned results, with exact arity checked before entry.
+// On errors, including guest traps, results remain unchanged.
+func (i *Instance) InvokeInto(ctx context.Context, name string, args, results []uint64) error {
 	if i == nil {
-		return 0, native.ErrClosed
+		return native.ErrClosed
 	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	if i.closed || i.compiled == nil || i.engine == nil || i.program == nil || i.call == nil {
-		return 0, native.ErrClosed
+		return native.ErrClosed
 	}
 	if ctx == nil {
-		return 0, fmt.Errorf("rv64: nil invocation context")
+		return fmt.Errorf("rv64: nil invocation context")
 	}
 	_, deadline := ctx.Deadline()
 	if ctx.Done() != nil || deadline || ctx.Err() != nil {
-		return 0, ErrCancelable
+		return ErrCancelable
 	}
 	index, ok := i.compiled.exports[name]
 	if !ok {
-		return 0, fmt.Errorf("rv64: unknown scalar export %q", name)
+		return fmt.Errorf("rv64: unknown integer export %q", name)
 	}
 	f := i.compiled.functions[index]
 	if len(args) != f.Params {
-		return 0, fmt.Errorf("rv64: export %q expects %d arguments, got %d", name, f.Params, len(args))
+		return fmt.Errorf("rv64: export %q expects %d arguments, got %d", name, f.Params, len(args))
+	}
+	if len(results) != f.Results {
+		return fmt.Errorf("rv64: export %q expects %d results, got %d", name, f.Results, len(results))
 	}
 	if i.context != nil {
-		return i.context.Call(i.lease, i.call, i.engine, i.program, f.Entry, args, f.FrameBytes)
+		return i.context.CallInto(i.lease, i.call, i.engine, i.program, f.Entry, args, results, f.FrameBytes)
 	}
-	return i.call.Call(i.engine, i.program, f.Entry, args, f.FrameBytes)
+	return i.call.CallIntoWithContext(i.engine, i.program, f.Entry, args, results, f.FrameBytes, 0)
 }
 
 // Close waits for invocation completion and retries any retained failed unmaps.

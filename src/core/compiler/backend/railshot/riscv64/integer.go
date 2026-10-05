@@ -24,11 +24,12 @@ type integerSummary struct {
 	calls    int
 }
 type integerControl struct {
-	base                                         int
-	kind                                         byte
-	result, wide, entry, then, incoming, hasElse bool
-	start, falseSite                             int
-	sites                                        []int
+	base                           int
+	kind                           byte
+	params, results                []bool
+	entry, then, incoming, hasElse bool
+	start, falseSite               int
+	sites                          []int
 }
 type integerTrap struct{ site, code int }
 type integerEmitter struct {
@@ -64,7 +65,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	}
 	var stack [512]bool
 	var ctrl [33]integerControl
-	ctrl[0] = integerControl{kind: 0xff, result: true, wide: wasm.EqualValType(ft.Results[0], wasm.I64), entry: true}
+	var rootResults [256]bool
+	for j, t := range ft.Results {
+		rootResults[j] = wasm.EqualValType(t, wasm.I64)
+	}
+	var inlineResults = [2][1]bool{{false}, {true}}
+	ctrl[0] = integerControl{kind: 0xff, results: rootResults[:len(ft.Results)], entry: true}
 	depth, h, peak, budget := 1, 0, 0, nlocals
 	live := true
 	contextUsed := false
@@ -105,16 +111,26 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			return fmt.Errorf("rv64: invalid validated label")
 		}
 		fr := &ctrl[depth-1-int(label)]
+		values := fr.results
+		if fr.kind == 0x03 {
+			values = fr.params
+		}
+		budget += len(values)
+		if budget > integerBudget {
+			return unsupported("integer branch transfer budget")
+		}
 		if !live {
 			return nil
 		}
-		if fr.kind != 0x03 && fr.result {
-			if h == 0 {
-				return fmt.Errorf("rv64: missing branch result")
-			}
-			if emit != nil {
-				emit.Load(7, emit.SpillOffset(h-1), fr.wide)
-				emit.Store(emit.SpillOffset(fr.base), 7, fr.wide)
+		if h-len(values) < fr.base {
+			return fmt.Errorf("rv64: missing validated branch values")
+		}
+		if emit != nil {
+			// Destinations are at or below sources; forward copying is safe for
+			// overlapping vectors. Keep br_table's index in X5 intact.
+			for j, wide := range values {
+				emit.Load(7, emit.SpillOffset(h-len(values)+j), wide)
+				emit.Store(emit.SpillOffset(fr.base+j), 7, wide)
 			}
 		}
 		if emit != nil {
@@ -151,12 +167,26 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			h = ctrl[depth-1].base
 		case 0x01:
 		case 0x02, 0x03, 0x04:
-			bt, e := r.Byte()
+			bt, e := r.S33()
 			if e != nil {
 				return integerSummary{}, e
 			}
-			if bt != 0x40 && bt != 0x7f && bt != 0x7e {
-				return integerSummary{}, unsupported("indexed/noninteger block signature")
+			var params, results []bool
+			switch bt {
+			case -64: // empty
+			case -1:
+				results = inlineResults[0][:]
+			case -2:
+				results = inlineResults[1][:]
+			default:
+				if bt < 0 || state == nil || bt >= int64(len(state.types)) {
+					return integerSummary{}, unsupported("noninteger block signature")
+				}
+				params, results = state.types[bt].params, state.types[bt].results
+			}
+			budget += len(params) + len(results)
+			if budget > integerBudget {
+				return integerSummary{}, unsupported("integer control signature budget")
 			}
 			if depth == len(ctrl) {
 				return integerSummary{}, unsupported("integer control bound")
@@ -169,12 +199,22 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.Load(5, emit.SpillOffset(h), false)
 				}
 			}
-			fr := integerControl{base: h, kind: op, result: bt != 0x40, wide: bt == 0x7e, entry: live, start: position(), falseSite: -1}
+			for range params {
+				if _, e = pop(); e != nil {
+					return integerSummary{}, e
+				}
+			}
+			fr := integerControl{base: h, kind: op, params: params, results: results, entry: live, start: position(), falseSite: -1}
 			if op == 0x04 && live && emit != nil {
 				fr.falseSite = emit.BranchZero(5)
 			}
 			ctrl[depth] = fr
 			depth++
+			for _, wide := range params {
+				if err = push(wide); err != nil {
+					return integerSummary{}, err
+				}
+			}
 		case 0x05:
 			fr := &ctrl[depth-1]
 			if fr.kind != 0x04 || fr.hasElse {
@@ -192,6 +232,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			live = fr.entry
 			h = fr.base
+			for _, wide := range fr.params {
+				if err = push(wide); err != nil {
+					return integerSummary{}, err
+				}
+			}
 		case 0x0b:
 			fr := ctrl[depth-1]
 			if emit != nil {
@@ -208,15 +253,24 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			live = live || fr.incoming || fr.then || fr.kind == 0x04 && !fr.hasElse && fr.entry
 			h = fr.base
-			if fr.result {
-				if err = push(fr.wide); err != nil {
+			for _, wide := range fr.results {
+				if err = push(wide); err != nil {
 					return integerSummary{}, err
 				}
 			}
 			depth--
 			if depth == 0 && live && emit != nil {
-				emit.Load(5, emit.SpillOffset(0), fr.wide)
-				emit.Return(5, fr.wide, 0)
+				if len(fr.results) == 1 {
+					emit.Load(5, emit.SpillOffset(0), fr.results[0])
+					emit.Return(5, fr.results[0], 0)
+				} else {
+					emit.a.Ld(enc.Scratch0, enc.SP, 8)
+					for j, wide := range fr.results {
+						emit.Load(5, emit.SpillOffset(j), wide)
+						emit.a.Sd(enc.X5, enc.Scratch0, int32(j*8))
+					}
+					emit.Constant(10, 0, true)
+				}
 			}
 		case 0x0c, 0x0d:
 			label, e := r.U32()
@@ -383,9 +437,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			sig := state.functions[idx]
 			callCount++
-			budget += len(sig.params)
+			budget += len(sig.params) + len(sig.results)
 			if callCount > maxDirectCalls || budget > integerBudget {
-				return integerSummary{}, unsupported("direct call count/parameter budget")
+				return integerSummary{}, unsupported("direct call count/slot budget")
 			}
 			for range sig.params {
 				if _, err = pop(); err != nil {
@@ -395,8 +449,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if live && emit != nil {
 				emit.directCall(idx, sig, h)
 			}
-			if err = push(sig.result64); err != nil {
-				return integerSummary{}, err
+			for _, wide := range sig.results {
+				if err = push(wide); err != nil {
+					return integerSummary{}, err
+				}
 			}
 		case 0x23, 0x24:
 			idx, e := r.U32()
@@ -818,10 +874,10 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summar
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, nil, f.a.Err()
 	}
-	info := FunctionInfo{Params: len(ft.Params), SpillSlots: summary.maxStack, Result64: wasm.EqualValType(ft.Results[0], wasm.I64), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls)}
+	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.I64), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls)}
 	contextOffset := -1
 	if summary.context {
-		contextOffset = (state.capacity + 1) * 8
+		contextOffset = -8
 	}
 	code, info, err := frameFunctionCalls(f.a.B, widths[:n], len(ft.Params), summary.maxStack, true, contextOffset, info, f.calls)
 	return code, info, f.calls, err

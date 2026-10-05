@@ -17,6 +17,7 @@ import (
 type fixtureFunc struct {
 	params     []byte
 	result     byte
+	results    []byte
 	locals     []byte
 	body       []byte
 	unexported bool
@@ -67,7 +68,10 @@ func binaryModule(fs ...fixtureFunc) []byte {
 		types = append(types, 0x60)
 		types = uleb(types, uint32(len(f.params)))
 		types = append(types, f.params...)
-		if f.result == 0 {
+		if f.results != nil {
+			types = uleb(types, uint32(len(f.results)))
+			types = append(types, f.results...)
+		} else if f.result == 0 {
 			types = append(types, 0)
 		} else {
 			types = append(types, 1, f.result)
