@@ -3041,41 +3041,121 @@ func compactEHLocalScores(allHints []funcHints, scores []uint32) []uint32 {
 // the function scans have established whether any body mutates a table. The
 // result is shared by all function compilations rather than copied into every
 // retained function summary.
-func computeImmutableTableHints(m *wasm.Module, allHints []funcHints, policy CodegenPolicy) []immutableTableHint {
-	// Immutable local-table specialization for call_indirect and indirect tails.
-	// The proof is per table: imports are allowed elsewhere in the module, but an
-	// admitted table itself must be local, unexported, never mutated, and contain
-	// only local function descriptors. This is finite and keeps host/cross-instance
-	// descriptors out of the internal-entry path.
-	var immutableTables []immutableTableHint
+const (
+	immutableTypeBlocked uint8 = 1 << iota
+	immutableTypeSeen
+)
+
+func computeImmutableTableHints(m *wasm.Module, hints []funcHints, policy CodegenPolicy) []immutableTableHint {
+	var out []immutableTableHint
 	if m.TableCount() != 0 {
-		immutableTables = make([]immutableTableHint, m.TableCount())
+		out = make([]immutableTableHint, m.TableCount())
 	}
-	immutableCandidates := policy.EnabledOption(optImmutableTable) && m.ImportedTableCount() == 0
-	if immutableCandidates {
-		for i := range allHints {
-			if allHints[i].flags.has(hintMutatesTable) {
-				immutableCandidates = false
-				break
-			}
+	if !policy.EnabledOption(optImmutableTable) || m.ImportedTableCount() != 0 {
+		return out
+	}
+	for _, h := range hints {
+		if h.flags.has(hintMutatesTable) {
+			return out
 		}
 	}
-	if immutableCandidates {
-		for tableIdx := range m.Tables {
-			idx := uint32(tableIdx)
-			if moduleExportsTable(m, idx) || !immutableLocalTableEntries(m, idx) {
+	imported := m.ImportedFuncCount()
+	check := func(idx wasm.FuncIdx) bool { return int(idx) >= imported && int(idx)-imported < len(m.Code) }
+	for i := range m.Tables {
+		h := &out[i]
+		h.local = true
+		h.monomorphicTarget = -1
+		if !policy.EnabledOption(optImmutableTableType) {
+			h.proofState |= immutableTypeBlocked
+		}
+		if init := m.Tables[i].Init; init != nil {
+			h.proofState |= immutableTypeBlocked
+			ee, err := wasm.ParseElementExpr(*init)
+			if err != nil || ee.HasGlobal || (!ee.Null && !check(wasm.FuncIdx(ee.FuncIndex))) {
+				h.local = false
 				continue
 			}
-			tableType, tableTyped := immutableLocalTableTypeWithPolicy(m, idx, policy)
-			immutableTables[tableIdx] = immutableTableHint{
-				local:             true,
-				typeKey:           tableType,
-				typed:             tableTyped,
-				monomorphicTarget: immutableLocalTableTarget(m, idx),
+			if !ee.Null {
+				h.monomorphicTarget = int(ee.FuncIndex) - imported
 			}
 		}
 	}
-	return immutableTables
+	for _, e := range m.Exports {
+		if e.Index.Kind == wasm.ExternTable && int(e.Index.Index) < len(out) {
+			out[e.Index.Index].local = false
+		}
+	}
+	for _, e := range m.Elements {
+		if e.Mode.Kind != wasm.ElemActive || int(e.Mode.Table) >= len(out) {
+			continue
+		}
+		h := &out[e.Mode.Table]
+		if !h.local {
+			continue
+		}
+		if e.Kind.Kind != wasm.ElemFuncs {
+			h.proofState |= immutableTypeBlocked
+			h.monomorphicTarget = -2
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || (!ee.Null && !check(wasm.FuncIdx(ee.FuncIndex))) {
+					h.local = false
+					break
+				}
+			}
+			continue
+		}
+		for _, idx := range e.Kind.Funcs {
+			if !check(idx) {
+				h.local = false
+				break
+			}
+			target := int(idx) - imported
+			if h.monomorphicTarget == -1 {
+				h.monomorphicTarget = target
+			} else if h.monomorphicTarget != target {
+				h.monomorphicTarget = -2
+			}
+			if h.proofState&immutableTypeBlocked == 0 {
+				ti, ok := m.FuncTypeIndex(uint32(idx))
+				if !ok {
+					h.proofState |= immutableTypeBlocked
+					continue
+				}
+				if h.proofState&immutableTypeSeen != 0 && h.lastType == ti.Index {
+					continue
+				}
+				key, ok := m.StructuralTypeKeyChecked(ti.Index)
+				if !ok {
+					h.proofState |= immutableTypeBlocked
+					continue
+				}
+				if h.proofState&immutableTypeSeen == 0 {
+					h.typeKey = key
+					h.proofState |= immutableTypeSeen
+				} else if key != h.typeKey {
+					h.proofState |= immutableTypeBlocked
+				}
+				h.lastType = ti.Index
+			}
+		}
+	}
+	for i := range out {
+		h := &out[i]
+		if !h.local {
+			*h = immutableTableHint{}
+			continue
+		}
+		h.typed = h.proofState&immutableTypeBlocked == 0 && h.proofState&immutableTypeSeen != 0
+		if !h.typed {
+			h.typeKey = 0
+		}
+		if h.monomorphicTarget < 0 {
+			h.monomorphicTarget = -1
+		}
+		h.proofState, h.lastType = 0, 0
+	}
+	return out
 }
 
 // immutableLocalTableTarget returns the sole local function stored in tableIdx,
