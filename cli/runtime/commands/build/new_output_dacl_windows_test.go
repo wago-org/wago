@@ -15,8 +15,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const windowsWriteOnlyBuildChildEnv = "WAGO_WINDOWS_WRITE_ONLY_BUILD_CHILD"
+
 func TestBuildNewWindowsOutputPreservesWriteOnlyInheritance(t *testing.T) {
-	const childEnv = "WAGO_WINDOWS_WRITE_ONLY_BUILD_CHILD"
+	const childEnv = windowsWriteOnlyBuildChildEnv
 	if os.Getenv(childEnv) == "1" {
 		Command(testEnvironment{}).Run(command.NewContext(
 			[]string{os.Getenv("WAGO_WINDOWS_WRITE_ONLY_INPUT")},
@@ -24,7 +26,17 @@ func TestBuildNewWindowsOutputPreservesWriteOnlyInheritance(t *testing.T) {
 		))
 		return
 	}
+	for _, forbidDelete := range []bool{false, true} {
+		name := "read-denied"
+		if forbidDelete {
+			name = "read-and-delete-denied"
+		}
+		t.Run(name, func(t *testing.T) { testWindowsWriteOnlyInheritance(t, forbidDelete) })
+	}
+}
 
+func testWindowsWriteOnlyInheritance(t *testing.T, forbidDelete bool) {
+	t.Helper()
 	dir := t.TempDir()
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
@@ -32,7 +44,11 @@ func TestBuildNewWindowsOutputPreservesWriteOnlyInheritance(t *testing.T) {
 	}
 	trustee := windows.TRUSTEE{TrusteeForm: windows.TRUSTEE_IS_SID,
 		TrusteeType: windows.TRUSTEE_IS_USER, TrusteeValue: windows.TrusteeValueFromSID(user.User.Sid)}
-	parentOnly := windows.EXPLICIT_ACCESS{AccessPermissions: windows.GENERIC_ALL,
+	// FILE_ALL_ACCESS and FILE_DELETE_CHILD from winnt.h are not exported by
+	// x/sys/windows. Use their documented masks only in this temporary fixture.
+	const fileAllAccess = windows.STANDARD_RIGHTS_REQUIRED | windows.SYNCHRONIZE | 0x1ff
+	const fileDeleteChild = 0x40
+	parentOnly := windows.EXPLICIT_ACCESS{AccessPermissions: fileAllAccess,
 		AccessMode: windows.GRANT_ACCESS, Trustee: trustee}
 	childOnly := windows.EXPLICIT_ACCESS{
 		// Keep metadata inspection and exact-handle cleanup rights, but grant no
@@ -40,6 +56,12 @@ func TestBuildNewWindowsOutputPreservesWriteOnlyInheritance(t *testing.T) {
 		AccessPermissions: windows.FILE_GENERIC_WRITE | windows.READ_CONTROL | windows.WRITE_DAC | windows.DELETE,
 		AccessMode:        windows.GRANT_ACCESS, Inheritance: windows.OBJECT_INHERIT_ACE | windows.INHERIT_ONLY_ACE,
 		Trustee: trustee,
+	}
+	if forbidDelete {
+		// Removing both authorization routes proves that reopening an inherited
+		// child for DELETE is denied, while direct write-only creation still works.
+		parentOnly.AccessPermissions &^= fileDeleteChild
+		childOnly.AccessPermissions &^= windows.DELETE
 	}
 	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{parentOnly, childOnly}, nil)
 	if err != nil {
@@ -91,6 +113,22 @@ func TestBuildNewWindowsOutputPreservesWriteOnlyInheritance(t *testing.T) {
 		}
 	}
 	assertReadDenied(control)
+	if forbidDelete {
+		name, err := windows.UTF16PtrFromString(control)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handle, err := windows.CreateFile(name, windows.DELETE,
+			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+			nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+		if err == nil {
+			_ = windows.CloseHandle(handle)
+			t.Skip("filesystem does not enforce inherited delete denial")
+		}
+		if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+			t.Fatalf("delete denial: %v", err)
+		}
+	}
 	wantSecurity := windowsNewOutputSecurityDescriptor(t, control)
 	input := filepath.Join(t.TempDir(), "input.wasm")
 	if err := os.WriteFile(input, []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}, 0o600); err != nil {
@@ -98,7 +136,7 @@ func TestBuildNewWindowsOutputPreservesWriteOnlyInheritance(t *testing.T) {
 	}
 	output := filepath.Join(dir, "built.wago")
 	child := exec.Command(os.Args[0], "-test.run=^TestBuildNewWindowsOutputPreservesWriteOnlyInheritance$")
-	child.Env = append(os.Environ(), childEnv+"=1", "WAGO_WINDOWS_WRITE_ONLY_INPUT="+input,
+	child.Env = append(os.Environ(), windowsWriteOnlyBuildChildEnv+"=1", "WAGO_WINDOWS_WRITE_ONLY_INPUT="+input,
 		"WAGO_WINDOWS_WRITE_ONLY_OUTPUT="+output)
 	if combined, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("write-only inherited ACL build: %v: %s", err, combined)
