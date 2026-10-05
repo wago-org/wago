@@ -470,7 +470,7 @@ at canonical-stack, control-edge and ABI-shuffle seams, plus immutable-cache
 call-clobber checks. The ordinary build retains no checker state or work. This
 first version assumes correct window inputs and does not verify arbitrary
 instructions between windows or whole-CFG equivalence; see the
-[checker contract](docs/register-allocation-checker.md).
+[checker contract](https://github.com/wago-org/knowledge/blob/main/docs/register-allocation-checker.md).
 
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's
@@ -937,7 +937,7 @@ Profiling builds attach `wago profile` through `cli/internal/profiling`; ordinar
 and runtime builds omit it entirely. `bench/cmd/wagoprof` is a thin standalone
 wrapper. CPU weights, elapsed phases, and static compiler counts remain distinct.
 No asynchronous guest-stack or Wasm instruction-map support is implied by symbol
-registration. See [Profiling workloads](docs/profiling.md) for tested capabilities
+registration. See [Profiling workloads](https://github.com/wago-org/knowledge/blob/main/docs/profiling.md) for tested capabilities
 and current limitations.
 
 Optional boundary spans share the journal byte budget and reserve completion
@@ -993,7 +993,7 @@ an acknowledged enable/disable handshake around the selected phase. Native flat
 attribution has been exercised with perf on Linux/amd64 and Samply on macOS/arm64;
 this does not qualify asynchronous native stacks. Release-size and ordinary-build
 allocation gates are separate from sampling overhead. See
-[profiling qualification](docs/profiling-qualification.md) for measurements,
+[profiling qualification](https://github.com/wago-org/knowledge/blob/main/docs/profiling-qualification.md) for measurements,
 toolchain details, and remaining limitations.
 
 Capture phases include an explicit trusted-artifact reload path. The runner
@@ -1083,7 +1083,7 @@ Cancellation terminates private process groups on Linux/macOS and retains an
 incomplete manifest and available raw evidence. Saved inputs share explicit file,
 decompression, image, sample, code, metadata, and aggregation limits. The journal's
 64 MiB budget is not a bound on total reporting memory. See
-[resource limits and capture safety](docs/profiling.md) for defaults and coverage.
+[resource limits and capture safety](https://github.com/wago-org/knowledge/blob/main/docs/profiling.md) for defaults and coverage.
 
 ### Remaining qualification and acceptance
 

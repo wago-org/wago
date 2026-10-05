@@ -129,7 +129,7 @@ Take extra care in runtime code. It crosses into native execution.
 Start with the smallest relevant test. `just test` correctness recipes enable
 the debug allocation-transfer checker; `just test unit` also runs the ordinary
 build. Raw `go test` needs `-tags=wago_regalloccheck` explicitly. See
-[the checker contract and coverage limits](docs/register-allocation-checker.md).
+[the checker contract and coverage limits](https://github.com/wago-org/knowledge/blob/main/docs/register-allocation-checker.md).
 Before you open a pull request, run:
 
 ```bash
