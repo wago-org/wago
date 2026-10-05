@@ -11,7 +11,7 @@ production parity. No remote publication is authorized.
 | Integer/control | RV64 integer arithmetic/comparisons, structured/indexed control, zero/multiple results, production compiler and experimental public binding/configured limits | Broader qualification and removal of development bounds |
 | Calls | Defined same-instance direct/recursive integer calls, mixed/wide result vectors, production wrapper slots and cold traps | Stateful context transfer, imports, indirect/cross-instance calls, tail calls, call_ref |
 | Production runtime | Linux/RV64 Engine/JobMemory bridge, central W^X/process-wide cache synchronization, framed normal/cold return, shared publication/cleanup ownership, experimental public instantiation | Host/guard/signal paths and native qualification |
-| Memory/globals/bulk | True production JobMemory memory32, aliased integer global-cell directory, public active/passive descriptor/payload lifetime, bulk operations, full 4-GiB bounds/quota growth | Imported resources, extended initializers/start, multiple/shared/memory64 memories |
+| Memory/globals/bulk | True production JobMemory memory32, aliased scalar global-cell directory, public active/passive descriptor/payload lifetime, bulk operations, full 4-GiB bounds/quota growth, one imported ordinary memory32 with context/ownership lifecycle | Global imports, extended initializers/start, multiple/shared/memory64 memories |
 | Tables/references | Rejected before publication | Production descriptors, exact type identities, element/table lifecycle, externref and typed references, resource-root retention |
 | FP | Reviewed F/D encoder, FCSR boundary and production/public scalar lowering, conversions, raw transport, globals/memory and cold traps | Broader official FP suites and native qualification; host/register ABI paths |
 | Host calls | Rejected before publication | Parked Go callbacks, wide slots, save/resume, panic/trap paths, re-entry, policies |
@@ -64,3 +64,5 @@ The [scalar FP encoder checkpoint](riscv64-float-encoder-checkpoint.md) adds F/D
 instructions and independent encoding/observer controls before admitting FP.
 The [scalar FP execution checkpoint](riscv64-scalar-float-checkpoint.md) adds
 genuine F32/F64 lowering and bounded public admission after the FCSR boundary.
+The [imported memory32 checkpoint](riscv64-imported-memory-checkpoint.md) adds
+ordinary imported backing/context/quota/root ownership after shared runtime fixes.

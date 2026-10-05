@@ -73,3 +73,7 @@ The subsequent [scalar FP checkpoint](riscv64-scalar-float-checkpoint.md) widens
 bounded production/public admission to F32/F64 and nontrapping conversions after
 independently reviewing FCSR preservation and genuine FP lowering. Other
 unsupported resource and feature gates remain in force.
+
+The [imported-memory checkpoint](riscv64-imported-memory-checkpoint.md) adds one
+ordinary memory32 import and shared construction/context/ownership regressions.
+Function/global imports and broader resources remain separately gated.

@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo
+//go:build linux && (amd64 || arm64 || (riscv64 && wago_rv64_experimental)) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -424,5 +424,102 @@ func TestPublicImportedMemoryHostOwnershipAndLimits(t *testing.T) {
 	}
 	if in, err := Instantiate(c, NewImports().Memory("env", "memory", shared)); in != nil || err == nil {
 		t.Fatal("Wasm shared memory admitted for nonshared import")
+	}
+}
+
+// Hiding the stdlib cancelCtx lookup routes context.AfterFunc through this
+// registration acknowledgment. It witnesses the actual invocation watcher,
+// after context-sensitive admission, before canceling a queued entry.
+type importedMemoryCancellationContext struct {
+	context.Context
+	armed chan struct{}
+}
+
+func (c importedMemoryCancellationContext) Value(any) any { return nil }
+func (c importedMemoryCancellationContext) AfterFunc(f func()) func() bool {
+	stop := context.AfterFunc(c.Context, f)
+	close(c.armed)
+	return stop
+}
+
+func TestPublicImportedMemoryQueuedContextCancellationAndClose(t *testing.T) {
+	for _, action := range []string{"context", "close"} {
+		t.Run(action, func(t *testing.T) {
+			p, memory := importedMemoryProvider(t)
+			in, err := Instantiate(importedMemoryCompile(t, true, 20, false, false, 0), NewImports().Memory("env", "memory", memory))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			importedMemoryInvoke(t, p, "bump", 11)
+			nativeExecutionMu.Lock()
+			locked := true
+			defer func() {
+				if locked {
+					nativeExecutionMu.Unlock()
+				}
+			}()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			watched := importedMemoryCancellationContext{Context: ctx, armed: make(chan struct{})}
+			done := make(chan error, 1)
+			go func() { _, err := in.InvokeContext(watched, "write"); done <- err }()
+			select {
+			case <-watched.armed:
+			case <-time.After(3 * time.Second):
+				t.Fatal("queued invocation watcher was not registered")
+			}
+			deadline := time.Now().Add(3 * time.Second)
+			for in.invocationState.Load()&instanceInvocationCount == 0 && time.Now().Before(deadline) {
+				runtime.Gosched()
+			}
+			if in.invocationState.Load()&instanceInvocationCount == 0 {
+				t.Fatal("queued entry was not admitted")
+			}
+			var closed chan error
+			if action == "context" {
+				cancel()
+			} else {
+				closed = make(chan error, 1)
+				go func() { closed <- in.Close() }()
+			}
+			for atomic.LoadUint32((*uint32)(unsafe.Pointer(&in.trap[0]))) != uint32(coreruntime.TrapInterrupted) && time.Now().Before(deadline) {
+				runtime.Gosched()
+			}
+			if atomic.LoadUint32((*uint32)(unsafe.Pointer(&in.trap[0]))) != uint32(coreruntime.TrapInterrupted) {
+				t.Fatal("queued cancellation did not publish interruption")
+			}
+			nativeExecutionMu.Unlock()
+			locked = false
+			select {
+			case err := <-done:
+				var trap *TrapError
+				if action == "context" {
+					if !errors.Is(err, context.Canceled) {
+						t.Fatal("queued context cancellation lost", err)
+					}
+				} else if !errors.As(err, &trap) || trap.Code != TrapInterrupted {
+					t.Fatal("queued close interruption lost", err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("queued canceled borrower did not unwind")
+			}
+			if runtime.GOARCH == "riscv64" && memory.UnsafeBytes()[0] != 0 {
+				t.Fatal("canceled borrower executed its first write")
+			}
+			if closed != nil {
+				select {
+				case err := <-closed:
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("borrower Close did not wait for foreign completion")
+				}
+			} else {
+				importedMemoryInvoke(t, in, "bump", 21)
+			}
+			importedMemoryInvoke(t, p, "bump", 12)
+		})
 	}
 }

@@ -84,9 +84,6 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
 		return nil, err
 	}
-	if len(m.Imports) != 0 {
-		return nil, unsupported("production imported-resource ownership is pending")
-	}
 	opts.production = true
 	c, err := compileDecodedModule(m, scalarRegisters[:], opts)
 	if err != nil {

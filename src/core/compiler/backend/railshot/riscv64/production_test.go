@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -118,9 +119,17 @@ func TestProductionStateAdmissionMemory32AndFailClosed(t *testing.T) {
 	if _, err := Compile(data); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("experimental runtime limit was silently widened", err)
 	}
+	for _, heap := range []bool{false, true} {
+		image, err := CompileProduction(stateModule(fs, true, 0, 1, true, nil, nil), ProductionOptions{DeferCodeMapping: heap})
+		if err != nil {
+			t.Fatal("ordinary imported memory rejected", err)
+		}
+		if err := image.CodeImage.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	base := stateModule(fs, false, 0, 1, true, nil, nil)
 	for _, data := range [][]byte{
-		stateModule(fs, true, 0, 1, true, nil, nil),
 		modifySection(base, 5, 5, []byte{1, 3, 0, 1}, true),          // shared
 		modifySection(base, 5, 5, []byte{1, 5, 0, 1}, true),          // memory64
 		modifySection(base, 5, 5, []byte{2, 1, 0, 1, 1, 0, 1}, true), // multiple
@@ -130,5 +139,64 @@ func TestProductionStateAdmissionMemory32AndFailClosed(t *testing.T) {
 		if image != nil || err == nil {
 			t.Fatal("unsupported state acquired an image", image, err)
 		}
+	}
+}
+
+func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.T) {
+	base := binaryModule(fixtureFunc{result: 0x7f, body: []byte{0x41, 7, 0x0b}})
+	entry := func(kind byte, typ ...byte) []byte {
+		return append([]byte{1, 'm', 1, 'x', kind}, typ...)
+	}
+	for _, shape := range []struct {
+		name    string
+		imports []byte
+	}{
+		{"function", append([]byte{1}, entry(0, 0)...)},
+		{"global", append([]byte{1}, entry(3, 0x7f, 0)...)},
+		{"table", append([]byte{1}, entry(1, 0x70, 1, 0, 1)...)},
+		{"shared-memory", append([]byte{1}, entry(2, 3, 0, 1)...)},
+		{"memory64", append([]byte{1}, entry(2, 5, 0, 1)...)},
+		{"two-memories", append(append([]byte{2}, entry(2, 1, 0, 1)...), entry(2, 1, 0, 1)...)},
+		{"memory-plus-global", append(append([]byte{2}, entry(2, 1, 0, 1)...), entry(3, 0x7f, 0)...)},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			data := modifySection(base, 3, 2, shape.imports, false)
+			for _, heap := range []bool{false, true} {
+				image, err := CompileProduction(data, ProductionOptions{DeferCodeMapping: heap})
+				if image != nil || err == nil {
+					t.Fatal("unsupported dependency reached production image", image, err)
+				}
+			}
+			m, err := wasm.DecodeModule(data)
+			if err != nil {
+				t.Fatal("invalid rejection fixture", err)
+			}
+			if shape.name == "two-memories" || shape.name == "memory-plus-global" {
+				if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{MultiMemory: true}, 1, wasm.ValidationLimits{}); err != nil {
+					t.Fatal("policy fixture is not a valid module", err)
+				}
+				if _, err := admitStateMode(m, true); !errors.Is(err, ErrUnsupported) {
+					t.Fatal("validated unsupported import set escaped the gate", err)
+				}
+			}
+			pressureCalls := 0
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressureCalls++ }})
+			if image != nil || err == nil || pressureCalls != 0 {
+				t.Fatal("decoded unsupported dependency reached staging", image, err, pressureCalls)
+			}
+		})
+	}
+	// A memory import plus a local memory is valid with MultiMemory enabled,
+	// but remains outside this production slice independently of decoder policy.
+	data := modifySection(stateModule([]fixtureFunc{memoryFixture(0x2d, 0)}, true, 0, 1, true, nil, nil), 7, 5, []byte{1, 1, 0, 1}, false)
+	m, err := wasm.DecodeModuleWithFeatures(data, wasm.ValidationFeatures{MultiMemory: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{MultiMemory: true}, 1, wasm.ValidationLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admitStateMode(m, true); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("import plus defined memory escaped the gate", err)
 	}
 }

@@ -28,7 +28,7 @@ NaNs to zero and otherwise uses the ISA's signed/unsigned clipping semantics.
 The public gate admits only I32/I64/F32/F64 signatures and literal globals within
 the existing implementation bounds. The feature catalog adds nontrapping float
 conversions. Trusted architecture-3 artifacts retain this framed, polling ABI;
-imports, tables/references, host callbacks, SIMD, GC/EH and unsupported resource
+function/global imports, tables/references, host callbacks, SIMD, GC/EH and unsupported resource
 shapes remain gated. No other architecture supplies fallback machine code.
 
 Independent numerical and runtime/state reviewers accepted the lowering and
@@ -51,6 +51,8 @@ the AMD64 reference backend. Qualification logs are `evidence/float-*.log` in th
 task workspace.
 
 This is bounded scalar correctness, not full production parity. QEMU does not
-qualify native cache behavior or performance. Imported resources, host calls,
+qualify native cache behavior or performance. One ordinary memory32 import is now covered by the
+[imported-memory checkpoint](riscv64-imported-memory-checkpoint.md). Other imported
+resources, host calls,
 table/reference dispatch, SIMD, GC/EH, threads and broader build/feature suites
 remain in [the parity tracker](riscv64-parity-tracker.md).

@@ -33,7 +33,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		remaining -= len(data.Bytes)
 	}
-	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.memoryImportCount() != 0 || c.tableCount() != 0 || c.HasStart || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.NeedsFuncRefDescs || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
+	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.memoryImportCount() > 1 || c.tableCount() != 0 || c.HasStart || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.NeedsFuncRefDescs || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
 		return reject("resource/host/reference lowering is pending")
 	}
 	for _, desc := range c.GCTypeDescs {

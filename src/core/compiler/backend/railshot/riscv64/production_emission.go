@@ -8,8 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// Admission follows the production lowerings implemented below. Imports,
-// starts, tables and nonscalar features still fail before image creation.
+// Admission follows the production lowerings implemented below. One ordinary
+// memory import is supported; host imports, starts and tables remain gated.
 func admitProductionWire(data []byte) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
@@ -22,12 +22,20 @@ func admitProductionWire(data []byte) error {
 			return err
 		}
 		switch id {
-		case 0, 1, 3, 5, 6, 7, 10, 11, 12:
+		case 0, 1, 2, 3, 5, 6, 7, 10, 11, 12:
 		default:
 			return unsupported("production state/feature lowering is pending")
 		}
 		if uint64(n) > uint64(r.BytesLeft()) {
 			return unsupported("truncated production section")
+		}
+		if id == 2 {
+			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
+			count, err := section.U32()
+			if err != nil || count != 1 {
+				return unsupported("production requires exactly one memory import when an import section is present")
+			}
+			// Decoded admission checks the single import's kind and memory shape.
 		}
 		if err := r.JumpTo(r.Offset() + int(n)); err != nil {
 			return err
