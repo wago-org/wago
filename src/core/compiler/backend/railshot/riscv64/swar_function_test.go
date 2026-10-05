@@ -49,10 +49,10 @@ func TestSWARWholeFunctionAdmissionAndBoundedSlots(t *testing.T) {
 	// Every unsupported operation is rejected on the complete source before a
 	// body image is returned, including dead code after an unsupported return.
 	for _, fixture := range []fixtureFunc{
-		{params: []byte{0x7e}, result: 0x7e, body: []byte{0x20, 0, 0x0b}},
+		{params: []byte{0x70}, result: 0x70, body: []byte{0x20, 0, 0x0b}},
 		{params: []byte{0x7b}, result: 0x7b, body: []byte{2, 0x7b, 0x20, 0, 0x0b, 0x0b}},
 		{params: []byte{0x7b, 0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x20, 1, 0xfd, 111, 0x0b}},
-		{params: []byte{0x7b}, result: 0x7b, locals: []byte{1, 1, 0x7e}, body: []byte{0x20, 0, 0x0b}},
+		{params: []byte{0x7b}, result: 0x7b, locals: []byte{1, 1, 0x70}, body: []byte{0x20, 0, 0x0b}},
 		{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0f, 0x20, 0, 0x20, 0, 0xfd, 111, 0x1a, 0x0b}},
 		{params: []byte{0x7b}, result: 0x7b, locals: []byte{1, 128, 1, 0x7b}, body: []byte{0x20, 0, 0x0b}},
 	} {

@@ -56,7 +56,7 @@ func TestSWARScalarLanesWholeFunctionAdmission(t *testing.T) {
 		{0x20, 0, 0xfd, 23, 0, 0x0b},                      // replace underflow
 		{0x20, 0, 0x20, 0, 0xfd, 23, 0, 0x0b},             // vector replacement value
 		{0x41, 0, 0x41, 0, 0xfd, 23, 0, 0x0b},             // scalar vector input
-		{0x20, 0, 0xfd, 29, 0, 0x0b},                      // I64 transport still pending
+		{0x20, 0, 0xfd, 29, 0, 0x0b},                      // I64 result where I32 is required
 		{0x20, 0, 0xfd, 21, 0, 0xfd, 15, 0xfd, 111, 0x0b}, // unsupported later operation
 	} {
 		if code, _, err := compileSWARPairs(&wasm.Func{BodyBytes: body}, ft, emissionMode{production: true}); code != nil || err == nil {
@@ -68,7 +68,9 @@ func TestSWARScalarLanesWholeFunctionAdmission(t *testing.T) {
 func TestSWARScalarLaneHelpersRejectWithoutEmission(t *testing.T) {
 	for _, invalid := range []func(*integerEmitter){
 		func(f *integerEmitter) { f.swarSplat(0) },
-		func(f *integerEmitter) { f.swarSplat(64) },
+		func(f *integerEmitter) { f.swarSplat(24) },
+		func(f *integerEmitter) { f.swarExtract(64, 0, true) },
+		func(f *integerEmitter) { f.swarReplace(64, 2) },
 		func(f *integerEmitter) { f.swarExtract(8, 16, false) },
 		func(f *integerEmitter) { f.swarReplace(16, 8) },
 		func(f *integerEmitter) { f.swarReplace(32, 4) },

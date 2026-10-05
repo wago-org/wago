@@ -13,7 +13,7 @@ func TestSWARRV64MixedIncomingAndResultSlotPacking(t *testing.T) {
 	previous := goruntime.GOMAXPROCS(1)
 	defer goruntime.GOMAXPROCS(previous)
 	e, j, args, results, trap, _ := thunkFixtureRV64(t, 256)
-	for _, pattern := range [][]byte{{0x7f, 0x7b}, {0x7b, 0x7f}, {0x7f}, {0x7b}, {0x7f, 0x7f, 0x7b, 0x7f, 0x7b, 0x7b}} {
+	for _, pattern := range [][]byte{{0x7f, 0x7b}, {0x7b, 0x7f}, {0x7f}, {0x7b}, {0x7f, 0x7f, 0x7b, 0x7f, 0x7b, 0x7b}, {0x7e}, {0x7d}, {0x7c}, {0x7c, 0x7d, 0x7e, 0x7f, 0x7b}, {0x7b, 0x7e, 0x7d, 0x7c, 0x7f}} {
 		params := make([]byte, 128)
 		body := []byte{}
 		for i := range params {
@@ -31,12 +31,17 @@ func TestSWARRV64MixedIncomingAndResultSlotPacking(t *testing.T) {
 		slot := 0
 		for i, typ := range params {
 			low := uint64(i)*0x01010101 + 0x80000000
-			if typ == 0x7f {
+			switch typ {
+			case 0x7f, 0x7d:
 				low |= 0xdeadbeef00000000
+			case 0x7e:
+				low |= 0x8000000000000000
+			case 0x7c:
+				low |= 0x7ff0000000000000
 			}
 			binary.LittleEndian.PutUint64(args[slot*8:], low)
 			slot++
-			if typ == 0x7f {
+			if typ == 0x7f || typ == 0x7d {
 				low = uint64(uint32(low))
 			}
 			word := make([]byte, 8)

@@ -12,14 +12,14 @@ func (f *integerEmitter) swarLaneCheck(width, lane uint8) bool {
 	if f.err != nil || f.a.Err() != nil {
 		return false
 	}
-	if (width != 8 && width != 16 && width != 32) || lane >= 128/width {
+	if (width != 8 && width != 16 && width != 32 && width != 64) || lane >= 128/width {
 		f.err = fmt.Errorf("rv64: invalid scalar SWAR lane width/index")
 		return false
 	}
 	return true
 }
 
-// Splat consumes the low width bits of raw I32 X5 and returns a pair in X6/X7.
+// Splat consumes the low width bits of raw scalar X5 and returns a pair in X6/X7.
 // X29 is temporary. Doubling the already replicated chunk cannot carry into
 // another lane; no optional vector or bit-manipulation extension is used.
 func (f *integerEmitter) swarSplat(width uint8) {
@@ -35,10 +35,14 @@ func (f *integerEmitter) swarSplat(width uint8) {
 	f.a.Addi(enc.X7, enc.X6, 0)
 }
 
-// Extract reads pair X6/X7 and writes a normalized I32 to X5. Signed narrow
-// lanes extend into the low32 bits, then clear the upper32 carrier bits.
+// Extract reads pair X6/X7 and writes a scalar to X5. Narrow results have
+// clear upper carrier bits; signed narrow lanes extend into low32 bits.
 func (f *integerEmitter) swarExtract(width, lane uint8, signed bool) {
 	if !f.swarLaneCheck(width, lane) {
+		return
+	}
+	if width == 64 && signed {
+		f.err = fmt.Errorf("rv64: signed narrow SWAR extraction requires width below64")
 		return
 	}
 	src := enc.X6
@@ -55,7 +59,7 @@ func (f *integerEmitter) swarExtract(width, lane uint8, signed bool) {
 	}
 }
 
-// Replace reads pair X6/X7 and the low width bits of raw I32 X5. Only the
+// Replace reads pair X6/X7 and the low width bits of raw scalar X5. Only the
 // selected lane changes; X28/X29 are temporary, including high-half lanes.
 func (f *integerEmitter) swarReplace(width, lane uint8) {
 	if !f.swarLaneCheck(width, lane) {
