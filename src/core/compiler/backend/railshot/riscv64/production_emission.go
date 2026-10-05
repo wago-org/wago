@@ -74,6 +74,8 @@ func productionTrapCode(code int) int {
 		return abi.TrapIndirectOutOfBounds
 	case trapIndirectSignature:
 		return abi.TrapIndirectWrongSig
+	case trapTableBounds:
+		return abi.TrapTableOutOfBounds
 	default:
 		panic("rv64: unknown admitted integer trap")
 	}

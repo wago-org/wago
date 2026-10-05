@@ -13,6 +13,7 @@ const (
 	MaxOwnedElementSegments = 256
 	trapIndirectBounds      = 8 // distinct from private memory-bounds tag5
 	trapIndirectSignature   = 9
+	trapTableBounds         = 10
 )
 
 // Bound decoded resource metadata before validation or payload copies.
@@ -114,5 +115,55 @@ func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int) {
 			f.a.Lwu(enc.X5, enc.X13, int32(j*8))
 		}
 		f.Store(f.SpillOffset(base+j), 5, wide)
+	}
+}
+
+// Private references are immutable canonical descriptor handles, never numeric
+// carriers. Only the current instance's owned descriptors can reach table.set.
+func (f *integerEmitter) functionReference(index uint32) {
+	f.a.Ld(enc.X5, enc.X25, -abi.FuncRefDescPtrOffset)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
+	f.a.Constant64(enc.X6, int64(index+1)*40)
+	f.a.Add(enc.X5, enc.X5, enc.X6)
+}
+
+// Returns the entry address in X6. X28 may hold a full-width reference.
+func (f *integerEmitter) privateTableEntry() {
+	f.a.Ld(enc.X6, enc.X25, -80)
+	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
+	f.a.Lwu(enc.X7, enc.X6, 0)
+	f.trap(trapTableBounds, f.a.BranchLong(enc.GEU, enc.X5, enc.X7))
+	f.a.Slli(enc.X5, enc.X5, 5)
+	f.a.Add(enc.X6, enc.X6, enc.X5)
+	f.a.Addi(enc.X6, enc.X6, 8)
+}
+
+func (f *integerEmitter) storePrivateReference() {
+	null := f.a.BranchLong(enc.EQ, enc.X28, enc.Zero)
+	// The table can only hold the current instance's local wrapper descriptors.
+	// Validate the complete tag/context before the first write.
+	f.a.Ld(enc.X7, enc.X28, 16)
+	f.a.Constant64(enc.X5, int64(abi.FuncRefLocalWrapperHomeTag))
+	f.a.Or(enc.X5, enc.X5, enc.X25)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	f.a.Ld(enc.X7, enc.X28, 32)
+	f.a.Ld(enc.X5, enc.X25, -abi.FuncRefDescPtrOffset)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
+	f.a.Ld(enc.X5, enc.X5, 32)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	// No interrupt poll splits an entry: reuse never observes a partial copy.
+	for offset := int32(0); offset < 32; offset += 8 {
+		f.a.Ld(enc.X7, enc.X28, offset)
+		f.a.Sd(enc.X7, enc.X6, offset)
+	}
+	done := f.Jump()
+	if err := f.Patch(null, f.Position()); err != nil {
+		f.err = err
+	}
+	for offset := int32(0); offset < 32; offset += 8 {
+		f.a.Sd(enc.Zero, enc.X6, offset)
+	}
+	if err := f.Patch(done, f.Position()); err != nil {
+		f.err = err
 	}
 }

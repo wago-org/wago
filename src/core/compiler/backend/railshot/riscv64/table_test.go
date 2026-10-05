@@ -51,7 +51,7 @@ func TestProductionPrivateTableFramedIndirectAdmission(t *testing.T) {
 	if err != nil || s.calls != 1 {
 		t.Fatal("dead indirect call was omitted from frame budget", s, err)
 	}
-	m.Code[0].BodyBytes = []byte{0x00, 0xd0, 0x70, 0x1a, 0x0b}
+	m.Code[0].BodyBytes = []byte{0x00, 0xd0, 0x6f, 0x1a, 0x0b}
 	if _, err := walkInteger(&m.Code[0], ft, &state, nil); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("unsupported dead reference escaped", err)
 	}
@@ -148,5 +148,47 @@ func TestProductionPrivateTableAggregateBoundsAndUnsupportedExports(t *testing.T
 	}
 	if image, err := CompileModuleWith(&m, CompileOptions{DeferCodeMapping: true}); image != nil || !errors.Is(err, ErrUnsupported) {
 		t.Fatal("export reached image", image, err)
+	}
+}
+
+func TestProductionPrivateReferenceAdmissionAndCarrierClasses(t *testing.T) {
+	data := binaryModule(
+		fixtureFunc{params: []byte{0x7f}, result: 0x7f, locals: []byte{1, 1, 0x70}, body: []byte{
+			0xd2, 1, 0x21, 1, 0x41, 0, 0x20, 1, 0x26, 0,
+			0x41, 0, 0x25, 0, 0xd1, 0xfc, 16, 0, 0x6a, 0x0b,
+		}},
+		fixtureFunc{params: []byte{0x7f}, result: 0x7f, body: []byte{0x20, 0, 0x0b}, unexported: true},
+	)
+	data = modifySection(data, 7, 4, []byte{1, 0x70, 0, 3}, false)
+	data = modifySection(data, 10, 9, []byte{1, 0, 0x41, 0, 0x0b, 1, 1}, false)
+	c, err := CompileProduction(data, ProductionOptions{DeferCodeMapping: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CodeImage.Close()
+	if _, err := Compile(data); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("isolated private references admitted", err)
+	}
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := admitStateMode(m, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft, _ := m.LocalFuncType(0)
+	for _, body := range [][]byte{
+		{0x42, 0, 0x21, 1, 0x41, 0, 0x0b}, // a wide integer is not a reference
+		{0xd2, 1, 0x50, 0x0b},             // a reference is not an i64 arithmetic input
+		{0x00, 0xd0, 0x6f, 0x1a, 0x0b},    // unsupported dead externref
+		{0x00, 0xfc, 17, 0, 0x0b},         // unsupported dead table.fill
+		{0x00, 0x25, 1, 0x1a, 0x0b},       // unsupported dead table index
+		{0x00, 0x02, 0x70, 0x0b, 0x0b},    // reference control results remain gated
+	} {
+		m.Code[0].BodyBytes = body
+		if _, err := walkInteger(&m.Code[0], ft, &state, nil); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("carrier/shape escaped admission", body, err)
+		}
 	}
 }

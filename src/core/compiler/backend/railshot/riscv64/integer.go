@@ -48,19 +48,22 @@ type integerEmitter struct {
 func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *integerEmitter) (integerSummary, error) {
 	floating := state != nil && state.production
 	var locals [256]bool
+	var localRefs [256]bool
+	privateRefs := floating && state.ownedTable
 	nlocals := len(ft.Params)
 	for i, t := range ft.Params {
 		locals[i] = scalarWide(t)
 	}
 	for _, run := range fn.Locals.Runs {
-		if run.Count != 0 && !scalarType(run.Type, floating) {
+		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && wasm.EqualValType(run.Type, wasm.FuncRef)) {
 			return integerSummary{}, unsupported("noninteger local")
 		}
 		if int(run.Count) > 256-nlocals {
 			return integerSummary{}, unsupported("local bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
-			locals[nlocals] = scalarWide(run.Type)
+			localRefs[nlocals] = wasm.EqualValType(run.Type, wasm.FuncRef)
+			locals[nlocals] = scalarWide(run.Type) || localRefs[nlocals]
 			nlocals++
 		}
 	}
@@ -68,6 +71,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		return integerSummary{}, unsupported("integer body bound")
 	}
 	var stack [512]bool
+	var stackRefs [512]bool
 	var ctrl [33]integerControl
 	var rootResults [256]bool
 	for j, t := range ft.Results {
@@ -79,23 +83,39 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	live := true
 	contextUsed := false
 	callCount := 0
-	pop := func() (bool, error) {
+	popAny := func() (bool, bool, error) {
 		if h <= ctrl[depth-1].base {
 			if !live {
-				return false, nil
+				return false, false, nil
 			}
-			return false, fmt.Errorf("rv64: validated operand stack underflow")
+			return false, false, fmt.Errorf("rv64: validated operand stack underflow")
 		}
 		h--
-		return stack[h], nil
+		return stack[h], stackRefs[h], nil
 	}
+	popClass := func(reference bool) (bool, error) {
+		wide, ref, err := popAny()
+		if err == nil && live && ref != reference {
+			return false, unsupported("private reference carrier class")
+		}
+		return wide, err
+	}
+	pop := func() (bool, error) { return popClass(false) }
 	push := func(w bool) error {
 		if h >= len(stack) {
 			return unsupported("integer operand bound")
 		}
 		stack[h] = w
+		stackRefs[h] = false
 		h++
 		peak = max(peak, h)
+		return nil
+	}
+	pushReference := func() error {
+		if err := push(true); err != nil {
+			return err
+		}
+		stackRefs[h-1] = true
 		return nil
 	}
 	position := func() int {
@@ -363,11 +383,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			live = false
 			h = ctrl[depth-1].base
 		case 0x1a:
-			if _, err = pop(); err != nil {
+			if _, _, err = popAny(); err != nil {
 				return integerSummary{}, err
 			}
 		case 0x1b, 0x1c:
-			var typedWide bool
+			var typedWide, typedRef bool
 			if op == 0x1c {
 				n, e := r.U32()
 				if e != nil {
@@ -377,20 +397,21 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if n != 1 || bt != 0x7f && bt != 0x7e && (!floating || bt != 0x7d && bt != 0x7c) {
+				if n != 1 || bt != 0x7f && bt != 0x7e && (!floating || bt != 0x7d && bt != 0x7c) && !(privateRefs && bt == 0x70) {
 					return integerSummary{}, unsupported("noninteger typed select")
 				}
-				typedWide = bt == 0x7e || bt == 0x7c
+				typedRef = bt == 0x70
+				typedWide = bt == 0x7e || bt == 0x7c || typedRef
 			}
 			if _, err = pop(); err != nil {
 				return integerSummary{}, err
 			}
 			cond := h
-			w, e := pop()
+			w, e := popClass(typedRef)
 			if e != nil {
 				return integerSummary{}, e
 			}
-			if _, err = pop(); err != nil {
+			if _, err = popClass(typedRef); err != nil {
 				return integerSummary{}, err
 			}
 			if op == 0x1c {
@@ -415,6 +436,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = push(w); err != nil {
 				return integerSummary{}, err
 			}
+			stackRefs[h-1] = typedRef
 		case 0x20, 0x21, 0x22:
 			idx, e := r.U32()
 			if e != nil {
@@ -432,8 +454,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if err = push(w); err != nil {
 					return integerSummary{}, err
 				}
+				stackRefs[h-1] = localRefs[idx]
 			} else {
-				if _, err = pop(); err != nil {
+				if _, err = popClass(localRefs[idx]); err != nil {
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
@@ -442,6 +465,89 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if op == 0x22 {
 					if err = push(w); err != nil {
+						return integerSummary{}, err
+					}
+					stackRefs[h-1] = localRefs[idx]
+				}
+			}
+		case 0xd0, 0xd1, 0xd2, 0x25, 0x26:
+			if !privateRefs {
+				return integerSummary{}, unsupported("private reference instruction without owned table")
+			}
+			switch op {
+			case 0xd0:
+				heap, e := r.S33()
+				if e != nil {
+					return integerSummary{}, e
+				}
+				if heap != -16 {
+					return integerSummary{}, unsupported("private abstract funcref null only")
+				}
+				if live && emit != nil {
+					emit.Constant(5, 0, true)
+					emit.Store(emit.SpillOffset(h), 5, true)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			case 0xd1:
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), true)
+					emit.a.Sltiu(enc.X5, enc.X5, 1)
+					emit.Store(emit.SpillOffset(h), 5, false)
+				}
+				if err = push(false); err != nil {
+					return integerSummary{}, err
+				}
+			case 0xd2:
+				idx, e := r.U32()
+				if e != nil {
+					return integerSummary{}, e
+				}
+				if uint64(idx) >= uint64(len(state.functions)) {
+					return integerSummary{}, unsupported("private ref.func index")
+				}
+				if live && emit != nil {
+					emit.functionReference(idx)
+					emit.Store(emit.SpillOffset(h), 5, true)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			case 0x25, 0x26:
+				idx, e := r.U32()
+				if e != nil {
+					return integerSummary{}, e
+				}
+				if idx != 0 {
+					return integerSummary{}, unsupported("private table index")
+				}
+				if op == 0x26 {
+					if _, err = popClass(true); err != nil {
+						return integerSummary{}, err
+					}
+					if live && emit != nil {
+						emit.Load(28, emit.SpillOffset(h), true)
+					}
+				}
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), false)
+					emit.privateTableEntry()
+					if op == 0x25 {
+						emit.a.Ld(enc.X5, enc.X6, 24)
+						emit.Store(emit.SpillOffset(h), 5, true)
+					} else {
+						emit.storePrivateReference()
+					}
+				}
+				if op == 0x25 {
+					if err = pushReference(); err != nil {
 						return integerSummary{}, err
 					}
 				}
@@ -560,6 +666,20 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			if state == nil {
 				return integerSummary{}, unsupported("bulk instruction without state")
+			}
+			if imm.Kind == wasm.InstrTableSize {
+				if !privateRefs || imm.Index != 0 {
+					return integerSummary{}, unsupported("private table.size index")
+				}
+				if live && emit != nil {
+					emit.a.Ld(enc.X6, enc.X25, -80)
+					emit.a.Lwu(enc.X5, enc.X6, 0)
+					emit.Store(emit.SpillOffset(h), 5, false)
+				}
+				if err = push(false); err != nil {
+					return integerSummary{}, err
+				}
+				continue
 			}
 			switch imm.Kind {
 			case wasm.InstrMemoryInit, wasm.InstrDataDrop:
@@ -939,7 +1059,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	}
 	for _, run := range fn.Locals.Runs {
 		for i := uint32(0); i < run.Count; i++ {
-			widths[n] = scalarWide(run.Type)
+			widths[n] = scalarWide(run.Type) || wasm.EqualValType(run.Type, wasm.FuncRef)
 			n++
 		}
 	}
