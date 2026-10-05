@@ -86,7 +86,7 @@ func TestSWARWholeFunctionMemoryAdmissionAndResources(t *testing.T) {
 		{0x20, 0, 0xfd, 0, 0},                                     // truncated offset
 		{0x20, 0, 0xfd, 0, 0, 0x80},                               // continued offset truncated at EOF
 		{0x20, 0, 0xfd, 0, 0, 0},                                  // complete memarg, missing function end
-		{0x20, 0, 0xfd, 7, 0, 0, 0x0b},                            // splat load not lowered
+		{0x20, 0, 0xfd, 87, 0, 0, 2, 0x0b},                        // lane load missing vector/invalid lane
 		{0x20, 0, 0xfd, 0, 0, 0, 0xfd, 227, 1, 0x0b},              // unsupported op after load
 	} {
 		bad := *fn

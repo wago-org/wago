@@ -64,12 +64,12 @@ func TestSWARPartialLoadAdmissionAndMemargs(t *testing.T) {
 }
 
 func TestSWARMemoryFootprintAndHelperAdmission(t *testing.T) {
-	for _, test := range []struct{ kind, align uint32 }{{0, 4}, {11, 4}, {1, 3}, {2, 3}, {3, 3}, {4, 3}, {5, 3}, {6, 3}, {92, 2}, {93, 3}} {
+	for _, test := range []struct{ kind, align uint32 }{{0, 4}, {11, 4}, {1, 3}, {2, 3}, {3, 3}, {4, 3}, {5, 3}, {6, 3}, {92, 2}, {93, 3}, {7, 0}, {8, 1}, {9, 2}, {10, 3}, {84, 0}, {85, 1}, {86, 2}, {87, 3}, {88, 0}, {89, 1}, {90, 2}, {91, 3}} {
 		if align, ok := swarMemoryOpcode(test.kind); !ok || align != test.align {
 			t.Fatal(test, align, ok)
 		}
 	}
-	for _, kind := range []uint32{7, 10, 12, 91, 94, ^uint32(0)} {
+	for _, kind := range []uint32{12, 83, 94, ^uint32(0)} {
 		if _, ok := swarMemoryOpcode(kind); ok {
 			t.Fatal("pending memory op mapped", kind)
 		}

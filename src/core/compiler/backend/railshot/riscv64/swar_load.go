@@ -48,6 +48,12 @@ func swarMemoryOpcode(kind uint32) (align uint32, ok bool) {
 		return 3, true
 	case kind == 92:
 		return 2, true
+	case kind >= 7 && kind <= 10:
+		return kind - 7, true
+	case kind >= 84 && kind <= 87:
+		return kind - 84, true
+	case kind >= 88 && kind <= 91:
+		return kind - 88, true
 	default:
 		return 0, false
 	}

@@ -561,31 +561,47 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				if err != nil {
 					return swarSummary{}, err
 				}
-				store := kind == 11
+				laneOp := kind >= 84 && kind <= 91
+				lane := byte(0)
+				if laneOp {
+					lane, err = r.Byte()
+					if err != nil {
+						return swarSummary{}, err
+					}
+					if uint32(lane) >= 16>>maxAlign {
+						return swarSummary{}, unsupported("SWAR memory lane index")
+					}
+				}
+				store := kind == 11 || (kind >= 88 && kind <= 91)
 				arity := 1
-				if store {
+				if store || laneOp {
 					arity = 2
 				}
-				if h < arity || stackClasses[h-arity] != swarI32 || (store && stackClasses[h-1] != swarV128) {
+				if h < arity || stackClasses[h-arity] != swarI32 || ((store || laneOp) && stackClasses[h-1] != swarV128) {
 					return swarSummary{}, unsupported("SWAR memory carrier class/underflow")
 				}
 				if emit != nil {
-					if store {
+					if store || laneOp {
 						emit.swarLoad(spill(h-1), swarPair{enc.X6, enc.X7})
 					}
 					emit.Load(5, spill(h-arity), false)
 					if kind == 0 || kind == 11 {
 						emit.swarMemory(uint64(offset), store)
+					} else if laneOp {
+						emit.swarLaneMemory(uint64(offset), uint8(8<<maxAlign), lane, store)
+					} else if kind >= 7 && kind <= 10 {
+						emit.swarSplatMemory(uint64(offset), uint8(8<<maxAlign))
 					} else {
 						emit.swarPartialLoad(uint64(offset), kind)
 					}
 					if !store {
-						emit.swarStore(spill(h-1), swarPair{enc.X6, enc.X7})
+						emit.swarStore(spill(h-arity), swarPair{enc.X6, enc.X7})
 					}
 				}
 				if store {
 					h -= 2
 				} else {
+					h -= arity - 1
 					stackClasses[h-1] = swarV128
 				}
 				continue
