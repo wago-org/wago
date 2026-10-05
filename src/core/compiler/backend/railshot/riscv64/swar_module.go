@@ -12,12 +12,14 @@ import (
 type swarModuleImage struct {
 	code      []byte
 	functions []FunctionInfo
+	globals   []swarGlobalInitializer
 }
 
 // This private module pilot owns a bounded source snapshot and admits every
 // function before allocating an image. It has no production compiler entry or
 // public feature gate. Only defined functions, their exports, inert metadata
-// and one optional nonshared memory32 are supported; no initializers run here.
+// one optional nonshared memory32 and bounded literal globals are supported.
+// Global cells are initialized separately by the private idle execution owner.
 // The execution owner must provide matching call arenas and JobMemory layout.
 func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error) {
 	if !mode.production || len(data) > MaxModuleBytes {
@@ -35,7 +37,7 @@ func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error)
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
 		return nil, err
 	}
-	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) != 0 || m.UsesCompactImports || len(m.Tables) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.BranchHints) != 0 || len(m.Memories) > 1 {
+	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) != 0 || m.UsesCompactImports || len(m.Tables) != 0 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.BranchHints) != 0 || len(m.Memories) > 1 {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
 	for _, custom := range m.Customs {
@@ -70,6 +72,14 @@ func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error)
 			return nil, unsupported("SWAR module memory32 resource")
 		}
 	}
+	globals, err := swarLiteralGlobals(m.Globals)
+	if err != nil {
+		return nil, err
+	}
+	globalTypes := make([]wasm.GlobalType, len(globals))
+	for i := range globals {
+		globalTypes[i] = globals[i].typ
+	}
 	functions := make([]*wasm.CompType, len(m.Code))
 	for i := range functions {
 		ft, ok := m.LocalFuncType(i)
@@ -81,7 +91,7 @@ func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error)
 	summaries := make([]swarSummary, len(functions))
 	bound := 0
 	for i := range functions {
-		summaries[i], err = walkSWARPairsWithCalls(&m.Code[i], functions[i], memory != nil, types, functions, nil)
+		summaries[i], err = walkSWARPairsWithGlobals(&m.Code[i], functions[i], memory != nil, types, functions, globalTypes, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -93,13 +103,13 @@ func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error)
 		}
 		bound += summaries[i].codeBound + 15
 	}
-	image := &swarModuleImage{functions: make([]FunctionInfo, len(functions))}
+	image := &swarModuleImage{functions: make([]FunctionInfo, len(functions)), globals: globals}
 	var calls []directCall
 	for i := range functions {
 		functionMode := mode
 		functionMode.functionIndex = uint32(i)
 		functionMode.entryPC = uint32(m.Code[i].LocalDeclBytes)
-		code, info, relocations, err := compileSWARPairsWithCalls(&m.Code[i], functions[i], memory, types, functions, functionMode)
+		code, info, relocations, err := compileSWARPairsWithGlobals(&m.Code[i], functions[i], memory, types, functions, globalTypes, functionMode)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -128,7 +138,7 @@ func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error)
 }
 
 // Reject unsupported sections even when empty. A decoded module alone cannot
-// distinguish absent initializers from present empty feature sections.
+// distinguish absent unsupported features from present empty feature sections.
 func admitSWARWire(data []byte) error {
 	if len(data) < 8 || string(data[:8]) != "\x00asm\x01\x00\x00\x00" {
 		return fmt.Errorf("rv64: invalid SWAR module header")
@@ -144,7 +154,7 @@ func admitSWARWire(data []byte) error {
 			return fmt.Errorf("rv64: truncated SWAR section")
 		}
 		switch id {
-		case 0, 1, 3, 5, 7, 10:
+		case 0, 1, 3, 5, 6, 7, 10:
 		default:
 			return unsupported(fmt.Sprintf("SWAR section %d", id))
 		}

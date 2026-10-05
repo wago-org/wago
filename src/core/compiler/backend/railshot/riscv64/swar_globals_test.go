@@ -75,9 +75,9 @@ func TestSWARTypedGlobalsAllCarriersAndDirectoryBounds(t *testing.T) {
 			if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
 				t.Fatal("global without directory", class, index, err)
 			}
-			// The source module still has no admitted initializer/owner path.
-			if image, err := compileSWARModule(swarGlobalSource(fixture, class, int(index)+1), emissionMode{production: true}); image != nil || err == nil {
-				t.Fatal("private module global initializers widened", err)
+			// Literal globals are now independently admitted by the private module.
+			if image, err := compileSWARModule(swarGlobalSource(fixture, class, int(index)+1), emissionMode{production: true}); image == nil || err != nil || len(image.globals) != len(globals) {
+				t.Fatal("private module literal global admission", err)
 			}
 		}
 	}

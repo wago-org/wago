@@ -174,7 +174,7 @@ func bytesToSWARTypes(types []byte) []wasm.ValType {
 func TestSWARPrivateModuleRejectsUnsupportedWholeSource(t *testing.T) {
 	good := fixtureFunc{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0b}}
 	base := binaryModule(good)
-	for _, id := range []byte{2, 4, 6, 8, 9, 11, 12, 13, 14} {
+	for _, id := range []byte{2, 4, 8, 9, 11, 12, 13, 14} {
 		data := modifySection(base, 7, id, []byte{0}, false)
 		if image, err := compileSWARModule(data, emissionMode{production: true}); image != nil || err == nil {
 			t.Fatal("unsupported empty/state section", id, err)
