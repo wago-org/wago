@@ -47,27 +47,22 @@ func createRetainedReplacementTemp(destination string, requireExistingParent boo
 		unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return nil, retainedReplaceHandle{}, errors.Join(
-			fmt.Errorf("create private atomic staging file: %w", err), closeUnusedDarwinPrivateDirectory(private))
+			fmt.Errorf("create private atomic staging file: %w", err), private.removeAndClose())
 	}
 	path := filepath.Join(directory, private.name, temporary)
 	file := os.NewFile(uintptr(fd), path)
 	if file == nil {
 		_ = unix.Close(fd)
 		return nil, retainedReplaceHandle{}, errors.Join(
-			errors.New("wrap private atomic staging file"), closeUnusedDarwinPrivateDirectory(private))
+			errors.New("wrap private atomic staging file"), private.removeAndClose())
 	}
 	state := &darwinRetainedReplacement{
 		private: private, temporary: temporary, destination: filepath.Clean(destination),
 	}
 	if err := unix.Fstat(fd, &state.stageStat); err != nil {
-		return nil, retainedReplaceHandle{}, errors.Join(err, file.Close(), closeUnusedDarwinPrivateDirectory(private))
+		return nil, retainedReplaceHandle{}, errors.Join(err, file.Close(), private.removeAndClose())
 	}
 	return file, retainedReplaceHandle{state: state}, nil
-}
-
-func closeUnusedDarwinPrivateDirectory(private darwinPrivateDirectory) error {
-	removeErr := removeDarwinPrivateDirectory(private)
-	return errors.Join(removeErr, private.file.Close(), private.pin.Close(), private.parent.Close())
 }
 
 func (handle retainedReplaceHandle) valid() bool { return handle.state != nil }
@@ -171,5 +166,5 @@ func (handle retainedReplaceHandle) close() error {
 	} else if !state.published && !state.removed {
 		cleanupErr = handle.remove()
 	}
-	return errors.Join(cleanupErr, state.private.file.Close(), state.private.pin.Close(), state.private.parent.Close())
+	return errors.Join(cleanupErr, state.private.close())
 }

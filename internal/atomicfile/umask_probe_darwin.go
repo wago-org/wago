@@ -27,6 +27,17 @@ type darwinPrivateDirectory struct {
 	stat       unix.Stat_t
 }
 
+func (private darwinPrivateDirectory) close() error {
+	return errors.Join(private.file.Close(), private.pin.Close(), private.parent.Close())
+}
+
+func (private darwinPrivateDirectory) removeAndClose() error {
+	// Remove through pinned descriptors while they are still open. Only the
+	// creator owns this private directory; callers decide whether cleanup after
+	// publication is best effort or a pre-publication error.
+	return errors.Join(removeDarwinPrivateDirectory(private), private.close())
+}
+
 // x/sys does not currently expose Darwin's O_SEARCH. Unlike O_EVTONLY,
 // O_SEARCH does not request implicit read access, so a caller that may create a
 // write-only output can still pin and operate relative to its searchable parent.
@@ -45,11 +56,7 @@ func probeUmaskMode(destination string, requested fs.FileMode, requireExistingPa
 		return 0, err
 	}
 	defer func() {
-		removeErr := removeDarwinPrivateDirectory(private)
-		closeErr := private.file.Close()
-		closePinErr := private.pin.Close()
-		closeParentErr := private.parent.Close()
-		resultErr = errors.Join(resultErr, closeErr, closePinErr, closeParentErr, removeErr)
+		resultErr = errors.Join(resultErr, private.removeAndClose())
 	}()
 
 	// The former os.WriteFile path requested write-only access. On Darwin a

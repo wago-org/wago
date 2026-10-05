@@ -27,8 +27,7 @@ func InspectNewFileMetadata(destination string, mode fs.FileMode, inspect func(*
 		return err
 	}
 	defer func() {
-		resultErr = errors.Join(resultErr, removeDarwinPrivateDirectory(private),
-			private.file.Close(), private.pin.Close(), private.parent.Close())
+		resultErr = errors.Join(resultErr, private.removeAndClose())
 	}()
 
 	name, fd, err := createDarwinMetadataProbe(int(private.parent.Fd()), mode)
