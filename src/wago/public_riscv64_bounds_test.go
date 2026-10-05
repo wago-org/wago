@@ -10,12 +10,11 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func TestRV64PublicForcedHostModeRejectsBeforeSizing(t *testing.T) {
+func TestRV64PublicForcedHostModeForOwnedScalarModule(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	m, err := rt.Compile(multiValueControlCallModule())
@@ -23,18 +22,22 @@ func TestRV64PublicForcedHostModeRejectsBeforeSizing(t *testing.T) {
 		t.Fatal(err)
 	}
 	in, err := rt.Instantiate(context.Background(), m, WithSynchronousHostCalls())
-	if in != nil || !errors.Is(err, coreruntime.ErrUnsupported) {
-		t.Fatal("unsupported synchronous host mode", in, err)
+	if err != nil || in == nil {
+		t.Fatal("supported scalar synchronous host mode", err)
 	}
-	if m.c.codeCache.base != 0 || len(m.c.codeCache.mem) != 0 {
-		t.Fatal("host rejection published code")
+	got, err := in.Invoke("pair")
+	if err != nil || !slices.Equal(got, []uint64{18, 19}) {
+		t.Fatal(got, err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
 	}
 	in, err = rt.Instantiate(context.Background(), m)
 	if err != nil {
-		t.Fatal("host rejection invalidated later ordinary instantiation", err)
+		t.Fatal("later ordinary instantiation", err)
 	}
 	defer in.Close()
-	got, err := in.Invoke("pair")
+	got, err = in.Invoke("pair")
 	if err != nil || !slices.Equal(got, []uint64{18, 19}) {
 		t.Fatal(got, err)
 	}
@@ -49,8 +52,13 @@ func TestRV64PublicForcedHostModeRejectsBeforeSizing(t *testing.T) {
 		resolver.activate(other)
 		defer resolver.close()
 		instance, err := other.Instantiate(context.Background(), module)
-		if instance != nil || !errors.Is(err, coreruntime.ErrUnsupported) || module.c.codeCache.base != 0 {
-			t.Fatal("caller-resolver forced host mode", instance, err)
+		if err != nil || instance == nil {
+			t.Fatal("caller-resolver forced host mode", err)
+		}
+		defer instance.Close()
+		got, err := instance.Invoke("pair")
+		if err != nil || !slices.Equal(got, []uint64{18, 19}) {
+			t.Fatal(got, err)
 		}
 	})
 }

@@ -109,39 +109,19 @@ func TestProductionRV64ZeroMemoryPreparedWrapper(t *testing.T) {
 	}
 }
 
-func TestProductionRV64UnsupportedHostAndGuard(t *testing.T) {
+func TestProductionRV64UnsupportedGuardAndInvalidHostFrame(t *testing.T) {
 	e, _, arena := productionFixtureRV64(t, 0)
 	trap, results := arena.Alloc(TrapBufferBytes), arena.Alloc(8)
 	binary.LittleEndian.PutUint64(results, 0x5555)
 	called := false
-	host := func(uintptr, uint32, []uint64, []uint64) { called = true }
-	if err := e.CallWithHost(0, nil, nil, trap, results, nil, host); !errors.Is(err, ErrUnsupported) || called || binary.LittleEndian.Uint64(results) != 0x5555 {
-		t.Fatal("host rejection", err, called)
+	if err := e.CallWithHost(0, nil, nil, trap, results, nil, func(uintptr, uint32, []uint64, []uint64) { called = true }); err == nil || called || binary.LittleEndian.Uint64(results) != 0x5555 {
+		t.Fatal("invalid host entry", err, called)
 	}
 	if m, err := NewJobMemoryGuarded(0, 65536); m != nil || !errors.Is(err, ErrUnsupported) {
 		t.Fatal("guard rejection", m, err)
 	}
 	if HostInterruptSupported() {
 		t.Fatal("unimplemented asynchronous cancellation claimed")
-	}
-	if HostCtrlFrameBytes != 0 {
-		t.Fatal("unimplemented host control frame advertised")
-	}
-	for _, slots := range []int{-1, 0, 64, 256, MaxSyncHostSlots} {
-		if size, err := HostCtrlFrameBytesForSlots(slots); size != 0 || !errors.Is(err, ErrUnsupported) {
-			t.Fatal("host frame sizing must reject", slots, size, err)
-		}
-	}
-	ctrl := []byte{0x55, 0xaa, 0x33}
-	if err := InitHostCtrlFrame(ctrl); !errors.Is(err, ErrUnsupported) {
-		t.Fatal("host frame initialization", err)
-	}
-	if err := RegisterHostCtrlFrame(ctrl); !errors.Is(err, ErrUnsupported) {
-		t.Fatal("host frame registration", err)
-	}
-	UnregisterHostCtrlFrame(ctrl)
-	if !bytes.Equal(ctrl, []byte{0x55, 0xaa, 0x33}) {
-		t.Fatal("unsupported frame mutated control bytes")
 	}
 }
 

@@ -9,8 +9,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// This private runtime proof is separate from the admitted host control ABI.
-// It stores guest state only: gp/tp/CTXT/g must belong to the current Go thread
+// This guest prefix is shared with synchronous host control frames. It stores
+// guest state only: gp/tp/CTXT/g must belong to the current Go thread
 // and are freshly saved by each resume bridge, never restored from a park.
 type rv64ParkFrame struct {
 	SP, RA                                                   uint64
