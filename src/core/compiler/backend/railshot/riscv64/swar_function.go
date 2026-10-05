@@ -42,6 +42,13 @@ func walkSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 }
 
 func walkSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithData(fn, ft, memory32, types, functions, globals, 0, emit)
+}
+
+func walkSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, emit *integerEmitter) (swarSummary, error) {
+	if dataCount < 0 || dataCount > 256 {
+		return swarSummary{}, unsupported("SWAR passive data directory bound")
+	}
 	if len(globals) > 256 {
 		return swarSummary{}, unsupported("SWAR global directory bound")
 	}
@@ -544,7 +551,27 @@ func walkSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory32 bool, t
 			if err != nil {
 				return swarSummary{}, err
 			}
-			if sub == 10 || sub == 11 {
+			dataOffset := int32(0)
+			if sub == 8 || sub == 9 {
+				index, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				if uint64(index) >= uint64(dataCount) {
+					return swarSummary{}, unsupported("SWAR passive data index")
+				}
+				dataOffset = int32(index) * 16
+				if sub == 9 {
+					if err := reserve(512); err != nil {
+						return swarSummary{}, err
+					}
+					if emit != nil {
+						emit.dataDrop(dataOffset)
+					}
+					continue
+				}
+			}
+			if sub == 8 || sub == 10 || sub == 11 {
 				if !memory32 {
 					return swarSummary{}, unsupported("SWAR bulk memory without resource")
 				}
@@ -584,8 +611,10 @@ func walkSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory32 bool, t
 					kind := wasm.InstrMemoryFill
 					if sub == 10 {
 						kind = wasm.InstrMemoryCopy
+					} else if sub == 8 {
+						kind = wasm.InstrMemoryInit
 					}
-					emit.memoryBulk(kind, 0)
+					emit.memoryBulk(kind, dataOffset)
 				}
 				h = base
 				continue
@@ -1316,6 +1345,14 @@ func compileSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory *wasm.Me
 // scalar (8-byte) and vector (16-byte) cells behind JobMemory.GlobalsPtr.
 // This private helper does not admit global initializers or module state.
 func compileSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	return compileSWARPairsWithData(fn, ft, memory, types, functions, globals, 0, mode)
+}
+
+// dataCount names the immutable directory shape of owned passive descriptors.
+func compileSWARPairsWithData(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if dataCount != 0 && !mode.production {
+		return nil, FunctionInfo{}, nil, unsupported("SWAR passive data requires production owner")
+	}
 	if len(globals) != 0 && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR globals require production owner")
 	}
@@ -1326,7 +1363,7 @@ func compileSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory *wasm.
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairsWithGlobals(fn, ft, memory != nil, types, functions, globals, nil)
+	summary, err := walkSWARPairsWithData(fn, ft, memory != nil, types, functions, globals, dataCount, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1344,7 +1381,7 @@ func compileSWARPairsWithGlobals(fn *wasm.Func, ft *wasm.CompType, memory *wasm.
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithGlobals(fn, ft, memory != nil, types, functions, globals, &f)
+	actual, err := walkSWARPairsWithData(fn, ft, memory != nil, types, functions, globals, dataCount, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
