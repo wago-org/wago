@@ -277,6 +277,9 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			if err != nil {
 				return swarSummary{}, err
 			}
+			if core, ok := swarRelaxedCoreOpcode(kind); ok {
+				kind = core
+			}
 			bound := 512
 			_, memoryOp := swarMemoryOpcode(kind)
 			if memoryOp || kind == 130 || kind == 186 {

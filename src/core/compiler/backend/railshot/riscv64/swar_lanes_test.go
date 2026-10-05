@@ -57,7 +57,7 @@ func TestSWARScalarLanesWholeFunctionAdmission(t *testing.T) {
 		{0x20, 0, 0x20, 0, 0xfd, 23, 0, 0x0b},                // vector replacement value
 		{0x41, 0, 0x41, 0, 0xfd, 23, 0, 0x0b},                // scalar vector input
 		{0x20, 0, 0xfd, 29, 0, 0x0b},                         // I64 result where I32 is required
-		{0x20, 0, 0xfd, 21, 0, 0xfd, 15, 0xfd, 129, 2, 0x0b}, // unsupported later operation
+		{0x20, 0, 0xfd, 21, 0, 0xfd, 15, 0xfd, 146, 2, 0x0b}, // unsupported later operation
 	} {
 		if code, _, err := compileSWARPairs(&wasm.Func{BodyBytes: body}, ft, emissionMode{production: true}); code != nil || err == nil {
 			t.Fatal("malformed/unsupported scalar lane emitted", body, err)

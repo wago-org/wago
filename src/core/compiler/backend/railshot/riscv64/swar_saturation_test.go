@@ -30,10 +30,10 @@ func TestSWARSaturationAdmissionAndExactClasses(t *testing.T) {
 			}
 		}
 	}
-	for _, kind := range []uint32{256} {
+	for _, kind := range []uint32{274} {
 		fn, ft := swarValidatedFunction(t, swarArithmeticFixture(kind))
 		if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
-			t.Fatal("pending relaxed swizzle emitted", kind, err)
+			t.Fatal("pending relaxed dot emitted", kind, err)
 		}
 	}
 }

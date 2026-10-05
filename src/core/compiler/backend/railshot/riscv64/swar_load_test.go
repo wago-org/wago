@@ -46,7 +46,7 @@ func TestSWARPartialLoadAdmissionAndMemargs(t *testing.T) {
 			}
 		}
 		prefix := uleb([]byte{0x20, 0, 0xfd}, kind)
-		for _, tail := range [][]byte{nil, {0}, {0, 0x80}, {64, 0, 0, 0x0b}, {0, 0x80, 0x80, 0x80, 0x80, 0x10, 0x0b}, {0, 0, 0xfd, 129, 2, 0x0b}, {byte(maxAlign + 1), 0, 0x0b}} {
+		for _, tail := range [][]byte{nil, {0}, {0, 0x80}, {64, 0, 0, 0x0b}, {0, 0x80, 0x80, 0x80, 0x80, 0x10, 0x0b}, {0, 0, 0xfd, 146, 2, 0x0b}, {byte(maxAlign + 1), 0, 0x0b}} {
 			bad := *fn
 			bad.BodyBytes = append(append([]byte(nil), prefix...), tail...)
 			if code, _, err := compileSWARPairsWithMemory(&bad, ft, memory, emissionMode{production: true}); code != nil || err == nil {

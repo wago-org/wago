@@ -44,9 +44,9 @@ func TestSWARUnaryIntegerAdmissionAndResultClasses(t *testing.T) {
 			}
 		}
 	}
-	fn, ft := swarValidatedFunction(t, swarUnaryFixture(257, false))
+	fn, ft := swarValidatedFunction(t, swarArithmeticFixture(274))
 	if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
-		t.Fatal("pending vector relaxed trunc emitted", err)
+		t.Fatal("pending vector relaxed dot emitted", err)
 	}
 }
 
