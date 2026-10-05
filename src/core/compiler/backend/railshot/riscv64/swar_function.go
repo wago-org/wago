@@ -274,7 +274,8 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				return swarSummary{}, err
 			}
 			bound := 512
-			if kind == 0 || kind == 11 || kind == 130 || kind == 186 {
+			_, memoryOp := swarMemoryOpcode(kind)
+			if memoryOp || kind == 130 || kind == 186 {
 				bound = 1024
 			} else if kind == 13 {
 				bound = 768
@@ -543,7 +544,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				}
 				continue
 			}
-			if kind == 0 || kind == 11 {
+			if maxAlign, ok := swarMemoryOpcode(kind); ok {
 				if !memory32 {
 					return swarSummary{}, unsupported("SWAR memory32 descriptor is required")
 				}
@@ -553,8 +554,8 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				}
 				// This pilot admits the implicit memory0 form only. In particular,
 				// indexed/memory64 memargs cannot be misread as a memory32 offset.
-				if align > 4 {
-					return swarSummary{}, unsupported("SWAR full-width memarg alignment/index")
+				if align > maxAlign {
+					return swarSummary{}, unsupported("SWAR memarg alignment/index")
 				}
 				offset, err := r.U32()
 				if err != nil {
@@ -573,7 +574,11 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 						emit.swarLoad(spill(h-1), swarPair{enc.X6, enc.X7})
 					}
 					emit.Load(5, spill(h-arity), false)
-					emit.swarMemory(uint64(offset), store)
+					if kind == 0 || kind == 11 {
+						emit.swarMemory(uint64(offset), store)
+					} else {
+						emit.swarPartialLoad(uint64(offset), kind)
+					}
 					if !store {
 						emit.swarStore(spill(h-1), swarPair{enc.X6, enc.X7})
 					}

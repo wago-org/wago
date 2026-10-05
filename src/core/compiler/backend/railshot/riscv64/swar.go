@@ -117,16 +117,13 @@ func (f *target) swarBits(kind wasm.InstrKind, dst, left, right, mask swarPair) 
 	f.a.Addi(dst.high, enc.Scratch1, 0)
 }
 
-// X5 is a raw i32 address, X6/X7 the complete pair. Check all 16 bytes before
-// touching memory, so a split store cannot partially write at a boundary. Byte
-// instructions support every alignment; there is no poll between the halves.
-// X5 becomes the byte pointer, stores consume X6/X7, and X28/X29 plus
-// Scratch0/Scratch1 are clobbered. The caller owns all operand spill homes.
-func (f *integerEmitter) swarMemory(offset uint64, store bool) {
+// Preflight the entire actual access footprint before any guest memory touch.
+// X5 is a raw I32 address on entry and the resolved byte pointer on success.
+func (f *integerEmitter) swarMemoryAddress(offset uint64, footprint uint8) {
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}
-	if offset > math.MaxUint32 {
+	if offset > math.MaxUint32 || (footprint != 1 && footprint != 2 && footprint != 4 && footprint != 8 && footprint != 16) {
 		f.err = fmt.Errorf("rv64: invalid SWAR memory32 offset")
 		return
 	}
@@ -139,7 +136,7 @@ func (f *integerEmitter) swarMemory(offset uint64, store bool) {
 		f.a.Ld(enc.X28, enc.X24, 0)
 		f.a.Ld(enc.X29, enc.X28, 8)
 	}
-	f.a.Addi(enc.X28, enc.Zero, 16)
+	f.a.Addi(enc.X28, enc.Zero, int32(footprint))
 	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X28))
 	f.a.Sub(enc.X29, enc.X29, enc.X28)
 	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X5))
@@ -150,6 +147,17 @@ func (f *integerEmitter) swarMemory(offset uint64, store bool) {
 		f.a.Ld(enc.X28, enc.X28, 0)
 	}
 	f.a.Add(enc.X5, enc.X28, enc.X5)
+}
+
+// X5 is a raw i32 address, X6/X7 the complete pair. Check all16 bytes before
+// touching memory, so a split store cannot partially write at a boundary. Byte
+// instructions support every alignment; there is no poll between the halves.
+// Stores consume X6/X7; the caller owns all operand spill homes.
+func (f *integerEmitter) swarMemory(offset uint64, store bool) {
+	f.swarMemoryAddress(offset, 16)
+	if f.err != nil || f.a.Err() != nil {
+		return
+	}
 	if !store {
 		f.Constant(6, 0, true)
 		f.Constant(7, 0, true)
