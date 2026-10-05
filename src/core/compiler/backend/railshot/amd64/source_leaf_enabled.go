@@ -38,6 +38,9 @@ func checkSourceBegin(f *fn, hostAdapter bool) {
 }
 
 func checkSourceFinishEmission(f *fn) {
+	if f.sourcePlan != nil && f.sourcePlan.materialization != nil {
+		shared.EndSourceMaterializationEmission(f.sourcePlan.materialization, f.a.Len())
+	}
 	if f.sourceLeaf != nil {
 		f.sourceLeaf.EndEmission(f.a.Len())
 	}

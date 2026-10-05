@@ -48,6 +48,10 @@ func checkNativeSourceBegin(f *fn, function int, admit bool) {
 		}
 		st.locals[i] = n
 	}
+	st.materialization = shared.BeginSourceMaterializationJournal(owner.Token, 1024)
+	if st.materialization == nil {
+		return
+	}
 	f.sourcePlan = st
 	keep = true
 }

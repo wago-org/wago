@@ -7,10 +7,13 @@ import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 // Pointer keys locate associations only; source identity and lifetime come from
 // the plan's owner-bound logical slots and fresh generations.
 type nativeSourceAssociation struct {
-	slot uint32
-	ref  shared.SourceSlotRef
+	producer shared.SourceMaterializationProducer
+	slot     uint32
+	ref      shared.SourceSlotRef
 }
 type nativeSourcePlanState struct {
+	materialization           *shared.SourceMaterializationJournal
+	materializationToken      shared.SourceMaterializationToken
 	owner                     *shared.IntegerSourcePlan
 	locals                    []shared.SourceNodeRef
 	associations              map[*elem]nativeSourceAssociation

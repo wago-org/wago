@@ -238,7 +238,13 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		if node.deferredOp() == opMul {
 			f.applyMul(dest, left, w)
 		} else {
+			if regallocCheckEnabled {
+				checkNativeSourceALUBefore(f, node, right, left)
+			}
 			f.applyALU(aluTable[node.deferredOp()], dest, left, w)
+			if regallocCheckEnabled {
+				checkNativeSourceALUAfter(f)
+			}
 		}
 		f.pinned = f.pinned.remove(dest)
 		f.stats.peep("commute-self-update")
@@ -358,7 +364,13 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	if node.deferredOp() == opMul {
 		f.applyMul(dest, right, w)
 	} else {
+		if regallocCheckEnabled {
+			checkNativeSourceALUBefore(f, node, left, right)
+		}
 		f.applyALU(aluTable[node.deferredOp()], dest, right, w)
+		if regallocCheckEnabled {
+			checkNativeSourceALUAfter(f)
+		}
 	}
 	f.pinned = f.pinned.remove(dest)
 	if pinnedRight != regNone {

@@ -6,3 +6,8 @@ func checkNativeSourceBefore(*fn, int, byte)     {}
 func checkNativeSourceAfter(*fn, int)            {}
 func checkNativeSourceGet(*fn, uint32)           {}
 func checkNativeSourceSet(*fn, int, bool, *elem) {}
+
+func checkNativeSourceALUBefore(*fn, *elem, *elem, *elem) {}
+func checkNativeSourceALUAfter(*fn)                       {}
+
+func checkNativeSourceProducerBefore(*fn, *elem) {}

@@ -191,6 +191,9 @@ func (f *fn) checkFoldedUse(e *elem) {
 // Check concrete leaves before condensation consumes or rewrites the deferred
 // tree. The result identity must not hide a corrupted input.
 func (f *fn) checkInputs(e *elem) {
+	if e != nil && e.isDeferred() {
+		checkNativeSourceProducerBefore(f, e)
+	}
 	if f.allocationCheck == nil || e == nil {
 		return
 	}

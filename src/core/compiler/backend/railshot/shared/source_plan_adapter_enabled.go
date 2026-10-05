@@ -6,6 +6,7 @@ import (
 	"github.com/wago-org/wago/internal/regalloccheck"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"strconv"
 )
 
 // SourceEventContract is an immutable, bounded copy of original source metadata.
@@ -196,6 +197,17 @@ func (p *IntegerSourcePlan) Close() {
 		message = "integer source accounting complete; physical verification pending"
 	}
 	reason := r.Reason
+	if attempt.plan != nil && attempt.plan.materialization != nil {
+		mr := SourceMaterializationStatus(attempt.plan.materialization)
+		state := "incomplete"
+		if mr.Readiness == SourceMaterializationRecordingClosed {
+			state = "recording closed"
+		}
+		message += "; materialization receipts " + state + " (" + strconv.Itoa(mr.Receipts) + ")"
+		if mr.Reason == regalloccheck.ResourceLimit {
+			reason = mr.Reason
+		}
+	}
 	if reason == regalloccheck.NoFailure {
 		reason = regalloccheck.UnsupportedOperation
 	}

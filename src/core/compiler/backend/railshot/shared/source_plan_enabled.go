@@ -112,20 +112,21 @@ type sourcePlanCheckpoint struct {
 	cursor                            int
 }
 type sourceRecipePlan struct {
-	attempt        *SourceAttempt
-	limits         SourcePlanLimits
-	nodes          []sourcePlanNode
-	recipes        []sourcePlanRecipe // historical entries are never reused on rollback
-	changes        []sourceNodeChange
-	mutations      []sourceRecipeMutation
-	slots          map[uint32]sourceSlotBinding
-	marks          []sourcePlanCheckpoint
-	next           int
-	serial         uint64
-	slotEpoch      uint64
-	reason         regalloccheck.FailureReason
-	work, storage  int
-	sealed, closed bool
+	materialization *SourceMaterializationJournal
+	attempt         *SourceAttempt
+	limits          SourcePlanLimits
+	nodes           []sourcePlanNode
+	recipes         []sourcePlanRecipe // historical entries are never reused on rollback
+	changes         []sourceNodeChange
+	mutations       []sourceRecipeMutation
+	slots           map[uint32]sourceSlotBinding
+	marks           []sourcePlanCheckpoint
+	next            int
+	serial          uint64
+	slotEpoch       uint64
+	reason          regalloccheck.FailureReason
+	work, storage   int
+	sealed, closed  bool
 }
 
 func sourcePlanLimits(r SourcePlanLimits) (SourcePlanLimits, bool) {
@@ -436,6 +437,11 @@ func CheckpointSourcePlan(t SourcePlanToken, journal *regalloccheck.EmissionJour
 	if cursor < 0 {
 		return SourcePlanMark{}, p.fail(regalloccheck.InvalidGraph)
 	}
+	// Materialization currently has no paired speculative-byte contract. Keep
+	// source transactions functional, but invalidate this separate claim layer.
+	if p.materialization != nil {
+		FailSourceMaterialization(p.materialization, regalloccheck.UnsupportedOperation)
+	}
 	// Reserve one work credit for allocation-free abandonment during cleanup.
 	if len(p.marks) >= p.limits.Transactions || !p.charge(2, 1) {
 		return SourcePlanMark{}, p.fail(regalloccheck.ResourceLimit)
@@ -587,6 +593,7 @@ func CloseSourcePlan(t SourcePlanToken) {
 			m.journal.Abandon(m.journalMark)
 		}
 	}
+	CloseSourceMaterializationJournal(p.materialization)
 	if p.attempt != nil && p.attempt.plan == p {
 		p.attempt.plan = nil
 	}
