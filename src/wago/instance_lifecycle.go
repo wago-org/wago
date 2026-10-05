@@ -510,7 +510,7 @@ func (in *Instance) releaseResources() {
 	}
 	unregisterHostControl(in)
 	if in.thunkMem != nil {
-		in.c.unmapProfileCode(in.thunkMem)
+		_ = in.c.releaseOwnedCodeMapping(in.thunkMem)
 		in.thunkMem = nil
 	}
 	in.c.releaseCode()

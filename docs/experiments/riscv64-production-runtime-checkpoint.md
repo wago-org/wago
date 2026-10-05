@@ -25,7 +25,8 @@ Central Linux publication changes RW pages to RX, then issues the process-wide
 entry. Both fresh MapCode and grown CodeBuffer transfer/sealing use this path.
 The previously reviewed CodeBuffer failure ownership fix remains in force.
 Raw MapCode rollback and the existing public Compiled/thunk cleanup lifecycles
-still require a separate ownership fix before public RV64 enablement.
+required a separate ownership fix at this checkpoint. The subsequent
+[ownership checkpoint](riscv64-publication-ownership-checkpoint.md) addresses it.
 
 Focused fixtures cover dirty i32 carriers, multiple serialized result slots,
 zero-page JobMemory, saved-register sentinels, cold traps through three guest

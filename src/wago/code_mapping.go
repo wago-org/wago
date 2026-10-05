@@ -64,6 +64,12 @@ type compiledCacheIndexes struct {
 	valueTypeIndex     map[ValueTypeDescriptor]uint32
 	gcTypeMapping      *gcTypeMappingCacheEntry
 	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
+	// Cold failure ownership only; guarded by codeCache.mu. New mappings are
+	// blocked until retry succeeds, bounding retained publication failures.
+	failedMappings [][]byte
+	unmapCode      func([]byte) error // per-owner fault injection; nil normally
+	mapThunkCode   func([]byte) ([]byte, uintptr, error)
+	sealCode       func([]byte) error
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -697,11 +703,18 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 	if cc.closed {
 		return 0, fmt.Errorf("compiled module is closed")
 	}
+	if err := c.releaseFailedPublicationMappingsLocked(); err != nil {
+		return 0, fmt.Errorf("release failed executable mappings: %w", err)
+	}
 	if err := c.mapCodeLocked(); err != nil {
 		return 0, err
 	}
 	if !cc.sealed {
-		if err := coreruntime.SealCode(cc.mem); err != nil {
+		if err := c.sealCode(cc.mem); err != nil {
+			// RX protection may already have succeeded. Keep cleanup ownership
+			// but close this module before any retry can treat it as writable.
+			cc.closed, cc.base = true, 0
+			c.clearCodeViewsLocked()
 			return 0, err
 		}
 		cc.sealed = true
@@ -723,11 +736,13 @@ func (c *Compiled) releaseCode() {
 	}
 	if cc.refs == 0 && cc.closed {
 		if cc.mem != nil {
-			_ = c.unmapProfileCode(cc.mem)
-			cc.mem = nil
+			if c.unmapProfileCode(cc.mem) == nil {
+				cc.mem = nil
+			}
 			cc.base = 0
 		}
-		c.releaseHostThunksLocked()
+		_ = c.releaseHostThunksLocked()
+		_ = c.releaseFailedMappingsLocked()
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
@@ -735,28 +750,122 @@ func (c *Compiled) releaseCode() {
 	}
 }
 
-func (c *Compiled) releaseHostThunksLocked() {
+func (c *Compiled) releaseHostThunksLocked() error {
 	memo := c.loadValidateMemo()
 	if memo == nil {
-		return
+		return nil
 	}
+	var err error
 	for i := range memo.hostThunks {
 		cache := &memo.hostThunks[i]
 		if cache.mem != nil {
-			_ = c.unmapProfileCode(cache.mem)
-			*cache = compiledHostThunkCache{}
+			if cleanup := c.unmapProfileCode(cache.mem); cleanup != nil {
+				err = errors.Join(err, cleanup)
+				cache.base, cache.offsets = 0, nil
+			} else {
+				*cache = compiledHostThunkCache{}
+			}
 		}
 	}
+	return err
 }
 
-func (c *Compiled) takeHostThunksLocked() [2]compiledHostThunkCache {
-	memo := c.loadValidateMemo()
-	if memo == nil {
-		return [2]compiledHostThunkCache{}
+// retainUnpublishedMapping receives explicit rollback ownership before an
+// error escapes the thunk builder. It never installs a callable address.
+func (c *Compiled) retainUnpublishedMapping(mem []byte) {
+	if len(mem) == 0 {
+		return
 	}
-	hostThunks := memo.hostThunks
-	memo.hostThunks = [2]compiledHostThunkCache{}
-	return hostThunks
+	cc := c.loadCodeCache()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	c.retainUnpublishedMappingLocked(mem)
+}
+
+func (c *Compiled) retainUnpublishedMappingLocked(mem []byte) {
+	if len(mem) == 0 {
+		return
+	}
+	indexes := c.ensureCompileIndexes()
+	indexes.failedMappings = append(indexes.failedMappings, mem)
+}
+
+func (c *Compiled) mapThunkCode(code []byte) ([]byte, uintptr, error) {
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.mapThunkCode != nil {
+		return indexes.mapThunkCode(code)
+	}
+	return coreruntime.MapCode(code)
+}
+
+func (c *Compiled) sealCode(mem []byte) error {
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.sealCode != nil {
+		return indexes.sealCode(mem)
+	}
+	return coreruntime.SealCode(mem)
+}
+
+// Private and shared thunk publication use the same lock and cleanup gate.
+// Retain a failed mapping before releasing the lock to another builder.
+func (c *Compiled) mapPrivateThunkCode(code []byte) ([]byte, uintptr, error) {
+	cc := c.loadCodeCache()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if err := c.releaseFailedPublicationMappingsLocked(); err != nil {
+		return nil, 0, err
+	}
+	mem, base, err := c.mapThunkCode(code)
+	if err != nil {
+		c.retainUnpublishedMappingLocked(mem)
+		return nil, 0, err
+	}
+	return mem, base, nil
+}
+
+func (c *Compiled) releaseFailedPublicationMappingsLocked() error {
+	err := c.releaseFailedMappingsLocked()
+	if memo := c.loadValidateMemo(); memo != nil {
+		for i := range memo.hostThunks {
+			cache := &memo.hostThunks[i]
+			if cache.mem == nil || cache.base != 0 {
+				continue
+			}
+			if cleanup := c.unmapProfileCode(cache.mem); cleanup != nil {
+				err = errors.Join(err, cleanup)
+			} else {
+				*cache = compiledHostThunkCache{}
+			}
+		}
+	}
+	return err
+}
+
+func (c *Compiled) releaseOwnedCodeMapping(mem []byte) error {
+	cc := c.loadCodeCache()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if err := c.unmapProfileCode(mem); err != nil {
+		c.retainUnpublishedMappingLocked(mem)
+		return err
+	}
+	return nil
+}
+
+func (c *Compiled) releaseFailedMappingsLocked() error {
+	indexes := c.loadCompileIndexes()
+	if indexes == nil || len(indexes.failedMappings) == 0 {
+		return nil
+	}
+	var err error
+	retained := indexes.failedMappings[:0]
+	for _, mem := range indexes.failedMappings {
+		if cleanup := c.unmapProfileCode(mem); cleanup != nil {
+			err = errors.Join(err, cleanup)
+			retained = append(retained, mem)
+		}
+	}
+	clear(indexes.failedMappings[len(retained):])
+	indexes.failedMappings = retained
+	return err
 }
 
 // clearCodeViewsLocked drops every slice header that can retain the staged or
@@ -780,23 +889,20 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 			cc.mu.Unlock()
 			return fmt.Errorf("wago: cannot replace compiled module with %d live instance(s)", cc.refs)
 		}
-		mem := cc.mem
-		cc.mem = nil
 		cc.base = 0
-		hostThunks := c.takeHostThunksLocked()
 		cc.closed = true
-		c.code = nil
-		cc.mu.Unlock()
-		goruntime.SetFinalizer(c, nil)
+		c.clearCodeViewsLocked()
 		var releaseErr error
-		if mem != nil {
-			releaseErr = errors.Join(releaseErr, c.unmapProfileCode(mem))
-		}
-		for i := range hostThunks {
-			if hostThunks[i].mem != nil {
-				releaseErr = errors.Join(releaseErr, c.unmapProfileCode(hostThunks[i].mem))
+		if cc.mem != nil {
+			if cleanup := c.unmapProfileCode(cc.mem); cleanup != nil {
+				releaseErr = errors.Join(releaseErr, cleanup)
+			} else {
+				cc.mem = nil
 			}
 		}
+		releaseErr = errors.Join(releaseErr, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked())
+		cc.mu.Unlock()
+		goruntime.SetFinalizer(c, nil)
 		if releaseErr != nil {
 			return fmt.Errorf("release replaced compiled mappings: %w", releaseErr)
 		}
@@ -832,20 +938,14 @@ func (c *Compiled) Close() error {
 	if c.validateMemo != nil {
 		c.validateMemo.structuralCallIdentities.Store(nil)
 	}
-	if cc.mem == nil {
-		// Preserve compiler-produced metadata so a later Instantiate reaches the
-		// authoritative closed check instead of failing earlier as malformed.
-		return nil
-	}
-	mem := cc.mem
-	cc.mem = nil
 	cc.base = 0
-	hostThunks := c.takeHostThunksLocked()
-	err := c.unmapProfileCode(mem)
-	for i := range hostThunks {
-		if hostThunks[i].mem != nil {
-			err = errors.Join(err, c.unmapProfileCode(hostThunks[i].mem))
+	var err error
+	if cc.mem != nil {
+		if cleanup := c.unmapProfileCode(cc.mem); cleanup != nil {
+			err = cleanup
+		} else {
+			cc.mem = nil
 		}
 	}
-	return err
+	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked())
 }

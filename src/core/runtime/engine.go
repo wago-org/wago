@@ -279,16 +279,43 @@ func (e *Engine) Close() error {
 // MapCode copies machine code into a fresh W^X executable mapping and returns
 // the mapping (keep it alive / Unmap to free) plus the entry-point pointer to
 // pass to Engine.Call.
+// On failure entry is zero. A nonnil mapping retains cleanup ownership when
+// rollback failed; the caller must keep it and retry Unmap.
 func MapCode(code []byte) (mem []byte, entry uintptr, err error) {
-	mem, err = mmapExec(code)
+	return mapCodeWith(code, mmapExec, registerExecutableCode, Unmap)
+}
+
+func mapCodeWith(code []byte, mapExec func([]byte) ([]byte, error), register func([]byte) error, unmap func([]byte) error) (mem []byte, entry uintptr, err error) {
+	mem, err = mapExec(code)
 	if err != nil {
-		return nil, 0, err
+		return mem, 0, err
 	}
-	if err = registerExecutableCode(mem); err != nil {
-		_ = munmap(mem)
-		return nil, 0, err
+	if err = register(mem); err != nil {
+		mem, err = rollbackCodeMapping(mem, err, unmap)
+		return mem, 0, err
 	}
 	return mem, slicePtr(mem), nil
+}
+
+// mmapExecWith keeps a failed RX/flush rollback attached to the return value.
+// Function arguments provide local fault injection without process-wide hooks.
+func mmapExecWith(code []byte, mapRW func(int) ([]byte, error), protect func([]byte) error, unmap func([]byte) error) ([]byte, error) {
+	mem, err := mapRW(len(code))
+	if err != nil {
+		return mem, err
+	}
+	copy(mem, code)
+	if err := protect(mem); err != nil {
+		return rollbackCodeMapping(mem, err, unmap)
+	}
+	return mem, nil
+}
+
+func rollbackCodeMapping(mem []byte, primary error, unmap func([]byte) error) ([]byte, error) {
+	if cleanup := unmap(mem); cleanup != nil {
+		return mem, errors.Join(primary, cleanup)
+	}
+	return nil, primary
 }
 
 // SealCode changes an existing code mapping from RW to RX and registers it for

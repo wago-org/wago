@@ -181,7 +181,7 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.preflightImportBindings(imports); err != nil {
 		return nil, err
 	}
-	return b.instantiate()
+	return b.instantiate(mappingOwner)
 }
 
 func (b *instanceBuilder) releaseModuleUse() {
@@ -410,7 +410,7 @@ func (b *instanceBuilder) rollbackPreparedState() {
 	}
 }
 
-func (b *instanceBuilder) instantiate() (result *Instance, err error) {
+func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance, err error) {
 	if err := b.validateCompiled(); err != nil {
 		return nil, err
 	}
@@ -677,7 +677,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		jm.SetEHTagDirPtr(uintptr(unsafe.Pointer(&nativeTagIDs[0])))
 	}
-	base, err := c.acquireCode()
+	base, err := mappingOwner.acquireCode()
 	if err != nil {
 		runtime.ReleaseArena(ar)
 		closeMem()
@@ -690,7 +690,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			return
 		}
 		if thunkMem != nil {
-			c.unmapProfileCode(thunkMem)
+			_ = c.releaseOwnedCodeMapping(thunkMem)
 		}
 		c.releaseCode()
 		runtime.ReleaseArena(ar)
@@ -2092,7 +2092,7 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (s
 	if len(blob) == 0 {
 		return sharedBase, sharedOffsets, nil, nil, nil
 	}
-	mem, base, err := runtime.MapCode(blob)
+	mem, base, err := c.mapPrivateThunkCode(blob)
 	if err != nil {
 		return 0, nil, nil, nil, wrapContextError("host import wrapper thunk", err)
 	}
@@ -2118,6 +2118,9 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 	memo := c.loadValidateMemo()
 	if memo == nil {
 		return 0, nil, errors.New("shared host import wrapper thunk: validation metadata is missing")
+	}
+	if err := c.releaseFailedPublicationMappingsLocked(); err != nil {
+		return 0, nil, wrapContextError("release failed host import wrapper thunks", err)
 	}
 	cache := &memo.hostThunks[cacheIndex]
 	if cache.mem != nil {
@@ -2147,8 +2150,9 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 		offsets[fidx] = len(blob)
 		blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
 	}
-	mem, base, err := runtime.MapCode(blob)
+	mem, base, err := c.mapThunkCode(blob)
 	if err != nil {
+		cache.mem, cache.base, cache.offsets = mem, 0, nil
 		return 0, nil, wrapContextError("shared host import wrapper thunk", err)
 	}
 	if codeProfileEnabled {

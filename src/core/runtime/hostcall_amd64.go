@@ -95,6 +95,7 @@ var (
 	hostStubOnce sync.Once
 	hostStubPtr  uintptr
 	hostStubErr  error
+	hostStubMem  []byte // process-lifetime owner, including failed rollback
 )
 
 func prepareHostResume(ctrl, trap []byte, stackTop, stackLimit uintptr) {
@@ -109,6 +110,7 @@ func prepareHostResume(ctrl, trap []byte, stackTop, stackLimit uintptr) {
 func hostCallStubPtr() (uintptr, error) {
 	hostStubOnce.Do(func() {
 		mem, err := mmapExec(hostCallStub)
+		hostStubMem = mem
 		if err != nil {
 			hostStubErr = err
 			return
