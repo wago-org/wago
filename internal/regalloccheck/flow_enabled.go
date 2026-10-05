@@ -2,7 +2,14 @@
 
 package regalloccheck
 
-import "fmt"
+import (
+	"fmt"
+	"math/bits"
+)
+
+// MaxCarrierBytes bounds the target-neutral checked graph vocabulary. Target
+// adapters must still authenticate each actual register width and encoding.
+const MaxCarrierBytes = 64
 
 // ValueID names an independent semantic definition, not an allocator owner.
 // IDs are one-based indices into Graph.Widths and remain stable during analysis.
@@ -150,7 +157,7 @@ func (c flowCell) each(b *flowBudget, fn func(symbol)) {
 }
 
 type flowIndex struct {
-	locations map[Location]uint16
+	locations map[Location]uint64
 	history   int // retained per-value map capacity survives deletions
 }
 
@@ -202,9 +209,9 @@ func (s *flowImage) add(loc Location, v symbol) {
 	}
 	index := s.ids[v.id]
 	if index.locations == nil {
-		index.locations = make(map[Location]uint16)
+		index.locations = make(map[Location]uint64)
 	}
-	index.locations[loc] |= 1 << v.part
+	index.locations[loc] |= uint64(1) << v.part
 	index.history++
 	s.ids[v.id] = index
 	s.count++
@@ -226,7 +233,7 @@ func (s *flowImage) remove(loc Location, v symbol) {
 		s.cells[loc] = c
 	}
 	index := s.ids[v.id]
-	index.locations[loc] &^= 1 << v.part
+	index.locations[loc] &^= uint64(1) << v.part
 	if index.locations[loc] == 0 {
 		delete(index.locations, loc)
 	}
@@ -253,7 +260,7 @@ func (s *flowImage) forget(id ValueID) {
 	}
 	s.b.charge(index.history)
 	for loc, parts := range index.locations {
-		for part := uint8(0); part < 16; part++ {
+		for part := uint8(0); part < uint8(max(16, bits.Len64(parts))); part++ {
 			s.b.charge(1)
 			if parts&(1<<part) != 0 {
 				s.remove(loc, symbol{id, part})
@@ -382,7 +389,7 @@ func (s *flowImage) parameters(params []Parameter) {
 		}
 		s.b.charge(index.history)
 		for loc, parts := range index.locations {
-			for part := uint8(0); part < 16; part++ {
+			for part := uint8(0); part < uint8(max(16, bits.Len64(parts))); part++ {
 				s.b.charge(1)
 				if parts&(1<<part) != 0 {
 					s.b.addFact()
@@ -412,20 +419,39 @@ func resolveLimits(l Limits) (Limits, bool) {
 }
 
 func flowLocation(loc Location, size int, unknown bool) bool {
-	if size < 1 || size > 16 {
+	if size < 1 || size > MaxCarrierBytes {
 		return false
 	}
 	switch loc.Bank {
 	case GP:
 		return loc.Index >= 0 && loc.Index < 32 && int(loc.Byte)+size <= 8
 	case FP:
-		return loc.Index >= 0 && loc.Index < 32 && int(loc.Byte)+size <= 16
+		return loc.Index >= 0 && loc.Index < 32 && int(loc.Byte)+size <= MaxCarrierBytes
 	case Frame:
 		return loc.Byte == 0 && int64(loc.Index)+int64(size)-1 <= 2147483647
 	case Unknown:
 		return unknown
 	}
 	return false
+}
+
+func machineEffectValid(e Effect) bool {
+	if e.Kind == Call {
+		return e.Size == 0 && e.ClearTo == 0
+	}
+	if e.Kind > Read || e.Size < 1 || e.Size > MaxCarrierBytes || e.ClearTo < 0 || e.ClearTo != 0 && e.ClearTo < e.Size || e.Kind == Read && e.ClearTo != 0 {
+		return false
+	}
+	if e.Kind != Read && !flowLocation(e.Dst, max(e.Size, e.ClearTo), false) {
+		return false
+	}
+	if (e.Kind == Copy || e.Kind == Swap || e.Kind == Read) && !flowLocation(e.Src, e.Size, e.Kind != Swap) {
+		return false
+	}
+	if (e.Kind == Copy || e.Kind == Swap) && e.Size == 4 && (e.Dst.Bank == GP && e.Dst.Byte != 0 || e.Kind == Swap && e.Src.Bank == GP && e.Src.Byte != 0) {
+		return false
+	}
+	return e.Kind != Swap || e.ClearTo == 0 && !partialOverlap(e.Dst, e.Src, e.Size)
 }
 
 func partialOverlap(a, b Location, size int) bool {
@@ -457,7 +483,7 @@ func (g *Graph) validate(b *flowBudget) string {
 	}
 	for _, width := range g.Widths {
 		b.charge(1)
-		if width == 0 || width > 16 {
+		if width == 0 || width > MaxCarrierBytes {
 			return "invalid semantic width"
 		}
 	}
@@ -514,26 +540,8 @@ func (g *Graph) validate(b *flowBudget) string {
 				}
 			case Machine:
 				e := op.Effect
-				if e.Kind == Call {
-					if e.Size != 0 || e.ClearTo != 0 {
-						return "invalid call effect"
-					}
-					continue
-				}
-				if e.Size < 1 || e.Size > 16 || e.Kind > Read || (e.Kind == Read && e.ClearTo != 0) || e.ClearTo < 0 || (e.ClearTo != 0 && e.ClearTo < e.Size) {
+				if !machineEffectValid(e) {
 					return "invalid machine effect"
-				}
-				if e.Kind != Read && !flowLocation(e.Dst, max(e.Size, e.ClearTo), false) {
-					return "invalid machine destination"
-				}
-				if (e.Kind == Copy || e.Kind == Swap || e.Kind == Read) && !flowLocation(e.Src, e.Size, e.Kind != Swap) {
-					return "invalid machine source"
-				}
-				if (e.Kind == Copy || e.Kind == Swap) && e.Size == 4 && ((e.Dst.Bank == GP && e.Dst.Byte != 0) || (e.Kind == Swap && e.Src.Bank == GP && e.Src.Byte != 0)) {
-					return "invalid GP32 register slice"
-				}
-				if e.Kind == Swap && (e.ClearTo != 0 || partialOverlap(e.Dst, e.Src, e.Size)) {
-					return "invalid swap clear width or overlap"
 				}
 			case Unsupported:
 			default:

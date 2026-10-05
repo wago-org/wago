@@ -187,25 +187,6 @@ func (j *EmissionJournal) EndEmission(end int) bool {
 	return true
 }
 
-func journalEffectValid(e Effect) bool {
-	if e.Kind == Call {
-		return e.Size == 0 && e.ClearTo == 0
-	}
-	if e.Kind > Read || e.Size < 1 || e.Size > 16 || e.ClearTo < 0 || e.ClearTo != 0 && e.ClearTo < e.Size || e.Kind == Read && e.ClearTo != 0 {
-		return false
-	}
-	if e.Kind != Read && !flowLocation(e.Dst, max(e.Size, e.ClearTo), false) {
-		return false
-	}
-	if (e.Kind == Copy || e.Kind == Swap || e.Kind == Read) && !flowLocation(e.Src, e.Size, e.Kind != Swap) {
-		return false
-	}
-	if (e.Kind == Copy || e.Kind == Swap) && e.Size == 4 && (e.Dst.Bank == GP && e.Dst.Byte != 0 || e.Kind == Swap && e.Src.Bank == GP && e.Src.Byte != 0) {
-		return false
-	}
-	return e.Kind != Swap || e.ClearTo == 0 && !partialOverlap(e.Dst, e.Src, e.Size)
-}
-
 func (j *EmissionJournal) append(e journalObservation) bool {
 	if !j.recording() || !j.charge(1) {
 		return false
@@ -225,7 +206,7 @@ func (j *EmissionJournal) append(e journalObservation) bool {
 }
 
 func (j *EmissionJournal) ObserveEffect(e Effect) {
-	if !journalEffectValid(e) {
+	if !machineEffectValid(e) {
 		j.fail(InvalidGraph, "invalid observed effect")
 		return
 	}
@@ -242,8 +223,8 @@ func (j *EmissionJournal) ObserveGPWrites(mask uint32) {
 
 // ObserveGap records explicitly unsupported emission in the current span.
 // A gap belonging to discarded speculative bytes disappears on rollback.
-// Wider effects and raw instructions need this marker until independently
-// admitted by an adapter; the current transfer vocabulary is at most 16 bytes.
+// Raw or unmodeled instructions need this marker until independently admitted
+// by a target adapter; accepting an effect does not authenticate its encoding.
 func (j *EmissionJournal) ObserveGap() {
 	if j.append(journalObservation{kind: JournalGap}) {
 		j.gaps++
