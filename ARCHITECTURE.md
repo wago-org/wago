@@ -469,8 +469,7 @@ The `wago_regalloccheck` build tag adds an independent symbolic transfer checker
 at canonical-stack, control-edge and ABI-shuffle seams, plus immutable-cache
 call-clobber checks. The ordinary build retains no checker state or work. This
 first version assumes correct window inputs and does not verify arbitrary
-instructions between windows or whole-CFG equivalence; see the
-[checker contract](docs/register-allocation-checker.md).
+instructions between windows or whole-CFG equivalence.
 
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's
@@ -712,15 +711,13 @@ and passes it to the active callee's dispatcher. Private, non-GC, non-threaded
 instances can reuse parked native context if its version has not changed;
 nested entries and guarded host access invalidate it. Shared or unknown state
 uses full restoration. Native and collector leases, parked roots, and scheduler
-entry/resume protocols are still required. See
-[host-call measurements and proof limits](https://github.com/wago-org/knowledge/blob/main/docs/host-roundtrip-performance.md).
+entry/resume protocols are still required.
 
 `func(Caller, HostCall)` is the callback ABI for memory, reference operations,
 invocation context, and authorized synchronous re-entry. `Caller` wraps a
 private immutable token and expires when the callback returns. All host
 functions use flat `(module, name)` registration and retain normal plugin gate
-and reservation checks. See the
-[concrete caller design and measurements](https://github.com/wago-org/knowledge/blob/main/docs/host-caller-performance.md).
+and reservation checks.
 
 ---
 
@@ -937,8 +934,7 @@ Profiling builds attach `wago profile` through `cli/internal/profiling`; ordinar
 and runtime builds omit it entirely. `bench/cmd/wagoprof` is a thin standalone
 wrapper. CPU weights, elapsed phases, and static compiler counts remain distinct.
 No asynchronous guest-stack or Wasm instruction-map support is implied by symbol
-registration. See [Profiling workloads](docs/profiling.md) for tested capabilities
-and current limitations.
+registration.
 
 Optional boundary spans share the journal byte budget and reserve completion
 storage at entry. Invocation ancestry follows the existing host control-frame
@@ -992,9 +988,7 @@ rate separately from observed samples and their event periods. Linux perf uses
 an acknowledged enable/disable handshake around the selected phase. Native flat
 attribution has been exercised with perf on Linux/amd64 and Samply on macOS/arm64;
 this does not qualify asynchronous native stacks. Release-size and ordinary-build
-allocation gates are separate from sampling overhead. See
-[profiling qualification](docs/profiling-qualification.md) for measurements,
-toolchain details, and remaining limitations.
+allocation gates are separate from sampling overhead.
 
 Capture phases include an explicit trusted-artifact reload path. The runner
 serializes only its own freshly compiled module, records artifact preparation
@@ -1082,8 +1076,7 @@ quiet converters and non-returning guest calls cannot wait indefinitely.
 Cancellation terminates private process groups on Linux/macOS and retains an
 incomplete manifest and available raw evidence. Saved inputs share explicit file,
 decompression, image, sample, code, metadata, and aggregation limits. The journal's
-64 MiB budget is not a bound on total reporting memory. See
-[resource limits and capture safety](docs/profiling.md) for defaults and coverage.
+64 MiB budget is not a bound on total reporting memory.
 
 ### Remaining qualification and acceptance
 
