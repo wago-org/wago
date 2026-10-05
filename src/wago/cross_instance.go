@@ -1092,7 +1092,14 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 		return nil, deferredHostEventCalleeError()
 	}
 	if idx < len(in.c.GlobalImports) {
-		return g, nil
+		// Object imports retain their original owner. Value imports materialize
+		// a cell in this instance's arena and need an owner before re-export.
+		in.lifeMu.Lock()
+		hasOwner := g.owner != nil
+		in.lifeMu.Unlock()
+		if hasOwner {
+			return g, nil
+		}
 	}
 	store := in.refStore
 	if isReferenceValType(g.Type) && store == nil {
