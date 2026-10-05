@@ -15,6 +15,7 @@ const regallocCheckEnabled = true
 // Immutable GP reservations observe all typed encoder writes; FP cache
 // admission is checked at calls. Neither state is whole-function dataflow.
 type regallocFnState struct {
+	sourcePlan         *nativeSourcePlanState
 	sourceLeaf         *shared.SourceLeaf
 	sourceBranch       *shared.SourceBranch
 	sourceRestore      func()

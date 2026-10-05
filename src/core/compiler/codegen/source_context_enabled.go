@@ -146,3 +146,24 @@ func CloseSourceContext(opts Options, m *wasm.Module) {
 		}
 	}
 }
+
+// Source accounting must not overwrite an independently proved machine verdict
+// or a prior quota refusal. Accounting completion still has no machine verdict.
+func RecordSourceAccountingResult(ctx *SourceContext, localFunction int, result regalloccheck.Result) {
+	if result.Verdict != regalloccheck.Inconclusive {
+		return
+	}
+	if ctx == nil || ctx.reporter == nil {
+		return
+	}
+	ctx.reportMu.Lock()
+	defer ctx.reportMu.Unlock()
+	if localFunction < 0 || localFunction >= len(ctx.reports) {
+		return
+	}
+	previous := ctx.reports[localFunction]
+	if previous.Verdict == regalloccheck.Verified || previous.Verdict == regalloccheck.Rejected || previous.Reason == regalloccheck.ResourceLimit {
+		return
+	}
+	ctx.reports[localFunction] = result
+}

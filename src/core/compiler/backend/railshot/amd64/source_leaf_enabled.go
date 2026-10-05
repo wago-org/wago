@@ -30,6 +30,11 @@ func checkSourceBegin(f *fn, hostAdapter bool) {
 			f.sourceRestore = f.ObserveScalarGraph(f.sourceLeaf.ObserveEffect, f.sourceLeaf.ObserveGPWrites)
 		}
 	}
+	if f.sourceLeaf == nil && f.sourceBranch == nil {
+		checkNativeSourceBegin(f, function, !hostAdapter && !f.scalarSummary.Eligible && !f.interruptible &&
+			!f.moduleEH && f.gcFrameRoots == nil && len(f.customInstructions) == 0 && len(f.gcTypeLayouts) == 0 &&
+			len(f.m.Memories) == 0 && len(f.m.Globals) == 0)
+	}
 }
 
 func checkSourceFinishEmission(f *fn) {
@@ -58,6 +63,13 @@ func checkSourceVerify(f *fn) {
 }
 
 func checkSourceClose(f *fn) {
+	if f.sourcePlan != nil {
+		st := f.sourcePlan
+		f.sourcePlan = nil
+		owner := st.owner
+		*st = nativeSourcePlanState{}
+		owner.Close()
+	}
 	if f.sourceRestore != nil {
 		f.sourceRestore()
 		f.sourceRestore = nil
