@@ -17,6 +17,8 @@ case "$mode" in
       -run 'Test(NativeGrownImagePublication|NativeABIRegistersAndAlignment|RawStackBoundsBeforeWrites|NativeArithmeticTrapAndReuse|NativeCrossThreadPublicationAndGC|PublicationOrderAndWX|PublicationFailuresAndCleanupRetry)$' -v
     go test ./src/core/compiler/backend/railshot/riscv64 -count=1 -parallel=2 -timeout=3m \
       -run 'TestNative(RawReturnHookAndPrologueFence|IntegerControl|IntegerDeepFrameAndZeroAlloc|MemoryZeroLength|MemoryHighCapacityContextAndAllocations|GlobalsOnlyI32WidthsAndImmutability|BulkZeroMemoryAndGrowth|BulkPassiveOnlyDrop|DirectCallLeafWidthsAndEarlyReturn|DirectCallSharedThenRecursiveFence)$' -v
+    go test ./src/core/compiler/backend/railshot/riscv64 -count=1 -parallel=2 -timeout=3m \
+      -run 'TestMultivalue(IntegerExecution|ArityAndTrapDoNotCommit)$' -v
     ;;
   supported)
     go test ./src/core/encoder/riscv64 ./src/core/runtime/riscv64 \

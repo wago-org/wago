@@ -8,7 +8,7 @@ import (
 )
 
 func TestRegallocCheckEmissionFingerprint(t *testing.T) {
-	for _, tc := range []struct {
+	cases := []struct {
 		name string
 		data []byte
 	}{
@@ -16,7 +16,17 @@ func TestRegallocCheckEmissionFingerprint(t *testing.T) {
 		{"integer", binaryModule(numericFixture(false, 0x6e, true))},
 		{"recursive", binaryModule(sumCallFixture(0))},
 		{"memory", stateModule([]fixtureFunc{memoryFixture(0x28, 0), growFixture()}, false, 1, 2, true, nil, nil)},
-	} {
+	}
+	for _, tc := range multivalueCases() {
+		switch tc.name {
+		case "indexed-if-params", "loop-parameter-result-counts", "256-arguments-and-results":
+			cases = append(cases, struct {
+				name string
+				data []byte
+			}{tc.name, binaryModule(tc.funcs...)})
+		}
+	}
+	for _, tc := range cases {
 		for _, force := range []bool{false, true} {
 			c, err := CompileWithOptions(tc.data, CompileOptions{ForceFallback: force})
 			if err != nil {

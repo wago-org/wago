@@ -6,8 +6,10 @@ the 19 hooks, guarded frames, calls, memory and the current checker limits.
 This experimental Linux/RV64 port has an encoder, an isolated integer runtime
 boundary, shared scalar compilation, bounded whole-function integer/control
 lowering, single-memory/integer-global execution, bulk memory/passive data and
-defined same-instance direct/recursive integer calls.
+defined same-instance direct/recursive integer calls, zero/multiple integer
+results and indexed control signatures.
 Generated code executes under QEMU; see the
+[multivalue checkpoint](riscv64-multivalue-checkpoint.md),
 [direct-call checkpoint](riscv64-direct-call-checkpoint.md),
 [bulk checkpoint](riscv64-bulk-checkpoint.md),
 [memory checkpoint](riscv64-memory-checkpoint.md),

@@ -3,7 +3,7 @@
 This checkpoint runs a bounded integer Wasm subset using real Linux/RV64 code.
 It begins with the shared compiler interface merged in #802, adds an encoder and
 isolated runtime, then expands through integer control, memory/globals, bulk data
-and direct recursion. It is ready for staged code review; it does not expose a
+direct recursion, and integer multivalue/typed control. It is ready for staged code review; it does not expose a
 production Wago target or claim full Wasm parity.
 
 ## The route from Wasm to execution
@@ -24,7 +24,9 @@ Start in [module.go](../../src/core/compiler/backend/railshot/riscv64/module.go)
 Compile snapshots the input, decodes and validates normally, then admits the
 entire module before any function emits code. This includes hidden functions
 and dead instructions: an unsupported function cannot enter an otherwise callable
-instance. Plain integer signatures still require exactly one result.
+instance. Plain integer signatures admit zero through 256 integer results.
+Indexed block signatures carry parameter/result vectors; loop labels transfer
+parameters while other labels transfer results.
 
 Each admitted function uses the existing
 [shared scalar compiler](../../src/core/compiler/backend/railshot/shared/scalar.go)
@@ -111,18 +113,25 @@ assumptions.
 | Guest register | Meaning at framed entry |
 | --- | --- |
 | A0 / X10 | Off-heap argument-arena pointer |
-| A1 / X11 | Fixed off-heap result-cell pointer |
+| A1 / X11 | Off-heap result-range pointer |
 | A2 / X12 | Trap-cell pointer |
 | A3 / X13 | Stack fence |
 | X24 | Reserved same-instance context after framed context load |
 | X30 / X31 | Permanently reserved lowering/fixup scratch |
 
 The [CallFrame](../../src/core/runtime/riscv64/call_frame_linux.go) owns up to
-256 eight-byte argument cells, a fixed result cell and one hidden context cell.
-The result position depends on instance capacity, not the current function's
-arity. At capacity 256, the hidden context is at byte 2056; tests cover this
-large-offset case. Ownership and invocation locks keep call, code and context
-resources alive until execution completes.
+256 eight-byte argument cells and 256 result cells. New compiler instances use
+`NewCallFrameLayout`: one context header precedes the argument range, so context
+is always at `A0-8` independently of function or module arity. A1 points to the
+separate result range; void modules reserve a valid sentinel cell. Standalone
+single-result snippets retain the legacy constructor and layout. These layouts
+must not be interchanged. Neither layout is the production wrapper ABI.
+
+`InvokeInto` validates exact argument/result arity before entry, then copies
+results into caller-owned Go storage only after success. Traps leave that output
+unchanged. The entire native result arena is cleared before entry. Ownership and
+invocation locks keep call, code and context resources alive through result copy;
+no Go result pointer crosses the native boundary.
 
 ## Following a recursive call
 
@@ -137,7 +146,7 @@ Shared callees may use A0 through A3 as allocator registers. The
 [caller](../../src/core/compiler/backend/railshot/riscv64/call.go) therefore saves
 argument, result, trap and fence transport in the calling header, reloads it
 before marshalling and after return, then checks the trap cell. Success copies
-the width-correct result into the caller's canonical home. A trap preserves the
+each width-correct result into the caller's canonical homes. A trap preserves the
 original trap code, skips later guest effects and unwinds through normal
 epilogues. Recursive exhaustion traps before the next frame's writes; a later
 call can reuse the instance. Relative call fixups target each callee's complete
@@ -195,9 +204,13 @@ reviewed. Each stage has a linked checkpoint with focused regressions and limits
 Fresh QEMU runs qualify emitted correctness; existing-target host checks qualify
 compatibility. QEMU does not establish native cache behavior or performance.
 
-Indirect/cross-instance calls, reference tables/elements and multivalue are the
-next staged boundaries. FP/host calls, SIMD/SWAR and broader conformance remain
-future stages. Unsupported imports, starts, initializers and feature/module
+Integer multivalue and indexed block/loop/if signatures now have focused gates
+for mixed widths, overlapping transfers, different loop parameter/result arities,
+and 256-argument/result calls. Production wrapper/context/trap integration precedes
+indirect/cross-instance calls and reference tables/elements. FP/host calls,
+SIMD/SWAR and broader conformance remain future stages. The
+[production parity tracker](riscv64-parity-tracker.md) records the full remaining
+scope, including GC/EH/threads, artifacts, cancellation and native qualification. Unsupported imports, starts, initializers and feature/module
 shapes remain denied. This experimental stack/context/import policy is not a new
 public API. Native RISE access and qualification remain unverified. External
 publication, remote CI and PR merging remain on hold.
