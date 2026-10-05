@@ -71,6 +71,8 @@ var encodingCases = []struct {
 	{"divuw", func(a *Asm) { a.Divuw(X5, X6, X7) }, 0x027352bb},
 	{"remw", func(a *Asm) { a.Remw(X5, X6, X7) }, 0x027362bb},
 	{"remuw", func(a *Asm) { a.Remuw(X5, X6, X7) }, 0x027372bb},
+	{"lbu", func(a *Asm) { a.Lbu(X5, X6, 7) }, 0x00734283},
+	{"sb", func(a *Asm) { a.Sb(X5, X6, 7) }, 0x005303a3},
 }
 
 func TestEncodings(t *testing.T) {

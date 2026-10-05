@@ -216,6 +216,7 @@ func (a *Asm) ZeroExtend32(dst, src Reg) {
 // Ld/Lwu/Lw and Sd/Sw require signed-12-bit byte offsets. Larger frame offsets
 // must be materialized by the adapter into a permanently reserved address reg.
 func (a *Asm) Ld(dst, base Reg, offset int32)  { a.i(0x03, 3, dst, base, offset) }
+func (a *Asm) Lbu(dst, base Reg, offset int32) { a.i(0x03, 4, dst, base, offset) }
 func (a *Asm) Lwu(dst, base Reg, offset int32) { a.i(0x03, 6, dst, base, offset) }
 func (a *Asm) Lw(dst, base Reg, offset int32)  { a.i(0x03, 2, dst, base, offset) }
 
@@ -233,6 +234,7 @@ func (a *Asm) store(f3 uint32, src, base Reg, offset int32) {
 
 func (a *Asm) Sd(src, base Reg, offset int32)    { a.store(3, src, base, offset) }
 func (a *Asm) Sw(src, base Reg, offset int32)    { a.store(2, src, base, offset) }
+func (a *Asm) Sb(src, base Reg, offset int32)    { a.store(0, src, base, offset) }
 func (a *Asm) Jalr(link, base Reg, offset int32) { a.i(0x67, 0, link, base, offset) }
 func (a *Asm) Ret()                              { a.Jalr(Zero, RA, 0) }
 func (a *Asm) Nop()                              { a.Addi(Zero, Zero, 0) }
