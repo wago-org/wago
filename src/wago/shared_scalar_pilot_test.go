@@ -1,10 +1,11 @@
-//go:build (amd64 || arm64) && !tinygo
+//go:build (amd64 || arm64 || (linux && riscv64 && wago_rv64_experimental)) && !tinygo
 
 package wago
 
 import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"runtime"
 	"testing"
 )
 
@@ -151,6 +152,12 @@ func TestSharedScalarMixedBankFallback(t *testing.T) {
 	for _, typ := range []wasm.ValType{wasm.F32, wasm.F64, wasm.V128} {
 		m := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, typ}, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 1, 0x1a, 0x20, 0, 0x41, 1, 0x6a, 0x0b}))))
 		c, e := Compile(nil, m)
+		if runtime.GOARCH == "riscv64" {
+			if e == nil || c != nil {
+				t.Fatal("RV64 admitted pending mixed-bank lowering", c, e)
+			}
+			continue
+		}
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -251,8 +258,8 @@ func TestSharedScalarPressureWithoutJoin(t *testing.T) {
 			body = append(body, add)
 		}
 		body = append(body, 0x0b)
-		for _, regABI := range []bool{true, false} {
-			c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), scalarPilotModule(typ, body, 1))
+		for _, regABI := range sharedScalarTestABIModes() {
+			c, err := Compile(sharedScalarTestConfig(regABI), scalarPilotModule(typ, body, 1))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -358,7 +365,7 @@ func TestSharedScalarOldHomeUnderPressure(t *testing.T) {
 func TestSharedScalarFallbackScratchTransitions(t *testing.T) {
 	shared := []byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}
 	fallback := []byte{0x20, 0, 0x41, 2, 0x6d, 0x0b}
-	for _, firstShared := range []bool{true, false} {
+	for _, firstShared := range sharedScalarTestABIModes() {
 		var funcs, exports, bodies [][]byte
 		for i := 0; i < 3; i++ {
 			body := fallback
@@ -416,8 +423,8 @@ func TestSharedScalarPressureFixedOperandsAndJoin(t *testing.T) {
 			body = append(body, add)
 		}
 		body = append(body, 0x20, 0, add, 0x0b)
-		for _, regABI := range []bool{true, false} {
-			c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), scalarPilotModule(typ, body, 2))
+		for _, regABI := range sharedScalarTestABIModes() {
+			c, err := Compile(sharedScalarTestConfig(regABI), scalarPilotModule(typ, body, 2))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -443,4 +450,19 @@ func TestSharedScalarPressureFixedOperandsAndJoin(t *testing.T) {
 			c.Close()
 		}
 	}
+}
+
+// RV64 currently has only the framed ABI; no register-ABI knob is advertised.
+func sharedScalarTestABIModes() []bool {
+	if runtime.GOARCH == "riscv64" {
+		return []bool{false}
+	}
+	return []bool{false, true}
+}
+func sharedScalarTestConfig(regABI bool) *RuntimeConfig {
+	cfg := NewRuntimeConfig()
+	if runtime.GOARCH != "riscv64" {
+		cfg.WithOptimization("reg-abi", regABI)
+	}
+	return cfg
 }

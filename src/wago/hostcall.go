@@ -2852,7 +2852,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		}
 	}
 	in.jm.SetStackFence(in.eng.StackLimit())
-	if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
+	if len(in.ctrl) > 0 && len(in.ctrl) >= runtime.HostCtrlFrameBytes {
 		in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
 	}
 	// Resolve stable root context lazily in this activation, not on the instance.

@@ -276,12 +276,3 @@ func BenchmarkExternalCallMemoryContinuation(b *testing.B) {
 		})
 	}
 }
-
-func mustCompileWat(rt *Runtime, t testing.TB, wat string) *Module {
-	t.Helper()
-	m, err := rt.Compile(watToWasm(t, wat))
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	return m
-}

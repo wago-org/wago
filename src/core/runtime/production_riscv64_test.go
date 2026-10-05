@@ -124,6 +124,25 @@ func TestProductionRV64UnsupportedHostAndGuard(t *testing.T) {
 	if HostInterruptSupported() {
 		t.Fatal("unimplemented asynchronous cancellation claimed")
 	}
+	if HostCtrlFrameBytes != 0 {
+		t.Fatal("unimplemented host control frame advertised")
+	}
+	for _, slots := range []int{-1, 0, 64, 256, MaxSyncHostSlots} {
+		if size, err := HostCtrlFrameBytesForSlots(slots); size != 0 || !errors.Is(err, ErrUnsupported) {
+			t.Fatal("host frame sizing must reject", slots, size, err)
+		}
+	}
+	ctrl := []byte{0x55, 0xaa, 0x33}
+	if err := InitHostCtrlFrame(ctrl); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("host frame initialization", err)
+	}
+	if err := RegisterHostCtrlFrame(ctrl); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("host frame registration", err)
+	}
+	UnregisterHostCtrlFrame(ctrl)
+	if !bytes.Equal(ctrl, []byte{0x55, 0xaa, 0x33}) {
+		t.Fatal("unsupported frame mutated control bytes")
+	}
 }
 
 func probeNativeWrapperRaw(code, trace, linMem, trap, results, top uintptr) uint64

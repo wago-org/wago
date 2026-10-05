@@ -179,7 +179,7 @@ func bindHostInvocationParent(in *Instance, parent context.Context) func() {
 }
 
 func registerHostControl(in *Instance) error {
-	if in == nil || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
+	if in == nil || len(in.ctrl) == 0 || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
 		return fmt.Errorf("invalid synchronous host control frame")
 	}
 	ptr := offHeapSlicePtr(in.ctrl)

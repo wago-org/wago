@@ -1034,7 +1034,10 @@ func (p supportPass) runtimeFootprint() error {
 	}
 	hostCallBytes := 0
 	if needsPublicFuncrefHostReentry(p.m, tables) {
-		hostCallBytes = runtime.HostCtrlFrameBytes
+		hostCallBytes, err = runtime.HostCtrlFrameBytesForSlots(runtime.MaxHostArity)
+		if err != nil {
+			return p.unsupported("runtime footprint", err.Error(), "synchronous host frame")
+		}
 	}
 	_, err = runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
 		FuncImportCount:    p.m.ImportedFuncCount(),

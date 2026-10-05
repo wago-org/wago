@@ -707,6 +707,11 @@ func supportsThreadsBackend(goos, goarch string) bool {
 }
 
 func platformCoreFeatures() CoreFeatures {
+	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
+		// The opt-in development backend also enforces a whole-module integer
+		// allowlist. This is a bounded integration surface, not Core release parity.
+		return CoreFeatureMutableGlobal | CoreFeatureSignExtensionOps | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations
+	}
 	supported := coreFeaturesWago
 	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
 		// Targets outside linux/amd64 and Linux/Darwin arm64 retain the portable
@@ -732,6 +737,9 @@ func platformCoreFeatures() CoreFeatures {
 // extended-constant surface instead of silently accepting partial support.
 // The separate threads proposal remains opt-in.
 func defaultCoreFeatures() CoreFeatures {
+	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
+		return platformCoreFeatures()
+	}
 	return coreFeaturesWithoutSidecar | (CoreFeaturesV3 & platformCoreFeatures())
 }
 

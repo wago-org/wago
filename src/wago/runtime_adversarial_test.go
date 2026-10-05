@@ -204,14 +204,6 @@ func TestMemoryViewRemainsCoherentAcrossGrow(t *testing.T) {
 	}
 }
 
-func requireInterruptedTrap(t *testing.T, err error) {
-	t.Helper()
-	var trap *TrapError
-	if !errors.As(err, &trap) || trap.Code != TrapInterrupted {
-		t.Fatalf("error = %v, want interrupted trap", err)
-	}
-}
-
 func TestCloseWhileHostCallInFlight(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})

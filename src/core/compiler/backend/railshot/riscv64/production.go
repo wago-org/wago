@@ -27,8 +27,13 @@ func CompileProduction(data []byte, opts ProductionOptions) (*enc.CompiledModule
 	if err != nil {
 		return nil, err
 	}
+	return stageProduction(c, opts.DeferCodeMapping)
+}
+
+func stageProduction(c *Compiled, deferMapping bool) (*enc.CompiledModule, error) {
+	var err error
 	var image *coreruntime.CodeBuffer
-	if opts.DeferCodeMapping {
+	if deferMapping {
 		image, err = coreruntime.NewHeapCodeBuffer(len(c.code))
 	} else {
 		image, err = coreruntime.NewCodeBuffer(len(c.code))

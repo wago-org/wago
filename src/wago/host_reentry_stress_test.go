@@ -1,4 +1,4 @@
-//go:build !tinygo
+//go:build !tinygo && (amd64 || arm64)
 
 package wago
 

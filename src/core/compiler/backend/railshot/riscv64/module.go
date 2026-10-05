@@ -56,14 +56,8 @@ func (c *Compiled) Functions() []FunctionInfo {
 // Caller input must not be mutated concurrently with the initial snapshot.
 func Compile(data []byte) (*Compiled, error) { return CompileWithOptions(data, CompileOptions{}) }
 
-// CompileOptions is an experimental diagnostic, not a public Wago setting.
-// ForceFallback bypasses shared selection for overlap differential testing.
-type CompileOptions struct {
-	ForceFallback bool
-	Interruptible bool
-	production    bool
-}
-
+// CompileWithOptions retains the isolated experimental guest-context ABI.
+// CompileModuleWith is the production shared compiler entry point.
 func CompileWithOptions(data []byte, opts CompileOptions) (*Compiled, error) {
 	return compileOptions(data, scalarRegisters[:], opts)
 }
@@ -95,6 +89,16 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 			return nil, err
 		}
 	}
+	return compileDecodedModule(m, regs, opts)
+}
+
+// The public frontend has already validated its configured limits and retains
+// the decoded source. Lowering still enforces the bounded RV64 module policy.
+func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if m == nil {
+		return nil, fmt.Errorf("rv64: nil module")
+	}
+	var err error
 	if err = admitShape(m); err != nil {
 		return nil, err
 	}

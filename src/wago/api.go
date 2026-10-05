@@ -1131,6 +1131,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, wrapContextError("validate", err)
 	}
 	requirements := analyzeModuleRequirementsWithValidation(m, &validationAnalysis)
+	if err := railshotAdmitSource(wasmBytes); err != nil {
+		return nil, wrapContextError("compile", err)
+	}
 	requiredByModule := requirements.features
 	narrowFrontendFeatures(&features, requiredByModule)
 	if requiredByModule.IsEnabled(CoreFeatureThreads) {
@@ -2351,6 +2354,9 @@ func (c *Compiled) FuncDebugName(funcIdx uint32) string {
 func (c *Compiled) validate() error {
 	if c == nil {
 		return errors.New("compiled module is nil")
+	}
+	if err := railshotValidateCompiled(c); err != nil {
+		return err
 	}
 	if c.NumImports < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)
@@ -4794,7 +4800,7 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 // nativeCancellationSupported reports whether this target has either
 // signal/context interruption or compiler-emitted cancellation polls.
 func nativeCancellationSupported() bool {
-	return (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && wruntime.NativeCancellationSchedulerAvailable()
+	return (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" || (goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64")) && wruntime.NativeCancellationSchedulerAvailable()
 }
 
 // startCancellationWatch arms the native safepoints for a high-level

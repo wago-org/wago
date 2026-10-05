@@ -165,6 +165,11 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if opts.forceSyncHost {
+		if _, err := runtime.HostCtrlFrameBytesForSlots(runtime.MaxHostArity); err != nil {
+			return nil, wrapContextError("instantiate: synchronous host protocol", err)
+		}
+	}
 	mappingOwner := c
 	if moduleUse != nil && moduleUse.compiledView != nil {
 		mappingOwner = moduleUse.compiledView
@@ -424,6 +429,14 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		}
 	}
 	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
+	if syncMode {
+		// A forced host mode can request a protocol the target cannot implement,
+		// even for an import-free module. Reject before footprint helpers whose
+		// infallible sizes assume the native host frame was already admitted.
+		if _, err := runtime.HostCtrlFrameBytesForSlots(int(c.syncHostSlots)); err != nil {
+			return nil, wrapContextError("instantiate: synchronous host protocol", err)
+		}
+	}
 	arenaNeed := c.arenaNeedForImports(imports, syncMode)
 	if c.memoryCount() == 1 && (opts.memoryLimitPages != 0 || c.memoryImport != "" && c.threadedMemory0()) {
 		if arenaNeed > maxInt()-abi.MemoryDirEntryBytes {
