@@ -16,10 +16,11 @@ type swarSummary struct{ locals, peak int }
 
 // This private whole-function pilot consumes a frontend-validated function.
 // It admits V128/i32 carriers, straight-line local/bit operations and typed
-// select. Module policy remains closed to SIMD; structured control, memory
-// and calls still require complete lowering.
+// select. An explicitly supplied nonshared memory32 descriptor also admits
+// full-width vector loads/stores. Module policy remains closed to SIMD;
+// structured control, other memory operations and calls need complete lowering.
 // Admission and emission walk every byte with identical bounded stack rules.
-func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swarSummary, error) {
+func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *integerEmitter) (swarSummary, error) {
 	if fn == nil || ft == nil || ft.Kind != wasm.CompFunc || len(ft.Params) > maxSWARLocals || len(ft.Results) > maxSWARLocals {
 		return swarSummary{}, unsupported("SWAR signature bound")
 	}
@@ -86,6 +87,9 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 		}
 	}
 	for r.HasNext() {
+		if emit != nil && emit.mode.production {
+			emit.sourcePC = uint32(fn.LocalDeclBytes) + uint32(r.Offset())
+		}
 		budget++
 		if budget > integerBudget {
 			return swarSummary{}, unsupported("SWAR instruction budget")
@@ -210,6 +214,48 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 			if err != nil {
 				return swarSummary{}, err
 			}
+			if kind == 0 || kind == 11 {
+				if !memory32 {
+					return swarSummary{}, unsupported("SWAR memory32 descriptor is required")
+				}
+				align, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				// This pilot admits the implicit memory0 form only. In particular,
+				// indexed/memory64 memargs cannot be misread as a memory32 offset.
+				if align > 4 {
+					return swarSummary{}, unsupported("SWAR full-width memarg alignment/index")
+				}
+				offset, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				store := kind == 11
+				arity := 1
+				if store {
+					arity = 2
+				}
+				if h < arity || stackVectors[h-arity] || (store && !stackVectors[h-1]) {
+					return swarSummary{}, unsupported("SWAR memory carrier class/underflow")
+				}
+				if emit != nil {
+					if store {
+						emit.swarLoad(spill(h-1), swarPair{enc.X6, enc.X7})
+					}
+					emit.Load(5, spill(h-arity), false)
+					emit.swarMemory(uint64(offset), store)
+					if !store {
+						emit.swarStore(spill(h-1), swarPair{enc.X6, enc.X7})
+					}
+				}
+				if store {
+					h -= 2
+				} else {
+					stackVectors[h-1] = true
+				}
+				continue
+			}
 			if kind == 12 {
 				literal, err := r.Bytes(16)
 				if err != nil {
@@ -285,17 +331,39 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, emit *integerEmitter) (swar
 }
 
 func compileSWARPairs(fn *wasm.Func, ft *wasm.CompType, mode emissionMode) ([]byte, FunctionInfo, error) {
-	summary, err := walkSWARPairs(fn, ft, nil)
+	return compileSWARPairsWithMemory(fn, ft, nil, mode)
+}
+
+// memory must describe the caller's validated single nonshared memory32 and
+// its production JobMemory home. This private entry never admits a module.
+func compileSWARPairsWithMemory(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, mode emissionMode) ([]byte, FunctionInfo, error) {
+	if memory != nil && (!mode.production || memory.Shared || memory.Limits.Addr64 || memory.Limits.Min > 65536 ||
+		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
+		return nil, FunctionInfo{}, unsupported("SWAR production memory32 resource")
+	}
+	summary, err := walkSWARPairs(fn, ft, memory != nil, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, err
 	}
 	f := integerEmitter{target: target{mode: mode}}
-	actual, err := walkSWARPairs(fn, ft, &f)
+	actual, err := walkSWARPairs(fn, ft, memory != nil, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, err
 	}
 	if actual != summary {
 		return nil, FunctionInfo{}, fmt.Errorf("rv64: SWAR admission changed")
+	}
+	if len(f.traps) != 0 {
+		end := f.Jump()
+		for _, tr := range f.traps {
+			if err := f.Patch(tr.site, f.Position()); err != nil {
+				return nil, FunctionInfo{}, err
+			}
+			f.emitProductionTrap(productionTrapCode(tr.code), tr.sourcePC)
+		}
+		if err := f.Patch(end, f.Position()); err != nil {
+			return nil, FunctionInfo{}, err
+		}
 	}
 	if f.err != nil {
 		return nil, FunctionInfo{}, f.err
