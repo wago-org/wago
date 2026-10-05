@@ -3,6 +3,8 @@
 package wago
 
 import (
+	"fmt"
+
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -25,6 +27,9 @@ func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
 func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
 
 func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {
+	if len(opts.ImportBindings) != 0 {
+		return nil, fmt.Errorf("%w: public function-import admission is pending", railshot.ErrUnsupported)
+	}
 	// Callable public artifacts use the cooperative ABI unconditionally. The
 	// new RV64 architecture identity denotes this framed, polling RV64G ABI.
 	opts.Interruptible = true

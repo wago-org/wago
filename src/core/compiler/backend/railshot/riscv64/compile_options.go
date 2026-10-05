@@ -43,6 +43,7 @@ type CompileOptions struct {
 	CustomInstructions              map[uint32]railcore.CustomInstruction
 	ForceFallback                   bool
 	production                      bool
+	hostImports                     bool
 }
 
 // The initial public envelope rejects profiling until finalized source/unwind

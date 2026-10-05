@@ -39,7 +39,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if _, err := admitOwnedTable(m, true); err != nil {
 		return nil, err
 	}
-	if len(m.Imports) > 257 || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Globals) > 256 || len(m.Data) > rv64runtime.MaxDataSegments || len(opts.Codegen.Module.GCTypeDescs) > MaxFunctions {
+	if len(m.Imports) > MaxProductionImports || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Globals) > 256 || len(m.Data) > rv64runtime.MaxDataSegments || len(opts.Codegen.Module.GCTypeDescs) > MaxFunctions {
 		return nil, unsupported("decoded module count bound")
 	}
 	// Decoded callers do not necessarily carry the original byte-size limit.
@@ -65,7 +65,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if opts.SyncHostSlots < 0 || opts.SyncHostSlots > 65535 {
 		return nil, fmt.Errorf("rv64: invalid synchronous host slot capacity %d", opts.SyncHostSlots)
 	}
-	if opts.ElideBoundsChecks || opts.SyncHostCalls || len(opts.ImportBindings) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.CustomInstructions) != 0 || len(opts.Codegen.Module.GCTypeLayouts) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC || opts.Codegen.Module.Features.V128 {
+	if err := admitHostBindings(m, &opts); err != nil {
+		return nil, err
+	}
+	if opts.ElideBoundsChecks || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.CustomInstructions) != 0 || len(opts.Codegen.Module.GCTypeLayouts) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC || opts.Codegen.Module.Features.V128 {
 		return nil, unsupported("production host/guard/GC/custom lowering is pending")
 	}
 	// The public frontend emits inert function sentinels for scalar types.

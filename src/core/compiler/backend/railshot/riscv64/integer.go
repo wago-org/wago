@@ -572,7 +572,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
-				emit.directCall(idx, sig, h)
+				emit.directCall(idx, sig, h, state.importedFunctions)
 			}
 			for _, wide := range sig.results {
 				if err = push(wide); err != nil {

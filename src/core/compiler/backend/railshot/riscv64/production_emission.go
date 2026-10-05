@@ -33,8 +33,8 @@ func admitProductionWire(data []byte) error {
 		if id == 2 {
 			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
 			count, err := section.U32()
-			if err != nil || count == 0 || count > 257 {
-				return unsupported("production requires 1..257 resource imports when an import section is present")
+			if err != nil || count == 0 || count > MaxProductionImports {
+				return unsupported("production import section count bound")
 			}
 			// Decoded admission checks every import's kind/type and aggregate bounds.
 		}
@@ -76,6 +76,10 @@ func productionTrapCode(code int) int {
 		return abi.TrapIndirectWrongSig
 	case trapTableBounds:
 		return abi.TrapTableOutOfBounds
+	case trapImportMissing:
+		return abi.TrapCalledFnNotLinked
+	case trapImportContext:
+		return abi.TrapCalledFnNotLinked
 	default:
 		panic("rv64: unknown admitted integer trap")
 	}

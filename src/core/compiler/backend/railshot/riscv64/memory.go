@@ -28,20 +28,21 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
-	production       bool
-	ownedTable       bool
-	ownedTableGrowth bool
-	elementCount     int
-	memory           *memorySpec
-	globals          []globalSpec
-	data             []native.MemoryInitializer
-	passiveData      [][]byte // all Wasm data indices; active entries are dropped/nil
-	functions        []functionSpec
-	types            []functionSpec
-	resultCapacity   int
-	capacity         int
-	memoryExports    map[string]bool
-	globalExports    map[string]int
+	production        bool
+	ownedTable        bool
+	ownedTableGrowth  bool
+	elementCount      int
+	memory            *memorySpec
+	globals           []globalSpec
+	data              []native.MemoryInitializer
+	passiveData       [][]byte // all Wasm data indices; active entries are dropped/nil
+	functions         []functionSpec
+	importedFunctions int
+	types             []functionSpec
+	resultCapacity    int
+	capacity          int
+	memoryExports     map[string]bool
+	globalExports     map[string]int
 }
 
 func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
@@ -70,6 +71,9 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	return v, nil
 }
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
+	return admitStatePolicy(m, production, false)
+}
+func admitStatePolicy(m *wasm.Module, production, hostImports bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	var tableErr error
 	s.ownedTable, tableErr = admitOwnedTable(m, production)
@@ -83,7 +87,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	}
 	maxImports := 1
 	if production {
-		maxImports = 257
+		maxImports = MaxProductionImports
 	} // 256 globals and one memory
 	if len(m.Imports) > maxImports || len(m.Memories) > 1 {
 		return s, unsupported("import/memory count bound")
@@ -95,6 +99,11 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	}
 	for _, im := range m.Imports {
 		switch im.Type.Kind {
+		case wasm.ExternFunc:
+			if !production || !hostImports || s.ownedTable {
+				return s, unsupported("function imports require qualified dynamic host bindings without tables")
+			}
+			s.importedFunctions++
 		case wasm.ExternMem:
 			if mt != nil {
 				return s, unsupported("multiple memories")
@@ -160,6 +169,9 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	for _, ex := range m.Exports {
 		switch ex.Index.Kind {
 		case wasm.ExternFunc:
+			if ex.Index.Index < uint32(s.importedFunctions) {
+				return s, unsupported("imported-function reexport lowering is pending")
+			}
 		case wasm.ExternMem:
 			s.memoryExports[ex.Name] = true
 		case wasm.ExternGlobal:
@@ -185,6 +197,17 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 			fn.results[k] = scalarWide(t)
 		}
 		s.types = append(s.types, fn)
+	}
+	if s.importedFunctions > MaxHostFunctionImports || s.importedFunctions+len(m.Code) > MaxFunctions {
+		return s, unsupported("aggregate function count bound")
+	}
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternFunc {
+			fn := s.types[im.Type.FuncType().Index]
+			s.capacity = max(s.capacity, len(fn.params))
+			s.resultCapacity = max(s.resultCapacity, len(fn.results))
+			s.functions = append(s.functions, fn)
+		}
 	}
 	for j := range m.Code {
 		ft, _ := m.LocalFuncType(j)

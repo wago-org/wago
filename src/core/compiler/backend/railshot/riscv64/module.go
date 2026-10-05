@@ -102,7 +102,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	if err = admitShapeMode(m, opts.production); err != nil {
 		return nil, err
 	}
-	state, err := admitStateMode(m, opts.production)
+	state, err := admitStatePolicy(m, opts.production, opts.hostImports)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var calls []directCall
 		mode := emissionMode{production: opts.production, interruptible: opts.Interruptible}
 		if opts.production {
-			mode.functionIndex = uint32(i)
+			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
 		}
 		if fallback[i] {
@@ -171,7 +171,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	}
 	for _, ex := range m.Exports {
 		if ex.Index.Kind == wasm.ExternFunc {
-			c.exports[ex.Name] = int(ex.Index.Index)
+			c.exports[ex.Name] = int(ex.Index.Index) - state.importedFunctions
 		}
 	}
 	return c, nil
