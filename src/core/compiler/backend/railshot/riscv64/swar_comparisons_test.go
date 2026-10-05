@@ -29,7 +29,7 @@ func TestSWARIntegerVectorComparisonAdmission(t *testing.T) {
 			}
 		}
 	}
-	for _, kind := range []uint32{232, 233, 244, 245} {
+	for _, kind := range []uint32{256} {
 		fn, ft := swarValidatedFunction(t, swarArithmeticFixture(kind))
 		if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
 			t.Fatal("pending vector floating min/max emitted", kind, err)
