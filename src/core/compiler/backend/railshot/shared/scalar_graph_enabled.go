@@ -21,7 +21,11 @@ type ScalarGraphTarget interface {
 	ScalarGraphBranchDestination(int) (int, bool, bool)
 }
 
-type scalarGraphState struct{ graph *scalarGraphRecorder }
+// ScalarState adds function-local graph state only in checked builds.
+type ScalarState struct {
+	graph *scalarGraphRecorder
+	scalarState
+}
 type scalarGraphImage struct{ locals, stack []regalloccheck.ValueID }
 type scalarGraphSnapshot struct {
 	image          scalarGraphImage
@@ -53,7 +57,7 @@ type scalarGraphRecorder struct {
 	failure               *regalloccheck.Result
 }
 
-func (s *ScalarState) checkGraphBegin(target ScalarTarget) ScalarTarget {
+func checkGraphBegin(s *ScalarState, target ScalarTarget) ScalarTarget {
 	t, ok := target.(ScalarGraphTarget)
 	if !ok {
 		return target
@@ -78,7 +82,7 @@ func (s *ScalarState) checkGraphBegin(target ScalarTarget) ScalarTarget {
 
 // Graphs and observers are function-local. Restore before checking/reporting,
 // including errors and panics, and preserve a preexisting emission panic.
-func (s *ScalarState) checkGraphEnd() {
+func checkGraphEnd(s *ScalarState) {
 	failure := recover()
 	g := s.graph
 	if g != nil {
@@ -105,7 +109,7 @@ func (s *ScalarState) checkGraphEnd() {
 		panic(failure)
 	}
 }
-func (s *ScalarState) checkGraphComplete() {
+func checkGraphComplete(s *ScalarState) {
 	if s.graph != nil {
 		s.graph.complete = true
 	}
@@ -154,7 +158,7 @@ func (g *scalarGraphRecorder) edge(block, to int) int {
 func (s *ScalarState) graphValue(id scalarID) regalloccheck.ValueID {
 	return regalloccheck.ValueID(s.node(id).order)
 }
-func (s *ScalarState) checkGraphAdd(id scalarID) {
+func checkGraphAdd(s *ScalarState, id scalarID) {
 	g := s.graph
 	if g == nil || id == 0 || g.failure != nil {
 		return
@@ -186,7 +190,7 @@ func (s *ScalarState) graphLocation(id scalarID) (regalloccheck.Location, bool) 
 		return regalloccheck.Location{}, false
 	}
 }
-func (s *ScalarState) checkGraphSeed(id scalarID) {
+func checkGraphSeed(s *ScalarState, id scalarID) {
 	g := s.graph
 	if g == nil || !g.reserve(1) {
 		return
@@ -195,7 +199,7 @@ func (s *ScalarState) checkGraphSeed(id scalarID) {
 		g.model.Inputs = append(g.model.Inputs, regalloccheck.Binding{Location: loc, Value: s.graphValue(id)})
 	}
 }
-func (s *ScalarState) checkGraphUse(id scalarID) {
+func checkGraphUse(s *ScalarState, id scalarID) {
 	if s.graph == nil {
 		return
 	}
@@ -203,19 +207,19 @@ func (s *ScalarState) checkGraphUse(id scalarID) {
 		s.graph.append(regalloccheck.Operation{Kind: regalloccheck.Use, Location: loc, Value: s.graphValue(id), Where: "scalar semantic input"})
 	}
 }
-func (s *ScalarState) checkGraphInputs(left, right scalarID) {
+func checkGraphInputs(s *ScalarState, left, right scalarID) {
 	g := s.graph
 	if g == nil {
 		return
 	}
-	s.checkGraphUse(left)
+	checkGraphUse(s, left)
 	if loc, ok := s.graphLocation(right); ok && loc.Bank == regalloccheck.Frame {
 		g.folded = s.graphValue(right)
 	} else {
-		s.checkGraphUse(right)
+		checkGraphUse(s, right)
 	}
 }
-func (s *ScalarState) checkGraphDefine(id scalarID, reg uint8) {
+func checkGraphDefine(s *ScalarState, id scalarID, reg uint8) {
 	if s.graph != nil {
 		if s.graph.writes&(1<<reg) == 0 {
 			s.graph.fail(regalloccheck.UnsupportedOperation, "missing observed scalar definition")
@@ -224,9 +228,9 @@ func (s *ScalarState) checkGraphDefine(id scalarID, reg uint8) {
 		s.graph.append(regalloccheck.Operation{Kind: regalloccheck.Define, Location: regalloccheck.Register(regalloccheck.GP, reg), Value: s.graphValue(id), Where: "trusted scalar definition"})
 	}
 }
-func (s *ScalarState) checkGraphResult(id scalarID) {
+func checkGraphResult(s *ScalarState, id scalarID) {
 	if s.graph != nil {
-		s.checkGraphUse(id)
+		checkGraphUse(s, id)
 		s.graph.result = s.graphValue(id)
 	}
 }
@@ -240,18 +244,18 @@ func (g *scalarGraphRecorder) image() scalarGraphImage {
 	}
 	return x
 }
-func (s *ScalarState) checkGraphElse() {
+func checkGraphElse(s *ScalarState) {
 	if s.graph != nil {
 		s.graph.restoreNext = true
 	}
 }
-func (s *ScalarState) checkGraphRestoreCarrier(registerResult bool, resultReg uint8) {
+func checkGraphRestoreCarrier(s *ScalarState, registerResult bool, resultReg uint8) {
 	if s.graph != nil {
 		s.graph.registerRestore = registerResult
 		s.graph.registerRestoreReg = resultReg
 	}
 }
-func (s *ScalarState) checkGraphRestore(depth int) scalarGraphSnapshot {
+func checkGraphRestore(s *ScalarState, depth int) scalarGraphSnapshot {
 	g := s.graph
 	if g == nil || g.failure != nil {
 		return scalarGraphSnapshot{}
@@ -268,7 +272,7 @@ func (s *ScalarState) checkGraphRestore(depth int) scalarGraphSnapshot {
 	g.current = to
 	return x
 }
-func (s *ScalarState) checkGraphRestored(x scalarGraphSnapshot) {
+func checkGraphRestored(s *ScalarState, x scalarGraphSnapshot) {
 	if s.graph != nil && s.graph.failure == nil {
 		s.graph.bind(x, s.graph.image())
 	}

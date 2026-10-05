@@ -28,17 +28,16 @@ type scalarStateBeforeGraph struct {
 
 func TestScalarGraphOrdinaryLayout(t *testing.T) {
 	old, now := reflect.TypeOf(scalarStateBeforeGraph{}), reflect.TypeOf(ScalarState{})
-	if old.Size() != now.Size() || old.Align() != now.Align() {
-		t.Fatalf("ordinary layout: before=%d/%d after=%d/%d", old.Size(), old.Align(), now.Size(), now.Align())
+	if now.Name() != "ScalarState" || now.PkgPath() != old.PkgPath() {
+		t.Fatalf("ordinary type identity changed: %s.%s", now.PkgPath(), now.Name())
 	}
-	state, _ := now.FieldByName("scalarGraphState")
-	if state.Type.Size() != 0 || state.Offset != 0 {
-		t.Fatal("nonempty ordinary graph state")
+	if old.Size() != now.Size() || old.Align() != now.Align() || old.NumField() != now.NumField() {
+		t.Fatalf("ordinary layout: before=%d/%d/%d after=%d/%d/%d", old.Size(), old.Align(), old.NumField(), now.Size(), now.Align(), now.NumField())
 	}
 	for i := 0; i < old.NumField(); i++ {
 		a := old.Field(i)
-		b, ok := now.FieldByName(a.Name)
-		if !ok || a.Offset != b.Offset || a.Type != b.Type {
+		b := now.Field(i)
+		if a.Name != b.Name || a.Offset != b.Offset || a.Type != b.Type || a.Anonymous != b.Anonymous || a.Tag != b.Tag || a.PkgPath != b.PkgPath {
 			t.Fatalf("ordinary field layout changed: %s", a.Name)
 		}
 	}
