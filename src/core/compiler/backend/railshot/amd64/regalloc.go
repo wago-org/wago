@@ -81,6 +81,7 @@ const regNone Reg = 0xFF
 // node, its storage inherits the node's result type so downstream consumers
 // (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
+	f.s.forgetSpill(e)
 	if regallocCheckEnabled {
 		f.checkOccupy(e, r, false)
 	}
@@ -148,7 +149,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	}
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
 		if e.isValue() && e.st.kind == stReg && !e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spill(e)
@@ -157,7 +158,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	}
 	// Under high pressure, a pending deferred load holds an address register: emit
 	// its load and spill the result to free the register.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
 		if e.isValue() && e.st.kind == stMemRef && !block.has(e.st.reg) {
 			r := e.st.reg
 			if e.st.typ.isFloat() {
@@ -295,16 +296,23 @@ func (f *fn) allocSpillSlots(n int) int {
 // the next free slot index. (Simple bump within the current operand-stack extent;
 // slots are reclaimed as values are consumed.)
 func (f *fn) curSpillSlot() int {
-	used := f.spillFloor
-	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.isValue() && e.st.kind == stSlot {
-			end := e.st.slotIndex() + e.st.typ.stackSlots()
-			if end > used {
-				used = end
+	s := f.s
+	if !s.spillExtentValid {
+		used := 0
+		for e := s.head.next; e != s.head; e = e.next {
+			if e.isValue() && e.st.kind == stSlot {
+				end := e.st.slotIndex() + e.st.typ.stackSlots()
+				if end > used {
+					used = end
+				}
 			}
 		}
+		if uint64(used) > uint64(^uint32(0)) {
+			return max(used, f.spillFloor)
+		}
+		s.spillExtent, s.spillExtentValid = uint32(used), true
 	}
-	return used
+	return max(int(s.spillExtent), f.spillFloor)
 }
 
 // materialize ensures value elem e lives in a register and returns it. A deferred

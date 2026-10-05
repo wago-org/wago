@@ -29,6 +29,7 @@ func floatBits(v float64, f64 bool) uint64 {
 // --- XMM allocator ---
 
 func (f *fn) occupyF(e *elem, r Reg) {
+	f.s.forgetSpill(e)
 	if regallocCheckEnabled {
 		f.checkOccupy(e, r, true)
 	}
@@ -84,7 +85,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 		return r
 	}
 	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
 		if e.isValue() && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			if profileEnabled {
