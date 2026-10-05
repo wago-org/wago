@@ -89,7 +89,7 @@ func createMissingLinuxRetainedStage(state *linuxRetainedReplacement) (int, erro
 	if openErr != nil || sourceErr != nil || opened.Dev != linked.Dev || opened.Ino != linked.Ino ||
 		linked.Mode&unix.S_IFMT != unix.S_IFREG || linked.Mode&0o777 != 0 ||
 		opened.Nlink != 1 || linked.Nlink != 1 {
-		return -1, joinErrors(formatError("stage changed before isolation; recover at %s",
+		return -1, joinErrors(formatErrorS("stage changed before isolation; recover at %s",
 			filepath.Join(state.parentPath, name)), openErr, sourceErr, syscall.Close(fd))
 	}
 	// Record the inode before moving it so every later error path refuses to
@@ -98,7 +98,7 @@ func createMissingLinuxRetainedStage(state *linuxRetainedReplacement) (int, erro
 	// The destination slot is new and protected by the private directory, so a
 	// plain descriptor-relative rename cannot replace another identity's file.
 	if err := syscall.Renameat(state.private.parentFD, name, state.private.pinFD, "artifact"); err != nil {
-		return -1, joinErrors(formatError("isolate empty inherited stage at %s: %w",
+		return -1, joinErrors(formatErrorSE("isolate empty inherited stage at %s: %w",
 			filepath.Join(state.parentPath, name), err), syscall.Close(fd))
 	}
 	movedErr := unix.Fstatat(state.private.pinFD, "artifact", &linked, unix.AT_SYMLINK_NOFOLLOW)
@@ -107,7 +107,7 @@ func createMissingLinuxRetainedStage(state *linuxRetainedReplacement) (int, erro
 		return fd, nil
 	}
 	recovery := filepath.Join(state.parentPath, state.private.name, "artifact")
-	return -1, joinErrors(formatError("stage changed after isolation; recover at %s", recovery),
+	return -1, joinErrors(formatErrorS("stage changed after isolation; recover at %s", recovery),
 		movedErr, syscall.Close(fd))
 }
 

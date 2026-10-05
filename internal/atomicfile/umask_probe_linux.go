@@ -38,7 +38,7 @@ func probeUmaskMode(destination string, requested fs.FileMode, requireExistingPa
 		return mode, joinErrors(probeErr, syscall.Close(parentFD))
 	}
 	if !linuxUnnamedTempUnsupported(err) {
-		return 0, joinErrors(formatError("create unnamed umask probe in %s: %w", directory, err),
+		return 0, joinErrors(formatErrorSE("create unnamed umask probe in %s: %w", directory, err),
 			syscall.Close(parentFD))
 	}
 	mode, probeErr := probeLinuxUmaskModeInPrivateDirectory(parentFD, directory, requested)
@@ -149,7 +149,7 @@ func openLinuxPrivateDirectory(parentFD int, name string) (linuxPrivateDirectory
 	identity := linuxFileIdentity{dev: uint64(pinned.Dev), ino: uint64(pinned.Ino)}
 	if err := normalizeLinuxPrivateDirectoryMode(pinFD, pinned.Mode); err != nil {
 		return failLinuxPrivateDirectory(parentFD, name, pinFD, identity,
-			formatError("set private directory mode: %w", err))
+			formatErrorE("set private directory mode: %w", err))
 	}
 	if err := syscall.Fstat(pinFD, &pinned); err != nil {
 		return failLinuxPrivateDirectory(parentFD, name, pinFD, identity, err)
@@ -198,7 +198,7 @@ func removeLinuxPrivateDirectory(private linuxPrivateDirectory) error {
 func removeLinuxPrivateDirectoryName(parentFD int, name string, expected linuxFileIdentity) error {
 	var current unix.Stat_t
 	if err := unix.Fstatat(parentFD, name, &current, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-		return formatError("private directory changed before cleanup: %w", err)
+		return formatErrorE("private directory changed before cleanup: %w", err)
 	}
 	if !expected.matches(&current) {
 		return newError("private directory changed before cleanup")

@@ -52,8 +52,19 @@ type Hooks struct {
 //go:noinline
 func joinErrors(values ...error) error { return errors.Join(values...) }
 
+// Typed helpers share interface-slice construction across cold failure sites.
+//
 //go:noinline
-func formatError(format string, values ...any) error { return fmt.Errorf(format, values...) }
+func formatErrorE(format string, err error) error { return fmt.Errorf(format, err) }
+
+//go:noinline
+func formatErrorS(format, value string) error { return fmt.Errorf(format, value) }
+
+//go:noinline
+func formatErrorSE(format, value string, err error) error { return fmt.Errorf(format, value, err) }
+
+//go:noinline
+func formatErrorSS(format, first, second string) error { return fmt.Errorf(format, first, second) }
 
 //go:noinline
 func newError(message string) error {
@@ -91,21 +102,21 @@ func ReplaceFile(destination string, options Options, write func(io.Writer) erro
 		}
 		closeReservationErr := reservation.close()
 		if closeFileErr != nil {
-			resultErr = joinErrors(resultErr, formatError("close temporary file during cleanup: %w", closeFileErr))
+			resultErr = joinErrors(resultErr, formatErrorE("close temporary file during cleanup: %w", closeFileErr))
 		}
 		if cleanupErr != nil {
-			resultErr = joinErrors(resultErr, formatError("remove temporary file during cleanup: %w", cleanupErr))
+			resultErr = joinErrors(resultErr, formatErrorE("remove temporary file during cleanup: %w", cleanupErr))
 		}
 		// Retained handles carry only publication and cleanup authority; the
 		// artifact writer was already finalized and closed before replacement.
 		// Once replacement commits, a close failure cannot invalidate the visible
 		// artifact and must not turn successful publication into a false failure.
 		if closeReservationErr != nil && !committed {
-			resultErr = joinErrors(resultErr, formatError("close retained replacement handle: %w", closeReservationErr))
+			resultErr = joinErrors(resultErr, formatErrorE("close retained replacement handle: %w", closeReservationErr))
 		}
 	}()
 	if err := write(file); err != nil {
-		return formatError("write temporary file: %w", err)
+		return formatErrorE("write temporary file: %w", err)
 	}
 	if err := finalize(file, finalizeOptions); err != nil {
 		closed = true
@@ -119,7 +130,7 @@ func ReplaceFile(destination string, options Options, write func(io.Writer) erro
 		return err
 	}
 	if err := replace(options, reservation, temporary, destination); err != nil {
-		return formatError("replace %s: %w", destination, err)
+		return formatErrorSE("replace %s: %w", destination, err)
 	}
 	committed = true
 	return nil
@@ -180,7 +191,7 @@ func CommitTempFile(temporary, destination string, options Options) error {
 		return err
 	}
 	if err := replace(options, retainedReplaceHandle{}, temporary, destination); err != nil {
-		return formatError("replace %s: %w", destination, err)
+		return formatErrorSE("replace %s: %w", destination, err)
 	}
 	committed = true
 	return nil
@@ -215,7 +226,7 @@ func finalize(file *os.File, options Options) error {
 		}
 		if err := file.Chmod(mode); err != nil {
 			_ = file.Close()
-			return formatError("set temporary file mode: %w", err)
+			return formatErrorE("set temporary file mode: %w", err)
 		}
 	}
 	if options.Sync {
@@ -225,7 +236,7 @@ func finalize(file *os.File, options Options) error {
 		}
 		if err := syncFile(file); err != nil {
 			_ = file.Close()
-			return formatError("sync temporary file: %w", err)
+			return formatErrorE("sync temporary file: %w", err)
 		}
 	}
 	if options.Hooks != nil && options.Hooks.Close != nil {
@@ -234,11 +245,11 @@ func finalize(file *os.File, options Options) error {
 			// This matters on Windows, where an open temporary file cannot be
 			// removed or moved reliably during cleanup.
 			_ = file.Close()
-			return formatError("close temporary file: %w", err)
+			return formatErrorE("close temporary file: %w", err)
 		}
 	}
 	if err := file.Close(); err != nil {
-		return formatError("close temporary file: %w", err)
+		return formatErrorE("close temporary file: %w", err)
 	}
 	return nil
 }
@@ -278,7 +289,7 @@ func validateBeforeReplace(options Options, destination string) error {
 		return nil
 	}
 	if err := options.BeforeReplace(destination); err != nil {
-		return formatError("validate destination before replace: %w", err)
+		return formatErrorE("validate destination before replace: %w", err)
 	}
 	return nil
 }
@@ -299,13 +310,13 @@ func validateDestination(path string) error {
 		return nil
 	}
 	if err != nil {
-		return formatError("inspect destination %s: %w", path, err)
+		return formatErrorSE("inspect destination %s: %w", path, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return formatError("destination %s is a symlink", path)
+		return formatErrorS("destination %s is a symlink", path)
 	}
 	if !info.Mode().IsRegular() {
-		return formatError("destination %s is not a regular file", path)
+		return formatErrorS("destination %s is not a regular file", path)
 	}
 	return nil
 }
@@ -316,7 +327,7 @@ func validateRegular(path, label string) error {
 		return err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return formatError("%s %s is not a regular file", label, path)
+		return formatErrorSS("%s %s is not a regular file", label, path)
 	}
 	return nil
 }
@@ -331,7 +342,7 @@ func validateOpenFile(file *os.File, path string) error {
 		return err
 	}
 	if !opened.Mode().IsRegular() || linked.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, linked) {
-		return formatError("temporary file %s changed before publication", path)
+		return formatErrorS("temporary file %s changed before publication", path)
 	}
 	return nil
 }
