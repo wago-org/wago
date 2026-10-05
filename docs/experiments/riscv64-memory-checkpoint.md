@@ -5,6 +5,9 @@ with genuine RV64 integer memory and global lowering. It remains isolated from
 the production Wago compiler, CLI and artifact architecture. The original
 post-#802 baseline and previous accepted commits are retained; no old #284 code
 or active user worktree was restored or modified.
+This document records Stage 4b1; the later
+[bulk checkpoint](riscv64-bulk-checkpoint.md) extends passive-data admission and
+the context layout while retaining the qualified single-memory scope.
 
 Before this stage, a readonly refresh observed main at `5273dde1` after #799 and
 open #803 at `694e9e8102fb4e4428468995863f05700fadcd29`. Their changes concern
