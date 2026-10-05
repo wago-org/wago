@@ -12,13 +12,16 @@ import (
 
 const maxSWARLocals = 128
 
-type swarSummary struct{ locals, peak, codeBound int }
+type swarSummary struct {
+	locals, peak, codeBound int
+	usesFP                  bool
+}
 
 // This private whole-function pilot consumes a frontend-validated function.
 // It admits V128 and four scalar carriers, straight-line local/integer vector operations
 // and select. An explicitly supplied nonshared memory32 descriptor also admits
-// full-width vector loads/stores. Module policy remains closed to SIMD;
-// structured control, other memory operations and calls need complete lowering.
+// vector loads/stores. FP instructions require the production FCSR bridge.
+// Module policy remains closed to SIMD; structured control and calls need lowering.
 // Admission and emission walk every byte with identical bounded stack rules.
 func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *integerEmitter) (swarSummary, error) {
 	if fn == nil || ft == nil || ft.Kind != wasm.CompFunc || len(ft.Params) > maxSWARLocals || len(ft.Results) > maxSWARLocals {
@@ -57,6 +60,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 	}
 	r := wasm.ReaderFrom(fn.BodyBytes)
 	h, peak, budget := 0, 0, 0
+	usesFP := false
 	// Covers bounded parameter expansion, frame/zero initialization, compact
 	// result serialization and framing. Per-op bounds include escaped homes
 	// and cold trap islands. Admission computes this before allocating code.
@@ -148,7 +152,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 					}
 				}
 			}
-			return swarSummary{nlocals, peak, codeBound}, nil
+			return swarSummary{nlocals, peak, codeBound, usesFP}, nil
 		case 0x1a:
 			if h == 0 {
 				return swarSummary{}, unsupported("SWAR drop underflow")
@@ -296,6 +300,20 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
+			}
+			if width, relation, ok := swarFloatComparisonOpcode(kind); ok {
+				usesFP = true
+				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+					return swarSummary{}, unsupported("SWAR floating comparison carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-2), left)
+					emit.swarLoad(spill(h-1), right)
+					emit.swarFloatCompare(width, relation)
+					emit.swarStore(spill(h-2), left)
+				}
+				h--
+				continue
 			}
 			if width, signed, high, ok := swarExtmultiplyOpcode(kind); ok {
 				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
@@ -694,6 +712,10 @@ func compileSWARPairsWithMemory(fn *wasm.Func, ft *wasm.CompType, memory *wasm.M
 	summary, err := walkSWARPairs(fn, ft, memory != nil, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, err
+	}
+	if summary.usesFP && !mode.production {
+		// The isolated integer bridge does not preserve accrued FP flags/FCSR.
+		return nil, FunctionInfo{}, unsupported("SWAR FP requires production FCSR bridge")
 	}
 	f := integerEmitter{target: target{mode: mode}}
 	actual, err := walkSWARPairs(fn, ft, memory != nil, &f)
