@@ -30,10 +30,14 @@ func TestSWARProductAdmissionAndExactClasses(t *testing.T) {
 			}
 		}
 	}
-	for _, kind := range []uint32{274} {
-		fn, ft := swarValidatedFunction(t, swarArithmeticFixture(kind))
-		if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
-			t.Fatal("pending relaxed dot emitted", kind, err)
+	for _, kind := range []uint32{276} {
+		fixture := swarArithmeticFixture(274)
+		fn, ft := swarValidatedFunction(t, fixture)
+		bad := *fn
+		bad.BodyBytes = append(append([]byte(nil), fn.BodyBytes[:4]...), uleb([]byte{0xfd}, kind)...)
+		bad.BodyBytes = append(bad.BodyBytes, 0x0b)
+		if code, _, err := compileSWARPairs(&bad, ft, emissionMode{production: true}); code != nil || err == nil {
+			t.Fatal("unknown SIMD opcode emitted", kind, err)
 		}
 	}
 }

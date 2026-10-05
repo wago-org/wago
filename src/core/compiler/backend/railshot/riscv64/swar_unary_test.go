@@ -45,8 +45,10 @@ func TestSWARUnaryIntegerAdmissionAndResultClasses(t *testing.T) {
 		}
 	}
 	fn, ft := swarValidatedFunction(t, swarArithmeticFixture(274))
-	if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
-		t.Fatal("pending vector relaxed dot emitted", err)
+	bad := *fn
+	bad.BodyBytes = append(uleb([]byte{0x20, 0, 0x20, 1, 0xfd}, 276), 0x0b)
+	if code, _, err := compileSWARPairs(&bad, ft, emissionMode{production: true}); code != nil || err == nil {
+		t.Fatal("unknown vector opcode emitted", err)
 	}
 }
 

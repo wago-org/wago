@@ -282,7 +282,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			bound := 512
 			_, memoryOp := swarMemoryOpcode(kind)
-			if memoryOp || kind == 130 || kind == 186 {
+			if memoryOp || kind == 130 || kind == 186 || kind == 274 || kind == 275 {
 				bound = 1024
 			} else if _, _, ok := swarRelaxedMaddOpcode(kind); ok {
 				bound = 1024
@@ -311,6 +311,26 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
+			}
+			if kind == 274 || kind == 275 {
+				arity := 2
+				if kind == 275 {
+					arity = 3
+				}
+				if h < arity || stackClasses[h-arity] != swarV128 || stackClasses[h-arity+1] != swarV128 || (arity == 3 && stackClasses[h-1] != swarV128) {
+					return swarSummary{}, unsupported("SWAR relaxed dot carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-arity), left)
+					emit.swarLoad(spill(h-arity+1), right)
+					if arity == 3 {
+						emit.swarLoad(spill(h-1), swarPair{enc.X12, enc.X13})
+					}
+					emit.swarRelaxedDot(kind)
+					emit.swarStore(spill(h-arity), left)
+				}
+				h -= arity - 1
+				continue
 			}
 			if width, negative, ok := swarRelaxedMaddOpcode(kind); ok {
 				usesFP = true

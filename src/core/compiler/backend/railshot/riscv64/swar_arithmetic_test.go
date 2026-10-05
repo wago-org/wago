@@ -33,11 +33,15 @@ func TestSWARWrappingArithmeticAdmission(t *testing.T) {
 			}
 		}
 	}
-	// Relaxed vector operations remain pending.
-	for _, kind := range []uint32{274} {
-		fn, ft := swarValidatedFunction(t, swarArithmeticFixture(kind))
-		if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
-			t.Fatal("pending arithmetic emitted", kind, err)
+	// Unknown prefixed instructions remain fail closed.
+	for _, kind := range []uint32{276} {
+		fixture := swarArithmeticFixture(274)
+		fn, ft := swarValidatedFunction(t, fixture)
+		bad := *fn
+		bad.BodyBytes = append(append([]byte(nil), fn.BodyBytes[:4]...), uleb([]byte{0xfd}, kind)...)
+		bad.BodyBytes = append(bad.BodyBytes, 0x0b)
+		if code, _, err := compileSWARPairs(&bad, ft, emissionMode{production: true}); code != nil || err == nil {
+			t.Fatal("unknown SIMD opcode emitted", kind, err)
 		}
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128, wasm.V128}, Results: []wasm.ValType{wasm.I32}}
