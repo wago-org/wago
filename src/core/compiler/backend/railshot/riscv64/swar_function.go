@@ -22,7 +22,8 @@ type swarSummary struct {
 // This private whole-function pilot consumes a frontend-validated function.
 // It admits V128 and four scalar carriers, local/scalar/vector
 // operations and select. An explicitly supplied nonshared memory32 descriptor
-// also admits vector loads/stores. FP and traps require their production bridges.
+// also admits scalar/vector loads/stores and memory size/growth. FP and traps
+// require their production bridges.
 // Structured control uses exact classes and canonical branch homes; indexed
 // signatures require an explicit type directory and loops require interruption.
 // Module policy remains closed to SIMD. Direct calls require an explicit
@@ -262,6 +263,90 @@ func walkSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			h = base
 			for _, typ := range sig.Results {
 				if err := push(swarClassOf(typ)); err != nil {
+					return swarSummary{}, err
+				}
+			}
+		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
+			if !memory32 {
+				return swarSummary{}, unsupported("SWAR scalar memory without resource")
+			}
+			var imm wasm.InstructionImmediate
+			if err := wasm.ClassifyInstructionImmediateInto(&r, op, &imm); err != nil {
+				return swarSummary{}, err
+			}
+			if imm.MemIndex != 0 || imm.HasMemIndex || imm.Index != 0 || imm.MemOffset > uint64(^uint32(0)) {
+				return swarSummary{}, unsupported("SWAR scalar memory index/offset")
+			}
+			if err := reserve(768); err != nil { // 1024 including the opcode's base bound.
+				return swarSummary{}, err
+			}
+			if op == 0x3f || op == 0x40 {
+				if op == 0x40 {
+					if err := flow.prepareDead(swarI32); err != nil {
+						return swarSummary{}, err
+					}
+					if h == flow.floor() || stackClasses[h-1] != swarI32 {
+						return swarSummary{}, unsupported("SWAR memory grow delta carrier")
+					}
+					h--
+				}
+				if err := push(swarI32); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					if op == 0x40 {
+						emit.Load(5, spill(h-1), false)
+					}
+					emit.memorySizeGrow(op == 0x40)
+					emit.Store(spill(h-1), 5, true)
+					emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
+				}
+				continue
+			}
+			size, wide, signed, store, _ := memoryOpcode(op)
+			if imm.MemAlign > uint32(swarMemoryAlignment(size)) {
+				return swarSummary{}, unsupported("SWAR scalar memory alignment")
+			}
+			class := swarI32
+			if wide {
+				class = swarI64
+			}
+			if op == 0x2a || op == 0x38 {
+				class = swarF32
+			} else if op == 0x2b || op == 0x39 {
+				class = swarF64
+			}
+			inputs := []swarClass{swarI32}
+			if store {
+				inputs = append(inputs, class)
+			}
+			if err := flow.prepareDead(inputs...); err != nil {
+				return swarSummary{}, err
+			}
+			base := h - len(inputs)
+			if base < flow.floor() {
+				return swarSummary{}, unsupported("SWAR scalar memory operand underflow")
+			}
+			for i, input := range inputs {
+				if stackClasses[base+i] != input {
+					return swarSummary{}, unsupported("SWAR scalar memory carrier class")
+				}
+			}
+			usesTraps = true
+			if emit != nil {
+				if store {
+					emit.Load(6, spill(base+1), wide)
+				}
+				emit.Load(5, spill(base), false)
+				emit.memoryAccess(imm.MemOffset, size, wide, signed, store)
+				if !store {
+					emit.Store(spill(base), 5, true)
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+			}
+			h = base
+			if !store {
+				if err := push(class); err != nil {
 					return swarSummary{}, err
 				}
 			}

@@ -117,6 +117,20 @@ func swarDeadCases() []swarDeadCase {
 		}
 		add(swarLaneMemoryFixture(kind, 0, 0, 0), []byte{0xfd, byte(kind), 0, 0, 0}, outputs, true)
 	}
+	for _, c := range swarScalarMemoryCases() {
+		outputs := 1
+		if c.store {
+			outputs = 0
+		}
+		add(swarScalarMemoryFixture(c, 0, 0), []byte{c.op, 0, 0}, outputs, true)
+	}
+	for _, grow := range []bool{false, true} {
+		op := byte(0x3f)
+		if grow {
+			op = 0x40
+		}
+		add(swarScalarMemorySizeFixture(grow), []byte{op, 0}, 1, true)
+	}
 	identity := fixtureFunc{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0b}}
 	for _, kernel := range [][]byte{{0x1b}, {0x1c, 1, 0x7b}, {0x22, 0}, {0x20, 0}, swarLiteral(1, 0x7ff0000000000001)} {
 		add(identity, kernel, 1, false)
