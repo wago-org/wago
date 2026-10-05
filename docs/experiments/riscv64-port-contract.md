@@ -1,5 +1,8 @@
 # RV64 port contract
 
+The [review walkthrough](riscv64-review-walkthrough.md) explains value flow,
+the 19 hooks, guarded frames, calls, memory and the current checker limits.
+
 This experimental Linux/RV64 port has an encoder, an isolated integer runtime
 boundary, shared scalar compilation, bounded whole-function integer/control
 lowering, single-memory/integer-global execution, bulk memory/passive data and
@@ -29,10 +32,17 @@ skills. `CONTRIBUTING.md`, `CONTEXT.md`, `README.md`, `ARCHITECTURE.md`,
 checkout and its active worktrees were left unchanged; the new worktree uses
 a separate local object-sharing clone. No code or commits were copied from
 historical #284. Open #284/#285 and checker work #798/#799/#800 are separate;
-none was modified. The checker enhancements are not assumed to be merged.
+none was modified. The original baseline did not assume checker enhancements
+were merged.
 
 The later memory checkpoint records the readonly main refresh after #799 and
 the separate open #803; those changes were checked without modifying either PR.
+
+After the direct-call checkpoint, verified main
+`068208990b37d413141126325a85c32483b93895` was merged locally. It contains #800
+and the recent #799/#803/#805/#804/#806 fixes. The
+[clobber checkpoint](riscv64-clobber-checkpoint.md) records the equivalent RV64
+diagnostic infrastructure and its current applicability limits.
 
 ## Merged shared contract
 
