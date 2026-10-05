@@ -128,6 +128,40 @@ func TestBuildOutputSnapshotRejectsTargetReplacement(t *testing.T) {
 	}
 }
 
+func TestBuildOutputSnapshotRejectsTargetDisappearance(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.wago")
+	const original = "existing artifact"
+	if err := os.WriteFile(target, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "output.wago")
+	if err := os.Symlink(filepath.Base(target), output); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	requireTestSymlink(t, output)
+	snapshot, err := inspectBuildOutput(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := filepath.Join(dir, "previous.wago")
+	if err := os.Rename(target, previous); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, _, err := snapshot.revalidate(); err == nil || !strings.Contains(err.Error(), "output symlink changed during build") {
+		t.Fatalf("revalidate disappeared target = %v", err)
+	}
+	if link, err := os.Readlink(output); err != nil || link != filepath.Base(target) {
+		t.Fatalf("output symlink changed: %q, %v", link, err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("missing target was recreated: %v", err)
+	}
+	if got, err := os.ReadFile(previous); err != nil || string(got) != original {
+		t.Fatalf("previous artifact = %q, %v", got, err)
+	}
+}
+
 func TestBuildOutputSnapshotTracksMissingSymlinkTarget(t *testing.T) {
 	dir := t.TempDir()
 	targetDir := filepath.Join(dir, "artifacts")
