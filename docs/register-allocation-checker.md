@@ -90,6 +90,33 @@ semantic input/use/definition contract; do not seed a new symbol after a failed
 reload, infer correctness from matching allocator bookkeeping, or silently claim
 an unsupported instruction was checked.
 
+## Control-flow analysis foundation
+
+The checked-build-only `internal/regalloccheck.Graph` analyzes explicit semantic
+uses and definitions separately from machine effects. A physical byte can carry
+multiple semantic identities, so duplicate block arguments preserve aliases.
+Edge parameters check their actual outgoing carriers and rename identities
+simultaneously. Definitions invalidate old copies of their identity, including
+across loop iterations. Joins intersect facts; uses are checked only after the
+reachable graph converges, with entry assumptions retained as a separate incoming
+edge. Missing facts and conflicting provenance both reject a use; neither means
+that opaque identities have different numerical values.
+
+This core is not yet connected to backend whole-function emission and adds no
+new backend lifetime coverage. Its callers must provide bounded graph construction,
+complete physical effects, and independent semantic contracts. It does not infer
+missing edges or instruction effects. Reachable unsupported operations, malformed
+models, and analysis-budget exhaustion return an inconclusive result, never a
+successful check. Default limits bound blocks, values, operations, retained
+fact-storage credits and cumulative analysis work. Credits include temporary
+copies and conservatively keep deleted map entries charged until their analysis
+state is released, because deletion does not reclaim Go map capacity.
+Work also charges historical storage credits before traversing nonempty fact,
+alias, per-value and register maps. Sparse maps therefore cannot evade the work
+budget after deletion. Register scans charge only register history, so physical
+calls do not repeatedly scan or charge the frame. These are conservative analysis
+units rather than elapsed-time or exact-byte limits.
+
 ## Ordinary-build contract and qualification
 
 The tag selects the implementation and state. Ordinary compiler and encoder
