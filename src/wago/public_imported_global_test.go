@@ -1,10 +1,11 @@
-//go:build linux && (amd64 || arm64) && !tinygo && !wago_target_tinygo
+//go:build linux && (amd64 || arm64 || (riscv64 && wago_rv64_experimental)) && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"encoding/binary"
 	"math"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 )
 
 // The local fifth global makes imported/defined index ordering observable.
-func publicImportedGlobalModule(imported bool, memory int, mutable bool) []byte {
+func publicImportedGlobalModule(imported bool, memory int, mutable bool, localInitial ...byte) []byte {
 	types := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
 	results := append(slices.Clone(types), wasm.I32)
 	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, results), wasmtest.FuncType(types, results)))}
@@ -22,9 +23,16 @@ func publicImportedGlobalModule(imported bool, memory int, mutable bool) []byte 
 		for i, typ := range types {
 			imports = append(imports, wasmtest.GlobalImportEntry("env", "g"+string(rune('0'+i)), typ, mutable))
 		}
-		if memory == 2 {
-			entry := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
-			imports = append(imports, append(entry, 2, 1, 1, 4))
+		if memory >= 2 {
+			entry := append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 4)
+			switch memory {
+			case 3:
+				imports = append([][]byte{entry}, imports...)
+			case 4:
+				imports = append(append(append([][]byte{}, imports[:2]...), entry), imports[2:]...)
+			default:
+				imports = append(imports, entry)
+			}
 		}
 		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(imports...)))
 	}
@@ -41,7 +49,11 @@ func publicImportedGlobalModule(imported bool, memory int, mutable bool) []byte 
 			wasmtest.GlobalEntry(wasm.F64, mutable, []byte{0x44, 0, 0, 0, 0, 0, 0, 0, 0x80, 0x0b}),
 		)
 	}
-	globals = append(globals, wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 33, 0x0b}))
+	local := byte(33)
+	if len(localInitial) != 0 {
+		local = localInitial[0]
+	}
+	globals = append(globals, wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, local, 0x0b}))
 	sections = append(sections, wasmtest.Section(6, wasmtest.Vec(globals...)))
 	exports := [][]byte{wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("set", 0, 1)}
 	for i := range types {
@@ -218,6 +230,154 @@ func TestPublicImportedGlobalBindingRejectsMissingTypeAndMutability(t *testing.T
 		imports := NewImports().Global("env", "g0", bad).Global("env", "g1", GlobalImport{Type: ValI64, Mutable: true}).Global("env", "g2", GlobalImport{Type: ValF32, Mutable: true}).Global("env", "g3", GlobalImport{Type: ValF64, Mutable: true})
 		if in, err := Instantiate(c, imports); in != nil || err == nil {
 			t.Fatal("global type/mutability mismatch accepted")
+		}
+	}
+}
+
+func TestPublicImportedGlobalMixedMemoryOrderingPrivateContextAndRoots(t *testing.T) {
+	for _, memoryOrder := range []int{2, 3, 4} {
+		p, err := Instantiate(importedGlobalCompile(t, false, 1, true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer p.Close()
+		imports := NewImports()
+		for i := 0; i < 4; i++ {
+			g, err := p.ExportedGlobalObject("g" + string(rune('0'+i)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			imports.Global("env", "g"+string(rune('0'+i)), g)
+		}
+		memory, err := p.ExportedMemory("memory")
+		if err != nil {
+			t.Fatal(err)
+		}
+		imports.Memory("env", "memory", memory)
+		var consumers []*Instance
+		for _, initial := range []byte{44, 55} {
+			c, err := Compile(nil, publicImportedGlobalModule(true, memoryOrder, true, initial))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			in, err := Instantiate(c, imports)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			consumers = append(consumers, in)
+		}
+		if err := p.Close(); err != nil {
+			t.Fatal(err)
+		}
+		for n, in := range consumers {
+			initial := uint64(44 + n*11)
+			want := []uint64{7, 9, 0x80000000, 0x8000000000000000, initial}
+			importedGlobalInvoke(t, in, "get", want)
+		}
+		for n, in := range consumers {
+			initial := uint64(44 + n*11)
+			args := []uint64{0xdeadbeefffffffff, 0x8000000000000001, 0xffff00007f800001, 0x7ff0000000000001}
+			want := []uint64{0xffffffff, args[1], uint64(uint32(args[2])), args[3], initial}
+			importedGlobalInvoke(t, in, "set", want, args...)
+		}
+		for n, in := range consumers {
+			importedGlobalInvoke(t, in, "get", []uint64{0xffffffff, 0x8000000000000001, 0x7f800001, 0x7ff0000000000001, uint64(44 + n*11)})
+		}
+		if err := consumers[0].Close(); err != nil {
+			t.Fatal(err)
+		}
+		if !p.hasPhysicalResources() {
+			t.Fatal("first borrower released shared producer")
+		}
+		if err := consumers[1].Close(); err != nil {
+			t.Fatal(err)
+		}
+		if p.hasPhysicalResources() || memory.jobMemory() != nil {
+			t.Fatal("final mixed-resource borrower retained producer")
+		}
+	}
+}
+
+func publicGlobalBoundaryModule(importsCount int, local bool) []byte {
+	imports := make([][]byte, importsCount)
+	for i := range imports {
+		imports[i] = wasmtest.GlobalImportEntry("env", "shared", wasm.I32, false)
+	}
+	parts := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(imports...)),
+		wasmtest.Section(3, []byte{1, 0}),
+	}
+	if local {
+		parts = append(parts, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 7, 0x0b}))))
+	}
+	parts = append(parts, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(append(append([]byte{0x23}, wasmtest.ULEB(uint32(importsCount-1))...), 0x0b)))))
+	return wasmtest.Module(parts...)
+}
+
+func TestPublicImportedGlobalBoundaryAndDuplicateAliasRoot(t *testing.T) {
+	c, err := Compile(nil, publicGlobalBoundaryModule(256, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	g := NewGlobalI32(42, false)
+	defer g.Close()
+	in, err := Instantiate(c, NewImports().Global("env", "shared", g))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	g.owner.mu.Lock()
+	count := g.owner.importers
+	g.owner.mu.Unlock()
+	if count != 1 {
+		t.Fatal("duplicate global keys retained multiple importer roots", count)
+	}
+	importedGlobalInvoke(t, in, "get", []uint64{42})
+	for _, data := range [][]byte{publicGlobalBoundaryModule(257, false), publicGlobalBoundaryModule(256, true)} {
+		c, err := Compile(nil, data)
+		if runtime.GOARCH == "riscv64" && (c != nil || err == nil) {
+			t.Fatal("aggregate global count beyond 256 admitted")
+		}
+		if c != nil {
+			_ = c.Close()
+		}
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatal("duplicate alias roots failed to detach", err)
+	}
+}
+
+func TestPublicImportedGlobalRollbackLeavesHostCellsAndDetaches(t *testing.T) {
+	data := publicImportedGlobalModule(true, 1, true)
+	data = append(data, wasmtest.Section(11, []byte{1, 0, 0x41, 0x80, 0x80, 4, 0x0b, 1, 0x5a})...)
+	c, err := Compile(nil, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	objects := []*Global{NewGlobalI32(-1, true), NewGlobalI64(-2, true), NewGlobalF32(-0.5, true), NewGlobalF64(-1.5, true)}
+	imports := NewImports()
+	for i, g := range objects {
+		imports.Global("env", "g"+string(rune('0'+i)), g)
+		defer g.Close()
+	}
+	before := []uint64{objects[0].Get(), objects[1].Get(), objects[2].Get(), objects[3].Get()}
+	if in, err := Instantiate(c, imports); in != nil || err == nil {
+		t.Fatal("bad initializer admitted")
+	}
+	for i, g := range objects {
+		if g.Get() != before[i] {
+			t.Fatal("failed instantiation modified imported cell")
+		}
+		if err := g.Close(); err != nil {
+			t.Fatal("failed instantiation leaked imported global root", err)
 		}
 	}
 }

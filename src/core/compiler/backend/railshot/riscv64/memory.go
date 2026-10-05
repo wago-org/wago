@@ -66,21 +66,39 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 }
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
-	var mt *wasm.MemType
-	if len(m.Imports) > 1 || len(m.Memories) > 1 || len(m.Imports)+len(m.Memories) > 1 {
-		return s, unsupported("multiple imports/memories")
+	maxImports := 1
+	if production {
+		maxImports = 257
+	} // 256 globals and one memory
+	if len(m.Imports) > maxImports || len(m.Memories) > 1 {
+		return s, unsupported("import/memory count bound")
 	}
-	if len(m.Imports) == 1 {
-		im := m.Imports[0]
-		if im.Type.Kind != wasm.ExternMem {
-			return s, unsupported("nonmemory import")
-		}
-		t := im.Type.MemType()
-		mt = &t
-		s.memory = &memorySpec{imported: true, module: im.Module, name: im.Name}
-	} else if len(m.Memories) == 1 {
+	var mt *wasm.MemType
+	if len(m.Memories) == 1 {
 		mt = &m.Memories[0]
 		s.memory = &memorySpec{}
+	}
+	for _, im := range m.Imports {
+		switch im.Type.Kind {
+		case wasm.ExternMem:
+			if mt != nil {
+				return s, unsupported("multiple memories")
+			}
+			t := im.Type.MemType()
+			mt = &t
+			s.memory = &memorySpec{imported: true, module: im.Module, name: im.Name}
+		case wasm.ExternGlobal:
+			if !production {
+				return s, unsupported("isolated global import")
+			}
+			g := im.Type.GlobalType()
+			if !scalarType(g.Type, true) {
+				return s, unsupported("nonscalar global import")
+			}
+			s.globals = append(s.globals, globalSpec{scalarWide(g.Type), g.Mutable, 0})
+		default:
+			return s, unsupported("nonmemory/nonglobal import")
+		}
 	}
 	if mt != nil {
 		maxPages := uint64(native.MaxMemoryPages)
@@ -94,7 +112,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 		s.memory.max = mt.Limits.Max
 		s.memory.hasMax = mt.Limits.HasMax
 	}
-	if len(m.Globals) > 256 || len(m.Data) > native.MaxDataSegments {
+	if len(s.globals)+len(m.Globals) > 256 || len(m.Data) > native.MaxDataSegments {
 		return s, unsupported("state count bound")
 	}
 	for _, g := range m.Globals {

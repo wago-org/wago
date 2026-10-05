@@ -77,3 +77,6 @@ unsupported resource and feature gates remain in force.
 The [imported-memory checkpoint](riscv64-imported-memory-checkpoint.md) adds one
 ordinary memory32 import and shared construction/context/ownership regressions.
 Function/global imports and broader resources remain separately gated.
+
+The [scalar global import checkpoint](riscv64-imported-global-checkpoint.md) adds
+numeric object/value imports through aliased cells and retained re-export owners.

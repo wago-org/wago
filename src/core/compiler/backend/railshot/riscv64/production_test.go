@@ -152,12 +152,12 @@ func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.
 		imports []byte
 	}{
 		{"function", append([]byte{1}, entry(0, 0)...)},
-		{"global", append([]byte{1}, entry(3, 0x7f, 0)...)},
+		{"v128-global", append([]byte{1}, entry(3, 0x7b, 0)...)},
+		{"reference-global", append([]byte{1}, entry(3, 0x70, 0)...)},
 		{"table", append([]byte{1}, entry(1, 0x70, 1, 0, 1)...)},
 		{"shared-memory", append([]byte{1}, entry(2, 3, 0, 1)...)},
 		{"memory64", append([]byte{1}, entry(2, 5, 0, 1)...)},
 		{"two-memories", append(append([]byte{2}, entry(2, 1, 0, 1)...), entry(2, 1, 0, 1)...)},
-		{"memory-plus-global", append(append([]byte{2}, entry(2, 1, 0, 1)...), entry(3, 0x7f, 0)...)},
 	} {
 		t.Run(shape.name, func(t *testing.T) {
 			data := modifySection(base, 3, 2, shape.imports, false)
@@ -171,7 +171,7 @@ func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.
 			if err != nil {
 				t.Fatal("invalid rejection fixture", err)
 			}
-			if shape.name == "two-memories" || shape.name == "memory-plus-global" {
+			if shape.name == "two-memories" {
 				if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{MultiMemory: true}, 1, wasm.ValidationLimits{}); err != nil {
 					t.Fatal("policy fixture is not a valid module", err)
 				}
@@ -198,5 +198,47 @@ func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.
 	}
 	if _, err := admitStateMode(m, true); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("import plus defined memory escaped the gate", err)
+	}
+}
+
+func TestProductionImportedScalarGlobalAggregateBound(t *testing.T) {
+	base := binaryModule(fixtureFunc{result: 0x7f, body: []byte{0x23, 0xff, 1, 0x0b}})
+	module := func(count int, defined bool) []byte {
+		imports := uleb(nil, uint32(count))
+		for i := 0; i < count; i++ {
+			imports = append(imports, 1, 'm', 1, 'x', 3, 0x7f, 0)
+		}
+		data := modifySection(base, 3, 2, imports, false)
+		if defined {
+			data = modifySection(data, 7, 6, []byte{1, 0x7f, 0, 0x41, 7, 0x0b}, false)
+		}
+		return data
+	}
+	image, err := CompileProduction(module(256, false), ProductionOptions{DeferCodeMapping: true})
+	if err != nil {
+		t.Fatal("supported scalar import boundary rejected", err)
+	}
+	if err := image.CodeImage.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if image, err := Compile(module(256, false)); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("isolated global import admission widened", image, err)
+	}
+	for _, data := range [][]byte{module(257, false), module(256, true)} {
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal("invalid bound fixture", err)
+		}
+		if _, err := admitStateMode(m, true); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("aggregate global count escaped state admission", err)
+		}
+		for _, heap := range []bool{false, true} {
+			if image, err := CompileProduction(data, ProductionOptions{DeferCodeMapping: heap}); image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("aggregate global count reached image", image, err)
+			}
+		}
 	}
 }

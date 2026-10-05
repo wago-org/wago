@@ -8,8 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// Admission follows the production lowerings implemented below. One ordinary
-// memory import is supported; host imports, starts and tables remain gated.
+// Admission follows the production lowerings implemented below. Ordinary
+// memory and scalar global imports are supported; host imports, starts and tables remain gated.
 func admitProductionWire(data []byte) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
@@ -32,10 +32,10 @@ func admitProductionWire(data []byte) error {
 		if id == 2 {
 			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
 			count, err := section.U32()
-			if err != nil || count != 1 {
-				return unsupported("production requires exactly one memory import when an import section is present")
+			if err != nil || count == 0 || count > 257 {
+				return unsupported("production requires 1..257 resource imports when an import section is present")
 			}
-			// Decoded admission checks the single import's kind and memory shape.
+			// Decoded admission checks every import's kind/type and aggregate bounds.
 		}
 		if err := r.JumpTo(r.Offset() + int(n)); err != nil {
 			return err

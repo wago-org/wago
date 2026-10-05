@@ -33,8 +33,16 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		remaining -= len(data.Bytes)
 	}
-	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.memoryImportCount() > 1 || c.tableCount() != 0 || c.HasStart || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.NeedsFuncRefDescs || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
+	if c.NumImports != 0 || len(c.Imports) != 0 || c.memoryImportCount() > 1 || c.tableCount() != 0 || c.HasStart || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.NeedsFuncRefDescs || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
 		return reject("resource/host/reference lowering is pending")
+	}
+	if len(c.GlobalImports) > len(c.Globals) {
+		return reject("global import index shape")
+	}
+	for i, global := range c.GlobalImports {
+		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64) || global.Type != c.Globals[i].Type || global.Mutable != c.Globals[i].Mutable {
+			return reject("global import type/mutability shape")
+		}
 	}
 	for _, desc := range c.GCTypeDescs {
 		if desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper {

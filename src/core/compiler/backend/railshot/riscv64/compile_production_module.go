@@ -36,7 +36,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
-	if len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Globals) > 256 || len(m.Data) > rv64runtime.MaxDataSegments || len(opts.Codegen.Module.GCTypeDescs) > MaxFunctions {
+	if len(m.Imports) > 257 || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Globals) > 256 || len(m.Data) > rv64runtime.MaxDataSegments || len(opts.Codegen.Module.GCTypeDescs) > MaxFunctions {
 		return nil, unsupported("decoded module count bound")
 	}
 	// Decoded callers do not necessarily carry the original byte-size limit.

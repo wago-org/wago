@@ -56,3 +56,7 @@ vet/static checks, diagnostics/DCE and documentation checks. These are focused
 correctness results; full official suites and native cache/performance
 qualification remain pending. The broader port remains tracked in the
 [parity tracker](riscv64-parity-tracker.md).
+
+The subsequent [scalar global import checkpoint](riscv64-imported-global-checkpoint.md)
+adds four-type global imports and value-import re-export ownership. Its resource
+import count supersedes the memory-only count policy above.
