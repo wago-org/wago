@@ -15,8 +15,8 @@ const maxSWARLocals = 128
 type swarSummary struct{ locals, peak int }
 
 // This private whole-function pilot consumes a frontend-validated function.
-// It admits V128/i32 carriers, straight-line local/bit operations and typed
-// select. An explicitly supplied nonshared memory32 descriptor also admits
+// It admits V128/i32 carriers, straight-line local/integer vector operations
+// and select. An explicitly supplied nonshared memory32 descriptor also admits
 // full-width vector loads/stores. Module policy remains closed to SIMD;
 // structured control, other memory operations and calls need complete lowering.
 // Admission and emission walk every byte with identical bounded stack rules.
@@ -213,6 +213,19 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			kind, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
+			}
+			if width, relation, ok := swarComparisonOpcode(kind); ok {
+				if h < 2 || !stackVectors[h-2] || !stackVectors[h-1] {
+					return swarSummary{}, unsupported("SWAR comparison carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-2), left)
+					emit.swarLoad(spill(h-1), right)
+					emit.swarCompare(width, relation)
+					emit.swarStore(spill(h-2), left)
+				}
+				h--
+				continue
 			}
 			if width, subtract, ok := swarAddSubOpcode(kind); ok {
 				if h < 2 || !stackVectors[h-2] || !stackVectors[h-1] {
