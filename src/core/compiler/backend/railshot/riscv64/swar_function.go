@@ -214,6 +214,19 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			if err != nil {
 				return swarSummary{}, err
 			}
+			if width, subtract, ok := swarAddSubOpcode(kind); ok {
+				if h < 2 || !stackVectors[h-2] || !stackVectors[h-1] {
+					return swarSummary{}, unsupported("SWAR arithmetic carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-2), left)
+					emit.swarLoad(spill(h-1), right)
+					emit.swarAddSub(width, subtract)
+					emit.swarStore(spill(h-2), left)
+				}
+				h--
+				continue
+			}
 			if kind >= 15 && kind <= 17 {
 				if h == 0 || stackVectors[h-1] {
 					return swarSummary{}, unsupported("SWAR splat carrier class/underflow")
