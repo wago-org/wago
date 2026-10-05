@@ -766,6 +766,9 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summar
 		}
 	}
 	f := integerEmitter{target: target{nlocals: n}}
+	if regallocCheckEnabled {
+		defer f.checkEndLifetimes()
+	}
 	if summary.calls != 0 {
 		f.header = callFrameHeader
 	}

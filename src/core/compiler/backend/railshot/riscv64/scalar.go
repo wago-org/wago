@@ -14,6 +14,7 @@ import (
 var scalarRegisters = [...]uint8{5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 28, 29}
 
 type target struct {
+	regallocFnState
 	a       enc.Asm
 	regs    []uint8
 	nlocals int

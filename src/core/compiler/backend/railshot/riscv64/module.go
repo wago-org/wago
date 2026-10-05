@@ -261,6 +261,9 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 		}
 	}
 	f := target{regs: regs, nlocals: nlocals}
+	if regallocCheckEnabled {
+		defer f.checkEndLifetimes()
+	}
 	slots, err := worker.CompileScalar(fn.BodyBytes, summary, widths[:nlocals], len(ft.Params), &f)
 	if err != nil {
 		return nil, FunctionInfo{}, err
