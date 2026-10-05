@@ -373,6 +373,12 @@ func TestSWARRV64BulkTableActiveCopyGrowInterruptAndRetry(t *testing.T) {
 			}
 			ready, finished, joined := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			go func() {
+				// Keep the ready observer on its current OS thread. Yielding its P
+				// can leave a finite native mutation without an observer for its
+				// entire duration. This bounded spin ends when the call joins;
+				// it is test synchronization, not a guest/compiler timing change.
+				goruntime.LockOSThread()
+				defer goruntime.UnlockOSThread()
 				defer close(joined)
 				close(ready)
 				for {
@@ -385,7 +391,6 @@ func TestSWARRV64BulkTableActiveCopyGrowInterruptAndRetry(t *testing.T) {
 						coreruntime.RequestInterrupt(trap)
 						return
 					}
-					goruntime.Gosched()
 				}
 			}()
 			<-ready
