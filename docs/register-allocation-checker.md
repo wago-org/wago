@@ -111,6 +111,11 @@ successful check. Default limits bound blocks, values, operations, retained
 fact-storage credits and cumulative analysis work. Credits include temporary
 copies and conservatively keep deleted map entries charged until their analysis
 state is released, because deletion does not reclaim Go map capacity.
+Work also charges historical storage credits before traversing nonempty fact,
+alias, per-value and register maps. Sparse maps therefore cannot evade the work
+budget after deletion. Register scans charge only register history, so physical
+calls do not repeatedly scan or charge the frame. These are conservative analysis
+units rather than elapsed-time or exact-byte limits.
 
 ## Ordinary-build contract and qualification
 

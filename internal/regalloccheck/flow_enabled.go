@@ -124,33 +124,44 @@ type symbol struct {
 
 // Most bytes have one identity. Allocate a set only when semantic aliases meet.
 type flowCell struct {
-	one  symbol
-	more map[symbol]struct{}
+	one         symbol
+	more        map[symbol]struct{}
+	moreHistory int // retained alias-map capacity survives deletions
 }
 
 func (c flowCell) empty() bool { return c.one.id == 0 && len(c.more) == 0 }
-func (c flowCell) each(fn func(symbol)) {
+func (c flowCell) each(b *flowBudget, fn func(symbol)) {
 	if c.one.id != 0 {
 		fn(c.one)
 	}
+	if len(c.more) == 0 {
+		return
+	}
+	b.charge(c.moreHistory)
 	for v := range c.more {
 		fn(v)
 	}
 }
 
+type flowIndex struct {
+	locations map[Location]uint16
+	history   int // retained per-value map capacity survives deletions
+}
+
 // The reverse index makes semantic redefinition proportional to that value's
 // aliases, rather than scanning the entire frame at every definition.
 type flowImage struct {
-	cells     map[Location]flowCell
-	registers map[Location]struct{}
-	ids       map[ValueID]map[Location]uint16
-	count     int
-	retained  int // storage credits are reclaimed only when the image is released
-	b         *flowBudget
+	cells      map[Location]flowCell
+	registers  map[Location]struct{}
+	ids        map[ValueID]flowIndex
+	count      int
+	retained   int // storage credits are reclaimed only when the image is released
+	regHistory int // register-map scans must not charge unrelated frame history
+	b          *flowBudget
 }
 
 func newImage(b *flowBudget) *flowImage {
-	return &flowImage{cells: make(map[Location]flowCell), registers: make(map[Location]struct{}), ids: make(map[ValueID]map[Location]uint16), b: b}
+	return &flowImage{cells: make(map[Location]flowCell), registers: make(map[Location]struct{}), ids: make(map[ValueID]flowIndex), b: b}
 }
 
 func (s *flowImage) has(loc Location, v symbol) bool {
@@ -176,15 +187,20 @@ func (s *flowImage) add(loc Location, v symbol) {
 			c.more = make(map[symbol]struct{})
 		}
 		c.more[v] = struct{}{}
+		c.moreHistory++
 	}
 	s.cells[loc] = c
 	if loc.Bank != Frame {
 		s.registers[loc] = struct{}{}
+		s.regHistory++
 	}
-	if s.ids[v.id] == nil {
-		s.ids[v.id] = make(map[Location]uint16)
+	index := s.ids[v.id]
+	if index.locations == nil {
+		index.locations = make(map[Location]uint16)
 	}
-	s.ids[v.id][loc] |= 1 << v.part
+	index.locations[loc] |= 1 << v.part
+	index.history++
+	s.ids[v.id] = index
 	s.count++
 	s.retained++
 }
@@ -203,11 +219,12 @@ func (s *flowImage) remove(loc Location, v symbol) {
 	} else {
 		s.cells[loc] = c
 	}
-	s.ids[v.id][loc] &^= 1 << v.part
-	if s.ids[v.id][loc] == 0 {
-		delete(s.ids[v.id], loc)
+	index := s.ids[v.id]
+	index.locations[loc] &^= 1 << v.part
+	if index.locations[loc] == 0 {
+		delete(index.locations, loc)
 	}
-	if len(s.ids[v.id]) == 0 {
+	if len(index.locations) == 0 {
 		delete(s.ids, v.id)
 	}
 	s.count--
@@ -219,12 +236,17 @@ func (s *flowImage) clear(loc Location, size int) {
 	for i := 0; i < size; i++ {
 		s.b.charge(1)
 		at := loc.next(i)
-		s.cells[at].each(func(v symbol) { s.remove(at, v) })
+		s.cells[at].each(s.b, func(v symbol) { s.remove(at, v) })
 	}
 }
 
 func (s *flowImage) forget(id ValueID) {
-	for loc, parts := range s.ids[id] {
+	index := s.ids[id]
+	if len(index.locations) == 0 {
+		return
+	}
+	s.b.charge(index.history)
+	for loc, parts := range index.locations {
 		for part := uint8(0); part < 16; part++ {
 			s.b.charge(1)
 			if parts&(1<<part) != 0 {
@@ -237,20 +259,29 @@ func (s *flowImage) forget(id ValueID) {
 func (s *flowImage) release() {
 	s.b.facts -= s.retained
 	s.cells, s.ids, s.registers, s.count, s.retained = nil, nil, nil, 0, 0
+	s.regHistory = 0
 }
 
 func (s *flowImage) clone() *flowImage {
 	out := newImage(s.b)
+	if len(s.cells) == 0 {
+		return out
+	}
+	s.b.charge(s.retained)
 	for loc, values := range s.cells {
-		values.each(func(v symbol) { out.add(loc, v) })
+		values.each(s.b, func(v symbol) { out.add(loc, v) })
 	}
 	return out
 }
 
 func (s *flowImage) meet(other *flowImage) bool {
 	changed := false
+	if len(s.cells) == 0 {
+		return false
+	}
+	s.b.charge(s.retained)
 	for loc, values := range s.cells {
-		values.each(func(v symbol) {
+		values.each(s.b, func(v symbol) {
 			if !other.has(loc, v) {
 				s.remove(loc, v)
 				changed = true
@@ -268,7 +299,7 @@ type flowFact struct {
 func (s *flowImage) snapshot(src, dst Location, size int, facts []flowFact) []flowFact {
 	for i := 0; i < size; i++ {
 		s.b.charge(1)
-		s.cells[src.next(i)].each(func(v symbol) {
+		s.cells[src.next(i)].each(s.b, func(v symbol) {
 			// Snapshots count against the same live-memory budget as states.
 			s.b.addFact()
 			facts = append(facts, flowFact{dst.next(i), v})
@@ -304,8 +335,12 @@ func (s *flowImage) effect(e Effect) {
 	case Kill:
 		s.clear(e.Dst, e.Size)
 	case Call:
+		if len(s.registers) == 0 {
+			return
+		}
+		s.b.charge(s.regHistory)
 		for loc := range s.registers {
-			s.cells[loc].each(func(v symbol) { s.remove(loc, v) })
+			s.cells[loc].each(s.b, func(v symbol) { s.remove(loc, v) })
 		}
 	case Read:
 		return
@@ -328,7 +363,12 @@ func (s *flowImage) parameters(params []Parameter) {
 	var facts []flowFact
 	for _, p := range params {
 		s.b.charge(1)
-		for loc, parts := range s.ids[p.From] {
+		index := s.ids[p.From]
+		if len(index.locations) == 0 {
+			continue
+		}
+		s.b.charge(index.history)
+		for loc, parts := range index.locations {
 			for part := uint8(0); part < 16; part++ {
 				s.b.charge(1)
 				if parts&(1<<part) != 0 {

@@ -461,3 +461,73 @@ func TestFlowAliasCopyOverflowsInlineSnapshot(t *testing.T) {
 	}
 	verifyFlow(t, g, Verified, NoFailure)
 }
+
+func TestFlowSparseMapScansConsumeRetainedWork(t *testing.T) {
+	const history = 32
+	for _, scan := range []string{"clone", "meet", "forget", "parameters", "aliases", "call"} {
+		t.Run(scan, func(t *testing.T) {
+			b := &flowBudget{limits: DefaultLimits()}
+			s := newImage(b)
+			if scan == "aliases" {
+				for id := ValueID(1); id <= history; id++ {
+					s.add(Slot(0), symbol{id, 0})
+				}
+				for id := ValueID(2); id < history; id++ {
+					s.remove(Slot(0), symbol{id, 0})
+				}
+			} else {
+				for i := 0; i < history; i++ {
+					loc := Slot(int32(i))
+					if scan == "call" {
+						loc = Register(GP, uint8(i))
+					}
+					s.add(loc, symbol{1, 0})
+				}
+				for i := 1; i < history; i++ {
+					loc := Slot(int32(i))
+					if scan == "call" {
+						loc = Register(GP, uint8(i))
+					}
+					s.remove(loc, symbol{1, 0})
+				}
+			}
+			b.work = 0
+			switch scan {
+			case "clone":
+				s.clone().release()
+			case "meet":
+				s.meet(newImage(b))
+			case "forget":
+				s.forget(1)
+			case "parameters":
+				s.parameters([]Parameter{{From: 1, To: 2, Location: Slot(0)}})
+			case "aliases":
+				s.snapshot(Slot(0), Slot(1), 1, nil)
+			case "call":
+				s.effect(Effect{Kind: Call})
+			}
+			if b.work < history-1 {
+				t.Fatalf("%s charged only %d work units for retained map history %d", scan, b.work, history)
+			}
+		})
+	}
+}
+
+func TestFlowCallScanDoesNotChargeFrameHistory(t *testing.T) {
+	b := &flowBudget{limits: DefaultLimits()}
+	s := newImage(b)
+	for i := 0; i < 512; i++ {
+		s.add(Slot(int32(i)), symbol{1, 0})
+	}
+	s.add(Register(GP, 0), symbol{2, 0})
+	b.work = 0
+	s.effect(Effect{Kind: Call})
+	if b.work > 4 {
+		t.Fatalf("call charged frame history: %d work units", b.work)
+	}
+	b.work = 0
+	s.effect(Effect{Kind: Call})
+	if b.work != 0 {
+		t.Fatalf("empty register map consumed scan work: %d", b.work)
+	}
+}
