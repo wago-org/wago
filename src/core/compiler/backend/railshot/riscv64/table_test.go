@@ -182,13 +182,62 @@ func TestProductionPrivateReferenceAdmissionAndCarrierClasses(t *testing.T) {
 		{0x42, 0, 0x21, 1, 0x41, 0, 0x0b}, // a wide integer is not a reference
 		{0xd2, 1, 0x50, 0x0b},             // a reference is not an i64 arithmetic input
 		{0x00, 0xd0, 0x6f, 0x1a, 0x0b},    // unsupported dead externref
-		{0x00, 0xfc, 17, 0, 0x0b},         // unsupported dead table.fill
+		{0x00, 0xfc, 17, 1, 0x0b},         // unsupported dead indexed table.fill
 		{0x00, 0x25, 1, 0x1a, 0x0b},       // unsupported dead table index
 		{0x00, 0x02, 0x70, 0x0b, 0x0b},    // reference control results remain gated
 	} {
 		m.Code[0].BodyBytes = body
 		if _, err := walkInteger(&m.Code[0], ft, &state, nil); !errors.Is(err, ErrUnsupported) {
 			t.Fatal("carrier/shape escaped admission", body, err)
+		}
+	}
+}
+
+func TestProductionPrivateTableGrowthCapacityBeforeStaging(t *testing.T) {
+	for _, tc := range []struct {
+		minimum       uint32
+		hasMax, admit bool
+	}{{512, false, true}, {513, false, false}, {513, true, true}} {
+		data := binaryModule(fixtureFunc{result: 0x7f, body: []byte{0xd2, 1, 0x41, 1, 0xfc, 15, 0, 0x0b}}, fixtureFunc{result: 0x7f, body: []byte{0x41, 7, 0x0b}, unexported: true})
+		flag := byte(0)
+		if tc.hasMax {
+			flag = 1
+		}
+		table := uleb([]byte{1, 0x70, flag}, tc.minimum)
+		if tc.hasMax {
+			table = uleb(table, 1024)
+		}
+		data = modifySection(data, 7, 4, table, false)
+		data = modifySection(data, 10, 9, []byte{1, 0, 0x41, 0, 0x0b, 1, 1}, false)
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pressure := 0
+		c, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
+		if !tc.admit {
+			if c != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				t.Fatal("growth reached staging", c, err, pressure)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.CodeImage != nil {
+			t.Fatal("deferred shared contract retained mapping", c.CodeImage)
+		}
+		// Dead growth sites enforce the same reserve bound before emission.
+		m.Tables[0].Type.Limits.HasMax = false
+		m.Tables[0].Type.Limits.Min = 513
+		m.Code[0].BodyBytes = []byte{0x00, 0xfc, 15, 0, 0x0b}
+		state, err := admitStateMode(m, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ft, _ := m.LocalFuncType(0)
+		if _, err := walkInteger(&m.Code[0], ft, &state, nil); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("dead growth reserve escaped", err)
 		}
 	}
 }

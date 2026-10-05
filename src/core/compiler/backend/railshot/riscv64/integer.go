@@ -667,6 +667,49 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if state == nil {
 				return integerSummary{}, unsupported("bulk instruction without state")
 			}
+			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
+				if !privateRefs || imm.Index != 0 || imm.Index2 != 0 || (imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth) {
+					return integerSummary{}, unsupported("bounded private table mutation shape")
+				}
+				if _, err = pop(); err != nil {
+					return integerSummary{}, err
+				}
+				deltaSlot := h
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), false)
+				}
+				if _, err = popClass(imm.Kind != wasm.InstrTableCopy); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(7, emit.SpillOffset(h), imm.Kind != wasm.InstrTableCopy)
+				}
+				if imm.Kind != wasm.InstrTableGrow {
+					if _, err = pop(); err != nil {
+						return integerSummary{}, err
+					}
+					if live && emit != nil {
+						emit.Load(6, emit.SpillOffset(h), false)
+					}
+				}
+				if live && emit != nil {
+					switch imm.Kind {
+					case wasm.InstrTableCopy:
+						emit.privateTableCopy()
+					case wasm.InstrTableFill:
+						emit.privateTableFill()
+					case wasm.InstrTableGrow:
+						emit.privateTableGrow(deltaSlot)
+						emit.Store(emit.SpillOffset(h), 5, false)
+					}
+				}
+				if imm.Kind == wasm.InstrTableGrow {
+					if err = push(false); err != nil {
+						return integerSummary{}, err
+					}
+				}
+				continue
+			}
 			if imm.Kind == wasm.InstrTableSize {
 				if !privateRefs || imm.Index != 0 {
 					return integerSummary{}, unsupported("private table.size index")

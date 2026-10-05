@@ -28,18 +28,19 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
-	production     bool
-	ownedTable     bool
-	memory         *memorySpec
-	globals        []globalSpec
-	data           []native.MemoryInitializer
-	passiveData    [][]byte // all Wasm data indices; active entries are dropped/nil
-	functions      []functionSpec
-	types          []functionSpec
-	resultCapacity int
-	capacity       int
-	memoryExports  map[string]bool
-	globalExports  map[string]int
+	production       bool
+	ownedTable       bool
+	ownedTableGrowth bool
+	memory           *memorySpec
+	globals          []globalSpec
+	data             []native.MemoryInitializer
+	passiveData      [][]byte // all Wasm data indices; active entries are dropped/nil
+	functions        []functionSpec
+	types            []functionSpec
+	resultCapacity   int
+	capacity         int
+	memoryExports    map[string]bool
+	globalExports    map[string]int
 }
 
 func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
@@ -71,6 +72,10 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	var tableErr error
 	s.ownedTable, tableErr = admitOwnedTable(m, production)
+	if s.ownedTable {
+		// The frontend reserves max(1024,2*min) for observable no-max growth.
+		s.ownedTableGrowth = m.Tables[0].Type.Limits.HasMax || m.Tables[0].Type.Limits.Min <= MaxOwnedTableEntries/2
+	}
 	if tableErr != nil {
 		return s, tableErr
 	}
