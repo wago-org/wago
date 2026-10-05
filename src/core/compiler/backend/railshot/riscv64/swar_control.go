@@ -11,14 +11,16 @@ type swarControl struct {
 	base                           int
 	kind                           byte
 	results                        []swarClass
+	params                         []swarClass
 	entry, then, incoming, hasElse bool
 	falseSite                      int
+	start                          int
 	sites                          []int
 }
 
-// The first control stage admits inline block signatures and root multivalue
-// returns. Loops, indexed signatures and nonstructural polymorphic dead code
-// remain closed. Every admitted branch transports exact classes through real
+// Indexed signatures and loop parameters use the same exact class discipline
+// as inline blocks and root returns. Nonstructural polymorphic dead code
+// remains closed. Every admitted branch transports exact classes through real
 // padded stack homes; no synthetic graph identities stand in for those copies.
 type swarFlow struct {
 	frames          [33]swarControl
@@ -29,6 +31,8 @@ type swarFlow struct {
 	spill           func(int) int32
 	reserve         func(int) error
 	emit            *integerEmitter
+	types           []*wasm.CompType
+	usesLoops       bool
 }
 
 func (flow *swarFlow) floor() int { return flow.frames[flow.depth-1].base }
@@ -75,22 +79,26 @@ func (flow *swarFlow) branch(label uint32) error {
 		return unsupported("SWAR branch label/dead shape")
 	}
 	fr := &flow.frames[flow.depth-1-int(label)]
-	if err := flow.match(flow.floor(), fr.results, false); err != nil {
+	values := fr.results
+	if fr.kind == 0x03 {
+		values = fr.params
+	}
+	if err := flow.match(flow.floor(), values, false); err != nil {
 		return err
 	}
-	*flow.budget += len(fr.results)
+	*flow.budget += len(values)
 	if *flow.budget > integerBudget {
 		return unsupported("SWAR branch transfer budget")
 	}
-	if err := flow.reserve(128*len(fr.results) + 64); err != nil {
+	if err := flow.reserve(128*len(values) + 64); err != nil {
 		return err
 	}
 	if flow.emit != nil {
 		// Destinations are never above sources. Forward pair copies therefore
 		// preserve overlapping mixed results. X5 retains br_table's raw index.
 		pair := swarPair{enc.X7, enc.X9}
-		for i, class := range fr.results {
-			flow.emit.swarLoad(flow.spill(*flow.h-len(fr.results)+i), pair)
+		for i, class := range values {
+			flow.emit.swarLoad(flow.spill(*flow.h-len(values)+i), pair)
 			if class.narrow() {
 				flow.emit.NormalizeI32(7)
 			}
@@ -99,9 +107,18 @@ func (flow *swarFlow) branch(label uint32) error {
 			}
 			flow.emit.swarStore(flow.spill(fr.base+i), pair)
 		}
-		fr.sites = append(fr.sites, flow.emit.Jump())
+		site := flow.emit.Jump()
+		if fr.kind == 0x03 {
+			if err := flow.patch(site, fr.start); err != nil {
+				return err
+			}
+		} else {
+			fr.sites = append(fr.sites, site)
+		}
 	}
-	fr.incoming = true
+	if fr.kind != 0x03 {
+		fr.incoming = true
+	}
 	return nil
 }
 
@@ -114,7 +131,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		}
 		flow.live = false
 		*flow.h = flow.floor()
-	case 0x02, 0x04:
+	case 0x02, 0x03, 0x04:
 		bt, e := r.S33()
 		if e != nil {
 			return false, false, e
@@ -122,21 +139,50 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		if !flow.live || flow.depth == len(flow.frames) {
 			return false, false, unsupported("SWAR control nesting/dead shape")
 		}
-		var results []swarClass
+		var params, results []swarClass
 		if bt != -64 {
-			if bt < -5 || bt > -1 {
-				return false, false, unsupported("SWAR indexed/control signature is pending")
+			if bt >= 0 {
+				if bt >= int64(len(flow.types)) || flow.types[bt] == nil {
+					return false, false, unsupported("SWAR indexed control signature")
+				}
+				for _, typ := range flow.types[bt].Params {
+					params = append(params, swarClassOf(typ))
+				}
+				for _, typ := range flow.types[bt].Results {
+					results = append(results, swarClassOf(typ))
+				}
+			} else {
+				if bt < -5 || bt > -1 {
+					return false, false, unsupported("SWAR control carrier signature")
+				}
+				results = []swarClass{swarByteClass(byte(bt & 0x7f))}
 			}
-			results = []swarClass{swarByteClass(byte(bt & 0x7f))}
 		}
-		fr := swarControl{base: *flow.h, kind: op, results: results, entry: flow.live, falseSite: -1}
+		*flow.budget += len(params) + len(results)
+		if *flow.budget > integerBudget {
+			return false, false, unsupported("SWAR control signature budget")
+		}
+		if err := flow.reserve(128*(len(params)+len(results)) + 512); err != nil {
+			return false, false, err
+		}
+		fr := swarControl{kind: op, params: params, results: results, entry: flow.live, falseSite: -1}
 		if op == 0x04 {
 			if err := flow.condition(); err != nil {
 				return false, false, err
 			}
-			fr.base = *flow.h
 			if flow.emit != nil {
 				fr.falseSite = flow.emit.BranchZero(5)
+			}
+		}
+		if err := flow.match(flow.floor(), params, false); err != nil {
+			return false, false, err
+		}
+		fr.base = *flow.h - len(params)
+		if op == 0x03 {
+			flow.usesLoops, trap = true, true
+			fr.start = flow.position()
+			if flow.emit != nil {
+				flow.emit.emitProductionInterruptPoll()
 			}
 		}
 		flow.frames[flow.depth] = fr
@@ -159,10 +205,21 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		}
 		fr.then, fr.hasElse = flow.live, true
 		flow.live, *flow.h = fr.entry, fr.base
+		for _, class := range fr.params {
+			flow.classes[*flow.h] = class
+			*flow.h++
+		}
 	case 0x0b:
 		fr := &flow.frames[flow.depth-1]
-		if fr.kind == 0x04 && !fr.hasElse && len(fr.results) != 0 {
-			return false, false, unsupported("SWAR result if requires else")
+		if fr.kind == 0x04 && !fr.hasElse {
+			if len(fr.params) != len(fr.results) {
+				return false, false, unsupported("SWAR result if requires else")
+			}
+			for i, class := range fr.params {
+				if class != fr.results[i] {
+					return false, false, unsupported("SWAR result if requires else")
+				}
+			}
 		}
 		if flow.live {
 			if err := flow.match(fr.base, fr.results, true); err != nil {
@@ -241,6 +298,9 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				return false, false, unsupported("SWAR branch table label")
 			}
 			results := flow.frames[flow.depth-1-int(label)].results
+			if flow.frames[flow.depth-1-int(label)].kind == 0x03 {
+				results = flow.frames[flow.depth-1-int(label)].params
+			}
 			if i == 0 {
 				signature = results
 			} else {

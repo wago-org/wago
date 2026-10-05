@@ -16,16 +16,37 @@ const maxSWARLocals = 128
 type swarSummary struct {
 	locals, peak, codeBound int
 	usesFP, usesTraps       bool
+	usesLoops               bool
 }
 
 // This private whole-function pilot consumes a frontend-validated function.
-// It admits V128 and four scalar carriers, straight-line local/scalar/vector
+// It admits V128 and four scalar carriers, local/scalar/vector
 // operations and select. An explicitly supplied nonshared memory32 descriptor
 // also admits vector loads/stores. FP and traps require their production bridges.
-// Inline structured control uses exact classes and canonical branch homes.
-// Module policy remains closed to SIMD; loops, indexed control and calls are pending.
+// Structured control uses exact classes and canonical branch homes; indexed
+// signatures require an explicit type directory and loops require interruption.
+// Module policy remains closed to SIMD; polymorphic dead code and calls are pending.
 // Admission and emission walk every byte with identical bounded stack rules.
 func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithTypes(fn, ft, memory32, nil, emit)
+}
+
+func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types []*wasm.CompType, emit *integerEmitter) (swarSummary, error) {
+	if len(types) > 1024 {
+		return swarSummary{}, unsupported("SWAR control type bound")
+	}
+	for _, typ := range types {
+		if typ == nil || typ.Kind != wasm.CompFunc || len(typ.Params) > maxSWARLocals || len(typ.Results) > maxSWARLocals {
+			return swarSummary{}, unsupported("SWAR control type shape/bound")
+		}
+		for _, list := range [][]wasm.ValType{typ.Params, typ.Results} {
+			for _, carrier := range list {
+				if !swarCarrierType(carrier) {
+					return swarSummary{}, unsupported("SWAR control type carrier")
+				}
+			}
+		}
+	}
 	if fn == nil || ft == nil || ft.Kind != wasm.CompFunc || len(ft.Params) > maxSWARLocals || len(ft.Results) > maxSWARLocals {
 		return swarSummary{}, unsupported("SWAR signature bound")
 	}
@@ -87,7 +108,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 		peak = max(peak, h)
 		return nil
 	}
-	flow := swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit}
+	flow := swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types}
 	flow.frames[0] = swarControl{kind: 0xff, entry: true}
 	for _, typ := range ft.Results {
 		flow.frames[0].results = append(flow.frames[0].results, swarClassOf(typ))
@@ -141,7 +162,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 		}
 		switch op {
 		case 0x01: // nop
-		case 0x00, 0x02, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f:
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f:
 			done, trap, err := flow.instruction(op, &r)
 			if err != nil {
 				return swarSummary{}, err
@@ -174,7 +195,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 					}
 				}
 			}
-			return swarSummary{nlocals, peak, codeBound, usesFP, usesTraps}, nil
+			return swarSummary{nlocals, peak, codeBound, usesFP, usesTraps, flow.usesLoops}, nil
 		case 0x1a:
 			if h == flow.floor() {
 				return swarSummary{}, unsupported("SWAR drop underflow")
@@ -921,11 +942,17 @@ func compileSWARPairs(fn *wasm.Func, ft *wasm.CompType, mode emissionMode) ([]by
 // memory must describe the caller's validated single nonshared memory32 and
 // its production JobMemory home. This private entry never admits a module.
 func compileSWARPairsWithMemory(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, mode emissionMode) ([]byte, FunctionInfo, error) {
+	return compileSWARPairsWithTypes(fn, ft, memory, nil, mode)
+}
+
+// types is the caller's immutable frontend-validated, flattened function-type
+// directory. Indexed signatures are never guessed from the current function.
+func compileSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory *wasm.MemType, types []*wasm.CompType, mode emissionMode) ([]byte, FunctionInfo, error) {
 	if memory != nil && (!mode.production || memory.Shared || memory.Limits.Addr64 || memory.Limits.Min > 65536 ||
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
 		return nil, FunctionInfo{}, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairs(fn, ft, memory != nil, nil)
+	summary, err := walkSWARPairsWithTypes(fn, ft, memory != nil, types, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, err
 	}
@@ -933,11 +960,14 @@ func compileSWARPairsWithMemory(fn *wasm.Func, ft *wasm.CompType, memory *wasm.M
 		// The isolated integer bridge does not preserve accrued FP flags/FCSR.
 		return nil, FunctionInfo{}, unsupported("SWAR FP requires production FCSR bridge")
 	}
+	if summary.usesLoops && (!mode.production || !mode.interruptible) {
+		return nil, FunctionInfo{}, unsupported("SWAR loops require production interruption bridge")
+	}
 	if summary.usesTraps && !mode.production {
 		return nil, FunctionInfo{}, unsupported("SWAR traps require production trap bridge")
 	}
 	f := integerEmitter{target: target{mode: mode}}
-	actual, err := walkSWARPairs(fn, ft, memory != nil, &f)
+	actual, err := walkSWARPairsWithTypes(fn, ft, memory != nil, types, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, err
 	}
