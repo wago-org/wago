@@ -1,0 +1,274 @@
+//go:build linux && !tinygo
+
+package riscv64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
+)
+
+type swarControl struct {
+	base                           int
+	kind                           byte
+	results                        []swarClass
+	entry, then, incoming, hasElse bool
+	falseSite                      int
+	sites                          []int
+}
+
+// The first control stage admits inline block signatures and root multivalue
+// returns. Loops, indexed signatures and nonstructural polymorphic dead code
+// remain closed. Every admitted branch transports exact classes through real
+// padded stack homes; no synthetic graph identities stand in for those copies.
+type swarFlow struct {
+	frames          [33]swarControl
+	depth           int
+	live            bool
+	h, peak, budget *int
+	classes         *[256]swarClass
+	spill           func(int) int32
+	reserve         func(int) error
+	emit            *integerEmitter
+}
+
+func (flow *swarFlow) floor() int { return flow.frames[flow.depth-1].base }
+
+func (flow *swarFlow) position() int {
+	if flow.emit != nil {
+		return flow.emit.Position()
+	}
+	return 0
+}
+
+func (flow *swarFlow) patch(site, position int) error {
+	if flow.emit != nil {
+		return flow.emit.Patch(site, position)
+	}
+	return nil
+}
+
+func (flow *swarFlow) match(base int, results []swarClass, exact bool) error {
+	if *flow.h-len(results) < base || exact && *flow.h != base+len(results) {
+		return unsupported("SWAR control result stack")
+	}
+	for i, class := range results {
+		if flow.classes[*flow.h-len(results)+i] != class {
+			return unsupported("SWAR control result carrier class")
+		}
+	}
+	return nil
+}
+
+func (flow *swarFlow) condition() error {
+	if !flow.live || *flow.h == flow.floor() || flow.classes[*flow.h-1] != swarI32 {
+		return unsupported("SWAR control condition class/underflow")
+	}
+	*flow.h--
+	if flow.emit != nil {
+		flow.emit.Load(5, flow.spill(*flow.h), false)
+	}
+	return nil
+}
+
+func (flow *swarFlow) branch(label uint32) error {
+	if uint64(label) >= uint64(flow.depth) || !flow.live {
+		return unsupported("SWAR branch label/dead shape")
+	}
+	fr := &flow.frames[flow.depth-1-int(label)]
+	if err := flow.match(flow.floor(), fr.results, false); err != nil {
+		return err
+	}
+	*flow.budget += len(fr.results)
+	if *flow.budget > integerBudget {
+		return unsupported("SWAR branch transfer budget")
+	}
+	if err := flow.reserve(128*len(fr.results) + 64); err != nil {
+		return err
+	}
+	if flow.emit != nil {
+		// Destinations are never above sources. Forward pair copies therefore
+		// preserve overlapping mixed results. X5 retains br_table's raw index.
+		pair := swarPair{enc.X7, enc.X9}
+		for i, class := range fr.results {
+			flow.emit.swarLoad(flow.spill(*flow.h-len(fr.results)+i), pair)
+			if class.narrow() {
+				flow.emit.NormalizeI32(7)
+			}
+			if class != swarV128 {
+				flow.emit.a.Addi(pair.high, enc.Zero, 0)
+			}
+			flow.emit.swarStore(flow.spill(fr.base+i), pair)
+		}
+		fr.sites = append(fr.sites, flow.emit.Jump())
+	}
+	fr.incoming = true
+	return nil
+}
+
+func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err error) {
+	switch op {
+	case 0x00:
+		trap = true
+		if flow.live && flow.emit != nil {
+			flow.emit.trap(TrapUnreachable, flow.emit.Jump())
+		}
+		flow.live = false
+		*flow.h = flow.floor()
+	case 0x02, 0x04:
+		bt, e := r.S33()
+		if e != nil {
+			return false, false, e
+		}
+		if !flow.live || flow.depth == len(flow.frames) {
+			return false, false, unsupported("SWAR control nesting/dead shape")
+		}
+		var results []swarClass
+		if bt != -64 {
+			if bt < -5 || bt > -1 {
+				return false, false, unsupported("SWAR indexed/control signature is pending")
+			}
+			results = []swarClass{swarByteClass(byte(bt & 0x7f))}
+		}
+		fr := swarControl{base: *flow.h, kind: op, results: results, entry: flow.live, falseSite: -1}
+		if op == 0x04 {
+			if err := flow.condition(); err != nil {
+				return false, false, err
+			}
+			fr.base = *flow.h
+			if flow.emit != nil {
+				fr.falseSite = flow.emit.BranchZero(5)
+			}
+		}
+		flow.frames[flow.depth] = fr
+		flow.depth++
+	case 0x05:
+		fr := &flow.frames[flow.depth-1]
+		if fr.kind != 0x04 || fr.hasElse {
+			return false, false, unsupported("SWAR else shape")
+		}
+		if flow.live {
+			if err := flow.match(fr.base, fr.results, true); err != nil {
+				return false, false, err
+			}
+			if flow.emit != nil {
+				fr.sites = append(fr.sites, flow.emit.Jump())
+			}
+		}
+		if err := flow.patch(fr.falseSite, flow.position()); err != nil {
+			return false, false, err
+		}
+		fr.then, fr.hasElse = flow.live, true
+		flow.live, *flow.h = fr.entry, fr.base
+	case 0x0b:
+		fr := &flow.frames[flow.depth-1]
+		if fr.kind == 0x04 && !fr.hasElse && len(fr.results) != 0 {
+			return false, false, unsupported("SWAR result if requires else")
+		}
+		if flow.live {
+			if err := flow.match(fr.base, fr.results, true); err != nil {
+				return false, false, err
+			}
+		}
+		for _, site := range fr.sites {
+			if err := flow.patch(site, flow.position()); err != nil {
+				return false, false, err
+			}
+		}
+		if fr.kind == 0x04 && !fr.hasElse {
+			if err := flow.patch(fr.falseSite, flow.position()); err != nil {
+				return false, false, err
+			}
+		}
+		flow.live = flow.live || fr.incoming || fr.then || fr.kind == 0x04 && !fr.hasElse && fr.entry
+		*flow.h = fr.base
+		for _, class := range fr.results {
+			if *flow.h >= len(flow.classes) {
+				return false, false, unsupported("SWAR control operand bound")
+			}
+			flow.classes[*flow.h] = class
+			*flow.h++
+		}
+		*flow.peak = max(*flow.peak, *flow.h)
+		flow.depth--
+		done = flow.depth == 0
+	case 0x0c, 0x0d, 0x0f:
+		label := uint32(flow.depth - 1)
+		if op != 0x0f {
+			label, err = r.U32()
+			if err != nil {
+				return false, false, err
+			}
+		}
+		skip := -1
+		if op == 0x0d {
+			if err := flow.condition(); err != nil {
+				return false, false, err
+			}
+			if flow.emit != nil {
+				skip = flow.emit.BranchZero(5)
+			}
+		}
+		if err := flow.branch(label); err != nil {
+			return false, false, err
+		}
+		if op == 0x0d {
+			if err := flow.patch(skip, flow.position()); err != nil {
+				return false, false, err
+			}
+		} else {
+			flow.live = false
+			*flow.h = flow.floor()
+		}
+	case 0x0e:
+		n, e := r.U32()
+		if e != nil {
+			return false, false, e
+		}
+		if n > maxTableEntries || int(n) > integerBudget-*flow.budget {
+			return false, false, unsupported("SWAR branch table bound")
+		}
+		*flow.budget += int(n)
+		if err := flow.condition(); err != nil {
+			return false, false, err
+		}
+		var signature []swarClass
+		for i := uint32(0); i <= n; i++ {
+			label, e := r.U32()
+			if e != nil {
+				return false, false, e
+			}
+			if uint64(label) >= uint64(flow.depth) {
+				return false, false, unsupported("SWAR branch table label")
+			}
+			results := flow.frames[flow.depth-1-int(label)].results
+			if i == 0 {
+				signature = results
+			} else {
+				if len(results) != len(signature) {
+					return false, false, unsupported("SWAR branch table arity")
+				}
+				for j, class := range results {
+					if class != signature[j] {
+						return false, false, unsupported("SWAR branch table carrier class")
+					}
+				}
+			}
+			skip := -1
+			if i < n && flow.emit != nil {
+				flow.emit.Constant(6, int64(i), false)
+				skip = flow.emit.a.BranchLong(enc.NE, enc.X5, enc.X6)
+			}
+			if err := flow.branch(label); err != nil {
+				return false, false, err
+			}
+			if i < n {
+				if err := flow.patch(skip, flow.position()); err != nil {
+					return false, false, err
+				}
+			}
+		}
+		flow.live = false
+		*flow.h = flow.floor()
+	}
+	return done, trap, nil
+}

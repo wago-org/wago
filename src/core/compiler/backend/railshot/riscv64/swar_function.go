@@ -22,7 +22,8 @@ type swarSummary struct {
 // It admits V128 and four scalar carriers, straight-line local/scalar/vector
 // operations and select. An explicitly supplied nonshared memory32 descriptor
 // also admits vector loads/stores. FP and traps require their production bridges.
-// Module policy remains closed to SIMD; structured control and calls need lowering.
+// Inline structured control uses exact classes and canonical branch homes.
+// Module policy remains closed to SIMD; loops, indexed control and calls are pending.
 // Admission and emission walk every byte with identical bounded stack rules.
 func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *integerEmitter) (swarSummary, error) {
 	if fn == nil || ft == nil || ft.Kind != wasm.CompFunc || len(ft.Params) > maxSWARLocals || len(ft.Results) > maxSWARLocals {
@@ -86,6 +87,11 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 		peak = max(peak, h)
 		return nil
 	}
+	flow := swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit}
+	flow.frames[0] = swarControl{kind: 0xff, entry: true}
+	for _, typ := range ft.Results {
+		flow.frames[0].results = append(flow.frames[0].results, swarClassOf(typ))
+	}
 	// The shared frame helper copies compact serialized argument cells first.
 	// Expand padded local homes backwards so a one-cell scalar cannot overwrite
 	// the still unread halves of a later vector argument.
@@ -117,6 +123,9 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 		if err != nil {
 			return swarSummary{}, err
 		}
+		if !flow.live && op != 0x01 && op != 0x05 && op != 0x0b {
+			return swarSummary{}, unsupported("SWAR polymorphic dead lowering is pending")
+		}
 		if op != 0xfd && op != 0xfc && op != 0x01 && op != 0x0b && op != 0x1a {
 			bound := 256
 			_, _, _, _, integer := integerOpcode(op)
@@ -132,7 +141,15 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 		}
 		switch op {
 		case 0x01: // nop
-		case 0x0b:
+		case 0x00, 0x02, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f:
+			done, trap, err := flow.instruction(op, &r)
+			if err != nil {
+				return swarSummary{}, err
+			}
+			usesTraps = usesTraps || trap
+			if !done {
+				continue
+			}
 			if r.HasNext() || h != len(ft.Results) {
 				return swarSummary{}, unsupported("SWAR terminal stack/bytes")
 			}
@@ -141,7 +158,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 					return swarSummary{}, unsupported("SWAR result carrier class")
 				}
 			}
-			if emit != nil {
+			if flow.live && emit != nil {
 				out := int32(0)
 				for j := 0; j < h; j++ {
 					emit.swarLoad(spill(j), left)
@@ -159,7 +176,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			return swarSummary{nlocals, peak, codeBound, usesFP, usesTraps}, nil
 		case 0x1a:
-			if h == 0 {
+			if h == flow.floor() {
 				return swarSummary{}, unsupported("SWAR drop underflow")
 			}
 			h--
@@ -180,7 +197,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 					emit.swarStore(spill(h-1), left)
 				}
 			} else {
-				if h == 0 || stackClasses[h-1] != localClasses[index] {
+				if h == flow.floor() || stackClasses[h-1] != localClasses[index] {
 					return swarSummary{}, unsupported("SWAR local write carrier class/underflow")
 				}
 				if emit != nil {
@@ -250,7 +267,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 					return swarSummary{}, unsupported("SWAR select carrier")
 				}
 			}
-			if h < 3 || stackClasses[h-1] != swarI32 {
+			if h-flow.floor() < 3 || stackClasses[h-1] != swarI32 {
 				return swarSummary{}, unsupported("SWAR select condition class/underflow")
 			}
 			if op == 0x1b {
@@ -289,7 +306,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			if err := reserve(1024); err != nil {
 				return swarSummary{}, err
 			}
-			if h == 0 || stackClasses[h-1] != conversion.input {
+			if h == flow.floor() || stackClasses[h-1] != conversion.input {
 				return swarSummary{}, unsupported("SWAR saturating scalar conversion carrier class/underflow")
 			}
 			usesFP = true
@@ -345,7 +362,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				if kind == 275 {
 					arity = 3
 				}
-				if h < arity || stackClasses[h-arity] != swarV128 || stackClasses[h-arity+1] != swarV128 || (arity == 3 && stackClasses[h-1] != swarV128) {
+				if h-flow.floor() < arity || stackClasses[h-arity] != swarV128 || stackClasses[h-arity+1] != swarV128 || (arity == 3 && stackClasses[h-1] != swarV128) {
 					return swarSummary{}, unsupported("SWAR relaxed dot carrier class/underflow")
 				}
 				if emit != nil {
@@ -362,7 +379,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if width, negative, ok := swarRelaxedMaddOpcode(kind); ok {
 				usesFP = true
-				if h < 3 || stackClasses[h-3] != swarV128 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 3 || stackClasses[h-3] != swarV128 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR relaxed multiply-add carrier class/underflow")
 				}
 				if emit != nil {
@@ -377,7 +394,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if _, ok := swarFloatConversionOpcode(kind); ok {
 				usesFP = true
-				if h < 1 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 1 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR floating conversion carrier class/underflow")
 				}
 				if emit != nil {
@@ -389,7 +406,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if width, mode, ok := swarFloatRoundOpcode(kind); ok {
 				usesFP = true
-				if h < 1 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 1 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR floating rounding carrier class/underflow")
 				}
 				if emit != nil {
@@ -401,7 +418,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if width, maximum, pseudo, ok := swarFloatMinMaxOpcode(kind); ok {
 				usesFP = true
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR floating min/max carrier class/underflow")
 				}
 				if emit != nil {
@@ -419,7 +436,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				if unary {
 					arity = 1
 				}
-				if h < arity || stackClasses[h-arity] != swarV128 || (!unary && stackClasses[h-1] != swarV128) {
+				if h-flow.floor() < arity || stackClasses[h-arity] != swarV128 || (!unary && stackClasses[h-1] != swarV128) {
 					return swarSummary{}, unsupported("SWAR floating arithmetic carrier class/underflow")
 				}
 				if emit != nil {
@@ -435,7 +452,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			}
 			if width, relation, ok := swarFloatComparisonOpcode(kind); ok {
 				usesFP = true
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR floating comparison carrier class/underflow")
 				}
 				if emit != nil {
@@ -448,7 +465,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, signed, high, ok := swarExtmultiplyOpcode(kind); ok {
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR extmultiply carrier class/underflow")
 				}
 				if emit != nil {
@@ -461,7 +478,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, signed, ok := swarNarrowOpcode(kind); ok {
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR narrowing carrier class/underflow")
 				}
 				if emit != nil {
@@ -474,7 +491,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, signed, high, pairwise, ok := swarWidenOpcode(kind); ok {
-				if h == 0 || stackClasses[h-1] != swarV128 {
+				if h == flow.floor() || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR widening carrier class/underflow")
 				}
 				if emit != nil {
@@ -485,7 +502,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if kind == 98 {
-				if h == 0 || stackClasses[h-1] != swarV128 {
+				if h == flow.floor() || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR popcount carrier class/underflow")
 				}
 				if emit != nil {
@@ -496,7 +513,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if kind == 130 || kind == 186 {
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR special multiply carrier class/underflow")
 				}
 				if emit != nil {
@@ -509,7 +526,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, operation, ok := swarSaturationOpcode(kind); ok {
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR saturation carrier class/underflow")
 				}
 				if emit != nil {
@@ -522,7 +539,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, operation, ok := swarProductOpcode(kind); ok {
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR multiply/minmax carrier class/underflow")
 				}
 				if emit != nil {
@@ -535,7 +552,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, operation, ok := swarUnaryOpcode(kind); ok {
-				if h == 0 || stackClasses[h-1] != swarV128 {
+				if h == flow.floor() || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR unary carrier class/underflow")
 				}
 				scalar := operation == swarAllTrue || operation == swarBitmask
@@ -569,7 +586,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 						}
 					}
 				}
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR permutation carrier class/underflow")
 				}
 				if emit != nil {
@@ -586,7 +603,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, relation, ok := swarComparisonOpcode(kind); ok {
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR comparison carrier class/underflow")
 				}
 				if emit != nil {
@@ -599,7 +616,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, subtract, ok := swarAddSubOpcode(kind); ok {
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR arithmetic carrier class/underflow")
 				}
 				if emit != nil {
@@ -612,7 +629,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if width, direction, ok := swarShiftOpcode(kind); ok {
-				if h < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarI32 {
+				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarI32 {
 					return swarSummary{}, unsupported("SWAR shift carrier class/underflow")
 				}
 				if emit != nil {
@@ -634,7 +651,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				case 20:
 					class, width = swarF64, 64
 				}
-				if h == 0 || stackClasses[h-1] != class {
+				if h == flow.floor() || stackClasses[h-1] != class {
 					return swarSummary{}, unsupported("SWAR splat carrier class/underflow")
 				}
 				if emit != nil {
@@ -672,7 +689,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				if replace {
 					arity = 2
 				}
-				if h < arity || stackClasses[h-arity] != swarV128 || (replace && stackClasses[h-1] != class) {
+				if h-flow.floor() < arity || stackClasses[h-arity] != swarV128 || (replace && stackClasses[h-1] != class) {
 					return swarSummary{}, unsupported("SWAR lane carrier class/underflow")
 				}
 				if emit != nil {
@@ -727,7 +744,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				if store || laneOp {
 					arity = 2
 				}
-				if h < arity || stackClasses[h-arity] != swarI32 || ((store || laneOp) && stackClasses[h-1] != swarV128) {
+				if h-flow.floor() < arity || stackClasses[h-arity] != swarI32 || ((store || laneOp) && stackClasses[h-1] != swarV128) {
 					return swarSummary{}, unsupported("SWAR memory carrier class/underflow")
 				}
 				if emit != nil {
@@ -772,7 +789,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				continue
 			}
 			if kind == 83 {
-				if h == 0 || stackClasses[h-1] != swarV128 {
+				if h == flow.floor() || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR any_true carrier class/underflow")
 				}
 				if emit != nil {
@@ -803,7 +820,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			default:
 				return swarSummary{}, unsupported("SWAR opcode lowering is pending")
 			}
-			if h < arity {
+			if h-flow.floor() < arity {
 				return swarSummary{}, unsupported("SWAR bit operation underflow")
 			}
 			for j := h - arity; j < h; j++ {
@@ -829,7 +846,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 				if scalar.unary {
 					arity = 1
 				}
-				if h < arity {
+				if h-flow.floor() < arity {
 					return swarSummary{}, unsupported("SWAR scalar FP underflow")
 				}
 				for j := h - arity; j < h; j++ {
@@ -866,7 +883,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			if wide {
 				class = swarI64
 			}
-			if h < arity {
+			if h-flow.floor() < arity {
 				return swarSummary{}, unsupported("SWAR scalar integer underflow")
 			}
 			for j := h - arity; j < h; j++ {
