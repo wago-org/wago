@@ -76,4 +76,3 @@ jobs:
         run: scripts/ci-riscv64.sh smoke
       - name: Supported scalar and integer correctness
         run: scripts/ci-riscv64.sh supported
-

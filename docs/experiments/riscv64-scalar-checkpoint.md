@@ -1,5 +1,9 @@
 # Experimental Linux/RV64 shared scalar checkpoint
 
+This records the earlier shared-only acceptance. The subsequent
+[integer/control checkpoint](riscv64-integer-checkpoint.md) expands admission
+with genuine whole-function RV64 lowering and adds a local RISE CI workflow.
+
 This follows the accepted encoder (`139ef4a8`) and runtime (`e0ff238b`)
 checkpoints on the fresh branch from #802's squash
 `03a2db03ac06bcf20d5411272a7dce80a2138fae`. The approved plan's bounded

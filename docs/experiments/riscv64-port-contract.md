@@ -1,8 +1,10 @@
 # RV64 port contract
 
 This experimental Linux/RV64 port has an encoder, an isolated integer runtime
-boundary and bounded shared-scalar module execution. Generated code executes
-under QEMU; see the [scalar checkpoint](riscv64-scalar-checkpoint.md) and
+boundary, shared scalar compilation and bounded whole-function integer/control
+lowering. Generated code executes under QEMU; see the
+[integer checkpoint](riscv64-integer-checkpoint.md),
+[scalar checkpoint](riscv64-scalar-checkpoint.md) and
 [runtime checkpoint](riscv64-runtime-checkpoint.md).
 It does not enable a production RV64 compiler, CLI target, artifact architecture,
 or Wasm feature. The [encoder checkpoint](riscv64-encoder-checkpoint.md) records
