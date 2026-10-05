@@ -65,6 +65,16 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if sub == 26 {
 			return f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
 		}
+		if next, ok := r.Peek(); ok && next == 0x1a {
+			// The converted identity cannot escape an immediate drop. Keep the
+			// operand's traps and other effects, but do not create a collector
+			// root for a word that Wasm never observes.
+			f.materializePendingTraps()
+			f.dropValue()
+			_, _ = r.Byte() // validated immediate drop
+			f.stats.peep("gc-dead-extern-convert")
+			return nil
+		}
 		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
 	}
 	if !f.gcStructHelpers {
