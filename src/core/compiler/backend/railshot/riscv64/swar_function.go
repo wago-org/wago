@@ -25,7 +25,7 @@ type swarSummary struct {
 // also admits vector loads/stores. FP and traps require their production bridges.
 // Structured control uses exact classes and canonical branch homes; indexed
 // signatures require an explicit type directory and loops require interruption.
-// Module policy remains closed to SIMD; polymorphic dead code and calls are pending.
+// Module policy remains closed to SIMD; calls are pending.
 // Admission and emission walk every byte with identical bounded stack rules.
 func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *integerEmitter) (swarSummary, error) {
 	return walkSWARPairsWithTypes(fn, ft, memory32, nil, emit)
@@ -99,16 +99,19 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 	local := func(i int) int32 { return int32(16 + 16*i) }
 	spill := func(i int) int32 { return int32(16 + 16*nlocals + 16*i) }
 	var stackClasses [256]swarClass
+	var flow swarFlow
 	push := func(class swarClass) error {
 		if h >= 256 {
 			return unsupported("SWAR operand bound")
 		}
 		stackClasses[h] = class
 		h++
-		peak = max(peak, h)
+		if flow.live {
+			peak = max(peak, h)
+		}
 		return nil
 	}
-	flow := swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types}
+	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types}
 	flow.frames[0] = swarControl{kind: 0xff, entry: true}
 	for _, typ := range ft.Results {
 		flow.frames[0].results = append(flow.frames[0].results, swarClassOf(typ))
@@ -129,12 +132,17 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 		}
 	}
+	emitter := emit
 	for r.HasNext() {
-		if emit != nil && len(emit.a.B) > codeBound {
+		emit = emitter
+		if !flow.live {
+			emit = nil
+		}
+		if emitter != nil && len(emitter.a.B) > codeBound {
 			return swarSummary{}, fmt.Errorf("rv64: SWAR body exceeded its admitted bound")
 		}
-		if emit != nil && emit.mode.production {
-			emit.sourcePC = uint32(fn.LocalDeclBytes) + uint32(r.Offset())
+		if emitter != nil && emitter.mode.production {
+			emitter.sourcePC = uint32(fn.LocalDeclBytes) + uint32(r.Offset())
 		}
 		budget++
 		if budget > integerBudget {
@@ -143,9 +151,6 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 		op, err := r.Byte()
 		if err != nil {
 			return swarSummary{}, err
-		}
-		if !flow.live && op != 0x01 && op != 0x05 && op != 0x0b {
-			return swarSummary{}, unsupported("SWAR polymorphic dead lowering is pending")
 		}
 		if op != 0xfd && op != 0xfc && op != 0x01 && op != 0x0b && op != 0x1a {
 			bound := 256
@@ -171,6 +176,7 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			if !done {
 				continue
 			}
+			emit = emitter // A live root-label join can follow a dead source tail.
 			if r.HasNext() || h != len(ft.Results) {
 				return swarSummary{}, unsupported("SWAR terminal stack/bytes")
 			}
@@ -197,6 +203,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			return swarSummary{nlocals, peak, codeBound, usesFP, usesTraps, flow.usesLoops}, nil
 		case 0x1a:
+			if err := flow.prepareDead(swarUnknown); err != nil {
+				return swarSummary{}, err
+			}
 			if h == flow.floor() {
 				return swarSummary{}, unsupported("SWAR drop underflow")
 			}
@@ -218,6 +227,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 					emit.swarStore(spill(h-1), left)
 				}
 			} else {
+				if err := flow.prepareDead(localClasses[index]); err != nil {
+					return swarSummary{}, err
+				}
 				if h == flow.floor() || stackClasses[h-1] != localClasses[index] {
 					return swarSummary{}, unsupported("SWAR local write carrier class/underflow")
 				}
@@ -288,6 +300,20 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 					return swarSummary{}, unsupported("SWAR select carrier")
 				}
 			}
+			if !flow.live {
+				if op == 0x1b {
+					if err := flow.prepareDead(swarUnknown, swarUnknown, swarI32); err != nil {
+						return swarSummary{}, err
+					}
+					class = stackClasses[h-3]
+					if class == swarUnknown {
+						class = stackClasses[h-2]
+					}
+				}
+				if err := flow.prepareDead(class, class, swarI32); err != nil {
+					return swarSummary{}, err
+				}
+			}
 			if h-flow.floor() < 3 || stackClasses[h-1] != swarI32 {
 				return swarSummary{}, unsupported("SWAR select condition class/underflow")
 			}
@@ -325,6 +351,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				return swarSummary{}, unsupported("SWAR non-conversion prefixed scalar lowering is pending")
 			}
 			if err := reserve(1024); err != nil {
+				return swarSummary{}, err
+			}
+			if err := flow.prepareDead(conversion.input); err != nil {
 				return swarSummary{}, err
 			}
 			if h == flow.floor() || stackClasses[h-1] != conversion.input {
@@ -383,6 +412,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				if kind == 275 {
 					arity = 3
 				}
+				if err := flow.prepareRepeatedDead(swarV128, arity); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < arity || stackClasses[h-arity] != swarV128 || stackClasses[h-arity+1] != swarV128 || (arity == 3 && stackClasses[h-1] != swarV128) {
 					return swarSummary{}, unsupported("SWAR relaxed dot carrier class/underflow")
 				}
@@ -400,6 +432,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			if width, negative, ok := swarRelaxedMaddOpcode(kind); ok {
 				usesFP = true
+				if err := flow.prepareDead(swarV128, swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 3 || stackClasses[h-3] != swarV128 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR relaxed multiply-add carrier class/underflow")
 				}
@@ -415,6 +450,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			if _, ok := swarFloatConversionOpcode(kind); ok {
 				usesFP = true
+				if err := flow.prepareDead(swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 1 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR floating conversion carrier class/underflow")
 				}
@@ -427,6 +465,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			if width, mode, ok := swarFloatRoundOpcode(kind); ok {
 				usesFP = true
+				if err := flow.prepareDead(swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 1 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR floating rounding carrier class/underflow")
 				}
@@ -439,6 +480,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			if width, maximum, pseudo, ok := swarFloatMinMaxOpcode(kind); ok {
 				usesFP = true
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR floating min/max carrier class/underflow")
 				}
@@ -457,6 +501,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				if unary {
 					arity = 1
 				}
+				if err := flow.prepareRepeatedDead(swarV128, arity); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < arity || stackClasses[h-arity] != swarV128 || (!unary && stackClasses[h-1] != swarV128) {
 					return swarSummary{}, unsupported("SWAR floating arithmetic carrier class/underflow")
 				}
@@ -473,6 +520,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			if width, relation, ok := swarFloatComparisonOpcode(kind); ok {
 				usesFP = true
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR floating comparison carrier class/underflow")
 				}
@@ -486,6 +536,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, signed, high, ok := swarExtmultiplyOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR extmultiply carrier class/underflow")
 				}
@@ -499,6 +552,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, signed, ok := swarNarrowOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR narrowing carrier class/underflow")
 				}
@@ -512,6 +568,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, signed, high, pairwise, ok := swarWidenOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h == flow.floor() || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR widening carrier class/underflow")
 				}
@@ -523,6 +582,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if kind == 98 {
+				if err := flow.prepareDead(swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h == flow.floor() || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR popcount carrier class/underflow")
 				}
@@ -534,6 +596,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if kind == 130 || kind == 186 {
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR special multiply carrier class/underflow")
 				}
@@ -547,6 +612,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, operation, ok := swarSaturationOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR saturation carrier class/underflow")
 				}
@@ -560,6 +628,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, operation, ok := swarProductOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR multiply/minmax carrier class/underflow")
 				}
@@ -573,6 +644,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, operation, ok := swarUnaryOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h == flow.floor() || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR unary carrier class/underflow")
 				}
@@ -607,6 +681,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 						}
 					}
 				}
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR permutation carrier class/underflow")
 				}
@@ -624,6 +701,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, relation, ok := swarComparisonOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR comparison carrier class/underflow")
 				}
@@ -637,6 +717,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, subtract, ok := swarAddSubOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128, swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR arithmetic carrier class/underflow")
 				}
@@ -650,6 +733,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if width, direction, ok := swarShiftOpcode(kind); ok {
+				if err := flow.prepareDead(swarV128, swarI32); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < 2 || stackClasses[h-2] != swarV128 || stackClasses[h-1] != swarI32 {
 					return swarSummary{}, unsupported("SWAR shift carrier class/underflow")
 				}
@@ -671,6 +757,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 					class, width = swarF32, 32
 				case 20:
 					class, width = swarF64, 64
+				}
+				if err := flow.prepareDead(class); err != nil {
+					return swarSummary{}, err
 				}
 				if h == flow.floor() || stackClasses[h-1] != class {
 					return swarSummary{}, unsupported("SWAR splat carrier class/underflow")
@@ -709,6 +798,10 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				arity := 1
 				if replace {
 					arity = 2
+				}
+				operands := [2]swarClass{swarV128, class}
+				if err := flow.prepareDead(operands[:arity]...); err != nil {
+					return swarSummary{}, err
 				}
 				if h-flow.floor() < arity || stackClasses[h-arity] != swarV128 || (replace && stackClasses[h-1] != class) {
 					return swarSummary{}, unsupported("SWAR lane carrier class/underflow")
@@ -765,6 +858,10 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				if store || laneOp {
 					arity = 2
 				}
+				operands := [2]swarClass{swarI32, swarV128}
+				if err := flow.prepareDead(operands[:arity]...); err != nil {
+					return swarSummary{}, err
+				}
 				if h-flow.floor() < arity || stackClasses[h-arity] != swarI32 || ((store || laneOp) && stackClasses[h-1] != swarV128) {
 					return swarSummary{}, unsupported("SWAR memory carrier class/underflow")
 				}
@@ -810,6 +907,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				continue
 			}
 			if kind == 83 {
+				if err := flow.prepareDead(swarV128); err != nil {
+					return swarSummary{}, err
+				}
 				if h == flow.floor() || stackClasses[h-1] != swarV128 {
 					return swarSummary{}, unsupported("SWAR any_true carrier class/underflow")
 				}
@@ -841,6 +941,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			default:
 				return swarSummary{}, unsupported("SWAR opcode lowering is pending")
 			}
+			if err := flow.prepareRepeatedDead(swarV128, arity); err != nil {
+				return swarSummary{}, err
+			}
 			if h-flow.floor() < arity {
 				return swarSummary{}, unsupported("SWAR bit operation underflow")
 			}
@@ -866,6 +969,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 				arity := 2
 				if scalar.unary {
 					arity = 1
+				}
+				if err := flow.prepareRepeatedDead(scalar.input, arity); err != nil {
+					return swarSummary{}, err
 				}
 				if h-flow.floor() < arity {
 					return swarSummary{}, unsupported("SWAR scalar FP underflow")
@@ -903,6 +1009,9 @@ func walkSWARPairsWithTypes(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			}
 			if wide {
 				class = swarI64
+			}
+			if err := flow.prepareRepeatedDead(class, arity); err != nil {
+				return swarSummary{}, err
 			}
 			if h-flow.floor() < arity {
 				return swarSummary{}, unsupported("SWAR scalar integer underflow")

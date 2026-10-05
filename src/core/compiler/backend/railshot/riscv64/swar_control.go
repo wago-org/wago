@@ -13,14 +13,15 @@ type swarControl struct {
 	results                        []swarClass
 	params                         []swarClass
 	entry, then, incoming, hasElse bool
+	unreachable                    bool
 	falseSite                      int
 	start                          int
 	sites                          []int
 }
 
 // Indexed signatures and loop parameters use the same exact class discipline
-// as inline blocks and root returns. Nonstructural polymorphic dead code
-// remains closed. Every admitted branch transports exact classes through real
+// as inline blocks and root returns. Dead operands are virtual and preserve
+// each control frame's typing floor. Every live branch transports exact classes through real
 // padded stack homes; no synthetic graph identities stand in for those copies.
 type swarFlow struct {
 	frames          [33]swarControl
@@ -37,6 +38,56 @@ type swarFlow struct {
 
 func (flow *swarFlow) floor() int { return flow.frames[flow.depth-1].base }
 
+// Prepare operands in a nonexecuted region without weakening checks on known
+// types. Only an explicitly stack-polymorphic control frame may synthesize
+// missing operands; a nested block starts with ordinary typing even when its
+// machine path is dead. Synthetic classes occupy virtual slots only.
+func (flow *swarFlow) prepareDead(values ...swarClass) error {
+	if flow.live {
+		return nil
+	}
+	base := flow.floor()
+	missing := max(0, len(values)-(*flow.h-base))
+	if missing != 0 && !flow.frames[flow.depth-1].unreachable {
+		return unsupported("SWAR dead control operand underflow")
+	}
+	if *flow.h+missing > len(flow.classes) {
+		return unsupported("SWAR dead operand bound")
+	}
+	for i, wanted := range values {
+		source := *flow.h - len(values) + i
+		if source >= base {
+			actual := flow.classes[source]
+			if actual != swarUnknown && wanted != swarUnknown && actual != wanted {
+				return unsupported("SWAR dead operand carrier class")
+			}
+		}
+	}
+	copy(flow.classes[base+missing:*flow.h+missing], flow.classes[base:*flow.h])
+	for i := 0; i < missing; i++ {
+		flow.classes[base+i] = values[i]
+	}
+	*flow.h += missing
+	for i, wanted := range values {
+		at := *flow.h - len(values) + i
+		if flow.classes[at] == swarUnknown && wanted != swarUnknown {
+			flow.classes[at] = wanted
+		}
+	}
+	return nil
+}
+
+func (flow *swarFlow) prepareRepeatedDead(class swarClass, count int) error {
+	var values [3]swarClass
+	if count < 0 || count > len(values) {
+		return unsupported("SWAR scalar/vector arity")
+	}
+	for i := 0; i < count; i++ {
+		values[i] = class
+	}
+	return flow.prepareDead(values[:count]...)
+}
+
 func (flow *swarFlow) position() int {
 	if flow.emit != nil {
 		return flow.emit.Position()
@@ -52,6 +103,9 @@ func (flow *swarFlow) patch(site, position int) error {
 }
 
 func (flow *swarFlow) match(base int, results []swarClass, exact bool) error {
+	if err := flow.prepareDead(results...); err != nil {
+		return err
+	}
 	if *flow.h-len(results) < base || exact && *flow.h != base+len(results) {
 		return unsupported("SWAR control result stack")
 	}
@@ -64,18 +118,21 @@ func (flow *swarFlow) match(base int, results []swarClass, exact bool) error {
 }
 
 func (flow *swarFlow) condition() error {
-	if !flow.live || *flow.h == flow.floor() || flow.classes[*flow.h-1] != swarI32 {
+	if err := flow.prepareDead(swarI32); err != nil {
+		return err
+	}
+	if *flow.h == flow.floor() || flow.classes[*flow.h-1] != swarI32 {
 		return unsupported("SWAR control condition class/underflow")
 	}
 	*flow.h--
-	if flow.emit != nil {
+	if flow.live && flow.emit != nil {
 		flow.emit.Load(5, flow.spill(*flow.h), false)
 	}
 	return nil
 }
 
 func (flow *swarFlow) branch(label uint32) error {
-	if uint64(label) >= uint64(flow.depth) || !flow.live {
+	if uint64(label) >= uint64(flow.depth) {
 		return unsupported("SWAR branch label/dead shape")
 	}
 	fr := &flow.frames[flow.depth-1-int(label)]
@@ -93,7 +150,7 @@ func (flow *swarFlow) branch(label uint32) error {
 	if err := flow.reserve(128*len(values) + 64); err != nil {
 		return err
 	}
-	if flow.emit != nil {
+	if flow.live && flow.emit != nil {
 		// Destinations are never above sources. Forward pair copies therefore
 		// preserve overlapping mixed results. X5 retains br_table's raw index.
 		pair := swarPair{enc.X7, enc.X9}
@@ -116,7 +173,7 @@ func (flow *swarFlow) branch(label uint32) error {
 			fr.sites = append(fr.sites, site)
 		}
 	}
-	if fr.kind != 0x03 {
+	if flow.live && fr.kind != 0x03 {
 		fr.incoming = true
 	}
 	return nil
@@ -130,13 +187,14 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 			flow.emit.trap(TrapUnreachable, flow.emit.Jump())
 		}
 		flow.live = false
+		flow.frames[flow.depth-1].unreachable = true
 		*flow.h = flow.floor()
 	case 0x02, 0x03, 0x04:
 		bt, e := r.S33()
 		if e != nil {
 			return false, false, e
 		}
-		if !flow.live || flow.depth == len(flow.frames) {
+		if flow.depth == len(flow.frames) {
 			return false, false, unsupported("SWAR control nesting/dead shape")
 		}
 		var params, results []swarClass
@@ -170,7 +228,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 			if err := flow.condition(); err != nil {
 				return false, false, err
 			}
-			if flow.emit != nil {
+			if flow.live && flow.emit != nil {
 				fr.falseSite = flow.emit.BranchZero(5)
 			}
 		}
@@ -181,7 +239,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		if op == 0x03 {
 			flow.usesLoops, trap = true, true
 			fr.start = flow.position()
-			if flow.emit != nil {
+			if flow.live && flow.emit != nil {
 				flow.emit.emitProductionInterruptPoll()
 			}
 		}
@@ -192,18 +250,21 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		if fr.kind != 0x04 || fr.hasElse {
 			return false, false, unsupported("SWAR else shape")
 		}
+		if err := flow.match(fr.base, fr.results, true); err != nil {
+			return false, false, err
+		}
 		if flow.live {
-			if err := flow.match(fr.base, fr.results, true); err != nil {
-				return false, false, err
-			}
 			if flow.emit != nil {
 				fr.sites = append(fr.sites, flow.emit.Jump())
 			}
 		}
-		if err := flow.patch(fr.falseSite, flow.position()); err != nil {
-			return false, false, err
+		if fr.entry {
+			if err := flow.patch(fr.falseSite, flow.position()); err != nil {
+				return false, false, err
+			}
 		}
 		fr.then, fr.hasElse = flow.live, true
+		fr.unreachable = false
 		flow.live, *flow.h = fr.entry, fr.base
 		for _, class := range fr.params {
 			flow.classes[*flow.h] = class
@@ -221,17 +282,15 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				}
 			}
 		}
-		if flow.live {
-			if err := flow.match(fr.base, fr.results, true); err != nil {
-				return false, false, err
-			}
+		if err := flow.match(fr.base, fr.results, true); err != nil {
+			return false, false, err
 		}
 		for _, site := range fr.sites {
 			if err := flow.patch(site, flow.position()); err != nil {
 				return false, false, err
 			}
 		}
-		if fr.kind == 0x04 && !fr.hasElse {
+		if fr.kind == 0x04 && !fr.hasElse && fr.entry {
 			if err := flow.patch(fr.falseSite, flow.position()); err != nil {
 				return false, false, err
 			}
@@ -245,7 +304,9 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 			flow.classes[*flow.h] = class
 			*flow.h++
 		}
-		*flow.peak = max(*flow.peak, *flow.h)
+		if flow.live {
+			*flow.peak = max(*flow.peak, *flow.h)
+		}
 		flow.depth--
 		done = flow.depth == 0
 	case 0x0c, 0x0d, 0x0f:
@@ -261,19 +322,20 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 			if err := flow.condition(); err != nil {
 				return false, false, err
 			}
-			if flow.emit != nil {
+			if flow.live && flow.emit != nil {
 				skip = flow.emit.BranchZero(5)
 			}
 		}
 		if err := flow.branch(label); err != nil {
 			return false, false, err
 		}
-		if op == 0x0d {
+		if op == 0x0d && flow.live {
 			if err := flow.patch(skip, flow.position()); err != nil {
 				return false, false, err
 			}
-		} else {
+		} else if op != 0x0d {
 			flow.live = false
+			flow.frames[flow.depth-1].unreachable = true
 			*flow.h = flow.floor()
 		}
 	case 0x0e:
@@ -314,20 +376,21 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				}
 			}
 			skip := -1
-			if i < n && flow.emit != nil {
+			if i < n && flow.live && flow.emit != nil {
 				flow.emit.Constant(6, int64(i), false)
 				skip = flow.emit.a.BranchLong(enc.NE, enc.X5, enc.X6)
 			}
 			if err := flow.branch(label); err != nil {
 				return false, false, err
 			}
-			if i < n {
+			if i < n && flow.live {
 				if err := flow.patch(skip, flow.position()); err != nil {
 					return false, false, err
 				}
 			}
 		}
 		flow.live = false
+		flow.frames[flow.depth-1].unreachable = true
 		*flow.h = flow.floor()
 	}
 	return done, trap, nil

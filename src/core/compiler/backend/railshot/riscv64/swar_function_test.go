@@ -47,13 +47,13 @@ func TestSWARWholeFunctionAdmissionAndBoundedSlots(t *testing.T) {
 		}
 	}
 	// Every unsupported operation is rejected on the complete source before a
-	// body image is returned, including dead code after an unsupported return.
+	// body image is returned, including unsupported calls in dead code.
 	for _, fixture := range []fixtureFunc{
 		{params: []byte{0x70}, result: 0x70, body: []byte{0x20, 0, 0x0b}},
 		{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 2, 0, 0x0b, 0x0b}}, // indexed signature remains pending
 		{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x10, 0, 0x0b}},    // direct vector call remains pending
 		{params: []byte{0x7b}, result: 0x7b, locals: []byte{1, 1, 0x70}, body: []byte{0x20, 0, 0x0b}},
-		{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0f, 0x20, 0, 0xfd, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1a, 0x1a, 0x0b}},
+		{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0f, 0x20, 0, 0x10, 0, 0x1a, 0x0b}},
 		{params: []byte{0x7b}, result: 0x7b, locals: []byte{1, 128, 1, 0x7b}, body: []byte{0x20, 0, 0x0b}},
 	} {
 		fn, ft := swarValidatedFunction(t, fixture)

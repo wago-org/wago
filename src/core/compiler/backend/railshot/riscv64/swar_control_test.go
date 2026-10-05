@@ -89,9 +89,9 @@ func TestSWARInlineControlAdmissionAndClosedShapes(t *testing.T) {
 		{2, 0x7b, 0x20, 0, 0x41, 0, 0x0e, 1, 0, 2, 0x0b, 0x0b},
 		{0x41, 0, 4, 0x7b, 0x20, 0, 0x0b, 0x0b}, // missing result else
 		{5, 0x0b}, {2, 0x40, 0x0b},              // unmatched structures
-		{0x20, 0, 0x0f, 0x20, 0, 0x1a, 0x0b}, // polymorphic dead code still closed
-		{3, 0x7b, 0x20, 0, 0x0b, 0x0b},       // loops still closed
-		{0x20, 0, 2, 0, 0x0b, 0x0b},          // indexed signatures still closed
+		{0x20, 0, 0x0f, 0x10, 0, 0x0b}, // unsupported calls still reject in dead code
+		{3, 0x7b, 0x20, 0, 0x0b, 0x0b}, // loops still closed
+		{0x20, 0, 2, 0, 0x0b, 0x0b},    // indexed signatures still closed
 	} {
 		ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}, Results: []wasm.ValType{wasm.V128}}
 		if code, _, err := compileSWARPairs(&wasm.Func{BodyBytes: body}, ft, emissionMode{production: true}); code != nil || err == nil {

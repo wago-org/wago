@@ -13,6 +13,7 @@ const (
 	swarF64
 	swarV128
 	swarInvalid
+	swarUnknown // Stack-polymorphic operand only; never a declared carrier.
 )
 
 func swarClassOf(typ wasm.ValType) swarClass {
