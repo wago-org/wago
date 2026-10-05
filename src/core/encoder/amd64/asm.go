@@ -1103,6 +1103,7 @@ func (a *Asm) MovFromRsp(dst Reg) {
 func (a *Asm) CallRel32() int {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(0xffff)
+		regallocCall(a)
 	}
 	a.emit(0xE8)
 	off := len(a.B)
@@ -1117,6 +1118,7 @@ func (a *Asm) CallMem(base Reg, disp int32) { a.memOp(0xFF, 2, base, disp, false
 func (a *Asm) CallReg(r Reg) {
 	if regallocCheckEnabled {
 		a.regallocGPWrite(0xffff)
+		regallocCall(a)
 	}
 
 	if r >= 8 {

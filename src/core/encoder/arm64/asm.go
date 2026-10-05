@@ -715,6 +715,7 @@ func (a *Asm) Blr(rn Reg) {
 	a.word(0xD63F0000 | r(rn)<<5)
 	if regallocCheckEnabled {
 		a.regallocGPWrites(^uint32(0))
+		regallocCall(a)
 	}
 }
 

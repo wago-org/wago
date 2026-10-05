@@ -164,9 +164,12 @@ func (c *allocationRegion) observe(effect regalloccheck.Effect) {
 			c.state.Expect("folded machine input", effect.Src, c.pendingRead)
 			c.pendingRead = nil
 		}
-		return
+	} else {
+		c.state.Apply(effect)
 	}
-	c.state.Apply(effect)
+	if c.previous != nil {
+		c.previous(effect)
+	}
 }
 func (f *fn) checkFoldedUse(e *elem) {
 	c := f.allocationCheck

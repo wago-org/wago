@@ -122,8 +122,16 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
 	for e := first; e != f.s.head; e = f.s.next(e) {
 		c.protected[e] = true
 	}
-	c.previous = f.a.ObserveRegalloc(c.state.Apply)
+	c.previous = f.a.ObserveRegalloc(c.observe)
 	return true
+}
+
+// Nested transfer windows compose with a function-wide emission observer.
+func (c *allocationRegion) observe(effect regalloccheck.Effect) {
+	c.state.Apply(effect)
+	if c.previous != nil {
+		c.previous(effect)
+	}
 }
 
 // Restore the enclosing observer on every exit. Preserve an existing panic
@@ -204,7 +212,7 @@ func (f *fn) checkBeginSlots(from, to, n int) func() {
 	owned := c == nil
 	if owned {
 		c = &allocationRegion{}
-		c.previous = f.a.ObserveRegalloc(c.state.Apply)
+		c.previous = f.a.ObserveRegalloc(c.observe)
 	}
 	goals := make([]allocationGoal, n)
 	for i := range goals {

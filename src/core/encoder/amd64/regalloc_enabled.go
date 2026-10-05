@@ -69,7 +69,103 @@ func (a *Asm) regallocGPMem(op byte, reg Reg, rex bool) {
 		a.regallocGPWrite(1 << reg)
 	case op == 0xff && reg == 2: // CALL r/m64
 		a.regallocGPWrite(0xffff)
+		regallocCall(a)
 	}
+}
+
+// Observe the emitted call independently of backend ABI/call-presence hints.
+// Call invalidates both register banks; caller-frame effects require separate
+// contracts for argument/result slots and changes to the frame origin.
+func regallocCall(a *Asm) {
+	if a.regallocObserver != nil {
+		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Call})
+	}
+}
+
+// Known scalar/packed arithmetic destroys its result bytes independently of the backend's
+// semantic definition. Legacy SSE preserves the destination's upper lanes;
+// VEX scalar instructions copy those lanes from their first source. This seam
+// deliberately admits only the arithmetic/round/conversion opcodes below.
+// Moves retain their dedicated transfer effects and must not be killed twice.
+func regallocScalarFP(a *Asm, prefix, opcodeMap, op byte, dst, left Reg, vex bool) {
+	if a.regallocObserver == nil {
+		return
+	}
+	if prefix != 0 && prefix != 0x66 && prefix != 0xf2 && prefix != 0xf3 {
+		return
+	}
+	size := 16
+	if prefix == 0xf2 {
+		size = 8
+	} else if prefix == 0xf3 {
+		size = 4
+	}
+	switch opcodeMap {
+	case 0:
+		switch op {
+		case 0x51, 0x58, 0x59, 0x5c, 0x5d, 0x5e, 0x5f, 0xc2:
+		case 0x2a: // scalar integer-to-float
+			if size == 16 {
+				return // packed/MMX forms are outside this seam
+			}
+		case 0x5a: // precision conversion: prefix names the input precision
+			if prefix == 0xf2 {
+				size = 4
+			} else if prefix == 0xf3 {
+				size = 8
+			}
+		default:
+			return
+		}
+	case 0x3a:
+		if prefix != 0x66 {
+			return
+		}
+		switch op {
+		case 0x08, 0x09: // ROUNDPS/PD
+			size = 16
+		case 0x0a: // ROUNDSS
+			size = 4
+		case 0x0b: // ROUNDSD
+			size = 8
+		default:
+			return
+		}
+	default:
+		return
+	}
+	// Match the actual ModRM.reg field and REX/VEX.R selection. The raw
+	// encoder treats every Reg >= 8 as an extension-bit request, even if the
+	// caller supplied an out-of-range Reg rather than a canonical physical ID.
+	encodedDst := uint8(dst & 7)
+	if dst >= 8 {
+		encodedDst |= 8
+	}
+	d := regalloccheck.Register(regalloccheck.FP, encodedDst)
+	if vex && size < 16 {
+		upperDst, upperSrc := d, regalloccheck.Register(regalloccheck.FP, uint8(left&15))
+		upperDst.Byte, upperSrc.Byte = uint8(size), uint8(size)
+		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Copy, Dst: upperDst, Src: upperSrc, Size: 16 - size})
+	}
+	a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Kill, Dst: d, Size: size})
+}
+
+func regallocVexScalarFP(a *Asm, opcodeMap, pp, op byte, dst, left Reg, l byte) {
+	var m byte
+	switch opcodeMap {
+	case vexMap0F:
+	case vexMap0F3A:
+		m = 0x3a
+	default:
+		return
+	}
+	// Scalar L=1 forms are outside this known-form contract. Their absence
+	// must remain unsupported in a whole-body journal; it is not evidence of
+	// preserved bytes. Packed L=1 writes kill all tracked (low 16) bytes.
+	if l != 0 && (m == 0 && pp&3 >= 2 || m == 0x3a && (op == 0x0a || op == 0x0b)) {
+		return
+	}
+	regallocScalarFP(a, [...]byte{0, 0x66, 0xf3, 0xf2}[pp&3], m, op, dst, left, true)
 }
 
 // GP results hidden in the generic SIMD encoders need the actual ModRM

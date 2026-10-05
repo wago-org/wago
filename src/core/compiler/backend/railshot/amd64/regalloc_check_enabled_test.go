@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/internal/regalloccheck"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 	"strings"
@@ -123,4 +124,52 @@ func TestRegallocCheckLoopCacheRetirement(t *testing.T) {
 		}
 		requireAllocationFailure(t, "immutable cache across physical call", f.checkCallClobber)
 	})
+}
+
+// An outer emission journal must see each effect exactly once inside a nested
+// window, and be restored when the window closes or unwinds.
+func TestRegallocWindowsForwardPhysicalEffects(t *testing.T) {
+	f := fn{a: &encoder.Asm{}, s: newStack()}
+	var observed []regalloccheck.Effect
+	f.a.ObserveRegalloc(func(e regalloccheck.Effect) { observed = append(observed, e) })
+	closeSlots := f.checkBeginSlots(0, 0, 1)
+	f.a.Load64(R8, RSP, f.spillOff(0))
+	if len(observed) != 1 || observed[0].Kind != regalloccheck.Copy {
+		t.Fatalf("slot observer swallowed effect: %+v", observed)
+	}
+	closeSlots()
+	observed = nil
+	func() {
+		f.checkBeginFlush(nil)
+		defer f.checkEndFlush()
+		f.a.Load64(R8, RSP, f.spillOff(0))
+		f.a.AluRM(0x3b, R8, RSP, f.spillOff(0), true)
+		if len(observed) != 2 || observed[1].Kind != regalloccheck.Read {
+			t.Fatalf("folded read not forwarded: %+v", observed)
+		}
+		f.a.CallReg(R9)
+	}()
+	if observed[len(observed)-1].Kind != regalloccheck.Call {
+		t.Fatalf("flush observer swallowed call: %+v", observed)
+	}
+	n := len(observed)
+	f.a.CallReg(R9)
+	if len(observed) != n+1 {
+		t.Fatal("outer observer not restored")
+	}
+	observed = nil
+	func() {
+		defer func() {
+			if recover() != "controlled unwind" {
+				t.Fatal("lost original panic")
+			}
+		}()
+		f.checkBeginFlush(nil)
+		defer f.checkEndFlush()
+		panic("controlled unwind")
+	}()
+	f.a.CallReg(R9)
+	if len(observed) != 1 || observed[0].Kind != regalloccheck.Call {
+		t.Fatalf("outer observer not restored on panic: %+v", observed)
+	}
 }

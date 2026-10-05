@@ -293,24 +293,45 @@ func fbase(f64 bool, baseS, baseD uint32) uint32 {
 
 func (a *Asm) Fadd(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E202800, 0x1E602800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fsub(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E203800, 0x1E603800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fmul(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E200800, 0x1E600800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fdiv(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E201800, 0x1E601800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fsqrt(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E21C000, 0x1E61C000) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fmin(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E205800, 0x1E605800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fmax(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E204800, 0x1E604800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 
 // FmovReg copies V→V; FmovFromGpr copies GPR→V (also +0.0 from XZR/WZR);
@@ -369,6 +390,9 @@ func (a *Asm) Frint(rd, rn Reg, f64 bool, mode byte) {
 		panic("Frint: bad mode")
 	}
 	a.word(fbase(f64, s, d) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 
 // Fcvtzs converts float→signed int (round toward zero). f64src selects the source
@@ -398,6 +422,9 @@ func (a *Asm) Scvtf(rd, rn Reg, f64, srcWide bool) {
 		base |= 0x80000000
 	}
 	a.word(base | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 
 // Ucvtf converts unsigned int→float. f64 selects destination precision and
@@ -411,11 +438,24 @@ func (a *Asm) Ucvtf(rd, rn Reg, f64, srcWide bool) {
 		base |= 0x80000000
 	}
 	a.word(base | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) CvtI2F(rd, rn Reg, f64, srcWide bool) { a.Scvtf(rd, rn, f64, srcWide) }
 
-func (a *Asm) FcvtS2D(rd, rn Reg) { a.word(0x1E22C000 | r(rn)<<5 | r(rd)) } // promote single→double
-func (a *Asm) FcvtD2S(rd, rn Reg) { a.word(0x1E624000 | r(rn)<<5 | r(rd)) } // demote double→single
+func (a *Asm) FcvtS2D(rd, rn Reg) {
+	a.word(0x1E22C000 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
+} // promote single→double
+func (a *Asm) FcvtD2S(rd, rn Reg) {
+	a.word(0x1E624000 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
+} // demote double→single
 
 // --- Stack-pointer register forms (SP must use the extended-register encoding) ---
 
@@ -445,6 +485,7 @@ func (a *Asm) Bl() int {
 	a.word(0x94000000)
 	if regallocCheckEnabled {
 		a.regallocGPWrites(^uint32(0))
+		regallocCall(a)
 	}
 	return at
 }
