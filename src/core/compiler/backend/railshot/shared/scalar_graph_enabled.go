@@ -7,6 +7,7 @@ import (
 	"math/bits"
 
 	"github.com/wago-org/wago/internal/regalloccheck"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 )
 
 const scalarGraphChecks = true
@@ -23,7 +24,9 @@ type ScalarGraphTarget interface {
 
 // ScalarState adds function-local graph state only in checked builds.
 type ScalarState struct {
-	graph *scalarGraphRecorder
+	graph         *scalarGraphRecorder
+	sourceContext *codegen.SourceContext
+	sourceAttempt *SourceAttempt
 	scalarState
 }
 type scalarGraphImage struct{ locals, stack []regalloccheck.ValueID }

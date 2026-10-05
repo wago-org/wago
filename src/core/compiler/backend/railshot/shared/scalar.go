@@ -1074,6 +1074,9 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 
 // FinishWorker releases shared scratch after the worker's last function.
 func (s *ScalarState) FinishWorker() {
+	if scalarGraphChecks {
+		finishSourceWorker(s)
+	}
 	s.Discarded += s.Memory()
 	s.nodes = nil
 	s.stack = nil

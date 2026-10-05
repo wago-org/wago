@@ -1584,7 +1584,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if opts.Profile && opts.Stats == nil {
 		return nil, fmt.Errorf("arm64: profiling requires a ModuleStats destination")
 	}
-	compiled, err := compileModuleWith(m, opts)
+	compiled, err := compileSourceModuleWith(m, opts)
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
 	return compiled, err
@@ -1761,6 +1761,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				_ = codeBuffer.Close()
 			}
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m))
+		}
 		pressureDone := false
 		var directPrepared, directPreparedLight, directPreparedBounded []uint64
 		var adapterTails []adapterTailInfo
@@ -1961,6 +1964,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			ws.scratchStats = workerScratchStats(ws.scratch)
 			ws.scratch = nil
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceContext(&ws.scratch.scalar, codegen.SourceContextFor(opts.Codegen, m))
+		}
 		for {
 			i := int(work.next.Add(1) - 1)
 			if i >= n {
