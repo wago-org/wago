@@ -12,7 +12,7 @@ import (
 
 const maxSWARLocals = 128
 
-type swarSummary struct{ locals, peak int }
+type swarSummary struct{ locals, peak, codeBound int }
 
 // This private whole-function pilot consumes a frontend-validated function.
 // It admits V128/i32 carriers, straight-line local/integer vector operations
@@ -57,6 +57,17 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 	}
 	r := wasm.ReaderFrom(fn.BodyBytes)
 	h, peak, budget := 0, 0, 0
+	// Covers bounded parameter expansion, frame/zero initialization, compact
+	// result serialization and framing. Per-op bounds include escaped homes
+	// and cold trap islands. Admission computes this before allocating code.
+	codeBound := 64 << 10
+	reserve := func(size int) error {
+		if size > MaxCodeBytes-codeBound {
+			return unsupported("SWAR emitted code budget")
+		}
+		codeBound += size
+		return nil
+	}
 	left, right, mask := swarPair{enc.X5, enc.X6}, swarPair{enc.X7, enc.X9}, swarPair{enc.X10, enc.X11}
 	local := func(i int) int32 { return int32(16 + 16*i) }
 	spill := func(i int) int32 { return int32(16 + 16*nlocals + 16*i) }
@@ -87,6 +98,9 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 		}
 	}
 	for r.HasNext() {
+		if emit != nil && len(emit.a.B) > codeBound {
+			return swarSummary{}, fmt.Errorf("rv64: SWAR body exceeded its admitted bound")
+		}
 		if emit != nil && emit.mode.production {
 			emit.sourcePC = uint32(fn.LocalDeclBytes) + uint32(r.Offset())
 		}
@@ -97,6 +111,15 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 		op, err := r.Byte()
 		if err != nil {
 			return swarSummary{}, err
+		}
+		if op != 0xfd && op != 0x01 && op != 0x0b && op != 0x1a {
+			bound := 256
+			if op == 0x1b || op == 0x1c {
+				bound = 512
+			}
+			if err := reserve(bound); err != nil {
+				return swarSummary{}, err
+			}
 		}
 		switch op {
 		case 0x01: // nop
@@ -125,7 +148,7 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 					}
 				}
 			}
-			return swarSummary{nlocals, peak}, nil
+			return swarSummary{nlocals, peak, codeBound}, nil
 		case 0x1a:
 			if h == 0 {
 				return swarSummary{}, unsupported("SWAR drop underflow")
@@ -213,6 +236,51 @@ func walkSWARPairs(fn *wasm.Func, ft *wasm.CompType, memory32 bool, emit *intege
 			kind, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
+			}
+			bound := 512
+			if kind == 0 || kind == 11 {
+				bound = 1024
+			} else if kind == 13 {
+				bound = 768
+			} else if kind == 14 {
+				bound = 2048
+			} else if _, _, ok := swarComparisonOpcode(kind); ok {
+				bound = 1024
+			} else if _, _, ok := swarShiftOpcode(kind); ok {
+				bound = 768
+			}
+			if err := reserve(bound); err != nil {
+				return swarSummary{}, err
+			}
+			if kind == 13 || kind == 14 {
+				var indices [16]byte
+				if kind == 13 {
+					bytes, err := r.Bytes(16)
+					if err != nil {
+						return swarSummary{}, err
+					}
+					copy(indices[:], bytes)
+					for _, index := range indices {
+						if index >= 32 {
+							return swarSummary{}, unsupported("SWAR shuffle byte index")
+						}
+					}
+				}
+				if h < 2 || !stackVectors[h-2] || !stackVectors[h-1] {
+					return swarSummary{}, unsupported("SWAR permutation carrier class/underflow")
+				}
+				if emit != nil {
+					emit.swarLoad(spill(h-2), left)
+					emit.swarLoad(spill(h-1), right)
+					if kind == 13 {
+						emit.swarShuffle(indices)
+					} else {
+						emit.swarSwizzle()
+					}
+					emit.swarStore(spill(h-2), left)
+				}
+				h--
+				continue
 			}
 			if width, relation, ok := swarComparisonOpcode(kind); ok {
 				if h < 2 || !stackVectors[h-2] || !stackVectors[h-1] {
@@ -470,7 +538,14 @@ func compileSWARPairsWithMemory(fn *wasm.Func, ft *wasm.CompType, memory *wasm.M
 	}
 	params, results := swarSignatureSlots(ft.Params), swarSignatureSlots(ft.Results)
 	info := FunctionInfo{Params: params, Results: results, SpillSlots: summary.peak * 2, FrameHeaderBytes: 16, Fallback: true, mode: mode}
-	return frameFunction(f.a.B, widths, params, summary.peak*2, true, -1, info)
+	code, info, err := frameFunction(f.a.B, widths, params, summary.peak*2, true, -1, info)
+	if err != nil {
+		return nil, FunctionInfo{}, err
+	}
+	if len(code) > summary.codeBound {
+		return nil, FunctionInfo{}, fmt.Errorf("rv64: SWAR code exceeded its admitted bound")
+	}
+	return code, info, nil
 }
 
 func swarCarrierType(typ wasm.ValType) bool {
