@@ -17,9 +17,15 @@ type directCall struct {
 // ABI. Every callee consumes the shared serialized arena before it can nest.
 func (f *integerEmitter) restoreCallTransport() {
 	f.a.Ld(enc.X10, enc.SP, 16)
-	f.a.Ld(enc.X11, enc.SP, 8)
-	f.a.Ld(enc.X12, enc.SP, 24)
-	f.a.Ld(enc.X13, enc.SP, 32)
+	if f.mode.production {
+		f.a.Ld(enc.X13, enc.SP, 8)
+		f.a.Ld(enc.X11, enc.SP, 32)
+		f.a.Ld(enc.X12, enc.SP, 24)
+	} else {
+		f.a.Ld(enc.X11, enc.SP, 8)
+		f.a.Ld(enc.X12, enc.SP, 24)
+		f.a.Ld(enc.X13, enc.SP, 32)
+	}
 }
 func (f *integerEmitter) directCall(index uint32, sig functionSpec, base int) {
 	f.restoreCallTransport()
@@ -30,13 +36,19 @@ func (f *integerEmitter) directCall(index uint32, sig functionSpec, base int) {
 	}
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), callee: index})
 	f.restoreCallTransport()
-	f.a.Lwu(enc.X7, enc.X12, 0)
-	f.propagate = append(f.propagate, f.a.BranchLong(enc.NE, enc.X7, enc.Zero))
+	if !f.mode.production {
+		f.a.Lwu(enc.X7, enc.X12, 0)
+		f.propagate = append(f.propagate, f.a.BranchLong(enc.NE, enc.X7, enc.Zero))
+	}
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
 	for j, wide := range sig.results {
 		if wide {
-			f.a.Ld(enc.X5, enc.X11, int32(j*8))
+			f.a.Ld(enc.X5, result, int32(j*8))
 		} else {
-			f.a.Lwu(enc.X5, enc.X11, int32(j*8))
+			f.a.Lwu(enc.X5, result, int32(j*8))
 		}
 		f.Store(f.SpillOffset(base+j), 5, wide)
 	}

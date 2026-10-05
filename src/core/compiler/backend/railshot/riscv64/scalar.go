@@ -15,11 +15,19 @@ var scalarRegisters = [...]uint8{5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
 
 type target struct {
 	regallocFnState
-	a       enc.Asm
-	regs    []uint8
-	nlocals int
-	header  int
-	err     error
+	a        enc.Asm
+	regs     []uint8
+	nlocals  int
+	header   int
+	err      error
+	mode     emissionMode
+	sourcePC uint32
+}
+
+type emissionMode struct {
+	production    bool
+	functionIndex uint32
+	entryPC       uint32
 }
 
 var _ shared.ScalarTarget = (*target)(nil)

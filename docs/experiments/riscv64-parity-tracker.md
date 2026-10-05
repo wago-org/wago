@@ -8,9 +8,9 @@ production parity. No remote publication is authorized.
 
 | Area | Current implementation | Remaining production work |
 | --- | --- | --- |
-| Integer/control | RV64 integer arithmetic/comparisons, structured/indexed control, zero/multiple results | Production compiler envelope and configured limits |
-| Calls | Defined same-instance direct/recursive integer calls, mixed/wide result vectors | Production caller slots/context ABI, imports, indirect/cross-instance calls, tail calls, call_ref |
-| Production runtime | Linux/RV64 Engine/JobMemory bridge, central W^X/process-wide cache synchronization, framed normal/cold return, shared publication/cleanup ownership | Compiler integration, host/guard/signal paths |
+| Integer/control | RV64 integer arithmetic/comparisons, structured/indexed control, zero/multiple results, stateless production compiler envelope | Public backend binding and configured limits |
+| Calls | Defined same-instance direct/recursive integer calls, mixed/wide result vectors, production wrapper slots and cold traps | Stateful context transfer, imports, indirect/cross-instance calls, tail calls, call_ref |
+| Production runtime | Linux/RV64 Engine/JobMemory bridge, central W^X/process-wide cache synchronization, framed normal/cold return, shared publication/cleanup ownership, stateless compiler integration | Stateful compiler integration, host/guard/signal paths |
 | Memory/globals/bulk | One bounded wasm32 memory, integer flat globals, active/passive data and bulk operations | JobMemory/basedata directories, full memory32 size, aliased imported global cells, extended initializers/start, multiple/shared/memory64 memories |
 | Tables/references | Rejected before publication | Production descriptors, exact type identities, element/table lifecycle, externref and typed references, resource-root retention |
 | FP | Rejected before publication | Scalar FP, conversions, NaN/trap semantics, FCSR and ABI boundary audit |
@@ -24,9 +24,9 @@ production parity. No remote publication is authorized.
 
 The integer multivalue/typed-control slice uses bounded argument/result arenas,
 a fixed context header independent of module arity, and zero-normalized i32 cells.
-It is a prerequisite to production wrapper integration, not evidence that public
-runtime parity is complete. The next slice must expose the production compiler
-envelope and reconcile context/trap/resource contracts before table dispatch.
+It now also executes through the production wrapper, without enabling the public
+backend. The next slice must implement production state directories and reconcile
+context/resource contracts before table dispatch.
 
 Independent runtime inventory found production contracts that subsequent slices
 must reuse: 32-byte table entries, 40-byte canonical funcref descriptors with
@@ -39,8 +39,9 @@ See `src/core/runtime/limits.go`, `src/core/runtime/abi/basedata.go`,
 Experimental trap codes and flat GuestContext layout differ from production.
 Production stack/unreachable/divide-zero/overflow/memory trap codes are
 13/1/9/10/3, and the trap/control area includes parked control and source location.
-These differences must be reconciled before public integration; the current
-experimental package must not be advertised as interchangeable.
+The stateless production envelope uses production trap codes and source layout;
+the experimental GuestContext remains distinct and must not be advertised as
+interchangeable with production state.
 
 The shared production runtime now has a separately reviewed
 [bridge checkpoint](riscv64-production-runtime-checkpoint.md), including active
@@ -48,3 +49,6 @@ Go GC and cross-thread grown-code execution under QEMU. Its wrapper and trap
 contract is ready for compiler integration; public backend binding remains disabled.
 The subsequent [publication ownership checkpoint](riscv64-publication-ownership-checkpoint.md)
 retains failed raw mappings and public/private thunk cleanup through retries.
+The [production compiler envelope checkpoint](riscv64-production-compiler-checkpoint.md)
+executes supported stateless modules through that runtime; stateful modules and
+unsupported features still fail closed before image creation.

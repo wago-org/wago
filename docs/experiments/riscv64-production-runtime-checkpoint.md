@@ -2,8 +2,10 @@
 
 This checkpoint adds Linux/RV64 support to the shared `src/core/runtime`
 Engine, JobMemory, Arena, CodeBuffer and executable publication path. It does
-not enable the public Wago backend. The experimental compiler still uses its
-earlier runtime envelope until a separate integration stage reconciles it.
+not enable the public Wago backend. The subsequent
+[compiler envelope checkpoint](riscv64-production-compiler-checkpoint.md) uses
+this bridge for supported stateless integer modules; the earlier experimental
+runtime remains separate.
 
 The production wrapper passes A0=serialized arguments, A1=linear-memory home,
 A2=trap buffer, A3=result slots, and pins the home in X25. The guest stack begins

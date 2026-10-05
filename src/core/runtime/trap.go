@@ -6,35 +6,37 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // TrapCode mirrors vb::TrapCode (src/core/common/TrapCode.hpp).
 type TrapCode uint32
 
 const (
-	TrapNone                 TrapCode = 0
-	TrapUnreachable          TrapCode = 1
-	TrapBuiltin              TrapCode = 2
-	TrapLinMemOutOfBounds    TrapCode = 3
-	TrapLinMemCouldNotExtend TrapCode = 4
-	TrapIndirectOutOfBounds  TrapCode = 5
-	TrapIndirectWrongSig     TrapCode = 6
-	TrapLinkedMemNotLinked   TrapCode = 7
-	TrapLinkedMemOutOfBounds TrapCode = 8
-	TrapDivZero              TrapCode = 9
-	TrapDivOverflow          TrapCode = 10
-	TrapTruncOverflow        TrapCode = 11
-	TrapInterrupted          TrapCode = 12
-	TrapStackFenceBreached   TrapCode = 13
-	TrapCalledFnNotLinked    TrapCode = 14
-	TrapUnsupportedTailCall  TrapCode = 15
-	TrapNullReference        TrapCode = 16
-	TrapUnhandledException   TrapCode = 17
-	TrapCastFailure          TrapCode = 18
-	TrapTableOutOfBounds     TrapCode = 19
-	TrapAtomicUnaligned      TrapCode = 20
-	TrapExpectedSharedMemory TrapCode = 21
-	TrapHostEventOverflow    TrapCode = 22
+	TrapNone                 TrapCode = abi.TrapNone
+	TrapUnreachable          TrapCode = abi.TrapUnreachable
+	TrapBuiltin              TrapCode = abi.TrapBuiltin
+	TrapLinMemOutOfBounds    TrapCode = abi.TrapLinMemOutOfBounds
+	TrapLinMemCouldNotExtend TrapCode = abi.TrapLinMemCouldNotExtend
+	TrapIndirectOutOfBounds  TrapCode = abi.TrapIndirectOutOfBounds
+	TrapIndirectWrongSig     TrapCode = abi.TrapIndirectWrongSig
+	TrapLinkedMemNotLinked   TrapCode = abi.TrapLinkedMemNotLinked
+	TrapLinkedMemOutOfBounds TrapCode = abi.TrapLinkedMemOutOfBounds
+	TrapDivZero              TrapCode = abi.TrapDivZero
+	TrapDivOverflow          TrapCode = abi.TrapDivOverflow
+	TrapTruncOverflow        TrapCode = abi.TrapTruncOverflow
+	TrapInterrupted          TrapCode = abi.TrapInterrupted
+	TrapStackFenceBreached   TrapCode = abi.TrapStackFenceBreached
+	TrapCalledFnNotLinked    TrapCode = abi.TrapCalledFnNotLinked
+	TrapUnsupportedTailCall  TrapCode = abi.TrapUnsupportedTailCall
+	TrapNullReference        TrapCode = abi.TrapNullReference
+	TrapUnhandledException   TrapCode = abi.TrapUnhandledException
+	TrapCastFailure          TrapCode = abi.TrapCastFailure
+	TrapTableOutOfBounds     TrapCode = abi.TrapTableOutOfBounds
+	TrapAtomicUnaligned      TrapCode = abi.TrapAtomicUnaligned
+	TrapExpectedSharedMemory TrapCode = abi.TrapExpectedSharedMemory
+	TrapHostEventOverflow    TrapCode = abi.TrapHostEventOverflow
 )
 
 var trapMessages = [...]string{

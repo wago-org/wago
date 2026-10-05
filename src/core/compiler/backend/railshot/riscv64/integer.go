@@ -31,7 +31,10 @@ type integerControl struct {
 	start, falseSite               int
 	sites                          []int
 }
-type integerTrap struct{ site, code int }
+type integerTrap struct {
+	site, code int
+	sourcePC   uint32
+}
 type integerEmitter struct {
 	target
 	traps     []integerTrap
@@ -150,6 +153,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	}
 	r := wasm.ReaderFrom(fn.BodyBytes)
 	for depth > 0 {
+		if emit != nil && emit.mode.production {
+			emit.sourcePC = uint32(fn.LocalDeclBytes) + uint32(r.Offset())
+		}
 		op, err := r.Byte()
 		if err != nil {
 			return integerSummary{}, err
@@ -671,7 +677,9 @@ func integerOpcode(op byte) (shared.IntOp, bool, bool, bool, bool) {
 	return 0, false, false, false, false
 }
 
-func (f *integerEmitter) trap(code, site int) { f.traps = append(f.traps, integerTrap{site, code}) }
+func (f *integerEmitter) trap(code, site int) {
+	f.traps = append(f.traps, integerTrap{site: site, code: code, sourcePC: f.sourcePC})
+}
 func (f *integerEmitter) operation(op shared.IntOp, w, unary, resultWide bool) {
 	if !unary {
 		switch op {
@@ -809,7 +817,7 @@ func (f *integerEmitter) operation(op shared.IntOp, w, unary, resultWide bool) {
 	}
 }
 
-func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summary integerSummary) ([]byte, FunctionInfo, []directCall, error) {
+func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summary integerSummary, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
 	var widths [256]bool
 	n := len(ft.Params)
 	for i, t := range ft.Params {
@@ -821,7 +829,7 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summar
 			n++
 		}
 	}
-	f := integerEmitter{target: target{nlocals: n}}
+	f := integerEmitter{target: target{nlocals: n, mode: mode}}
 	if regallocCheckEnabled {
 		defer f.checkEndLifetimes()
 	}
@@ -836,22 +844,31 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summar
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: integer admission changed")
 	}
 	exits := []int{f.Jump()}
-	for code := TrapUnreachable; code <= TrapMemoryBounds; code++ {
-		pos := f.Position()
-		used := false
+	if mode.production {
 		for _, tr := range f.traps {
-			if tr.code == code {
-				if err = f.Patch(tr.site, pos); err != nil {
-					return nil, FunctionInfo{}, nil, err
-				}
-				used = true
+			if err = f.Patch(tr.site, f.Position()); err != nil {
+				return nil, FunctionInfo{}, nil, err
 			}
+			f.emitProductionTrap(productionTrapCode(tr.code), tr.sourcePC)
 		}
-		if used {
-			f.Constant(5, int64(code), false)
-			f.a.Sw(enc.X5, enc.X12, 0)
-			f.Constant(10, 0, true)
-			exits = append(exits, f.Jump())
+	} else {
+		for code := TrapUnreachable; code <= TrapMemoryBounds; code++ {
+			pos := f.Position()
+			used := false
+			for _, tr := range f.traps {
+				if tr.code == code {
+					if err = f.Patch(tr.site, pos); err != nil {
+						return nil, FunctionInfo{}, nil, err
+					}
+					used = true
+				}
+			}
+			if used {
+				f.Constant(5, int64(code), false)
+				f.a.Sw(enc.X5, enc.X12, 0)
+				f.Constant(10, 0, true)
+				exits = append(exits, f.Jump())
+			}
 		}
 	}
 	if len(f.propagate) != 0 {
@@ -874,7 +891,7 @@ func compileInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summar
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, nil, f.a.Err()
 	}
-	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.I64), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls)}
+	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.I64), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
 	contextOffset := -1
 	if summary.context {
 		contextOffset = -8

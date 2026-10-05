@@ -29,7 +29,7 @@ const (
 	offSpillRegion            = 48                               // 8B scratch
 	offJobMemoryDataPtrPtr    = 56                               // u64
 	offMemoryDirPtr           = abi.MemoryDirPtrOffset           // u64: indexed memory directory
-	offStackFence             = 72                               // u64
+	offStackFence             = abi.StackFenceOffset             // u64
 	offTablePtr               = 80                               // u64: indirect-call table descriptor (wago extension)
 	offFuncRefDescPtr         = abi.FuncRefDescPtrOffset
 	offPassiveElemPtr         = abi.PassiveElemPtrOffset

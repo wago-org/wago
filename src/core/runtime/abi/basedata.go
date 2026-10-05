@@ -39,6 +39,7 @@ const (
 	// entry 0 when an optional per-instance quota directory is present. Offset 64
 	// was the unused WARP memory-helper slot.
 	MemoryDirPtrOffset  = 64
+	StackFenceOffset    = 72
 	MemoryDirEntryBytes = 24
 	MemoryDirBaseOffset = 0
 	// Directory sizes are entry/selected-grow snapshots. Native indexed size

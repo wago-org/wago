@@ -11,6 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 	native "github.com/wago-org/wago/src/core/runtime/riscv64"
 )
 
@@ -30,6 +31,7 @@ type FunctionInfo struct {
 	Result64                                                                   bool
 	Fallback                                                                   bool
 	FrameHeaderBytes, DirectCalls                                              int
+	mode                                                                       emissionMode
 }
 
 // Compiled owns immutable heap code and metadata, never executable mappings.
@@ -56,7 +58,10 @@ func Compile(data []byte) (*Compiled, error) { return CompileWithOptions(data, C
 
 // CompileOptions is an experimental diagnostic, not a public Wago setting.
 // ForceFallback bypasses shared selection for overlap differential testing.
-type CompileOptions struct{ ForceFallback bool }
+type CompileOptions struct {
+	ForceFallback bool
+	production    bool
+}
 
 func CompileWithOptions(data []byte, opts CompileOptions) (*Compiled, error) {
 	return compileOptions(data, scalarRegisters[:], opts)
@@ -80,6 +85,11 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 	}
 	if err = admitWire(owned); err != nil {
 		return nil, err
+	}
+	if opts.production {
+		if err = admitProductionWire(owned); err != nil {
+			return nil, err
+		}
 	}
 	if err = admitShape(m); err != nil {
 		return nil, err
@@ -111,16 +121,28 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
+		mode := emissionMode{production: opts.production}
+		if opts.production {
+			mode.functionIndex = uint32(i)
+			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
+		}
 		if fallback[i] {
-			code, info, calls, err = compileInteger(&m.Code[i], ft, &state, integerSummaries[i])
+			code, info, calls, err = compileIntegerMode(&m.Code[i], ft, &state, integerSummaries[i], mode)
 		} else {
-			code, info, err = compileFunction(&worker, &m.Code[i], ft, summaries[i], regs)
+			code, info, err = compileFunctionMode(&worker, &m.Code[i], ft, summaries[i], regs, mode)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("rv64: function %d: %w", i, err)
 		}
-		if len(code) > MaxCodeBytes-len(c.code) {
+		padding := 0
+		if opts.production {
+			padding = (-len(c.code)) & 15
+		}
+		if len(code) > MaxCodeBytes-len(c.code)-padding {
 			return nil, fmt.Errorf("rv64: emitted code exceeds %d bytes", MaxCodeBytes)
+		}
+		for ; padding > 0; padding -= 4 {
+			c.code = append(c.code, 0x13, 0, 0, 0) // fixed-width RV64 NOP
 		}
 		info.Entry = len(c.code)
 		info.CodeBytes = len(code)
@@ -249,6 +271,10 @@ func admitShape(m *wasm.Module) error {
 }
 
 func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompType, summary shared.ScalarSummary, regs []uint8) ([]byte, FunctionInfo, error) {
+	return compileFunctionMode(worker, fn, ft, summary, regs, emissionMode{})
+}
+
+func compileFunctionMode(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompType, summary shared.ScalarSummary, regs []uint8, mode emissionMode) ([]byte, FunctionInfo, error) {
 	var widths [256]bool
 	nlocals := len(ft.Params)
 	for i, t := range ft.Params {
@@ -260,7 +286,7 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 			nlocals++
 		}
 	}
-	f := target{regs: regs, nlocals: nlocals}
+	f := target{regs: regs, nlocals: nlocals, mode: mode}
 	if regallocCheckEnabled {
 		defer f.checkEndLifetimes()
 	}
@@ -274,7 +300,7 @@ func compileFunction(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.CompTyp
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, f.a.Err()
 	}
-	info := FunctionInfo{Params: len(ft.Params), Results: 1, SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64)}
+	info := FunctionInfo{Params: len(ft.Params), Results: 1, SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64), mode: mode}
 	return frameFunction(f.a.B, widths[:nlocals], len(ft.Params), slots, false, -1, info)
 }
 
@@ -290,18 +316,31 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 	if frame > MaxFrameBytes {
 		return nil, FunctionInfo{}, fmt.Errorf("frame exceeds %d bytes", MaxFrameBytes)
 	}
-	entry := target{header: info.FrameHeaderBytes}
-	reversed := entry.a.BranchLong(enc.LTU, enc.SP, enc.X13)
+	entry := target{header: info.FrameHeaderBytes, mode: info.mode}
+	fence := enc.X13
+	if info.mode.production {
+		entry.a.Ld(enc.X29, enc.X25, -abi.StackFenceOffset)
+		fence = enc.X29
+	}
+	reversed := entry.a.BranchLong(enc.LTU, enc.SP, fence)
 	entry.a.Constant64(enc.Scratch0, int64(frame))
-	entry.a.Sub(enc.Scratch1, enc.SP, enc.X13)
+	entry.a.Sub(enc.Scratch1, enc.SP, fence)
 	bad := entry.a.BranchLong(enc.LTU, enc.Scratch1, enc.Scratch0)
 	entry.a.Sub(enc.SP, enc.SP, enc.Scratch0)
 	entry.a.Sd(enc.RA, enc.SP, 0)
-	entry.a.Sd(enc.X11, enc.SP, 8)
+	result := enc.X11
+	if info.mode.production {
+		result = enc.X13
+	}
+	entry.a.Sd(result, enc.SP, 8)
 	if info.FrameHeaderBytes == callFrameHeader {
 		entry.a.Sd(enc.X10, enc.SP, 16)
 		entry.a.Sd(enc.X12, enc.SP, 24)
-		entry.a.Sd(enc.X13, enc.SP, 32)
+		if info.mode.production {
+			entry.a.Sd(enc.X11, enc.SP, 32)
+		} else {
+			entry.a.Sd(enc.X13, enc.SP, 32)
+		}
 	}
 	if contextOffset != -1 {
 		if contextOffset <= 2047 {
@@ -337,10 +376,14 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 	}
 	// The failure edge occurs before body allocation; original a2 and RA/SP
 	// are still valid. No stack writes or SP changes precede this edge.
-	entry.a.Addi(enc.Scratch0, enc.Zero, 1)
-	entry.a.Sw(enc.Scratch0, enc.X12, 0)
-	entry.a.Addi(enc.X10, enc.Zero, 0)
-	entry.a.Ret()
+	if info.mode.production {
+		entry.emitProductionTrap(abi.TrapStackFenceBreached, info.mode.entryPC)
+	} else {
+		entry.a.Addi(enc.Scratch0, enc.Zero, 1)
+		entry.a.Sw(enc.Scratch0, enc.X12, 0)
+		entry.a.Addi(enc.X10, enc.Zero, 0)
+		entry.a.Ret()
+	}
 	if entry.a.Err() != nil {
 		return nil, FunctionInfo{}, entry.a.Err()
 	}
