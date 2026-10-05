@@ -204,7 +204,7 @@ func (b *SourceBranch) Verify(code []byte, arm bool) regalloccheck.Result {
 	case b.loop && !arm:
 		decoded, ok = decodeSourceLoopAMD64(code)
 	case b.loop:
-		return r
+		decoded, ok = decodeSourceLoopARM64(code)
 	case arm:
 		decoded, ok = decodeSourceBranchARM64(code)
 	default:
