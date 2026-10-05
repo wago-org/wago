@@ -131,6 +131,13 @@ func swarDeadCases() []swarDeadCase {
 		}
 		add(swarScalarMemorySizeFixture(grow), []byte{op, 0}, 1, true)
 	}
+	for _, fill := range []bool{false, true} {
+		kernel := []byte{0xfc, 10, 0, 0}
+		if fill {
+			kernel = []byte{0xfc, 11, 0}
+		}
+		add(swarBulkMemoryFixture(fill), kernel, 0, true)
+	}
 	identity := fixtureFunc{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0b}}
 	for _, kernel := range [][]byte{{0x1b}, {0x1c, 1, 0x7b}, {0x22, 0}, {0x20, 0}, swarLiteral(1, 0x7ff0000000000001)} {
 		add(identity, kernel, 1, false)

@@ -22,8 +22,8 @@ type swarSummary struct {
 // This private whole-function pilot consumes a frontend-validated function.
 // It admits V128 and four scalar carriers, local/scalar/vector
 // operations and select. An explicitly supplied nonshared memory32 descriptor
-// also admits scalar/vector loads/stores and memory size/growth. FP and traps
-// require their production bridges.
+// also admits scalar/vector loads/stores and memory size/growth/copy/fill.
+// FP and traps require their production bridges.
 // Structured control uses exact classes and canonical branch homes; indexed
 // signatures require an explicit type directory and loops require interruption.
 // Module policy remains closed to SIMD. Direct calls require an explicit
@@ -493,6 +493,52 @@ func walkSWARPairsWithCalls(fn *wasm.Func, ft *wasm.CompType, memory32 bool, typ
 			sub, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
+			}
+			if sub == 10 || sub == 11 {
+				if !memory32 {
+					return swarSummary{}, unsupported("SWAR bulk memory without resource")
+				}
+				indices := 1
+				if sub == 10 {
+					indices = 2
+				}
+				for i := 0; i < indices; i++ {
+					index, err := r.U32()
+					if err != nil {
+						return swarSummary{}, err
+					}
+					if index != 0 {
+						return swarSummary{}, unsupported("SWAR bulk memory index")
+					}
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if err := flow.prepareRepeatedDead(swarI32, 3); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 3
+				if base < flow.floor() {
+					return swarSummary{}, unsupported("SWAR bulk memory operand underflow")
+				}
+				for i := 0; i < 3; i++ {
+					if stackClasses[base+i] != swarI32 {
+						return swarSummary{}, unsupported("SWAR bulk memory carrier class")
+					}
+				}
+				usesTraps, flow.usesLoops = true, true
+				if emit != nil {
+					for i := 0; i < 3; i++ {
+						emit.Load(uint8(5+i), spill(base+i), false)
+					}
+					kind := wasm.InstrMemoryFill
+					if sub == 10 {
+						kind = wasm.InstrMemoryCopy
+					}
+					emit.memoryBulk(kind, 0)
+				}
+				h = base
+				continue
 			}
 			conversion, ok := swarSaturatingFloatOpcode(sub)
 			if !ok {
