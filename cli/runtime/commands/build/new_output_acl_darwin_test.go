@@ -3,6 +3,7 @@
 package build
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -103,6 +104,61 @@ func TestBuildNewDarwinOutputMetadataProbeNeedsNoReadAccess(t *testing.T) {
 	if info, err := os.Stat(output); err != nil || !info.Mode().IsRegular() {
 		t.Fatalf("write-authorized output = %v, %v", info, err)
 	}
+}
+
+func TestBuildDarwinFilesOnlyDirectoryExplainsPrivateStageRequirement(t *testing.T) {
+	const childEnv = "WAGO_DARWIN_FILES_ONLY_CHILD"
+	if os.Getenv(childEnv) == "1" {
+		Command(testEnvironment{}).Run(command.NewContext(
+			[]string{os.Getenv("WAGO_DARWIN_FILES_ONLY_INPUT")},
+			map[string]string{"output": os.Getenv("WAGO_DARWIN_FILES_ONLY_OUTPUT")}, nil,
+		))
+		return
+	}
+
+	dir := t.TempDir()
+	inputDir := t.TempDir()
+	input := filepath.Join(inputDir, "input.wasm")
+	if err := os.WriteFile(input, []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "output.wago")
+	original := []byte("existing runnable artifact")
+	if err := os.WriteFile(output, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := exec.Command("/bin/chmod", "+a", "everyone deny add_subdirectory", dir).CombinedOutput(); err != nil {
+		t.Skipf("Darwin add-subdirectory ACL unavailable: %v: %s", err, result)
+	}
+	t.Cleanup(func() { _ = exec.Command("/bin/chmod", "-N", dir).Run() })
+	// Prove this directory still permits ordinary direct-child file writes.
+	control := filepath.Join(dir, "direct-control")
+	file, err := os.OpenFile(control, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Skipf("filesystem does not allow files-only creation: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	controlDirectory := filepath.Join(dir, "subdirectory-control")
+	if err := os.Mkdir(controlDirectory, 0o700); err == nil {
+		_ = os.Remove(controlDirectory)
+		t.Skip("filesystem does not deny subdirectory creation for this identity")
+	} else if !os.IsPermission(err) {
+		t.Fatalf("subdirectory control: %v", err)
+	}
+
+	child := exec.Command(os.Args[0], "-test.run=^TestBuildDarwinFilesOnlyDirectoryExplainsPrivateStageRequirement$")
+	child.Env = append(os.Environ(), childEnv+"=1", "WAGO_DARWIN_FILES_ONLY_INPUT="+input,
+		"WAGO_DARWIN_FILES_ONLY_OUTPUT="+output)
+	combined, err := child.CombinedOutput()
+	if err == nil || !strings.Contains(string(combined), "requires permission to create a private staging subdirectory") {
+		t.Fatalf("files-only parent error = %v: %s", err, combined)
+	}
+	if got, err := os.ReadFile(output); err != nil || !bytes.Equal(got, original) {
+		t.Fatalf("failed build changed prior artifact to %q, %v", got, err)
+	}
+	assertNoAtomicBuildTemps(t, dir)
 }
 
 func TestBuildNewDarwinOutputPreservesInheritedACLUnderRestrictiveUmask(t *testing.T) {
