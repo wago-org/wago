@@ -32,6 +32,9 @@ func (a *Asm) Jal(link Reg, displacement int32) {
 		return
 	}
 	u := uint32(displacement) & 0x1fffff
+	if regallocCheckEnabled && a.err == nil && len(a.B)&3 == 0 {
+		a.regallocDefinition(link, link != Zero)
+	}
 	a.word(0x6f | uint32(link)<<7 | ((u>>12)&255)<<12 | ((u>>11)&1)<<20 |
 		((u>>1)&1023)<<21 | ((u>>20)&1)<<31)
 }

@@ -76,6 +76,7 @@ func (c Cond) valid() bool { return c == EQ || c == NE || c >= LT && c <= GEU }
 // Operand errors stop subsequent emission; fixup errors leave bytes unchanged.
 // B may be an existing aligned writable tail, but must not be executable yet.
 type Asm struct {
+	regallocState
 	B   []byte
 	err error
 }
@@ -116,6 +117,9 @@ func (a *Asm) word(w uint32) {
 
 func (a *Asm) r(op, f3, f7 uint32, dst, left, right Reg) {
 	if a.registers(dst, left, right) {
+		if regallocCheckEnabled && a.err == nil && len(a.B)&3 == 0 {
+			a.regallocDefinition(dst, false)
+		}
 		a.word(op | uint32(dst)<<7 | f3<<12 | uint32(left)<<15 | uint32(right)<<20 | f7<<25)
 	}
 }
@@ -128,6 +132,9 @@ func (a *Asm) i(op, f3 uint32, dst, src Reg, imm int32) {
 		a.fail("immediate outside signed 12-bit range")
 		return
 	}
+	if regallocCheckEnabled && a.err == nil && len(a.B)&3 == 0 {
+		a.regallocImmediate(op, f3, dst, src, imm)
+	}
 	a.word(op | uint32(dst)<<7 | f3<<12 | uint32(src)<<15 | (uint32(imm)&0xfff)<<20)
 }
 
@@ -138,6 +145,9 @@ func (a *Asm) u(op uint32, dst Reg, imm20 uint32) {
 	if imm20 > 0xfffff {
 		a.fail("upper immediate outside 20-bit field")
 		return
+	}
+	if regallocCheckEnabled && a.err == nil && len(a.B)&3 == 0 {
+		a.regallocDefinition(dst, false)
 	}
 	a.word(op | uint32(dst)<<7 | imm20<<12)
 }
@@ -229,6 +239,9 @@ func (a *Asm) store(f3 uint32, src, base Reg, offset int32) {
 		return
 	}
 	u := uint32(offset) & 0xfff
+	if regallocCheckEnabled && a.err == nil && len(a.B)&3 == 0 {
+		a.regallocStore(src, base, offset, f3)
+	}
 	a.word(0x23 | (u&31)<<7 | f3<<12 | uint32(base)<<15 | uint32(src)<<20 | (u>>5)<<25)
 }
 
