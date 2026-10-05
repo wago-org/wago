@@ -257,8 +257,8 @@ func TestSourceLedgerLimitsDropAllPartialState(t *testing.T) {
 	}
 }
 
-func TestSourceLedgerIncompleteControlAndProposals(t *testing.T) {
-	for _, body := range [][]byte{{0x02, 0x40, 0x0b, 0x0b}, {0x03, 0x40, 0x0b, 0x0b}, {0x00, 0x0b}, {0x0f, 0x01, 0x0b}, {0x12, 0x00, 0x0b}} {
+func TestSourceLedgerIncompleteProposals(t *testing.T) {
+	for _, body := range [][]byte{{0x12, 0x00, 0x0b}} {
 		m := sourceModule(t, nil, nil)
 		m.Code[0].BodyBytes = body
 		a := sourceAnalysis(t, m, ValidationFeatures{})
@@ -324,16 +324,15 @@ func TestSourceLedgerFeatureMismatchAndInvalidBytes(t *testing.T) {
 	}
 }
 
-func TestSourceLedgerRejectsUnsupportedVectorsBeforeDecode(t *testing.T) {
+func TestSourceLedgerBoundsVectorsBeforeDecode(t *testing.T) {
 	m := sourceModule(t, nil, nil)
 	// Ordinary valid control, with a label vector. All source metadata credit
-	// is consumed by the module shape; decoding that vector would fail the
-	// zero remaining decode budget instead of reporting unsupported admission.
+	// is consumed by the module shape; reject before allocating that vector.
 	m.Code[0].BodyBytes = []byte{0x41, 0, 0x0e, 3, 0, 0, 0, 0, 0x0b}
 	a := sourceAnalysis(t, m, ValidationFeatures{})
 	l, r, err := BuildSourceLedger(m, a, 0, ValidationFeatures{}, SourceLedgerLimits{Metadata: 4})
-	if l != nil || err != nil || r.Coverage != SourceIncomplete || r.Reason != regalloccheck.UnsupportedOperation || r.PC != 2 {
-		t.Fatalf("unsupported vector admission: %+v %v", r, err)
+	if l != nil || err != nil || r.Coverage != SourceIncomplete || r.Reason != regalloccheck.ResourceLimit || r.PC != 2 {
+		t.Fatalf("label vector allocation limit: %+v %v", r, err)
 	}
 	m = sourceModule(t, []ValType{I32, I32, I32}, []ValType{I32},
 		Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrLocalGet, Index: 1},

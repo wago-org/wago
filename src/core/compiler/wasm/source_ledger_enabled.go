@@ -14,6 +14,7 @@ const (
 	SourceParameter SourceValueKind = iota
 	SourceConstant
 	SourceResult
+	SourceBlockParameter
 )
 
 // SourceValue is pointer free. Constant Bits retain signed zero and NaN payloads.
@@ -27,6 +28,8 @@ type SourceValue struct {
 // local-declaration bytes. EndPC is exclusive, including prefixed opcodes and
 // every encoded immediate. Inputs are in original stack order, with an indirect
 // call selector last; outputs are in declared result order.
+// Unreachable describes the current lexical path. A structured end can also
+// close a separately reachable false edge; consumers must inspect source edges.
 type SourceEvent struct {
 	PC, EndPC               int
 	Kind                    InstrKind
@@ -35,6 +38,10 @@ type SourceEvent struct {
 	MemoryAlign             uint32
 	InputCount, OutputCount int
 	FunctionEnd, Terminal   bool
+	Block                   int
+	Unreachable             bool
+	Control                 SourceControlKind
+	BlockType               BlockType
 	inputStart, outputStart int
 }
 
@@ -60,12 +67,13 @@ type SourceLedgerResult struct {
 // Zero selects a default; positive overrides can only lower the defaults.
 type SourceLedgerLimits struct {
 	BodyBytes, Metadata, Locals, Events, Values, Operands, Stack, Work int
+	Blocks, Edges, ControlDepth                                        int
 }
 
 func DefaultSourceLedgerLimits() SourceLedgerLimits {
 	return SourceLedgerLimits{BodyBytes: 1 << 20, Metadata: 1 << 18,
 		Locals: 65535, Events: 262144, Values: 65536, Operands: 524288,
-		Stack: 65536, Work: 4 << 20}
+		Stack: 65536, Work: 4 << 20, Blocks: 4096, Edges: 16384, ControlDepth: 1024}
 }
 
 // SourceLedger owns immutable pools for one function. Keep m and all nested
@@ -80,6 +88,9 @@ type SourceLedger struct {
 	events     []SourceEvent
 	operands   []SourceValueID
 	entryLocal []SourceValueID
+	blocks     []SourceBlock
+	edges      []SourceEdge
+	exit       int
 }
 
 func (l *SourceLedger) ValidFor(m *Module, localFunction int, features ValidationFeatures) bool {
@@ -125,6 +136,7 @@ type sourceLedgerBuilder struct {
 	work, pc      int
 	stack, locals []SourceValueID
 	literals      map[sourceLiteral]SourceValueID
+	cfg           *sourceCFGBuilder
 }
 
 func (b *sourceLedgerBuilder) charge(n int) {
@@ -176,15 +188,23 @@ func sourceLimits(request SourceLedgerLimits) (SourceLedgerLimits, bool) {
 			*p[0] = min(*p[0], *p[1])
 		}
 	}
+	for _, p := range [][2]*int{{&l.Blocks, &request.Blocks}, {&l.Edges, &request.Edges}, {&l.ControlDepth, &request.ControlDepth}} {
+		if *p[1] < 0 {
+			return l, false
+		}
+		if *p[1] > 0 {
+			*p[0] = min(*p[0], *p[1])
+		}
+	}
 	return l, true
 }
 
 // BuildSourceLedger reuses the authoritative direct decoder and funcValidator
 // type semantics. The checked-only identity layer classifies aliases and arity;
 // stack-height differences alone do not establish consumed values. The current
-// admission is straight-line primitive numeric code and ordinary direct/indirect
-// calls. Structured control, unreachable polymorphism, tail calls, references,
-// and unsupported proposal instructions return SourceIncomplete with no ledger.
+// admission is primitive numeric code, core structured control, and ordinary
+// direct/indirect calls. Unsupported polymorphic block types, tail calls,
+// references, and proposal instructions return SourceIncomplete with no ledger.
 // features must be the same profile used to produce analysis; analysis itself
 // stores module identity, not the validation feature/limit configuration.
 // Successful source construction still needs independent physical observations
@@ -209,12 +229,16 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 	defer func() {
 		result.Work = b.work
 		if failure := recover(); failure != nil {
-			if _, limited := failure.(sourceLedgerLimit); !limited {
+			if invalid, ok := failure.(sourceCFGInvariant); ok {
+				ledger = nil
+				result = SourceLedgerResult{Coverage: SourceInvalid, Reason: regalloccheck.InvalidGraph, PC: b.pc, Message: invalid.message, Work: b.work}
+			} else if _, limited := failure.(sourceLedgerLimit); !limited {
 				panic(failure)
+			} else {
+				ledger = nil
+				result = SourceLedgerResult{Coverage: SourceIncomplete, Reason: regalloccheck.ResourceLimit,
+					PC: b.pc, Message: "source ledger construction limit", Work: b.work}
 			}
-			ledger = nil
-			result = SourceLedgerResult{Coverage: SourceIncomplete, Reason: regalloccheck.ResourceLimit,
-				PC: b.pc, Message: "source ledger construction limit", Work: b.work}
 		}
 		if validationErr != nil {
 			result.Coverage = SourceInvalid
@@ -326,13 +350,13 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 		return
 	}
 	v.rd.reset(fn.BodyBytes)
-	// The only admitted vector-bearing immediate is typed select (one validated
-	// ValType). Bound even its transient decoding storage by the remaining
+	// Admitted vector-bearing immediates use the remaining metadata allowance.
+	// Bound even transient decoding storage by the remaining
 	// metadata allowance, rather than the decoder's ordinary default budget.
 	decodeBytes := uint64(limits.Metadata-metadata) * 16
 	v.rd.budget = &decodeBudget{remaining: decodeBytes, limits: DecodeLimits{MaxMetadataBytes: decodeBytes}}
 	widths := moduleMemargWidths(m)
-	returned := false
+	b.cfg = newSourceCFG(b, ft)
 	for len(v.ctrls) != 0 {
 		b.pc = v.rd.off()
 		result.PC = b.pc
@@ -344,6 +368,26 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 			result.Reason = regalloccheck.UnsupportedOperation
 			result.Message = "source opcode requires control/proposal contracts"
 			return
+		}
+		if opcode, _ := v.rd.peek(); opcode == 0x0e {
+			// Check a table's arm count before the authoritative decoder reserves
+			// its transient label vector. The default arm also consumes an edge.
+			probe := v.rd
+			_, _ = probe.byte()
+			count, err := probe.u32()
+			if err != nil {
+				validationErr = err
+				result.Coverage = SourceInvalid
+				return
+			}
+			if uint64(count)+1 > uint64(limits.Edges-len(b.ledger.edges)) {
+				panic(sourceLedgerLimit{})
+			}
+			budget := *v.rd.budget
+			budgetProbe := reader{budget: &budget}
+			if reserveDecodedSlice[uint32](&budgetProbe, count) != nil {
+				panic(sourceLedgerLimit{})
+			}
 		}
 		if opcode, _ := v.rd.peek(); opcode == 0x1c {
 			// Validated typed select has exactly one type. Probe the same decoder
@@ -360,26 +404,48 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 			result.Coverage = SourceInvalid
 			return
 		}
-		e := SourceEvent{PC: b.pc, EndPC: v.rd.off(), Kind: op.instr.Kind, Index: op.instr.Index, Index2: op.instr.Index2}
-		if op.kind == directEnd && len(v.ctrls) == 1 {
-			e.FunctionEnd = true
-			e.Terminal = true
-			if !returned {
-				e.InputCount = len(ft.Results)
-				e.inputStart = b.appendOperands(b.stack)
+		e := SourceEvent{PC: b.pc, EndPC: v.rd.off(), Kind: op.instr.Kind, Index: op.instr.Index, Index2: op.instr.Index2,
+			Block: b.cfg.current, Unreachable: !b.cfg.reachable()}
+		if handled, supported, err := b.cfg.control(&op, &e); handled {
+			if err != nil {
+				validationErr = err
+				result.Coverage = SourceInvalid
+				return
+			}
+			if !supported {
+				result.Reason = regalloccheck.UnsupportedOperation
+				result.Message = "unsupported source control types"
+				return
+			}
+			b.ledger.events = append(b.ledger.events, e)
+			continue
+		}
+		if !b.cfg.reachable() {
+			inputs, outputs, _, supported := b.signature(&op.instr, ft)
+			if !supported && (op.instr.Kind == InstrLocalGet || op.instr.Kind == InstrLocalSet || op.instr.Kind == InstrLocalTee) {
+				if err := v.stepDirectOp(&op); err != nil {
+					validationErr = err
+					result.Coverage = SourceInvalid
+					return
+				}
+			}
+			if !supported {
+				result.Reason = regalloccheck.UnsupportedOperation
+				result.Message = "unsupported dead source instruction"
+				return
+			}
+			base := max(v.top().height, len(v.vals)-inputs)
+			if outputs > limits.Stack-base {
+				panic(sourceLedgerLimit{})
 			}
 			if err := v.stepDirectOp(&op); err != nil {
 				validationErr = err
 				result.Coverage = SourceInvalid
 				return
 			}
+			b.cfg.deadStack()
 			b.ledger.events = append(b.ledger.events, e)
-			break
-		}
-		if returned || op.kind != directInstr {
-			result.Reason = regalloccheck.UnsupportedOperation
-			result.Message = "structured or unreachable source needs CFG contracts"
-			return
+			continue
 		}
 		inputs, outputs, alias, supported := b.signature(&op.instr, ft)
 		if !supported {
@@ -416,11 +482,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 			result.Coverage = SourceInvalid
 			return
 		}
-		if op.instr.Kind == InstrReturn {
-			e.Terminal = true
-			returned = true
-			b.stack = b.stack[:0]
-		} else {
+		{
 			if len(v.vals) != base+outputs {
 				result.Coverage = SourceInvalid
 				result.Reason = regalloccheck.InvalidGraph
@@ -493,8 +555,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 
 func sourceUnsupportedOpcode(opcode byte) bool {
 	switch opcode {
-	case 0x00, 0x02, 0x03, 0x04, 0x05, 0x08, 0x0c, 0x0d, 0x0e,
-		0x12, 0x13, 0x14, 0x15, 0x1f, 0xfb, 0xfd, 0xfe:
+	case 0x08, 0x12, 0x13, 0x14, 0x15, 0x1f, 0xfb, 0xfd, 0xfe:
 		return true
 	default:
 		return false
