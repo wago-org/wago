@@ -33,6 +33,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add semantic result-profile controls and loaded-artifact/omitted-case checks
   to the conformance test runner.
 
+- Add shared/established compiler-path comparisons at admission boundaries,
+  with typed-control validation, execution controls, and paired benchmarks.
+
 - Add AMD64 loop-boundary regression checks for deferred producer placement,
   floating-point transport, register pressure, and zero-iteration traps.
 
