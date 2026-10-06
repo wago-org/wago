@@ -51,6 +51,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Correct worker scratch-growth coverage, bounds-test mode isolation, semantic
+  mismatch counts, optional Node feature checks, and prepared-call benchmark setup.
+
 - Match direct and validated feature summaries for bulk table instructions.
 
 - Preserve live AMD64 values across signed i64 division when the overflow

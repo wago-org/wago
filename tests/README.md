@@ -128,6 +128,9 @@ external files. The matrix covers shared scalar and fallback lowering, large
 stacks and locals, branch tables, calls, traps, memory32/memory64, and both
 native code-size policies. Exact code and metadata checks run before native
 execution. Modern-CPU code runs only when the host supports its features.
+Local and control reservations use the production parallel-worker capacities.
+The large-local and deep-control fixtures must grow those arrays before reset.
+Capacity selection occurs once per module context, outside benchmark timing.
 
 Run the focused checks with:
 
@@ -161,7 +164,9 @@ independent map records valid proofs without copying the cache's placement
 rules. A deliberately stale proof must fail this gate before native execution.
 `bounds_research_test.go` checks actual bounds-check counts at the table's
 capacity, the established compiler path, explicit/guard modes, disabled facts,
-and trap/memory agreement after an address changes.
+and trap/memory agreement after an address changes. The capacity test selects
+multiple certificates and restores the prior setting, so the documented test
+also passes with `WAGO_AMD64_SINGLE_BOUNDS_CERT=1`.
 
 Run the diagnostic tests from the repository root:
 
@@ -317,7 +322,10 @@ trap records retain raw slots before comparison and before the next invocation
 expires them. Rejection, unsupported feature, limit, timeout, host failure, and
 mismatch statuses cannot count as successful semantic coverage. Unit controls
 check status classification; a compile-rejection wrapper checks real rejection
-accounting. The supported positive lane must execute every scheduled case.
+accounting. Result and trap mismatches are excluded from successful execution
+counts. Controls pass incorrect core and relaxed results through the actual
+record/check path and require the same counts on repeated checks.
+The supported positive lane must execute every scheduled case.
 
 Two independent wrapper controls silently omit a supported action or load a
 valid module with an extra custom section. The substitute returns the same
@@ -342,8 +350,11 @@ ARM64. A test-only adapter selects established compilation or ordinary shared
 admission with the same options. Tests execute all 71 defined functions in both
 modes, including the void fixture and every function in the many-function row.
 They compare exact semantic result bits, the unreachable trap, ordered deferred
-host events, and visible memory with fixed oracles. An optional independent Node/V8 run checks the same module bytes and
-all exported functions; its absence is a separate skip, not successful coverage.
+host events, and visible memory with fixed oracles. An optional independent
+Node/V8 run checks the same module bytes and all exported functions. Small valid
+modules first check `try_table` and GC i31 support. Missing Node or either
+proposal skips only the reference test, with a reason; native checks still run.
+Compile, execution, and result errors after those probes remain test failures.
 
 The matrix includes small and empty functions, 256/257 locals, 32/33 nested
 controls, and both sides of the 16,384-instruction admission budget. Explicit
@@ -415,7 +426,9 @@ go test ./src/core/compiler/backend/railshot/amd64 -run '^$' -bench '^BenchmarkR
 ```
 
 The paired benchmarks report decode/validate/compile cost separately from
-prepared native calls. Scalar pairs use existing rule kill switches. SIMD pairs
+prepared native calls through `Engine.CallPrepared`. The trap cell is bound once
+and the memory base is read before timing. Scalar pairs use existing rule kill
+switches. SIMD pairs
 compare a constant count with an equal dynamic count. Setup is outside native
 call timing. No wall-clock threshold is asserted. The support code adds no
 production instrumentation or retained production memory.
