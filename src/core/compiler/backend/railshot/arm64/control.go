@@ -378,7 +378,7 @@ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
 // and branches from the decrement flags directly to the loop body. Interruptible
 // loops retain their header poll and are deliberately excluded.
 func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
-	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls || len(f.ctrl) < 2 || f.depth() != 0 {
+	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls || len(f.ctrl) < 2 || f.s.back() != nil {
 		return false, nil
 	}
 	loop := &f.ctrl[len(f.ctrl)-1]
