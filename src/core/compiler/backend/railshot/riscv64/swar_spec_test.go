@@ -30,6 +30,9 @@ const swarSpecCommit = "05ca4182176763112561ae20153975c12bd689e4"
 // platform-specific; these fixture aggregates are reproducible across hosts.
 const swarSpecSourcesSHA256 = "b8892140ce454ba04d801cda7084087138aec58ba3817a7280869c76afe8350f"
 const swarSpecFilesSHA256 = "1ab236a3015f301d9baf0e38954172b9f2e8377e490cd1ca8d2f7b495eb3a456"
+const swarRelaxedSpecCommit = "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+const swarRelaxedSpecSourcesSHA256 = "4189bbc768f1b23d7b7db2986235aa9ddd847181240b1884e93f27d6a1e2ed9a"
+const swarRelaxedSpecFilesSHA256 = "317e94dc858ff574b36e1b3de057f524c5fdeda0cb6fd93869de7f58495c3b05"
 
 type swarSpecManifest struct {
 	SpecCommit        string            `json:"spec_commit"`
@@ -54,6 +57,7 @@ type swarSpecCommand struct {
 	Text       string          `json:"text"`
 	Action     swarSpecAction  `json:"action"`
 	Expected   []swarSpecValue `json:"expected"`
+	Either     []swarSpecValue `json:"either"`
 }
 
 type swarSpecAction struct {
@@ -129,7 +133,7 @@ func swarSpecHashRows(rows map[string]string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func swarSpecLoadManifest(dir string) (*swarSpecManifest, error) {
+func swarSpecLoadManifest(dir string, relaxed bool) (*swarSpecManifest, error) {
 	data, err := swarSpecRead(dir, "rv64-simd-manifest.json", 2<<20)
 	if err != nil {
 		return nil, err
@@ -145,13 +149,17 @@ func swarSpecLoadManifest(dir string) (*swarSpecManifest, error) {
 		"ca9e69cc1de13b4633a3c74fd697319303b21108529d4f10960af4e1f4a65893": true, // Darwin amd64 source
 	}
 	binaryHash, hashErr := hex.DecodeString(m.WabtBinarySHA256)
-	if m.SpecCommit != swarSpecCommit || m.WabtVersion != "1.0.41" || !archives[m.WabtArchiveSHA256] || hashErr != nil || len(binaryHash) != sha256.Size || len(m.Sources) != 57 || len(m.Files) != 1708 {
+	commit, sourceHash, filesHash, sources, files := swarSpecCommit, swarSpecSourcesSHA256, swarSpecFilesSHA256, 57, 1708
+	if relaxed {
+		commit, sourceHash, filesHash, sources, files = swarRelaxedSpecCommit, swarRelaxedSpecSourcesSHA256, swarRelaxedSpecFilesSHA256, 7, 15
+	}
+	if m.SpecCommit != commit || m.WabtVersion != "1.0.41" || !archives[m.WabtArchiveSHA256] || hashErr != nil || len(binaryHash) != sha256.Size || len(m.Sources) != sources || len(m.Files) != files {
 		return nil, fmt.Errorf("unexpected pinned source/tool provenance")
 	}
 	for _, expected := range []struct {
 		rows map[string]string
 		hash string
-	}{{m.Sources, swarSpecSourcesSHA256}, {m.Files, swarSpecFilesSHA256}} {
+	}{{m.Sources, sourceHash}, {m.Files, filesHash}} {
 		actual, err := swarSpecHashRows(expected.rows)
 		if err != nil || actual != expected.hash {
 			return nil, fmt.Errorf("pinned fixture manifest differs: got %s, want %s (%v)", actual, expected.hash, err)
@@ -301,6 +309,52 @@ func swarSpecMatch(got []byte, v swarSpecValue) error {
 	return nil
 }
 
+func swarSpecPatterns(command swarSpecCommand) ([][]swarSpecValue, error) {
+	if command.Either == nil {
+		return [][]swarSpecValue{command.Expected}, nil
+	}
+	if len(command.Either) == 0 || command.Expected != nil || command.Type != "assert_return" {
+		return nil, fmt.Errorf("ambiguous expected/either result pattern")
+	}
+	patterns := make([][]swarSpecValue, len(command.Either))
+	var typ wasm.ValType
+	for i, alternative := range command.Either {
+		actual, bits, _, _ := swarSpecLayout(alternative)
+		if bits == 0 || i != 0 && actual != typ {
+			return nil, fmt.Errorf("alternative result type differs or is unsupported")
+		}
+		if _, err := swarSpecLanes(alternative); err != nil {
+			return nil, err
+		}
+		typ = actual
+		patterns[i] = []swarSpecValue{alternative}
+	}
+	return patterns, nil
+}
+
+func swarSpecMatchPatterns(got []byte, patterns [][]swarSpecValue) error {
+	// Either matches an entire result pattern; lanes from different alternatives
+	// cannot be combined. These pinned relaxed fixtures have one vector result.
+	for _, pattern := range patterns {
+		offset, matched := 0, true
+		for _, value := range pattern {
+			width := 8
+			if value.Type == "v128" {
+				width = 16
+			}
+			if width > len(got)-offset || swarSpecMatch(got[offset:offset+width], value) != nil {
+				matched = false
+				break
+			}
+			offset += width
+		}
+		if matched && offset == len(got) {
+			return nil
+		}
+	}
+	return fmt.Errorf("raw result %x matches no complete allowed pattern", got)
+}
+
 func TestSWARSpecTransportExactBitsAndNaNClasses(t *testing.T) {
 	for _, raw := range []string{
 		`{"type":"i32","value":"4294967295"}`,
@@ -406,12 +460,70 @@ func TestSWARSpecFixtureIntegrityAndStrictJSON(t *testing.T) {
 	}
 }
 
-func TestSWARSpecPreparedArtifactIntegrity(t *testing.T) {
-	dir := os.Getenv("WAGO_RV64_SPEC_JSON_DIR")
-	if dir == "" {
-		t.Skip("set WAGO_RV64_SPEC_JSON_DIR to check prepared pinned fixture bytes")
+func TestSWARSpecEitherRequiresCompleteAllowedVector(t *testing.T) {
+	var command swarSpecCommand
+	if err := swarSpecDecode([]byte(`{"type":"assert_return","either":[{"type":"v128","lane_type":"i64","value":["1","2"]},{"type":"v128","lane_type":"i64","value":["3","4"]}]}`), &command); err != nil {
+		t.Fatal(err)
 	}
-	manifest, err := swarSpecLoadManifest(dir)
+	patterns, err := swarSpecPatterns(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range [][2]uint64{{1, 2}, {3, 4}, {1, 4}, {3, 2}, {0, 0}} {
+		var result [16]byte
+		binary.LittleEndian.PutUint64(result[:], pair[0])
+		binary.LittleEndian.PutUint64(result[8:], pair[1])
+		allowed := pair == [2]uint64{1, 2} || pair == [2]uint64{3, 4}
+		if (swarSpecMatchPatterns(result[:], patterns) == nil) != allowed {
+			t.Fatal("mixed-lane/entire-vector alternative oracle", pair)
+		}
+	}
+	if swarSpecMatchPatterns(make([]byte, 24), patterns) == nil || swarSpecMatchPatterns(nil, patterns) == nil {
+		t.Fatal("accepted wrong result width")
+	}
+	command.Expected = command.Either[:1]
+	if _, err := swarSpecPatterns(command); err == nil {
+		t.Fatal("accepted both expected and either")
+	}
+	command.Expected = nil
+	command.Type = "assert_trap"
+	if _, err := swarSpecPatterns(command); err == nil {
+		t.Fatal("accepted trap alternatives")
+	}
+	command.Type = "assert_return"
+	command.Either[1].Type = "i64"
+	if _, err := swarSpecPatterns(command); err == nil {
+		t.Fatal("accepted inconsistent alternative types")
+	}
+	for _, raw := range []string{
+		`{"type":"assert_return","either":[]}`,
+		`{"type":"assert_return","expected":[],"either":[{"type":"i64","value":"1"}]}`,
+	} {
+		var malformed swarSpecCommand
+		if err := swarSpecDecode([]byte(raw), &malformed); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := swarSpecPatterns(malformed); err == nil {
+			t.Fatal("accepted empty-present alternative schema", raw)
+		}
+	}
+}
+
+func TestSWARSpecPreparedArtifactIntegrity(t *testing.T) {
+	swarSpecPreparedArtifactIntegrity(t, "WAGO_RV64_SPEC_JSON_DIR", false)
+}
+
+func TestSWARSpecPreparedRelaxedArtifactIntegrity(t *testing.T) {
+	swarSpecPreparedArtifactIntegrity(t, "WAGO_RV64_RELAXED_SPEC_JSON_DIR", true)
+}
+
+func swarSpecPreparedArtifactIntegrity(t *testing.T, variable string, relaxed bool) {
+	t.Helper()
+	dir := os.Getenv(variable)
+	if dir == "" {
+		t.Skip("set " + variable + " to check prepared pinned fixture bytes")
+	}
+	manifest, err := swarSpecLoadManifest(dir, relaxed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,15 +538,24 @@ func TestSWARSpecPreparedArtifactIntegrity(t *testing.T) {
 	}
 	// Even self-consistent replacement fixture digests must differ from the
 	// reviewed pinned aggregate. This catches manifest edits and reductions.
+	var source, artifact string
+	for name := range manifest.Sources {
+		source = name
+		break
+	}
+	for name := range manifest.Files {
+		artifact = name
+		break
+	}
 	for _, change := range []func(*swarSpecManifest){
 		func(m *swarSpecManifest) { m.SpecCommit = strings.Repeat("0", 40) },
 		func(m *swarSpecManifest) { m.WabtVersion = "1.0.40" },
 		func(m *swarSpecManifest) { m.WabtArchiveSHA256 = strings.Repeat("a", 64) },
 		func(m *swarSpecManifest) { m.WabtBinarySHA256 = strings.Repeat("z", 64) },
-		func(m *swarSpecManifest) { m.Sources["simd_load.wast"] = strings.Repeat("a", 64) },
-		func(m *swarSpecManifest) { m.Files["simd_load.json"] = strings.Repeat("a", 64) },
-		func(m *swarSpecManifest) { delete(m.Sources, "simd_load.wast") },
-		func(m *swarSpecManifest) { delete(m.Files, "simd_load.json") },
+		func(m *swarSpecManifest) { m.Sources[source] = strings.Repeat("a", 64) },
+		func(m *swarSpecManifest) { m.Files[artifact] = strings.Repeat("a", 64) },
+		func(m *swarSpecManifest) { delete(m.Sources, source) },
+		func(m *swarSpecManifest) { delete(m.Files, artifact) },
 	} {
 		original, err := json.Marshal(manifest)
 		if err != nil {
@@ -453,7 +574,7 @@ func TestSWARSpecPreparedArtifactIntegrity(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(candidate, "rv64-simd-manifest.json"), data, 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := swarSpecLoadManifest(candidate); err == nil {
+		if _, err := swarSpecLoadManifest(candidate, relaxed); err == nil {
 			t.Fatal("accepted replaced/abridged pinned manifest")
 		}
 	}

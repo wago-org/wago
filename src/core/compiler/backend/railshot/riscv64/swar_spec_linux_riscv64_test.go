@@ -174,8 +174,23 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 		t.Fatal("missing defined function export", command.Action.Field)
 	}
 	ft, ok := in.module.LocalFuncType(index)
-	if !ok || len(ft.Params) != len(command.Action.Args) || len(ft.Results) != len(command.Expected) {
+	patterns, patternErr := swarSpecPatterns(command)
+	if !ok || patternErr != nil || len(ft.Params) != len(command.Action.Args) {
 		t.Fatal("spec action/signature mismatch", command.Action.Field)
+	}
+	for _, pattern := range patterns {
+		if len(ft.Results) != len(pattern) {
+			t.Fatal("spec result arity mismatch", command.Action.Field)
+		}
+		for i, value := range pattern {
+			typ, _, _, _ := swarSpecLayout(value)
+			if command.Type == "assert_trap" && value.Type == "v128" {
+				typ = wasm.V128
+			}
+			if typ != ft.Results[i] {
+				t.Fatal("spec result alternative type mismatch", i)
+			}
+		}
 	}
 	clear(in.trap)
 	clear(in.args)
@@ -200,7 +215,7 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 		argBytes += len(arg)
 	}
 	resultBytes := 0
-	for i, value := range command.Expected {
+	for i, value := range patterns[0] {
 		typ, _, _, _ := swarSpecLayout(value)
 		// Trap JSON carries result types without values/lane types.
 		if command.Type == "assert_trap" && value.Type == "v128" {
@@ -233,16 +248,8 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 	if err != nil {
 		t.Fatalf("spec return line %d %s: %v", command.Line, command.Action.Field, err)
 	}
-	offset := 0
-	for i, value := range command.Expected {
-		width := 8
-		if value.Type == "v128" {
-			width = 16
-		}
-		if err := swarSpecMatch(in.results[offset:offset+width], value); err != nil {
-			t.Fatalf("spec line %d %s result %d: %v", command.Line, command.Action.Field, i, err)
-		}
-		offset += width
+	if err := swarSpecMatchPatterns(in.results[:resultBytes], patterns); err != nil {
+		t.Fatalf("spec line %d %s: %v", command.Line, command.Action.Field, err)
 	}
 	if !bytes.Equal(in.results[resultBytes:], bytes.Repeat([]byte{0xa5}, len(in.results)-resultBytes)) {
 		t.Fatal("spec result write exceeded compact export signature")
@@ -250,11 +257,20 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 }
 
 func TestSWARRV64PinnedSIMDSpecExecution(t *testing.T) {
-	dir := os.Getenv("WAGO_RV64_SPEC_JSON_DIR")
+	swarSpecExecution(t, "WAGO_RV64_SPEC_JSON_DIR", false)
+}
+
+func TestSWARRV64PinnedRelaxedSIMDSpecExecution(t *testing.T) {
+	swarSpecExecution(t, "WAGO_RV64_RELAXED_SPEC_JSON_DIR", true)
+}
+
+func swarSpecExecution(t *testing.T, variable string, relaxed bool) {
+	t.Helper()
+	dir := os.Getenv(variable)
 	if dir == "" {
-		t.Skip("prepare repository-pinned fixtures with scripts/prepare-riscv64-simd-spec.py and set WAGO_RV64_SPEC_JSON_DIR")
+		t.Skip("prepare repository-pinned fixtures with scripts/prepare-riscv64-simd-spec.py and set " + variable)
 	}
-	manifest, err := swarSpecLoadManifest(dir)
+	manifest, err := swarSpecLoadManifest(dir, relaxed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,6 +289,11 @@ func TestSWARRV64PinnedSIMDSpecExecution(t *testing.T) {
 		"simd_const.112.wasm": "SWAR module state/features/function bound",
 		"simd_linking.0.wasm": "SWAR module state/features/function bound",
 		"simd_linking.1.wasm": "SWAR function import section",
+	}
+	want := map[string]int{"modules": 469, "excluded_modules": 3, "assert_return": 24273, "assert_trap": 54, "excluded_assert_invalid": 669, "excluded_assert_malformed": 510, "excluded_register": 1}
+	if relaxed {
+		exclusions = map[string]string{}
+		want = map[string]int{"modules": 8, "assert_return": 69, "assert_return_either": 32}
 	}
 	seenExcluded := make(map[string]bool)
 	for _, file := range files {
@@ -331,6 +352,9 @@ func TestSWARRV64PinnedSIMDSpecExecution(t *testing.T) {
 					}
 					current.invoke(t, command)
 					counts[command.Type]++
+					if len(command.Either) != 0 {
+						counts["assert_return_either"]++
+					}
 				case "assert_invalid", "assert_malformed", "register":
 					// This checkpoint qualifies native execution only. These
 					// validation/linking commands are counted, never claimed.
@@ -346,7 +370,6 @@ func TestSWARRV64PinnedSIMDSpecExecution(t *testing.T) {
 		})
 	}
 	t.Logf("pinned spec %s, WABT %s; executed/excluded coverage %v", manifest.SpecCommit, manifest.WabtVersion, total)
-	want := map[string]int{"modules": 469, "excluded_modules": 3, "assert_return": 24273, "assert_trap": 54, "excluded_assert_invalid": 669, "excluded_assert_malformed": 510, "excluded_register": 1}
 	if !reflect.DeepEqual(total, want) || len(seenExcluded) != len(exclusions) {
 		t.Fatal("pinned native execution coverage changed", total, "want", want, "exclusions", seenExcluded)
 	}
