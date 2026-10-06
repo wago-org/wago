@@ -21,6 +21,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in admitted straight-line AMD64 functions.
 ### Added
 
+- Add bounded rule-directed scalar, SWAR, and SIMD compiler checks, independent
+  result models, activation controls, and equal-budget generation benchmarks.
+
 - Add AMD64 loop-boundary regression checks for deferred producer placement,
   floating-point transport, register pressure, and zero-iteration traps.
 
