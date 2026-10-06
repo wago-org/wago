@@ -65,3 +65,46 @@ execution are excluded from the compile benchmark; setup and compilation are
 excluded from the prepared-call benchmark. No wall-clock threshold is asserted.
 Native ARM64 and admitted memory-region/shared-compiler loops remain outside
 this coverage.
+
+## Shared versus established compiler paths
+
+`TestSharedEstablishedPathPairs` uses the same 22 fixture modules on AMD64 and
+ARM64. A test-only adapter selects established compilation or ordinary shared
+admission with the same options. Tests execute all 71 defined functions in both
+modes, including the void fixture and every function in the many-function row.
+They compare exact semantic result bits, the unreachable trap, ordered deferred
+host events, and visible memory with fixed oracles. An optional independent Node/V8 run checks the same module bytes and
+all exported functions; its absence is a separate skip, not successful coverage.
+
+The matrix includes small and empty functions, 256/257 locals, 32/33 nested
+controls, and both sides of the 16,384-instruction admission budget. Explicit
+fallbacks cover indexed block/loop parameters, compatible branch-table labels,
+unreachable typed blocks, discarded multi-results, FP, SIMD, and memory effects. A mixed module compares the ordered event log
+from an established caller that invokes a shared-eligible callee. An i64 leaf
+returns an exact value above binary64 integer precision.
+Seven typed-control/result variants each violate one type premise and must stop
+at authoritative validation. They are never sent to the native compiler.
+The catch-free typed and unreachable `try_table` shapes reuse the #739
+regression, with actual fallback evidence added here. A GC i31 construction
+and extraction row checks reference fallback without collector allocation.
+Existing EH/GC suites retain broader combinations; this matrix does not claim
+an independent transport or collector-root proof.
+
+Diagnostic builds require actual per-function shared/established evidence,
+record frame sizes, and reject a valid established artifact labeled as shared.
+The log's source-premise text explains the fixture; it is not a new production
+fallback-reason field. A control omits the zero-returning function while its
+untouched result buffer still looks correct; the completed-call gate rejects it.
+Profile builds separately require established fallback and real source ranges,
+even when shared compilation is requested. Ordinary builds leave path evidence
+absent. Locally, all 44 ordinary/diagnostic source and native hash pairs matched.
+
+`BenchmarkSharedEstablishedCompile` includes decode, validation, and codegen
+with one worker and no executable mapping. `BenchmarkSharedEstablishedExecute`
+times the prepared low-level call to function 0, with checks outside timing;
+trap execution is excluded. Both compare matched ordinary builds and report
+allocations. Native bytes, target features, explicit bounds, API, source hashes,
+and loaded-code hashes are recorded. Compile/execution numbers are current-path
+comparisons, not gains from a new compiler change. Native AMD64 and emulated
+ARM64 passed locally; native ARM64 CI is still required. All new state is in
+shared test support or test files; production admission and codegen are unchanged.
