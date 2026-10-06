@@ -75,6 +75,7 @@ func TestRV64OwnedTableArtifactBoundaries(t *testing.T) {
 		name   string
 		mutate func(*Compiled)
 	}{
+		{"legacy-native-table-ABI", func(v *Compiled) { v.nativeTableContextABI = false }},
 		{"legacy-export-fallback", func(v *Compiled) { v.hasTableExportMetadata = false }},
 		{"table-export-index", func(v *Compiled) { v.tableExports = map[string]int{"escape": 1} }},
 		{"negative-table-export-index", func(v *Compiled) { v.tableExports = map[string]int{"escape": -1} }},
@@ -190,7 +191,12 @@ func TestRV64OwnedTableRejectsForeignContextAndWrongTags(t *testing.T) {
 			binary.LittleEndian.PutUint64(a.results, 0x123456789abcdef0)
 			_, err := a.Invoke("call", 0, 5)
 			rv64RejectedTableEntry(t, err)
-			ownedTableTrap(t, rv64RawOwnedTableGuard(t, a, 0, 5), coreruntime.TrapIndirectOutOfBounds)
+			// Fully consistent sibling descriptors are now genuine bridge targets
+			// when physically attached. Public entry rejects their missing roots;
+			// malformed row guards remain independent machine witnesses.
+			if tc.name != "foreign-canonical" && tc.name != "foreign-entry" {
+				ownedTableTrap(t, rv64RawOwnedTableGuard(t, a, 0, 5), coreruntime.TrapIndirectOutOfBounds)
+			}
 			if binary.LittleEndian.Uint64(a.results) != 0x123456789abcdef0 {
 				t.Fatal("bad ownership reached callee result writes")
 			}

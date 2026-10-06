@@ -259,7 +259,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	summaries := make([]swarSummary, len(m.Code))
 	bound := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithImports(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(elements), imported, nil)
+		summaries[i], err = walkSWARPairsWithImportMode(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(elements), imported, mode.foreignTableCalls, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}

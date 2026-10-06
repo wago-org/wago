@@ -99,6 +99,16 @@ versions fail closed. Plugin declarations, BMI2 and bit-count instructions share
 this mask. The AVX-512 plugin tier requires F/DQ/BW/VL and enabled ZMM/opmask state.
 Core and relaxed SIMD do not require FMA, AVX2, AVX-512 or VNNI.
 
+Experimental Linux/RV64 artifacts use architecture ID 3. The retained table-call
+requirement in bit 53 depends on the native-context trap requirement in bit 54.
+Callable owned-table code requires both, synchronous framed controls, full
+signature transport, and authenticated canonical entries whose physical target
+owners survive entry, host resume, and cold-trap decoration. The qualified call
+path can switch to a foreign canonical target in one bounded owned table.
+Imported-table admission, foreign-reference mutation, and function imports
+combined with tables remain gated. QEMU correctness does not establish native
+instruction-cache or performance qualification.
+
 The immutable `shared.AMD64Features` uint32 assigns bits 0–10 to SSSE3, SSE4.1,
 SSE4.2, AVX, AVX2, BMI1, BMI2, LZCNT, POPCNT, FMA and the AVX-512 plugin tier,
 respectively. SSE2 needs no optional bit. Public compilation supplies the cached

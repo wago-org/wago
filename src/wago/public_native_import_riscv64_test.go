@@ -408,6 +408,7 @@ func TestRV64PublicNativeImportAdmissionABIAndArenaBeforePublication(t *testing.
 		// An originless old experimental artifact is deliberately incompatible.
 		view := *c.executionView()
 		view.nativeContextTrapABI = false
+		view.nativeTableContextABI = false
 		if err := railshotValidateCompiled(&view); !errors.Is(err, railshot.ErrUnsupported) {
 			t.Fatal("legacy origin ABI admitted", err)
 		}

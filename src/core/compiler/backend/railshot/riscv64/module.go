@@ -66,6 +66,9 @@ func compile(data []byte, regs []uint8) (*Compiled, error) {
 	return compileOptions(data, regs, CompileOptions{})
 }
 func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.ForeignTableCalls && (!opts.production || !opts.Interruptible) {
+		return nil, unsupported("foreign table calls require the production cooperative runtime ABI")
+	}
 	if opts.Interruptible && !opts.production {
 		return nil, unsupported("cooperative polls require the production trap ABI")
 	}
@@ -129,7 +132,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{production: opts.production, interruptible: opts.Interruptible}
+		mode := emissionMode{production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls}
 		if opts.production {
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)

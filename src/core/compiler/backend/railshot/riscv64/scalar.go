@@ -27,8 +27,8 @@ type target struct {
 type emissionMode struct {
 	production    bool
 	interruptible bool
-	// Private owner-supplied canonical foreign descriptors only. Module/public
-	// admission never enables this until Runtime table ownership is qualified.
+	// The runtime authenticates and retains canonical foreign descriptors at
+	// entry/resume and provides a synchronous root control frame.
 	foreignTableCalls bool
 	functionIndex     uint32
 	entryPC           uint32

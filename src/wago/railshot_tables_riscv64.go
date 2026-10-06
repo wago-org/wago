@@ -18,6 +18,9 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		}
 		return nil
 	}
+	if !c.nativeTableContextABI {
+		return fmt.Errorf("retained native table context ABI is required")
+	}
 	if c.tableCount() != 1 || c.tableImportCount() != 0 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 || c.HasTableInitFunc || (c.TableType != 0 && c.TableType != ValFuncRef) {
 		return fmt.Errorf("one owned framed default-null funcref table32 required")
 	}

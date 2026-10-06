@@ -87,6 +87,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 // admitProductionOptions keeps semantic option admission identical across the
 // scalar compiler and the private SWAR production staging prerequisite.
 func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool) error {
+	if opts.ForeignTableCalls && !opts.Interruptible {
+		return unsupported("foreign table calls require the cooperative framed runtime ABI")
+	}
 	if err := admitProductionStart(m); err != nil {
 		return err
 	}

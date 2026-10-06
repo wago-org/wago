@@ -50,6 +50,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	// Callable public artifacts use the cooperative ABI unconditionally. The
 	// new RV64 architecture identity denotes this framed, polling RV64G ABI.
 	opts.Interruptible = true
+	opts.ForeignTableCalls = true
 	return railshot.CompileModuleWith(m, opts)
 }
 

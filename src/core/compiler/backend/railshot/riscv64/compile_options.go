@@ -32,6 +32,10 @@ type CompileOptions struct {
 	SyncHostCalls                   bool
 	SyncHostSlots                   int
 	Interruptible                   bool
+	// ForeignTableCalls requires a runtime that authenticates and retains all
+	// canonical table targets through entry, host resume and cold decoration.
+	// Entries use a synchronous root control frame and full signature transport.
+	ForeignTableCalls               bool
 	MemoryPressureAt                int
 	MemoryPressure                  func()
 	GCTypeSubtypingRefTest          bool

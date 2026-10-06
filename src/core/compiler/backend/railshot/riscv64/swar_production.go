@@ -29,7 +29,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	} else if len(m.Imports) != 0 {
 		policy = swarModuleHosts
 	}
-	image, err := compileSWARDecodedModuleProfile(m, emissionMode{production: true, interruptible: opts.Interruptible}, policy, swarStateProfile{publicStarts: true, exports: true, importedMemory: true, importedGlobals: true})
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{production: true, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls}, policy, swarStateProfile{publicStarts: true, exports: true, importedMemory: true, importedGlobals: true})
 	if err != nil {
 		return nil, err
 	}

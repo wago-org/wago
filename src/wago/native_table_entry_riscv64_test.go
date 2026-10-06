@@ -27,7 +27,9 @@ func rv64TableEntryHostModule(shared bool) []byte {
 		wasmtest.Section(2, wasmtest.Vec(imports...)),
 		wasmtest.Section(3, []byte{2, 2, 2}),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 3), wasmtest.ExportEntry("safe", 0, 4))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x10, 2, 0, 0x0b}), wasmtest.Code([]byte{0x41, 9, 0x0b}))),
+		// Invoke the table-bearing producer between callbacks. Its replaced row
+		// names the retired foreign target; verify its result before the next park.
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x41, 5, 0x41, 0, 0x10, 1, 0x41, 5, 0x47, 0x04, 0x40, 0, 0x0b, 0x10, 2, 0, 0x0b}), wasmtest.Code([]byte{0x41, 9, 0x0b}))),
 	)
 }
 
@@ -71,11 +73,14 @@ func TestRV64OwnedTableUnsharedPreparedEntryUsesScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if in.syncMode || in.nativeControlIsShared() || in.c.tableCount() == 0 {
-		t.Fatal("unshared owned-table prepared fixture")
+	if !in.syncMode || in.nativeControlIsShared() || in.c.tableCount() == 0 {
+		t.Fatal("owned-table cooperative control fixture")
 	}
-	if in.preparedEntryMode() != preparedEntryGeneral || in.preparedMemoryFreeEntryMode() != preparedEntryGeneral {
-		t.Fatal("unshared table bypasses RV64 scoped admission")
+	// Test the metadata exclusion independently of the new public profile's
+	// mandatory synchronous control, which itself selects General.
+	selector := &Instance{c: in.c}
+	if selector.syncMode || selector.nativeControlIsShared() || selector.preparedEntryMode() != preparedEntryGeneral || selector.preparedMemoryFreeEntryMode() != preparedEntryGeneral {
+		t.Fatal("table metadata bypasses RV64 scoped admission")
 	}
 	fn, err := in.WasmFunc("call")
 	if err != nil {
@@ -208,7 +213,7 @@ func TestRV64TableEntryHostResumeMergeNestedAndColdLifetime(t *testing.T) {
 				}
 				_, err = root.Invoke("call")
 				var trap *coreruntime.TrapError
-				if !errors.As(err, &trap) || trap.Code != coreruntime.TrapUnreachable || len(trap.Frames) != 1 || trap.Frames[0].FunctionIndex != 3 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+				if !errors.As(err, &trap) || trap.Code != coreruntime.TrapUnreachable || len(trap.Frames) != 1 || trap.Frames[0].FunctionIndex != 3 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 18 {
 					t.Fatal("cold scoped root provenance", err)
 				}
 				if root.pluginState.Load().railshotInvocation.tableDepth != 0 || replacement.jm != nil {
