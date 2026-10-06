@@ -1,0 +1,40 @@
+--- FAIL: TestSignedImmediateStoreBytesAndTraps (0.11s)
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=ffffffff7fffffff/size=8/offset=0 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65529 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=ffffffff7fffffff/size=8/offset=7 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65522 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=ffffffff7fffffff/size=8/offset=128 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65401 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=80000000/size=8/offset=0 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65529 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=80000000/size=8/offset=7 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65522 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=80000000/size=8/offset=128 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65401 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=ffffffff/size=8/offset=0 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65529 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=ffffffff/size=8/offset=7 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65522 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=ffffffff/size=8/offset=128 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65401 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=1234567887654321/size=8/offset=0 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65529 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=1234567887654321/size=8/offset=7 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65522 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=1234567887654321/size=8/offset=128 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65401 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=8000000000000000/size=8/offset=0 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65529 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=8000000000000000/size=8/offset=7 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65522 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=8000000000000000/size=8/offset=128 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65401 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=7fffffffffffffff/size=8/offset=0 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65529 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=7fffffffffffffff/size=8/offset=7 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65522 wrote incorrect bytes or changed memory before trapping
+    --- FAIL: TestSignedImmediateStoreBytesAndTraps/mode=1/value=7fffffffffffffff/size=8/offset=128 (0.00s)
+        signed_immediate_store_amd64_test.go:68: addr=65401 wrote incorrect bytes or changed memory before trapping
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.116s
+FAIL

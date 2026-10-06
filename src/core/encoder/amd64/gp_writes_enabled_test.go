@@ -292,6 +292,7 @@ func TestGPWritesReadOnlyAndFPOnly(t *testing.T) {
 		{"store-rsp32", func(a *Asm) { a.StoreRsp32(8, R13) }},
 		{"store-rsp64", func(a *Asm) { a.StoreRsp64(8, R13) }},
 		{"store-imm", func(a *Asm) { a.StoreImm32Mem(R13, 8, 7) }},
+		{"store-imm-index-qword", func(a *Asm) { a.StoreImmIdx(R12, R9, 8, -1, 8) }},
 		{"store-imm-index", func(a *Asm) { a.StoreImmIdx(R12, R9, 8, 7, 4) }},
 		{"store-index", func(a *Asm) { a.StoreIdx(R12, R9, R13, 8, 8) }},
 		{"atomic-memory-only", func(a *Asm) { a.LockAluIdx(0x21, R12, R9, R13, 8, 8) }},

@@ -8,6 +8,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Emit one AMD64 immediate store for i64 constants representable as a signed
+  imm32, and shorten guarded constant-store register lifetimes under pressure.
 - Improve AMD64 execution with bounded local and caller register reuse, direct
   branch-result transfers, memory operands, and scalar/vector loop lowering.
 - Reduce compilation work by skipping GC conversion scans for validated non-GC
@@ -22,6 +24,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- AMD64 guarded i64 constant stores use a single eight-byte native store.
+  ARM64 additionally checks the entire access before writing, preventing
+  partial memory updates from trapping unaligned constant stores.
 - ARM64 table64 bulk operations now trap when `start + count` wraps instead of
   accepting the wrapped range and addressing outside the table allocation.
 - Preserve live AMD64 collector references loaded by `global.get` across later

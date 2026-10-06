@@ -1,0 +1,9 @@
+id,artifact,native_bytes,eligible_store_sites,spills,reloads,shared_functions,established_functions
+sqlite3-query,workloads/applications/sqlite3/sqlite3.wasm,4121558,2198,110,9244,4,1543
+nbody,workloads/compute/nbody.wasm,3583,3,0,2,0,1
+matmul,workloads/compute/matmul.wasm,2829,0,0,1,0,1
+raytrace,workloads/compute/raytrace.wasm,12074,2,0,1,0,2
+json-as,workloads/assemblyscript/json-as.wasm,58022,15,6,117,0,43
+blake-as,workloads/assemblyscript/blake-as.wasm,10315,0,0,1,1,5
+json-as-simd,workloads/assemblyscript/json-as-simd.wasm,66341,19,2,118,0,56
+blake-as-simd,workloads/assemblyscript/blake-as-simd.wasm,39679,0,0,1,0,9

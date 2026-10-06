@@ -1,0 +1,8 @@
+go version go1.27.1 linux/amd64
+CPU=4 REPEATS=7 BENCHTIME=200ms GOMAXPROCS=1
+24a167536b24a1106d223a42f3d3ce9361868257efe76a96c090217b2de317a9  .tmp/store-before-fix-modern.test
+3fb93cdbfc12e7d5f712e5ed0b2824f043550f53eac71c869096baa535d78ab8  .tmp/store-before-fix-sse2.test
+3557c4bd993b6f63d3ebd677234efc221113f1f631393a23ab3d4e3584305966  .tmp/store-after-fix-modern.test
+0a3e731ab2315f8cab591376ee5de8c8b81d93befb4949748171ca21099cdaf0  .tmp/store-after-fix-sse2.test
+cad5b6c9fbd70803d63e53110b2a85bad106d73970f23221af41a43bd6d50747  .tmp/store-late-modern.test
+46d1dbd927a89b9841dbc002ccc518b5002e09a65b2ed5a1a4bbba7b3ede53fe  .tmp/store-late-sse2.test

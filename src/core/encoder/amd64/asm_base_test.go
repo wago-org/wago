@@ -296,6 +296,8 @@ func TestIntegerMemoryAndControlEncodings(t *testing.T) {
 		{"load 32 sib", func(a *Asm) { a.Load32(R8, RSP, 4) }, []byte{0x44, 0x8b, 0x44, 0x24, 4}},
 		{"store 64 sib", func(a *Asm) { a.Store64(R12, 8, R9) }, []byte{0x4d, 0x89, 0x4c, 0x24, 8}},
 		{"store immediate", func(a *Asm) { a.StoreImm32Mem(R8, 12, -1) }, []byte{0x41, 0xc7, 0x40, 12, 0xff, 0xff, 0xff, 0xff}},
+		{"store indexed qword signed immediate", func(a *Asm) { a.StoreImmIdx(R8, R9, 4, -1, 8) }, []byte{0x4b, 0xc7, 0x44, 0x08, 4, 0xff, 0xff, 0xff, 0xff}},
+		{"store indexed qword low registers", func(a *Asm) { a.StoreImmIdx(RBX, RCX, 0, -2147483648, 8) }, []byte{0x48, 0xc7, 0x04, 0x0b, 0, 0, 0, 0x80}},
 		{"store indexed byte", func(a *Asm) { a.StoreImmIdx(R8, R9, 4, 0xab, 1) }, []byte{0x43, 0xc6, 0x44, 0x08, 4, 0xab}},
 		{"alu immediate byte", func(a *Asm) { a.AluRI(5, R8, -1, true) }, []byte{0x49, 0x83, 0xe8, 0xff}},
 		{"alu immediate long", func(a *Asm) { a.AluRI(0, RAX, 0x1234, false) }, []byte{0x81, 0xc0, 0x34, 0x12, 0, 0}},

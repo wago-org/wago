@@ -1,0 +1,23 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sqlite3-query-16         	       1	 316655359 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCompileFull/sqlite3-query-16         	       1	  96899058 ns/op	   4129270 code-B	 8406496 B/op	    4937 allocs/op
+BenchmarkCompileFull/nbody-16                 	       1	    290931 ns/op	      3583 code-B	   93624 B/op	     172 allocs/op
+BenchmarkCompileFull/matmul-16                	       1	    312772 ns/op	      2829 code-B	   81760 B/op	     164 allocs/op
+BenchmarkCompileFull/raytrace-16              	       1	    354289 ns/op	     12074 code-B	  210224 B/op	     206 allocs/op
+BenchmarkCompileFull/json-as-16               	       1	   1903510 ns/op	     67238 code-B	  312240 B/op	     401 allocs/op
+BenchmarkCompileFull/blake-as-16              	       1	    710892 ns/op	     10315 code-B	  223320 B/op	     233 allocs/op
+BenchmarkCompileFull/json-as-simd-16          	       1	   1958532 ns/op	     80685 code-B	  331904 B/op	     434 allocs/op
+BenchmarkCompileFull/blake-as-simd-16         	       1	   1274080 ns/op	     37439 code-B	  542200 B/op	     275 allocs/op
+BenchmarkExec/nbody.step-16                   	       1	    243271 ns/op	         8.000 calls/batch
+BenchmarkExec/matmul.run-16                   	       1	     47783 ns/op	        42.00 calls/batch
+BenchmarkExec/raytrace.render-16              	       1	    345842 ns/op	         6.000 calls/batch
+BenchmarkExec/json-as.serializeN-16           	       1	     20627 ns/op	       102.0 calls/batch
+BenchmarkExec/json-as.deserializeN-16         	       1	     33554 ns/op	        55.00 calls/batch
+BenchmarkExec/blake-as.hashN-16               	       1	    439539 ns/op	         5.000 calls/batch
+BenchmarkExec/json-as-simd.serializeN-16      	       1	     24675 ns/op	        83.00 calls/batch
+BenchmarkExec/json-as-simd.deserializeN-16    	       1	     51079 ns/op	        42.00 calls/batch
+BenchmarkExec/blake-as-simd.hashN-16          	       1	    390573 ns/op	         6.000 calls/batch
+PASS
