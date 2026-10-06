@@ -62,29 +62,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	if opts.SyncHostSlots < 0 || opts.SyncHostSlots > 65535 {
-		return nil, fmt.Errorf("rv64: invalid synchronous host slot capacity %d", opts.SyncHostSlots)
-	}
-	if err := admitHostBindings(m, &opts); err != nil {
-		return nil, err
-	}
-	if opts.ElideBoundsChecks || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.CustomInstructions) != 0 || len(opts.Codegen.Module.GCTypeLayouts) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC || opts.Codegen.Module.Features.V128 {
-		return nil, unsupported("production host/guard/GC/custom lowering is pending")
-	}
-	// The public frontend emits inert function sentinels for scalar types.
-	// They do not require heap lowering, but nonfunction descriptors do.
-	if err := gc.ValidateTypeDescs(opts.Codegen.Module.GCTypeDescs); err != nil {
-		return nil, err
-	}
-	for _, desc := range opts.Codegen.Module.GCTypeDescs {
-		if desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper {
-			return nil, unsupported("production GC descriptor lowering is pending")
-		}
-	}
-	if opts.Profile || opts.SourceMaps || opts.UnwindMaps || opts.Stats != nil || opts.CollectInlineReport {
-		return nil, unsupported("finalized profiling metadata is pending")
-	}
-	if _, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas); err != nil {
+	if err := admitProductionOptions(m, &opts, false); err != nil {
 		return nil, err
 	}
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
@@ -95,6 +73,44 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if err != nil {
 		return nil, err
 	}
+	return stageProductionModule(c, opts)
+}
+
+// admitProductionOptions keeps semantic option admission identical across the
+// scalar compiler and the private SWAR production staging prerequisite.
+func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool) error {
+	if len(opts.Codegen.Module.GCTypeDescs) > MaxFunctions {
+		return unsupported("production function descriptor count bound")
+	}
+	if opts.SyncHostSlots < 0 || opts.SyncHostSlots > 65535 {
+		return fmt.Errorf("rv64: invalid synchronous host slot capacity %d", opts.SyncHostSlots)
+	}
+	if err := admitHostBindings(m, opts); err != nil {
+		return err
+	}
+	if opts.ElideBoundsChecks || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.CustomInstructions) != 0 || len(opts.Codegen.Module.GCTypeLayouts) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC || !allowSWAR && opts.Codegen.Module.Features.V128 {
+		return unsupported("production host/guard/GC/custom lowering is pending")
+	}
+	// The public frontend emits inert function sentinels for scalar types.
+	// They do not require heap lowering, but nonfunction descriptors do.
+	for _, desc := range opts.Codegen.Module.GCTypeDescs {
+		if desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper {
+			return unsupported("production GC descriptor lowering is pending")
+		}
+	}
+	if err := gc.ValidateTypeDescs(opts.Codegen.Module.GCTypeDescs); err != nil {
+		return err
+	}
+	if opts.Profile || opts.SourceMaps || opts.UnwindMaps || opts.Stats != nil || opts.CollectInlineReport {
+		return unsupported("finalized profiling metadata is pending")
+	}
+	if _, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas); err != nil {
+		return err
+	}
+	return nil
+}
+
+func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModule, error) {
 	if opts.MemoryPressure != nil && (opts.MemoryPressureAt == 0 || len(c.code) >= opts.MemoryPressureAt) {
 		opts.MemoryPressure()
 	}
