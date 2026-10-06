@@ -491,3 +491,36 @@ and checks that all other vectors and store sources retain their facts.
 known input facts on every iteration. Both reuse the byte buffer. A checker
 state test requires allocation-free kill operations and checks partial-byte
 invalidation, clone isolation, and unknown-value propagation.
+
+## ARM64 worker reuse and adapter keys
+
+`TestWorkerScratchMatchesFresh` in the ARM64 backend compares 11 functions
+with fresh workers after 14 fixed predecessor sequences, under memory32/64
+and ordinary/compact code policies (616 pairs). It compares exact native bytes,
+relocations, internal entries, compiler path and function/source metadata.
+Only compile/admission timing is normalized. Seven inputs per pair check
+integer, FP and SIMD results, valid memory writes and division traps. Actual
+native execution starts only after the fresh/reused comparison passes.
+
+This matrix found a stale adapter cache key: identical function signatures
+could use X17 or X27 for the memory-size value. The cache now checks both.
+The two register fields fit existing padding; its size remains 280 bytes.
+`TestAdapterTemplateCacheMemoryRegisterArm64` checks candidate promotion and
+lookup with changed register keys. Existing GC adapter metadata tests remain
+in use; this matrix does not establish collector-root or EH transport proofs.
+
+Run `python3 tests/scripts/check-arm64-worker-reset-control.py` on ARM64, or
+add `--runner /path/to/qemu-aarch64` for emulation. A temporary Go overlay
+omits the register-key check. The comparison must reject the changed native
+bytes before the first native call. No checkout source or production switch
+is changed. The error-to-reuse test rejects bad backend input without
+executing it, then checks the next valid function. Worker release must clear
+tracked retained scalar/node/control scratch.
+
+`BenchmarkWorkerScratchReuse` measures existing fresh/reused compiler work.
+`BenchmarkWorkerScratchMixed` includes adapter hits and register changes in
+one fixed sequence. Both report allocations and retained scratch; those
+counters do not include every worker allocation. Native ARM64 timing must be
+measured on ARM64 hardware. QEMU timing is only a bounded cost check for the
+emulated compiler. Shared admission is checked separately from profile builds,
+which use the established path and record source ranges.

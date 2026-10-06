@@ -29,6 +29,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Invalidate stale vector facts after indexed AMD64 loads in the optional
   register-allocation checker, including encoded register aliases, without
   allocating temporary kill values.
+- Key ARM64 worker adapter reuse by the memory-size register to prevent stale
+  entry code when leaf and memory-access functions share a type.
 
 ## [v0.1.0-beta.12] - 2026-10-07
 
