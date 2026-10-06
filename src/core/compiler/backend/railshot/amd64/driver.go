@@ -330,9 +330,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x6c:
 		f.pushBinOp(opMul, mtI32)
 	case 0x6d:
-		f.pushBinOp(opDivS, mtI32)
+		if !f.tryDivRemPair(r, op, opDivS, mtI32) {
+			f.pushBinOp(opDivS, mtI32)
+		}
 	case 0x6e:
-		f.pushBinOp(opDivU, mtI32)
+		if !f.tryDivRemPair(r, op, opDivU, mtI32) {
+			f.pushBinOp(opDivU, mtI32)
+		}
 	case 0x6f:
 		f.pushBinOp(opRemS, mtI32)
 	case 0x70:
@@ -370,9 +374,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x7e:
 		f.pushBinOp(opMul, mtI64)
 	case 0x7f:
-		f.pushBinOp(opDivS, mtI64)
+		if !f.tryDivRemPair(r, op, opDivS, mtI64) {
+			f.pushBinOp(opDivS, mtI64)
+		}
 	case 0x80:
-		f.pushBinOp(opDivU, mtI64)
+		if !f.tryDivRemPair(r, op, opDivU, mtI64) {
+			f.pushBinOp(opDivU, mtI64)
+		}
 	case 0x81:
 		f.pushBinOp(opRemS, mtI64)
 	case 0x82:
