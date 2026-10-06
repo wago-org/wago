@@ -89,6 +89,8 @@ func (f *target) emitProductionTrap(code int, sourcePC uint32) {
 	f.a.Ld(enc.X12, enc.X25, -abi.TrapCellPtrOffset)
 	f.a.Constant32(enc.X5, uint32(code))
 	f.a.Sw(enc.X5, enc.X12, 0)
+	f.a.Ld(enc.X5, enc.X25, -abi.RV64NativeContextOffset)
+	f.a.Sd(enc.X5, enc.X12, 8)
 	source := uint64(sourcePC)<<32 | uint64(f.mode.functionIndex+1)
 	f.a.Constant64(enc.X5, int64(source))
 	f.a.Sd(enc.X5, enc.X12, 16)

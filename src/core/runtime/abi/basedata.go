@@ -30,6 +30,9 @@ const (
 	// Offset 16 is occupied by the memory maximum-pages cache.
 	RV64TrapContinuationOffset = 32
 	RV64TrapReentrySPOffset    = 24
+	// RV64NativeContextOffset reserves the legacy spill scratch word for the
+	// stable activation context identity. RV64 spills live on its framed stack.
+	RV64NativeContextOffset = 48
 )
 
 // Basedata offsets are byte distances below the linear-memory base.

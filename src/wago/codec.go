@@ -23,7 +23,8 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top nine bits avoids growing artifacts.
+	// low range; reserving the top ten bits avoids growing artifacts.
+	compiledRV64ContextTrapABI            uint64 = 1 << 54
 	compiledGCExecutionI31Product         uint64 = 1 << 55
 	compiledFuncRefContextHeader          uint64 = 1 << 56
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
@@ -368,6 +369,9 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
+	if c.nativeContextTrapABI {
+		required |= compiledRV64ContextTrapABI
+	}
 	if c.stagedGCI31Product() != 0 {
 		required |= compiledGCExecutionI31Product
 	}
@@ -1092,13 +1096,17 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		return err
 	}
 	gcExecution := required & compiledGCExecutionMask
+	c.nativeContextTrapABI = required&compiledRV64ContextTrapABI != 0
+	if c.nativeContextTrapABI && compiledArchitecture != 3 {
+		return fmt.Errorf("RV64 native-context trap ABI on a foreign architecture")
+	}
 	c.requiredAMD64Features = shared.AMD64Features((required & compiledCPUFeatures) >> 32)
 	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
 		return fmt.Errorf("unknown AMD64 CPU requirements %#x", c.requiredAMD64Features)
 	}
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
 	c.HasStart, c.StartIsImport, c.StartLocalFunc, c.StartImportIdx = false, false, 0, 0
 	if required&compiledStartFunction != 0 {
 		index, err := r.u32()

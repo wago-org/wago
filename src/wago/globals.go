@@ -1102,6 +1102,7 @@ type Compiled struct {
 	dynamicImports            bool
 	dynamicFuncrefEscape      bool
 	needsFuncRefContextHeader bool
+	nativeContextTrapABI      bool // RV64 active-context identity and fresh cold-trap provenance
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
 	registerABIDisabled bool

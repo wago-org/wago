@@ -280,6 +280,9 @@ func TestRV64PublicSynchronousHostBindingAndArtifactGatesBeforeMapping(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
 	for _, binding := range []any{export, (*HostFuncRef)(nil), I32HostEvent(func(int32) {}), func(int64) int64 { return 0 }, nil} {
 		c, err := Compile(nil, data)
 		if err != nil {
@@ -371,12 +374,16 @@ func TestRV64PublicSynchronousHostFrozenMetadataBindingPolicy(t *testing.T) {
 				t.Fatal("binding fixture already callable")
 			}
 			instance, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.host", binding)})
-			if i == 0 {
+			if i == 0 || i == 1 {
 				if err != nil {
 					t.Fatal("frozen supported binding", loaded, err)
 				}
 				got, err := instance.Invoke("call", 8)
-				if err != nil || !slices.Equal(got, []uint64{9}) {
+				want := uint64(9)
+				if i == 1 {
+					want = 8
+				}
+				if err != nil || !slices.Equal(got, []uint64{want}) {
 					t.Fatal(got, err)
 				}
 				instance.Close()

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -96,8 +97,24 @@ func (frame TrapFrame) String() string {
 // Frames is ordered from the trap site outward. The current handler-jump ABI
 // records the precise innermost frame without adding work to successful calls.
 type TrapError struct {
-	Code   TrapCode    `json:"code"`
-	Frames []TrapFrame `json:"frames,omitempty"`
+	Code                TrapCode    `json:"code"`
+	Frames              []TrapFrame `json:"frames,omitempty"`
+	nativeOrigin        uintptr
+	nativeOriginPresent bool
+	nativeOriginHandled uint32
+}
+
+// TakeNativeOrigin consumes runtime-internal provenance once. The public
+// boundary resolves only physically attached owners while their invocation is
+// retained. Clearing the identity prevents a later rethrow from resolving a
+// recycled context address. The identity is never dereferenced or serialized.
+func (e *TrapError) TakeNativeOrigin() (identity uintptr, present, pending bool) {
+	if e == nil || !atomic.CompareAndSwapUint32(&e.nativeOriginHandled, 0, 1) {
+		return 0, false, false
+	}
+	identity, present = e.nativeOrigin, e.nativeOriginPresent
+	e.nativeOrigin, e.nativeOriginPresent = 0, false
+	return identity, present, true
 }
 
 func (e *TrapError) Error() string {
@@ -125,6 +142,7 @@ func trapErrorFromBuffer(code TrapCode, trap []byte) *TrapError {
 		return err
 	}
 	pc := uint32(location >> 32)
+	err.nativeOrigin, err.nativeOriginPresent = nativeTrapOrigin(trap)
 	err.Frames = []TrapFrame{{
 		FunctionIndex:     encodedFunction - 1,
 		ProgramCounter:    pc,

@@ -11,8 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// This private prerequisite emits no public foreign-import admission. Its owner
-// must retain the framed target, both contexts and homes, serialize native
+// The activation owner must retain the framed target, both contexts and homes, serialize native
 // execution, and publish the returned bytes through the normal code mapper.
 // Absolute addresses belong to this activation owner and must never be persisted.
 // Entry inherits a valid aligned foreign SP and installed nonzero stack fence.
@@ -28,6 +27,23 @@ type nativeImportTarget struct {
 
 const nativeImportFrameBytes = 64
 const nativeImportTransportBytes = 256 * 8
+
+// NativeImportTarget is a trusted physically retained framed RV64 target. The
+// transport slices must be retained off-heap for the complete activation; they
+// may belong to the importing edge owner, independently of the target's root
+// invocation buffers. This descriptor is never serialized.
+type NativeImportTarget struct {
+	Entry, Home, Context       uintptr
+	Arguments, Results         []byte
+	ArgumentSlots, ResultSlots int
+}
+
+// NativeImportThunk emits an instance-owned bridge after target attachment and
+// exact signature/ABI validation. Publication and lifetime remain the owner's
+// responsibility; callers must use the normal W^X/process-wide icache mapper.
+func NativeImportThunk(callee NativeImportTarget, callerHome, callerContext uintptr, importIndex uint32) ([]byte, error) {
+	return nativeImportThunk(nativeImportTarget{entry: callee.Entry, home: callee.Home, context: callee.Context, arguments: callee.Arguments, results: callee.Results, argumentSlots: callee.ArgumentSlots, resultSlots: callee.ResultSlots}, callerHome, callerContext, importIndex)
+}
 
 var nativeImportContextFields = [...]struct{ source, destination int32 }{
 	{0, 40}, {8, 80}, {16, abi.FuncRefDescPtrOffset},
@@ -97,6 +113,7 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 		}
 	}
 	copyContext(enc.X11)
+	a.Sd(enc.Scratch1, enc.X11, -abi.RV64NativeContextOffset)
 	for _, offset := range nativeImportExecutionFields {
 		a.Ld(enc.Scratch0, enc.X25, -offset)
 		a.Sd(enc.Scratch0, enc.X11, -offset)
@@ -114,6 +131,7 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	}
 	a.Ld(enc.Scratch1, enc.SP, 16)
 	copyContext(enc.X25)
+	a.Sd(enc.Scratch1, enc.X25, -abi.RV64NativeContextOffset)
 	a.Ld(enc.Scratch0, enc.SP, 56)
 	a.Sd(enc.Scratch0, enc.X25, -40)
 	a.Ld(enc.X10, enc.SP, 24)
@@ -135,7 +153,7 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 		}
 	}
 	// A wrapper has an import ordinal but no Wasm instruction PC. Public source
-	// attribution and cold-unwind rebinding are separate admission prerequisites.
+	// attribution and cold-unwind rebinding are enforced by public admission.
 	f.emitProductionTrap(abi.TrapCalledFnNotLinked, ^uint32(0))
 	for _, site := range []int{below, short} {
 		if err := a.PatchLong(site, int64(a.Len())); err != nil {

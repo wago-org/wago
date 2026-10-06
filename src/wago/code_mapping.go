@@ -92,6 +92,7 @@ type compilerCompiledOwner struct {
 }
 
 func newCompilerCompiled(initial Compiled) *Compiled {
+	initial.nativeContextTrapABI = railshotNativeContextTrapABI()
 	owner := &compilerCompiledOwner{Compiled: initial}
 	owner.Compiled.codeCache = &owner.state.codeCache
 	owner.Compiled.validateMemo = &owner.state.validateMemo

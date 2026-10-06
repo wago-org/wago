@@ -15,6 +15,9 @@ import (
 // source compilation before any executable image or host thunk is published.
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
+	if !c.nativeContextTrapABI {
+		return reject("native-context trap ABI is required")
+	}
 	if len(c.code) > railshot.MaxCodeBytes || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions || len(c.Types) > railshot.MaxFunctions || len(c.GCTypeDescs) > railshot.MaxFunctions || len(c.Globals) > 256 {
 		return reject("bounded artifact shape")
 	}
@@ -191,7 +194,15 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 				return fmt.Errorf("public RV64 import %q: %w", key, err)
 			}
 			continue
-		case *InstanceExport, I32HostEvent, gatedI32HostEvent:
+		case *InstanceExport:
+			if c.HasStart && c.StartIsImport && c.StartImportIdx == i {
+				return fmt.Errorf("%w: public RV64 native imported start is pending", railshot.ErrUnsupported)
+			}
+			if err := railshotValidateNativeExport(c, i, value); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
+			continue
+		case I32HostEvent, gatedI32HostEvent:
 			return fmt.Errorf("%w: public RV64 import %q target ownership/protocol is pending", railshot.ErrUnsupported, key)
 		}
 		if _, err := bindSyncHostImport(value, c.importFuncSigs[i]); err != nil {

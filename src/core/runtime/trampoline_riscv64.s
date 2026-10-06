@@ -10,6 +10,10 @@ TEXT ·enterNativeRaw(SB),NOSPLIT|NOFRAME,$0-48
  MOV code+0(FP), T0
  MOV linMem+16(FP), A1
  MOV trap+24(FP), A2
+ // Source payload belongs to this entry, including bridge-only rejection.
+ // Preserve the atomic interruption code; never reuse an earlier origin/PC.
+ MOV ZERO, 8(A2)
+ MOV ZERO, 16(A2)
  MOV foreignStackTop+40(FP), T1
  BEQ T0, ZERO, bounds
  BEQ A1, ZERO, bounds

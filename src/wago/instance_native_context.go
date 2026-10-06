@@ -302,6 +302,7 @@ func (in *Instance) bindNativeContext() error {
 	in.invalidateNativeContext()
 	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), wruntime.InstanceContextBytes)
 	in.jm.BindInstanceContextBytes(ctx)
+	railshotSetNativeContextIdentity(in.jm, in.nativeContext)
 	primary := in.jm.LinMemBase()
 	in.jm.SetGuardOwner(primary)
 	return in.refreshMemoryDirectory()

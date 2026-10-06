@@ -248,7 +248,11 @@ func clearTrapUnlessInterrupted(trap []byte) {
 		// because this fast path never stores over it.
 		if old == 0 || TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, 0) {
 			if len(trap) >= TrapBufferBytes {
-				clear(trap[16:24])
+				if goruntime.GOARCH == "riscv64" {
+					clear(trap[8:24])
+				} else {
+					clear(trap[16:24])
+				}
 			}
 			return
 		}

@@ -246,7 +246,7 @@ func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) i
 			}
 		}
 	}
-	return need - baselineHostBytes + actualHostBytes
+	return need - baselineHostBytes + actualHostBytes + railshotNativeImportArenaBytes(c, imports)
 }
 
 func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) error {
@@ -432,7 +432,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			opts.maxInstanceMetadataBytes = c.validateMemo.maxInstanceMetadataBytes
 		}
 	}
-	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
+	syncMode := c.importsRequireSync(imports, opts.forceSyncHost || railshotNativeImportArenaBytes(c, imports) != 0)
 	if syncMode {
 		// A forced host mode can request a protocol the target cannot implement,
 		// even for an import-free module. Reject before footprint helpers whose
@@ -690,11 +690,13 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		}
 		nativeExecutionMu.Lock()
 		var previous, empty [runtime.InstanceContextBytes]byte
+		previousOrigin := railshotNativeContextIdentity(jm)
 		jm.CaptureInstanceContextBytes(previous[:])
 		binary.LittleEndian.PutUint64(previous[runtime.InstanceContextGCNativeViewOffset:], uint64(jm.GCNativeViewPtr()))
 		finishMemoryContext = func(initialized bool) {
 			if !initialized {
 				jm.BindInstanceContextBytes(previous[:])
+				railshotSetNativeContextIdentity(jm, previousOrigin)
 			}
 			nativeExecutionMu.Unlock()
 			if b.constructionGCDomainLocked {
@@ -714,6 +716,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			return nil, err
 		}
 		jm.BindInstanceContextBytes(empty[:])
+		railshotSetNativeContextIdentity(jm, 0)
 	}
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
@@ -807,7 +810,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
-	sharedThunkBase, sharedThunkOffsets, ownedThunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode)
+	sharedThunkBase, sharedThunkOffsets, ownedThunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode, ar, jm.LinMemBase(), nativeContextPtr)
 	if err != nil {
 		return nil, err
 	}
@@ -819,6 +822,13 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			key := c.functionImportBindingKey(i)
 			off := i * runtime.ImportDispatchEntryBytes
 			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+				if address := ownedThunkAddr[uint32(i)]; address != 0 {
+					binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], address)
+					binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], selfLinMem)
+					binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(nativeContextPtr))
+					binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
+					continue
+				}
 				if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 					return nil, fmt.Errorf("cross-instance import %q references an unavailable function", displayKey)
 				}
@@ -2135,14 +2145,23 @@ func hostThunkAddr(fidx int, sharedBase uintptr, sharedOffsets []int, ownedAddr 
 	return 0, false
 }
 
-func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64, ownedMem []byte, err error) {
+func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool, arena *runtime.Arena, callerHome, callerContext uintptr) (sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64, ownedMem []byte, err error) {
 	var blob []byte
 	offs := map[uint32]int{}
 	needsShared := false
 	for fidx := 0; fidx < c.NumImports; fidx++ {
 		displayKey := c.Imports[fidx]
 		key := c.functionImportBindingKey(fidx)
-		if _, isCross := imports[key].(*InstanceExport); isCross {
+		if export, isCross := imports[key].(*InstanceExport); isCross {
+			code, handled, nativeErr := railshotNativeImportCode(c, export, arena, callerHome, callerContext, fidx)
+			if nativeErr != nil {
+				return 0, nil, nil, nil, nativeErr
+			}
+			if handled {
+				blob = railshotAlignNativeImportBlob(blob)
+				offs[uint32(fidx)] = len(blob)
+				blob = append(blob, code...)
+			}
 			continue // cross-instance funcref, not a host function
 		}
 		if syncMode {
@@ -2165,6 +2184,7 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (s
 				if binding, ok := owner.dispatchBinding(c, fidx); ok {
 					dispatchIndex = binding.dispatchIndex
 				}
+				blob = railshotAlignNativeImportBlob(blob)
 				offs[uint32(fidx)] = len(blob)
 				blob = append(blob, railshotHostIndirectOwnedSyncThunk(hostFuncRefDispatchBit|dispatchIndex, paramSlots, resultSlots)...)
 				continue

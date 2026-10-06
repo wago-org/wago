@@ -331,7 +331,7 @@ func TestRV64PublicImportedStartForeignTargetRejectedBeforePublication(t *testin
 			defer in.Close()
 			t.Fatal("foreign start returned instance")
 		}
-		if err == nil || !strings.Contains(err.Error(), "target ownership/protocol is pending") || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || target.referenceLifetime().snapshot().ResourceRoots != before {
+		if err == nil || !strings.Contains(err.Error(), "native imported start is pending") || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || target.referenceLifetime().snapshot().ResourceRoots != before {
 			t.Fatal("foreign start published/retained target", err)
 		}
 	}
