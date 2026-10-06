@@ -96,6 +96,11 @@ func equalWorkerModuleStatsAMD64(a, b *ModuleStats) bool {
 	bCopy.Funcs = append([]*CodegenStats(nil), b.Funcs...)
 	aCopy.NativeSize.CompilerCodeArenaBytes = 0
 	bCopy.NativeSize.CompilerCodeArenaBytes = 0
+	// Serial compilation records retained scratch; parallel workers release it
+	// before reporting. Resource totals also depend on worker count.
+	aCopy.Compile.ScalarScratchPeak, bCopy.Compile.ScalarScratchPeak = 0, 0
+	aCopy.Compile.ScalarScratchRetained, bCopy.Compile.ScalarScratchRetained = 0, 0
+	aCopy.Compile.ScalarScratchDiscarded, bCopy.Compile.ScalarScratchDiscarded = 0, 0
 	aCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
 	bCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
 	aCopy.Compile.NodeScratchReserved, bCopy.Compile.NodeScratchReserved = 0, 0
@@ -112,6 +117,7 @@ func equalWorkerModuleStatsAMD64(a, b *ModuleStats) bool {
 		}
 		aFunc, bFunc := *aCopy.Funcs[i], *bCopy.Funcs[i]
 		aFunc.CompileNanos, bFunc.CompileNanos = 0, 0
+		aFunc.ScalarAdmissionNanos, bFunc.ScalarAdmissionNanos = 0, 0
 		aCopy.Funcs[i], bCopy.Funcs[i] = &aFunc, &bFunc
 	}
 	return reflect.DeepEqual(&aCopy, &bCopy)
@@ -226,5 +232,40 @@ func assertCompiledModuleEqual(t *testing.T, got, want *encoder.CompiledModule) 
 	}
 	if got.PreparedIsolatedTables != want.PreparedIsolatedTables {
 		t.Fatalf("PreparedIsolatedTables = %v, want %v", got.PreparedIsolatedTables, want.PreparedIsolatedTables)
+	}
+}
+
+func TestWorkerModuleStatsComparison(t *testing.T) {
+	fresh := func() *ModuleStats {
+		return &ModuleStats{Funcs: []*CodegenStats{{SharedScalar: true, CodeBytes: 48, FrameBytes: 16}}}
+	}
+	a, b := fresh(), fresh()
+	a.Compile.ScalarScratchPeak = 128
+	a.Compile.ScalarScratchRetained = 128
+	b.Compile.ScalarScratchDiscarded = 256
+	a.Funcs[0].ScalarAdmissionNanos = 1
+	b.Funcs[0].ScalarAdmissionNanos = 99
+	if !equalWorkerModuleStatsAMD64(a, b) {
+		t.Fatal("worker measurements must not affect output comparison")
+	}
+	if a.Funcs[0].ScalarAdmissionNanos != 1 || a.Compile.ScalarScratchRetained != 128 {
+		t.Fatal("comparison changed its input")
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*ModuleStats)
+	}{
+		{"code size", func(s *ModuleStats) { s.Funcs[0].CodeBytes++ }},
+		{"frame size", func(s *ModuleStats) { s.Funcs[0].FrameBytes++ }},
+		{"compiler path", func(s *ModuleStats) { s.Funcs[0].SharedScalar = false }},
+		{"source offset", func(s *ModuleStats) { s.Funcs[0].SourceInternalOffset++ }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := fresh()
+			tc.change(changed)
+			if equalWorkerModuleStatsAMD64(fresh(), changed) {
+				t.Fatal("semantic metadata difference was ignored")
+			}
+		})
 	}
 }
