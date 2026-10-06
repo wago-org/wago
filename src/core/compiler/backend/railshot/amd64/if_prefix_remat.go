@@ -128,6 +128,8 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 		st = storage{kind: stLocalReg, typ: mtI32, reg: pr, idx: uint32(x)}
 	}
 	f.replaceStorage(local, st)
+	// The local was detached during replacement; restore its summary as well.
+	f.s.recordStorageEffects(st)
 	result := f.s.back()
 	first := root
 	if root.isDeferred() {
