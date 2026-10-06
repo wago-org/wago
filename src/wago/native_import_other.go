@@ -23,3 +23,25 @@ func railshotNativeImportCode(*Compiled, *InstanceExport, *coreruntime.Arena, ui
 	return nil, false, nil
 }
 func railshotTrapOwner(root *Instance, _ *coreruntime.TrapError) (*Instance, bool) { return root, true }
+
+func railshotReexportCallSlots(_ *Compiled, params, results int) (int, int, error) {
+	return params, results, nil
+}
+
+func railshotInvokeNativeReexport(*Instance, string, int, []uint64, invocationContextSet) ([]uint64, bool, error) {
+	return nil, false, nil
+}
+
+func railshotResolveNativeHostControl(*Instance, uintptr) *Instance { return nil }
+
+func railshotRegisterNativeHostOwner(*Instance) error { return nil }
+func railshotUnregisterNativeHostOwner(*Instance)     {}
+
+type railshotInvocationState struct{}
+
+func railshotSetInvocationGateOwner(*instancePluginState, invocationID) {}
+func railshotCanReenter(*Instance, invocationID) bool                   { return true }
+
+func railshotCallbackHostScope(_ *Instance, _ uintptr, ordinary *hostCallScope) *hostCallScope {
+	return ordinary
+}

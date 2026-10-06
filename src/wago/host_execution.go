@@ -218,6 +218,11 @@ func registerHostControl(in *Instance) error {
 		}
 	}
 
+	if err := railshotRegisterNativeHostOwner(in); err != nil {
+		coreruntime.UnregisterHostCtrlFrame(in.ctrl)
+		hostControlInstances.Delete(ptr)
+		return err
+	}
 	return nil
 }
 
@@ -225,6 +230,7 @@ func unregisterHostControl(in *Instance) {
 	if in == nil || len(in.ctrl) == 0 {
 		return
 	}
+	railshotUnregisterNativeHostOwner(in)
 	ptr := offHeapSlicePtr(in.ctrl)
 	if current, ok := hostControlInstances.Load(ptr); ok && current == in {
 		hostControlInstances.Delete(ptr)
@@ -255,10 +261,12 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	active := root
 	if root == nil || ctrl != offHeapSlicePtr(root.ctrl) {
 		value, ok := hostControlInstances.Load(ctrl)
-		if !ok {
-			panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
+		if ok {
+			active, ok = value.(*Instance)
+		} else {
+			active = railshotResolveNativeHostControl(root, ctrl)
+			ok = active != nil
 		}
-		active, ok = value.(*Instance)
 		if !ok || active == nil {
 			panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
 		}
@@ -388,11 +396,25 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 			restore = nativeExecutionEpoch != epoch
 		}
 		if restore {
-			if err := active.bindNativeContext(); err != nil {
-				panic(invalidHostReference{err: err})
+			// Foreign producer reentry can replace its custom-context word while
+			// preparing its own engine. Read that Go snapshot under its life lock.
+			foreignRV := railshotNativeContextTrapABI() && active != root
+			if foreignRV {
+				active.lifeMu.Lock()
 			}
-			active.jm.SetStackFence(active.eng.StackLimit())
-			if err := active.jm.RebindTrapCell(active.trap); err != nil {
+			bindErr := active.bindNativeContext()
+			if foreignRV {
+				active.lifeMu.Unlock()
+			}
+			if bindErr != nil {
+				panic(invalidHostReference{err: bindErr})
+			}
+			stackOwner := active
+			if railshotNativeContextTrapABI() && root != nil {
+				stackOwner = root
+			}
+			active.jm.SetStackFence(stackOwner.eng.StackLimit())
+			if err := active.jm.RebindTrapCell(stackOwner.trap); err != nil {
 				panic(invalidHostReference{err: err})
 			}
 			// bindNativeContext restores the instance's immutable context image,
@@ -405,6 +427,8 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	// Only arbitrary host code can synchronously re-enter this instance. The
 	// active marker includes the callback-scoped invocation identity, so another
 	// call chain cannot masquerade as this parked activation.
+	// Callback authority covers the active producer. RV64 separately checks
+	// ownership of its public gate before allowing a scratch-swapping reentry.
 	markNativeActiveState(state, id)
 	defer unmarkNativeActiveState(state, id)
 	if root != nil && root != active {

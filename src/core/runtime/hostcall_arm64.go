@@ -123,3 +123,7 @@ func mustEncode(ok bool) {
 		panic("arm64 host-call stub encoding failed")
 	}
 }
+
+const registerFixedHostCtrlFrames = false
+
+func (e *Engine) validateUnregisteredHostCtrl(uintptr) error { return nil }

@@ -300,7 +300,7 @@ func (in *Instance) lockInvocationContext(ctx context.Context, id invocationID) 
 	if id == 0 {
 		id = newInvocationID()
 	}
-	state.invocationID = id
+	state.setInvocationIdentity(id)
 	return state, nil
 }
 
@@ -314,12 +314,12 @@ func (in *Instance) lockInvocation(id invocationID) *instancePluginState {
 	if id == 0 {
 		id = newInvocationID()
 	}
-	state.invocationID = id
+	state.setInvocationIdentity(id)
 	return state
 }
 
 func (state *instancePluginState) unlockInvocation() {
-	state.invocationID = 0
+	state.setInvocationIdentity(0)
 	state.invokeMu.Unlock()
 }
 
@@ -392,4 +392,11 @@ func (in *Instance) callVoidNative(entry uintptr) error {
 		return err
 	}
 	return in.replayHostLog()
+}
+
+// Every public gate path, including prepared calls and sessions, publishes the
+// same callback identity and RV64 ownership proof before entering native code.
+func (state *instancePluginState) setInvocationIdentity(id invocationID) {
+	state.invocationID = id
+	railshotSetInvocationGateOwner(state, id)
 }

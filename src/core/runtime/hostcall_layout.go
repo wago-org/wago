@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package runtime
 
@@ -60,7 +60,7 @@ func RegisterHostCtrlFrame(ctrl []byte) error {
 	if _, err := hostCtrlFrameCapacity(ctrl); err != nil {
 		return err
 	}
-	if len(ctrl) == ctrlFrameSize {
+	if len(ctrl) == ctrlFrameSize && !registerFixedHostCtrlFrames {
 		return nil
 	}
 	ptr := slicePtr(ctrl)
@@ -76,7 +76,7 @@ func RegisterHostCtrlFrame(ctrl []byte) error {
 // UnregisterHostCtrlFrame removes a frame registered at instance activation.
 func UnregisterHostCtrlFrame(ctrl []byte) {
 	unregisterNativeScalarLeaf(ctrl)
-	if len(ctrl) == ctrlFrameSize {
+	if len(ctrl) == ctrlFrameSize && !registerFixedHostCtrlFrames {
 		return
 	}
 	if ptr := slicePtr(ctrl); ptr != 0 {

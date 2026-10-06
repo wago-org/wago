@@ -50,7 +50,7 @@ func compileSWARTableModule(data []byte, mode emissionMode) (*swarModuleImage, e
 }
 
 // This separate private policy permits numeric/vector function imports, with defined
-// mixed functions and owned synchronous dispatch. Tables/reexports stay closed.
+// mixed functions and owned synchronous dispatch. Tables stay closed; public reexports use owned native bridges.
 func compileSWARHostModule(data []byte, mode emissionMode) (*swarModuleImage, error) {
 	return compileSWARModulePolicy(data, mode, swarModuleHosts)
 }
@@ -188,7 +188,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if state.exports && ex.Index.Kind == wasm.ExternMem && ex.Index.Index == 0 && memoryImports+len(m.Memories) == 1 {
 			continue
 		}
-		if ex.Index.Kind != wasm.ExternFunc || uint64(ex.Index.Index) < uint64(imported) || uint64(ex.Index.Index) >= uint64(imported+len(m.Code)) {
+		if ex.Index.Kind != wasm.ExternFunc || (uint64(ex.Index.Index) < uint64(imported) && !state.exports) || uint64(ex.Index.Index) >= uint64(imported+len(m.Code)) {
 			return nil, unsupported("SWAR module export shape")
 		}
 	}

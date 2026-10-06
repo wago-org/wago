@@ -4,7 +4,11 @@ package wago
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"runtime"
+	"sync"
+	"unsafe"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -122,11 +126,15 @@ func railshotNativeImportCode(c *Compiled, export *InstanceExport, arena *coreru
 	if err != nil {
 		return nil, true, err
 	}
+	trampoline, err := coreruntime.HostCallTrampolinePointer()
+	if err != nil {
+		return nil, true, err
+	}
 	code, err := railshot.NativeImportThunk(railshot.NativeImportTarget{
 		Entry: producer.base + uintptr(producer.c.Entry[export.localIdx]),
 		Home:  producer.jm.LinMemBase(), Context: producer.nativeContext,
 		Arguments: arena.Alloc(rv64NativeImportTransportBytes), Results: arena.Alloc(rv64NativeImportTransportBytes),
-		ArgumentSlots: args, ResultSlots: results,
+		ArgumentSlots: args, ResultSlots: results, StackOwnedActivation: true, HostTrampoline: trampoline,
 	}, callerHome, callerContext, uint32(index))
 	return code, true, err
 }
@@ -147,6 +155,10 @@ func railshotTrapOwner(root *Instance, trap *coreruntime.TrapError) (*Instance, 
 	if identity == 0 {
 		return nil, true
 	}
+	return railshotAttachedNativeOwner(root, identity), true
+}
+
+func railshotAttachedNativeOwner(root *Instance, identity uintptr) *Instance {
 	const maxOwners, maxEdges = 256, 4096
 	var owners [maxOwners + 1]*Instance
 	owners[0] = root
@@ -157,11 +169,11 @@ func railshotTrapOwner(root *Instance, trap *coreruntime.TrapError) (*Instance, 
 			continue
 		}
 		if owner.nativeContext == identity {
-			return owner, true
+			return owner
 		}
 		for index := range owner.c.Imports {
 			if edges == maxEdges {
-				return nil, true
+				return nil
 			}
 			edges++
 			export, native := owner.imports[owner.c.functionImportBindingKey(index)].(*InstanceExport)
@@ -170,7 +182,7 @@ func railshotTrapOwner(root *Instance, trap *coreruntime.TrapError) (*Instance, 
 			}
 			target := export.inst
 			if target.nativeContext == identity {
-				return target, true
+				return target
 			}
 			seen := false
 			for i := 0; i < count; i++ {
@@ -185,5 +197,190 @@ func railshotTrapOwner(root *Instance, trap *coreruntime.TrapError) (*Instance, 
 			}
 		}
 	}
-	return nil, true
+	return nil
+}
+
+// The registry names physically live host owners by opaque context identity.
+// Attachments retain their registration through the last foreign activation.
+var rv64NativeHostOwners = struct {
+	sync.Mutex
+	values map[uintptr]rv64NativeHostOwner
+}{values: make(map[uintptr]rv64NativeHostOwner)}
+
+type rv64NativeHostOwner struct {
+	owner   *Instance
+	aliases int
+}
+
+func railshotRegisterNativeHostOwner(in *Instance) error {
+	if in.nativeContext == 0 {
+		return fmt.Errorf("RV64 host owner has no native context")
+	}
+	rv64NativeHostOwners.Lock()
+	defer rv64NativeHostOwners.Unlock()
+	entry := rv64NativeHostOwners.values[in.nativeContext]
+	if entry.owner != nil && entry.owner != in {
+		return fmt.Errorf("RV64 host owner context already registered")
+	}
+	entry.owner = in
+	entry.aliases++
+	rv64NativeHostOwners.values[in.nativeContext] = entry
+	return nil
+}
+func railshotUnregisterNativeHostOwner(in *Instance) {
+	rv64NativeHostOwners.Lock()
+	defer rv64NativeHostOwners.Unlock()
+	entry := rv64NativeHostOwners.values[in.nativeContext]
+	if entry.owner != in {
+		return
+	}
+	entry.aliases--
+	if entry.aliases == 0 {
+		delete(rv64NativeHostOwners.values, in.nativeContext)
+	} else {
+		rv64NativeHostOwners.values[in.nativeContext] = entry
+	}
+}
+
+// Core has already authenticated the full stack control frame before reading it.
+// Its private bridge header names an opaque owner; no raw identity is dereferenced.
+func railshotResolveNativeHostControl(root *Instance, ctrl uintptr) *Instance {
+	if root == nil || root.eng == nil || ctrl&15 != 0 || ctrl < root.eng.StackLimit()+16 || ctrl > root.eng.StackTop() || root.eng.StackTop()-ctrl < railshot.HostFixedFrameBytes {
+		return nil
+	}
+	identity := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(ctrl-16)), 8)))
+	rv64NativeHostOwners.Lock()
+	owner := rv64NativeHostOwners.values[identity].owner
+	rv64NativeHostOwners.Unlock()
+	if owner == nil {
+		return nil
+	}
+	frame := unsafe.Slice((*byte)(offHeapPtr(ctrl)), railshot.HostFixedFrameBytes)
+	home := uintptr(binary.LittleEndian.Uint64(frame[railshot.HostSavedHomeOffset:]))
+	if owner.jm == nil || owner.jm.LinMemBase() != home || owner.nativeContext != identity || railshotNativeContextIdentity(owner.jm) != identity {
+		return nil
+	}
+	return owner
+}
+
+// Public reexports use the relay's transport and engine. Entering the producer's
+// public buffers here would race other relays or a producer Invoke while parked.
+func railshotInvokeNativeReexport(in *Instance, name string, index int, args []uint64, contexts invocationContextSet) ([]uint64, bool, error) {
+	if index < 0 || index >= len(in.c.importFuncSigs) || in.nativeContext == 0 {
+		return nil, true, fmt.Errorf("RV64 native reexport has no retained import context")
+	}
+	sig := in.c.importFuncSigs[index]
+	params, err := valTypesSlots(sig.Params)
+	if err != nil {
+		return nil, true, err
+	}
+	results, err := valTypesSlots(sig.Results)
+	if err != nil {
+		return nil, true, err
+	}
+	if len(args) != params {
+		return nil, true, fmt.Errorf("%s expects %d arg slot(s), got %d", name, params, len(args))
+	}
+	if params > 256 || results > 256 || params > len(in.serArgs)/8 || results > len(in.results)/8 || results > len(in.resultVals) {
+		return nil, true, fmt.Errorf("RV64 native reexport exceeds instance call buffers")
+	}
+	// Read the immutable per-instance snapshot, not the currently bound shared
+	// memory home, which may still name a different instance between entries.
+	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), coreruntime.InstanceContextBytes)
+	dispatch := uintptr(binary.LittleEndian.Uint64(ctx[coreruntime.InstanceContextImportDispatchOffset:]))
+	if dispatch == 0 {
+		return nil, true, fmt.Errorf("RV64 native reexport has no owned dispatch")
+	}
+	row := unsafe.Slice((*byte)(offHeapPtr(dispatch)), in.c.NumImports*coreruntime.ImportDispatchEntryBytes)[index*coreruntime.ImportDispatchEntryBytes:]
+	entry := uintptr(binary.LittleEndian.Uint64(row[coreruntime.ImportDispatchCodePtrOffset:]))
+	base := offHeapSlicePtr(in.thunkMem)
+	if entry == 0 || entry&15 != 0 || entry < base || entry-base >= uintptr(len(in.thunkMem)) {
+		return nil, true, fmt.Errorf("RV64 native reexport requires its owned framed bridge")
+	}
+	marshalPublicScalarArgs(in.serArgs, args, sig.Params)
+	if len(in.hostLog) > 0 {
+		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	}
+	if contexts.interrupt != nil {
+		stop, err := in.startCancellationWatch(contexts.interrupt, in.trap)
+		if err != nil {
+			return nil, true, err
+		}
+		defer stop()
+	}
+	if err := in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback); err != nil {
+		return nil, true, err
+	}
+	out := in.resultVals[:results]
+	slot := 0
+	for _, typ := range sig.Results {
+		width := 1
+		if typ == ValV128 {
+			width = 2
+		}
+		for half := 0; half < width; half++ {
+			if isWideValType(typ) || typ == ValV128 {
+				out[slot] = binary.LittleEndian.Uint64(in.results[slot*8:])
+			} else {
+				out[slot] = uint64(binary.LittleEndian.Uint32(in.results[slot*8:]))
+			}
+			slot++
+		}
+	}
+	runtime.KeepAlive(in)
+	return out, true, nil
+}
+
+// Defined signatures alone do not size a relay with a wide imported export.
+// Charge the relay's own argument/result storage before arena allocation.
+func railshotReexportCallSlots(c *Compiled, params, results int) (int, int, error) {
+	for _, index := range c.Exports {
+		if index < 0 || index >= c.NumImports+len(c.Funcs) {
+			return 0, 0, fmt.Errorf("RV64 function export index out of range")
+		}
+		if index >= c.NumImports {
+			continue
+		}
+		if index >= len(c.importFuncSigs) {
+			return 0, 0, fmt.Errorf("RV64 function reexport signature is unavailable")
+		}
+		p, err := valTypesSlots(c.importFuncSigs[index].Params)
+		if err != nil || p > 256 {
+			return 0, 0, fmt.Errorf("RV64 function reexport parameter slot bound")
+		}
+		r, err := valTypesSlots(c.importFuncSigs[index].Results)
+		if err != nil || r > 256 {
+			return 0, 0, fmt.Errorf("RV64 function reexport result slot bound")
+		}
+		params, results = max(params, p), max(results, r)
+	}
+	return params, results, nil
+}
+
+// Callback authority and ownership of the producer's public gate differ for a
+// foreign activation. Only its actual gate owner may swap parked public scratch.
+type railshotInvocationState struct{ gateOwner invocationID }
+
+func railshotSetInvocationGateOwner(state *instancePluginState, id invocationID) {
+	state.activations.mu.Lock()
+	state.railshotInvocation.gateOwner = id
+	state.activations.mu.Unlock()
+}
+func railshotCanReenter(in *Instance, id invocationID) bool {
+	state := in.pluginState.Load()
+	if state == nil {
+		return false
+	}
+	state.activations.mu.Lock()
+	defer state.activations.mu.Unlock()
+	return id != 0 && state.railshotInvocation.gateOwner == id
+}
+
+// Independent roots can park in one producer simultaneously. Each foreign
+// callback needs its own generation so expiry of one cannot revoke another.
+func railshotCallbackHostScope(in *Instance, ctrl uintptr, ordinary *hostCallScope) *hostCallScope {
+	if owner, registered := hostControlInstances.Load(ctrl); !registered || owner != in {
+		return new(hostCallScope)
+	}
+	return ordinary
 }

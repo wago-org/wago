@@ -10,6 +10,7 @@ import (
 // These RV64 wire offsets describe the qualified runtime prefix. Runtime tests
 // compare them to the mechanically derived native frame before executing thunks.
 const (
+	HostSavedHomeOffset   = 88
 	HostSavedPrefixBytes  = 208
 	HostTrampolineOffset  = HostSavedPrefixBytes
 	HostImportIndexOffset = HostTrampolineOffset + 8

@@ -24,14 +24,26 @@ func TestPrivateNativeImportThunkAddressAdmission(t *testing.T) {
 	if err != nil || len(code) == 0 || len(code)%4 != 0 {
 		t.Fatal("bounded fixed-width thunk", err)
 	}
-	for _, slots := range []int{0, 1, 255, 256} {
-		candidate := target
-		candidate.argumentSlots, candidate.resultSlots = slots, slots
-		if code, err := nativeImportThunk(candidate, 0x30000, 0x40000, 0); err != nil || len(code) == 0 || len(code)%4 != 0 || len(code) > 16<<10 {
-			t.Fatal("bounded transport boundary", slots, len(code), err)
+	for _, stackOwned := range []bool{false, true} {
+		for _, slots := range []int{0, 1, 255, 256} {
+			candidate := target
+			candidate.stackOwnedActivation = stackOwned
+			candidate.hostTrampoline = 0x8000
+			candidate.argumentSlots, candidate.resultSlots = slots, slots
+			if code, err := nativeImportThunk(candidate, 0x30000, 0x40000, 0); err != nil || len(code) == 0 || len(code)%4 != 0 || len(code) > 16<<10 {
+				t.Fatal("bounded transport boundary", slots, len(code), err)
+			}
 		}
 	}
 	for _, mutate := range []func(*nativeImportTarget, *uintptr, *uintptr, *uint32){
+		func(t *nativeImportTarget, _, _ *uintptr, _ *uint32) {
+			t.stackOwnedActivation = true
+			t.hostTrampoline = 0
+		},
+		func(t *nativeImportTarget, _, _ *uintptr, _ *uint32) {
+			t.stackOwnedActivation = true
+			t.hostTrampoline = 0x8001
+		},
 		func(t *nativeImportTarget, _, _ *uintptr, _ *uint32) { t.entry = 0 },
 		func(t *nativeImportTarget, _, _ *uintptr, _ *uint32) { t.entry += 4 },
 		func(t *nativeImportTarget, _, _ *uintptr, _ *uint32) { t.home = 0 },

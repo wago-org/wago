@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"unsafe"
 
@@ -23,7 +24,9 @@ const (
 	ctrlFrameSize      = hcResults + maxHostArity*8
 	hostCallPending    = rv64ParkPending
 	HostCtrlFrameBytes = ctrlFrameSize
-	MaxHostArity       = maxHostArity
+	// RV64HostSavedHomeOffset is mechanically derived from the guest park frame.
+	RV64HostSavedHomeOffset = hcSavedLinMem
+	MaxHostArity            = maxHostArity
 )
 
 type HostCall func(ctrl uintptr, importIdx uint32, args, results []uint64)
@@ -65,4 +68,28 @@ func resumeNative(ctrl, stack uintptr) {
 	home := uintptr(*(*uint64)(offHeapPointer(ctrl + uintptr(hcSavedLinMem))))
 	trap := uintptr(*(*uint64)(offHeapPointer(home - abi.TrapCellPtrOffset)))
 	resumeNativeRV64(ctrl, trap, stack)
+}
+
+const registerFixedHostCtrlFrames = true
+
+// Unknown frames may only be activation-owned fixed frames on this Engine's
+// live foreign stack. Authenticate before constructing a slice or reading wire
+// counts; registered instance frames keep their independently known lengths.
+func (e *Engine) validateUnregisteredHostCtrl(ptr uintptr) error {
+	limit := e.StackLimit()
+	if ptr&15 != 0 || e.stackTop < uintptr(nativeWrapperSaveBytes) {
+		return fmt.Errorf("jit: invalid RV64 parked control frame")
+	}
+	bridge := e.stackTop - uintptr(nativeWrapperSaveBytes)
+	if ptr < limit || ptr-limit < 16 || ptr > bridge || bridge-ptr < uintptr(ctrlFrameSize) {
+		return fmt.Errorf("jit: RV64 parked control frame is outside the active stack")
+	}
+	frame := unsafe.Slice((*byte)(offHeapPointer(ptr)), ctrlFrameSize)
+	sp := uintptr(binary.LittleEndian.Uint64(frame))
+	ra := binary.LittleEndian.Uint64(frame[8:])
+	home := binary.LittleEndian.Uint64(frame[hcSavedLinMem:])
+	if home == 0 || home&7 != 0 || sp&15 != 0 || sp < limit || sp > bridge-16 || ra == 0 || ra&3 != 0 || binary.LittleEndian.Uint64(frame[int(unsafe.Offsetof(rv64ParkFrame{}.BridgeSP)):]) != uint64(bridge) {
+		return fmt.Errorf("jit: invalid RV64 parked stack continuation")
+	}
+	return nil
 }

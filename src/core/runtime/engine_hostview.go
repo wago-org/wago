@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package runtime
 
@@ -63,7 +63,11 @@ func (e *Engine) callWithHostLoopView(code uintptr, serArgs []byte, linMemBase u
 			if ctrlPtr == rootCtrlPtr {
 				ctrl = rootCtrl
 			} else {
-				ctrl = hostCtrlFrame(ctrlPtr)
+				var err error
+				ctrl, err = e.parkedHostCtrlFrame(ctrlPtr)
+				if err != nil {
+					return err
+				}
 			}
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			raw := binary.LittleEndian.Uint32(ctrl[hcNArgs:])

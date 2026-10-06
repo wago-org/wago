@@ -3455,7 +3455,7 @@ func (c *Compiled) maxCallSlots() (params, results int, err error) {
 			results = resultSlots
 		}
 	}
-	return params, results, nil
+	return railshotReexportCallSlots(c, params, results)
 }
 
 func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
@@ -3886,9 +3886,9 @@ func (in *Instance) tryInvokeCachedHostScalar1(export string, args []uint64) ([]
 		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
-	state.invocationID = newInvocationID()
+	state.setInvocationIdentity(newInvocationID())
 	defer func() {
-		state.invocationID = 0
+		state.setInvocationIdentity(0)
 		in.endOrdinaryInvocation(state)
 	}()
 	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
@@ -4451,7 +4451,7 @@ func nilInstanceInvokeError() error {
 
 func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
 	ctx := contexts.admissionContext()
-	reentry := !gateHeld && isNativeActive(in, id)
+	reentry := !gateHeld && isNativeActive(in, id) && railshotCanReenter(in, id)
 	if !reentry && !gateHeld {
 		// Acquire the target instance gate before the shared collector lease. A
 		// parked same-domain callback must be able to reacquire the collector and
@@ -4539,6 +4539,9 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		if ex, ok := in.imports[in.c.functionImportBindingKey(importIdx)].(*InstanceExport); ok && ex != nil && ex.inst != nil {
 			reconcileAttached = ex.inst
+			if out, handled, err := railshotInvokeNativeReexport(in, export, importIdx, args, contexts); handled {
+				return out, err
+			}
 			// Native cross-instance calls carry only the caller's invocation lease and
 			// trap cell; the import attachment retains the producer's physical resources.
 			// Keep this Go-level re-export path identical so producer Close neither owns

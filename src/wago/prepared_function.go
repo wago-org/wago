@@ -419,7 +419,7 @@ type preparedScalarNoGCLease struct {
 func (in *Instance) lockPreparedScalarNoGC() preparedScalarNoGCLease {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
-	state.invocationID = newInvocationID()
+	state.setInvocationIdentity(newInvocationID())
 	return preparedScalarNoGCLease{in: in, state: state}
 }
 
@@ -427,7 +427,7 @@ func (l preparedScalarNoGCLease) unlock() {
 	if l.in.importsFuncrefStorage() || l.in.table != nil {
 		l.in.reconcileFuncrefRoots()
 	}
-	l.state.invocationID = 0
+	l.state.setInvocationIdentity(0)
 	l.state.invokeMu.Unlock()
 }
 
@@ -435,14 +435,14 @@ func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
 	id := newInvocationID()
-	state.invocationID = id
+	state.setInvocationIdentity(id)
 	return preparedInvocationLease{in: in, state: state, gc: in.lockGCInvocation(id)}
 }
 
 func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
-	state.invocationID = newInvocationID()
+	state.setInvocationIdentity(newInvocationID())
 	return preparedInvocationLease{state: state}
 }
 
@@ -451,7 +451,7 @@ func (l preparedInvocationLease) unlock() {
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
 		l.in.reconcileFuncrefRoots()
 	}
-	l.state.invocationID = 0
+	l.state.setInvocationIdentity(0)
 	l.state.invokeMu.Unlock()
 }
 
@@ -461,7 +461,7 @@ func (in *Instance) lockPreparedScalarInvocationInto(l *preparedInvocationLease)
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
 	id := newInvocationID()
-	state.invocationID = id
+	state.setInvocationIdentity(id)
 	l.in, l.state, l.gc = in, state, in.lockGCInvocation(id)
 }
 
@@ -470,7 +470,7 @@ func (l *preparedInvocationLease) unlockScalarInvocation() {
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
 		l.in.reconcileFuncrefRoots()
 	}
-	l.state.invocationID = 0
+	l.state.setInvocationIdentity(0)
 	l.state.invokeMu.Unlock()
 }
 

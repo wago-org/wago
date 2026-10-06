@@ -675,6 +675,7 @@ type instancePluginState struct {
 	profileState         profileInstanceState
 	hostScope            hostCallScope
 	activations          instanceActivations
+	railshotInvocation   railshotInvocationState
 	nativeContextVersion atomic.Uint64
 	invokeMu             invocationGate // serializes unrelated public calls across parked host callbacks
 	nativeExecutionMu    sync.Mutex     // serializes native entry for an independent instance
@@ -2332,7 +2333,7 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 }
 
 func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
-	scope := &in.ensurePluginState().hostScope
+	scope := railshotCallbackHostScope(in, ctrl, &in.ensurePluginState().hostScope)
 	if importIdx&shared.AtomicWaitDispatchBit != 0 {
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})

@@ -75,7 +75,7 @@ func thunkFixtureRV64(t *testing.T, capacity int) (*coreruntime.Engine, *corerun
 }
 
 func TestHostIndirectRV64ActualRawTransfersAndOwnedHome(t *testing.T) {
-	if HostFixedFrameBytes != coreruntime.HostCtrlFrameBytes {
+	if HostFixedFrameBytes != coreruntime.HostCtrlFrameBytes || HostSavedHomeOffset != coreruntime.RV64HostSavedHomeOffset {
 		t.Fatal("runtime/compiler host layout mismatch")
 	}
 	previous := goruntime.GOMAXPROCS(1)
@@ -222,6 +222,10 @@ func TestHostIndirectRV64PassedHomeAndCallerHomeRestoration(t *testing.T) {
 	if err := coreruntime.InitHostCtrlFrame(activeCtrl); err != nil {
 		t.Fatal(err)
 	}
+	if err := coreruntime.RegisterHostCtrlFrame(activeCtrl); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { coreruntime.UnregisterHostCtrlFrame(activeCtrl) })
 	binary.LittleEndian.PutUint64(args, 73)
 	entry := thunkImageRV64(t, HostIndirectSyncThunk(37, 1, 1))
 	var caller enc.Asm

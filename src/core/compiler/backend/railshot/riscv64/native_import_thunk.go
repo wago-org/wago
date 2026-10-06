@@ -16,13 +16,16 @@ import (
 // Absolute addresses belong to this activation owner and must never be persisted.
 // Entry inherits a valid aligned foreign SP and installed nonzero stack fence.
 // The target transport is retained off-heap, disjoint, and holds the full bounded
-// 256-slot ABI: a narrow export may make much wider internal calls. Only the
+// 256-slot ABI: a narrow export may make much wider internal calls. Stack-owned
+// public activations use their own full-width transport instead of these slices. Only the
 // imported signature's cells cross the instance boundary. The owner must rebind
 // both contexts after a cold unwind, which skips the normal epilogue.
 type nativeImportTarget struct {
 	entry, home, context       uintptr
 	arguments, results         []byte
 	argumentSlots, resultSlots int
+	stackOwnedActivation       bool
+	hostTrampoline             uintptr
 }
 
 const nativeImportFrameBytes = 64
@@ -36,13 +39,17 @@ type NativeImportTarget struct {
 	Entry, Home, Context       uintptr
 	Arguments, Results         []byte
 	ArgumentSlots, ResultSlots int
+	// StackOwnedActivation gives every activation full256-cell transport and
+	// a fixed scalar host frame. Public Go/HostFuncRef calls must fit64 slots.
+	StackOwnedActivation bool
+	HostTrampoline       uintptr
 }
 
 // NativeImportThunk emits an instance-owned bridge after target attachment and
 // exact signature/ABI validation. Publication and lifetime remain the owner's
 // responsibility; callers must use the normal W^X/process-wide icache mapper.
 func NativeImportThunk(callee NativeImportTarget, callerHome, callerContext uintptr, importIndex uint32) ([]byte, error) {
-	return nativeImportThunk(nativeImportTarget{entry: callee.Entry, home: callee.Home, context: callee.Context, arguments: callee.Arguments, results: callee.Results, argumentSlots: callee.ArgumentSlots, resultSlots: callee.ResultSlots}, callerHome, callerContext, importIndex)
+	return nativeImportThunk(nativeImportTarget{entry: callee.Entry, home: callee.Home, context: callee.Context, arguments: callee.Arguments, results: callee.Results, argumentSlots: callee.ArgumentSlots, resultSlots: callee.ResultSlots, stackOwnedActivation: callee.StackOwnedActivation, hostTrampoline: callee.HostTrampoline}, callerHome, callerContext, importIndex)
 }
 
 var nativeImportContextFields = [...]struct{ source, destination int32 }{
@@ -70,6 +77,13 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	if argumentBase&7 != 0 || resultBase&7 != 0 || argumentBase < resultBase+nativeImportTransportBytes && resultBase < argumentBase+nativeImportTransportBytes {
 		return nil, fmt.Errorf("rv64: native import requires aligned disjoint target transport")
 	}
+	if callee.stackOwnedActivation && (callee.hostTrampoline == 0 || callee.hostTrampoline&3 != 0) {
+		return nil, fmt.Errorf("rv64: stack activation requires its stable host trampoline")
+	}
+	frameBytes := nativeImportFrameBytes
+	if callee.stackOwnedActivation {
+		frameBytes += 16 + HostFixedFrameBytes + 2*nativeImportTransportBytes
+	}
 	f := target{mode: emissionMode{production: true, functionIndex: importIndex}}
 	a := &f.a
 	// A same-home sibling's valid thunk is still a foreign caller identity. Check
@@ -85,9 +99,9 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	a.Ld(enc.X29, enc.X25, -abi.StackFenceOffset)
 	below := a.BranchLong(enc.LTU, enc.SP, enc.X29)
 	a.Sub(enc.X28, enc.SP, enc.X29)
-	a.Constant64(enc.Scratch0, nativeImportFrameBytes)
+	a.Constant64(enc.Scratch0, int64(frameBytes))
 	short := a.BranchLong(enc.LTU, enc.X28, enc.Scratch0)
-	a.Addi(enc.SP, enc.SP, -nativeImportFrameBytes)
+	a.Sub(enc.SP, enc.SP, enc.Scratch0)
 	a.Sd(enc.RA, enc.SP, 0)
 	a.Sd(enc.X25, enc.SP, 8)
 	a.Sd(enc.Scratch1, enc.SP, 16) // caller context, still live from identity check
@@ -97,22 +111,44 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	a.Sd(enc.X24, enc.SP, 48)
 	a.Ld(enc.Scratch0, enc.X25, -40)
 	a.Sd(enc.Scratch0, enc.SP, 56) // active caller ctrl may differ from canonical ctx
-	a.Constant64(enc.X28, int64(argumentBase))
+	if callee.stackOwnedActivation {
+		a.Constant64(enc.X28, nativeImportFrameBytes+16+HostFixedFrameBytes)
+		a.Add(enc.X28, enc.SP, enc.X28)
+	} else {
+		a.Constant64(enc.X28, int64(argumentBase))
+	}
 	for i := 0; i < callee.argumentSlots; i++ {
 		a.Ld(enc.Scratch0, enc.X10, int32(i*8))
 		a.Sd(enc.Scratch0, enc.X28, int32(i*8))
 	}
 	a.Addi(enc.X10, enc.X28, 0)
-	a.Constant64(enc.X13, int64(resultBase))
+	if callee.stackOwnedActivation {
+		a.Constant64(enc.X13, nativeImportFrameBytes+16+HostFixedFrameBytes+nativeImportTransportBytes)
+		a.Add(enc.X13, enc.SP, enc.X13)
+	} else {
+		a.Constant64(enc.X13, int64(resultBase))
+	}
 	a.Constant64(enc.X11, int64(callee.home))
 	a.Constant64(enc.Scratch1, int64(callee.context))
 	copyContext := func(destination enc.Reg) {
 		for _, field := range nativeImportContextFields {
+			if callee.stackOwnedActivation && field.source == 0 {
+				continue
+			}
 			a.Ld(enc.Scratch0, enc.Scratch1, field.source)
 			a.Sd(enc.Scratch0, destination, -field.destination)
 		}
 	}
 	copyContext(enc.X11)
+	if callee.stackOwnedActivation {
+		// No mutable producer control pointer crosses this activation boundary.
+		a.Sd(enc.Scratch1, enc.SP, nativeImportFrameBytes)
+		a.Constant64(enc.X30, int64(callee.hostTrampoline))
+		a.Addi(enc.X28, enc.SP, nativeImportFrameBytes+16)
+		a.Sd(enc.X30, enc.X28, HostTrampolineOffset)
+		a.Sd(enc.X28, enc.X11, -40)
+		a.Ld(enc.Scratch1, enc.SP, nativeImportFrameBytes)
+	}
 	a.Sd(enc.Scratch1, enc.X11, -abi.RV64NativeContextOffset)
 	for _, offset := range nativeImportExecutionFields {
 		a.Ld(enc.Scratch0, enc.X25, -offset)
@@ -137,7 +173,12 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	a.Ld(enc.X10, enc.SP, 24)
 	a.Ld(enc.X12, enc.SP, 32)
 	a.Ld(enc.X13, enc.SP, 40)
-	a.Constant64(enc.Scratch1, int64(resultBase))
+	if callee.stackOwnedActivation {
+		a.Constant64(enc.Scratch1, nativeImportFrameBytes+16+HostFixedFrameBytes+nativeImportTransportBytes)
+		a.Add(enc.Scratch1, enc.SP, enc.Scratch1)
+	} else {
+		a.Constant64(enc.Scratch1, int64(resultBase))
+	}
 	for i := 0; i < callee.resultSlots; i++ {
 		a.Ld(enc.Scratch0, enc.Scratch1, int32(i*8))
 		a.Sd(enc.Scratch0, enc.X13, int32(i*8))
@@ -145,7 +186,8 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	a.Ld(enc.X24, enc.SP, 48)
 	a.Addi(enc.X11, enc.X25, 0)
 	a.Ld(enc.RA, enc.SP, 0)
-	a.Addi(enc.SP, enc.SP, nativeImportFrameBytes)
+	a.Constant64(enc.Scratch0, int64(frameBytes))
+	a.Add(enc.SP, enc.SP, enc.Scratch0)
 	a.Jalr(enc.Zero, enc.RA, 0)
 	for _, site := range []int{wrongHome, wrongTransport, missingAnchor, wrongContext} {
 		if err := a.PatchLong(site, int64(a.Len())); err != nil {

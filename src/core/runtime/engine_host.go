@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package runtime
 
@@ -248,6 +248,11 @@ func (e *Engine) callWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 	return callErr
 }
 
+// HostCallTrampolinePointer returns the process-lifetime synchronous trampoline.
+// Activation-owned wrappers may embed this stable address without borrowing a
+// producer's mutable control-frame pointer. It is never persisted in artifacts.
+func HostCallTrampolinePointer() (uintptr, error) { return hostCallStubPtr() }
+
 // InitHostCtrlFrame installs the shared host-call trampoline in an off-heap
 // control frame. Instantiate calls it eagerly so a callee that has never been a
 // public root can still park when reached through a cross-instance call.
@@ -276,6 +281,17 @@ func hostCtrlFrame(ptr uintptr) []byte {
 	return unsafe.Slice((*byte)(offHeapPointer(ptr)), ctrlFrameSize)
 }
 
+// parkedHostCtrlFrame authenticates unknown architecture-owned stack frames
+// before any unsafe control-frame view is constructed.
+func (e *Engine) parkedHostCtrlFrame(ptr uintptr) ([]byte, error) {
+	if _, known := registeredHostCtrlFrames.Load(ptr); !known {
+		if err := e.validateUnregisteredHostCtrl(ptr); err != nil {
+			return nil, err
+		}
+	}
+	return hostCtrlFrame(ptr), nil
+}
+
 func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, scalar ScalarHostCall, argBuf, resBuf []uint64) error {
 	rootCtrl, rootCtrlPtr := ctrl, ctrlPtr
 	for first := true; ; first = false {
@@ -299,7 +315,11 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			if ctrlPtr == rootCtrlPtr {
 				ctrl = rootCtrl
 			} else {
-				ctrl = hostCtrlFrame(ctrlPtr)
+				var err error
+				ctrl, err = e.parkedHostCtrlFrame(ctrlPtr)
+				if err != nil {
+					return err
+				}
 			}
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			raw := binary.LittleEndian.Uint32(ctrl[hcNArgs:])
@@ -381,7 +401,11 @@ func (e *Engine) callWithHostLoopExpanded(code uintptr, serArgs []byte, linMemBa
 			if ctrlPtr == rootCtrlPtr {
 				ctrl = rootCtrl
 			} else {
-				ctrl = hostCtrlFrame(ctrlPtr)
+				var err error
+				ctrl, err = e.parkedHostCtrlFrame(ctrlPtr)
+				if err != nil {
+					return err
+				}
 			}
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			// hcNArgs packs the call's slot counts: low 16 bits = param slots

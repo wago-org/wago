@@ -60,6 +60,13 @@ func newNativeImportFixtureRV64(t *testing.T, sharedHome bool) *nativeImportFixt
 		t.Fatal(err)
 	}
 	f.targetCtrl = ar.Alloc(ctrlBytes)
+	if err := coreruntime.InitHostCtrlFrame(f.targetCtrl); err != nil {
+		t.Fatal(err)
+	}
+	if err := coreruntime.RegisterHostCtrlFrame(f.targetCtrl); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { coreruntime.UnregisterHostCtrlFrame(f.targetCtrl) })
 	f.targetArguments, f.targetResults = ar.Alloc(nativeImportTransportBytes), ar.Alloc(nativeImportTransportBytes)
 	f.witness = ar.Alloc(128)
 	for _, item := range []struct{ ctx, directory []byte }{{f.callerContext, f.callerDirectory}, {f.targetContext, f.targetDirectory}} {
@@ -321,99 +328,110 @@ func TestPrivateNativeImportRV64NarrowExportWideInternalTransport(t *testing.T) 
 }
 
 func TestPrivateNativeImportRV64IdentityAndFramePrewrite(t *testing.T) {
-	for _, shared := range []bool{false, true} {
-		for _, mode := range []string{"exact", "short", "reversed", "home", "transport", "anchor", "sibling"} {
-			t.Run(fmt.Sprintf("shared=%t/%s", shared, mode), func(t *testing.T) {
-				f := newNativeImportFixtureRV64(t, shared)
-				// A zero-descent ABI probe isolates the thunk's exact64-byte frame.
-				var leaf enc.Asm
-				leaf.Ret()
-				target := nativeImportTarget{entry: thunkImageRV64(t, leaf.B), home: f.target.LinMemBase(), context: thunkPointerRV64(f.targetContext), arguments: f.targetArguments, results: f.targetResults}
-				callerHome := f.caller.LinMemBase()
-				if mode == "home" {
-					callerHome += 8
-				}
-				code, err := nativeImportThunk(target, callerHome, thunkPointerRV64(f.callerContext), 7)
-				if err != nil {
-					t.Fatal(err)
-				}
-				entry := thunkImageRV64(t, code)
-				if mode == "anchor" {
-					f.caller.SetFuncRefDesc(0)
-				}
-				if mode == "sibling" {
-					binary.LittleEndian.PutUint64(f.callerDirectory[32:], uint64(thunkPointerRV64(f.targetContext)))
-				}
-				var root enc.Asm
-				root.Addi(enc.SP, enc.SP, -16)
-				root.Sd(enc.RA, enc.SP, 0)
-				root.Constant64(enc.X28, int64(thunkPointerRV64(f.witness)))
-				// Fill and snapshot every prospective thunk frame word beforehand.
-				root.Constant64(enc.X29, -6510615555426900571) // 0xa5a5a5a5a5a5a5a5
-				for i := 0; i < nativeImportFrameBytes; i += 8 {
-					root.Sd(enc.X29, enc.SP, int32(i-nativeImportFrameBytes))
-				}
-				available := nativeImportFrameBytes
-				if mode == "short" {
-					available--
-				}
-				if mode == "reversed" {
-					available = -1
-				}
-				if mode == "exact" || mode == "short" || mode == "reversed" {
-					root.Addi(enc.X29, enc.SP, int32(-available))
-					root.Sd(enc.X29, enc.X25, -abi.StackFenceOffset)
-				}
-				root.Addi(enc.X29, enc.SP, -nativeImportFrameBytes)
-				root.Sd(enc.X29, enc.X28, 0)
-				if mode == "transport" {
-					root.Addi(enc.X11, enc.X25, 8)
-				}
-				root.Constant64(enc.X28, int64(entry))
-				root.Jalr(enc.RA, enc.X28, 0)
-				root.Ld(enc.RA, enc.SP, 0)
-				root.Addi(enc.SP, enc.SP, 16)
-				root.Ret()
-				if err := root.Err(); err != nil {
-					t.Fatal(err)
-				}
-				for i := range f.results {
-					f.results[i] = 0xa5
-				}
-				for i := range f.targetArguments {
-					f.targetArguments[i] = 0x5a
-					f.targetResults[i] = 0x5a
-				}
-				beforeTarget := f.target.CaptureInstanceContext()
-				err = f.e.CallPrepared(thunkImageRV64(t, root.B), nil, f.caller.LinMemBase(), f.trap, nil)
-				if mode == "exact" {
+	for _, stackOwned := range []bool{false, true} {
+		frameBytes := nativeImportFrameBytes
+		if stackOwned {
+			frameBytes += 16 + HostFixedFrameBytes + 2*nativeImportTransportBytes
+		}
+		for _, shared := range []bool{false, true} {
+			for _, mode := range []string{"exact", "short", "reversed", "home", "transport", "anchor", "sibling"} {
+				t.Run(fmt.Sprintf("stack=%t/shared=%t/%s", stackOwned, shared, mode), func(t *testing.T) {
+					f := newNativeImportFixtureRV64(t, shared)
+					// A zero-descent ABI probe isolates the complete selected bridge frame.
+					var leaf enc.Asm
+					leaf.Ret()
+					target := nativeImportTarget{entry: thunkImageRV64(t, leaf.B), home: f.target.LinMemBase(), context: thunkPointerRV64(f.targetContext), arguments: f.targetArguments, results: f.targetResults, stackOwnedActivation: stackOwned, hostTrampoline: uintptr(binary.LittleEndian.Uint64(f.targetCtrl[HostTrampolineOffset:]))}
+					callerHome := f.caller.LinMemBase()
+					if mode == "home" {
+						callerHome += 8
+					}
+					code, err := nativeImportThunk(target, callerHome, thunkPointerRV64(f.callerContext), 7)
 					if err != nil {
-						t.Fatal("exact frame rejected", err)
+						t.Fatal(err)
 					}
-					f.assertCaller(t)
-				} else {
-					var tr *coreruntime.TrapError
-					want := coreruntime.TrapCalledFnNotLinked
-					if mode == "short" || mode == "reversed" {
-						want = coreruntime.TrapStackFenceBreached
+					entry := thunkImageRV64(t, code)
+					if mode == "anchor" {
+						f.caller.SetFuncRefDesc(0)
 					}
-					if !errors.As(err, &tr) || tr.Code != want || len(tr.Frames) != 1 || tr.Frames[0].FunctionIndex != 7 || tr.Frames[0].HasProgramCounter {
-						t.Fatal("guard source", err)
+					if mode == "sibling" {
+						binary.LittleEndian.PutUint64(f.callerDirectory[32:], uint64(thunkPointerRV64(f.targetContext)))
 					}
-					addr := uintptr(binary.LittleEndian.Uint64(f.witness))
-					ptr := *(*unsafe.Pointer)(unsafe.Pointer(&addr))
-					frame := unsafe.Slice((*byte)(ptr), nativeImportFrameBytes)
-					if !bytes.Equal(frame, bytes.Repeat([]byte{0xa5}, nativeImportFrameBytes)) || f.target.CaptureInstanceContext() != beforeTarget || !bytes.Equal(f.targetArguments, bytes.Repeat([]byte{0x5a}, nativeImportTransportBytes)) || !bytes.Equal(f.targetResults, bytes.Repeat([]byte{0x5a}, nativeImportTransportBytes)) || !bytes.Equal(f.results, bytes.Repeat([]byte{0xa5}, len(f.results))) {
-						t.Fatal("guard wrote frame/context/transport")
+					var root enc.Asm
+					root.Addi(enc.SP, enc.SP, -16)
+					root.Sd(enc.RA, enc.SP, 0)
+					root.Constant64(enc.X28, int64(thunkPointerRV64(f.witness)))
+					// Fill and snapshot every prospective thunk frame word beforehand.
+					root.Constant64(enc.X29, -6510615555426900571) // 0xa5a5a5a5a5a5a5a5
+					root.Constant64(enc.X5, int64(frameBytes))
+					root.Sub(enc.X5, enc.SP, enc.X5)
+					for i := 0; i < frameBytes; i += 8 {
+						root.Sd(enc.X29, enc.X5, 0)
+						root.Addi(enc.X5, enc.X5, 8)
 					}
-				}
-				binary.LittleEndian.PutUint64(f.callerDirectory[32:], uint64(thunkPointerRV64(f.callerContext)))
-				f.bindCaller(t)
-				reusable := f.thunk(t, nativeImportModuleRV64(t, fixtureFunc{result: 0x7f, body: []byte{0x41, 19, 0x0b}})[0], 0, 1)
-				if err := f.e.CallPrepared(reusable, nil, f.caller.LinMemBase(), f.trap, f.results[:8]); err != nil || binary.LittleEndian.Uint64(f.results) != 19 {
-					t.Fatal("owner reuse after guard", err)
-				}
-			})
+					available := frameBytes
+					if mode == "short" {
+						available--
+					}
+					if mode == "reversed" {
+						available = -1
+					}
+					if mode == "exact" || mode == "short" || mode == "reversed" {
+						root.Constant64(enc.X29, int64(available))
+						root.Sub(enc.X29, enc.SP, enc.X29)
+						root.Sd(enc.X29, enc.X25, -abi.StackFenceOffset)
+					}
+					root.Constant64(enc.X29, int64(frameBytes))
+					root.Sub(enc.X29, enc.SP, enc.X29)
+					root.Sd(enc.X29, enc.X28, 0)
+					if mode == "transport" {
+						root.Addi(enc.X11, enc.X25, 8)
+					}
+					root.Constant64(enc.X28, int64(entry))
+					root.Jalr(enc.RA, enc.X28, 0)
+					root.Ld(enc.RA, enc.SP, 0)
+					root.Addi(enc.SP, enc.SP, 16)
+					root.Ret()
+					if err := root.Err(); err != nil {
+						t.Fatal(err)
+					}
+					for i := range f.results {
+						f.results[i] = 0xa5
+					}
+					for i := range f.targetArguments {
+						f.targetArguments[i] = 0x5a
+						f.targetResults[i] = 0x5a
+					}
+					beforeTarget := f.target.CaptureInstanceContext()
+					err = f.e.CallPrepared(thunkImageRV64(t, root.B), nil, f.caller.LinMemBase(), f.trap, nil)
+					if mode == "exact" {
+						if err != nil {
+							t.Fatal("exact frame rejected", err)
+						}
+						f.assertCaller(t)
+					} else {
+						var tr *coreruntime.TrapError
+						want := coreruntime.TrapCalledFnNotLinked
+						if mode == "short" || mode == "reversed" {
+							want = coreruntime.TrapStackFenceBreached
+						}
+						if !errors.As(err, &tr) || tr.Code != want || len(tr.Frames) != 1 || tr.Frames[0].FunctionIndex != 7 || tr.Frames[0].HasProgramCounter {
+							t.Fatal("guard source", err)
+						}
+						addr := uintptr(binary.LittleEndian.Uint64(f.witness))
+						ptr := *(*unsafe.Pointer)(unsafe.Pointer(&addr))
+						frame := unsafe.Slice((*byte)(ptr), frameBytes)
+						if !bytes.Equal(frame, bytes.Repeat([]byte{0xa5}, frameBytes)) || f.target.CaptureInstanceContext() != beforeTarget || !bytes.Equal(f.targetArguments, bytes.Repeat([]byte{0x5a}, nativeImportTransportBytes)) || !bytes.Equal(f.targetResults, bytes.Repeat([]byte{0x5a}, nativeImportTransportBytes)) || !bytes.Equal(f.results, bytes.Repeat([]byte{0xa5}, len(f.results))) {
+							t.Fatal("guard wrote frame/context/transport")
+						}
+					}
+					binary.LittleEndian.PutUint64(f.callerDirectory[32:], uint64(thunkPointerRV64(f.callerContext)))
+					f.bindCaller(t)
+					reusable := f.thunk(t, nativeImportModuleRV64(t, fixtureFunc{result: 0x7f, body: []byte{0x41, 19, 0x0b}})[0], 0, 1)
+					if err := f.e.CallPrepared(reusable, nil, f.caller.LinMemBase(), f.trap, f.results[:8]); err != nil || binary.LittleEndian.Uint64(f.results) != 19 {
+						t.Fatal("owner reuse after guard", err)
+					}
+				})
+			}
 		}
 	}
 }

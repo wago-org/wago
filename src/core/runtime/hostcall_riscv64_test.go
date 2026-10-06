@@ -437,3 +437,40 @@ func TestProductionRV64HostScalarFixedViewAndPreparedPortals(t *testing.T) {
 		})
 	}
 }
+
+func TestProductionRV64UnknownParkedControlBoundsBeforeRead(t *testing.T) {
+	e, j, _ := productionFixtureRV64(t, 0)
+	for _, ptr := range []uintptr{0, 1, e.StackLimit(), e.StackLimit() + 1, e.stackTop - 16, e.stackTop, ^uintptr(0) - 15} {
+		if frame, err := e.parkedHostCtrlFrame(ptr); err == nil || frame != nil {
+			t.Fatal("unowned control extent admitted", ptr, err)
+		}
+	}
+	ptr := e.StackLimit() + 16
+	frame := unsafe.Slice((*byte)(offHeapPointer(ptr)), ctrlFrameSize)
+	clear(frame)
+	binary.LittleEndian.PutUint64(frame[hcSavedLinMem:], uint64(j.LinMemBase()))
+	bridge := e.stackTop - uintptr(nativeWrapperSaveBytes)
+	binary.LittleEndian.PutUint64(frame, uint64(bridge-16))
+	binary.LittleEndian.PutUint64(frame[8:], 0x4000)
+	binary.LittleEndian.PutUint64(frame[int(unsafe.Offsetof(rv64ParkFrame{}.BridgeSP)):], uint64(bridge))
+	if got, err := e.parkedHostCtrlFrame(ptr); err != nil || len(got) != ctrlFrameSize {
+		t.Fatal("bounded fixed stack frame", err)
+	}
+	for _, offset := range []int{0, 8, hcSavedLinMem, int(unsafe.Offsetof(rv64ParkFrame{}.BridgeSP))} {
+		previous := binary.LittleEndian.Uint64(frame[offset:])
+		binary.LittleEndian.PutUint64(frame[offset:], previous+1)
+		if got, err := e.parkedHostCtrlFrame(ptr); err == nil || got != nil {
+			t.Fatal("bad saved continuation", offset, err)
+		}
+		binary.LittleEndian.PutUint64(frame[offset:], previous)
+	}
+	// A fixed instance frame has independent lifetime/extent registration.
+	_, _, _, _, _, owned := hostFixtureRV64(t, 64)
+	if err := RegisterHostCtrlFrame(owned); err != nil {
+		t.Fatal(err)
+	}
+	defer UnregisterHostCtrlFrame(owned)
+	if got, err := e.parkedHostCtrlFrame(slicePtr(owned)); err != nil || len(got) != ctrlFrameSize {
+		t.Fatal("registered fixed owner", err)
+	}
+}

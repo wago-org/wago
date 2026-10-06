@@ -45,11 +45,6 @@ func railshotValidateCompiled(c *Compiled) error {
 		if !c.needsFuncRefContextHeader || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 			return reject("host imports require an instance context anchor without tables")
 		}
-		for _, index := range c.Exports {
-			if index < c.NumImports {
-				return reject("imported-function reexport lowering is pending")
-			}
-		}
 		maxImportArity := coreruntime.MaxHostArity
 		if vectorProfile {
 			maxImportArity = 128
@@ -188,8 +183,22 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 	if err := railshotValidateCompiled(c); err != nil {
 		return err
 	}
+	var reexported [railshot.MaxHostFunctionImports]bool
+	for _, index := range c.Exports {
+		if index < 0 || index >= c.NumImports+len(c.Funcs) {
+			return fmt.Errorf("%w: public RV64 function export index", railshot.ErrUnsupported)
+		}
+		if index < c.NumImports {
+			reexported[index] = true
+		}
+	}
 	for i, key := range c.Imports {
 		value := imports[c.functionImportBindingKey(i)]
+		if reexported[i] {
+			if _, native := value.(*InstanceExport); !native {
+				return fmt.Errorf("%w: public RV64 import %q reexport requires a native instance export", railshot.ErrUnsupported, key)
+			}
+		}
 		switch value := value.(type) {
 		case *HostFuncRef:
 			if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {

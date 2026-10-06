@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package runtime
 
@@ -72,7 +72,11 @@ func (e *Engine) callWithHostLoopFixedView(code uintptr, serArgs []byte, linMemB
 				continue
 			}
 
-			ctrl = hostCtrlFrame(ctrlPtr)
+			var err error
+			ctrl, err = e.parkedHostCtrlFrame(ctrlPtr)
+			if err != nil {
+				return err
+			}
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			raw := binary.LittleEndian.Uint32(ctrl[hcNArgs:])
 			n, nres := int(raw&0xffff), int(raw>>16)

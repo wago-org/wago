@@ -170,7 +170,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 	}
 	for _, ex := range m.Exports {
-		if ex.Index.Kind == wasm.ExternFunc {
+		if ex.Index.Kind == wasm.ExternFunc && ex.Index.Index >= uint32(state.importedFunctions) {
 			c.exports[ex.Name] = int(ex.Index.Index) - state.importedFunctions
 		}
 	}

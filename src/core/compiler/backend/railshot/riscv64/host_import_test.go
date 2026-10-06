@@ -123,7 +123,22 @@ func TestHostImportRV64WholeModuleAndBindingAdmission(t *testing.T) {
 		}
 		pressure := 0
 		image, err := CompileModuleWith(m, CompileOptions{ImportBindings: hostImportBindings(count), DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-		if image != nil || err == nil || pressure != 0 {
+		if shape == "reexport" {
+			if err != nil || image == nil || len(image.Entry) != 1 {
+				t.Fatal("production reexport must omit defined-only private export lookup", err, pressure)
+			}
+			privateOpts := CompileOptions{ImportBindings: hostImportBindings(count), production: true}
+			if err := admitHostBindings(m, &privateOpts); err != nil {
+				t.Fatal(err)
+			}
+			privateLookup, err := compileDecodedModule(m, scalarRegisters[:], privateOpts)
+			if err != nil || len(privateLookup.exports) != 0 {
+				t.Fatal("imported index leaked into private defined lookup", err)
+			}
+			if private, err := Compile(data); private != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("isolated reexport policy widened", err)
+			}
+		} else if image != nil || err == nil || pressure != 0 {
 			t.Fatal("unsupported host module reached image", shape, err, pressure)
 		}
 	}

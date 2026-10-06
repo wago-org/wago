@@ -169,7 +169,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports bool) (moduleState
 	for _, ex := range m.Exports {
 		switch ex.Index.Kind {
 		case wasm.ExternFunc:
-			if ex.Index.Index < uint32(s.importedFunctions) {
+			if ex.Index.Index < uint32(s.importedFunctions) && !(production && hostImports) {
 				return s, unsupported("imported-function reexport lowering is pending")
 			}
 		case wasm.ExternMem:

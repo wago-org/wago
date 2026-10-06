@@ -119,3 +119,7 @@ func hostCallStubPtr() (uintptr, error) {
 	})
 	return hostStubPtr, hostStubErr
 }
+
+const registerFixedHostCtrlFrames = false
+
+func (e *Engine) validateUnregisteredHostCtrl(uintptr) error { return nil }

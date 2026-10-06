@@ -316,6 +316,8 @@ type InstanceContext struct {
 }
 
 const (
+	// InstanceContextImportDispatchOffset names the immutable dispatch snapshot.
+	InstanceContextImportDispatchOffset = 8 * 8
 	// InstanceContextGCDomainOffset is trailing immutable metadata, not a basedata
 	// pointer field. Native typed-reference tails compare it before transferring
 	// compact GC references across instance contexts. The following three words
@@ -400,7 +402,7 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	*(*uint64)(unsafe.Add(base, basedataSize-offPassiveDataPtr)) = binary.LittleEndian.Uint64(src[40:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offTableDirPtr)) = binary.LittleEndian.Uint64(src[48:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offMemoryDirPtr)) = binary.LittleEndian.Uint64(src[56:])
-	*(*uint64)(unsafe.Add(base, basedataSize-offImportDispatchPtr)) = binary.LittleEndian.Uint64(src[64:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offImportDispatchPtr)) = binary.LittleEndian.Uint64(src[InstanceContextImportDispatchOffset:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offGCNativeViewPtr)) = binary.LittleEndian.Uint64(src[InstanceContextGCNativeViewOffset:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offEHTagDirPtr)) = binary.LittleEndian.Uint64(src[InstanceContextEHTagDirOffset:])
 }
