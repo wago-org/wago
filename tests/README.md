@@ -198,3 +198,26 @@ These results use unadjusted pairwise comparisons on one host. They support
 keeping the tests and benchmarks, not a general workload speed claim. The
 production table remains eight entries; these additions use no production
 memory or instrumentation.
+
+## Footprint report omission controls
+
+`TestNativeSizeRejectsOmittedAlignment` compiles small exported functions alone
+and together on each native backend. The standalone images establish physical
+function spans. The combined image establishes the intervening padding span.
+The positive report must reconcile with those bytes. Omitting nonzero padding
+from a report copy must fail the same gate. Reassigning padding to another
+category must fail the boundary check even when the total remains correct.
+Run it with `-tags=wago_codegenstats` on the target architecture.
+
+`TestArtifactSizeRejectsOmittedMetadata` reads section lengths and the entry
+vector span from serialized bytes. It rejects report copies with omitted
+metadata, entries, or framing, plus an entry-to-import reassignment. It never
+changes executable or serialized artifacts. `BenchmarkArtifactFootprintCount`
+measures the existing count-only path with 0-byte, 64-KiB, and 8-MiB passive
+payloads; these controls add no production state or allocation.
+
+These are byte-attribution checks after compilation/serialization, not release
+or leak tests. Executable payload, mapped capacity, retained compiler storage,
+allocation volume, peak memory, and RSS remain separate quantities. Existing
+ownership tests own release semantics. Native execution is reported separately
+from cross-build success; these checks do not address deferred issue #801.
