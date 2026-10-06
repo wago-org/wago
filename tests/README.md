@@ -119,3 +119,36 @@ There was no significant full-compile improvement in those cases or in cjson,
 coremark, zstd, and wren. Allocation counts were unchanged. Those four corpus
 modules already needed zero detailed requirements scans. The optimization was
 not retained; no production speed gain is claimed.
+
+## AMD64 worker reset
+
+`TestWorkerScratchMatchesFresh` compares each function with a fresh worker after
+14 fixed predecessor sequences. Its generated Go fixtures need no WABT or
+external files. The matrix covers shared scalar and fallback lowering, large
+stacks and locals, branch tables, calls, traps, memory32/memory64, and both
+native code-size policies. Exact code and metadata checks run before native
+execution. Modern-CPU code runs only when the host supports its features.
+
+Run the focused checks with:
+
+```sh
+go test -tags=wago_codegenstats,wago_regalloccheck ./src/core/compiler/backend/railshot/amd64 -run 'TestWorkerScratch|TestWorkerModuleStatsComparison'
+go test -tags=wago_profile,wago_regalloccheck ./src/core/compiler/backend/railshot/amd64 -run TestWorkerScratch
+python3 tests/scripts/check-worker-reset-control.py
+```
+
+The control script uses a temporary Go overlay to omit the CPU-feature reset.
+It requires the comparison to reject stale metadata before the first native
+call. It changes no checkout file. The profile build checks source and unwind
+metadata on fallback lowering; it does not qualify the shared scalar path.
+GC/EH roots and native ARM64 are outside this matrix.
+
+`TestWorkerScratchMatchesFreshAfterError` checks reuse after a controlled backend
+error. Failed code is never executed. `BenchmarkWorkerScratchReuse` compares
+existing reuse with a fresh worker per function and reports allocations and
+tracked retained scalar/node/control scratch. These counters do not include
+all worker heap storage. They measure existing behavior, not a new speed gain.
+
+The serial/parallel statistics comparison excludes scalar admission timing and
+worker-lifetime scratch counters, just as it excludes node/control counters.
+Code, source metadata, frame data, and compiler path remain part of the check.
