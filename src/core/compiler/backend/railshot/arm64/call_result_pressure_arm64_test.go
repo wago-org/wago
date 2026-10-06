@@ -62,10 +62,13 @@ func TestIntegerCallResultPressureARM64(t *testing.T) {
 				t.Run(fmt.Sprintf("results=%d/params=%d/stack-reg=%t", count, params, stackReg), func(t *testing.T) {
 					m, args := integerResultPressureModule(t, count, params)
 					var stats ModuleStats
-					got, err := runArm64WrapperWithOptions(t, m, CompileOptions{
-						Stats: &stats, DeferCodeMapping: true,
+					opts := CompileOptions{DeferCodeMapping: true,
 						Optimizations: map[string]bool{"inline": false, "stack-reg": stackReg},
-					}, args...)
+					}
+					if diagnosticsEnabled {
+						opts.Stats = &stats
+					}
+					got, err := runArm64WrapperWithOptions(t, m, opts, args...)
 					if err != nil || got != 42 {
 						t.Fatalf("result = %d, %v; want 42", got, err)
 					}
