@@ -1829,31 +1829,29 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			state.gcConfig = &cfg
 		}
 	}
+	finishConstruction := func() {
+		if recovered := recover(); recovered != nil {
+			result = nil
+			if panicErr, ok := recovered.(error); ok {
+				err = wrapContextError("wago: instantiation panicked after instance creation", panicErr)
+			} else {
+				err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
+			}
+		}
+		if !b.success {
+			b.success = true // the normal Close path now owns all instance resources
+			err = joinPrimary(err, in.Close())
+		}
+		in.endConstruction()
+	}
 	if opts.runtime != nil {
 		in.beginConstruction(opts.operationReservation)
 		if err := opts.runtime.registerInstance(in, opts.runtimeReservation); err != nil {
 			in.endConstruction()
 			return nil, err
 		}
-		// Once a Runtime-owned Instance exists, every later failure must dispose it
-		// through the normal lifecycle before the instantiation error escapes. The
-		// construction lifetime remains active through rollback and is released only
-		// after all terminal instantiation observers return.
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				result = nil
-				if panicErr, ok := recovered.(error); ok {
-					err = wrapContextError("wago: instantiation panicked after instance creation", panicErr)
-				} else {
-					err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
-				}
-			}
-			if !b.success {
-				b.success = true // the normal Close path now owns all instance resources
-				err = joinPrimary(err, in.Close())
-			}
-			in.endConstruction()
-		}()
+		// Runtime construction stays active through terminal observers and rollback.
+		defer finishConstruction()
 	}
 	if opts.store != nil {
 		if err := opts.store.registerInstance(in); err != nil {
@@ -1884,6 +1882,13 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		if err := gcRefTestTable.attachConversion(gcExternConversion); err != nil {
 			return nil, err
 		}
+	}
+	if opts.runtime == nil && c.HasStart {
+		// Only transfer direct-start cleanup after reference-store and conversion
+		// ownership is established. Callbacks can close this instance, so keep its
+		// resources alive until start execution and construction have unwound.
+		in.beginConstruction(opts.operationReservation)
+		defer finishConstruction()
 	}
 	if initErr != nil {
 		return nil, initErr
@@ -1938,6 +1943,10 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			// tenant's native result before public tokenization. The instance gate is
 			// acquired first, matching Invoke and prepared-call lock ordering.
 			startErr := func() error {
+				if err := in.beginInvocation(); err != nil {
+					return err
+				}
+				defer in.endInvocation()
 				state := in.lockInvocation(0)
 				defer state.unlockInvocation()
 				return in.invokeVoidEntry(opts.startContext, startEntry, in.constructionReservationSnapshot())

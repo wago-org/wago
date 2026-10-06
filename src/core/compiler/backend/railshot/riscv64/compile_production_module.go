@@ -23,7 +23,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if err := admitWireProfile(data, true, true); err != nil {
+	if err := admitWireStartProfile(data, true, true, true); err != nil {
 		return err
 	}
 	return admitProductionWire(data)
@@ -76,6 +76,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, err
 	}
 	opts.production = true
+	opts.definedStarts = true
 	c, err := compileDecodedModule(m, scalarRegisters[:], opts)
 	if err != nil {
 		return nil, err
@@ -86,6 +87,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 // admitProductionOptions keeps semantic option admission identical across the
 // scalar compiler and the private SWAR production staging prerequisite.
 func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool) error {
+	if err := admitDefinedStart(m); err != nil {
+		return err
+	}
 	if len(opts.Codegen.Module.GCTypeDescs) > MaxFunctions {
 		return unsupported("production function descriptor count bound")
 	}

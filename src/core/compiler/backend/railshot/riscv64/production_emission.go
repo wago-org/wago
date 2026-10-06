@@ -8,9 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// Admission follows the production lowerings implemented below. Ordinary
-// memory and scalar global imports and private tables are supported; host imports
-// and starts remain gated.
+// This bounded public wire profile accompanies genuine RV64 lowering.
+// Defined starts execute through public construction; private wire admission
+// remains a separate profile without a start lifecycle.
 func admitProductionWire(data []byte) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
@@ -23,7 +23,7 @@ func admitProductionWire(data []byte) error {
 			return err
 		}
 		switch id {
-		case 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12:
+		case 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12:
 		default:
 			return unsupported("production state/feature lowering is pending")
 		}

@@ -59,7 +59,16 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if c.memoryImportCount() > 1 || c.HasStart || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
+	if c.HasStart {
+		if c.StartIsImport || c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Funcs) || c.StartLocalFunc >= len(c.Entry) {
+			return reject("start requires a bounded defined function")
+		}
+		sig := c.Funcs[c.StartLocalFunc]
+		if len(sig.Params) != 0 || len(sig.Results) != 0 {
+			return reject("start requires a void signature")
+		}
+	}
+	if c.memoryImportCount() > 1 || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
 		return reject("resource/host/reference lowering is pending")
 	}
 	if len(c.GlobalImports) > len(c.Globals) {

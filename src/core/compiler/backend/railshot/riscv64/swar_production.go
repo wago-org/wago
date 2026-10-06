@@ -17,7 +17,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
-	if err := admitSWARDecodedBudget(m); err != nil {
+	if err := admitSWARDecodedBudgetProfile(m, true); err != nil {
 		return nil, err
 	}
 	if err := admitProductionOptions(m, &opts, true); err != nil {
@@ -29,7 +29,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	} else if len(m.Imports) != 0 {
 		policy = swarModuleHosts
 	}
-	image, err := compileSWARDecodedModuleProfile(m, emissionMode{production: true, interruptible: opts.Interruptible}, policy, swarStateProfile{exports: true, importedMemory: true, importedGlobals: true})
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{production: true, interruptible: opts.Interruptible}, policy, swarStateProfile{definedStarts: true, exports: true, importedMemory: true, importedGlobals: true})
 	if err != nil {
 		return nil, err
 	}

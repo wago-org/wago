@@ -29,6 +29,7 @@ const (
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
 	compiledRegisterABIDisabled           uint64 = 1 << 58
 	compiledAtomicWaitExecution           uint64 = 1 << 59
+	compiledStartFunction                 uint64 = 1 << 60
 	compiledCPUFeatureBMI2                uint64 = uint64(shared.AMD64BMI2) << 32
 	compiledCPUFeatureLZCNT               uint64 = uint64(shared.AMD64LZCNT) << 32
 	compiledCPUFeatureTZCNT               uint64 = uint64(shared.AMD64BMI1) << 32
@@ -392,7 +393,19 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	if c.registerABIDisabled {
 		required |= compiledRegisterABIDisabled
 	}
+	var startIndex uint32
+	if c.HasStart {
+		var err error
+		startIndex, err = compiledStartIndex(c)
+		if err != nil {
+			return nil, sizes, err
+		}
+		required |= compiledStartFunction
+	}
 	w.u64(required)
+	if c.HasStart {
+		w.u32(startIndex)
+	}
 	sizes.Features += w.length() - start
 	start = w.length()
 	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {
@@ -1085,7 +1098,24 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatures))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
+	c.HasStart, c.StartIsImport, c.StartLocalFunc, c.StartImportIdx = false, false, 0, 0
+	if required&compiledStartFunction != 0 {
+		index, err := r.u32()
+		if err != nil {
+			return fmt.Errorf("start function index: %w", err)
+		}
+		c.HasStart = true
+		c.StartIsImport = uint64(index) < uint64(c.NumImports)
+		if c.StartIsImport {
+			c.StartImportIdx = int(index)
+		} else {
+			c.StartLocalFunc = int(uint64(index) - uint64(c.NumImports))
+		}
+		if _, err := compiledStartIndex(c); err != nil {
+			return err
+		}
+	}
 	// Version-5 EH code dereferences descriptor zero to recover its owning native
 	// context on an exceptional cross-instance return. Derive the fixed-header
 	// requirement from authoritative feature metadata as well as the redundant

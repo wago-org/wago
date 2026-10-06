@@ -43,6 +43,7 @@ type CompileOptions struct {
 	CustomInstructions              map[uint32]railcore.CustomInstruction
 	ForceFallback                   bool
 	production                      bool
+	definedStarts                   bool
 	hostImports                     bool
 }
 
