@@ -93,11 +93,11 @@ func railshotValidateCompiled(c *Compiled) error {
 				return reject("global export index bound")
 			}
 		}
-		if len(c.GlobalImports) != 0 && (c.NumImports != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
-			return reject("SIMD imported globals with host functions or tables is pending")
+		if len(c.GlobalImports) != 0 && (c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
+			return reject("SIMD imported globals with tables is pending")
 		}
-		if c.memoryImportCount() != 0 && (c.NumImports != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
-			return reject("SIMD imported memory with host functions or tables is pending")
+		if c.memoryImportCount() != 0 && (c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
+			return reject("SIMD imported memory with tables is pending")
 		}
 	}
 	maxArity := 256

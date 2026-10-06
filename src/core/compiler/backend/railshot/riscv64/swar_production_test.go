@@ -424,3 +424,114 @@ func TestSWARProductionCombinedStateImportsMatchOwnedMemory(t *testing.T) {
 		}
 	}
 }
+
+func TestSWARProductionHostStateImportsUseActualImportEntries(t *testing.T) {
+	global := wasmtest.GlobalImportEntry("env", "v", wasm.V128, true)
+	memory := append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 4)
+	host := append(append(wasmtest.Name("env"), wasmtest.Name("host")...), 0, 0)
+	var expected []byte
+	for _, imports := range [][][]byte{{host, global, memory}, {global, host, memory}, {global, memory, host}, {memory, host, global}, {host, memory, global}, {memory, global, host}} {
+		source := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, []wasm.ValType{wasm.V128, wasm.I32, wasm.V128}))),
+			wasmtest.Section(2, wasmtest.Vec(imports...)), wasmtest.Section(3, []byte{1, 1}),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1), wasmtest.ExportEntry("global", 3, 0), wasmtest.ExportEntry("memory", 2, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x41, 7, 0x10, 0, 0x41, 3, 0xfd, 0, 0, 0, 0x0b}))),
+		)
+		m, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if image, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModuleHosts); image != nil || !errors.Is(err, ErrUnsupported) {
+			t.Fatal("private host/state import profile widened", err)
+		}
+		if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, ImportBindings: hostImportBindings(1)}); image != nil || !errors.Is(err, ErrUnsupported) {
+			t.Fatal("host/state accepted without synchronous interrupt bridge", err)
+		}
+		image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ImportBindings: hostImportBindings(1)})
+		if err != nil || image == nil || image.CodeImage != nil || len(image.Entry) != 1 {
+			t.Fatal("interleaved host signature or defined identity", err)
+		}
+		if expected == nil {
+			expected = append([]byte(nil), image.Code...)
+		} else if !bytes.Equal(expected, image.Code) {
+			t.Fatal("import order changed identical function/global/memory lowering")
+		}
+		resolvedMemory, ok := m.MemoryType(0)
+		if !ok {
+			t.Fatal("missing imported memory type")
+		}
+		resolvedGlobal, ok := m.GlobalTypeByIndex(0)
+		if !ok {
+			t.Fatal("missing imported global type")
+		}
+		for _, im := range m.Imports {
+			if im.Type.Kind == wasm.ExternFunc {
+				m.Imports = []wasm.Import{im}
+				break
+			}
+		}
+		m.Memories = []wasm.MemType{resolvedMemory}
+		m.Globals = []wasm.Global{{Type: resolvedGlobal, Init: wasm.Expr{BodyBytes: append(append([]byte{0xfd, 12}, make([]byte, 16)...), 0x0b)}}}
+		reference, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ImportBindings: hostImportBindings(1)})
+		if err != nil || !bytes.Equal(image.Code, reference.Code) {
+			t.Fatal("host with borrowed state differs from identical owned state constraints", err)
+		}
+	}
+}
+
+func TestSWARProductionCombinedImportBounds(t *testing.T) {
+	imports := make([][]byte, 0, MaxProductionImports)
+	for range 256 {
+		imports = append(imports, wasmtest.GlobalImportEntry("env", "v", wasm.V128, false))
+	}
+	imports = append(imports, append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 4))
+	for range MaxHostFunctionImports {
+		imports = append(imports, append(append(wasmtest.Name("env"), wasmtest.Name("host")...), 0, 0))
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, []wasm.ValType{wasm.V128, wasm.I32, wasm.V128}))),
+		wasmtest.Section(2, wasmtest.Vec(imports...)), wasmtest.Section(3, []byte{1, 1}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("last", 0, 256))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0xff, 1, 0x41, 7, 0x10, 0xff, 1, 0x41, 3, 0xfd, 0, 0, 0, 0x0b}))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal("combined raw source admission", err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := CompileOptions{DeferCodeMapping: true, Interruptible: true, ImportBindings: hostImportBindings(MaxHostFunctionImports)}
+	if image, err := CompileModuleWith(m, opts); err != nil || image == nil || image.CodeImage != nil || len(image.Entry) != 1 {
+		t.Fatal("combined bounded imports rejected", err)
+	}
+	// Count rejection precedes validation and compilation, including private
+	// decoded callers that do not pass through production binding admission.
+	for _, kind := range []wasm.ExternKind{wasm.ExternFunc, wasm.ExternGlobal} {
+		bad := *m
+		bad.Imports = append([]wasm.Import(nil), m.Imports...)
+		var extra wasm.Import
+		for _, im := range m.Imports {
+			if im.Type.Kind == kind {
+				extra = im
+				break
+			}
+		}
+		// Remove the other kind to stay below the total-entry bound.
+		for i, im := range bad.Imports {
+			if im.Type.Kind != kind && im.Type.Kind != wasm.ExternMem {
+				bad.Imports = append(bad.Imports[:i], bad.Imports[i+1:]...)
+				break
+			}
+		}
+		bad.Imports = append(bad.Imports, extra)
+		if err := admitSWARDecodedBudget(&bad); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("per-kind import bound bypassed", kind, err)
+		}
+	}
+	bad := *m
+	bad.Imports = append(append([]wasm.Import(nil), m.Imports...), m.Imports[0])
+	if err := admitSWARDecodedBudget(&bad); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("total import bound bypassed", err)
+	}
+}

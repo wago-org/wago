@@ -99,7 +99,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
 		return nil, err
 	}
-	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxHostFunctionImports || m.UsesCompactImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || len(m.BranchHints) != 0 || len(m.Memories) > 1 {
+	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || m.UsesCompactImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || len(m.BranchHints) != 0 || len(m.Memories) > 1 {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
 	if !hosts && len(m.Imports) != 0 {
@@ -124,16 +124,15 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, unsupported("SWAR module scalar function imports only")
 		}
 	}
-	// Memory imports first qualify without host functions or reference tables.
+	// State imports qualify with scalar host dispatch, without reference tables.
 	// Function indices count only function imports, never state imports.
-	if memoryImports > 1 || memoryImports+len(m.Memories) > 1 || memoryImports != 0 && (imported != 0 || len(m.Tables) != 0 || len(m.Elements) != 0) {
+	if memoryImports > 1 || memoryImports+len(m.Memories) > 1 || memoryImports != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
 		return nil, unsupported("SWAR imported memory profile")
 	}
-	// Shared memory/global cells qualify independently of host calls and tables.
-	if globalImports != 0 && (imported != 0 || len(m.Tables) != 0 || len(m.Elements) != 0) {
+	if globalImports != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
 		return nil, unsupported("SWAR imported global profile")
 	}
-	if imported+len(m.Code) > MaxFunctions || imported != 0 && !mode.interruptible {
+	if imported > MaxHostFunctionImports || imported+len(m.Code) > MaxFunctions || imported != 0 && !mode.interruptible {
 		return nil, unsupported("SWAR module aggregate functions/host bridge")
 	}
 	if !tables && (len(m.Tables) != 0 || len(m.Elements) != 0) {
@@ -315,14 +314,20 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 func admitSWARDecodedBudget(m *wasm.Module) error {
 	// Count and byte budgets precede validation, metadata expansion and payload
 	// copies. Decoded callers do not necessarily retain a bounded source blob.
-	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxHostFunctionImports || len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return unsupported("SWAR module state/features/function bound")
 	}
-	globalCount := len(m.Globals)
+	globalCount, functionCount := len(m.Globals), 0
 	for _, im := range m.Imports {
-		if im.Type.Kind == wasm.ExternGlobal {
+		switch im.Type.Kind {
+		case wasm.ExternGlobal:
 			globalCount++
+		case wasm.ExternFunc:
+			functionCount++
 		}
+	}
+	if functionCount > MaxHostFunctionImports {
+		return unsupported("SWAR function import bound")
 	}
 	if globalCount > 256 {
 		return unsupported("SWAR aggregate global bound")

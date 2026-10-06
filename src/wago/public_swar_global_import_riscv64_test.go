@@ -29,6 +29,10 @@ func rv64PublicSWARImportedGlobalsModule(ownedMemory bool) []byte {
 // Mode 2 imports memory at a specified import-section position and adds real
 // pair stores and memory.grow while imported vectors remain live.
 func rv64PublicSWARGlobalStateModule(memoryMode, memoryImportPosition int) []byte {
+	return rv64PublicSWARStateHostModule(memoryMode, memoryImportPosition, -1)
+}
+
+func rv64PublicSWARStateHostModule(memoryMode, memoryImportPosition, hostImportPosition int) []byte {
 	types := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64, wasm.V128, wasm.V128, wasm.V128, wasm.V128, wasm.I32}
 	var imports [][]byte
 	for i, typ := range types[:6] {
@@ -43,6 +47,16 @@ func rv64PublicSWARGlobalStateModule(memoryMode, memoryImportPosition int) []byt
 		imports = append(before, imports[memoryImportPosition:]...)
 		functionSignatures = append(functionSignatures, wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128}, []wasm.ValType{wasm.V128}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32}))
 	}
+	functionImportCount := uint32(0)
+	if hostImportPosition >= 0 {
+		functionImportCount = 1
+		host := append(append(wasmtest.Name("env"), wasmtest.Name("host")...), 0, byte(len(functionSignatures)))
+		before := append([][]byte(nil), imports[:hostImportPosition]...)
+		before = append(before, host)
+		imports = append(before, imports[hostImportPosition:]...)
+		hostTypes := types[:4]
+		functionSignatures = append(functionSignatures, wasmtest.FuncType(hostTypes, hostTypes), wasmtest.FuncType(append(append([]wasm.ValType(nil), types[:5]...), wasm.I32), []wasm.ValType{wasm.V128, wasm.V128, wasm.V128, wasm.I32, wasm.I64, wasm.F32, wasm.F64, wasm.V128, wasm.V128, wasm.V128}))
+	}
 	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(functionSignatures...)), wasmtest.Section(2, wasmtest.Vec(imports...))}
 	functionTypes := []byte{3, 0, 1, 2}
 	if memoryMode != 0 {
@@ -51,21 +65,31 @@ func rv64PublicSWARGlobalStateModule(memoryMode, memoryImportPosition int) []byt
 	if memoryMode == 2 {
 		functionTypes = []byte{6, 0, 1, 2, 3, 4, 5}
 	}
+	if hostImportPosition >= 0 {
+		functionTypes[0]++
+		functionTypes = append(functionTypes, byte(len(functionSignatures)-1))
+	}
 	sections = append(sections, wasmtest.Section(3, functionTypes))
 	if memoryMode == 1 {
 		sections = append(sections, wasmtest.Section(5, []byte{1, 1, 1, 2}))
 	}
 	literal := append(append([]byte{0xfd, 12}, make([]byte, 16)...), 0x0b)
 	sections = append(sections, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, true, literal), wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 33, 0x0b}))))
-	exports := [][]byte{wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("set", 0, 1), wasmtest.ExportEntry("private", 0, 2)}
+	functionExport := func(name string, index uint32) []byte {
+		return wasmtest.ExportEntry(name, 0, index+functionImportCount)
+	}
+	exports := [][]byte{functionExport("get", 0), functionExport("set", 1), functionExport("private", 2)}
 	for i := range types {
 		exports = append(exports, wasmtest.ExportEntry("g"+string(rune('0'+i)), 3, uint32(i)))
 	}
 	if memoryMode != 0 {
-		exports = append(exports, wasmtest.ExportEntry("memory", 2, 0), wasmtest.ExportEntry("load", 0, 3))
+		exports = append(exports, wasmtest.ExportEntry("memory", 2, 0), functionExport("load", 3))
 	}
 	if memoryMode == 2 {
-		exports = append(exports, wasmtest.ExportEntry("store", 0, 4), wasmtest.ExportEntry("grow", 0, 5))
+		exports = append(exports, functionExport("store", 4), functionExport("grow", 5))
+	}
+	if hostImportPosition >= 0 {
+		exports = append(exports, functionExport("host", uint32(functionTypes[0]-1)))
 	}
 	sections = append(sections, wasmtest.Section(7, wasmtest.Vec(exports...)))
 	var get []byte
@@ -83,6 +107,15 @@ func rv64PublicSWARGlobalStateModule(memoryMode, memoryImportPosition int) []byt
 	}
 	if memoryMode == 2 {
 		bodies = append(bodies, wasmtest.Code([]byte{0x23, 4, 0x20, 0, 0x20, 1, 0xfd, 11, 0, 0, 0x0b}), wasmtest.Code([]byte{0x23, 4, 0x20, 0, 0x40, 0, 0x0b}))
+	}
+	if hostImportPosition >= 0 {
+		body := []byte{0x20, 4, 0x23, 4, 0x23, 7}
+		for i := range 4 {
+			body = append(body, 0x20, byte(i))
+		}
+		// An observable write after the callback detects interrupted guest resume.
+		body = append(body, 0x10, 0, 0x41, 0xc0, 0, 0x41, 9, 0x3a, 0, 0, 0x20, 5, 0xfd, 0, 0, 0, 0x23, 4, 0x23, 7, 0x0b)
+		bodies = append(bodies, wasmtest.Code(body))
 	}
 	return wasmtest.Module(append(sections, wasmtest.Section(10, wasmtest.Vec(bodies...)))...)
 }
@@ -455,7 +488,7 @@ func TestRV64PublicSWARImportedGlobalMixturesRemainClosed(t *testing.T) {
 	host := append(append(wasmtest.Name("env"), wasmtest.Name("host")...), 0, 0)
 	memory := append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 2)
 	table := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), 1, 0x70, 0, 1)
-	for _, entries := range [][][]byte{{global, host}, {host, global}, {global, table}, {global, memory, host}, {memory, global, table}} {
+	for _, entries := range [][][]byte{{global, table}, {global, host, table}, {host, global, table}, {global, memory, host, table}, {memory, global, table}} {
 		functionIndex := uint32(0)
 		for _, entry := range entries {
 			if slices.Equal(entry, host) {
