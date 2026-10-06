@@ -1769,7 +1769,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if err != nil {
 				return nil, fmt.Errorf("start function %q: %w", displayKey, err)
 			}
-			caller := in.beginHostCallScopeReserved(in.constructionReservationSnapshot())
+			caller := in.ensurePluginState().hostScope.beginReservedWithID(in, in.currentInvocationID(), in.constructionReservationSnapshot(), opts.startContext)
 			if err := callImportedStart(fn, caller); err != nil {
 				return nil, fmt.Errorf("start function %q: %w", displayKey, err)
 			}
