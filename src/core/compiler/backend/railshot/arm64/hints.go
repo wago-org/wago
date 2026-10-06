@@ -1508,12 +1508,13 @@ func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop boo
 }
 
 func (s *byteBodyScanner) branchHintAt(offset uint32) (bool, bool) {
-	// The scanner visits instructions in bytecode order.
-	for len(s.branchHints) > 0 && s.branchHints[0].Offset < offset {
-		s.branchHints = s.branchHints[1:]
-	}
-	if len(s.branchHints) > 0 && s.branchHints[0].Offset == offset {
-		return s.branchHints[0].Likely, true
+	for i := range s.branchHints {
+		if s.branchHints[i].Offset == offset {
+			return s.branchHints[i].Likely, true
+		}
+		if s.branchHints[i].Offset > offset {
+			break
+		}
 	}
 	return false, false
 }

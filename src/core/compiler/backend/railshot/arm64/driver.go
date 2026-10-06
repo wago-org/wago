@@ -47,8 +47,6 @@ func (f *fn) representationError() error {
 // synthetic frame, so its terminating `end` (which pops that frame) ends the loop
 // and returns control to the caller's body.
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
-	// Each recursive inline reader keeps its own position in the sorted hints.
-	remainingHints := f.branchHints
 	for len(f.ctrl) > minCtrl {
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
 		op, err := r.Byte()
@@ -58,11 +56,14 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		f.branchHintUnlikely = false
 		if op == 0x0d {
 			off := f.branchHintLocalDecl + uint32(r.Offset()-1)
-			for len(remainingHints) > 0 && remainingHints[0].Offset < off {
-				remainingHints = remainingHints[1:]
-			}
-			if len(remainingHints) > 0 && remainingHints[0].Offset == off {
-				f.branchHintUnlikely = !remainingHints[0].Likely
+			for i := range f.branchHints {
+				if f.branchHints[i].Offset == off {
+					f.branchHintUnlikely = !f.branchHints[i].Likely
+					break
+				}
+				if f.branchHints[i].Offset > off {
+					break
+				}
 			}
 		}
 		var previous profileOrigin
@@ -173,7 +174,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
-		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.s.back() == nil {
+		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}
