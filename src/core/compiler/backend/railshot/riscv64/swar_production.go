@@ -29,7 +29,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	} else if len(m.Tables) != 0 || len(m.Elements) != 0 {
 		policy = swarModuleTables
 	}
-	image, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: opts.Interruptible}, policy)
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{production: true, interruptible: opts.Interruptible}, policy, true)
 	if err != nil {
 		return nil, err
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestSWARProductionCompilerOwnershipAndEntries(t *testing.T) {
@@ -235,5 +236,31 @@ func TestSWARProductionSelectionIncludesInlineVectorTypes(t *testing.T) {
 	m.Code[0].BodyBytes = append(uleb([]byte{0x1c}, ^uint32(0)), 0x7b, 0x0b)
 	if selected, err := moduleUsesSWAR(m); selected || !errors.Is(err, ErrUnsupported) {
 		t.Fatal("unbounded typed select reached classifier", err)
+	}
+}
+
+func TestSWARProductionOwnedMemoryExportsRetainPrivatePolicy(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(5, []byte{1, 1, 1, 4}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("load", 0, 0), wasmtest.ExportEntry("memory", 2, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfd, 0, 0, 0, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModulePlain); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("private memory export policy widened", err)
+	}
+	public, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+	if err != nil || public == nil || public.CodeImage != nil {
+		t.Fatal("production memory export route", err)
+	}
+	// Removing metadata-only memory exports must leave every native byte intact.
+	m.Exports = m.Exports[:1]
+	reference, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModulePlain)
+	if err != nil || !bytes.Equal(reference.code, public.Code) {
+		t.Fatal("owned memory export changed lowering", err)
 	}
 }
