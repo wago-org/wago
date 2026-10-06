@@ -30,6 +30,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add exact core-SIMD source-pair checks and benchmarks for byte averages,
   high-byte extraction, and signed constant dot/sub expressions.
 
+- Add semantic result-profile controls and loaded-artifact/omitted-case checks
+  to the conformance test runner.
+
 - Add AMD64 loop-boundary regression checks for deferred producer placement,
   floating-point transport, register pressure, and zero-iteration traps.
 
