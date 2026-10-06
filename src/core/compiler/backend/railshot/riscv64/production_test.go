@@ -152,7 +152,6 @@ func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.
 		imports []byte
 	}{
 		{"function", append([]byte{1}, entry(0, 0)...)},
-		{"v128-global", append([]byte{1}, entry(3, 0x7b, 0)...)},
 		{"reference-global", append([]byte{1}, entry(3, 0x70, 0)...)},
 		{"table", append([]byte{1}, entry(1, 0x70, 1, 0, 1)...)},
 		{"shared-memory", append([]byte{1}, entry(2, 3, 0, 1)...)},

@@ -213,7 +213,8 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 			exclusions := map[string]string{
 				"simd_const.112.wasm": "function count outside 1..1024",
 				"simd_linking.0.wasm": "SWAR module state/features/function bound",
-				"simd_linking.1.wasm": "function count outside 1..1024",
+				// Its imported vectors now select SWAR; it still defines no functions.
+				"simd_linking.1.wasm": "SWAR module state/features/function bound",
 			}
 			want := map[string]int{"modules": 469, "excluded_modules": 3, "assert_return": 24273, "assert_trap": 54, "excluded_assert_invalid": 669, "excluded_assert_malformed": 510, "excluded_register": 1}
 			if relaxed {

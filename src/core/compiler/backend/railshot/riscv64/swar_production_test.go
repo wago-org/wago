@@ -321,3 +321,68 @@ func TestSWARProductionImportedMemoryCountsOnlyFunctionImports(t *testing.T) {
 		t.Fatal("memory import changed identical constraints lowering", err)
 	}
 }
+
+func TestSWARProductionImportedGlobalsKeepSeparateIndexSpaces(t *testing.T) {
+	vectorLiteral := append(append([]byte{0xfd, 12}, make([]byte, 16)...), 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128, wasm.I32, wasm.I64}))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "v", wasm.V128, true), wasmtest.GlobalImportEntry("env", "i", wasm.I32, false))),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, false, []byte{0x42, 7, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("local", 3, 2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x23, 1, 0x23, 2, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModuleHosts); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("private global import policy widened", err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+	if err != nil || image == nil || image.CodeImage != nil || len(image.Entry) != 1 {
+		t.Fatal("global import entered function-index or host transport", err)
+	}
+	vector, _ := m.GlobalTypeByIndex(0)
+	integer, _ := m.GlobalTypeByIndex(1)
+	m.Imports = nil
+	m.Globals = append([]wasm.Global{{Type: vector, Init: wasm.Expr{BodyBytes: vectorLiteral}}, {Type: integer, Init: wasm.Expr{BodyBytes: []byte{0x41, 0, 0x0b}}}}, m.Globals...)
+	reference, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+	if err != nil || !bytes.Equal(image.Code, reference.Code) {
+		t.Fatal("imported global prefix changed identical typed lowering", err)
+	}
+}
+
+func TestSWARProductionUnusedVectorImportAndAggregateGlobalBound(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "unused", wasm.V128, false))),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 7, 0x0b}))),
+	)
+	for _, deferred := range []bool{false, true} {
+		if image, err := CompileProduction(source, ProductionOptions{DeferCodeMapping: deferred}); image != nil || !errors.Is(err, ErrUnsupported) {
+			t.Fatal("isolated scalar byte compiler admitted vector global import", err)
+		}
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := moduleUsesSWAR(m)
+	if err != nil || !selected {
+		t.Fatal("unused vector import not selected", err)
+	}
+	im := m.Imports[0]
+	m.Imports = make([]wasm.Import, 256)
+	for i := range m.Imports {
+		m.Imports[i] = im
+	}
+	if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true}); image == nil || err != nil {
+		t.Fatal("aggregate global bound rejected its boundary", err)
+	}
+	m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32}, Init: wasm.Expr{BodyBytes: []byte{0x41, 0, 0x0b}}}}
+	if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true}); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("aggregate imported/defined global bound bypassed", err)
+	}
+}

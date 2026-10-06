@@ -29,7 +29,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	} else if len(m.Tables) != 0 || len(m.Elements) != 0 {
 		policy = swarModuleTables
 	}
-	image, err := compileSWARDecodedModuleProfile(m, emissionMode{production: true, interruptible: opts.Interruptible}, policy, swarStateProfile{exports: true, importedMemory: true})
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{production: true, interruptible: opts.Interruptible}, policy, swarStateProfile{exports: true, importedMemory: true, importedGlobals: true})
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +59,11 @@ func moduleUsesSWAR(m *wasm.Module) (bool, error) {
 	}
 	for _, global := range m.Globals {
 		if wasm.EqualValType(global.Type.Type, wasm.V128) {
+			return true, nil
+		}
+	}
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternGlobal && wasm.EqualValType(im.Type.GlobalType().Type, wasm.V128) {
 			return true, nil
 		}
 	}

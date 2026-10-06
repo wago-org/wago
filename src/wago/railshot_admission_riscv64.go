@@ -65,8 +65,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	if len(c.GlobalImports) > len(c.Globals) {
 		return reject("global import index shape")
 	}
+	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
 	for i, global := range c.GlobalImports {
-		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64) || global.Type != c.Globals[i].Type || global.Mutable != c.Globals[i].Mutable {
+		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.Type != c.Globals[i].Type || global.Mutable != c.Globals[i].Mutable {
 			return reject("global import type/mutability shape")
 		}
 	}
@@ -83,7 +84,6 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("entry is not an aligned framed wrapper")
 		}
 	}
-	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
 	if vectorProfile {
 		if len(c.GlobalExports) > railshot.MaxFunctions {
 			return reject("global export count bound")
@@ -93,8 +93,8 @@ func railshotValidateCompiled(c *Compiled) error {
 				return reject("global export index bound")
 			}
 		}
-		if len(c.GlobalImports) != 0 {
-			return reject("SIMD profile requires owned globals")
+		if len(c.GlobalImports) != 0 && (c.NumImports != 0 || c.memoryImportCount() != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
+			return reject("SIMD imported globals with imported memory, host functions or tables is pending")
 		}
 		if c.memoryImportCount() != 0 && (c.NumImports != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
 			return reject("SIMD imported memory with host functions or tables is pending")
@@ -144,8 +144,14 @@ func railshotValidateCompiled(c *Compiled) error {
 		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64ImportedInitializer(c, global.InitGlobal, global.Type)) {
 			return reject("global initializer requires an immutable scalar import of the exact type")
 		}
+		if vectorProfile && global.HasInitGlobal {
+			return reject("SIMD global initializer must be a literal")
+		}
 	}
 	for _, data := range c.Data {
+		if vectorProfile && data.Offset.HasGlobal {
+			return reject("SIMD data offset must be a literal")
+		}
 		if c.memoryCount() != 1 || data.MemoryIndex != 0 || len(data.Offset.Expr) != 0 || (data.Offset.HasGlobal && !rv64ImportedInitializer(c, data.Offset.Global, ValI32)) {
 			return reject("data initializer lowering is pending")
 		}
