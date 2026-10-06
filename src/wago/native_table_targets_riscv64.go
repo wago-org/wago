@@ -118,7 +118,7 @@ func (s *rv64NativeTableTargets) refresh(root *Instance) error {
 			if edges > 4096 {
 				return fmt.Errorf("RV64 table attachment edge bound")
 			}
-			if export, native := owner.imports[owner.c.functionImportBindingKey(index)].(*InstanceExport); native && export != nil {
+			if export, native := rv64NativeFunctionAttachment(owner, index); native && export != nil {
 				if err := s.add(export.inst); err != nil {
 					return err
 				}

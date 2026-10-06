@@ -142,7 +142,8 @@ func TestRV64OwnedTableRejectsForeignContextAndWrongTags(t *testing.T) {
 			tc.mutate()
 			binary.LittleEndian.PutUint64(a.results, 0x123456789abcdef0)
 			_, err := a.Invoke("call", 0, 5)
-			ownedTableTrap(t, err, coreruntime.TrapIndirectOutOfBounds)
+			rv64RejectedTableEntry(t, err)
+			ownedTableTrap(t, rv64RawOwnedTableGuard(t, a, 0, 5), coreruntime.TrapIndirectOutOfBounds)
 			if binary.LittleEndian.Uint64(a.results) != 0x123456789abcdef0 {
 				t.Fatal("bad ownership reached callee result writes")
 			}
@@ -154,9 +155,41 @@ func TestRV64OwnedTableRejectsForeignContextAndWrongTags(t *testing.T) {
 	copy(entry, table[8+coreruntime.TableEntryBytes:8+2*coreruntime.TableEntryBytes])
 	binary.LittleEndian.PutUint64(entry[16:], 0)
 	_, err = a.Invoke("call", 0, 5)
-	ownedTableTrap(t, err, coreruntime.TrapIndirectWrongSig)
+	rv64RejectedTableEntry(t, err)
+	ownedTableTrap(t, rv64RawOwnedTableGuard(t, a, 0, 5), coreruntime.TrapIndirectWrongSig)
 	copy(entry, saved)
 	importedGlobalInvoke(t, a, "call", []uint64{12}, 0, 5)
+}
+
+func rv64RejectedTableEntry(t *testing.T, err error) {
+	t.Helper()
+	var trap *coreruntime.TrapError
+	if err == nil || errors.As(err, &trap) {
+		t.Fatal("corrupt row was not rejected before guest entry", err)
+	}
+}
+
+// Deliberately bypass table attachment admission only in the original corrupt
+// row fixtures, which keep every candidate allocation physically alive. This
+// retains independent machine guard/trap-order coverage after public entry
+// starts authenticating table ownership before executing any instruction.
+func rv64RawOwnedTableGuard(t *testing.T, in *Instance, args ...uint64) error {
+	t.Helper()
+	state := in.lockInvocation(0)
+	defer state.unlockInvocation()
+	nativeExecutionMu.Lock()
+	defer nativeExecutionMu.Unlock()
+	if err := in.bindAndValidateNativeContext(); err != nil {
+		t.Fatal(err)
+	}
+	for index, arg := range args {
+		binary.LittleEndian.PutUint64(in.serArgs[index*8:], arg)
+	}
+	if err := refreshNativeControl(true, in.eng, in.jm, in.trap); err != nil {
+		t.Fatal(err)
+	}
+	entry := in.base + uintptr(in.c.Entry[in.c.Exports["call"]-in.c.NumImports])
+	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results))
 }
 
 func TestRV64OwnedTableActiveCancellationCloseAndArtifact(t *testing.T) {

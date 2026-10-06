@@ -159,6 +159,9 @@ func railshotTrapOwner(root *Instance, trap *coreruntime.TrapError) (*Instance, 
 }
 
 func railshotAttachedNativeOwner(root *Instance, identity uintptr) *Instance {
+	if owner := rv64ActiveTableTrapOwner(root, identity); owner != nil {
+		return owner
+	}
 	const maxOwners, maxEdges = 256, 4096
 	var owners [maxOwners + 1]*Instance
 	owners[0] = root
@@ -176,7 +179,7 @@ func railshotAttachedNativeOwner(root *Instance, identity uintptr) *Instance {
 				return nil
 			}
 			edges++
-			export, native := owner.imports[owner.c.functionImportBindingKey(index)].(*InstanceExport)
+			export, native := rv64NativeFunctionAttachment(owner, index)
 			if !native || export == nil || export.inst == nil {
 				continue
 			}
@@ -399,7 +402,13 @@ func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 
 // Callback authority and ownership of the producer's public gate differ for a
 // foreign activation. Only its actual gate owner may swap parked public scratch.
-type railshotInvocationState struct{ gateOwner invocationID }
+type railshotInvocationState struct {
+	gateOwner          invocationID
+	longImportKeysOnce sync.Once
+	longImportKeys     []string
+	tableTargets       [rv64MaxTableEntryDepth]*rv64NativeTableTargets
+	tableDepth         int
+}
 
 func railshotSetInvocationGateOwner(state *instancePluginState, id invocationID) {
 	state.activations.mu.Lock()

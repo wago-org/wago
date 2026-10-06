@@ -381,6 +381,7 @@ func (state *preparedSessionState) hostLeaseValid() bool {
 func (state *preparedSessionState) dropHostLease(migrated bool) {
 	if migrated {
 		nativeExecutionMu.Unlock()
+		railshotReleaseNativeTableTargets(state.entry.tables)
 	} else {
 		state.entry.unlockExecution()
 	}

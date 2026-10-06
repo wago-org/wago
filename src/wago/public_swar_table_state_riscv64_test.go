@@ -191,7 +191,8 @@ func TestRV64PublicSWAROwnedTableStateImportsContextAndRetirement(t *testing.T) 
 					if output, err := a.Invoke("call", 3, 4, 0); output != nil {
 						t.Fatal("foreign table context produced results", output, err)
 					} else {
-						ownedTableTrap(t, err, coreruntime.TrapIndirectOutOfBounds)
+						rv64RejectedTableEntry(t, err)
+						ownedTableTrap(t, rv64RawOwnedTableGuard(t, a, 3, 4, 0), coreruntime.TrapIndirectOutOfBounds)
 					}
 					copy(privateTableBytes(a), before)
 					call(a, private[0], 0)

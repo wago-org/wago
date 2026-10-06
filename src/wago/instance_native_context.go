@@ -193,6 +193,19 @@ func (l executionLease) memoryBase(in *Instance) uintptr {
 // size/growth fields remain backing-owned; invocation control is refreshed by
 // the engine entry/resume paths.
 func (in *Instance) beginNativeEntry() (executionLease, error) {
+	lease, err := in.lockAndBindNativeEntry()
+	if err != nil {
+		return lease, err
+	}
+	lease.tables, err = railshotAcquireNativeTableTargets(in)
+	if err != nil {
+		in.unlockNativeEntry(lease)
+		return executionLease{}, err
+	}
+	return lease, nil
+}
+
+func (in *Instance) lockAndBindNativeEntry() (executionLease, error) {
 	if in.usesIndependentExecution() {
 		mu := in.independentNativeExecutionMu()
 		mu.Lock()
@@ -283,7 +296,14 @@ func (fn *WasmFunc) beginNativeEntry() (executionLease, bool, error) {
 				}
 			}
 			fn.hostContextVersion = state.nativeContextVersion.Load()
-			return executionLease{local: mu}, reuse, nil
+			lease := executionLease{local: mu}
+			tables, err := railshotAcquireNativeTableTargets(in)
+			lease.tables = tables
+			if err != nil {
+				in.unlockNativeEntry(lease)
+				return executionLease{}, false, err
+			}
+			return lease, reuse, nil
 		}
 		mu.Unlock()
 	}
@@ -371,9 +391,10 @@ func (l executionLease) unlockExecution() {
 	}
 	if l.local != nil {
 		l.local.Unlock()
-		return
+	} else {
+		nativeExecutionMu.Unlock()
 	}
-	nativeExecutionMu.Unlock()
+	railshotReleaseNativeTableTargets(l.tables)
 }
 
 // unlockNativeEntry releases the mutex held after a host callback returns. A
@@ -385,6 +406,7 @@ func (in *Instance) unlockNativeEntry(l executionLease) {
 	}
 	if l.local != nil && !in.threadedMemoryZero && !in.usesIndependentExecution() {
 		nativeExecutionMu.Unlock()
+		railshotReleaseNativeTableTargets(l.tables)
 		return
 	}
 	l.unlockExecution()
@@ -544,7 +566,8 @@ func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
 		return preparedEntryIsolated
 	}
 	if in == nil || in.c == nil || (!memoryFree && in.c.boundsMode == BoundsChecksSignalsBased) ||
-		in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode {
+		in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode ||
+		(railshotNativeContextTrapABI() && in.c.tableCount() != 0) {
 		return preparedEntryGeneral
 	}
 	if in.memory != nil {
@@ -628,6 +651,9 @@ func (in *Instance) unlockPreparedFastState() {
 }
 
 func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error {
+	if railshotNativeContextTrapABI() && in.c.tableCount() != 0 {
+		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
+	}
 	nativeExecutionMu.Lock()
 	if !in.lockPreparedFastState() {
 		nativeExecutionMu.Unlock()
@@ -646,6 +672,9 @@ func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error 
 }
 
 func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte, reserved, bounded bool) error {
+	if railshotNativeContextTrapABI() && in.c.tableCount() != 0 {
+		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
+	}
 	if !reserved {
 		if !in.lockPreparedFastState() {
 			if in.syncMode {

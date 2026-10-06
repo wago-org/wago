@@ -257,6 +257,9 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 }
 
 func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(a.root)
+	}
 	root := a.root
 	active := root
 	if root == nil || ctrl != offHeapSlicePtr(root.ctrl) {
@@ -564,6 +567,9 @@ func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
 // and shared instances release their native lease while arbitrary Go runs. The context version or
 // global epoch still decides whether native context must be rebound before resume.
 func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(a.root)
+	}
 	active := a.root
 	if active == nil || ctrl != a.ctrl ||
 		importIdx&hostFuncRefDispatchBit != 0 || int(importIdx) >= len(active.syncHosts) ||
@@ -622,6 +628,9 @@ func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, imp
 // for the original typed scalar imports. Expanded signatures use the separate
 // portal above so adding them cannot perturb this path's register allocation.
 func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(a.root)
+	}
 	active := a.root
 	if active == nil || ctrl != a.ctrl ||
 		importIdx&hostFuncRefDispatchBit != 0 || int(importIdx) >= len(active.syncHosts) ||
@@ -670,6 +679,9 @@ func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, 
 // control-frame, import, slot, and execution-version checks that can vary while
 // the activation is live.
 func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(a.root)
+	}
 	if ctrl != a.ctrl || importIdx != 0 {
 		return 0, false
 	}
@@ -695,6 +707,9 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, impor
 }
 
 func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(a.root)
+	}
 	if ctrl != a.ctrl || importIdx != 0 {
 		return 0, false
 	}
@@ -719,6 +734,9 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintpt
 // translation, so it can share the typed portal's compact park/resume protocol
 // while retaining the generic slice ABI for arbitrary scalar arity.
 func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(a.root)
+	}
 	if ctrl != a.ctrl || importIdx != 0 {
 		a.dispatch(ctrl, importIdx, args, results)
 		return
@@ -756,6 +774,9 @@ func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint
 // while operating directly on the parked argument and result areas. A foreign
 // control frame falls back to the activation's generic dispatcher.
 func (a *hostLoopActivation) dispatchSingleHostCallView(ctrl uintptr, importIdx uint32, args, results []uint64) bool {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(a.root)
+	}
 	if ctrl != a.ctrl || importIdx != 0 {
 		return false
 	}
