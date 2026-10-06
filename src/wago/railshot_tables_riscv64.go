@@ -68,20 +68,20 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	var params, results [256]wasm.ValType
 	for i, sig := range c.Funcs {
 		for j, t := range sig.Params {
-			params[j] = rv64ScalarWasmType(t)
+			params[j] = rv64NumericWasmType(t)
 		}
 		for j, t := range sig.Results {
-			results[j] = rv64ScalarWasmType(t)
+			results[j] = rv64NumericWasmType(t)
 		}
 		key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: params[:len(sig.Params)], Results: results[:len(sig.Results)]})
 		if c.FuncTypeID[i] != key {
-			return fmt.Errorf("private table signature key differs from scalar type")
+			return fmt.Errorf("private table signature key differs from numeric type")
 		}
 	}
 	return nil
 }
 
-func rv64ScalarWasmType(t ValType) wasm.ValType {
+func rv64NumericWasmType(t ValType) wasm.ValType {
 	switch t {
 	case ValI64:
 		return wasm.I64
@@ -89,6 +89,8 @@ func rv64ScalarWasmType(t ValType) wasm.ValType {
 		return wasm.F32
 	case ValF64:
 		return wasm.F64
+	case ValV128:
+		return wasm.V128
 	default:
 		return wasm.I32
 	}

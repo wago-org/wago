@@ -185,6 +185,10 @@ func unsupported(detail string) error { return fmt.Errorf("%w: %s", ErrUnsupport
 func admitWire(data []byte) error { return admitWireMode(data, false) }
 
 func admitWireMode(data []byte, floating bool) error {
+	return admitWireProfile(data, floating, false)
+}
+
+func admitWireProfile(data []byte, floating, vectors bool) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
 		id, err := r.Byte()
@@ -233,7 +237,7 @@ func admitWireMode(data []byte, floating bool) error {
 						if err != nil {
 							return err
 						}
-						if t != 0x7f && t != 0x7e && (!floating || t != 0x7d && t != 0x7c) {
+						if t != 0x7f && t != 0x7e && (!floating || t != 0x7d && t != 0x7c) && (!vectors || t != 0x7b) {
 							return unsupported("noninteger type")
 						}
 					}

@@ -19,6 +19,8 @@ func TestCompiledArtifactArchitectureIdentity(t *testing.T) {
 		native = 1
 	case "arm64":
 		native = 2
+	case "riscv64":
+		native = 3
 	default:
 		t.Fatalf("missing artifact architecture ID for %s", runtime.GOARCH)
 	}
@@ -29,7 +31,10 @@ func TestCompiledArtifactArchitectureIdentity(t *testing.T) {
 		t.Fatalf("artifact section count = %d, want %d", got, compiledSectionCount)
 	}
 
-	for _, architecture := range []byte{0, (native % 2) + 1, 0x0f} {
+	for _, architecture := range []byte{0, 1, 2, 3, 0x0f} {
+		if architecture == native {
+			continue
+		}
 		t.Run(fmt.Sprintf("reject-architecture-%d", architecture), func(t *testing.T) {
 			foreign := append([]byte(nil), blob...)
 			foreign[5] = architecture<<4 | foreign[5]&0x0f

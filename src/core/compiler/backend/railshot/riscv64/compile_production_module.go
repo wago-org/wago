@@ -23,7 +23,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if err := admitWireMode(data, true); err != nil {
+	if err := admitWireProfile(data, true, true); err != nil {
 		return err
 	}
 	return admitProductionWire(data)
@@ -62,6 +62,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
+	usesSWAR, err := moduleUsesSWAR(m)
+	if err != nil {
+		return nil, err
+	}
+	if usesSWAR {
+		return compileSWARProductionModule(m, opts)
+	}
 	if err := admitProductionOptions(m, &opts, false); err != nil {
 		return nil, err
 	}
@@ -91,7 +98,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if opts.ElideBoundsChecks || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.CustomInstructions) != 0 || len(opts.Codegen.Module.GCTypeLayouts) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC || !allowSWAR && opts.Codegen.Module.Features.V128 {
 		return unsupported("production host/guard/GC/custom lowering is pending")
 	}
-	// The public frontend emits inert function sentinels for scalar types.
+	// The public frontend emits inert function sentinels for numeric types.
 	// They do not require heap lowering, but nonfunction descriptors do.
 	for _, desc := range opts.Codegen.Module.GCTypeDescs {
 		if desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper {

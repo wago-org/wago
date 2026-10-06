@@ -86,9 +86,9 @@ func TestSWARProductionCompilerOwnershipAndEntries(t *testing.T) {
 					}
 				}
 			}
-			// Public decoded/source entry points retain the separately qualified scalar gate.
-			if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ImportBindings: hostImportBindings(test.imports)}); image != nil || !errors.Is(err, ErrUnsupported) {
-				t.Fatal("public SIMD gate widened", err)
+			// The decoded shared entry point selects the same bounded SWAR image.
+			if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ImportBindings: hostImportBindings(test.imports)}); image == nil || err != nil || !bytes.Equal(image.Code, reference.code) || image.CodeImage != nil {
+				t.Fatal("shared SIMD compiler route", err)
 			}
 		})
 	}
@@ -162,5 +162,78 @@ func TestSWARProductionCompilerDescriptorPreflight(t *testing.T) {
 		if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
 			t.Fatal("unsupported GC layout reached validation/staging", typ, err)
 		}
+	}
+}
+
+func TestSWARProductionSelectionUsesInstructionGrammar(t *testing.T) {
+	for _, f := range []fixtureFunc{
+		{result: 0x7e, locals: []byte{1, 0x81, 1, 0x7f}, body: []byte{0x42, 0xfd, 0, 0x0b}},
+		{result: 0x7c, locals: []byte{1, 0x81, 1, 0x7f}, body: []byte{0x44, 0xfd, 0, 0, 0, 0, 0, 0, 0, 0x0b}},
+	} {
+		m, err := wasm.DecodeModule(binaryModule(f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		selected, err := moduleUsesSWAR(m)
+		if err != nil || selected {
+			t.Fatal("SIMD prefix inside scalar immediate selected SWAR", err)
+		}
+		image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+		if err != nil || image == nil {
+			t.Fatal("scalar129locals lost admission", err)
+		}
+	}
+	source := binaryModule(fixtureFunc{body: append(append([]byte{0xfd, 12}, make([]byte, 16)...), 0x1a, 0x0b)})
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := moduleUsesSWAR(m)
+	if err != nil || !selected {
+		t.Fatal("SIMD body with scalar signature not selected", err)
+	}
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal("SWAR source gate", err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+	if err != nil || image == nil {
+		t.Fatal("scalar signature SWAR body", err)
+	}
+	if image, err := CompileProduction(source, ProductionOptions{DeferCodeMapping: true}); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("isolated byte compiler widened", err)
+	}
+}
+
+func TestSWARProductionSelectionIncludesInlineVectorTypes(t *testing.T) {
+	for _, body := range [][]byte{
+		{0x02, 0x7b, 0x00, 0x0b, 0x1a, 0x0b},
+		{0x03, 0x7b, 0x00, 0x0b, 0x1a, 0x0b},
+		{0x41, 1, 0x04, 0x7b, 0x00, 0x05, 0x00, 0x0b, 0x1a, 0x0b},
+		{0x00, 0x41, 1, 0x1c, 1, 0x7b, 0x1a, 0x0b},
+	} {
+		source := binaryModule(fixtureFunc{body: body})
+		m, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal("normally valid inline vector type", err)
+		}
+		selected, err := moduleUsesSWAR(m)
+		if err != nil || !selected {
+			t.Fatal("inline vector type not selected", body, err)
+		}
+		image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+		if err != nil || image == nil {
+			t.Fatal("inline vector compiler route", body, err)
+		}
+	}
+	m, err := wasm.DecodeModule(binaryModule(fixtureFunc{body: []byte{0x0b}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Code[0].BodyBytes = append(uleb([]byte{0x1c}, ^uint32(0)), 0x7b, 0x0b)
+	if selected, err := moduleUsesSWAR(m); selected || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("unbounded typed select reached classifier", err)
 	}
 }

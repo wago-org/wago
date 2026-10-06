@@ -33,9 +33,9 @@ const (
 	swarModuleHosts
 )
 
-// This private module pilot owns a bounded source snapshot and admits every
-// function before allocating an image. It has no production compiler entry or
-// public feature gate. Only defined functions, their exports, inert metadata
+// This lowering image owns a bounded source snapshot and admits every
+// function before allocating code. The production adapter additionally applies
+// shared compiler options; public admission and instance setup are separate. Only defined functions, their exports, inert metadata
 // one optional nonshared memory32 bounded literal globals and active/passive data are supported.
 // Global cells are initialized separately by the private idle execution owner.
 // The execution owner must provide matching call arenas and JobMemory layout.
@@ -74,7 +74,7 @@ func compileSWARModulePolicy(data []byte, mode emissionMode, policy swarModulePo
 // caller owns immutable source while this call validates and lowers it; every
 // retained image/state payload is copied. Wire provenance still requires the
 // separate binary admission above (empty sections cannot be recovered here).
-// This does not expose SWAR through public source, artifact or CPU admission.
+// Public integration must additionally enforce source, artifact and CPU admission.
 func compileSWARDecodedModule(m *wasm.Module, mode emissionMode, policy swarModulePolicy) (*swarModuleImage, error) {
 	if m == nil || !mode.production || policy > swarModuleHosts {
 		return nil, unsupported("SWAR decoded module production/policy")

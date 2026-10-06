@@ -708,9 +708,9 @@ func supportsThreadsBackend(goos, goarch string) bool {
 
 func platformCoreFeatures() CoreFeatures {
 	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
-		// The opt-in development backend also enforces a whole-module scalar
+		// The opt-in development backend also enforces a whole-module
 		// allowlist. This is a bounded integration surface, not Core release parity.
-		return CoreFeatureMutableGlobal | CoreFeatureSignExtensionOps | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureNonTrappingFloatToIntConversion | CoreFeatureReferenceTypes
+		return CoreFeatureMutableGlobal | CoreFeatureSignExtensionOps | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureNonTrappingFloatToIntConversion | CoreFeatureReferenceTypes | CoreFeatureSIMD
 	}
 	supported := coreFeaturesWago
 	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {

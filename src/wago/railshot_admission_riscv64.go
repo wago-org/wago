@@ -83,20 +83,30 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("entry is not an aligned framed wrapper")
 		}
 	}
+	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
+	if vectorProfile {
+		if c.memoryImportCount() != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.memoryDir != nil && len(c.memoryDir.exports) != 0 {
+			return reject("SIMD profile requires owned state and function exports")
+		}
+	}
+	maxArity := 256
+	if vectorProfile {
+		maxArity = 128
+	}
 	for _, sig := range c.Funcs {
-		if len(sig.Params) > 256 || len(sig.Results) > 256 {
+		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
 			return reject("signature arity")
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
-					return reject("nonscalar signature")
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) {
+					return reject("unsupported signature")
 				}
 			}
 		}
 	}
 	for i, typ := range c.Types {
-		if len(typ.Params) > 256 || len(typ.Results) > 256 {
+		if len(typ.Params) > maxArity || len(typ.Results) > maxArity {
 			return reject("type signature arity")
 		}
 		if i > 0 && c.Types[i-1].RecGroup == typ.RecGroup {
@@ -107,8 +117,8 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
 			for _, value := range values {
-				if value.Kind != ValueTypeI32 && value.Kind != ValueTypeI64 && value.Kind != ValueTypeF32 && value.Kind != ValueTypeF64 {
-					return reject("nonscalar type")
+				if value.Kind != ValueTypeI32 && value.Kind != ValueTypeI64 && value.Kind != ValueTypeF32 && value.Kind != ValueTypeF64 && (!vectorProfile || value.Kind != ValueTypeV128) {
+					return reject("unsupported type")
 				}
 			}
 		}
@@ -117,7 +127,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject(err.Error())
 	}
 	for i, global := range c.Globals {
-		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64) || global.HasInitFunc || len(global.InitExpr) != 0 {
+		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.HasInitFunc || len(global.InitExpr) != 0 {
 			return reject("global initializer lowering is pending")
 		}
 		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64ImportedInitializer(c, global.InitGlobal, global.Type)) {
