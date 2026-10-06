@@ -66,6 +66,60 @@ excluded from the prepared-call benchmark. No wall-clock threshold is asserted.
 Native ARM64 and admitted memory-region/shared-compiler loops remain outside
 this coverage.
 
+## Bytecode summary agreement
+
+`TestBytecodeSummary*` in `src/core/compiler/wasm` and `src/wago` checks the
+bytecode scanners against explicit expectations, full decoding, and validation.
+Run the bounded matrix with:
+
+```sh
+go test ./src/core/compiler/wasm ./src/wago -run '^TestBytecodeSummary' -count=1
+```
+
+`tests/support/summaryfixtures/fixtures.go` records the WAT and fixed binary
+encoding of 19 small modules. Eighteen encodings were checked with WABT 1.0.41
+(`wat2wasm --enable-all`). The GC encoding was checked by hand because that
+WABT does not parse the selected GC syntax. Tests need no external tools.
+Each test decodes its own binary slice. The largest module is 113 bytes; tests
+reject fixtures above 512 bytes. Branch vectors have at most eight explicit
+labels, and structured bodies nest at most two levels.
+
+The 48 immediate cases cover scalar LEB/fixed values, block signatures,
+branch/call indexes, typed select, indexed memory32/memory64 offsets, bulk
+segments, SIMD constants/shuffles/lanes/memory, atomics, references, GC index
+and cast forms, and EH catch vectors. Existing walker, module-facts, and feature
+fusion tests remain in place. The added matrix checks 2,304 immediate-storage
+predecessor pairs and 361 module-analysis pairs. Another 76 transitions check
+recovery after validation errors. Wrong-skip and disabled-observer controls
+must fail the same gates used by the positive cases.
+
+Malformed fixtures stay in decoding and validation tests. Error categories,
+positions, partial feature summaries, and conservative module facts follow each
+API's contract. A byte-at-a-time decoder and a bulk skip can report different
+positions for the same truncated vector. SIMD constant/shuffle classification
+uses the existing prefix/subopcode fields, without requiring a populated kind.
+
+This is bounded coverage, not an exhaustive opcode or proposal test. Full GC
+type graphs, descriptor/string proposals, every SIMD/atomic and EH form,
+imported mixed-width memories, and maximum-size stress cases remain outside
+this matrix. Decoder and scanner helpers are shared; agreement between them
+alone is not independent proof. Hand expectations and pinned WABT cases provide
+separate checks. Validation and product admission remain separate operations.
+
+`BenchmarkBytecodeSummary*` reports scan, full-decode, module-summary, and
+complete-compile costs. Cached body scans must allocate nothing. Complete
+module-summary calls allocate their result facts and can allocate classifier
+setup. Do not compare those two allocation contracts as if they were identical.
+
+The final #827 experiment tried to omit a second requirements scan for
+`ref.null func` and `ref.null extern`. Seven alternating 100 ms sample pairs on
+Linux/amd64 (Go 1.27.1, Ryzen 7 8845HS, one Go worker, CPU 4) showed isolated
+summary reductions of 14.2%, 92.7%, and 99.5% for 1, 128, and 2,048 nulls.
+There was no significant full-compile improvement in those cases or in cjson,
+coremark, zstd, and wren. Allocation counts were unchanged. Those four corpus
+modules already needed zero detailed requirements scans. The optimization was
+not retained; no production speed gain is claimed.
+
 ## AMD64 worker reset
 
 `TestWorkerScratchMatchesFresh` compares each function with a fresh worker after

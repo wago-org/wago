@@ -33,6 +33,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Match direct and validated feature summaries for bulk table instructions.
+
 - Preserve live AMD64 values across signed i64 division when the overflow
   guard runs under register pressure.
 
