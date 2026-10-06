@@ -386,3 +386,41 @@ func TestSWARProductionUnusedVectorImportAndAggregateGlobalBound(t *testing.T) {
 		t.Fatal("aggregate imported/defined global bound bypassed", err)
 	}
 }
+
+func TestSWARProductionCombinedStateImportsMatchOwnedMemory(t *testing.T) {
+	globalImports := [][]byte{wasmtest.GlobalImportEntry("env", "v", wasm.V128, true), wasmtest.GlobalImportEntry("env", "i", wasm.I32, false)}
+	memoryImport := append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 4)
+	for _, position := range []int{0, 1, 2} {
+		imports := append([][]byte(nil), globalImports[:position]...)
+		imports = append(imports, memoryImport)
+		imports = append(imports, globalImports[position:]...)
+		source := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I64, wasm.V128}))),
+			wasmtest.Section(2, wasmtest.Vec(imports...)), wasmtest.Section(3, []byte{1, 0}),
+			wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, false, []byte{0x42, 7, 0x0b}))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("local", 3, 2), wasmtest.ExportEntry("memory", 2, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x23, 1, 0x23, 2, 0x20, 0, 0xfd, 0, 0, 0, 0x0b}))),
+		)
+		m, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if image, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModuleHosts); image != nil || !errors.Is(err, ErrUnsupported) {
+			t.Fatal("private combined import policy widened", err)
+		}
+		image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+		if err != nil || image == nil || image.CodeImage != nil || len(image.Entry) != 1 {
+			t.Fatal("combined state imports changed defined function identity", position, err)
+		}
+		memory, ok := m.MemoryType(0)
+		if !ok {
+			t.Fatal("missing interleaved memory type")
+		}
+		m.Imports = append(append([]wasm.Import(nil), m.Imports[:position]...), m.Imports[position+1:]...)
+		m.Memories = []wasm.MemType{memory}
+		reference, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+		if err != nil || !bytes.Equal(image.Code, reference.Code) {
+			t.Fatal("combined import changed identical global and memory constraints lowering", position, err)
+		}
+	}
+}

@@ -129,8 +129,8 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if memoryImports > 1 || memoryImports+len(m.Memories) > 1 || memoryImports != 0 && (imported != 0 || len(m.Tables) != 0 || len(m.Elements) != 0) {
 		return nil, unsupported("SWAR imported memory profile")
 	}
-	// Qualify shared global cells without imported memory, host calls or tables.
-	if globalImports != 0 && (imported != 0 || memoryImports != 0 || len(m.Tables) != 0 || len(m.Elements) != 0) {
+	// Shared memory/global cells qualify independently of host calls and tables.
+	if globalImports != 0 && (imported != 0 || len(m.Tables) != 0 || len(m.Elements) != 0) {
 		return nil, unsupported("SWAR imported global profile")
 	}
 	if imported+len(m.Code) > MaxFunctions || imported != 0 && !mode.interruptible {

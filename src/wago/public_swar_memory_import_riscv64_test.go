@@ -153,7 +153,7 @@ func TestRV64PublicSWARImportedMemoryArtifactCombinationsRemainClosed(t *testing
 		mutate func(*Compiled)
 	}{
 		{"table", func(v *Compiled) { v.HasTable = true; v.TableSize = 1 }},
-		{"global-import", func(v *Compiled) { v.GlobalImports = []GlobalImportDef{{Type: ValV128, Mutable: true}} }},
+		{"global-type-mismatch", func(v *Compiled) { v.GlobalImports = []GlobalImportDef{{Type: ValI64, Mutable: true}} }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			view := *base
