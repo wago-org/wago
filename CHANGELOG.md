@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Reuse both AMD64 hardware divide results for adjacent division/remainder
+  pairs on the same local operands, reducing dependent-pair latency.
+
 - Emit one AMD64 immediate store for i64 constants representable as a signed
   imm32, and shorten guarded constant-store register lifetimes under pressure.
 - Improve AMD64 execution with bounded local and caller register reuse, direct
