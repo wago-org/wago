@@ -83,7 +83,7 @@ func TestPrivateNativeTableCallRepeatedAdmission(t *testing.T) {
 				fn, ft, table := &m.Code[1], functions[1], &m.Tables[0].Type
 				mode := emissionMode{production: true, interruptible: true, functionIndex: 1, entryPC: uint32(fn.LocalDeclBytes), foreignTableCalls: true}
 				ordinary, ordinaryErr := walkSWARPairsWithImports(fn, ft, false, types, functions, nil, 0, table, keys, 0, 0, nil)
-				foreign, foreignErr := walkSWARPairsWithImportMode(fn, ft, false, types, functions, nil, 0, table, keys, 0, 0, true, nil)
+				foreign, foreignErr := walkSWARPairsWithImportMode(fn, ft, false, types, functions, nil, 0, table, keys, 0, 0, true, false, nil)
 				code, _, _, swarErr := compileSWARPairsWithImports(fn, ft, nil, types, functions, nil, 0, table, keys, 0, 0, mode)
 				state, err := admitStateMode(m, true)
 				if err != nil {

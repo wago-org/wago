@@ -71,16 +71,17 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	return v, nil
 }
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
-	return admitStatePolicy(m, production, false, false)
+	return admitStatePolicy(m, production, false, false, false)
 }
-func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports bool) (moduleState, error) {
+func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	var tableErr error
-	s.ownedTable, tableErr = admitOwnedTable(m, production)
+	s.ownedTable, tableErr = admitTableProfile(m, production, importedTables)
 	if s.ownedTable {
 		s.elementCount = len(m.Elements)
 		// The frontend reserves max(1024,2*min) for observable no-max growth.
-		s.ownedTableGrowth = m.Tables[0].Type.Limits.HasMax || m.Tables[0].Type.Limits.Min <= MaxOwnedTableEntries/2
+		t, _ := m.TableType(0)
+		s.ownedTableGrowth = importedTables && m.ImportedTableCount() != 0 || t.Limits.HasMax || t.Limits.Min <= MaxOwnedTableEntries/2
 	}
 	if tableErr != nil {
 		return s, tableErr
@@ -104,6 +105,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports boo
 				return s, unsupported("function imports require qualified dynamic host bindings without tables")
 			}
 			s.importedFunctions++
+		case wasm.ExternTable:
+			if !production || !importedTables || !s.ownedTable {
+				return s, unsupported("imported table requires the retained public table ABI")
+			}
 		case wasm.ExternMem:
 			if mt != nil {
 				return s, unsupported("multiple memories")

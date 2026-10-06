@@ -18,11 +18,15 @@ const (
 
 // Bound decoded resource metadata before validation or payload copies.
 func ownedTableBounds(m *wasm.Module) error {
-	if len(m.Tables) > 1 || len(m.Elements) > MaxOwnedElementSegments {
+	if len(m.Imports) > MaxProductionImports {
+		return unsupported("table import count bound")
+	}
+	if len(m.Tables)+m.ImportedTableCount() > 1 || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
-	for _, t := range m.Tables {
-		if t.Type.Limits.Min > MaxOwnedTableEntries || (t.Type.Limits.HasMax && t.Type.Limits.Max > MaxOwnedTableEntries) {
+	for index := 0; index < len(m.Tables)+m.ImportedTableCount(); index++ {
+		t, _ := m.TableType(uint32(index))
+		if t.Limits.Min > MaxOwnedTableEntries || (t.Limits.HasMax && t.Limits.Max > MaxOwnedTableEntries) {
 			return unsupported("private table capacity")
 		}
 	}
@@ -40,10 +44,19 @@ func ownedTableBounds(m *wasm.Module) error {
 }
 
 func admitOwnedTable(m *wasm.Module, production bool) (bool, error) {
+	return admitTableProfile(m, production, false)
+}
+
+// Imported storage uses the retained canonical target ABI, never the private
+// same-instance pilot. Count and capacity limits precede validation/copies.
+func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, error) {
 	if err := ownedTableBounds(m); err != nil {
 		return false, err
 	}
-	if len(m.Tables) == 0 {
+	if m.ImportedTableCount() != 0 && (!production || !importedTables) {
+		return false, unsupported("imported table requires the retained public table ABI")
+	}
+	if len(m.Tables)+m.ImportedTableCount() == 0 {
 		if len(m.Elements) != 0 {
 			return false, unsupported("elements without private table")
 		}
@@ -52,8 +65,8 @@ func admitOwnedTable(m *wasm.Module, production bool) (bool, error) {
 	if !production {
 		return false, unsupported("isolated private table")
 	}
-	t := m.Tables[0]
-	if t.Init != nil || t.Type.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
+	t, _ := m.TableType(0)
+	if len(m.Tables) != 0 && m.Tables[0].Init != nil || t.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) {
 		return false, unsupported("private nullable funcref table32 only")
 	}
 	for _, e := range m.Elements {

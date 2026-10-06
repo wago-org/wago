@@ -65,10 +65,10 @@ func walkSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory32 bool, 
 // validated function directory. Imports use live same-instance dynamic dispatch;
 // tables/imported references and foreign-instance dispatch remain unsupported.
 func walkSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, emit *integerEmitter) (swarSummary, error) {
-	return walkSWARPairsWithImportMode(fn, ft, memory32, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, false, emit)
+	return walkSWARPairsWithImportMode(fn, ft, memory32, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, false, false, emit)
 }
 
-func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls bool, emit *integerEmitter) (swarSummary, error) {
+func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable bool, emit *integerEmitter) (swarSummary, error) {
 	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil || len(functions) == importedFunctions) {
 		return swarSummary{}, unsupported("SWAR import prefix bound/defined functions/table")
 	}
@@ -807,7 +807,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 				continue
 			}
 			if sub >= 14 && sub <= 17 {
-				if table == nil || sub == 15 && !table.Limits.HasMax && table.Limits.Min > MaxOwnedTableEntries/2 {
+				if table == nil || sub == 15 && !borrowedTable && !table.Limits.HasMax && table.Limits.Min > MaxOwnedTableEntries/2 {
 					return swarSummary{}, unsupported("SWAR owned table mutation/reserve")
 				}
 				indices := 1
@@ -1726,7 +1726,7 @@ func compileSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory *wasm.
 		(memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536))) {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 	}
-	summary, err := walkSWARPairsWithImportMode(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, nil)
+	summary, err := walkSWARPairsWithImportMode(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1744,7 +1744,7 @@ func compileSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory *wasm.
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithImportMode(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, &f)
+	actual, err := walkSWARPairsWithImportMode(fn, ft, memory != nil, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

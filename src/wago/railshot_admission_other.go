@@ -6,3 +6,8 @@ func railshotAdmitSource([]byte) error                                          
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
 func railshotValidateResolvedImports(*Compiled, resolvedImports, *referenceStore) error { return nil }
 func railshotNeedsImportContextHeader(int) bool                                         { return false }
+
+func railshotPublishConstructedTableProducer(*Table, *Instance) *Instance { return nil }
+
+func railshotLockNativeTableScan()   {}
+func railshotUnlockNativeTableScan() {}

@@ -92,6 +92,8 @@ type Table struct {
 }
 
 type retainedInstanceRoot struct {
+	// RV64 scopes advertise possible writers before native row stores/host parks.
+	activeWriters    uint32
 	precise          bool
 	proxyDescriptors map[uint64]struct{}
 }
@@ -123,7 +125,9 @@ type tableOwner struct {
 	funcrefStores  map[*referenceStore]uint32
 	funcrefGCStore *referenceStore
 	importers      int
-	closed         bool
+	// Native RV64 scopes can survive logical importer detachment while parked.
+	nativeLeases uint32
+	closed       bool
 }
 
 func (t *Table) instanceOwner() *Instance {
@@ -276,6 +280,10 @@ func (t *Table) Close() error {
 	if o.closed || o.arena == nil {
 		o.mu.Unlock()
 		return nil
+	}
+	if o.nativeLeases != 0 {
+		o.mu.Unlock()
+		return fmt.Errorf("wago: table has active native storage leases")
 	}
 	if o.importers != 0 {
 		count := o.importers
@@ -608,10 +616,12 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 		return false
 	}
 
+	railshotLockNativeTableScan()
 	var release []*Instance
 	t.mu.Lock()
 	if t.closed || len(t.desc) < 8 {
 		t.mu.Unlock()
+		railshotUnlockNativeTableScan()
 		in.releaseResourceRoot()
 		return false
 	}
@@ -623,13 +633,14 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 				delete(state.proxyDescriptors, descriptor)
 			}
 		}
-		if !state.precise && len(state.proxyDescriptors) == 0 {
+		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
 			release = append(release, root)
 		}
 	}
 	if !t.containsReachableFuncref(in) {
 		t.mu.Unlock()
+		railshotUnlockNativeTableScan()
 		in.releaseResourceRoot()
 		for _, root := range release {
 			root.releaseResourceRoot()
@@ -652,13 +663,14 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 				delete(retained.proxyDescriptors, descriptor)
 			}
 		}
-		if !retained.precise && len(retained.proxyDescriptors) == 0 {
+		if retained.activeWriters == 0 && !retained.precise && len(retained.proxyDescriptors) == 0 {
 			delete(t.retained, root)
 			release = append(release, root)
 		}
 	}
 	t.mu.Unlock()
 
+	railshotUnlockNativeTableScan()
 	if exists {
 		in.releaseResourceRoot()
 	}
@@ -738,13 +750,16 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 	if ownerClosed {
 		return descriptorRetentionResult{}
 	}
+	railshotLockNativeTableScan()
 	t.mu.Lock()
 	if t.closed || len(t.desc) < 8 {
 		t.mu.Unlock()
+		railshotUnlockNativeTableScan()
 		return descriptorRetentionResult{}
 	}
 	descriptors := t.funcrefDescriptorsLocked()
 	t.mu.Unlock()
+	railshotUnlockNativeTableScan()
 
 	resolved := make(map[uint64]*Instance, len(descriptors))
 	if store != nil {
@@ -758,9 +773,11 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 	proxyAcquired := unresolvedSnapshot && proxy != nil && proxy != containerOwner && proxy.retainResourceRootForFinalization()
 
 	var release []*Instance
+	railshotLockNativeTableScan()
 	t.mu.Lock()
 	if t.closed || len(t.desc) < 8 {
 		t.mu.Unlock()
+		railshotUnlockNativeTableScan()
 		for _, owner := range resolved {
 			owner.releaseResourceRoot()
 		}
@@ -799,7 +816,7 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 				delete(state.proxyDescriptors, descriptor)
 			}
 		}
-		if !state.precise && len(state.proxyDescriptors) == 0 {
+		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
 			release = append(release, root)
 		}
@@ -872,13 +889,14 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 		}
 	}
 	for root, state := range t.retained {
-		if !state.precise && len(state.proxyDescriptors) == 0 {
+		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
 			release = append(release, root)
 		}
 	}
 	result := descriptorRetentionResult{retained: len(t.retained) != 0, unresolved: len(unresolved) != 0}
 	t.mu.Unlock()
+	railshotUnlockNativeTableScan()
 	for _, root := range release {
 		root.releaseResourceRoot()
 	}
@@ -907,6 +925,7 @@ func (t *Table) pruneRetainedInstances() {
 	if t == nil {
 		return
 	}
+	railshotLockNativeTableScan()
 	var release []*Instance
 	t.mu.Lock()
 	if !t.closed && len(t.desc) >= 8 {
@@ -924,13 +943,14 @@ func (t *Table) pruneRetainedInstances() {
 					delete(state.proxyDescriptors, descriptor)
 				}
 			}
-			if !state.precise && len(state.proxyDescriptors) == 0 {
+			if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 				delete(t.retained, root)
 				release = append(release, root)
 			}
 		}
 	}
 	t.mu.Unlock()
+	railshotUnlockNativeTableScan()
 	for _, root := range release {
 		root.releaseResourceRoot()
 	}

@@ -487,7 +487,7 @@ func TestRV64PublicSWARImportedGlobalMixturesRemainClosed(t *testing.T) {
 	global := wasmtest.GlobalImportEntry("env", "v", wasm.V128, true)
 	host := append(append(wasmtest.Name("env"), wasmtest.Name("host")...), 0, 0)
 	memory := append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 2)
-	table := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), 1, 0x70, 0, 1)
+	table := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), 1, 0x6f, 0, 1)
 	for _, entries := range [][][]byte{{global, table}, {global, host, table}, {host, global, table}, {global, memory, host, table}, {memory, global, table}} {
 		functionIndex := uint32(0)
 		for _, entry := range entries {

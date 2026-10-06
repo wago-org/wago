@@ -105,7 +105,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	if err = admitShapeProfile(m, opts.production, opts.publicStarts); err != nil {
 		return nil, err
 	}
-	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts)
+	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
 	if err != nil {
 		return nil, err
 	}

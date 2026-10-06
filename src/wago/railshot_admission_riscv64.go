@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -177,10 +178,13 @@ func railshotNeedsImportContextHeader(count int) bool { return count > 0 }
 // owned host handles retain their separately qualified scalar protocol.
 func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store *referenceStore) error {
 	c = c.executionView()
-	if c.NumImports == 0 && len(c.Imports) == 0 {
+	if c.NumImports == 0 && len(c.Imports) == 0 && c.tableImportCount() == 0 {
 		return nil
 	}
 	if err := railshotValidateCompiled(c); err != nil {
+		return err
+	}
+	if err := rv64ValidateResolvedTable(c, imports, store); err != nil {
 		return err
 	}
 	var reexported [railshot.MaxHostFunctionImports]bool
@@ -244,6 +248,56 @@ func rv64ScalarHostSignature(sig FuncSig) error {
 				return fmt.Errorf("%w: public RV64 nonscalar host signature", railshot.ErrUnsupported)
 			}
 		}
+	}
+	return nil
+}
+
+// Reject incompatible storage/targets before executable mapping or element writes.
+// A temporary physical lease makes row authentication safe even during retirement.
+func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *referenceStore) error {
+	def, imported := c.tableImportAt(0)
+	if !imported {
+		return nil
+	}
+	table, ok := imports.table(c.tableImportBindingKey(0))
+	if !ok || table == nil {
+		return fmt.Errorf("missing imported table %q", def.Key)
+	}
+	exact, err := c.tableExactType(0)
+	if err != nil {
+		return err
+	}
+	if err := table.validateImportWithCollector(ValFuncRef, exact, c.Types, store, nil, false); err != nil {
+		return err
+	}
+	// The descriptor itself also needs a lease: host tables have no instance root.
+	if err := table.attachImporterWithCollector(ValFuncRef, exact, c.Types, store, nil, false); err != nil {
+		return err
+	}
+	defer table.detachImporter(store)
+	var roots rv64NativeTableTargets
+	// Final-root release can reenter native execution. Unlock first.
+	defer roots.release()
+	nativeExecutionMu.Lock()
+	defer nativeExecutionMu.Unlock()
+	edges := 0
+	if err := roots.tableRoots(table, &edges); err != nil {
+		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
+	}
+	table.owner.mu.Lock()
+	table.mu.Lock()
+	size, capacity := uint64(binary.LittleEndian.Uint32(table.desc)), uint64(binary.LittleEndian.Uint32(table.desc[4:]))
+	valid := size >= def.Min && size <= capacity && capacity <= railshot.MaxOwnedTableEntries && 8+capacity*coreruntime.TableEntryBytes <= uint64(len(table.desc)) && (!def.HasMax || table.owner.declaredHasMax && capacity <= def.Max)
+	table.mu.Unlock()
+	table.owner.mu.Unlock()
+	if !valid {
+		return fmt.Errorf("%w: imported table capacity/limits/extent", railshot.ErrUnsupported)
+	}
+	if err := roots.validateReachable(); err != nil {
+		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
+	}
+	if err := roots.validateTable(table.desc); err != nil {
+		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
 	}
 	return nil
 }

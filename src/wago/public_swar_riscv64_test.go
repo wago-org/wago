@@ -531,7 +531,7 @@ func TestRV64PublicSWARSourceUnsupportedStateImportsRemainClosed(t *testing.T) {
 		typ              []byte
 		importedFunction bool
 	}{
-		{1, []byte{0x70, 0, 1}, false}, {3, []byte{0x70, 0}, false}, {3, []byte{0x6f, 0}, false}, {0, []byte{0}, true},
+		{1, []byte{0x6f, 0, 1}, false}, {3, []byte{0x70, 0}, false}, {3, []byte{0x6f, 0}, false}, {0, []byte{0}, true},
 	} {
 		index := uint32(0)
 		if test.importedFunction {

@@ -83,6 +83,7 @@ type swarStateProfile struct {
 	exports         bool
 	importedMemory  bool
 	importedGlobals bool
+	importedTable   bool
 }
 
 // Production integrates qualified state with current public lifecycles.
@@ -100,6 +101,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 	}
 	tables, hosts := policy == swarModuleTables, policy == swarModuleHosts
+	mode.borrowedTable = state.importedTable && mode.foreignTableCalls && mode.interruptible && m.ImportedTableCount() != 0
 	var err error
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
 		return nil, err
@@ -115,6 +117,10 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 				return nil, unsupported("SWAR module import policy")
 			}
 			imported++
+		case wasm.ExternTable:
+			if !tables || !state.importedTable || !mode.interruptible || !mode.foreignTableCalls {
+				return nil, unsupported("SWAR imported table requires the retained public table ABI")
+			}
 		case wasm.ExternMem:
 			if !state.importedMemory {
 				return nil, unsupported("SWAR module scalar function imports only")
@@ -145,12 +151,13 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	var elements []swarElement
 	var typeKeys, functionKeys []uint64
 	if tables {
-		ownedTable, err := admitOwnedTable(m, true)
+		ownedTable, err := admitTableProfile(m, true, state.importedTable && mode.interruptible && mode.foreignTableCalls)
 		if err != nil {
 			return nil, err
 		}
 		if ownedTable {
-			table = &m.Tables[0].Type
+			resolved, _ := m.TableType(0)
+			table = &resolved
 			if err := swarOwnedTableType(table); err != nil {
 				return nil, err
 			}
@@ -259,7 +266,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	summaries := make([]swarSummary, len(m.Code))
 	bound := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithImportMode(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(elements), imported, mode.foreignTableCalls, nil)
+		summaries[i], err = walkSWARPairsWithImportMode(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}

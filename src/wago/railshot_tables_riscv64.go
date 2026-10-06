@@ -9,7 +9,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// Only owned tables are qualified. Exact export metadata prevents the legacy
+// One bounded owned or imported table is qualified. Exact metadata prevents the legacy
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
 	if c.tableCount() == 0 {
@@ -21,8 +21,8 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if !c.nativeTableContextABI {
 		return fmt.Errorf("retained native table context ABI is required")
 	}
-	if c.tableCount() != 1 || c.tableImportCount() != 0 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 || c.HasTableInitFunc || (c.TableType != 0 && c.TableType != ValFuncRef) {
-		return fmt.Errorf("one owned framed default-null funcref table32 required")
+	if c.tableCount() != 1 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 || c.HasTableInitFunc || (c.TableType != 0 && c.TableType != ValFuncRef) {
+		return fmt.Errorf("one framed default-null funcref table32 required")
 	}
 	for _, index := range c.tableExports {
 		if index != 0 {
@@ -37,6 +37,11 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	// Check uint64 before runtime capacity narrows to int.
 	if c.TableSize < 0 || c.TableSize > railshot.MaxOwnedTableEntries || c.TableMax > railshot.MaxOwnedTableEntries || (c.TableHasMax && c.TableMax < uint64(c.TableSize)) || c.tableRuntimeCapacity(0) < c.TableSize || c.tableRuntimeCapacity(0) > railshot.MaxOwnedTableEntries {
 		return fmt.Errorf("private table capacity bound")
+	}
+	if def, imported := c.tableImportAt(0); imported {
+		if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || def.Min > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.HasMax && def.Max < def.Min {
+			return fmt.Errorf("bounded imported table declaration with no local limits required")
+		}
 	}
 	if len(c.Elems) > railshot.MaxOwnedElementSegments || len(c.passiveElems) > railshot.MaxOwnedElementSegments {
 		return fmt.Errorf("element descriptor bound")

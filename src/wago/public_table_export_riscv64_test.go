@@ -3,13 +3,11 @@
 package wago
 
 import (
-	"errors"
 	"fmt"
 	"runtime"
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -152,7 +150,7 @@ func TestRV64PublicOwnedTableExportAliasesMutationAndLifetime(t *testing.T) {
 	}
 }
 
-func TestRV64PublicOwnedTableExportKeepsImportGate(t *testing.T) {
+func TestRV64PublicOwnedTableExportImportsThroughQualifiedProfile(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("table")...), 1, 0x70, 1, 2, 4))),
@@ -160,7 +158,21 @@ func TestRV64PublicOwnedTableExportKeepsImportGate(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x11, 0, 0, 0x0b}))),
 	)
-	if c, err := Compile(nil, source); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("unqualified imported table reached publication", c, err)
+	c, err := Compile(nil, source)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer c.Close()
+	table, err := NewTable(2, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+	in, err := Instantiate(c, NewImports().Table("env", "table", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	_, err = in.Invoke("call", 0)
+	ownedTableTrap(t, err, coreruntime.TrapIndirectOutOfBounds)
 }

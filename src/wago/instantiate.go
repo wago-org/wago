@@ -681,7 +681,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	// including active data writes. Start from an empty instance context so
 	// absent metadata cannot inherit another tenant's arena pointers.
 	var finishMemoryContext func(bool)
-	if c.memoryImport != "" && !threadedControl {
+	if (c.memoryImport != "" || c.nativeTableContextABI && c.tableImportCount() != 0) && !threadedControl {
 		// Shared collector activations acquire domain then native execution.
 		// Keep construction in that order and avoid relocking in view creation.
 		if b.gcDomain != nil {
@@ -1693,7 +1693,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	if gcNativeView != nil {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
 	}
-	if finishMemoryContext != nil {
+	if finishMemoryContext != nil && !(c.nativeTableContextABI && c.tableImportCount() != 0) {
 		finishMemoryContext(initErr == nil)
 		finishMemoryContext = nil
 	}
@@ -1840,6 +1840,12 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		}
 	}
 	finishConstruction := func() {
+		// RV64 imported-table publication holds construction through registration.
+		// Release the native lease before Close can reenter resource finalization.
+		if finishMemoryContext != nil {
+			finishMemoryContext(false)
+			finishMemoryContext = nil
+		}
 		if recovered := recover(); recovered != nil {
 			result = nil
 			if panicErr, ok := recovered.(error); ok {
@@ -1853,6 +1859,10 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			err = joinPrimary(err, in.Close())
 		}
 		in.endConstruction()
+	}
+	if opts.runtime == nil && c.nativeTableContextABI && c.tableImportCount() != 0 {
+		in.beginConstruction(opts.operationReservation)
+		defer finishConstruction()
 	}
 	if opts.runtime != nil {
 		in.beginConstruction(opts.operationReservation)
@@ -1893,12 +1903,27 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			return nil, err
 		}
 	}
-	if opts.runtime == nil && c.HasStart {
+	if opts.runtime == nil && c.HasStart && !(c.nativeTableContextABI && c.tableImportCount() != 0) {
 		// Only transfer direct-start cleanup after reference-store and conversion
 		// ownership is established. Callbacks can close this instance, so keep its
 		// resources alive until start execution and construction have unwound.
 		in.beginConstruction(opts.operationReservation)
 		defer finishConstruction()
+	}
+	if c.nativeTableContextABI && c.tableImportCount() != 0 {
+		// Publish producer membership before releasing construction: a host table
+		// has no instance owner from which another importer can discover these
+		// local canonical descriptors. Keep the ordinary attachment until Close.
+		table, _ := imports.table(c.tableImportBindingKey(0))
+		redundantRoot := railshotPublishConstructedTableProducer(table, in)
+		if finishMemoryContext != nil {
+			finishMemoryContext(initErr == nil)
+			finishMemoryContext = nil
+		}
+		if redundantRoot != nil {
+			redundantRoot.releaseResourceRoot()
+		}
+		table.pruneRetainedInstances()
 	}
 	if initErr != nil {
 		return nil, initErr
