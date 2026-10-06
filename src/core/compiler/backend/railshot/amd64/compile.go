@@ -3185,6 +3185,7 @@ func immutableLocalTableTypeWithPolicy(m *wasm.Module, tableIdx uint32, policy C
 		return 0, false
 	}
 	var want uint64
+	var lastType uint32
 	found := false
 	for i := range m.Elements {
 		e := &m.Elements[i]
@@ -3202,6 +3203,9 @@ func immutableLocalTableTypeWithPolicy(m *wasm.Module, tableIdx uint32, policy C
 			if !ok {
 				return 0, false
 			}
+			if found && typeIdx.Index == lastType {
+				continue
+			}
 			key, ok := m.StructuralTypeKeyChecked(typeIdx.Index)
 			if !ok {
 				return 0, false
@@ -3211,6 +3215,7 @@ func immutableLocalTableTypeWithPolicy(m *wasm.Module, tableIdx uint32, policy C
 			} else if key != want {
 				return 0, false
 			}
+			lastType = typeIdx.Index
 		}
 	}
 	return want, found
