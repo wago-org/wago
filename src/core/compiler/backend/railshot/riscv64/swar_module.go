@@ -3,6 +3,7 @@
 package riscv64
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -58,7 +59,6 @@ func compileSWARModulePolicy(data []byte, mode emissionMode, policy swarModulePo
 	if !mode.production || len(data) > MaxModuleBytes || policy > swarModuleHosts {
 		return nil, unsupported("SWAR module production/source bound")
 	}
-	tables, hosts := policy == swarModuleTables, policy == swarModuleHosts
 	owned := append([]byte(nil), data...)
 	if err := admitSWARWirePolicy(owned, policy); err != nil {
 		return nil, err
@@ -67,7 +67,23 @@ func compileSWARModulePolicy(data []byte, mode emissionMode, policy swarModulePo
 	if err != nil {
 		return nil, err
 	}
-	m := decoded.Module
+	return compileSWARDecodedModule(decoded.Module, mode, policy)
+}
+
+// Private decoded-module adapter for the compiler pipeline prerequisite. The
+// caller owns immutable source while this call validates and lowers it; every
+// retained image/state payload is copied. Wire provenance still requires the
+// separate binary admission above (empty sections cannot be recovered here).
+// This does not expose SWAR through public source, artifact or CPU admission.
+func compileSWARDecodedModule(m *wasm.Module, mode emissionMode, policy swarModulePolicy) (*swarModuleImage, error) {
+	if m == nil || !mode.production || policy > swarModuleHosts {
+		return nil, unsupported("SWAR decoded module production/policy")
+	}
+	if err := admitSWARDecodedBudget(m); err != nil {
+		return nil, err
+	}
+	tables, hosts := policy == swarModuleTables, policy == swarModuleHosts
+	var err error
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
 		return nil, err
 	}
@@ -247,6 +263,124 @@ func compileSWARModulePolicy(data []byte, mode emissionMode, policy swarModulePo
 	return image, nil
 }
 
+func admitSWARDecodedBudget(m *wasm.Module) error {
+	// Count and byte budgets precede validation, metadata expansion and payload
+	// copies. Decoded callers do not necessarily retain a bounded source blob.
+	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxHostFunctionImports || len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.BranchHints) != 0 || m.UsesCompactImports {
+		return unsupported("SWAR module state/features/function bound")
+	}
+	remaining := MaxModuleBytes
+	consume := func(n int) bool {
+		if n > remaining {
+			return false
+		}
+		remaining -= n
+		return true
+	}
+	for _, group := range m.Types {
+		if len(group.SubTypes) != 1 || swarCallSignature(&group.SubTypes[0].Comp) != nil {
+			return unsupported("SWAR decoded numeric function types")
+		}
+		sub := &group.SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || len(sub.Comp.Fields) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
+			return unsupported("SWAR decoded type metadata")
+		}
+		if !consume(len(group.SubTypes[0].Comp.Params) + len(group.SubTypes[0].Comp.Results)) {
+			return unsupported("SWAR decoded source byte bound")
+		}
+	}
+	for _, fn := range m.Code {
+		if fn.BodyBytes == nil || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || len(fn.BodyBytes) > 64<<10 || len(fn.Locals.Runs) > maxSWARLocals || fn.LocalDeclBytes > MaxModuleBytes || !consume(len(fn.BodyBytes)) || !consume(int(fn.LocalDeclBytes)) {
+			return unsupported("SWAR decoded byte-backed function bound")
+		}
+	}
+	for _, table := range m.Tables {
+		// Normal validation collects declared functions by scanning every
+		// initializer. This pilot never implements table initializers.
+		if table.Init != nil {
+			return unsupported("SWAR decoded table initializer")
+		}
+	}
+	for _, global := range m.Globals {
+		if global.Init.BodyBytes == nil || len(global.Init.Instrs) != 0 || !consume(len(global.Init.BodyBytes)) {
+			return unsupported("SWAR decoded global initializer byte bound")
+		}
+	}
+	for _, data := range m.Data {
+		if len(data.Mode.Offset.Instrs) != 0 || !consume(len(data.Mode.Offset.BodyBytes)) || !consume(len(data.Init)) {
+			return unsupported("SWAR decoded data byte bound")
+		}
+	}
+	elementEntries := 0
+	for _, element := range m.Elements {
+		if len(element.Mode.Offset.Instrs) != 0 || !consume(len(element.Mode.Offset.BodyBytes)) {
+			return unsupported("SWAR decoded element offset byte bound")
+		}
+		// The pilot permits bounded legacy function-index payloads only.
+		if element.Kind.Kind != wasm.ElemFuncs || len(element.Kind.Exprs) != 0 || len(element.Kind.Funcs) > MaxOwnedTableEntries-elementEntries || !consume(len(element.Kind.Funcs)*4) {
+			return unsupported("SWAR decoded element payload bound")
+		}
+		elementEntries += len(element.Kind.Funcs)
+	}
+	rawNameAccounted := false
+	for _, custom := range m.Customs {
+		if !consume(len(custom.Name)) || !consume(len(custom.Data)) {
+			return unsupported("SWAR decoded custom byte bound")
+		}
+		if custom.Name == "name" && bytes.Equal(custom.Data, m.RawNameSecPayload) {
+			rawNameAccounted = true
+		}
+	}
+	for _, im := range m.Imports {
+		if !consume(len(im.Module)) || !consume(len(im.Name)) {
+			return unsupported("SWAR decoded import name byte bound")
+		}
+	}
+	for _, export := range m.Exports {
+		if !consume(len(export.Name)) {
+			return unsupported("SWAR decoded export name byte bound")
+		}
+	}
+	if !rawNameAccounted && !consume(len(m.RawNameSecPayload)) {
+		return unsupported("SWAR decoded name metadata byte bound")
+	}
+	if names := m.NameSec; names != nil {
+		// Account decoded maps/strings as well as encoded payloads. Hand-built
+		// callers may provide either representation, or inconsistent copies.
+		// Small entry overhead also bounds work for arbitrary empty names.
+		nameMap := func(rows wasm.NameMap) bool {
+			if len(rows) > MaxFunctions {
+				return false
+			}
+			for _, row := range rows {
+				if !consume(2) || !consume(len(row.Name)) {
+					return false
+				}
+			}
+			return true
+		}
+		if names.ModuleName != nil && !consume(len(*names.ModuleName)) {
+			return unsupported("SWAR decoded module name byte bound")
+		}
+		for _, rows := range []wasm.NameMap{names.FunctionNames, names.TypeNames, names.TableNames, names.MemoryNames, names.GlobalNames, names.ElementNames, names.DataNames, names.TagNames} {
+			if !nameMap(rows) {
+				return unsupported("SWAR decoded name map byte/count bound")
+			}
+		}
+		for _, groups := range []wasm.IndirectNameMap{names.LocalNames, names.LabelNames, names.FieldNames} {
+			if len(groups) > MaxFunctions {
+				return unsupported("SWAR decoded indirect name count bound")
+			}
+			for _, group := range groups {
+				if !consume(2) || !nameMap(group.Names) {
+					return unsupported("SWAR decoded indirect name byte/count bound")
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // Reject unsupported sections even when empty. A decoded module alone cannot
 // distinguish absent unsupported features from present empty feature sections.
 func admitSWARWirePolicy(data []byte, policy swarModulePolicy) error {
@@ -264,7 +398,35 @@ func admitSWARWirePolicy(data []byte, policy swarModulePolicy) error {
 			return fmt.Errorf("rv64: truncated SWAR section")
 		}
 		switch id {
-		case 0, 1, 3, 5, 6, 7, 10, 11, 12:
+		case 0, 3, 5, 6, 7, 10, 11, 12:
+		case 1:
+			start := 8 + r.Offset()
+			types := wasm.ReaderFrom(data[start : start+int(size)])
+			count, err := types.U32()
+			if err != nil || count > MaxFunctions {
+				return unsupported("SWAR wire type count")
+			}
+			for range count {
+				kind, err := types.Byte()
+				if err != nil || kind != 0x60 {
+					return unsupported("SWAR plain numeric type grammar")
+				}
+				for range 2 {
+					n, err := types.U32()
+					if err != nil || n > maxSWARLocals {
+						return unsupported("SWAR wire signature bound")
+					}
+					for range n {
+						typ, err := types.Byte()
+						if err != nil || typ < 0x7b || typ > 0x7f {
+							return unsupported("SWAR wire numeric carrier")
+						}
+					}
+				}
+			}
+			if types.HasNext() {
+				return fmt.Errorf("rv64: trailing SWAR type bytes")
+			}
 		case 2:
 			if policy != swarModuleHosts {
 				return unsupported("SWAR function import section")
