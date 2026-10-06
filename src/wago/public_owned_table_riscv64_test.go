@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,6 +21,52 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestRV64RebasedTableBulkFeatureRequirements(t *testing.T) {
+	// These bodies contain no ref.null/ref.func instructions: table init/drop/
+	// copy themselves must retain #855's reference-types requirement.
+	for _, tc := range []struct {
+		name string
+		body []byte
+	}{
+		{"init", []byte{0x41, 0, 0x41, 0, 0x41, 0, 0xfc, 12, 0, 0, 0x0b}},
+		{"drop", []byte{0xfc, 13, 0, 0x0b}},
+		{"copy", []byte{0x41, 0, 0x41, 0, 0x41, 0, 0xfc, 14, 0, 0, 0x0b}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, []byte{1, 0}), ownedTableDeclaration(1),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+				wasmtest.Section(9, []byte{1, 1, 0, 0}),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tc.body))),
+			)
+			cfg := ownedTableConfig().WithFeature(CoreFeatureReferenceTypes, false)
+			if c, err := Compile(cfg, source); c != nil || err == nil || !strings.Contains(err.Error(), "reference-types") {
+				if c != nil {
+					_ = c.Close()
+				}
+				t.Fatal("disabled table reference feature was not rejected", err)
+			}
+			for _, artifact := range []bool{false, true} {
+				c := rv64PublicStartCompile(t, source, artifact)
+				want := CoreFeatureReferenceTypes | CoreFeatureBulkMemoryOperations
+				if c.executionView().requiredFeatures&want != want {
+					t.Fatal("source/artifact lost table feature requirements", artifact, c.requiredFeatures)
+				}
+				in, err := Instantiate(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := in.Invoke("run"); err != nil {
+					_ = in.Close()
+					t.Fatal("enabled table bulk operation", artifact, err)
+				}
+				_ = in.Close()
+			}
+		})
+	}
+}
 
 func TestRV64OwnedTableArtifactBoundaries(t *testing.T) {
 	c := ownedTableCompile(t, publicOwnedTableModule(7, false, 3, 0, 1, 2))
