@@ -347,7 +347,10 @@ func markGlobalEligible(accum *shared.GlobalHintAccumulator, idx uint32) {
 }
 
 type immutableTableHint struct {
-	local             bool
+	local bool
+	// Temporary proof fields occupy existing padding and are cleared before publication.
+	proofState        uint8
+	lastType          uint32
 	typeKey           uint64
 	typed             bool
 	monomorphicTarget int // local function index when every non-null entry is identical; -1 otherwise
