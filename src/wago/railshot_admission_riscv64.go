@@ -93,8 +93,11 @@ func railshotValidateCompiled(c *Compiled) error {
 				return reject("global export index bound")
 			}
 		}
-		if c.memoryImportCount() != 0 || len(c.GlobalImports) != 0 {
-			return reject("SIMD profile requires owned state")
+		if len(c.GlobalImports) != 0 {
+			return reject("SIMD profile requires owned globals")
+		}
+		if c.memoryImportCount() != 0 && (c.NumImports != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
+			return reject("SIMD imported memory with host functions or tables is pending")
 		}
 	}
 	maxArity := 256

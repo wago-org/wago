@@ -290,3 +290,34 @@ func TestSWARProductionOwnedGlobalExportsRetainPrivatePolicy(t *testing.T) {
 		t.Fatal("owned global export changed lowering", err)
 	}
 }
+
+func TestSWARProductionImportedMemoryCountsOnlyFunctionImports(t *testing.T) {
+	entry := append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 4)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(2, wasmtest.Vec(entry)), wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("load", 0, 0), wasmtest.ExportEntry("memory", 2, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfd, 0, 0, 0, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModuleHosts); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("private memory import policy widened", err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+	if err != nil || image == nil || image.CodeImage != nil || len(image.Entry) != 1 {
+		t.Fatal("memory import entered function-index or host transport", err)
+	}
+	memory, ok := m.MemoryType(0)
+	if !ok {
+		t.Fatal("missing imported memory metadata")
+	}
+	m.Imports = nil
+	m.Memories = []wasm.MemType{memory}
+	reference, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+	if err != nil || !bytes.Equal(image.Code, reference.Code) {
+		t.Fatal("memory import changed identical constraints lowering", err)
+	}
+}

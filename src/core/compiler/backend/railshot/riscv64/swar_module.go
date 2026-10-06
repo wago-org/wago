@@ -76,12 +76,17 @@ func compileSWARModulePolicy(data []byte, mode emissionMode, policy swarModulePo
 // separate binary admission above (empty sections cannot be recovered here).
 // Public integration must additionally enforce source, artifact and CPU admission.
 func compileSWARDecodedModule(m *wasm.Module, mode emissionMode, policy swarModulePolicy) (*swarModuleImage, error) {
-	return compileSWARDecodedModuleProfile(m, mode, policy, false)
+	return compileSWARDecodedModuleProfile(m, mode, policy, swarStateProfile{})
 }
 
-// The production adapter can expose owned memory32 and numeric/vector globals
-// through current public lifecycles. Private pilots retain their export policy.
-func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy swarModulePolicy, allowStateExports bool) (*swarModuleImage, error) {
+type swarStateProfile struct {
+	exports        bool
+	importedMemory bool
+}
+
+// Production integrates qualified state with current public lifecycles.
+// Private pilots retain their original import/export policy.
+func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy swarModulePolicy, state swarStateProfile) (*swarModuleImage, error) {
 	if m == nil || !mode.production || policy > swarModuleHosts {
 		return nil, unsupported("SWAR decoded module production/policy")
 	}
@@ -99,12 +104,25 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if !hosts && len(m.Imports) != 0 {
 		return nil, unsupported("SWAR module import policy")
 	}
+	imported, memoryImports := 0, 0
 	for _, im := range m.Imports {
-		if im.Type.Kind != wasm.ExternFunc {
+		switch im.Type.Kind {
+		case wasm.ExternFunc:
+			imported++
+		case wasm.ExternMem:
+			if !state.importedMemory {
+				return nil, unsupported("SWAR module scalar function imports only")
+			}
+			memoryImports++
+		default:
 			return nil, unsupported("SWAR module scalar function imports only")
 		}
 	}
-	imported := len(m.Imports)
+	// Memory imports first qualify without host functions or reference tables.
+	// Function indices count only function imports, never state imports.
+	if memoryImports > 1 || memoryImports+len(m.Memories) > 1 || memoryImports != 0 && (imported != 0 || len(m.Tables) != 0 || len(m.Elements) != 0) {
+		return nil, unsupported("SWAR imported memory profile")
+	}
 	if imported+len(m.Code) > MaxFunctions || imported != 0 && !mode.interruptible {
 		return nil, unsupported("SWAR module aggregate functions/host bridge")
 	}
@@ -151,10 +169,10 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		types[i] = &sub.Comp
 	}
 	for _, ex := range m.Exports {
-		if allowStateExports && ex.Index.Kind == wasm.ExternGlobal && uint64(ex.Index.Index) < uint64(len(m.Globals)) {
+		if state.exports && ex.Index.Kind == wasm.ExternGlobal && uint64(ex.Index.Index) < uint64(len(m.Globals)) {
 			continue
 		}
-		if allowStateExports && ex.Index.Kind == wasm.ExternMem && ex.Index.Index == 0 && len(m.Memories) == 1 {
+		if state.exports && ex.Index.Kind == wasm.ExternMem && ex.Index.Index == 0 && memoryImports+len(m.Memories) == 1 {
 			continue
 		}
 		if ex.Index.Kind != wasm.ExternFunc || uint64(ex.Index.Index) < uint64(imported) || uint64(ex.Index.Index) >= uint64(imported+len(m.Code)) {
@@ -162,8 +180,12 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 	}
 	var memory *wasm.MemType
-	if len(m.Memories) != 0 {
-		memory = &m.Memories[0]
+	if memoryImports+len(m.Memories) != 0 {
+		resolved, ok := m.MemoryType(0)
+		if !ok {
+			return nil, unsupported("SWAR memory index")
+		}
+		memory = &resolved
 		if memory.Shared || memory.Limits.Addr64 || memory.Limits.Min > 65536 || (memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536)) {
 			return nil, unsupported("SWAR module memory32 resource")
 		}

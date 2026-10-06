@@ -525,13 +525,13 @@ func TestRV64PublicSWARIndirectVectorKeyNullAndBounds(t *testing.T) {
 	}
 }
 
-func TestRV64PublicSWARSourceStateImportsRemainClosed(t *testing.T) {
+func TestRV64PublicSWARSourceUnsupportedStateImportsRemainClosed(t *testing.T) {
 	for _, test := range []struct {
 		kind             byte
 		typ              []byte
 		importedFunction bool
 	}{
-		{2, []byte{1, 1, 1}, false}, {3, []byte{0x7f, 0}, false}, {3, []byte{0x7b, 0}, false}, {0, []byte{0}, true},
+		{1, []byte{0x70, 0, 1}, false}, {3, []byte{0x7f, 0}, false}, {3, []byte{0x7b, 0}, false}, {0, []byte{0}, true},
 	} {
 		index := uint32(0)
 		if test.importedFunction {

@@ -15,12 +15,23 @@ import (
 )
 
 func rv64PublicSWARMemoryExportsModule() []byte {
+	return rv64PublicSWARMemoryModule(false)
+}
+
+func rv64PublicSWARMemoryModule(imported bool) []byte {
 	raw := make([]byte, 16)
 	binary.LittleEndian.PutUint64(raw, 0x7ff0000000000001)
 	binary.LittleEndian.PutUint64(raw[8:], 0x80000000deadbeef)
 	global := append([]byte{0xfd, 12}, raw...)
 	global = append(global, 0x0b)
 	data := append([]byte{1, 1, 16}, raw...)
+	var importSection, memorySection []byte
+	if imported {
+		entry := append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 4)
+		importSection = wasmtest.Section(2, wasmtest.Vec(entry))
+	} else {
+		memorySection = wasmtest.Section(5, []byte{1, 1, 1, 4})
+	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}),
@@ -29,8 +40,9 @@ func rv64PublicSWARMemoryExportsModule() []byte {
 			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128}, []wasm.ValType{wasm.V128, wasm.I32}),
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}),
 		)),
+		importSection,
 		wasmtest.Section(3, []byte{6, 0, 1, 2, 3, 4, 0}),
-		wasmtest.Section(5, []byte{1, 1, 1, 4}),
+		memorySection,
 		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, true, global))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("load", 0, 0), wasmtest.ExportEntry("store", 0, 1), wasmtest.ExportEntry("size", 0, 2), wasmtest.ExportEntry("grow", 0, 3), wasmtest.ExportEntry("memory", 2, 0), wasmtest.ExportEntry("alias", 2, 0), wasmtest.ExportEntry("state", 0, 4), wasmtest.ExportEntry("init", 0, 5))),
 		wasmtest.Section(12, []byte{1}),
