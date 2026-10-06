@@ -18,6 +18,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in admitted straight-line AMD64 functions.
 ### Added
 
+- Add mixed-scalar host-call checks across nested memory, global, and table
+  changes, including nested traps and repeated resolved calls.
+
 - Add AMD64 loop-boundary regression checks for deferred producer placement,
   floating-point transport, register pressure, and zero-iteration traps.
 

@@ -65,3 +65,33 @@ execution are excluded from the compile benchmark; setup and compilation are
 excluded from the prepared-call benchmark. No wall-clock threshold is asserted.
 Native ARM64 and admitted memory-region/shared-compiler loops remain outside
 this coverage.
+
+## Wide host calls across nested state changes
+
+`host_nested_state_test.go` combines 48 mixed i32/i64/f32/f64 parameters and
+results with one supported `InvokeFromHost` re-entry. Same-instance and
+different-instance cases grow memory once, write a new-page marker, change a
+global, and replace an indirect-call target. Both normal nested return and
+mutation followed by a nested trap must preserve every outer parameter and
+result. The guest reports five separate state observations after the callback.
+The test invokes one resolved `WasmFunc` twice with distinct input and output
+values; retained results are copied before the next invocation. Memory views
+are reacquired after nested execution. Scalar comparison ignores unspecified
+high ABI-slot bits for i32/f32 and compares all semantic bits exactly.
+
+The same observation gate rejects B's valid state when A is expected. This is
+a wrong-valid-binding observer control, not native pointer corruption. Existing
+`guest_storage_test.go` owns rejection of re-entry during a storage borrow and
+expired borrowed views. No v128 callback or deferred-event re-entry is added.
+
+Verbose output records Wasm and loaded-code hashes and execution provenance.
+With `wago_codegenstats`, a separate diagnostic compile must reproduce loaded
+bytes and report the established compiler for the wide `run` function. This
+caller-aware route does not use the direct HostCall view portal or the fixed
+typed scalar portal. Native AMD64 was executed; ARM64 cross-compilation alone
+is not execution qualification. TinyGo and precompiled-only builds are excluded.
+
+`BenchmarkHostNestedMixedState` measures repeated calls after the first memory
+growth, including the observer and nested mutation. Compilation, instance setup,
+and initial growth are excluded. Each instance retains at most two Wasm memory
+pages. The benchmark reports allocations without asserting a timing threshold.
