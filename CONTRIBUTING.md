@@ -129,6 +129,10 @@ Take extra care in runtime code. It crosses into native execution.
 Start with the smallest relevant test. `just test` correctness recipes enable
 the debug allocation-transfer checker; `just test unit` also runs the ordinary
 build. Raw `go test` needs `-tags=wago_regalloccheck` explicitly.
+The production compiler policy audit rejects workload names and fingerprints
+as optimization inputs. Its narrow RV64 metadata-accounting exception permits
+name reads only to bound decoded storage and traversal; it does not permit
+names to select lowering or optimizations.
 Before you open a pull request, run:
 
 ```bash
