@@ -96,6 +96,9 @@ func TestRV64PublicImportedHostStartStateAndLifecycle(t *testing.T) {
 							}
 							if ownedRuntime {
 								var err error
+								if mayCancel, err := resolver.InvocationMayCancel(caller); err != nil || !mayCancel {
+									panic("imported start lost cancellation context generation")
+								}
 								callbackContext, err = resolver.InvocationContext(caller)
 								if err != nil || callbackContext.Value(contextKey{}) != nil {
 									panic("imported start context authority")
