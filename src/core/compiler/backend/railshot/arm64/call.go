@@ -2147,11 +2147,33 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
 	}
 	var quadRes [8]Reg
+	resultsInSlots := false
 	if registerQuadResultsSupported && rN > 2 {
+		// Results remain protected until local/global reloads finish. Whole-
+		// function pins can leave fewer destinations than the result count.
+		avoid := maskOf(X0, X1, X2, X3, X4, X5, X6, X7)
+		blocked := avoid.union(f.pinned).union(f.pinnedLocalMask).union(f.reserved)
+		available := 0
+		for _, reg := range gpAlloc {
+			if !blocked.has(reg) {
+				available++
+			}
+		}
+		resultsInSlots = available < rN
+		base := 0
+		if resultsInSlots {
+			base = f.allocSpillSlots(rN)
+		}
 		for i, src := range []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[:rN] {
-			quadRes[i] = f.allocReg(maskOf(X0, X1, X2, X3, X4, X5, X6, X7))
-			f.a.MovReg64(quadRes[i], src)
-			f.pinned = f.pinned.add(quadRes[i])
+			if resultsInSlots {
+				f.st64(SP, f.spillOff(base+i), src)
+				value := f.pushValue(storage{kind: stSlot, typ: mtOf(ft.Results[i]), slot: uint32(base + i)})
+				value.st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[i]))
+			} else {
+				quadRes[i] = f.allocReg(avoid)
+				f.a.MovReg64(quadRes[i], src)
+				f.pinned = f.pinned.add(quadRes[i])
+			}
 		}
 	}
 	if !preservesPins {
@@ -2189,7 +2211,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			f.pushReg(reg, mtOf(ft.Results[i]))
 		}
 	}
-	if registerQuadResultsSupported && rN > 2 {
+	if registerQuadResultsSupported && rN > 2 && !resultsInSlots {
 		for i, reg := range quadRes[:rN] {
 			f.pinned = f.pinned.remove(reg)
 			f.pushReg(reg, mtOf(ft.Results[i]))

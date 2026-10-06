@@ -88,8 +88,12 @@ Verbose output records Wasm and loaded-code hashes and execution provenance.
 With `wago_codegenstats`, a separate diagnostic compile must reproduce loaded
 bytes and report the established compiler for the wide `run` function. This
 caller-aware route does not use the direct HostCall view portal or the fixed
-typed scalar portal. Native AMD64 was executed; ARM64 cross-compilation alone
-is not execution qualification. TinyGo and precompiled-only builds are excluded.
+typed scalar portal. Native ARM64 CI exposed a register-limit failure in the
+following five-result guest call. The fix uses frame slots only when too few
+registers remain for the result copies. The focused ARM64 result-pressure test
+checks 3–8 results, a live prefix, all caller parameters, and lazy/eager local
+reloads. AMD64 ran natively; the fixed ARM64 cases also ran under local emulation.
+Native ARM64 CI must confirm the fix. TinyGo and precompiled-only builds are excluded.
 
 `BenchmarkHostNestedMixedState` measures repeated calls after the first memory
 growth, including the observer and nested mutation. Compilation, instance setup,
