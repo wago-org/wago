@@ -320,6 +320,7 @@ func (f *fn) materializePluginCustom(e *elem) []Reg {
 		f.fregUser[regs[i]] = e
 	}
 	f.s.canonicalSlots = false
+	f.s.forgetSpill(e)
 	e.st.kind, e.st.typ, e.st.reg = stReg, mtCustom, regs[0]
 	cold.vregs = regs
 	return cold.vregs

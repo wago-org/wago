@@ -9,6 +9,7 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 	if belowSlots == 0 {
 		return
 	}
+	f.s.spillExtentValid = false
 	nextSlot := f.spillFloor
 	direct := true
 	scratchSlot := 0
@@ -72,6 +73,7 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 // destination, copy backwards directly to canonical homes. Each write then lies
 // above all earlier sources; no temporary spill range or second copy is needed.
 func (f *fn) canonicalizeFlushSpills(slot int, roots []*elem) {
+	f.s.spillExtentValid = false
 	limit := slot
 	for i := len(roots) - 1; i >= 0; i-- {
 		root := roots[i]

@@ -250,6 +250,9 @@ type stack struct {
 	hasGCRoots       bool
 	nextChunkCap     uint16
 	nextGeometricCap uint16
+	spillExtentValid bool
+	spillExtent      uint32
+	spilledPrefix    *elem
 }
 
 const (
@@ -324,6 +327,7 @@ func (s *stack) initSentinel() {
 	s.logicalDepth = 0
 	s.canonicalSlots = true
 	s.hasGCRoots = false
+	s.spillExtent, s.spillExtentValid, s.spilledPrefix = 0, true, nil
 }
 
 // reset rewinds the stack to empty for reuse by the next function in a module
@@ -468,6 +472,7 @@ func (s *stack) pushValue(st storage) *elem {
 	e := s.alloc()
 	e.setElemKind(ekValue)
 	e.st = st
+	s.noteSpill(st)
 	s.logicalDepth++
 	return s.push(e)
 }
@@ -523,6 +528,7 @@ func (s *stack) back() *elem {
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
+	s.forgetSpill(e)
 	s.canonicalSlots = false
 	if e.st.hasLogicalRoot() {
 		e.st.setLogicalRoot(false)
@@ -804,4 +810,43 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	node.arg0 = operand
 	labelDeferredNode(node)
 	f.s.pushDeferred(node)
+}
+
+// Slot extent excludes spillFloor, which belongs to the current flush only.
+func (s *stack) noteSpill(st storage) {
+	if st.kind == stSlot && s.spillExtentValid {
+		end := st.slotIndex() + st.typ.stackSlots()
+		if uint64(end) > uint64(^uint32(0)) {
+			s.spillExtentValid = false
+			return
+		}
+		if uint32(end) > s.spillExtent {
+			s.spillExtent = uint32(end)
+		}
+	}
+}
+
+func (s *stack) forgetSpill(e *elem) {
+	if e.prev == nil || e.next == nil || !e.isValue() || e.st.kind != stSlot {
+		return
+	}
+	if e.st.slotIndex()+e.st.typ.stackSlots() == int(s.spillExtent) {
+		s.spillExtentValid = false
+	}
+	// A previously skipped slot may now become a register-resident value.
+	s.spilledPrefix = nil
+}
+
+// Skip only a contiguous slot prefix, retaining the existing deepest-victim policy.
+func (s *stack) firstUnspilled() *elem {
+	last := s.spilledPrefix
+	if last == nil {
+		last = s.head
+	}
+	e := last.next
+	for e != s.head && e.isValue() && e.st.kind == stSlot {
+		last, e = e, e.next
+	}
+	s.spilledPrefix = last
+	return e
 }

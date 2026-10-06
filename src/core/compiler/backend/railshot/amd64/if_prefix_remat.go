@@ -137,6 +137,8 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 	}
 	f.s.push(root)
 	f.s.exposeLogicalRoot(root)
+	// The new prefix precedes any previously cached slot-only prefix.
+	f.s.spilledPrefix = nil
 	// Rotate the reconstructed prefix below the existing result without moving
 	// the result's storage or changing its allocator ownership.
 	head := f.s.head
