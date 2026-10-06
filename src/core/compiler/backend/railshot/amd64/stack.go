@@ -251,6 +251,7 @@ type stack struct {
 	nextChunkCap     uint16
 	nextGeometricCap uint16
 	spillExtentValid bool
+	pendingEffects   uint8
 	spillExtent      uint32
 	spilledPrefix    *elem
 }
@@ -327,6 +328,7 @@ func (s *stack) initSentinel() {
 	s.logicalDepth = 0
 	s.canonicalSlots = true
 	s.hasGCRoots = false
+	s.pendingEffects = 0
 	s.spillExtent, s.spillExtentValid, s.spilledPrefix = 0, true, nil
 }
 
@@ -473,6 +475,7 @@ func (s *stack) pushValue(st storage) *elem {
 	e.setElemKind(ekValue)
 	e.st = st
 	s.noteSpill(st)
+	s.recordStorageEffects(st)
 	s.logicalDepth++
 	return s.push(e)
 }
@@ -495,6 +498,9 @@ func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
 // expression node. The physical operand nodes remain linked as the expression
 // tree, while the logical depth changes only by the arity reduction.
 func (s *stack) pushDeferred(e *elem) *elem {
+	if isDivRem(e.deferredOp()) {
+		s.pendingEffects |= pendingTrap
+	}
 	s.canonicalSlots = false
 	arity := 1
 	if e.arg1 != nil {
@@ -849,4 +855,16 @@ func (s *stack) firstUnspilled() *elem {
 	}
 	s.spilledPrefix = last
 	return e
+}
+
+const (
+	pendingTrap uint8 = 1 << iota
+	pendingLoad
+)
+
+// Summaries may be stale positives after a discard, never stale negatives.
+func (s *stack) recordStorageEffects(st storage) {
+	if st.kind == stMemRef {
+		s.pendingEffects |= pendingLoad
+	}
 }
