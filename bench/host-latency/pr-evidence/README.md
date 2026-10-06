@@ -20,7 +20,7 @@ conformance and fresh AMD64 execution remain outstanding.
 
 Call latency is the full checked round trip for a reserved `PreparedSession.Invoke2`, in ns, with one atomic-count-checked callback and checked guest results. Both versions use the identical harness, fixture, Go toolchain and API; compilation and instantiation are outside timing. Nothing is subtracted. Raw evidence also covers ordinary/prepared APIs and batches.
 
-These tables will compare current main (`9196bdff`) directly with the final PR runtime source after resolving main's merge conflicts. Historical and incremental comparisons have been removed. Fresh matched measurements are in progress.
+These tables compare current main **`9196bdff`** directly with the final PR runtime source measured at **`6f8a0605`**. The following evidence-only commit leaves the runtime source tree unchanged (`fb51a5679d43806b0e27f777350ff10fefe751a7`). Historical and incremental comparisons are excluded.
 
 ### AMD64 — Ryzen 7800X3D
 
@@ -34,9 +34,10 @@ These tables will compare current main (`9196bdff`) directly with the final PR r
 
 | Callback | Main Call latency | PR head Call latency | Delta |
 |---|---:|---:|---:|
-| Typed | Measuring | Measuring | — |
-| HostCall | Measuring | Measuring | — |
-| Caller | Measuring | Measuring | — |
+| Typed | 151.647 | 62.762 | -58.61% |
+| HostCall | 205.082 | 65.894 | -67.87% |
+| Caller | 273.572 | 79.577 | -70.91% |
 
-ARM64 measurements use the shared laptop at the user's request. Hub remains idle while the user plays CS2. No historical samples are presented as PR-head measurements. Wasmtime parity is not claimed.
+ARM64: Go1.27.1, eight alternating paired blocks, 40 samples per callback/version. Every API/callback/count shape improved in all eight blocks; the table above reports reserved sessions. The shared laptop was authorized by the user; host-load snapshots are retained. Wasmtime reference round trip was11.467ns typed/11.449ns Caller, with2.78%/3.24% before/after drift. No entry cost is subtracted. **Wasmtime parity remains unmet.**
 
+AMD64 is awaiting idle Hub; no older AMD64 sample is presented as PR-head timing. [Exact-head pins, summaries and raw capture](bench/host-latency/pr-evidence/README.md) are published. CI is pending; native Linux ARM64 signal-cancellation and full external conformance are not established by Darwin tests.

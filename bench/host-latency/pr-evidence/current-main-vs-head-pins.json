@@ -1,0 +1,24 @@
+{
+  "heads": {
+    "main": {
+      "commit": "9196bdffb4f95aeae30e6d0cd88f7dc96658590a",
+      "src_tree": "ce3d9b5d19b986c9c43de577d8d3ce9f66ddb653",
+      "internal_tree": "1bacb083eafe006c71310d9b21ea27d31b83df6d"
+    },
+    "candidate": {
+      "commit": "6f8a0605f532c99dcb7ef4e57f4109e720c5378e",
+      "src_tree": "fb51a5679d43806b0e27f777350ff10fefe751a7",
+      "internal_tree": "1bacb083eafe006c71310d9b21ea27d31b83df6d"
+    }
+  },
+  "go": "go1.27.1",
+  "host_policy": "User-authorized shared laptop; process-load evidence retained; no quiet-host claim",
+  "sha256": {
+    "/tmp/wago-pr872-harness/main.go": "852cf535812b866b8769c267ac158d6d4f688ab9255c57a71345ab423278dbfa",
+    "/tmp/wago-pr872-main-arm64": "19542fca988a06c9a3b16ab201285e57984ee06e4e5b9102c3a226285bfa4f74",
+    "/tmp/wago-pr872-head-arm64": "a938ab5c26777a2a1991a2b7c20158a6a00f2dc4dcd0b7dfb86f52b7203d9569",
+    "/Users/work/Code/Wago/wago/bench/host-latency/yield.wasm": "ec8ade2fe03450e5b844cd47c78ff9103d4b45b3d1cce263ac3d10a887aa08b0",
+    "/Users/work/Code/Wago/wago/bench/host-latency/yield.wat": "21603624bc530b8e2b4522052d15c75b2e845292d270b6c306867afafd1f9060",
+    "/Users/work/Code/Wago/wago/bench/host-latency/wasmtime/target/release/host-latency-wasmtime": "5e7295ad0a27c90e9331c403bb8034da496981a4969540ddd3444b78248e76f6"
+  }
+}
