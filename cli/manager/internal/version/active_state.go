@@ -98,7 +98,7 @@ func writeActiveInstallationLocked(d wagopaths.Dirs, state activeInstallationSta
 	if err := validateActiveState(state); err != nil {
 		return err
 	}
-	if err := atomicfile.ReplaceFile(d.ConfigFile(activeStateFile), atomicfile.Options{Mode: 0644, Sync: true, Hooks: hooks}, func(w io.Writer) error { return json.NewEncoder(w).Encode(state) }); err != nil {
+	if err := atomicfile.ReplaceFileWithMode(d.ConfigFile(activeStateFile), atomicfile.Options{Mode: 0644, Sync: true, Hooks: hooks}, func(w io.Writer) error { return json.NewEncoder(w).Encode(state) }); err != nil {
 		return err
 	}
 	return syncActiveStateDirectory(d.Config)

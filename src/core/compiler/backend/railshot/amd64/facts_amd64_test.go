@@ -16,7 +16,9 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	if got, want := unsafe.Sizeof(elem{}), uintptr(56); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(stack{}), uintptr(80); got != want {
+	// The spill-prefix cursor adds one pointer per compiler worker; extent
+	// metadata fits the remaining padding without growing per-value storage.
+	if got, want := unsafe.Sizeof(stack{}), uintptr(88); got != want {
 		t.Fatalf("stack size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {

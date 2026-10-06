@@ -121,7 +121,7 @@ func (a *hostLoopActivation) dispatchBoundedMultiHostView(args, results []uint64
 		a.state.activations.boundedID.Store(uint64(invocation.id))
 		defer a.state.activations.boundedID.Store(previousID)
 		scope := &a.state.hostScope
-		generation, parent := scope.beginGeneration()
+		generation, parent := scope.beginGeneration(invocation.parent)
 		caller := instanceHostModule{in: a.root, scope: scope, generation: generation, parentGeneration: parent, invocationID: invocation.id, reservation: invocation.reservation, exact: binding.exact}
 		defer scope.end(generation, parent)
 		fn(Caller{instanceHostModule: caller}, HostCall{params: compactHostSlots(args), results: compactHostSlots(results), sig: binding.sig, exact: binding.exact})

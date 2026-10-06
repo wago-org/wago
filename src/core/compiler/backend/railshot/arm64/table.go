@@ -342,6 +342,7 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.tableRangeEnd(X9, X9, X11, f.tableAddr64(tableIdx))
 	f.trapTableUnlessLE(X9, X13)
 	f.ld64(X9, SP, f.spillOff(dstArg.st.slotIndex()))
+	f.canonicalizeTableOperand(X9, tableIdx)
 	f.typedTableEntryAddr(X9, X14, tableIdx)
 	f.fillExternrefEntries(X9, X11, X12)
 	f.setDepth(d - 3)

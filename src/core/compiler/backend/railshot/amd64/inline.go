@@ -1124,6 +1124,9 @@ func (f *fn) inlineBody(body []byte) error {
 // inline local in [lo, hi) into a register/value, so it no longer depends on that
 // slot's contents (mirrors realizeLocalRefs, over a range).
 func (f *fn) realizeInlineRange(lo, hi int) {
+	if f.s.pendingEffects&pendingLocalRef == 0 {
+		return
+	}
 	inRange := func(idx int) bool { return idx >= lo && idx < hi }
 	for e := f.s.head.next; e != f.s.head; {
 		next := e.next

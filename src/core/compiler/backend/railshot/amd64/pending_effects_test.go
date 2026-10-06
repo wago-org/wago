@@ -45,3 +45,20 @@ func TestPendingTrapsPreservePureAncestors(t *testing.T) {
 		t.Fatal("guard-backed load was not materialized")
 	}
 }
+
+func TestPartialBarrierRetainsPendingTrap(t *testing.T) {
+	f := &fn{a: &encoder.Asm{}, s: newStack(), sc: newScratch()}
+	limit := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 0})
+	f.pushBinOp(opDivU, mtI32)
+	trap := f.s.back()
+	f.materializePendingEffectsBelow(false, limit)
+	if !trap.isDeferred() {
+		t.Fatal("partial barrier emitted an operation above its limit")
+	}
+	f.materializePendingTraps()
+	if trap.isDeferred() {
+		t.Fatal("partial barrier lost pending trap")
+	}
+}

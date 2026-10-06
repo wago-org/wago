@@ -1,0 +1,245 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/zero   	   34550	      6961 ns/op	       286.0 code-B	         0.4249 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/ones   	   34882	      6901 ns/op	       286.0 code-B	         0.4212 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/min32  	   34593	      6924 ns/op	       286.0 code-B	         0.4226 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/max32  	   34910	      6936 ns/op	       286.0 code-B	         0.4233 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   29016	      8197 ns/op	       314.0 code-B	         0.5003 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   29467	      8360 ns/op	       314.0 code-B	         0.5102 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   28879	      8247 ns/op	       314.0 code-B	         0.5033 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/unaligned             	   34390	      6990 ns/op	       286.0 code-B	         0.4266 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/cacheline-crossing    	   34366	      6954 ns/op	       286.0 code-B	         0.4244 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16689	     14454 ns/op	       403.0 code-B	         0.8822 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15741	     15285 ns/op	       437.0 code-B	         0.9330 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store8-control        	   34852	      7019 ns/op	       270.0 code-B	         0.4284 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store16-control       	   34552	      7100 ns/op	       278.0 code-B	         0.4333 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store32-control       	   34540	      6992 ns/op	       282.0 code-B	         0.4268 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/memory64-control      	   25351	      9491 ns/op	       373.0 code-B	         0.5793 ns/store	       0 B/op	       0 allocs/op
+BenchmarkCompileSignedImmediateStore/zero           	   10000	     20080 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/ones           	   10000	     22755 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/min32          	    9369	     22009 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/max32          	   10000	     21658 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-positive  	   10000	     21230 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-negative  	   10000	     21337 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/mixed-halves   	   10000	     21196 ns/op	       314.0 code-B	   22849 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/unaligned      	    9460	     21403 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/cacheline-crossing         	   10000	     20818 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure                   	    8972	     24029 ns/op	       403.0 code-B	   24257 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure-near-miss         	    9778	     25207 ns/op	       437.0 code-B	   24897 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/store8-control             	   10000	     21015 ns/op	       270.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store16-control            	   10000	     20700 ns/op	       278.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store32-control            	   10000	     21038 ns/op	       282.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/memory64-control           	    9955	     23886 ns/op	       373.0 code-B	   22305 B/op	      95 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/zero   	   35407	      6946 ns/op	       286.0 code-B	         0.4239 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/ones   	   35286	      6992 ns/op	       286.0 code-B	         0.4267 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/min32  	   34533	      6898 ns/op	       286.0 code-B	         0.4210 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/max32  	   35062	      7274 ns/op	       286.0 code-B	         0.4440 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   29569	      8147 ns/op	       314.0 code-B	         0.4973 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   28867	      8242 ns/op	       314.0 code-B	         0.5031 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   30085	      8212 ns/op	       314.0 code-B	         0.5012 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/unaligned             	   35282	      6910 ns/op	       286.0 code-B	         0.4218 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/cacheline-crossing    	   34050	      6918 ns/op	       286.0 code-B	         0.4222 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   17078	     14156 ns/op	       403.0 code-B	         0.8640 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15894	     15353 ns/op	       437.0 code-B	         0.9371 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store8-control        	   34586	      6974 ns/op	       270.0 code-B	         0.4257 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store16-control       	   35606	      6835 ns/op	       278.0 code-B	         0.4172 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store32-control       	   34466	      6950 ns/op	       282.0 code-B	         0.4242 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/memory64-control      	   25686	      9406 ns/op	       373.0 code-B	         0.5741 ns/store	       0 B/op	       0 allocs/op
+BenchmarkCompileSignedImmediateStore/zero           	   11424	     20601 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/ones           	   10000	     20647 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/min32          	   10000	     21288 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/max32          	   10000	     20611 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-positive  	   10000	     21227 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-negative  	   10000	     21091 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/mixed-halves   	   10000	     21058 ns/op	       314.0 code-B	   22849 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/unaligned      	   10000	     20499 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/cacheline-crossing         	   10000	     20654 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure                   	    9960	     24452 ns/op	       403.0 code-B	   24257 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure-near-miss         	    9810	     24377 ns/op	       437.0 code-B	   24897 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/store8-control             	   10000	     20504 ns/op	       270.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store16-control            	   10000	     20424 ns/op	       278.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store32-control            	   12079	     20354 ns/op	       282.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/memory64-control           	   10000	     22347 ns/op	       373.0 code-B	   22305 B/op	      95 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/zero   	   34797	      6816 ns/op	       286.0 code-B	         0.4160 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/ones   	   35002	      7007 ns/op	       286.0 code-B	         0.4277 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/min32  	   34852	      7054 ns/op	       286.0 code-B	         0.4305 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/max32  	   34818	      6961 ns/op	       286.0 code-B	         0.4249 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   29182	      8285 ns/op	       314.0 code-B	         0.5057 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   28684	      8313 ns/op	       314.0 code-B	         0.5074 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   29481	      8301 ns/op	       314.0 code-B	         0.5067 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/unaligned             	   34806	      7030 ns/op	       286.0 code-B	         0.4291 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/cacheline-crossing    	   34176	      7077 ns/op	       286.0 code-B	         0.4319 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16594	     14231 ns/op	       403.0 code-B	         0.8686 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15822	     15485 ns/op	       437.0 code-B	         0.9451 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store8-control        	   34130	      6991 ns/op	       270.0 code-B	         0.4267 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store16-control       	   34825	      6896 ns/op	       278.0 code-B	         0.4209 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store32-control       	   34784	      6925 ns/op	       282.0 code-B	         0.4227 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/memory64-control      	   25275	      9548 ns/op	       373.0 code-B	         0.5828 ns/store	       0 B/op	       0 allocs/op
+BenchmarkCompileSignedImmediateStore/zero           	   10000	     20234 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/ones           	   10000	     20852 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/min32          	   10000	     20907 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/max32          	   10000	     22267 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-positive  	   11505	     20990 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-negative  	   10000	     20875 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/mixed-halves   	   10000	     21227 ns/op	       314.0 code-B	   22849 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/unaligned      	   10000	     20709 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/cacheline-crossing         	   10000	     20280 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure                   	    9186	     24904 ns/op	       403.0 code-B	   24257 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure-near-miss         	   10000	     25387 ns/op	       437.0 code-B	   24897 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/store8-control             	   10000	     21070 ns/op	       270.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store16-control            	   10000	     27175 ns/op	       278.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store32-control            	    9906	     24041 ns/op	       282.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/memory64-control           	    8326	     29984 ns/op	       373.0 code-B	   22305 B/op	      95 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/zero   	   35150	      6858 ns/op	       286.0 code-B	         0.4186 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/ones   	   34666	      6904 ns/op	       286.0 code-B	         0.4214 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/min32  	   35545	      6852 ns/op	       286.0 code-B	         0.4182 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/max32  	   34963	      6875 ns/op	       286.0 code-B	         0.4196 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   29146	      8246 ns/op	       314.0 code-B	         0.5033 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   29890	      8172 ns/op	       314.0 code-B	         0.4988 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   29472	      8125 ns/op	       314.0 code-B	         0.4959 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/unaligned             	   35306	      6971 ns/op	       286.0 code-B	         0.4255 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/cacheline-crossing    	   35025	      6925 ns/op	       286.0 code-B	         0.4227 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   17199	     14163 ns/op	       403.0 code-B	         0.8644 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   16180	     15047 ns/op	       437.0 code-B	         0.9184 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store8-control        	   35268	      6981 ns/op	       270.0 code-B	         0.4261 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store16-control       	   35524	      7040 ns/op	       278.0 code-B	         0.4297 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store32-control       	   35840	      6933 ns/op	       282.0 code-B	         0.4231 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/memory64-control      	   25309	      9257 ns/op	       373.0 code-B	         0.5650 ns/store	       0 B/op	       0 allocs/op
+BenchmarkCompileSignedImmediateStore/zero           	   12012	     20926 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/ones           	   10000	     20679 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/min32          	   10000	     20459 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/max32          	   10000	     20899 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-positive  	   10000	     21310 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-negative  	   10000	     20999 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/mixed-halves   	   10000	     20665 ns/op	       314.0 code-B	   22849 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/unaligned      	   10000	     20017 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/cacheline-crossing         	   11486	     20571 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure                   	   10000	     24305 ns/op	       403.0 code-B	   24257 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure-near-miss         	   10000	     24756 ns/op	       437.0 code-B	   24897 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/store8-control             	   10000	     21397 ns/op	       270.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store16-control            	   10000	     20514 ns/op	       278.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store32-control            	   10000	     22968 ns/op	       282.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/memory64-control           	   10000	     24336 ns/op	       373.0 code-B	   22305 B/op	      95 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/zero   	   35292	      6985 ns/op	       286.0 code-B	         0.4263 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/ones   	   34384	      6924 ns/op	       286.0 code-B	         0.4226 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/min32  	   35832	      6988 ns/op	       286.0 code-B	         0.4265 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/max32  	   35108	      7125 ns/op	       286.0 code-B	         0.4349 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   29410	      8360 ns/op	       314.0 code-B	         0.5102 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   29630	      8332 ns/op	       314.0 code-B	         0.5085 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   29067	      8380 ns/op	       314.0 code-B	         0.5115 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/unaligned             	   34696	      6954 ns/op	       286.0 code-B	         0.4245 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/cacheline-crossing    	   34731	      6956 ns/op	       286.0 code-B	         0.4246 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   17076	     14297 ns/op	       403.0 code-B	         0.8726 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   16038	     15367 ns/op	       437.0 code-B	         0.9379 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store8-control        	   35042	      6945 ns/op	       270.0 code-B	         0.4239 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store16-control       	   35322	      6922 ns/op	       278.0 code-B	         0.4225 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store32-control       	   35476	      6920 ns/op	       282.0 code-B	         0.4224 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/memory64-control      	   25048	      9508 ns/op	       373.0 code-B	         0.5803 ns/store	       0 B/op	       0 allocs/op
+BenchmarkCompileSignedImmediateStore/zero           	   10000	     20259 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/ones           	   10000	     20190 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/min32          	   10000	     21999 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/max32          	   10000	     21545 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-positive  	   10000	     21563 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-negative  	   10000	     21275 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/mixed-halves   	   10000	     21670 ns/op	       314.0 code-B	   22849 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/unaligned      	   10000	     20710 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/cacheline-crossing         	   10000	     20899 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure                   	    9423	     24267 ns/op	       403.0 code-B	   24257 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure-near-miss         	   10000	     25054 ns/op	       437.0 code-B	   24897 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/store8-control             	   10000	     20667 ns/op	       270.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store16-control            	   10000	     20051 ns/op	       278.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store32-control            	   10000	     20919 ns/op	       282.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/memory64-control           	   10000	     22036 ns/op	       373.0 code-B	   22305 B/op	      95 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/zero   	   35122	      6890 ns/op	       286.0 code-B	         0.4205 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/ones   	   33782	      7052 ns/op	       286.0 code-B	         0.4304 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/min32  	   33892	      7133 ns/op	       286.0 code-B	         0.4353 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/max32  	   34167	      7011 ns/op	       286.0 code-B	         0.4279 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   29626	      8250 ns/op	       314.0 code-B	         0.5035 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   29816	      8210 ns/op	       314.0 code-B	         0.5011 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   28486	      8083 ns/op	       314.0 code-B	         0.4933 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/unaligned             	   35684	      6983 ns/op	       286.0 code-B	         0.4262 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/cacheline-crossing    	   35307	      7027 ns/op	       286.0 code-B	         0.4289 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16844	     14219 ns/op	       403.0 code-B	         0.8678 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15867	     15471 ns/op	       437.0 code-B	         0.9443 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store8-control        	   35151	      6995 ns/op	       270.0 code-B	         0.4269 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store16-control       	   34729	      7081 ns/op	       278.0 code-B	         0.4322 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store32-control       	   34408	      7080 ns/op	       282.0 code-B	         0.4321 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/memory64-control      	   25047	      9435 ns/op	       373.0 code-B	         0.5759 ns/store	       0 B/op	       0 allocs/op
+BenchmarkCompileSignedImmediateStore/zero           	   10000	     20498 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/ones           	   10000	     20584 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/min32          	   10000	     20910 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/max32          	   10000	     21176 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-positive  	   10000	     20856 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-negative  	   10000	     21526 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/mixed-halves   	   10000	     21318 ns/op	       314.0 code-B	   22849 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/unaligned      	   10000	     21387 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/cacheline-crossing         	   10000	     20805 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure                   	    9655	     25195 ns/op	       403.0 code-B	   24257 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure-near-miss         	   10000	     25939 ns/op	       437.0 code-B	   24897 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/store8-control             	   10000	     20702 ns/op	       270.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store16-control            	   10000	     20789 ns/op	       278.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store32-control            	   10000	     20491 ns/op	       282.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/memory64-control           	    9417	     22494 ns/op	       373.0 code-B	   22305 B/op	      95 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/zero   	   35398	      6825 ns/op	       286.0 code-B	         0.4166 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/ones   	   35487	      6855 ns/op	       286.0 code-B	         0.4184 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/min32  	   35749	      6771 ns/op	       286.0 code-B	         0.4133 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/max32  	   35708	      6810 ns/op	       286.0 code-B	         0.4156 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   29992	      8137 ns/op	       314.0 code-B	         0.4966 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   29715	      8087 ns/op	       314.0 code-B	         0.4936 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   30178	      8094 ns/op	       314.0 code-B	         0.4940 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/unaligned             	   34798	      6835 ns/op	       286.0 code-B	         0.4172 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/cacheline-crossing    	   36940	      6659 ns/op	       286.0 code-B	         0.4064 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16975	     13909 ns/op	       403.0 code-B	         0.8489 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15943	     14913 ns/op	       437.0 code-B	         0.9102 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store8-control        	   35587	      6807 ns/op	       270.0 code-B	         0.4155 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store16-control       	   34806	      6818 ns/op	       278.0 code-B	         0.4162 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/store32-control       	   35922	      6833 ns/op	       282.0 code-B	         0.4171 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/memory64-control      	   25786	      9179 ns/op	       373.0 code-B	         0.5603 ns/store	       0 B/op	       0 allocs/op
+BenchmarkCompileSignedImmediateStore/zero           	   12348	     19194 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/ones           	   12480	     19100 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/min32          	   10000	     20096 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/max32          	   11923	     19494 ns/op	       286.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-positive  	   12306	     19503 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/near-negative  	   10000	     20511 ns/op	       314.0 code-B	   22721 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/mixed-halves   	   12114	     19482 ns/op	       314.0 code-B	   22849 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/unaligned      	   12528	     19181 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/cacheline-crossing         	   12325	     19260 ns/op	       286.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure                   	   10000	     23089 ns/op	       403.0 code-B	   24257 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/pressure-near-miss         	   10000	     23354 ns/op	       437.0 code-B	   24897 B/op	      96 allocs/op
+BenchmarkCompileSignedImmediateStore/store8-control             	   12033	     19218 ns/op	       270.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store16-control            	   12435	     19119 ns/op	       278.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/store32-control            	   12435	     19809 ns/op	       282.0 code-B	   21761 B/op	      93 allocs/op
+BenchmarkCompileSignedImmediateStore/memory64-control           	   10000	     20801 ns/op	       373.0 code-B	   22305 B/op	      95 allocs/op
+PASS

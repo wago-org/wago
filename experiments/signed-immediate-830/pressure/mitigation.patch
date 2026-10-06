@@ -1,0 +1,31 @@
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -1021,17 +1021,23 @@
+ 	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
+ 	// like a materialized constant would (i64.store8/16/32 route here too).
+ 	// In guard mode a split store can commit its low half before its high half
+-	// faults. Non-sign-extendable i64 constants use the single native store in
+-	// the materialized-value path below instead.
+-	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst &&
+-		!(f.guardMode && size == 8 && int64(int32(top.st.cval)) != top.st.cval) {
++	// faults. Materialize non-sign-extendable i64 constants only after computing
++	// the address, so the value does not compete with address temporaries.
++	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
+ 		f.stats.peep("store-imm")
+-		v := top.st.cval
++		st := top.st
++		v := st.cval
+ 		f.erase(top)
+ 		ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
+ 		if size == 8 && int64(int32(v)) == v {
+ 			f.stats.peep("store-imm64-signext")
+ 			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 8)
++		} else if size == 8 && f.guardMode {
++			vreg, vOwned := f.intConstReadReg(st, maskOf(ea))
++			f.a.StoreIdx(RBX, ea, vreg, disp, 8)
++			if vOwned {
++				f.release(vreg)
++			}
+ 		} else if size == 8 {
+ 			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 4)
+ 			f.a.StoreImmIdx(RBX, ea, disp+4, int32(v>>32), 4)

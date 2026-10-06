@@ -4986,7 +4986,7 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 		defer finishProfileBoundary(span, &err)
 	}
 	fn := &in.syncHosts[importIdx]
-	caller := in.beginHostCallScope()
+	caller := in.ensurePluginState().hostScope.beginReservedWithID(in, id, currentInvocationReservation(in), parent)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	fn.call(caller, params, results)
 	return results, nil

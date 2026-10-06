@@ -247,8 +247,17 @@ func (f *fn) prepareEntryTrapPins() {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
+	var savedGPWrites regallocGPWriteMask
+	if regallocCheckEnabled {
+		savedGPWrites = f.checkTerminalGPWrites()
+	}
 	before := f.a.Len()
-	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	defer func() {
+		if regallocCheckEnabled {
+			f.checkRestoreGPWrites(savedGPWrites)
+		}
+		f.stats.addGCTrapStubBytes(f.a.Len() - before)
+	}()
 	f.prepareEntryTrapPins()
 	compact := f.policy.CompactNative
 	groups := 0
@@ -451,12 +460,13 @@ func sortTrapSitesByFunction(sites []trapSite) {
 }
 
 // memAddr pops the address operand, folds the static memarg offset, emits the
-// bounds check (unless guard-page mode elides it), and returns the register
+// bounds check (unless guard permits elision), and returns the register
 // holding the effective offset plus the displacement to fold into the access.
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
 // valid when the access is emitted immediately (stores), not deferred (loads);
-// eaOwned reports whether the caller must release ea.
-func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) (ea Reg, eaOwned bool, borrow int, disp int32) {
+// eaOwned reports whether the caller must release ea. Passing guard=false
+// requires a full-access bounds proof even in a guard-page function.
+func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, guard bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	f.materializePendingTraps()
 	if f.memoryAddr64(0) {
 		return f.memAddr64(off, size)
@@ -519,7 +529,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 		f.release(t)
 	}
 
-	if f.guardMode {
+	if guard {
 		return ea, eaOwned, borrow, disp
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
@@ -628,7 +638,7 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 
 func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, releaseBase, eaOwned bool, borrow int, disp int32) {
 	if memoryIndex == 0 {
-		ea, eaOwned, borrow, disp = f.memAddr(off, size, true, 0)
+		ea, eaOwned, borrow, disp = f.memAddr(off, size, true, 0, f.guardMode)
 		return linMemReg, ea, false, eaOwned, borrow, disp
 	}
 	base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
@@ -948,7 +958,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent)
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent, f.guardMode)
 	if seedIndexedBase && borrow == addrLocal && disp >= 0 && disp%4 == 0 && disp/4 <= 4095 {
 		f.a.AddShifted(X16, linMemReg, ea, 0, false)
 		out := f.allocReg(maskOf(ea))
@@ -1046,13 +1056,16 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// load-then-store dependency chain. i64 needs two 4-byte immediate stores
 	// (low32 at disp, high32 at disp+4); narrower stores truncate to the low `size`
 	// bytes exactly like a materialized constant would (i64.store8/16/32 route here
-	// too).
-	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
+	// too). In guard mode i64 constants use the single native store in the
+	// materialized-value path below: two stores could commit the low half before
+	// a fault on the high half.
+	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst &&
+		!(f.guardMode && size == 8) {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
 		addrLocal, addrOK := localAddressKey(f.s.back())
-		ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
+		ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, f.guardMode)
 		f.pinned = f.pinned.add(ea)
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 		if size == 8 {
@@ -1071,11 +1084,15 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// pinned local feeds the store in place — no copy (nothing between the reads
 	// and the StoreIdx can write a local).
 	value := f.popValue()
+	// A single unaligned ARM64 store can still partially write before faulting
+	// across a page boundary. Prove the entire guarded constant access is valid
+	// before materializing its store, independently of the CPU's store behavior.
+	guard := f.guardMode && !(size == 8 && value.st.kind == stConst)
 	vtyp := value.st.typ
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, guard)
 	f.pinned = f.pinned.add(ea)
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)

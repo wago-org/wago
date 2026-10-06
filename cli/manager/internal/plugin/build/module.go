@@ -485,7 +485,7 @@ func writeMain(dir string, input Input, config Config, buildIdentity string) err
 	if err != nil {
 		return err
 	}
-	return atomicfile.ReplaceFile(filepath.Join(dir, "main.go"), atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+	return atomicfile.ReplaceFileWithMode(filepath.Join(dir, "main.go"), atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 		_, err := writer.Write(data)
 		return err
 	})
@@ -538,15 +538,30 @@ func EnsureBinary(dir string, input Input, force, verbose bool, config Config) (
 // discovery, and compilation without changing other build callers.
 func EnsureBinaryContext(ctx context.Context, dir string, input Input, force, verbose bool, config Config) (bin string, cached bool, err error) {
 	err = withBuildLockContext(ctx, dir, func() error {
-		bin, cached, err = ensureBinaryContext(ctx, dir, input, force, verbose, config)
+		bin, cached, err = ensureBinaryContext(ctx, dir, input, force, verbose, config, nil)
 		return err
 	})
 	return bin, cached, err
 }
 
-func ensureBinaryContext(ctx context.Context, dir string, input Input, force, verbose bool, config Config) (bin string, cached bool, err error) {
+// EnsureVerifiedBinaryContext validates a candidate before it replaces the
+// active plugin runtime. A cache hit from an older build is validated once and
+// marked with the exact build hash before it can be selected.
+func EnsureVerifiedBinaryContext(ctx context.Context, dir string, input Input, force, verbose bool, config Config, verify func(context.Context, string) error) (bin string, cached bool, err error) {
+	if verify == nil {
+		return "", false, fmt.Errorf("plugin runtime verifier is required")
+	}
+	err = withBuildLockContext(ctx, dir, func() error {
+		bin, cached, err = ensureBinaryContext(ctx, dir, input, force, verbose, config, verify)
+		return err
+	})
+	return bin, cached, err
+}
+
+func ensureBinaryContext(ctx context.Context, dir string, input Input, force, verbose bool, config Config, verify func(context.Context, string) error) (bin string, cached bool, err error) {
 	bin = BinaryPath(dir)
 	hashFile := bin + ".hash"
+	verifiedFile := bin + ".verified"
 	// Check before reconciliation so a preexisting replacement cannot be
 	// silently dropped and mistaken for a reusable exact-source build.
 	if err := RejectLockedSourceReplacementsContext(ctx, dir, input.Sources); err != nil {
@@ -585,14 +600,26 @@ func ensureBinaryContext(ctx context.Context, dir string, input Input, force, ve
 	if !force && cacheable {
 		if b, err := os.ReadFile(hashFile); err == nil && strings.TrimSpace(string(b)) == want {
 			if _, err := os.Stat(bin); err == nil {
+				if verify != nil {
+					marker, markerErr := verifiedBinaryMarker(bin, want)
+					if markerErr != nil {
+						return "", false, markerErr
+					}
+					if validated, err := os.ReadFile(verifiedFile); err != nil || strings.TrimSpace(string(validated)) != marker {
+						if err := verify(ctx, bin); err != nil {
+							return "", false, err
+						}
+						if err := atomicfile.ReplaceFileWithMode(verifiedFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+							_, err := io.WriteString(writer, marker)
+							return err
+						}); err != nil {
+							return "", false, fmt.Errorf("publish verified plugin build hash: %w", err)
+						}
+					}
+				}
 				return bin, true, nil
 			}
 		}
-	}
-	// Invalidate the old key before replacing the binary. A crash can now cause
-	// an extra rebuild, but it cannot pair a new binary with an old valid key.
-	if err := os.Remove(hashFile); err != nil && !os.IsNotExist(err) {
-		return "", false, fmt.Errorf("invalidate plugin build hash: %w", err)
 	}
 	buildIdentity := newBuildIdentity(want)
 	if err := writeMain(dir, input, config, buildIdentity); err != nil {
@@ -632,19 +659,65 @@ func ensureBinaryContext(ctx context.Context, dir string, input Input, force, ve
 	if err := rejectChangedBuildInputs(want, after); err != nil {
 		return "", false, err
 	}
+	var marker string
+	if verify != nil {
+		if err := verify(ctx, staged); err != nil {
+			return "", false, err
+		}
+		if err := ctx.Err(); err != nil {
+			return "", false, err
+		}
+		marker, err = verifiedBinaryMarker(staged, want)
+		if err != nil {
+			return "", false, err
+		}
+	}
+	// Preserve the active binary and its cache key through validation failures.
+	// Invalidate both keys before replacing it so a crash cannot claim that the
+	// newly installed binary was already verified.
+	if err := os.Remove(hashFile); err != nil && !os.IsNotExist(err) {
+		return "", false, fmt.Errorf("invalidate plugin build hash: %w", err)
+	}
+	if err := os.Remove(verifiedFile); err != nil && !os.IsNotExist(err) {
+		return "", false, fmt.Errorf("invalidate verified plugin build hash: %w", err)
+	}
 	if err := atomicfile.CommitTempFile(staged, bin, atomicfile.Options{Mode: 0o755, Sync: true}); err != nil {
 		return "", false, fmt.Errorf("install plugin build: %w", err)
 	}
 	if !cacheable || !afterCacheable {
 		return bin, false, nil
 	}
-	if err := atomicfile.ReplaceFile(hashFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+	if err := atomicfile.ReplaceFileWithMode(hashFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 		_, err := io.WriteString(writer, want)
 		return err
 	}); err != nil {
 		return "", false, fmt.Errorf("publish plugin build hash: %w", err)
 	}
+	if verify != nil {
+		if err := atomicfile.ReplaceFileWithMode(verifiedFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+			_, err := io.WriteString(writer, marker)
+			return err
+		}); err != nil {
+			return "", false, fmt.Errorf("publish verified plugin build hash: %w", err)
+		}
+	}
 	return bin, false, nil
+}
+
+// The marker binds validation to executable bytes as well as build inputs.
+// If a filesystem crash restores an older binary but retains a newer marker,
+// the next cache hit must validate the bytes it will actually execute.
+func verifiedBinaryMarker(path, buildHash string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return buildHash + "\n" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func tidyBuildModule(dir string, verbose bool) error {

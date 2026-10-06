@@ -48,7 +48,7 @@ func (a *boundedViewHostActivation) dispatchCallerView(args, results []uint64) {
 	defer a.state.activations.boundedID.Store(previousID)
 	binding := &a.root.syncHosts[0]
 	scope := &a.state.hostScope
-	generation, parent := scope.beginGeneration()
+	generation, parent := scope.beginGeneration(invocation.parent)
 	caller := instanceHostModule{
 		in: a.root, scope: scope, generation: generation, parentGeneration: parent,
 		invocationID: invocation.id, reservation: invocation.reservation, exact: binding.exact,
@@ -85,7 +85,7 @@ func boundedHostDispatchCallerView(context unsafe.Pointer, args, results []uint6
 	defer a.state.activations.boundedID.Store(previousID)
 	binding := &a.root.syncHosts[0]
 	scope := &a.state.hostScope
-	generation, parent := scope.beginGeneration()
+	generation, parent := scope.beginGeneration(invocation.parent)
 	caller := instanceHostModule{
 		in: a.root, scope: scope, generation: generation, parentGeneration: parent,
 		invocationID: invocation.id, reservation: invocation.reservation, exact: binding.exact,

@@ -488,6 +488,12 @@ jobs:
         if: matrix.runtime && runner.os != 'Windows'
         run: just test unit
 
+      # Preserve per-case PASS/SKIP evidence for the publication regressions;
+      # ordinary package output alone cannot establish native ACL qualification.
+      - name: Native build publication regressions
+        if: matrix.runtime
+        run: go test -v -count=1 -run '^TestBuild(OutputSnapshotRejectsTargetDisappearance|DarwinFilesOnlyDirectoryExplainsPrivateStageRequirement|NewWindowsOutputPreservesWriteOnlyInheritance)$' ./cli/runtime/commands/build
+
       - name: Diagnostic dead-code elimination
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: scripts/check-diagnostic-dce.sh
@@ -500,9 +506,19 @@ jobs:
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: scripts/check-regalloc-code.sh
 
+      # Existing peephole counters describe the established target driver.
+      # Keep its diagnostics and the admitted shared pilot independently checked.
       - name: Compiler diagnostic tests
         if: matrix.runtime
+        env:
+          WAGO_SHARED_SCALAR: "0"
         run: go test -count=1 -tags wago_codegenstats ./src/core/compiler/backend/railshot/... ./src/wago ./cli/runtime/internal/artifactcache
+
+      - name: Shared scalar diagnostic tests
+        if: matrix.runtime
+        env:
+          WAGO_SHARED_SCALAR: "1"
+        run: go test -count=1 -tags wago_codegenstats -run '^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)' ./src/core/compiler/backend/railshot/... ./src/wago
 
       - name: Profiling metadata and capture tests
         if: matrix.runtime

@@ -255,8 +255,17 @@ func (f *fn) prepareEntryTrapPins() {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
+	var savedGPWrites regallocGPWriteMask
+	if regallocCheckEnabled {
+		savedGPWrites = f.checkTerminalGPWrites()
+	}
 	before := f.a.Len()
-	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	defer func() {
+		if regallocCheckEnabled {
+			f.checkRestoreGPWrites(savedGPWrites)
+		}
+		f.stats.addGCTrapStubBytes(f.a.Len() - before)
+	}()
 	f.prepareEntryTrapPins()
 	groups := 0
 	for code := uint32(1); code <= trapMax; code++ {
@@ -1006,17 +1015,30 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		f.materializePendingLoads()
 	}
 	// A constant value stores as an immediate directly (selectInstr's `mov r/m,
-	// imm` form) — no register, no load-then-store dependency chain. i64 needs
-	// two 4-byte immediate stores (low32 at disp, high32 at disp+4): a single
-	// 64-bit imm-store sign-extends imm32, which is wrong for an arbitrary
+	// imm` form) — no register, no load-then-store dependency chain. An i64
+	// sign-extension of imm32 uses one qword store; other patterns need two
+	// dword stores. The qword form is wrong for an arbitrary
 	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
 	// like a materialized constant would (i64.store8/16/32 route here too).
+	// In guard mode a split store can commit its low half before its high half
+	// faults. Materialize non-sign-extendable i64 constants only after computing
+	// the address, so the value does not compete with address temporaries.
 	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 		f.stats.peep("store-imm")
-		v := top.st.cval
+		st := top.st
+		v := st.cval
 		f.erase(top)
 		ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
-		if size == 8 {
+		if size == 8 && int64(int32(v)) == v {
+			f.stats.peep("store-imm64-signext")
+			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 8)
+		} else if size == 8 && f.guardMode {
+			vreg, vOwned := f.intConstReadReg(st, maskOf(ea))
+			f.a.StoreIdx(RBX, ea, vreg, disp, 8)
+			if vOwned {
+				f.release(vreg)
+			}
+		} else if size == 8 {
 			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 4)
 			f.a.StoreImmIdx(RBX, ea, disp+4, int32(v>>32), 4)
 		} else {

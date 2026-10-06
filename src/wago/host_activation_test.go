@@ -15,7 +15,7 @@ func TestBoundedNativeIdentityRequiresLiveCallerScope(t *testing.T) {
 	if isNativeActive(&in, id) {
 		t.Fatal("entry marker identified a parked callback without a Caller scope")
 	}
-	caller := state.hostScope.beginReservedWithID(&in, id, nil)
+	caller := state.hostScope.beginReservedWithID(&in, id, nil, nil)
 	if !isNativeActive(&in, id) {
 		t.Fatal("live Caller scope did not expose its parked activation")
 	}

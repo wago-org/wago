@@ -92,7 +92,7 @@ func (a *hostLoopActivation) dispatchBoundedHostView(args, results []uint64) {
 	defer a.state.activations.boundedID.Store(previousID)
 	binding := &active.syncHosts[0]
 	scope := &a.state.hostScope
-	generation, parent := scope.beginGeneration()
+	generation, parent := scope.beginGeneration(invocation.parent)
 	caller := instanceHostModule{
 		in: active, scope: scope, generation: generation, parentGeneration: parent,
 		invocationID: invocation.id, reservation: invocation.reservation, exact: binding.exact,

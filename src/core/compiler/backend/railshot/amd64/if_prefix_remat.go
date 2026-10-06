@@ -128,6 +128,8 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 		st = storage{kind: stLocalReg, typ: mtI32, reg: pr, idx: uint32(x)}
 	}
 	f.replaceStorage(local, st)
+	// The local was detached during replacement; restore its summary as well.
+	f.s.recordStorageEffects(st)
 	result := f.s.back()
 	first := root
 	if root.isDeferred() {
@@ -137,6 +139,8 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 	}
 	f.s.push(root)
 	f.s.exposeLogicalRoot(root)
+	// The new prefix precedes any previously cached slot-only prefix.
+	f.s.spilledPrefix = nil
 	// Rotate the reconstructed prefix below the existing result without moving
 	// the result's storage or changing its allocator ownership.
 	head := f.s.head

@@ -10,6 +10,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Reduce AMD64 and ARM64 synchronous host-call round trips with bounded native
   bridges, private prepared owners, and specialized numeric marshalling.
+- Reuse both AMD64 hardware divide results for adjacent division/remainder
+  pairs on the same local operands, reducing dependent-pair latency.
+
+- Emit one AMD64 immediate store for i64 constants representable as a signed
+  imm32, and shorten guarded constant-store register lifetimes under pressure.
 - Improve AMD64 execution with bounded local and caller register reuse, direct
   branch-result transfers, memory operands, and scalar/vector loop lowering.
 - Reduce compilation work by skipping GC conversion scans for validated non-GC
@@ -18,12 +23,47 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in admitted straight-line AMD64 functions.
 ### Added
 
+- Add AMD64 bounds-proof invalidation tests and compile/execution benchmarks.
+
+- Add rejection controls for omitted native padding and artifact metadata.
+
+- Add host-event timing-boundary and replay-failure controls.
+
+- Add exact core-SIMD source-pair checks and benchmarks for byte averages,
+  high-byte extraction, and signed constant dot/sub expressions.
+
+- Add semantic result-profile controls and loaded-artifact/omitted-case checks
+  to the conformance test runner.
+
+- Add shared/established compiler-path comparisons at admission boundaries,
+  with typed-control validation, execution controls, and paired benchmarks.
+
+- Add bounded rule-directed scalar, SWAR, and SIMD compiler checks, independent
+  result models, activation controls, and equal-budget generation benchmarks.
+
+- Add AMD64 loop-boundary regression checks for deferred producer placement,
+  floating-point transport, register pressure, and zero-iteration traps.
+
+- Add AMD64 fresh-worker comparisons for reused compiler scratch, error recovery,
+  native execution, and worker memory release, with a test-only omitted-reset control.
+
 - Add two prebuilt Grain standard-library assertion suites to the executable
   corpus, with matching guest sources, reproducible rebuild instructions,
   preserved licenses, and independently verified WASI execution oracles.
 
 ### Fixed
 
+- Correct worker scratch-growth coverage, bounds-test mode isolation, semantic
+  mismatch counts, optional Node feature checks, and prepared-call benchmark setup.
+
+- Match direct and validated feature summaries for bulk table instructions.
+
+- Preserve live AMD64 values across signed i64 division when the overflow
+  guard runs under register pressure.
+
+- AMD64 guarded i64 constant stores use a single eight-byte native store.
+  ARM64 additionally checks the entire access before writing, preventing
+  partial memory updates from trapping unaligned constant stores.
 - ARM64 table64 bulk operations now trap when `start + count` wraps instead of
   accepting the wrapped range and addressing outside the table allocation.
 - Preserve live AMD64 collector references loaded by `global.get` across later

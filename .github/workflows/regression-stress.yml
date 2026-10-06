@@ -32,7 +32,6 @@ on:
       - edited
     paths:
       - '.github/workflows/regression-stress.yml'
-      - 'docs/gc.md'
       - 'src/core/runtime/gc/**'
       - 'src/wago/*gc*'
 

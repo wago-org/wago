@@ -32,10 +32,8 @@ putting exploratory Go source snapshots in the benchmark module. The local
 `measurements/` archive is a separate module to keep `go test ./...` from treating
 source snapshots as standalone packages.
 
-The latest measured session round trips are AMD64 56.35/66.95/92.61ns and
-ARM64 57.67/66.07/78.00ns for typed/HostCall/Caller respectively. AMD64 predates
-the final shared single-result-copy change; that change has not been timed there.
-Wasmtime remains about13ns on AMD64 and11.5ns on ARM64. Parity is unmet.
+The current-main-versus-PR-head tables are in the published evidence page.
+Historical measurements remain separately labeled. Wasmtime parity is unmet.
 
 ## Design notes
 

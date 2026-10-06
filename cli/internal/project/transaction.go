@@ -26,7 +26,7 @@ const (
 	projectJournalFile       = "project-transaction.json"
 )
 
-var replaceProjectFile = atomicfile.ReplaceFile
+var replaceProjectFile = atomicfile.ReplaceFileWithMode
 
 // Mutation owns the project-wide metadata lock. It is valid only during the
 // callback passed to WithMutation.

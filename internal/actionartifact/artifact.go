@@ -462,7 +462,7 @@ func extractExecutable(archivePath, asset, destination string) error {
 		return fmt.Errorf("open %s in Actions artifact: %w", asset, err)
 	}
 	defer input.Close()
-	err = atomicfile.ReplaceFile(destination, atomicfile.Options{Mode: 0o755, Sync: true}, func(writer io.Writer) error {
+	err = atomicfile.ReplaceFileWithMode(destination, atomicfile.Options{Mode: 0o755, Sync: true}, func(writer io.Writer) error {
 		hash := sha256.New()
 		written, err := io.Copy(io.MultiWriter(writer, hash), io.LimitReader(input, archiveLimit+1))
 		if err != nil {
@@ -512,7 +512,7 @@ func installDirectoryExecutable(directory, asset, destination string) error {
 		return err
 	}
 	defer input.Close()
-	err = atomicfile.ReplaceFile(destination, atomicfile.Options{Mode: 0o755, Sync: true}, func(writer io.Writer) error {
+	err = atomicfile.ReplaceFileWithMode(destination, atomicfile.Options{Mode: 0o755, Sync: true}, func(writer io.Writer) error {
 		hash := sha256.New()
 		written, err := io.Copy(io.MultiWriter(writer, hash), io.LimitReader(input, archiveLimit+1))
 		if err != nil {

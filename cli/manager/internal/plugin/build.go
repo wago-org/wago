@@ -321,18 +321,14 @@ func stageAndPublishLockedState(ctx context.Context, mutation *project.Mutation,
 	if err := verifySourceChecksumsContext(ctx, staged, input.Sources); err != nil {
 		return err
 	}
-	bin, _, err := pluginbuild.EnsureBinaryContext(ctx, staged, input, true, verbose, config)
+	_, _, err = pluginbuild.EnsureVerifiedBinaryContext(ctx, staged, input, true, verbose, config, verifyStagedRuntimeContext)
 	if err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := verifyStagedRuntimeContext(ctx, bin); err != nil {
-		return err
-	}
-	// Do not publish a build whose owner canceled while validation ran. This
-	// second check matters even if validation itself succeeded.
+	// Do not publish a build whose owner canceled while validation ran.
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -584,7 +580,7 @@ func pluginRuntimeBinary() (string, bool, error) {
 		if err != nil {
 			return err
 		}
-		bin, _, err = pluginbuild.EnsureBinary(environment.buildDir, input, changed, false, environment.selection.config())
+		bin, _, err = pluginbuild.EnsureVerifiedBinaryContext(context.Background(), environment.buildDir, input, changed, false, environment.selection.config(), verifyStagedRuntimeContext)
 		configured = err == nil
 		return err
 	})

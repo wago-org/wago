@@ -22,3 +22,10 @@ func (*fn) checkBeginRegMoves([]regMove, bool) func() { return nil }
 func (*fn) checkInputs(*elem) {}
 
 func (*fn) checkHostSyncHomes() {}
+func (*fn) checkEndLifetimes()  {}
+
+// Ordinary trap scopes must not capture a diagnostic mask in a defer.
+type regallocGPWriteMask struct{}
+
+func (*fn) checkTerminalGPWrites() regallocGPWriteMask { return regallocGPWriteMask{} }
+func (*fn) checkRestoreGPWrites(regallocGPWriteMask)   {}

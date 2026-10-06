@@ -166,7 +166,7 @@ func (c *pluginARM64Context) CheckedMemory(input int, offset uint32, size int) (
 		return 0, 0, 0, fmt.Errorf("arm64 plugin memory access has invalid size %d", size)
 	}
 	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(slot)})
-	ea, owned, _, disp := c.f.memAddr(uint64(offset), size, true, 0)
+	ea, owned, _, disp := c.f.memAddr(uint64(offset), size, true, 0, c.f.guardMode)
 	if owned {
 		c.f.pinned = c.f.pinned.add(ea)
 		c.gp = c.gp.add(ea)

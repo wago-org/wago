@@ -65,7 +65,7 @@ func BenchmarkBoundedHostCallbackCosts(b *testing.B) {
 				}
 			case "caller-scope":
 				for i := 0; i < b.N; i++ {
-					generation, parent := scope.beginGeneration()
+					generation, parent := scope.beginGeneration(nil)
 					total += uint64(callback(0))
 					scope.end(generation, parent)
 				}

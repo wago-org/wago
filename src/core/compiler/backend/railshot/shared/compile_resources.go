@@ -17,6 +17,8 @@ const (
 // Payload and Go runtime/GC metrics remain separate: callers can pair this
 // ledger with runtime/metrics without conflating the two.
 type CompileResourceStats struct {
+	ScalarScratchPeak, ScalarScratchRetained, ScalarScratchDiscarded uint64
+
 	StageNanos [CompileStageCount]uint64
 
 	HintHeaderBytes  uint64
@@ -47,6 +49,8 @@ type CompileResourceStats struct {
 // worker releases its scratch object. It deliberately contains no slice, map, or
 // pointer fields, so final module assembly cannot keep worker scratch reachable.
 type WorkerScratchStats struct {
+	ScalarPeak, ScalarRetained, ScalarDiscarded uint64
+
 	NodeReserved  uint64
 	NodePeak      uint64
 	NodeRetained  uint64
@@ -61,6 +65,10 @@ type WorkerScratchStats struct {
 // AddWorkerScratch merges one worker's pointer-free scratch snapshot into the
 // module resource ledger.
 func (s *CompileResourceStats) AddWorkerScratch(w WorkerScratchStats) {
+	s.ScalarScratchPeak += w.ScalarPeak
+	s.ScalarScratchRetained += w.ScalarRetained
+	s.ScalarScratchDiscarded += w.ScalarDiscarded
+
 	s.NodeScratchReserved += w.NodeReserved
 	s.NodeScratchPeak += w.NodePeak
 	s.NodeScratchRetained += w.NodeRetained

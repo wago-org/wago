@@ -347,7 +347,10 @@ func markGlobalEligible(accum *shared.GlobalHintAccumulator, idx uint32) {
 }
 
 type immutableTableHint struct {
-	local             bool
+	local bool
+	// Temporary proof fields occupy existing padding and are cleared before publication.
+	proofState        uint8
+	lastType          uint32
 	typeKey           uint64
 	typed             bool
 	monomorphicTarget int // local function index when every non-null entry is identical; -1 otherwise
@@ -646,7 +649,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true
 				}
 				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
-			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+			case wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 				h.flags.set(hintUsesBulkMem | hintTouchesMemory)
 			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
 				if directGCResolverInstruction(m, gcTypeLayouts, in.Kind, in.Index, in.Index2) {
@@ -1252,7 +1255,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
 			}
-			if imm.UsesBulkMemory {
+			if imm.UsesBulkMemory || imm.Kind == wasm.InstrMemoryInit {
 				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
 				s.h.flags.set(hintUsesBulkMem)
 			}
@@ -1300,7 +1303,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
 			}
-			if imm.UsesBulkMemory {
+			if imm.UsesBulkMemory || imm.Kind == wasm.InstrMemoryInit {
 				s.h.flags.set(hintUsesBulkMem)
 			}
 		}

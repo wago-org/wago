@@ -1,6 +1,9 @@
 package build
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -367,7 +370,7 @@ func TestResolvedBuildHashIgnoresGeneratedMainThroughDirectorySymlink(t *testing
 	}
 }
 
-func TestEnsureBinaryUsesResolvedInputsAndInvalidatesFailedBuild(t *testing.T) {
+func TestEnsureBinaryUsesResolvedInputsAndPreservesPriorBuildOnFailure(t *testing.T) {
 	source := t.TempDir()
 	files := map[string]string{
 		"go.mod": "module github.com/wago-org/wago\n\ngo 1.22\n",
@@ -428,6 +431,14 @@ func Providers() []wago.PluginProvider { return nil }
 	if string(firstHash) == string(secondHash) {
 		t.Fatal("changed build tag reused the executable cache key")
 	}
+	secondBinary, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validSource, err := os.ReadFile(filepath.Join(source, "register", "register.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	broken := `package register
 import wago "github.com/wago-org/wago"
 func Providers() []wago.PluginProvider { return missing }
@@ -438,8 +449,43 @@ func Providers() []wago.PluginProvider { return missing }
 	if _, _, err := EnsureBinary(dir, input, false, false, config); err == nil {
 		t.Fatal("invalid local source built successfully")
 	}
-	if _, err := os.Stat(bin + ".hash"); !os.IsNotExist(err) {
-		t.Fatalf("failed build retained a valid cache key: %v", err)
+	remainingHash, err := os.ReadFile(bin + ".hash")
+	if err != nil || string(remainingHash) != string(secondHash) {
+		t.Fatalf("failed build changed the prior cache key: %q, %v", remainingHash, err)
+	}
+	remainingBinary, err := os.ReadFile(bin)
+	if err != nil || !bytes.Equal(remainingBinary, secondBinary) {
+		t.Fatalf("failed build changed the prior binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "register", "register.go"), validSource, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, cached, err := EnsureBinary(dir, input, false, false, config); err != nil || !cached {
+		t.Fatalf("restored source did not reuse prior build: cached %v, err %v", cached, err)
+	}
+	verifications := 0
+	verify := func(_ context.Context, candidate string) error {
+		verifications++
+		contents, err := os.ReadFile(candidate)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(contents, secondBinary) {
+			return errors.New("unexpected plugin binary")
+		}
+		return nil
+	}
+	if _, cached, err := EnsureVerifiedBinaryContext(context.Background(), dir, input, false, false, config, verify); err != nil || !cached || verifications != 1 {
+		t.Fatalf("legacy cache verification = cached %v, calls %d, err %v", cached, verifications, err)
+	}
+	if _, cached, err := EnsureVerifiedBinaryContext(context.Background(), dir, input, false, false, config, verify); err != nil || !cached || verifications != 1 {
+		t.Fatalf("verified cache hit = cached %v, calls %d, err %v", cached, verifications, err)
+	}
+	if err := os.WriteFile(bin, []byte("replacement executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := EnsureVerifiedBinaryContext(context.Background(), dir, input, false, false, config, verify); err == nil || verifications != 2 {
+		t.Fatalf("changed executable was not reverified: calls %d, err %v", verifications, err)
 	}
 }
 

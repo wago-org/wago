@@ -46,8 +46,8 @@ var guardCallPinEnabled = os.Getenv("WAGO_AMD64_GUARD_CALL_PIN") != "0"
 // scratch contracts. Set WAGO_AMD64_SECOND_CALL_PIN=0 for comparison.
 var guardSecondCallPinEnabled = os.Getenv("WAGO_AMD64_SECOND_CALL_PIN") != "0"
 
-// R9 has fixed uses in bulk table lowering. Its local lease excludes bulk
-// memory, table mutation, and inlined callees with unpropagated scratch uses.
+// Keep the guarded R9 local lease conservative around bulk memory, table
+// mutation, and inlined callees with unpropagated scratch uses.
 var guardThirdCallPinEnabled = os.Getenv("WAGO_AMD64_THIRD_CALL_PIN") != "0"
 
 func thirdCallPinEligible(flags funcHintFlags, inlineCallees int) bool {
@@ -293,6 +293,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	scalarSummary shared.ScalarSummary
+
 	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
 	regallocFnState
 	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
@@ -790,9 +792,13 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 }
 
 type scratch struct {
+	scalar shared.ScalarState
+
 	amd64Features         shared.AMD64Features
 	usedAMD64Features     shared.AMD64Features
 	stack                 *stack     // the valent-block operand stack
+	stackCap              int        // deferred initial reservation for function-level fallback
+	controlCap            int        // target control frames, reserved with the first fallback
 	asm                   *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared        bool
 	directPreparedBounded bool
@@ -869,8 +875,30 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: stack, asm: &amd64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
 }
 
+// newCompileScratch defers target operand storage until the first fallback.
+// The empty stack object remains available to diagnostics and worker teardown.
+func newCompileScratch(stackCap int) *scratch {
+	return &scratch{stack: &stack{}, stackCap: stackCap, asm: &amd64.Asm{}}
+}
+
+func (sc *scratch) ensureTargetStack() {
+	if len(sc.stack.chunks) != 0 {
+		return
+	}
+	sc.stack.initWithCap(sc.stackCap)
+	_, reserved := sc.stack.nodeMemory()
+	sc.nodeScratchReserved = reserved
+	sc.nodeScratchPeak = reserved
+	sc.reserveControlFrames(sc.controlCap)
+	sc.controlCap = 0
+}
+
 func (sc *scratch) reserveControlFrames(capacity int) {
 	if capacity <= 0 {
+		return
+	}
+	if len(sc.stack.chunks) == 0 {
+		sc.controlCap = capacity
 		return
 	}
 	sc.ctrl = make([]ctrlFrame, 0, capacity)
@@ -1038,7 +1066,9 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 
 func (sc *scratch) reset() {
 	sc.usedAMD64Features = 0
-	sc.stack.reset()
+	if len(sc.stack.chunks) != 0 {
+		sc.stack.reset()
+	}
 	sc.asm.B = sc.asm.B[:0]
 	sc.asm.UsesBMI2 = false
 	sc.asm.BitCountState &= 0x07
@@ -1101,6 +1131,8 @@ func (sc *scratch) finishStackFunction() {
 // worker's final function. The join needs only worker code/literal arenas and
 // scalar feature flags; operand nodes cannot be reused again.
 func (sc *scratch) finishStackWorker() {
+	sc.scalar.FinishWorker()
+
 	sc.clearNodeReferences()
 	_, retained := sc.stack.nodeMemory()
 	sc.nodeScratchDiscarded += retained
@@ -1885,7 +1917,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts, policy)
-		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.amd64Features = opts.AMD64Features
 		sc.asm.BitCountState = opts.BitCountFeatures & 0x07
 		sc.policy = policy
@@ -2140,7 +2172,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
-		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.amd64Features = opts.AMD64Features
 		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
@@ -3013,41 +3045,121 @@ func compactEHLocalScores(allHints []funcHints, scores []uint32) []uint32 {
 // the function scans have established whether any body mutates a table. The
 // result is shared by all function compilations rather than copied into every
 // retained function summary.
-func computeImmutableTableHints(m *wasm.Module, allHints []funcHints, policy CodegenPolicy) []immutableTableHint {
-	// Immutable local-table specialization for call_indirect and indirect tails.
-	// The proof is per table: imports are allowed elsewhere in the module, but an
-	// admitted table itself must be local, unexported, never mutated, and contain
-	// only local function descriptors. This is finite and keeps host/cross-instance
-	// descriptors out of the internal-entry path.
-	var immutableTables []immutableTableHint
+const (
+	immutableTypeBlocked uint8 = 1 << iota
+	immutableTypeSeen
+)
+
+func computeImmutableTableHints(m *wasm.Module, hints []funcHints, policy CodegenPolicy) []immutableTableHint {
+	var out []immutableTableHint
 	if m.TableCount() != 0 {
-		immutableTables = make([]immutableTableHint, m.TableCount())
+		out = make([]immutableTableHint, m.TableCount())
 	}
-	immutableCandidates := policy.EnabledOption(optImmutableTable) && m.ImportedTableCount() == 0
-	if immutableCandidates {
-		for i := range allHints {
-			if allHints[i].flags.has(hintMutatesTable) {
-				immutableCandidates = false
-				break
-			}
+	if !policy.EnabledOption(optImmutableTable) || m.ImportedTableCount() != 0 {
+		return out
+	}
+	for _, h := range hints {
+		if h.flags.has(hintMutatesTable) {
+			return out
 		}
 	}
-	if immutableCandidates {
-		for tableIdx := range m.Tables {
-			idx := uint32(tableIdx)
-			if moduleExportsTable(m, idx) || !immutableLocalTableEntries(m, idx) {
+	imported := m.ImportedFuncCount()
+	check := func(idx wasm.FuncIdx) bool { return int(idx) >= imported && int(idx)-imported < len(m.Code) }
+	for i := range m.Tables {
+		h := &out[i]
+		h.local = true
+		h.monomorphicTarget = -1
+		if !policy.EnabledOption(optImmutableTableType) {
+			h.proofState |= immutableTypeBlocked
+		}
+		if init := m.Tables[i].Init; init != nil {
+			h.proofState |= immutableTypeBlocked
+			ee, err := wasm.ParseElementExpr(*init)
+			if err != nil || ee.HasGlobal || (!ee.Null && !check(wasm.FuncIdx(ee.FuncIndex))) {
+				h.local = false
 				continue
 			}
-			tableType, tableTyped := immutableLocalTableTypeWithPolicy(m, idx, policy)
-			immutableTables[tableIdx] = immutableTableHint{
-				local:             true,
-				typeKey:           tableType,
-				typed:             tableTyped,
-				monomorphicTarget: immutableLocalTableTarget(m, idx),
+			if !ee.Null {
+				h.monomorphicTarget = int(ee.FuncIndex) - imported
 			}
 		}
 	}
-	return immutableTables
+	for _, e := range m.Exports {
+		if e.Index.Kind == wasm.ExternTable && int(e.Index.Index) < len(out) {
+			out[e.Index.Index].local = false
+		}
+	}
+	for _, e := range m.Elements {
+		if e.Mode.Kind != wasm.ElemActive || int(e.Mode.Table) >= len(out) {
+			continue
+		}
+		h := &out[e.Mode.Table]
+		if !h.local {
+			continue
+		}
+		if e.Kind.Kind != wasm.ElemFuncs {
+			h.proofState |= immutableTypeBlocked
+			h.monomorphicTarget = -2
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || ee.HasGlobal || (!ee.Null && !check(wasm.FuncIdx(ee.FuncIndex))) {
+					h.local = false
+					break
+				}
+			}
+			continue
+		}
+		for _, idx := range e.Kind.Funcs {
+			if !check(idx) {
+				h.local = false
+				break
+			}
+			target := int(idx) - imported
+			if h.monomorphicTarget == -1 {
+				h.monomorphicTarget = target
+			} else if h.monomorphicTarget != target {
+				h.monomorphicTarget = -2
+			}
+			if h.proofState&immutableTypeBlocked == 0 {
+				ti, ok := m.FuncTypeIndex(uint32(idx))
+				if !ok {
+					h.proofState |= immutableTypeBlocked
+					continue
+				}
+				if h.proofState&immutableTypeSeen != 0 && h.lastType == ti.Index {
+					continue
+				}
+				key, ok := m.StructuralTypeKeyChecked(ti.Index)
+				if !ok {
+					h.proofState |= immutableTypeBlocked
+					continue
+				}
+				if h.proofState&immutableTypeSeen == 0 {
+					h.typeKey = key
+					h.proofState |= immutableTypeSeen
+				} else if key != h.typeKey {
+					h.proofState |= immutableTypeBlocked
+				}
+				h.lastType = ti.Index
+			}
+		}
+	}
+	for i := range out {
+		h := &out[i]
+		if !h.local {
+			*h = immutableTableHint{}
+			continue
+		}
+		h.typed = h.proofState&immutableTypeBlocked == 0 && h.proofState&immutableTypeSeen != 0
+		if !h.typed {
+			h.typeKey = 0
+		}
+		if h.monomorphicTarget < 0 {
+			h.monomorphicTarget = -1
+		}
+		h.proofState, h.lastType = 0, 0
+	}
+	return out
 }
 
 // immutableLocalTableTarget returns the sole local function stored in tableIdx,
@@ -3157,6 +3269,7 @@ func immutableLocalTableTypeWithPolicy(m *wasm.Module, tableIdx uint32, policy C
 		return 0, false
 	}
 	var want uint64
+	var lastType uint32
 	found := false
 	for i := range m.Elements {
 		e := &m.Elements[i]
@@ -3174,6 +3287,9 @@ func immutableLocalTableTypeWithPolicy(m *wasm.Module, tableIdx uint32, policy C
 			if !ok {
 				return 0, false
 			}
+			if found && typeIdx.Index == lastType {
+				continue
+			}
 			key, ok := m.StructuralTypeKeyChecked(typeIdx.Index)
 			if !ok {
 				return 0, false
@@ -3183,6 +3299,7 @@ func immutableLocalTableTypeWithPolicy(m *wasm.Module, tableIdx uint32, policy C
 			} else if key != want {
 				return 0, false
 			}
+			lastType = typeIdx.Index
 		}
 	}
 	return want, found
@@ -3326,6 +3443,11 @@ func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *rai
 func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var state *fn
 	defer func() {
+		// Reuse the existing unwind scope: even a disabled conditional defer
+		// changes TinyGo defer lowering in ordinary builds.
+		if regallocCheckEnabled && state != nil {
+			state.checkEndLifetimes()
+		}
 		if recovered := recover(); recovered != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
 				panic(recovered)
@@ -3534,6 +3656,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if f.compactFrameHeader {
 		f.stats.peep("frame-header-elide")
 	}
+	f.scalarSummary = f.admitScalar(c)
+	if f.scalarSummary.Eligible {
+		pinLocals = false
+	} else {
+		sc.ensureTargetStack()
+	}
 	var gpPoolStorage [16]Reg
 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
 	if compactLowPinEnabled && f.policy.CompactNative && !hasCall && !hints.flags.has(hintHasControlFlow) {
@@ -3576,8 +3704,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			// Ordinary calls spill local homes before staging fixed R10 uses;
 			// GC, EH, and custom lowering have separate scratch contracts.
 			gpPool = append(gpPool, R10)
-			// Inline callees do not propagate their table-mutation flag into
-			// the caller hints. Keep their fixed R9 scratch outside this lease.
+			// Inline callees do not propagate their scratch flags into the
+			// caller hints. Keep R9 outside this conservative lease.
 			if guardThirdCallPinEnabled && thirdCallPinEligible(hints.flags, len(inlinedCallees)) {
 				gpPool = append(gpPool, R9)
 			}
@@ -3975,6 +4103,11 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
+	if f.scalarSummary.Eligible {
+		f.ctrl = f.sc.ctrl[:0]
+		return f.scalarBody(c)
+	}
+
 	sc := f.scratchState()
 	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
 	if len(resultTypes) <= len(sc.functionResultTypeArena) {
@@ -4457,6 +4590,12 @@ func (f *fn) prologue(localScores []uint32) {
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 	f.zeroEHGCRootLanes()
+	if f.scalarSummary.Eligible {
+		// Shared locals start as zero constants. Its control agreements store
+		// every dirty local before borrowing a frame home. Admission excludes
+		// GC, EH and effects; extending it requires revisiting this invariant.
+		return
+	}
 	if f.nLocals <= f.nParams {
 		return
 	}
@@ -4704,6 +4843,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
+	// Results are canonical now; this terminal return cannot use body caches.
+	// Attempt cleanup owns observer restoration if epilogue emission panics.
+	var returnGPWrites regallocGPWriteMask
+	if regallocCheckEnabled {
+		returnGPWrites = f.checkTerminalGPWrites()
+	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
@@ -4757,6 +4902,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreGPWrites(returnGPWrites)
+	}
 	f.emitNativeGCStubs()
 	if profileEnabled {
 		f.collectProfileSources(internalOff)
@@ -4840,6 +4988,11 @@ func (f *fn) patchFrameSize() error {
 // the trap slot, and return. Every reaching path (fallthrough end, return, br to
 // the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
+	// On panic, compileFuncAttempt retires the abandoned function's observer.
+	var returnGPWrites regallocGPWriteMask
+	if regallocCheckEnabled {
+		returnGPWrites = f.checkTerminalGPWrites()
+	}
 	a := f.a
 	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
 	a.Load64(RDI, RSP, frResultsOff) // results ptr
@@ -4860,6 +5013,9 @@ func (f *fn) epilogue() {
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreGPWrites(returnGPWrites)
+	}
 }
 
 func abiValOff(ts []wasm.ValType, idx int) int32 {
