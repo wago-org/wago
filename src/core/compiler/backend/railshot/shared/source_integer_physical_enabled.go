@@ -5,6 +5,7 @@ package shared
 import (
 	"encoding/binary"
 	"github.com/wago-org/wago/internal/regalloccheck"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -183,8 +184,9 @@ func (p *SourceIntegerPhysical) VerifyAMD64(code []byte) (result regalloccheck.R
 		return sourceLeafUnavailable(regalloccheck.InvalidGraph, "physical source owner retired")
 	}
 	if p.done {
+		codegen.RetireSourceFinalAttempt(p.materialization.plan.attempt.finalAttempt, p.materialization.plan.attempt.module)
 		// A caller must not reuse a successful proof for a mutated or different
-		// byte slice. No owned final-module byte certificate exists at this stage.
+		// byte slice. Retire its owned final-module certificate before returning.
 		reused := sourceLeafUnavailable(regalloccheck.InvalidGraph, "function physical proof consumed more than once")
 		if p.result.Verdict == regalloccheck.Verified {
 			p.result = reused
@@ -194,14 +196,37 @@ func (p *SourceIntegerPhysical) VerifyAMD64(code []byte) (result regalloccheck.R
 		return reused
 	}
 	p.done = true
-	defer func() { p.result = result }()
 	j := p.materialization
+	var snapshot []byte
+	defer func() {
+		if result.Verdict == regalloccheck.Verified && snapshot != nil {
+			a := j.plan.attempt
+			w := &sourceIntegerCertificate{ctx: a.owner.sourceContext, module: a.module, function: a.function, attempt: a.finalAttempt, bytes: snapshot}
+			if !codegen.StoreSourceFinalWitness(a.finalAttempt, a.module, w) {
+				w.Close()
+				result = sourceLeafUnavailable(regalloccheck.InvalidGraph, "final function witness owner changed")
+			}
+		}
+		p.result = result
+	}()
 	mr := SourceMaterializationStatus(j)
 	if mr.Reason == regalloccheck.ResourceLimit {
 		return sourceLeafUnavailable(mr.Reason, "materialization budget exhausted")
 	}
 	if !p.admitted || mr.Readiness != SourceMaterializationRecordingClosed || len(code) != mr.Length || len(code) > 2048 {
 		return result
+	}
+	a := j.plan.attempt
+	if a.finalReason != regalloccheck.NoFailure {
+		j.fail(a.finalReason)
+		return sourceLeafUnavailable(a.finalReason, "final function attempt credits or authority unavailable")
+	}
+	if sourceIntegerFinalProfile(a.owner.sourceContext, a.module, a.function) && codegen.SourceFinalAttemptValid(a.finalAttempt, a.owner.sourceContext, a.module, a.function) {
+		if !j.charge(len(code)+1, len(code)+1) {
+			return sourceLeafUnavailable(regalloccheck.ResourceLimit, "owned function image credits exhausted")
+		}
+		snapshot = append([]byte(nil), code...)
+		code = snapshot
 	}
 	l := j.plan.attempt.ledger
 	// Fixed conservative pool-entry credits bound decoder/model and graph facts

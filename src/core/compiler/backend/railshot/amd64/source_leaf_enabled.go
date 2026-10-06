@@ -12,6 +12,7 @@ func checkSourceBegin(f *fn, hostAdapter bool) {
 		!f.moduleEH && f.gcFrameRoots == nil && len(f.customInstructions) == 0 && len(f.gcTypeLayouts) == 0 &&
 		len(f.m.Memories) == 0 && len(f.m.Globals) == 0
 	function := int(f.traceFuncIdx) - f.m.ImportedFuncCount()
+	shared.PrepareSourceIntegerFinalAttempt(&f.sc.scalar, f.m, function)
 	// Dispatch a single bounded source family. A second admission must not
 	// overwrite a leaf's ResourceLimit or incomplete-contract report.
 	if function >= 0 && function < len(f.m.Code) && len(f.m.Code[function].BodyBytes) == 11 {

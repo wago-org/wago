@@ -27,6 +27,8 @@ type ScalarState struct {
 	graph                     *scalarGraphRecorder
 	sourceContext             *codegen.SourceContext
 	sourceAttempt             *SourceAttempt
+	sourceFinalAttempt        codegen.SourceFinalAttempt
+	sourceFinalReason         regalloccheck.FailureReason
 	sourceWork, sourceStorage int
 	sourceBudgetSet           bool
 	sourcePartition           [2]int

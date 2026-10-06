@@ -25,6 +25,7 @@ func compileSourceModuleWith(m *wasm.Module, opts CompileOptions) (*encoder.Comp
 	if err := checkSourceCallsFinal(m, opts, cm); err != nil {
 		return nil, err
 	}
+	checkSourceIntegerFinal(m, opts, cm)
 	keep = true
 	return cm, nil
 }

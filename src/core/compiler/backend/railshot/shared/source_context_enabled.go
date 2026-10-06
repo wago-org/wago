@@ -3,6 +3,7 @@
 package shared
 
 import (
+	"github.com/wago-org/wago/internal/regalloccheck"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -10,11 +11,13 @@ import (
 // SourceAttempt is an opaque ownership token. Creating it does not construct
 // source contracts or claim any physical-emission coverage.
 type SourceAttempt struct {
-	owner    *ScalarState
-	module   *wasm.Module
-	function int
-	ledger   *wasm.SourceLedger
-	plan     *sourceRecipePlan
+	owner        *ScalarState
+	module       *wasm.Module
+	function     int
+	ledger       *wasm.SourceLedger
+	plan         *sourceRecipePlan
+	finalAttempt codegen.SourceFinalAttempt
+	finalReason  regalloccheck.FailureReason
 }
 
 // SetSourceContext borrows compile-scoped facts after worker cleanup is installed.
@@ -73,7 +76,7 @@ func BeginSourceAttempt(s *ScalarState, m *wasm.Module, function int) *SourceAtt
 	if _, _, ok := codegen.ValidatedSourceContext(s.sourceContext, m); !ok || function < 0 || function >= len(m.Code) {
 		return nil
 	}
-	t := &SourceAttempt{owner: s, module: m, function: function}
+	t := &SourceAttempt{owner: s, module: m, function: function, finalAttempt: s.sourceFinalAttempt, finalReason: s.sourceFinalReason}
 	s.sourceAttempt = t
 	return t
 }
@@ -113,6 +116,8 @@ func EndSourceAttempt(t *SourceAttempt) {
 func finishSourceWorker(s *ScalarState) {
 	EndSourceAttempt(s.sourceAttempt)
 	s.sourceContext = nil
+	s.sourceFinalAttempt = codegen.SourceFinalAttempt{}
+	s.sourceFinalReason = regalloccheck.NoFailure
 	s.sourceWork, s.sourceStorage = 0, 0
 	s.sourceBudgetSet = false
 	s.sourcePartition = [2]int{}

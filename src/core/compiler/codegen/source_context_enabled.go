@@ -34,6 +34,8 @@ type SourceContext struct {
 	// A separate final pass runs after worker quotas have retired. These fixed
 	// compile-scoped credits are historical, including failed attempts.
 	finalWork, finalStorage int
+	finalWitnesses          []sourceFinalSlot
+	finalSerial             uint64
 }
 
 // SourceReport describes one local function's independent source/machine proof.
@@ -137,6 +139,7 @@ func ValidatedSourceContext(ctx *SourceContext, m *wasm.Module) (*wasm.Validated
 // Call only after all users finish. Borrowed module/analysis storage is unchanged.
 func CloseSourceContext(opts Options, m *wasm.Module) {
 	if opts.source != nil && opts.source.module == m {
+		closeSourceFinalWitnesses(opts.source)
 		reporter, reports := opts.source.reporter, opts.source.reports
 		*opts.source = SourceContext{}
 		if reporter != nil {
