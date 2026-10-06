@@ -212,7 +212,7 @@ func TestRV64PublicDefinedStateStartOrderingNestedHostAndArtifacts(t *testing.T)
 func TestRV64PublicDefinedStartMetadataGatesBeforePublication(t *testing.T) {
 	c := rv64PublicStartCompile(t, rv64PublicStateStartModule(false, true, nil), false)
 	for _, mutate := range []func(*Compiled){
-		func(v *Compiled) { v.StartIsImport = true },
+		func(v *Compiled) { v.StartIsImport = true; v.StartImportIdx = len(v.Imports) },
 		func(v *Compiled) { v.StartLocalFunc = -1 },
 		func(v *Compiled) { v.StartLocalFunc = len(v.Funcs) },
 		func(v *Compiled) { v.StartLocalFunc = 1 },

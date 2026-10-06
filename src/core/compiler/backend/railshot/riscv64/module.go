@@ -99,7 +99,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		return nil, fmt.Errorf("rv64: nil module")
 	}
 	var err error
-	if err = admitShapeProfile(m, opts.production, opts.definedStarts); err != nil {
+	if err = admitShapeProfile(m, opts.production, opts.publicStarts); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(m, opts.production, opts.hostImports)
@@ -192,7 +192,7 @@ func admitWireProfile(data []byte, floating, vectors bool) error {
 	return admitWireStartProfile(data, floating, vectors, false)
 }
 
-func admitWireStartProfile(data []byte, floating, vectors, definedStarts bool) error {
+func admitWireStartProfile(data []byte, floating, vectors, publicStarts bool) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
 		id, err := r.Byte()
@@ -211,7 +211,7 @@ func admitWireStartProfile(data []byte, floating, vectors, definedStarts bool) e
 		switch id {
 		case 0, 2, 3, 5, 6, 7, 10, 11, 12:
 		case 8:
-			if !definedStarts {
+			if !publicStarts {
 				return unsupported("defined start execution is not enabled")
 			}
 		case 4, 9:
@@ -270,16 +270,16 @@ func admitShapeMode(m *wasm.Module, floating bool) error {
 	return admitShapeProfile(m, floating, false)
 }
 
-func admitShapeProfile(m *wasm.Module, floating, definedStarts bool) error {
+func admitShapeProfile(m *wasm.Module, floating, publicStarts bool) error {
 	if len(m.Code) == 0 || len(m.Code) > MaxFunctions {
 		return unsupported("function count outside 1..1024")
 	}
-	if definedStarts {
-		if err := admitDefinedStart(m); err != nil {
+	if publicStarts {
+		if err := admitProductionStart(m); err != nil {
 			return err
 		}
 	}
-	if m.UsesCompactImports || (!floating && (len(m.Tables) != 0 || len(m.Elements) != 0)) || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !definedStarts || len(m.BranchHints) != 0 {
+	if m.UsesCompactImports || (!floating && (len(m.Tables) != 0 || len(m.Elements) != 0)) || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || len(m.BranchHints) != 0 {
 		return unsupported("imports, state, initializers or feature metadata")
 	}
 	for _, custom := range m.Customs {

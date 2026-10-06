@@ -74,8 +74,8 @@ func TestProductionDefinedStartUsesFunctionImportOrdinal(t *testing.T) {
 			t.Fatal("interleaved defined-start function ordinal", err)
 		}
 		*m.Start = 0
-		if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) {
-			t.Fatal("imported void start admitted", err)
+		if image, err := CompileModuleWith(m, opts); image == nil || err != nil {
+			t.Fatal("interleaved imported-start function ordinal", err)
 		}
 	}
 }

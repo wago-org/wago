@@ -1928,9 +1928,31 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			if err != nil {
 				return nil, fmt.Errorf("start function %q: %w", displayKey, err)
 			}
-			caller := in.ensurePluginState().hostScope.beginReservedWithID(in, in.currentInvocationID(), in.constructionReservationSnapshot(), opts.startContext)
-			if err := callImportedStart(fn, caller); err != nil {
-				return nil, fmt.Errorf("start function %q: %w", displayKey, err)
+			startErr := func() error {
+				if err := in.beginInvocation(); err != nil {
+					return err
+				}
+				defer in.endInvocation()
+				id := newInvocationID()
+				reservation := in.constructionReservationSnapshot()
+				restore := bindHostInvocationContext(offHeapSlicePtr(in.ctrl), hostInvocationContext{id: id, parent: opts.startContext, reservation: reservation})
+				defer restore()
+				caller := in.beginHostCallScopeReservedWithID(id, reservation)
+				if err := callImportedStart(fn, caller); err != nil {
+					return err
+				}
+				if opts.startContext != nil {
+					if err := opts.startContext.Err(); err != nil {
+						return err
+					}
+				}
+				if in.isLogicallyClosed() || in.rt != nil && in.rt.isClosed() {
+					return fmt.Errorf("instance is closed")
+				}
+				return nil
+			}()
+			if startErr != nil {
+				return nil, fmt.Errorf("start function %q: %w", displayKey, startErr)
 			}
 		} else {
 			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
@@ -1971,6 +1993,17 @@ func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			switch value := recovered.(type) {
+			case HostTrap:
+				err = value.Err
+				if err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				}
+			case *HostTrap:
+				if value == nil || value.Err == nil {
+					err = fmt.Errorf("wago: host trapped without an error")
+				} else {
+					err = value.Err
+				}
 			case HostExit:
 				err = &ExitError{Code: value.Code}
 			case *HostExit:

@@ -99,7 +99,7 @@ func TestHostImportRV64WholeModuleAndBindingAdmission(t *testing.T) {
 			}
 		}
 	}
-	for _, shape := range []string{"bound", "reexport", "table", "imported-start", "hidden-op"} {
+	for _, shape := range []string{"bound", "reexport", "table", "nonvoid-imported-start", "hidden-op"} {
 		count := 1
 		if shape == "bound" {
 			count = 257
@@ -110,8 +110,8 @@ func TestHostImportRV64WholeModuleAndBindingAdmission(t *testing.T) {
 			data = modifySection(data, 7, 7, []byte{1, 1, 'a', 0, 0}, true)
 		case "table":
 			data = modifySection(data, 7, 4, []byte{1, 0x70, 1, 0, 1}, false)
-		case "imported-start":
-			data = hostImportModule(1, 0, nil, false)
+		case "nonvoid-imported-start":
+			data = hostImportModule(1, 0, []byte{0x7f}, false)
 			data = modifySection(data, 10, 8, []byte{0}, false)
 		case "hidden-op":
 			// Tail calls remain outside the allowlist even in unreachable code.

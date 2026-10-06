@@ -76,7 +76,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, err
 	}
 	opts.production = true
-	opts.definedStarts = true
+	opts.publicStarts = true
 	c, err := compileDecodedModule(m, scalarRegisters[:], opts)
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 // admitProductionOptions keeps semantic option admission identical across the
 // scalar compiler and the private SWAR production staging prerequisite.
 func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool) error {
-	if err := admitDefinedStart(m); err != nil {
+	if err := admitProductionStart(m); err != nil {
 		return err
 	}
 	if len(opts.Codegen.Module.GCTypeDescs) > MaxFunctions {
