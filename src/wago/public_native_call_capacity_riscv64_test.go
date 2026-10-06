@@ -303,3 +303,96 @@ func TestRV64PublicImportedCallCapacityDirectionsAndBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestRV64PublicIndirectTypeCallCapacity(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, paramsWide := range []bool{false, true} {
+			for _, artifact := range []bool{false, true} {
+				t.Run(fmt.Sprintf("vector%t-paramsWide%t-artifact%t", vector, paramsWide, artifact), func(t *testing.T) {
+					wide := make([]wasm.ValType, 256)
+					for i := range wide {
+						wide[i] = wasm.I32
+					}
+					if vector {
+						wide = wide[:128]
+						for i := range wide {
+							wide[i] = wasm.V128
+						}
+					}
+					params, results := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32}, wide
+					wantParams, wantResults := 3, 256
+					if paramsWide {
+						params, results, wantParams, wantResults = wide, []wasm.ValType{wasm.I64}, 256, 1
+					}
+					source := wasmtest.Module(
+						wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType(params, results))),
+						wasmtest.Section(3, []byte{1, 0}),
+						wasmtest.Section(4, []byte{1, 0x70, 1, 1, 2}),
+						wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 0), wasmtest.ExportEntry("table", 1, 0))),
+						wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 7, 0x0b}))),
+					)
+					c := rv64PublicStartCompile(t, source, artifact)
+					in, err := Instantiate(c, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					// Check the real arena before any possible foreign/table call. The wide
+					// signature has no defined function and contributes only through Types.
+					if len(in.serArgs) != wantParams*8 || len(in.results) != wantResults*8 {
+						t.Fatal("indirect type transport capacity", len(in.serArgs), len(in.results), wantParams*8, wantResults*8)
+					}
+					if got, err := in.Invoke("call"); err != nil || !slices.Equal(got, []uint64{7}) {
+						t.Fatal(got, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestRV64PublicIndirectTypeCallCapacityBounds(t *testing.T) {
+	wide := make([]ValueTypeDescriptor, 128)
+	for i := range wide {
+		wide[i] = ValueTypeDescriptor{Kind: ValueTypeV128}
+	}
+	for _, paramsWide := range []bool{false, true} {
+		typ := DefinedTypeDescriptor{Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}}, Results: wide}
+		wantParams, wantResults := 3, 256
+		if paramsWide {
+			typ.Params, typ.Results, wantParams, wantResults = wide, []ValueTypeDescriptor{{Kind: ValueTypeI64}}, 256, 1
+		}
+		c := Compiled{HasTable: true, Types: []DefinedTypeDescriptor{typ}, Funcs: []FuncSig{{Params: []ValType{ValI32, ValI32, ValI32}, Results: []ValType{ValI32}}}}
+		params, results, err := c.maxCallSlots()
+		if err != nil || params != wantParams || results != wantResults {
+			t.Fatal("indirect physical capacities", params, results, err)
+		}
+	}
+	tooWide := append(slices.Clone(wide), ValueTypeDescriptor{Kind: ValueTypeV128})
+	for _, typ := range []DefinedTypeDescriptor{
+		{Kind: CompositeTypeFunction, Params: tooWide},
+		{Kind: CompositeTypeFunction, Results: tooWide},
+		{Kind: CompositeTypeStruct},
+		{Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeReference}}},
+	} {
+		c := Compiled{HasTable: true, Types: []DefinedTypeDescriptor{typ}}
+		if _, _, err := c.maxCallSlots(); err == nil {
+			t.Fatal("invalid unused indirect signature admitted", typ.Kind)
+		}
+	}
+	for _, count := range []int{1024, 1025} {
+		types := make([]DefinedTypeDescriptor, count)
+		for i := range types {
+			types[i].Kind = CompositeTypeFunction
+		}
+		c := Compiled{HasTable: true, Types: types}
+		_, _, err := c.maxCallSlots()
+		if (err != nil) != (count > 1024) {
+			t.Fatal("indirect type directory limit", count, err)
+		}
+	}
+	c := Compiled{Types: []DefinedTypeDescriptor{{Kind: CompositeTypeFunction, Params: tooWide}}, Funcs: []FuncSig{{Results: []ValType{ValI32}}}}
+	if params, results, err := c.maxCallSlots(); err != nil || params != 0 || results != 1 {
+		t.Fatal("direct-only capacity changed", params, results, err)
+	}
+}

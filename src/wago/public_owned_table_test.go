@@ -310,8 +310,13 @@ func TestPublicOwnedTableUnusedLargeSignatureTrapsBeforeArenaWrites(t *testing.T
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if len(in.serArgs) != 8 || len(in.results) != 8 {
-		t.Fatal("fixture needs undersized arenas", len(in.serArgs), len(in.results))
+	wantArgs := 8
+	if runtime.GOARCH == "riscv64" {
+		// RV64 reserves every indirect type, even without a local definition.
+		wantArgs = len(large) * 8
+	}
+	if len(in.serArgs) != wantArgs || len(in.results) != 8 {
+		t.Fatal("indirect arena capacities", len(in.serArgs), len(in.results))
 	}
 	const sentinel = 0x123456789abcdef0
 	for _, tc := range []struct {
@@ -319,10 +324,17 @@ func TestPublicOwnedTableUnusedLargeSignatureTrapsBeforeArenaWrites(t *testing.T
 		code  coreruntime.TrapCode
 	}{{0, coreruntime.TrapIndirectWrongSig}, {1, coreruntime.TrapIndirectOutOfBounds}, {2, coreruntime.TrapIndirectOutOfBounds}} {
 		binary.LittleEndian.PutUint64(in.results, sentinel)
+		for i := 8; i < len(in.serArgs); i++ {
+			in.serArgs[i] = 0xa5
+		}
+		argumentTail := slices.Clone(in.serArgs[8:])
 		_, err := in.Invoke("call", tc.index)
 		ownedTableTrap(t, err, tc.code)
 		if binary.LittleEndian.Uint64(in.results) != sentinel {
 			t.Fatal("failed indirect call overwrote adjacent result arena")
+		}
+		if !slices.Equal(in.serArgs[8:], argumentTail) {
+			t.Fatal("failed indirect call marshaled arguments before guards")
 		}
 	}
 }

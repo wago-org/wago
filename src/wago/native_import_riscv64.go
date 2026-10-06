@@ -333,7 +333,9 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 
 // Imported calls marshal into the caller's serialized transport before entering
 // their owned bridge. Every imported signature, including unexported functions,
-// must therefore contribute to the root buffers before arena allocation.
+// must therefore contribute to the root buffers before arena allocation. Tables
+// can reach signatures with no local definition, so their frozen type directory
+// contributes too, including currently unused indirect signatures.
 func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, error) {
 	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.importFuncSigs) != c.NumImports {
 		return 0, 0, fmt.Errorf("RV64 imported call signature directory is invalid")
@@ -354,7 +356,45 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		}
 		params, results = max(params, p), max(results, r)
 	}
+	if c.tableCount() != 0 {
+		if len(c.Types) > railshot.MaxFunctions {
+			return 0, 0, fmt.Errorf("RV64 indirect type directory bound")
+		}
+		for _, typ := range c.Types {
+			if typ.Kind != CompositeTypeFunction {
+				return 0, 0, fmt.Errorf("RV64 indirect signature must be a function")
+			}
+			p, err := rv64IndirectSignatureSlots(typ.Params)
+			if err != nil {
+				return 0, 0, err
+			}
+			r, err := rv64IndirectSignatureSlots(typ.Results)
+			if err != nil {
+				return 0, 0, err
+			}
+			params, results = max(params, p), max(results, r)
+		}
+	}
 	return params, results, nil
+}
+
+// Count directly from immutable descriptors without allocating ABI slices.
+func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
+	slots := 0
+	for _, value := range values {
+		switch value.Kind {
+		case ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64:
+			slots++
+		case ValueTypeV128:
+			slots += 2
+		default:
+			return 0, fmt.Errorf("RV64 indirect signature requires numeric carriers")
+		}
+		if slots > 256 {
+			return 0, fmt.Errorf("RV64 indirect signature physical slot bound")
+		}
+	}
+	return slots, nil
 }
 
 // Callback authority and ownership of the producer's public gate differ for a
