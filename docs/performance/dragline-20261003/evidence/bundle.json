@@ -1,0 +1,36 @@
+{
+  "format": "dragline-evidence-v1",
+  "file_count": 103101,
+  "object_count": 87103,
+  "logical_bytes": 2377285460,
+  "archive_sha256": "69ec52968cecb439f25f1c790587041808954555fef84431f6a39e68b0acf479",
+  "archive_bytes": 187221922,
+  "manifest_sha256": "2918d23bcb04ab16275c5dfcfc0477c51c8ca0691aca42f124ec3cc6f955aa93",
+  "parts": [
+    {
+      "name": "evidence.tar.zst.part000",
+      "size": 41943040,
+      "sha256": "3f83bba36697eadab96754067629e58e2e6ac4220682479fd5b624aa43d52296"
+    },
+    {
+      "name": "evidence.tar.zst.part001",
+      "size": 41943040,
+      "sha256": "2a6977f920405b006770ae17a6c059dc9f6ad654086ce8d2f4d166a6e964d30e"
+    },
+    {
+      "name": "evidence.tar.zst.part002",
+      "size": 41943040,
+      "sha256": "854b1d68f5cdba5eefffb16338480d288325681c4919e01a7e6216036d1c85dc"
+    },
+    {
+      "name": "evidence.tar.zst.part003",
+      "size": 41943040,
+      "sha256": "00ce1ca63f4db24177e40752eb40cdf6e8a6c040e388a8bdbdb74f03d3420f88"
+    },
+    {
+      "name": "evidence.tar.zst.part004",
+      "size": 19449762,
+      "sha256": "12afc27a393b11ea05d71d38d8fb4a81d414c2256446a15f4eb6f390bea07dc1"
+    }
+  ]
+}

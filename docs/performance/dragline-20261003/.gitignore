@@ -1,0 +1,6 @@
+# Expanded evidence is preserved locally and distributed losslessly in evidence/.
+# Restore it with scripts/restore-dragline-evidence.py.
+/*
+!/.gitignore
+!/README.md
+!/evidence/
