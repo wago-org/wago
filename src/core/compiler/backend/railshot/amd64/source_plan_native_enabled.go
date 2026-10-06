@@ -53,6 +53,10 @@ func checkNativeSourceBegin(f *fn, function int, admit bool) {
 		return
 	}
 	f.sourcePlan = st
+	st.physical = shared.BeginSourceIntegerPhysical(st.materialization, f.skipFence && f.singleRegResult)
+	if st.physical.ObservationReady() {
+		f.sourceRestore = f.ObserveScalarGraph(st.physical.ObserveEffect, st.physical.ObserveGPWrites)
+	}
 	keep = true
 }
 func nativeSourceType(t wasm.ValType) machineType {

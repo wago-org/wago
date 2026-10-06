@@ -197,6 +197,8 @@ func (p *IntegerSourcePlan) Close() {
 		message = "integer source accounting complete; physical verification pending"
 	}
 	reason := r.Reason
+	var physicalFailure regalloccheck.Result
+	hasPhysicalFailure := false
 	if attempt.plan != nil && attempt.plan.materialization != nil {
 		mr := SourceMaterializationStatus(attempt.plan.materialization)
 		state := "incomplete"
@@ -207,11 +209,24 @@ func (p *IntegerSourcePlan) Close() {
 		if mr.Reason == regalloccheck.ResourceLimit {
 			reason = mr.Reason
 		}
+		if physical := attempt.plan.materialization.physical; physical != nil {
+			pr := physical.Result()
+			message += "; " + pr.Message
+			if pr.Reason == regalloccheck.ResourceLimit {
+				reason = pr.Reason
+			}
+			if pr.Verdict == regalloccheck.Rejected {
+				physicalFailure, hasPhysicalFailure = pr, true
+			}
+		}
 	}
 	if reason == regalloccheck.NoFailure {
 		reason = regalloccheck.UnsupportedOperation
 	}
 	EndSourceAttempt(attempt)
 	*p = IntegerSourcePlan{}
+	if hasPhysicalFailure {
+		codegen.RecordSourceResult(owner.sourceContext, function, physicalFailure)
+	}
 	codegen.RecordSourceAccountingResult(owner.sourceContext, function, sourceLeafUnavailable(reason, message))
 }

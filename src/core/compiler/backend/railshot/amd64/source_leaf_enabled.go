@@ -40,6 +40,7 @@ func checkSourceBegin(f *fn, hostAdapter bool) {
 func checkSourceFinishEmission(f *fn) {
 	if f.sourcePlan != nil && f.sourcePlan.materialization != nil {
 		shared.EndSourceMaterializationEmission(f.sourcePlan.materialization, f.a.Len())
+		f.sourcePlan.physical.EndEmission(f.a.Len())
 	}
 	if f.sourceLeaf != nil {
 		f.sourceLeaf.EndEmission(f.a.Len())
@@ -50,6 +51,12 @@ func checkSourceFinishEmission(f *fn) {
 }
 
 func checkSourceVerify(f *fn) {
+	if f.sourcePlan != nil && f.sourcePlan.physical != nil {
+		result := f.sourcePlan.physical.VerifyAMD64(f.a.B)
+		if result.Verdict == regalloccheck.Rejected {
+			panic("original integer allocation verification: " + result.Message)
+		}
+	}
 	if f.sourceLeaf == nil {
 		if f.sourceBranch != nil {
 			result := f.sourceBranch.Verify(f.a.B, false)

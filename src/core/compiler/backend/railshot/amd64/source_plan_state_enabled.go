@@ -12,6 +12,7 @@ type nativeSourceAssociation struct {
 	ref      shared.SourceSlotRef
 }
 type nativeSourcePlanState struct {
+	physical                  *shared.SourceIntegerPhysical
 	materialization           *shared.SourceMaterializationJournal
 	materializationToken      shared.SourceMaterializationToken
 	owner                     *shared.IntegerSourcePlan

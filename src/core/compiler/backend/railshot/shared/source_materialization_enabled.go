@@ -60,6 +60,7 @@ type sourceMaterializationEntry struct {
 	committed bool
 }
 type SourceMaterializationJournal struct {
+	physical      *SourceIntegerPhysical
 	plan          *sourceRecipePlan
 	entries       []sourceMaterializationEntry
 	producers     []sourceMaterializationProducer
@@ -346,5 +347,6 @@ func CloseSourceMaterializationJournal(j *SourceMaterializationJournal) {
 	if j.plan != nil && j.plan.materialization == j {
 		j.plan.materialization = nil
 	}
+	j.physical.Close()
 	*j = SourceMaterializationJournal{closed: true}
 }
