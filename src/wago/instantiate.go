@@ -1923,15 +1923,22 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			defer finishProfileBoundary(span, &err)
 		}
 		if c.StartIsImport {
-			// Imported start: run the imported function through the same normalized
-			// binding machinery used by ordinary host imports. Validation guarantees
-			// start is () -> (). Cross-instance imported starts remain unsupported.
+			// Validation guarantees the imported start is () -> (). RV64 native
+			// bindings use their retained owned bridge; ordinary hosts use normalized
+			// callbacks. Other targets retain their cross-instance start policy.
 			if c.StartImportIdx < 0 || c.StartImportIdx >= len(c.Imports) {
 				return nil, fmt.Errorf("start import index %d out of range", c.StartImportIdx)
 			}
 			displayKey := c.Imports[c.StartImportIdx]
 			key := c.functionImportBindingKey(c.StartImportIdx)
 			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil {
+				if handled, startErr := railshotInvokeNativeImportedStart(in, c.StartImportIdx, ownedThunkAddr, opts.startContext); handled {
+					if startErr != nil {
+						return nil, fmt.Errorf("start function %q: %w", displayKey, startErr)
+					}
+					b.success = true
+					return in, nil
+				}
 				return nil, fmt.Errorf("start function %q is a cross-instance import; cross-instance imported starts are unsupported", displayKey)
 			}
 			fn, err := bindSyncHostImport(imports[key], FuncSig{})
@@ -1951,15 +1958,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 				if err := callImportedStart(fn, caller); err != nil {
 					return err
 				}
-				if opts.startContext != nil {
-					if err := opts.startContext.Err(); err != nil {
-						return err
-					}
-				}
-				if in.isLogicallyClosed() || in.rt != nil && in.rt.isClosed() {
-					return fmt.Errorf("instance is closed")
-				}
-				return nil
+				return railshotCheckImportedStartCompletion(in, opts.startContext)
 			}()
 			if startErr != nil {
 				return nil, fmt.Errorf("start function %q: %w", displayKey, startErr)

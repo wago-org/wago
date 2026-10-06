@@ -308,7 +308,7 @@ func TestRV64PublicImportedHostStartStateAndLifecycle(t *testing.T) {
 	}
 }
 
-func TestRV64PublicImportedStartForeignTargetRejectedBeforePublication(t *testing.T) {
+func TestRV64PublicImportedStartClosedForeignTargetRejectedBeforePublication(t *testing.T) {
 	producerCode := rv64PublicStartCompile(t, wasmtest.Module(wasmtest.Section(1, []byte{1, 0x60, 0, 0}), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("noop", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b})))), false)
 	target, err := Instantiate(producerCode)
 	if err != nil {
@@ -317,6 +317,9 @@ func TestRV64PublicImportedStartForeignTargetRejectedBeforePublication(t *testin
 	defer target.Close()
 	export, err := target.ExportedFunc("noop")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Close(); err != nil {
 		t.Fatal(err)
 	}
 	for _, artifact := range []bool{false, true} {
@@ -331,7 +334,7 @@ func TestRV64PublicImportedStartForeignTargetRejectedBeforePublication(t *testin
 			defer in.Close()
 			t.Fatal("foreign start returned instance")
 		}
-		if err == nil || !strings.Contains(err.Error(), "native imported start is pending") || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || target.referenceLifetime().snapshot().ResourceRoots != before {
+		if err == nil || !strings.Contains(err.Error(), "closed") || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || target.referenceLifetime().snapshot().ResourceRoots != before {
 			t.Fatal("foreign start published/retained target", err)
 		}
 	}

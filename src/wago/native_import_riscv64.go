@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -10,6 +11,40 @@ import (
 )
 
 const rv64NativeImportTransportBytes = 256 * 8
+
+// Native imported starts enter the constructor's already published owned bridge,
+// with the same invocation identity, cancellation and stack used by local starts.
+// No producer public invocation is started: its physical attachment is the lease.
+func railshotInvokeNativeImportedStart(in *Instance, index int, owned map[uint32]uint64, ctx context.Context) (bool, error) {
+	entry := uintptr(owned[uint32(index)])
+	base := offHeapSlicePtr(in.thunkMem)
+	if entry == 0 || entry&15 != 0 || entry < base || entry-base >= uintptr(len(in.thunkMem)) {
+		return true, fmt.Errorf("RV64 native imported start requires its owned framed bridge")
+	}
+	if err := in.beginInvocation(); err != nil {
+		return true, err
+	}
+	defer in.endInvocation()
+	state := in.lockInvocation(0)
+	defer state.unlockInvocation()
+	if err := in.invokeVoidEntry(ctx, entry, in.constructionReservationSnapshot()); err != nil {
+		return true, err
+	}
+	return true, railshotCheckImportedStartCompletion(in, ctx)
+}
+
+func railshotCheckImportedStartCompletion(in *Instance, ctx context.Context) error {
+	// A final native poll can precede Close/cancellation racing normal return.
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if in.isLogicallyClosed() || in.rt != nil && in.rt.isClosed() {
+		return fmt.Errorf("instance is closed")
+	}
+	return nil
+}
 
 func railshotNativeContextTrapABI() bool { return true }
 

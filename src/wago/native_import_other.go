@@ -2,7 +2,17 @@
 
 package wago
 
-import coreruntime "github.com/wago-org/wago/src/core/runtime"
+import (
+	"context"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+)
+
+func railshotInvokeNativeImportedStart(*Instance, int, map[uint32]uint64, context.Context) (bool, error) {
+	return false, nil
+}
+
+// These targets preserve their established Runtime terminal-observer ordering.
+func railshotCheckImportedStartCompletion(*Instance, context.Context) error { return nil }
 
 func railshotNativeContextTrapABI() bool                               { return false }
 func railshotNativeImportArenaBytes(*Compiled, resolvedImports) int    { return 0 }

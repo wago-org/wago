@@ -195,9 +195,6 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 			}
 			continue
 		case *InstanceExport:
-			if c.HasStart && c.StartIsImport && c.StartImportIdx == i {
-				return fmt.Errorf("%w: public RV64 native imported start is pending", railshot.ErrUnsupported)
-			}
 			if err := railshotValidateNativeExport(c, i, value); err != nil {
 				return fmt.Errorf("public RV64 import %q: %w", key, err)
 			}
