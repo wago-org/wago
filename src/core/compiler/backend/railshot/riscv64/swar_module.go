@@ -102,13 +102,13 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || m.UsesCompactImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || len(m.BranchHints) != 0 || len(m.Memories) > 1 {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
-	if !hosts && len(m.Imports) != 0 {
-		return nil, unsupported("SWAR module import policy")
-	}
 	imported, memoryImports, globalImports := 0, 0, 0
 	for _, im := range m.Imports {
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
+			if !hosts {
+				return nil, unsupported("SWAR module import policy")
+			}
 			imported++
 		case wasm.ExternMem:
 			if !state.importedMemory {
@@ -124,13 +124,11 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, unsupported("SWAR module scalar function imports only")
 		}
 	}
-	// State imports qualify with scalar host dispatch, without reference tables.
+	// State imports qualify with scalar host dispatch or a private owned table.
+	// Function imports and tables remain separate policies.
 	// Function indices count only function imports, never state imports.
-	if memoryImports > 1 || memoryImports+len(m.Memories) > 1 || memoryImports != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
+	if memoryImports > 1 || memoryImports+len(m.Memories) > 1 {
 		return nil, unsupported("SWAR imported memory profile")
-	}
-	if globalImports != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
-		return nil, unsupported("SWAR imported global profile")
 	}
 	if imported > MaxHostFunctionImports || imported+len(m.Code) > MaxFunctions || imported != 0 && !mode.interruptible {
 		return nil, unsupported("SWAR module aggregate functions/host bridge")

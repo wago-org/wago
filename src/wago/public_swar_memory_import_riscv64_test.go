@@ -141,7 +141,7 @@ func TestRV64PublicSWARImportedMemoryQuotaContextAndRetiredOwner(t *testing.T) {
 		t.Fatal("final vector importer retained retired scalar mapping")
 	}
 }
-func TestRV64PublicSWARImportedMemoryArtifactCombinationsRemainClosed(t *testing.T) {
+func TestRV64PublicSWARImportedMemoryArtifactUnsupportedMetadata(t *testing.T) {
 	c, err := Compile(nil, rv64PublicSWARMemoryModule(true))
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +152,7 @@ func TestRV64PublicSWARImportedMemoryArtifactCombinationsRemainClosed(t *testing
 		name   string
 		mutate func(*Compiled)
 	}{
-		{"table", func(v *Compiled) { v.HasTable = true; v.TableSize = 1 }},
+		{"table-export", func(v *Compiled) { v.HasTable = true; v.TableSize = 1; v.tableExports = map[string]int{"private": 0} }},
 		{"global-type-mismatch", func(v *Compiled) { v.GlobalImports = []GlobalImportDef{{Type: ValI64, Mutable: true}} }},
 	} {
 		t.Run(test.name, func(t *testing.T) {

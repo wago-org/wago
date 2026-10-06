@@ -535,3 +535,54 @@ func TestSWARProductionCombinedImportBounds(t *testing.T) {
 		t.Fatal("total import bound bypassed", err)
 	}
 }
+
+func TestSWARProductionOwnedTableWithStateImports(t *testing.T) {
+	global := wasmtest.GlobalImportEntry("env", "v", wasm.V128, true)
+	memory := append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 1, 1, 4)
+	for _, entries := range [][][]byte{{global}, {global, memory}, {memory, global}} {
+		sections := [][]byte{
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}), wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+			wasmtest.Section(2, wasmtest.Vec(entries...)), wasmtest.Section(3, []byte{2, 0, 1}),
+			wasmtest.Section(4, []byte{1, 0x70, 1, 2, 4}),
+		}
+		if len(entries) == 1 {
+			sections = append(sections, wasmtest.Section(5, []byte{1, 1, 1, 4}))
+		}
+		sections = append(sections,
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 0), wasmtest.ExportEntry("global", 3, 0), wasmtest.ExportEntry("memory", 2, 0))),
+			wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 1})),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x11, 1, 0, 0x0b}), wasmtest.Code([]byte{0x23, 0, 0x0b}))))
+		m, err := wasm.DecodeModule(wasmtest.Module(sections...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if image, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModuleTables); image != nil || !errors.Is(err, ErrUnsupported) {
+			t.Fatal("private table pilot admitted state imports", err)
+		}
+		image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+		if err != nil || image == nil || image.CodeImage != nil || len(image.Entry) != 2 {
+			t.Fatal("production state-only table policy", err)
+		}
+		resolvedMemory, _ := m.MemoryType(0)
+		m.Imports = nil
+		m.Memories = []wasm.MemType{resolvedMemory}
+		m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.V128, Mutable: true}, Init: wasm.Expr{BodyBytes: append(append([]byte{0xfd, 12}, make([]byte, 16)...), 0x0b)}}}
+		reference, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+		if err != nil || !bytes.Equal(image.Code, reference.Code) {
+			t.Fatal("borrowed table state changed identical native lowering", err)
+		}
+		// Even direct decoded callers with the public state flags cannot combine
+		// function imports with table policy and its defined-function index space.
+		host := append(append(wasmtest.Name("env"), wasmtest.Name("host")...), 0, 2)
+		hostModule, err := wasm.DecodeModule(wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}), wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(2, wasmtest.Vec(host)), wasmtest.Section(3, []byte{1, 1}), wasmtest.Section(4, []byte{1, 0x70, 0, 1}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(append(append([]byte{0xfd, 12}, make([]byte, 16)...), 0x0b))))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(hostModule); err != nil {
+			t.Fatal("scalar host/table negative is not valid Wasm", err)
+		}
+		if image, err := compileSWARDecodedModuleProfile(hostModule, emissionMode{production: true, interruptible: true}, swarModuleTables, swarStateProfile{exports: true, importedMemory: true, importedGlobals: true}); image != nil || !errors.Is(err, ErrUnsupported) {
+			t.Fatal("table policy admitted function import", err)
+		}
+	}
+}
