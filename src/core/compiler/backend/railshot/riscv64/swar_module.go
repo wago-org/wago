@@ -182,6 +182,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		types[i] = &sub.Comp
 	}
 	for _, ex := range m.Exports {
+		if state.exports && tables && table != nil && ex.Index.Kind == wasm.ExternTable && ex.Index.Index == 0 {
+			continue
+		}
 		if state.exports && ex.Index.Kind == wasm.ExternGlobal && uint64(ex.Index.Index) < uint64(globalImports+len(m.Globals)) {
 			continue
 		}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"runtime"
 	"slices"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -28,7 +29,14 @@ func TestRV64OwnedTableArtifactBoundaries(t *testing.T) {
 		mutate func(*Compiled)
 	}{
 		{"legacy-export-fallback", func(v *Compiled) { v.hasTableExportMetadata = false }},
-		{"table-export", func(v *Compiled) { v.tableExports = map[string]int{"escape": 0} }},
+		{"table-export-index", func(v *Compiled) { v.tableExports = map[string]int{"escape": 1} }},
+		{"negative-table-export-index", func(v *Compiled) { v.tableExports = map[string]int{"escape": -1} }},
+		{"table-export-count", func(v *Compiled) {
+			v.tableExports = make(map[string]int, 1025)
+			for i := 0; i < 1025; i++ {
+				v.tableExports["table"+strconv.Itoa(i)] = 0
+			}
+		}},
 		{"register-ABI", func(v *Compiled) { v.registerABIDisabled = false }},
 		{"table-import", func(v *Compiled) { v.tableImport = "env.table" }},
 		{"second-table", func(v *Compiled) { v.extraTables = []tableDef{{Size: 1, Type: ValFuncRef}} }},

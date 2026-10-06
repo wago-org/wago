@@ -102,7 +102,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	if err = admitShapeProfile(m, opts.production, opts.publicStarts); err != nil {
 		return nil, err
 	}
-	state, err := admitStatePolicy(m, opts.production, opts.hostImports)
+	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts)
 	if err != nil {
 		return nil, err
 	}

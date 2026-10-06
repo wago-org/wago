@@ -152,7 +152,7 @@ func TestRV64PublicSWARImportedMemoryArtifactUnsupportedMetadata(t *testing.T) {
 		name   string
 		mutate func(*Compiled)
 	}{
-		{"table-export", func(v *Compiled) { v.HasTable = true; v.TableSize = 1; v.tableExports = map[string]int{"private": 0} }},
+		{"table-export-index", func(v *Compiled) { v.HasTable = true; v.TableSize = 1; v.tableExports = map[string]int{"private": 1} }},
 		{"global-type-mismatch", func(v *Compiled) { v.GlobalImports = []GlobalImportDef{{Type: ValI64, Mutable: true}} }},
 	} {
 		t.Run(test.name, func(t *testing.T) {

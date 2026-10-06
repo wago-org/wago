@@ -71,9 +71,9 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	return v, nil
 }
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
-	return admitStatePolicy(m, production, false)
+	return admitStatePolicy(m, production, false, false)
 }
-func admitStatePolicy(m *wasm.Module, production, hostImports bool) (moduleState, error) {
+func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	var tableErr error
 	s.ownedTable, tableErr = admitOwnedTable(m, production)
@@ -166,6 +166,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports bool) (moduleState
 		s.data = append(s.data, native.MemoryInitializer{Offset: uint32(off), Bytes: append([]byte(nil), d.Init...)})
 		s.passiveData = append(s.passiveData, nil)
 	}
+	tableExports := 0
 	for _, ex := range m.Exports {
 		switch ex.Index.Kind {
 		case wasm.ExternFunc:
@@ -176,6 +177,14 @@ func admitStatePolicy(m *wasm.Module, production, hostImports bool) (moduleState
 			s.memoryExports[ex.Name] = true
 		case wasm.ExternGlobal:
 			s.globalExports[ex.Name] = int(ex.Index.Index)
+		case wasm.ExternTable:
+			if !production || !publicExports || !s.ownedTable || ex.Index.Index != 0 {
+				return s, unsupported("table export requires the public owned table profile")
+			}
+			tableExports++
+			if tableExports > MaxFunctions {
+				return s, unsupported("owned table export count bound")
+			}
 		default:
 			return s, unsupported("noninteger state export")
 		}

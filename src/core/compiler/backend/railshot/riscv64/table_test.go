@@ -4,6 +4,7 @@ package riscv64
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -146,8 +147,34 @@ func TestProductionPrivateTableAggregateBoundsAndUnsupportedExports(t *testing.T
 	if _, err := admitStateMode(&m, true); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("private table exported", err)
 	}
-	if image, err := CompileModuleWith(&m, CompileOptions{DeferCodeMapping: true}); image != nil || !errors.Is(err, ErrUnsupported) {
-		t.Fatal("export reached image", image, err)
+	if image, err := CompileModuleWith(&m, CompileOptions{DeferCodeMapping: true}); image == nil || err != nil || len(image.Entry) != len(m.Code) {
+		t.Fatal("public owned table export did not reach staging", image, err)
+	}
+}
+
+func TestProductionOwnedTableExportAliasBounds(t *testing.T) {
+	base, err := wasm.DecodeModule(ownedTableFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, count := range []int{MaxFunctions, MaxFunctions + 1} {
+		m := *base
+		m.Exports = make([]wasm.Export, count)
+		for i := range m.Exports {
+			m.Exports[i] = wasm.Export{Name: "table" + strconv.Itoa(i), Index: wasm.ExternIdx{Kind: wasm.ExternTable}}
+		}
+		if err := wasm.ValidateModule(&m); err != nil {
+			t.Fatal("alias boundary fixture must be valid", err)
+		}
+		pressure := 0
+		image, err := CompileModuleWith(&m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
+		if count == MaxFunctions {
+			if err != nil || image == nil || len(image.Entry) != len(m.Code) || pressure != 1 {
+				t.Fatal("bounded aliases did not stage", err, pressure)
+			}
+		} else if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+			t.Fatal("excess aliases reached image/pressure", err, pressure)
+		}
 	}
 }
 
