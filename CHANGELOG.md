@@ -18,6 +18,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in admitted straight-line AMD64 functions.
 ### Added
 
+- Add AMD64 loop-boundary regression checks for deferred producer placement,
+  floating-point transport, register pressure, and zero-iteration traps.
+
 - Add two prebuilt Grain standard-library assertion suites to the executable
   corpus, with matching guest sources, reproducible rebuild instructions,
   preserved licenses, and independently verified WASI execution oracles.
