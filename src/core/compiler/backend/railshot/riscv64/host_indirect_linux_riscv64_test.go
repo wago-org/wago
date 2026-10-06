@@ -19,14 +19,16 @@ func thunkPointerRV64(b []byte) uintptr { return uintptr(unsafe.Pointer(&b[0])) 
 func thunkImageRV64(t *testing.T, code []byte) uintptr {
 	t.Helper()
 	mem, entry, err := coreruntime.MapCode(code)
+	if mem != nil {
+		t.Cleanup(func() {
+			if err := coreruntime.Unmap(mem); err != nil {
+				t.Error(err)
+			}
+		})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := coreruntime.Unmap(mem); err != nil {
-			t.Error(err)
-		}
-	})
 	return entry
 }
 

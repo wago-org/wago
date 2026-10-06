@@ -1,0 +1,150 @@
+//go:build linux && !tinygo
+
+package riscv64
+
+import (
+	"fmt"
+	"unsafe"
+
+	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
+
+// This private prerequisite emits no public foreign-import admission. Its owner
+// must retain the framed target, both contexts and homes, serialize native
+// execution, and publish the returned bytes through the normal code mapper.
+// Absolute addresses belong to this activation owner and must never be persisted.
+// Entry inherits a valid aligned foreign SP and installed nonzero stack fence.
+// The target transport is retained off-heap, disjoint, and holds the full bounded
+// 256-slot ABI: a narrow export may make much wider internal calls. Only the
+// imported signature's cells cross the instance boundary. The owner must rebind
+// both contexts after a cold unwind, which skips the normal epilogue.
+type nativeImportTarget struct {
+	entry, home, context       uintptr
+	arguments, results         []byte
+	argumentSlots, resultSlots int
+}
+
+const nativeImportFrameBytes = 64
+const nativeImportTransportBytes = 256 * 8
+
+var nativeImportContextFields = [...]struct{ source, destination int32 }{
+	{0, 40}, {8, 80}, {16, abi.FuncRefDescPtrOffset},
+	{24, abi.PassiveElemPtrOffset}, {32, abi.GlobalsPtrOffset},
+	{40, abi.PassiveDataPtrOffset}, {48, abi.TableDirPtrOffset},
+	{56, abi.MemoryDirPtrOffset}, {64, abi.ImportDispatchPtrOffset},
+	{coreruntime.InstanceContextGCNativeViewOffset, abi.GCNativeViewPtrOffset},
+	{coreruntime.InstanceContextEHTagDirOffset, abi.EHTagDirPtrOffset},
+}
+
+var nativeImportExecutionFields = [...]int32{
+	abi.RV64TrapContinuationOffset, abi.RV64TrapReentrySPOffset,
+	abi.StackFenceOffset, abi.TrapCellPtrOffset,
+}
+
+func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uintptr, importIndex uint32) ([]byte, error) {
+	if callee.entry == 0 || callee.entry&15 != 0 || callee.home == 0 || callee.home&7 != 0 || callee.context == 0 || callee.context&7 != 0 || callerHome == 0 || callerHome&7 != 0 || callerContext == 0 || callerContext&7 != 0 || importIndex >= MaxHostFunctionImports {
+		return nil, fmt.Errorf("rv64: native import requires aligned retained framed target and caller identities")
+	}
+	if len(callee.arguments) != nativeImportTransportBytes || len(callee.results) != nativeImportTransportBytes || callee.argumentSlots < 0 || callee.argumentSlots > 256 || callee.resultSlots < 0 || callee.resultSlots > 256 {
+		return nil, fmt.Errorf("rv64: native import requires bounded full-width target transport")
+	}
+	argumentBase, resultBase := uintptr(unsafe.Pointer(&callee.arguments[0])), uintptr(unsafe.Pointer(&callee.results[0]))
+	if argumentBase&7 != 0 || resultBase&7 != 0 || argumentBase < resultBase+nativeImportTransportBytes && resultBase < argumentBase+nativeImportTransportBytes {
+		return nil, fmt.Errorf("rv64: native import requires aligned disjoint target transport")
+	}
+	f := target{mode: emissionMode{production: true, functionIndex: importIndex}}
+	a := &f.a
+	// A same-home sibling's valid thunk is still a foreign caller identity. Check
+	// the live descriptor anchor before any stack or basedata write.
+	a.Constant64(enc.Scratch1, int64(callerHome))
+	wrongHome := a.BranchLong(enc.NE, enc.X25, enc.Scratch1)
+	wrongTransport := a.BranchLong(enc.NE, enc.X11, enc.X25)
+	a.Ld(enc.X28, enc.X25, -abi.FuncRefDescPtrOffset)
+	missingAnchor := a.BranchLong(enc.EQ, enc.X28, enc.Zero)
+	a.Ld(enc.X29, enc.X28, coreruntime.FuncRefContextOffset)
+	a.Constant64(enc.Scratch1, int64(callerContext))
+	wrongContext := a.BranchLong(enc.NE, enc.X29, enc.Scratch1)
+	a.Ld(enc.X29, enc.X25, -abi.StackFenceOffset)
+	below := a.BranchLong(enc.LTU, enc.SP, enc.X29)
+	a.Sub(enc.X28, enc.SP, enc.X29)
+	a.Constant64(enc.Scratch0, nativeImportFrameBytes)
+	short := a.BranchLong(enc.LTU, enc.X28, enc.Scratch0)
+	a.Addi(enc.SP, enc.SP, -nativeImportFrameBytes)
+	a.Sd(enc.RA, enc.SP, 0)
+	a.Sd(enc.X25, enc.SP, 8)
+	a.Sd(enc.Scratch1, enc.SP, 16) // caller context, still live from identity check
+	a.Sd(enc.X10, enc.SP, 24)
+	a.Sd(enc.X12, enc.SP, 32)
+	a.Sd(enc.X13, enc.SP, 40)
+	a.Sd(enc.X24, enc.SP, 48)
+	a.Ld(enc.Scratch0, enc.X25, -40)
+	a.Sd(enc.Scratch0, enc.SP, 56) // active caller ctrl may differ from canonical ctx
+	a.Constant64(enc.X28, int64(argumentBase))
+	for i := 0; i < callee.argumentSlots; i++ {
+		a.Ld(enc.Scratch0, enc.X10, int32(i*8))
+		a.Sd(enc.Scratch0, enc.X28, int32(i*8))
+	}
+	a.Addi(enc.X10, enc.X28, 0)
+	a.Constant64(enc.X13, int64(resultBase))
+	a.Constant64(enc.X11, int64(callee.home))
+	a.Constant64(enc.Scratch1, int64(callee.context))
+	copyContext := func(destination enc.Reg) {
+		for _, field := range nativeImportContextFields {
+			a.Ld(enc.Scratch0, enc.Scratch1, field.source)
+			a.Sd(enc.Scratch0, destination, -field.destination)
+		}
+	}
+	copyContext(enc.X11)
+	for _, offset := range nativeImportExecutionFields {
+		a.Ld(enc.Scratch0, enc.X25, -offset)
+		a.Sd(enc.Scratch0, enc.X11, -offset)
+	}
+	a.Addi(enc.X25, enc.X11, 0)
+	a.Constant64(enc.X28, int64(callee.entry))
+	a.Jalr(enc.RA, enc.X28, 0)
+	a.Ld(enc.X25, enc.SP, 8)
+	// A nested Go callback may have reentered the caller on another engine. The
+	// active callee's refreshed continuation/fence/trap now belongs to this call.
+	a.Constant64(enc.Scratch1, int64(callee.home))
+	for _, offset := range nativeImportExecutionFields {
+		a.Ld(enc.Scratch0, enc.Scratch1, -offset)
+		a.Sd(enc.Scratch0, enc.X25, -offset)
+	}
+	a.Ld(enc.Scratch1, enc.SP, 16)
+	copyContext(enc.X25)
+	a.Ld(enc.Scratch0, enc.SP, 56)
+	a.Sd(enc.Scratch0, enc.X25, -40)
+	a.Ld(enc.X10, enc.SP, 24)
+	a.Ld(enc.X12, enc.SP, 32)
+	a.Ld(enc.X13, enc.SP, 40)
+	a.Constant64(enc.Scratch1, int64(resultBase))
+	for i := 0; i < callee.resultSlots; i++ {
+		a.Ld(enc.Scratch0, enc.Scratch1, int32(i*8))
+		a.Sd(enc.Scratch0, enc.X13, int32(i*8))
+	}
+	a.Ld(enc.X24, enc.SP, 48)
+	a.Addi(enc.X11, enc.X25, 0)
+	a.Ld(enc.RA, enc.SP, 0)
+	a.Addi(enc.SP, enc.SP, nativeImportFrameBytes)
+	a.Jalr(enc.Zero, enc.RA, 0)
+	for _, site := range []int{wrongHome, wrongTransport, missingAnchor, wrongContext} {
+		if err := a.PatchLong(site, int64(a.Len())); err != nil {
+			return nil, err
+		}
+	}
+	// A wrapper has an import ordinal but no Wasm instruction PC. Public source
+	// attribution and cold-unwind rebinding are separate admission prerequisites.
+	f.emitProductionTrap(abi.TrapCalledFnNotLinked, ^uint32(0))
+	for _, site := range []int{below, short} {
+		if err := a.PatchLong(site, int64(a.Len())); err != nil {
+			return nil, err
+		}
+	}
+	f.emitProductionTrap(abi.TrapStackFenceBreached, ^uint32(0))
+	if err := a.Err(); err != nil {
+		return nil, err
+	}
+	return a.B, nil
+}
