@@ -3455,7 +3455,7 @@ func (c *Compiled) maxCallSlots() (params, results int, err error) {
 			results = resultSlots
 		}
 	}
-	return railshotReexportCallSlots(c, params, results)
+	return railshotImportedCallSlots(c, params, results)
 }
 
 func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {

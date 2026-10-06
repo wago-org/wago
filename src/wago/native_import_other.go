@@ -24,7 +24,7 @@ func railshotNativeImportCode(*Compiled, *InstanceExport, *coreruntime.Arena, ui
 }
 func railshotTrapOwner(root *Instance, _ *coreruntime.TrapError) (*Instance, bool) { return root, true }
 
-func railshotReexportCallSlots(_ *Compiled, params, results int) (int, int, error) {
+func railshotImportedCallSlots(_ *Compiled, params, results int) (int, int, error) {
 	return params, results, nil
 }
 

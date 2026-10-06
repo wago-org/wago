@@ -331,26 +331,26 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 	return out, true, nil
 }
 
-// Defined signatures alone do not size a relay with a wide imported export.
-// Charge the relay's own argument/result storage before arena allocation.
-func railshotReexportCallSlots(c *Compiled, params, results int) (int, int, error) {
+// Imported calls marshal into the caller's serialized transport before entering
+// their owned bridge. Every imported signature, including unexported functions,
+// must therefore contribute to the root buffers before arena allocation.
+func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, error) {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.importFuncSigs) != c.NumImports {
+		return 0, 0, fmt.Errorf("RV64 imported call signature directory is invalid")
+	}
 	for _, index := range c.Exports {
 		if index < 0 || index >= c.NumImports+len(c.Funcs) {
 			return 0, 0, fmt.Errorf("RV64 function export index out of range")
 		}
-		if index >= c.NumImports {
-			continue
-		}
-		if index >= len(c.importFuncSigs) {
-			return 0, 0, fmt.Errorf("RV64 function reexport signature is unavailable")
-		}
-		p, err := valTypesSlots(c.importFuncSigs[index].Params)
+	}
+	for _, sig := range c.importFuncSigs {
+		p, err := valTypesSlots(sig.Params)
 		if err != nil || p > 256 {
-			return 0, 0, fmt.Errorf("RV64 function reexport parameter slot bound")
+			return 0, 0, fmt.Errorf("RV64 imported function parameter slot bound")
 		}
-		r, err := valTypesSlots(c.importFuncSigs[index].Results)
+		r, err := valTypesSlots(sig.Results)
 		if err != nil || r > 256 {
-			return 0, 0, fmt.Errorf("RV64 function reexport result slot bound")
+			return 0, 0, fmt.Errorf("RV64 imported function result slot bound")
 		}
 		params, results = max(params, p), max(results, r)
 	}
