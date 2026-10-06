@@ -14,6 +14,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/support/simdfixture"
 )
 
 type swarSpecInstance struct {
@@ -159,7 +160,7 @@ func swarSpecInstantiate(t *testing.T, source []byte) (*swarSpecInstance, error)
 	return in, nil
 }
 
-func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
+func (in *swarSpecInstance) invoke(t *testing.T, command simdfixture.Command) {
 	t.Helper()
 	if command.Action.Type != "invoke" {
 		t.Fatal("unsupported spec action", command.Action.Type)
@@ -174,7 +175,7 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 		t.Fatal("missing defined function export", command.Action.Field)
 	}
 	ft, ok := in.module.LocalFuncType(index)
-	patterns, patternErr := swarSpecPatterns(command)
+	patterns, patternErr := simdfixture.Patterns(command)
 	if !ok || patternErr != nil || len(ft.Params) != len(command.Action.Args) {
 		t.Fatal("spec action/signature mismatch", command.Action.Field)
 	}
@@ -183,7 +184,7 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 			t.Fatal("spec result arity mismatch", command.Action.Field)
 		}
 		for i, value := range pattern {
-			typ, _, _, _ := swarSpecLayout(value)
+			typ, _, _, _ := simdfixture.Layout(value)
 			if command.Type == "assert_trap" && value.Type == "v128" {
 				typ = wasm.V128
 			}
@@ -199,11 +200,11 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 	}
 	argBytes := 0
 	for i, value := range command.Action.Args {
-		typ, _, _, _ := swarSpecLayout(value)
+		typ, _, _, _ := simdfixture.Layout(value)
 		if typ != ft.Params[i] {
 			t.Fatal("spec argument type mismatch", i)
 		}
-		arg, err := swarSpecInput(value)
+		arg, err := simdfixture.Input(value)
 		if err != nil || len(arg) > len(in.args)-argBytes {
 			t.Fatal("spec argument encoding/bound", i, err)
 		}
@@ -216,7 +217,7 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 	}
 	resultBytes := 0
 	for i, value := range patterns[0] {
-		typ, _, _, _ := swarSpecLayout(value)
+		typ, _, _, _ := simdfixture.Layout(value)
 		// Trap JSON carries result types without values/lane types.
 		if command.Type == "assert_trap" && value.Type == "v128" {
 			typ = wasm.V128
@@ -248,7 +249,7 @@ func (in *swarSpecInstance) invoke(t *testing.T, command swarSpecCommand) {
 	if err != nil {
 		t.Fatalf("spec return line %d %s: %v", command.Line, command.Action.Field, err)
 	}
-	if err := swarSpecMatchPatterns(in.results[:resultBytes], patterns); err != nil {
+	if err := simdfixture.MatchPatterns(in.results[:resultBytes], patterns); err != nil {
 		t.Fatalf("spec line %d %s: %v", command.Line, command.Action.Field, err)
 	}
 	if !bytes.Equal(in.results[resultBytes:], bytes.Repeat([]byte{0xa5}, len(in.results)-resultBytes)) {
@@ -270,7 +271,7 @@ func swarSpecExecution(t *testing.T, variable string, relaxed bool) {
 	if dir == "" {
 		t.Skip("prepare repository-pinned fixtures with scripts/prepare-riscv64-simd-spec.py and set " + variable)
 	}
-	manifest, err := swarSpecLoadManifest(dir, relaxed)
+	manifest, err := simdfixture.LoadManifest(dir, relaxed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,12 +299,12 @@ func swarSpecExecution(t *testing.T, variable string, relaxed bool) {
 	seenExcluded := make(map[string]bool)
 	for _, file := range files {
 		t.Run(strings.TrimSuffix(file, ".json"), func(t *testing.T) {
-			data, err := manifest.read(dir, file, 16<<20)
+			data, err := manifest.Read(dir, file, 16<<20)
 			if err != nil {
 				t.Fatal(err)
 			}
-			var document swarSpecDocument
-			if err := swarSpecDecode(data, &document); err != nil {
+			var document simdfixture.Document
+			if err := simdfixture.Decode(data, &document); err != nil {
 				t.Fatal(err)
 			}
 			if document.SourceFilename != strings.TrimSuffix(file, ".json")+".wast" {
@@ -324,7 +325,7 @@ func swarSpecExecution(t *testing.T, variable string, relaxed bool) {
 						t.Fatal(err)
 					}
 					current = nil
-					body, err := manifest.read(dir, command.Filename, MaxModuleBytes)
+					body, err := manifest.Read(dir, command.Filename, MaxModuleBytes)
 					if err != nil {
 						t.Fatal(err)
 					}
