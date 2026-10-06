@@ -297,6 +297,12 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 	}
 	for _, transfer := range f.Transfers {
 		position := blockScheduleEnd(f, schedule, uint32(transfer.From)) * 6
+		// Edge uses occur after the predecessor's last instruction, before
+		// the successor's parameters are defined at the block boundary.
+		// Empty blocks have no preceding instruction phase to use.
+		if f.Blocks[transfer.From].InstCount != 0 {
+			position--
+		}
 		used[transfer.Src], used[transfer.Dst] = true, true
 		if position > ends[transfer.Src] {
 			ends[transfer.Src] = position
@@ -516,6 +522,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 // Loop-header block parameters are excluded because their incoming edge move
 // deliberately replaces the previous iteration's value.
 func extendLoopLiveIntervals(f *Func, schedule *Schedule, starts, ends []uint32, used []bool) {
+	var parameterBlocks []railssa.BlockID
 	for _, edge := range f.Edges {
 		if int(edge.From) >= len(f.Blocks) || int(edge.To) >= len(f.Blocks) || edge.From < edge.To || f.Blocks[edge.To].Flags&railssa.BlockLoopHeader == 0 {
 			continue
@@ -524,12 +531,32 @@ func extendLoopLiveIntervals(f *Func, schedule *Schedule, starts, ends []uint32,
 		backedge := blockScheduleEnd(f, schedule, uint32(edge.From)) * 6
 		for id := 1; id < len(f.VRegs); id++ {
 			data := f.VRegs[id]
-			if !used[id] || starts[id] > header || ends[id] < header || ends[id] >= backedge || data.Flags&VRegBlockParam != 0 && starts[id] == header {
+			if !used[id] || starts[id] > header || ends[id] < header || ends[id] >= backedge {
 				continue
+			}
+			if data.Flags&VRegBlockParam != 0 && starts[id] == header {
+				if parameterBlocks == nil {
+					parameterBlocks = blockParameterOwners(f)
+				}
+				if parameterBlocks[id] == edge.To+1 {
+					continue
+				}
 			}
 			ends[id] = backedge
 		}
 	}
+}
+
+// Empty blocks can share the same logical definition position. Incoming
+// transfers identify a parameter's defining block without conflating an
+// empty preheader's invariant with a value replaced at the loop header.
+// Zero means unknown; known block IDs are encoded as ID+1.
+func blockParameterOwners(f *Func) []railssa.BlockID {
+	owners := make([]railssa.BlockID, len(f.VRegs))
+	for _, transfer := range f.Transfers {
+		owners[transfer.Dst] = transfer.To + 1
+	}
+	return owners
 }
 
 func populateInstructionPositions(f *Func, schedule *Schedule, positions []uint32, seen []bool) error {
@@ -708,6 +735,12 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 		}
 		for _, transfer := range f.Transfers {
 			position := blockScheduleEnd(f, allocation.schedule, uint32(transfer.From)) * 6
+			// Edge uses occur after the predecessor's last instruction, before
+			// the successor's parameters are defined at the block boundary.
+			// Empty blocks have no preceding instruction phase to use.
+			if f.Blocks[transfer.From].InstCount != 0 {
+				position--
+			}
 			if transfer.Src == 0 || int(transfer.Src) >= len(intervalByReg) {
 				return fmt.Errorf("railmach: block %d has invalid edge source vreg %d", transfer.From, transfer.Src)
 			}
@@ -717,6 +750,7 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 			}
 		}
 	}
+	var parameterBlocks []railssa.BlockID
 	for _, edge := range f.Edges {
 		if int(edge.From) >= len(f.Blocks) || int(edge.To) >= len(f.Blocks) || edge.From < edge.To || f.Blocks[edge.To].Flags&railssa.BlockLoopHeader == 0 {
 			continue
@@ -725,7 +759,15 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 		backedge := blockScheduleEnd(f, allocation.schedule, uint32(edge.From)) * 6
 		for _, interval := range allocation.Intervals {
 			data := f.VRegs[interval.Reg]
-			if interval.Start <= header && interval.End >= header && interval.End < backedge && !(data.Flags&VRegBlockParam != 0 && data.Def == header) {
+			if interval.Start <= header && interval.End >= header && interval.End < backedge {
+				if data.Flags&VRegBlockParam != 0 && data.Def == header {
+					if parameterBlocks == nil {
+						parameterBlocks = blockParameterOwners(f)
+					}
+					if parameterBlocks[interval.Reg] == edge.To+1 {
+						continue
+					}
+				}
 				return fmt.Errorf("railmach: loop-live vreg %d ends at %d before backedge %d", interval.Reg, interval.End, backedge)
 			}
 		}

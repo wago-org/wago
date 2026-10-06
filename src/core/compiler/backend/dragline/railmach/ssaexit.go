@@ -256,7 +256,20 @@ func resolveParallel(out *[]PhysicalMove, copies []pendingCopy, edge, position u
 		if cycle.dst.Kind != LocationRegister && cycle.dst.Kind != LocationSpill {
 			return fmt.Errorf("cannot break cycle through destination %#v", cycle.dst)
 		}
-		*out = append(*out, PhysicalMove{Src: cycle.dst, Reg: cycle.reg, Edge: edge, Position: position, Kind: MoveSaveTemporary, Placement: placement, Bank: cycle.dst.Bank})
+		// Save the value currently occupying the destination, not the value
+		// about to overwrite it. Reg supplies the finalizer's type/width;
+		// cycle.reg can be i32 while the displaced value is i64.
+		var saved VReg
+		for _, copy := range pending {
+			if copy.src == cycle.dst {
+				saved = copy.reg
+				break
+			}
+		}
+		if saved == 0 {
+			return fmt.Errorf("cycle destination %#v has no source value", cycle.dst)
+		}
+		*out = append(*out, PhysicalMove{Src: cycle.dst, Reg: saved, Edge: edge, Position: position, Kind: MoveSaveTemporary, Placement: placement, Bank: cycle.dst.Bank})
 		debt.Cycles++
 		temporary := Location{Kind: LocationTemporary, Bank: cycle.dst.Bank}
 		for index := range pending {

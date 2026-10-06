@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 30
+const MetricsVersion = 31
 
 // ScheduleDiagnosticKind selects one scheduler for an opt-in metrics compile.
 // Zero preserves production selection. A forced kind applies only to functions
@@ -100,22 +100,23 @@ func (b NativePlannerCapacityBreakdown) Total() uint64 {
 // ScheduleCandidateMetrics records one initial schedule candidate after
 // allocation and late SSA exit, plus opt-in first-pass post-RA opportunities.
 type ScheduleCandidateMetrics struct {
-	EstimatedCycles   uint64 `json:"estimated_cycles"`
-	ResourceCycles    uint64 `json:"resource_cycles"`
-	SelectedBytes     uint64 `json:"selected_bytes"`
-	PostRARewrites    uint32 `json:"postra_rewrites"`
-	PostRAElisions    uint32 `json:"postra_planned_elisions"`
-	PostRAWrapSpills  uint32 `json:"postra_wrap_spills"`
-	EliminatedMoves   uint32 `json:"eliminated_moves"`
-	Kind              uint8  `json:"kind"`
-	Nondominated      bool   `json:"nondominated"`
-	WeightedSpillDebt uint64 `json:"weighted_spill_debt"`
-	PhysicalCopies    uint32 `json:"physical_copies"`
-	CopyCycles        uint32 `json:"copy_cycles"`
-	CopyMotion        uint32 `json:"copy_motion"`
-	FixedRepairs      uint32 `json:"fixed_repairs"`
-	BrokenFusions     uint32 `json:"broken_fusions"`
-	LoopInvariantOps  uint32 `json:"loop_invariant_ops"`
+	NativeResourceCost uint64 `json:"native_resource_cost"`
+	EstimatedCycles    uint64 `json:"estimated_cycles"`
+	ResourceCycles     uint64 `json:"resource_cycles"`
+	SelectedBytes      uint64 `json:"selected_bytes"`
+	PostRARewrites     uint32 `json:"postra_rewrites"`
+	PostRAElisions     uint32 `json:"postra_planned_elisions"`
+	PostRAWrapSpills   uint32 `json:"postra_wrap_spills"`
+	EliminatedMoves    uint32 `json:"eliminated_moves"`
+	Kind               uint8  `json:"kind"`
+	Nondominated       bool   `json:"nondominated"`
+	WeightedSpillDebt  uint64 `json:"weighted_spill_debt"`
+	PhysicalCopies     uint32 `json:"physical_copies"`
+	CopyCycles         uint32 `json:"copy_cycles"`
+	CopyMotion         uint32 `json:"copy_motion"`
+	FixedRepairs       uint32 `json:"fixed_repairs"`
+	BrokenFusions      uint32 `json:"broken_fusions"`
+	LoopInvariantOps   uint32 `json:"loop_invariant_ops"`
 }
 
 // FunctionMetrics attributes compiler work to one original Wasm function.
@@ -263,7 +264,7 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 		for index := range scores[:count] {
 			score := scores[index]
 			out[index] = ScheduleCandidateMetrics{
-				EstimatedCycles: score.EstimatedCycles, ResourceCycles: score.ResourceCycles, SelectedBytes: score.SelectedBytes,
+				NativeResourceCost: score.NativeResourceCost, EstimatedCycles: score.EstimatedCycles, ResourceCycles: score.ResourceCycles, SelectedBytes: score.SelectedBytes,
 				PostRARewrites: score.PostRARewrites, PostRAElisions: score.PostRAElisions, PostRAWrapSpills: score.PostRAWrapSpills, EliminatedMoves: score.EliminatedMoves,
 				Kind: uint8(score.Kind), Nondominated: frontier&(1<<index) != 0, WeightedSpillDebt: score.WeightedSpillDebt,
 				PhysicalCopies: score.PhysicalCopies, CopyCycles: score.CopyCycles,

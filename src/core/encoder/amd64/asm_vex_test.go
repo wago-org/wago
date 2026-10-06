@@ -13,7 +13,12 @@ func TestVexEncoding(t *testing.T) {
 		emit func(a *Asm)
 		want []byte
 	}{
+		{"vpunpcklqdq xmm1,xmm0,xmm0", func(a *Asm) { a.VPunpcklqdq(1, 0, 0) }, []byte{0xC4, 0xE1, 0x79, 0x6C, 0xC8}},
+		{"vpunpcklqdq xmm10,xmm9,xmm12", func(a *Asm) { a.VPunpcklqdq(10, 9, 12) }, []byte{0xC4, 0x41, 0x31, 0x6C, 0xD4}},
 		{"vaddsd xmm0,xmm1,xmm2", func(a *Asm) { a.VFAdd(0, 1, 2, true) }, []byte{0xC4, 0xE1, 0x73, 0x58, 0xC2}},
+		{"shlx eax,ecx,edx", func(a *Asm) { a.Shlx(RAX, RCX, RDX, false) }, []byte{0xc4, 0xe2, 0x69, 0xf7, 0xc1}},
+		{"sarx r8,r9,r11", func(a *Asm) { a.Sarx(R8, R9, R11, true) }, []byte{0xc4, 0x42, 0xa2, 0xf7, 0xc1}},
+		{"shrx r14d,r13d,r10d", func(a *Asm) { a.Shrx(R14, R13, R10, false) }, []byte{0xc4, 0x42, 0x2b, 0xf7, 0xf5}},
 		{"rorx eax,ecx,7", func(a *Asm) { a.Rorx(RAX, RCX, 7, false) }, []byte{0xC4, 0xE3, 0x7B, 0xF0, 0xC1, 0x07}},
 		{"rorx r8,r9,13", func(a *Asm) { a.Rorx(R8, R9, 13, true) }, []byte{0xC4, 0x43, 0xFB, 0xF0, 0xC1, 0x0D}},
 		{"vmulsd xmm0,xmm1,xmm2", func(a *Asm) { a.VFMul(0, 1, 2, true) }, []byte{0xC4, 0xE1, 0x73, 0x59, 0xC2}},

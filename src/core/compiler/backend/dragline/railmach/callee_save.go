@@ -2,6 +2,7 @@ package railmach
 
 import (
 	"fmt"
+	"math/bits"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
@@ -118,6 +119,12 @@ func PlanCalleeSaveRegions(f *Func, schedule *Schedule, allocation *GreedyAlloca
 	}
 	for _, move := range allocation.FixedMoves {
 		visit(move.Bank, uint16(move.Physical), move.Position, move.Position)
+	}
+	for id, instruction := range f.Insts {
+		position := allocation.InstructionPositions[id]*6 + 2
+		for mask := callSetupGPRClobbers(f.Target, instruction); mask != 0; mask &= mask - 1 {
+			visit(BankGPR, uint16(bits.TrailingZeros64(mask)), position, position)
+		}
 	}
 
 	result := reuse[:0]
@@ -341,6 +348,14 @@ func VerifyCalleeSaveRegions(f *Func, schedule *Schedule, allocation *GreedyAllo
 		for _, move := range allocation.FixedMoves {
 			if err := check(move.Bank, uint16(move.Physical), move.Position, move.Position); err != nil {
 				return err
+			}
+		}
+		for id, instruction := range f.Insts {
+			position := allocation.InstructionPositions[id]*6 + 2
+			for mask := callSetupGPRClobbers(f.Target, instruction); mask != 0; mask &= mask - 1 {
+				if err := check(BankGPR, uint16(bits.TrailingZeros64(mask)), position, position); err != nil {
+					return err
+				}
 			}
 		}
 		if !sawEntry || !sawRestore {

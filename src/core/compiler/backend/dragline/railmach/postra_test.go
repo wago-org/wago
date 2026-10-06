@@ -1,6 +1,7 @@
 package railmach
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
@@ -743,6 +744,42 @@ func TestPlanPostRAFindsAMD64FullWidthMemoryFold(t *testing.T) {
 		t.Fatalf("rewrites = %#v", plan.Rewrites)
 	}
 
+	address := f.InstructionOperands(fold.First)[0].Reg
+	lp := allocation.InstructionPositions[fold.First]*6 + 2
+	cp := allocation.InstructionPositions[fold.Second]*6 + 2
+	original := allocation.Locations[address]
+	allocation.SpillSlots++
+	allocation.FrameBytes = (uint32(allocation.SpillSlots)*8 + 15) &^ 15
+	for _, tc := range []struct {
+		name     string
+		home     Location
+		fragment AllocationFragment
+		want     bool
+	}{
+		{"address region ends", Location{Kind: LocationSpill, Bank: BankGPR}, AllocationFragment{Reg: address, Start: lp, End: cp - 1, Location: original}, false},
+		{"address region spans fold", Location{Kind: LocationSpill, Bank: BankGPR}, AllocationFragment{Reg: address, Start: lp, End: cp, Location: original}, true},
+		{"new region overwrites address", original, AllocationFragment{Reg: f.Insts[fold.First].Result, Start: cp, End: cp + 6, Location: original}, false},
+		{"victim restore overwrites address", original, AllocationFragment{Reg: f.Insts[fold.First].Result, Start: lp - 1, End: cp - 1, Location: original, Victim: f.Insts[fold.Second].Result}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			allocation.Locations[address] = tc.home
+			allocation.Fragments = []AllocationFragment{tc.fragment}
+			candidate, err := PlanPostRA(TargetAMD64, f, selection, schedule, allocation, exit, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := false
+			for _, r := range candidate.Rewrites {
+				got = got || r.Kind == RewriteAMD64MemoryFold && r.First == fold.First && r.Second == fold.Second
+			}
+			if got != tc.want {
+				t.Fatalf("memory fold across allocation transition = %v, want %v", got, tc.want)
+			}
+		})
+	}
+	allocation.Locations[address] = original
+	allocation.Fragments = nil
+
 	schedule.BlockOf[fold.Second] = schedule.BlockOf[fold.First] + 1
 	plan, err = PlanPostRA(TargetAMD64, f, selection, schedule, allocation, exit, nil)
 	if err != nil {
@@ -751,6 +788,63 @@ func TestPlanPostRAFindsAMD64FullWidthMemoryFold(t *testing.T) {
 	for _, rewrite := range plan.Rewrites {
 		if rewrite.Kind == RewriteAMD64MemoryFold {
 			t.Fatalf("cross-block memory fold = %#v", rewrite)
+		}
+	}
+}
+
+func TestPostRAStoreLoadForwardSurvivesAllocationEdits(t *testing.T) {
+	for _, target := range []Target{TargetAMD64, TargetARM64} {
+		f := &Func{
+			Target: target,
+			Insts: []Inst{
+				{Op: wasm.InstrI32Store, OperandCount: 2},
+				{Op: wasm.InstrI32Load, OperandStart: 2, OperandCount: 1, Result: 3},
+			},
+			Operands: []Operand{{Reg: 1}, {Reg: 2}, {Reg: 1}},
+			VRegs:    []VRegData{{}, {Type: TypeI32, Bank: BankGPR}, {Type: TypeI32, Bank: BankGPR}, {Type: TypeI32, Bank: BankGPR}},
+			Blocks:   []Block{{InstCount: 2}},
+		}
+		loc := Location{Kind: LocationRegister, Bank: BankGPR, Index: 1}
+		spill := Location{Kind: LocationSpill, Bank: BankGPR}
+		for _, tc := range []struct {
+			name                   string
+			home                   Location
+			fragment               AllocationFragment
+			cold, crossBlock, want bool
+		}{
+			{name: "unchanged", home: loc, want: true},
+			{name: "regional source", home: spill, fragment: AllocationFragment{Reg: 2, Start: 2, End: 8, Location: loc}, want: true},
+			{name: "source region ends", home: spill, fragment: AllocationFragment{Reg: 2, Start: 2, End: 7, Location: loc}},
+			{name: "new region overwrites dead source", home: loc, fragment: AllocationFragment{Reg: 3, Start: 8, End: 8, Location: loc}},
+			{name: "victim restore overwrites dead source", home: loc, fragment: AllocationFragment{Reg: 3, Start: 2, End: 7, Location: loc, Victim: 1}},
+			{name: "cold rematerialization", home: loc, cold: true},
+			{name: "block boundary", home: loc, crossBlock: true},
+		} {
+			t.Run(fmt.Sprintf("%v/%s", target, tc.name), func(t *testing.T) {
+				schedule := &Schedule{Order: []uint32{0, 1}, BlockOf: []railssa.BlockID{0, 0}}
+				if tc.crossBlock {
+					schedule.BlockOf[1] = 1
+				}
+				f.Operands[1].Flags = 0
+				if tc.cold {
+					f.Operands[1].Flags = OperandColdRemat
+				}
+				allocation := &GreedyAllocation{Allocation: Allocation{Locations: []Location{{}, {Kind: LocationRegister, Bank: BankGPR}, tc.home, loc}, InstructionPositions: []uint32{0, 1}}}
+				if tc.fragment.Reg != 0 {
+					allocation.Fragments = []AllocationFragment{tc.fragment}
+				}
+				plan, err := PlanPostRAVerifiedAllocation(target, f, &SelectionPlan{Selections: make([]Selection, 2)}, schedule, allocation, &SSAExit{}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := false
+				for _, r := range plan.Rewrites {
+					got = got || r.Kind == RewriteLoadStoreForward
+				}
+				if got != tc.want {
+					t.Fatalf("forward = %v, want %v", got, tc.want)
+				}
+			})
 		}
 	}
 }

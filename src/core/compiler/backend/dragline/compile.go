@@ -75,7 +75,7 @@ type Compiler struct {
 
 const draglinePrivateABIRevision = 2
 
-var draglineCompilerRevision = sha256.Sum256([]byte("wago-dragline-function-artifact-v63"))
+var draglineCompilerRevision = sha256.Sum256([]byte("wago-dragline-function-artifact-v77"))
 
 func (c Compiler) Compile(input corecompiler.Input) (corecompiler.Output, error) {
 	if c.Metrics != nil {
@@ -825,6 +825,11 @@ func buildCompilerFunc(m *wasm.Module, localIndex int, scratch *railssa.StackFun
 	if stackErr == nil {
 		if inlined := boundedRecursiveInlineModule(m, localIndex, stack); inlined != nil {
 			stack, stackErr = railssa.BuildStackFuncInto(inlined, localIndex, scratch)
+		} else if inlined, offsets := boundedLeafInlineModule(m, localIndex, stack); inlined != nil {
+			stack, stackErr = railssa.BuildStackFuncInto(inlined, localIndex, scratch)
+			if stackErr == nil {
+				restoreLeafInlineOffsets(stack, offsets)
+			}
 		}
 	}
 	if stackErr == nil && (stackHasControl(stack) || len(stack.Params) > 4) {

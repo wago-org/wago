@@ -17,7 +17,7 @@ func TestCompilerReusesRelocatableFunctionArtifacts(t *testing.T) {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
 		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x41, 7, 0x41, 1, 0x6a, 0x0b}),
+			wasmtest.Code(nonInlinableLeafBody([]byte{0x41, 7, 0x41, 1, 0x6a, 0x0b})),
 			wasmtest.Code([]byte{0x10, 0, 0x0b}),
 		)),
 	)
@@ -429,7 +429,7 @@ func TestFunctionArtifactCapturesStructuredStackSafepoint(t *testing.T) {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
 		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x41, 0x07, 0x0b}),
+			wasmtest.Code(nonInlinableLeafBody([]byte{0x41, 0x07, 0x0b})),
 			wasmtest.Code([]byte{
 				0x02, 0x7f, // block (result i32)
 				0x10, 0x00, // call 0

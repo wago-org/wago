@@ -8,21 +8,22 @@ import "fmt"
 // ScorePostRAOpportunities. BetterThan preserves the calibrated production debt
 // ordering; Dominates exposes the independent dimensions for frontier analysis.
 type ScheduleScore struct {
-	EstimatedCycles   uint64
-	ResourceCycles    uint64
-	SelectedBytes     uint64
-	PostRARewrites    uint32
-	PostRAElisions    uint32
-	PostRAWrapSpills  uint32
-	EliminatedMoves   uint32
-	WeightedSpillDebt uint64
-	PhysicalCopies    uint32
-	CopyCycles        uint32
-	CopyMotion        uint32
-	FixedRepairs      uint32
-	BrokenFusions     uint32
-	LoopInvariantOps  uint32
-	Kind              ScheduleKind
+	NativeResourceCost uint64
+	EstimatedCycles    uint64
+	ResourceCycles     uint64
+	SelectedBytes      uint64
+	PostRARewrites     uint32
+	PostRAElisions     uint32
+	PostRAWrapSpills   uint32
+	EliminatedMoves    uint32
+	WeightedSpillDebt  uint64
+	PhysicalCopies     uint32
+	CopyCycles         uint32
+	CopyMotion         uint32
+	FixedRepairs       uint32
+	BrokenFusions      uint32
+	LoopInvariantOps   uint32
+	Kind               ScheduleKind
 }
 
 // ScorePostRAOpportunities attaches verifier-gated target opportunities to a
@@ -183,7 +184,8 @@ func saturatingMultiply(a, b uint64) uint64 {
 // use this alone for production selection until retry-complete post-RA
 // opportunity and realized-byte costs are present as well.
 func (s ScheduleScore) Dominates(other ScheduleScore) bool {
-	noWorse := s.EstimatedCycles <= other.EstimatedCycles &&
+	noWorse := s.NativeResourceCost <= other.NativeResourceCost &&
+		s.EstimatedCycles <= other.EstimatedCycles &&
 		s.ResourceCycles <= other.ResourceCycles &&
 		s.SelectedBytes <= other.SelectedBytes &&
 		s.PostRAElisions >= other.PostRAElisions &&
@@ -196,7 +198,8 @@ func (s ScheduleScore) Dominates(other ScheduleScore) bool {
 		s.FixedRepairs <= other.FixedRepairs &&
 		s.BrokenFusions <= other.BrokenFusions &&
 		s.LoopInvariantOps >= other.LoopInvariantOps
-	strictlyBetter := s.EstimatedCycles < other.EstimatedCycles ||
+	strictlyBetter := s.NativeResourceCost < other.NativeResourceCost ||
+		s.EstimatedCycles < other.EstimatedCycles ||
 		s.ResourceCycles < other.ResourceCycles ||
 		s.SelectedBytes < other.SelectedBytes ||
 		s.PostRAElisions > other.PostRAElisions ||

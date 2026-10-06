@@ -686,6 +686,12 @@ func BenchmarkExec(b *testing.B) {
 	benchmarkExec(b, wago.NewRuntimeConfig())
 }
 
+// BenchmarkRailshotNativeExec matches Dragline's target policy for native
+// compiler comparisons; BenchmarkExec retains its public default policy.
+func BenchmarkRailshotNativeExec(b *testing.B) {
+	benchmarkExec(b, wago.NewRuntimeConfig().WithCompiler(wago.CompilerRailshot).WithTarget(wago.TargetNative))
+}
+
 // BenchmarkDraglineExec runs the same prepared-function execution corpus with
 // Dragline's native target.
 func BenchmarkDraglineExec(b *testing.B) {

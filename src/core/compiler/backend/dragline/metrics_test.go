@@ -1,6 +1,7 @@
 package dragline
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
@@ -585,6 +586,11 @@ func TestCompilerNativeRailMachFixedShiftRepairFinalization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Exercise the legacy CL repair even on BMI2-capable hosts.
+	if runtime.GOARCH == "amd64" {
+		target.FeatureBits[0] &^= uint64(1) << uint16(corecompiler.TargetFeatureAMD64BMI2)
+	}
+
 	stack, err := railssa.BuildStackFunc(m, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -682,7 +688,7 @@ func TestCompilerNativeRailMachCallLiveFinalization(t *testing.T) {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x20, 0, 0x20, 0, 0x10, 1, 0x7c, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0, 0x42, 1, 0x7c, 0x0b}),
+			wasmtest.Code(nonInlinableLeafBody([]byte{0x20, 0, 0x42, 1, 0x7c, 0x0b})),
 		)),
 	)
 	m, err := wasm.DecodeModule(source)
@@ -1320,7 +1326,7 @@ func TestCompilerNativeRailMachDirectCallFinalization(t *testing.T) {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
 		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x20, 0, 0x0b}),
+			wasmtest.Code(nonInlinableLeafBody([]byte{0x20, 0, 0x0b})),
 			wasmtest.Code([]byte{0x20, 0, 0x10, 0, 0x0b}),
 		)),
 	)
@@ -1517,5 +1523,45 @@ func TestCompilerNativeRailMachImportedFloatCallLiveFinalization(t *testing.T) {
 	}
 	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].FrameBytes == 0 {
 		t.Fatalf("%s imported float call-live finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
+func TestMetricsPreserveScheduleSelection(t *testing.T) {
+	// Long scalar chains exercise allocation/retry without relying on corpus
+	// files, including a dependency-linear function with many incoming values.
+	params := make([]wasm.ValType, 24)
+	for i := range params {
+		params[i] = wasm.I64
+	}
+	body := []byte{0x20, 0}
+	for i := byte(1); i < 24; i++ {
+		body = append(body, 0x20, i, 0x7c)
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := corecompiler.Input{Module: m, Source: source, Target: target}
+	plain, err := (Compiler{}).Compile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	measured, err := (Compiler{Metrics: &metrics}).Compile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(plain.Code, measured.Code) {
+		t.Fatal("metrics changed generated code")
 	}
 }

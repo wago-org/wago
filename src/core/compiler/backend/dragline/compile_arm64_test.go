@@ -252,6 +252,22 @@ func TestARM64RailMachPredicatesOnlyRegisterEdgeCopies(t *testing.T) {
 		t.Fatalf("predicated edge copy = %x, want %x", got.B, want.B)
 	}
 
+	plan.Machine.VRegs[1].Flags = railmach.VRegRematerializable
+	plan.Machine.VRegs[1].Def = 3
+	if !arm64RailMachCanPredicateEdgeMoves(plan, 0) {
+		t.Fatal("materialized constant register was not predicable")
+	}
+	plan.ImmediateSkip.prepare(1, true)
+	plan.ImmediateSkip.set(0, true)
+	if arm64RailMachCanPredicateEdgeMoves(plan, 0) {
+		t.Fatal("folded constant register was predicable")
+	}
+	var folded arm64.Asm
+	if err := emitARM64RailMachPredicatedEdgeMoves(&folded, plan, 0, arm64.CondNE); err == nil || len(folded.B) != 0 {
+		t.Fatalf("folded constant emitted predicated code %x, err %v", folded.B, err)
+	}
+	plan.ImmediateSkip.set(0, false)
+
 	plan.Exit.Moves[0].Src.Kind = railmach.LocationSpill
 	if arm64RailMachCanPredicateEdgeMoves(plan, 0) {
 		t.Fatal("spill edge copy was predicable")
@@ -3377,4 +3393,113 @@ func referencePowerRotation(wide, right bool, exponent uint32) (uint64, uint64) 
 		b = rotate(b, a)
 	}
 	return a, b
+}
+
+func TestARM64RailMachCycleTemporaryPreservesVectorWidth(t *testing.T) {
+	for _, typ := range []railmach.MachineType{railmach.TypeF32, railmach.TypeF64, railmach.TypeV128} {
+		for _, shuffled := range []bool{false} {
+			for temporary := uint8(0); temporary < 2; temporary++ {
+				for index := uint16(0); index < 4; index++ {
+					loc := railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: index}
+					machine := railmach.Func{VRegs: []railmach.VRegData{{}, {Type: typ, Bank: railmach.BankFPR}}}
+					exit := railmach.SSAExit{Moves: []railmach.PhysicalMove{{Kind: railmach.MoveSaveTemporary, Src: loc, Reg: 1, Bank: railmach.BankFPR, Temporary: temporary}}}
+					plan := nativeBackendPlan{Machine: &machine, Exit: &exit}
+					var got, want arm64.Asm
+					if err := emitARM64RailMachMoveRange(&got, &plan, railmach.MoveRange{Count: 1}); err != nil {
+						t.Fatal(err)
+					}
+					dst := arm64.Reg(31)
+					if temporary == 1 {
+						dst = 30
+					}
+					src := arm64RailMachPhysical(loc)
+					if src != dst {
+						if typ == railmach.TypeV128 {
+							want.NeonOrr16b(dst, src, src)
+						} else {
+							want.FmovReg(dst, src, typ == railmach.TypeF64)
+						}
+					}
+					if !bytes.Equal(got.B, want.B) {
+						t.Errorf("type=%d shuffled=%t temp=%d index=%d: got %x want %x", typ, shuffled, temporary, index, got.B, want.B)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestARM64RailMachEmitsReturnAtExitLayoutPosition(t *testing.T) {
+	// The returning arm is laid out before the reachable trapping arm. The
+	// synthetic exit must contain the epilogue, so its branches cannot land
+	// on the cold arm that follows it in physical layout.
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x04, 0x7f, // if (result i32)
+			0x41, 0x2a, // i32.const 42
+			0x05, 0x00, // else; unreachable
+			0x0b, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Layout == nil {
+		t.Fatal("missing block layout")
+	}
+	exitPosition := -1
+	coldAfterExit := false
+	for position, blockID := range plan.Layout.Order {
+		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
+			exitPosition = position
+		} else if exitPosition >= 0 && (plan.Simplified == nil || plan.Simplified.Reachable[blockID]) {
+			coldAfterExit = true
+		}
+	}
+	if !coldAfterExit {
+		t.Fatalf("fixture must place a reachable cold block after exit: %v", plan.Layout.Order)
+	}
+	var metadata functionEmissionMetadata
+	var metrics FunctionMetrics
+	code, internalOffset, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, &metrics, &metadata)
+	if err != nil || !ok {
+		t.Fatalf("RailMach finalization = ok %t, err %v", ok, err)
+	}
+	returnOffset := -1
+	for offset := internalOffset; offset+4 <= len(code); offset += 4 {
+		if binary.LittleEndian.Uint32(code[offset:]) == 0xd65f03c0 {
+			returnOffset = offset
+			break
+		}
+	}
+	firstTrap := len(code)
+	for _, trap := range metadata.Traps {
+		if trap.Code == 1 {
+			firstTrap = min(firstTrap, int(trap.Offset))
+		}
+	}
+	if returnOffset < 0 || firstTrap == len(code) || returnOffset >= firstTrap {
+		t.Fatalf("return offset %d must precede reachable cold trap at %d", returnOffset, firstTrap)
+	}
 }

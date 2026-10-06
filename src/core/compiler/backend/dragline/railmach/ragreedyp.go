@@ -103,6 +103,7 @@ type AllocationFragment struct {
 }
 
 type callPosition struct {
+	setupGPR    uint64
 	instruction uint32
 	position    uint32
 }
@@ -755,7 +756,7 @@ func collectCallPositions(f *Func, allocation *Allocation, reuse []callPosition)
 		// Operands are consumed at +2 and the result becomes live at +3.
 		// Sampling later would incorrectly classify the call's own result as
 		// crossing the call and promote it into a preserved register.
-		calls = append(calls, callPosition{instruction: uint32(instructionID), position: allocation.InstructionPositions[instructionID]*6 + 2})
+		calls = append(calls, callPosition{setupGPR: callSetupGPRClobbers(f.Target, instruction), instruction: uint32(instructionID), position: allocation.InstructionPositions[instructionID]*6 + 2})
 	}
 	slices.SortFunc(calls, func(a, b callPosition) int {
 		if a.position != b.position {
@@ -782,6 +783,9 @@ func allocationCallSurvivorMask(config GreedyConfig, allocation *Allocation, int
 			if interval.Bank == BankFPR {
 				mask = override.FPR
 			}
+		}
+		if interval.Bank == BankGPR {
+			mask |= call.setupGPR
 		}
 		survivors &^= mask
 	}

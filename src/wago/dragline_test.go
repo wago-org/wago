@@ -8428,3 +8428,63 @@ func TestRuntimeConfigRejectsUnknownCompiler(t *testing.T) {
 		t.Fatal("unknown compiler engine accepted")
 	}
 }
+
+func TestDraglineV128LoopRegisterSwapPreservesAllLanes(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host does not support SIMD execution")
+	}
+	// Two vector locals exchange identities on a self-loop edge. Scalar MOVSS
+	// cannot save the full v128 value when the parallel copy needs a temporary.
+	module := []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x05, 0x01, 0x60, 0x01, 0x7f, 0x00, 0x03,
+		0x02, 0x01, 0x00, 0x05, 0x03, 0x01, 0x00, 0x01, 0x07, 0x10, 0x02, 0x06, 0x6d, 0x65, 0x6d, 0x6f,
+		0x72, 0x79, 0x02, 0x00, 0x03, 0x72, 0x75, 0x6e, 0x00, 0x00, 0x0a, 0x3a, 0x01, 0x38, 0x01, 0x02,
+		0x7b, 0x41, 0x00, 0xfd, 0x00, 0x04, 0x00, 0x21, 0x01, 0x41, 0x10, 0xfd, 0x00, 0x04, 0x00, 0x21,
+		0x02, 0x03, 0x40, 0x20, 0x01, 0x20, 0x02, 0x21, 0x01, 0x21, 0x02, 0x20, 0x00, 0x41, 0x01, 0x6b,
+		0x22, 0x00, 0x0d, 0x00, 0x0b, 0x41, 0x20, 0x20, 0x01, 0xfd, 0x0b, 0x04, 0x00, 0x41, 0x30, 0x20,
+		0x02, 0xfd, 0x0b, 0x04, 0x00, 0x0b,
+	}
+	for _, tc := range []struct {
+		name string
+		mode BoundsCheckMode
+	}{{"explicit", BoundsChecksExplicit}, {"signals", BoundsChecksSignalsBased}} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.mode == BoundsChecksSignalsBased && !guardPageBuilt {
+				t.Skip("signal bounds require wago_guardpage")
+			}
+			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(tc.mode), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			in, err := Instantiate(c, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			mem := in.Memory().UnsafeBytes()
+			for seed := 0; seed < 4; seed++ {
+				for n := 1; n <= 17; n++ {
+					for i := range mem {
+						mem[i] = byte(i*7 + 1 + seed)
+					}
+					want := append([]byte(nil), mem...)
+					if n%2 == 1 {
+						copy(want[32:48], mem[16:32])
+						copy(want[48:64], mem[:16])
+					} else {
+						copy(want[32:64], mem[:32])
+					}
+					if _, err := in.Invoke("run", uint64(n)); err != nil {
+						t.Fatal(err)
+					}
+					for i, got := range mem {
+						if got != want[i] {
+							t.Fatalf("seed=%d n=%d byte=%d got=%02x want=%02x", seed, n, i, got, want[i])
+						}
+					}
+				}
+			}
+		})
+	}
+}

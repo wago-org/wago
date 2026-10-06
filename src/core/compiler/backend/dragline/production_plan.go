@@ -414,13 +414,13 @@ func (p *nativeBackendPlanner) evaluateScheduleCandidates(machine *railmach.Func
 			return
 		}
 		scores[index], errs[index] = railmach.ScoreVerifiedScheduleCandidate(machine, selection, dag, candidate, allocation, exit)
-		if errs[index] == nil && p.candidatePostRA {
+		if errs[index] == nil && (p.candidatePostRA || machine.Target == railmach.TargetAMD64) {
 			postRA, err := railmach.PlanPostRAVerifiedAllocation(machine.Target, machine, selection, candidate, allocation, exit, ref.postRA)
 			if err != nil {
 				errs[index] = err
 				return
 			}
-			scores[index] = railmach.ScorePostRAOpportunities(scores[index], candidate, postRA)
+			scores[index] = railmach.ScoreAllocatedEmission(scores[index], machine, selection, candidate, allocation, exit, postRA)
 		}
 	}
 	if parallel {
@@ -1432,6 +1432,17 @@ func planInstructionsAdjacent(schedule *railmach.Schedule, first, second uint32)
 }
 
 func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, target railmach.Target, instructions int, usesFPR bool, candidate, retained railmach.ScheduleScore) bool {
+	if objective == corecompiler.ObjectiveSpeed && target == railmach.TargetAMD64 && candidate.NativeResourceCost != 0 && retained.NativeResourceCost != 0 && candidate.NativeResourceCost != retained.NativeResourceCost {
+		// This estimate omits dependency stalls and some finalizer rewrites.
+		// Small resource differences do not justify overriding the established
+		// debt policy: native probes found regressions from sub-2% estimates.
+		larger := max(candidate.NativeResourceCost, retained.NativeResourceCost)
+		smaller := min(candidate.NativeResourceCost, retained.NativeResourceCost)
+		if larger-smaller > larger/50 {
+			return candidate.NativeResourceCost < retained.NativeResourceCost
+		}
+	}
+
 	if objective == corecompiler.ObjectiveSpeed {
 		licmWithinBound := func(hoisted, other railmach.ScheduleScore) bool {
 			spillWithinBound := hoisted.WeightedSpillDebt <= other.WeightedSpillDebt
@@ -1950,6 +1961,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		amd64ImmediateRemainders = nativeAMD64ImmediateRemainders(machine)
 		amd64SignedImmediateRemainders = nativeAMD64SignedImmediateRemainders(machine)
 		refineAMD64ConstantDivisionConstraints(machine, amd64ImmediateRemainders, amd64SignedImmediateRemainders)
+		if target.HasFeature(corecompiler.TargetFeatureAMD64BMI2) {
+			refineAMD64BMI2ShiftConstraints(machine)
+		}
 	}
 	if err := railmach.BindBoundsProofs(machine, emission); err != nil {
 		return nil, err
@@ -2118,12 +2132,12 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if candidateErr != nil {
 				return nil, candidateErr
 			}
-			if p.candidatePostRA {
+			if p.candidatePostRA || machineTarget == railmach.TargetAMD64 && !fastMachine {
 				candidatePostRA, candidateErr := railmach.PlanPostRAVerifiedAllocation(machineTarget, machine, selection, candidate, candidateAllocation, candidateExit, &p.postRA)
 				if candidateErr != nil {
 					return nil, candidateErr
 				}
-				score = railmach.ScorePostRAOpportunities(score, candidate, candidatePostRA)
+				score = railmach.ScoreAllocatedEmission(score, machine, selection, candidate, candidateAllocation, candidateExit, candidatePostRA)
 			}
 			initialScheduleScores[index] = score
 			if !haveBest || nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, score, best) {
@@ -2212,12 +2226,12 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				if retryErr != nil {
 					return nil, retryErr
 				}
-				if p.candidatePostRA {
+				if p.candidatePostRA || machineTarget == railmach.TargetAMD64 && !fastMachine {
 					candidatePostRA, retryErr := railmach.PlanPostRAVerifiedAllocation(machineTarget, machine, selection, candidate, candidateAllocation, candidateExit, &p.postRA)
 					if retryErr != nil {
 						return nil, retryErr
 					}
-					candidateScore = railmach.ScorePostRAOpportunities(candidateScore, candidate, candidatePostRA)
+					candidateScore = railmach.ScoreAllocatedEmission(candidateScore, machine, selection, candidate, candidateAllocation, candidateExit, candidatePostRA)
 				}
 				retryScheduleScores[index] = candidateScore
 				if nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, candidateScore, retryBest) {
@@ -2409,6 +2423,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	immediatePlan := nativeBackendPlan{Machine: machine, Selection: selection, Allocation: allocation, AMD64ImmediateRemainders: amd64ImmediateRemainders, AMD64SignedImmediateRemainders: amd64SignedImmediateRemainders}
 	buildNativeImmediateCombinations(&immediatePlan, &p.immediateProducer, &p.immediateSkip, p.immediateUses)
 	planNativeAMD64SpilledAddressRematerialization(machine, allocation, &p.amd64AddressRemat, &p.immediateSkip, &p.amd64AddressState)
+	planAMD64LateFloatMemoryFolds(stack, machine, schedule, allocation, &p.postRASkip, &p.postRAMemoryFrom, p.postRAForwardFrom, p.amd64AddressRemat, p.immediateUses)
 	if machine.Target == railmach.TargetARM64 {
 		buildNativeARM64LogicalImmediateCombinations(&immediatePlan, &p.immediateProducer, &p.immediateSkip, p.immediateUses)
 		preserveNativeARM64RepeatedAddInputs(machine, schedule, p.postRARepeatFirst, &p.immediateSkip)
@@ -2840,6 +2855,30 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	p.observeCapacity()
 	return &p.plan, nil
+}
+
+func amd64BMI2ShiftKind(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU:
+		return true
+	}
+	return false
+}
+
+// BMI2 shifts consume their count from any GPR. Release the legacy CL
+// constraint before scheduling and allocation so no repair moves are planned.
+func refineAMD64BMI2ShiftConstraints(machine *railmach.Func) {
+	for id, inst := range machine.Insts {
+		if !amd64BMI2ShiftKind(railmach.SemanticOpcode(inst.Op)) {
+			continue
+		}
+		operands := machine.InstructionOperands(uint32(id))
+		if len(operands) != 2 {
+			continue
+		}
+		operands[1].Fixed = railmach.NoFixedReg
+		operands[1].Flags &^= railmach.OperandFixed
+	}
 }
 
 // refineAMD64ConstantDivisionConstraints releases the fixed RAX dividend

@@ -61,6 +61,19 @@ type ABIContract struct {
 // both native targets. Floating values carry their raw bits in these GPRs.
 const PrivateResultRegisters = 4
 
+// AMD64 stages its eighth private argument in R12 (allocation index 9).
+// R12 is otherwise callee-saved: preserving it inside the callee cannot undo
+// the caller's argument write. Keep setup effects separate from body/IPRA
+// clobbers, and save the enclosing function's incoming R12 even when no value
+// was allocated there. Indirect-call selector operands may conservatively
+// trigger this at seven actual arguments, which only costs preservation.
+func callSetupGPRClobbers(target Target, instruction Inst) uint64 {
+	if target == TargetAMD64 && IsCall(instruction.Op) && instruction.OperandCount >= 8 {
+		return 1 << 9
+	}
+	return 0
+}
+
 type CallContract struct {
 	Instruction  uint32
 	Callee       uint32
@@ -164,6 +177,9 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		} else {
 			contract.GPRClobbers |= uint64(1) << index
 		}
+	}
+	for _, instruction := range f.Insts {
+		contract.GPRClobbers |= callSetupGPRClobbers(f.Target, instruction)
 	}
 	config := DefaultGreedyConfig(f.Target)
 	callerGPRs, callerFPRs := config.CallerMask(BankGPR), config.CallerMask(BankFPR)
@@ -287,6 +303,9 @@ func PruneSkippedDefinitionClobbers(f *Func, allocation *GreedyAllocation, contr
 	}
 	for _, move := range allocation.FixedMoves {
 		mark(Location{Kind: LocationRegister, Bank: move.Bank, Index: uint16(move.Physical)}, false)
+	}
+	for _, instruction := range f.Insts {
+		retainedGPR |= callSetupGPRClobbers(f.Target, instruction)
 	}
 	registerResults := min(len(f.Results), PrivateResultRegisters)
 	directARM64 := directPreparedARM64Contract(f, allocation)

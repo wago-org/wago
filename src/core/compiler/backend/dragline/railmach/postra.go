@@ -48,9 +48,11 @@ type PostRAPlan struct {
 	EliminatedMoves uint32
 	ScanLimit       uint8
 
-	position []uint32
-	seen     []bool
-	uses     []uint32
+	scoreFlags  []uint8
+	scoreFolded []VReg
+	position    []uint32
+	seen        []bool
+	uses        []uint32
 
 	wrapSpillInline [postRAInlineWrapSpills]uint32
 }
@@ -92,7 +94,7 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 	position := resize(reuse.position, len(f.Insts))
 	seen := resize(reuse.seen, len(f.Insts))
 	uses := resize(reuse.uses, len(f.VRegs))
-	*reuse = PostRAPlan{Rewrites: rewrites, WrapSpills: wrapSpills, EliminatedMoves: exit.Debt.Coalesced, ScanLimit: PostRAScanLimit, position: position, seen: seen, uses: uses}
+	*reuse = PostRAPlan{Rewrites: rewrites, WrapSpills: wrapSpills, EliminatedMoves: exit.Debt.Coalesced, ScanLimit: PostRAScanLimit, position: position, seen: seen, uses: uses, scoreFlags: reuse.scoreFlags, scoreFolded: reuse.scoreFolded}
 	for instructionID := range f.Insts {
 		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
 			uses[operand.Reg]++
@@ -144,11 +146,13 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 					reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: uint32(instructionID), Second: uint32(instructionID + distance), Kind: RewriteARM64PrePostIndex})
 					break
 				}
-				if adjacent && forwardableStoreLoad(f, uint32(instructionID), uint32(instructionID+distance)) {
+				if adjacent && sameBlock && forwardableStoreLoad(f, uint32(instructionID), uint32(instructionID+distance)) &&
+					postRAOperandSurvives(allocation, f.InstructionOperands(uint32(instructionID))[1], uint32(instructionID), uint32(instructionID+distance)) {
 					reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: uint32(instructionID), Second: uint32(instructionID + distance), Kind: RewriteLoadStoreForward})
 					break
 				}
-				if target == TargetAMD64 && adjacent && sameBlock && amd64FoldableLoadConsumer(f, uint32(instructionID), uint32(instructionID+distance), uses) {
+				if target == TargetAMD64 && adjacent && sameBlock && amd64FoldableLoadConsumer(f, uint32(instructionID), uint32(instructionID+distance), uses) &&
+					amd64FoldedAddressSurvives(f, allocation, uint32(instructionID), uint32(instructionID+distance)) {
 					reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: uint32(instructionID), Second: uint32(instructionID + distance), Kind: RewriteAMD64MemoryFold})
 					break
 				}
@@ -863,6 +867,43 @@ func arm64CondIncrementable(f *Func, producerID, consumerID uint32, uses []uint3
 	return len(operands) == 2 && (operands[0].Reg == producer.Result || operands[1].Reg == producer.Result)
 }
 
+// A folded load executes at its consumer's position, after regional entry and
+// exit edits there. Its address must survive those edits in the location the
+// load would have read. Semantic adjacency alone does not guarantee that.
+func amd64FoldedAddressSurvives(f *Func, allocation *GreedyAllocation, loadID, consumerID uint32) bool {
+	operands := f.InstructionOperands(loadID)
+	return len(operands) == 1 && postRAOperandSurvives(allocation, operands[0], loadID, consumerID)
+}
+
+// Late rewrites may add a use after an operand's final allocated use. Check
+// both its regional location and edits that can reuse that location for a
+// different value; LocationAt alone does not describe such overwrites.
+func postRAOperandSurvives(allocation *GreedyAllocation, operand Operand, firstID, secondID uint32) bool {
+	if operand.Flags&OperandColdRemat != 0 {
+		return false
+	}
+	value := operand.Reg
+	start := allocation.InstructionPositions[firstID]*6 + 2
+	end := allocation.InstructionPositions[secondID]*6 + 2
+	location := allocation.LocationAt(value, start)
+	if location != allocation.LocationAt(value, end) {
+		return false
+	}
+	if location.Kind != LocationRegister {
+		return true
+	}
+	for _, fragment := range allocation.Fragments {
+		if fragment.Location != location {
+			continue
+		}
+		if fragment.Start > start && fragment.Start <= end && fragment.Reg != value ||
+			fragment.Victim != 0 && fragment.End >= start && fragment.End < end && fragment.Victim != value {
+			return false
+		}
+	}
+	return true
+}
+
 func amd64FoldableLoadConsumer(f *Func, loadID, consumerID uint32, uses []uint32) bool {
 	load, consumer := f.Insts[loadID], f.Insts[consumerID]
 	if (load.Op != wasm.InstrI32Load && load.Op != wasm.InstrI64Load && load.Op != wasm.InstrF32Load && load.Op != wasm.InstrF64Load) ||
@@ -1233,4 +1274,64 @@ func ARM64LogicalShiftImmediate(f *Func, producer, consumer uint32) (base VReg, 
 		return 0, 0, 0, 0, false, false
 	}
 	return base, logical, shift, uint8(f.Insts[constantID].Aux & mask), wide, true
+}
+
+// AMD64FoldedAddressSurvivesWindow proves that delaying a load does not
+// extend or cross a hole in its address lifetime. Regional transitions and
+// intervening definitions must also preserve the physical address location.
+func AMD64FoldedAddressSurvivesWindow(f *Func, schedule *Schedule, allocation *GreedyAllocation, loadID, consumerID uint32) bool {
+	if f == nil || schedule == nil || allocation == nil || int(loadID) >= len(f.Insts) || int(consumerID) >= len(f.Insts) || len(allocation.InstructionPositions) != len(f.Insts) || len(schedule.Order) != len(f.Insts) || len(schedule.BlockOf) != len(f.Insts) {
+		return false
+	}
+	if allocation.InstructionPositions[consumerID] <= allocation.InstructionPositions[loadID] || schedule.BlockOf[loadID] != schedule.BlockOf[consumerID] {
+		return false
+	}
+	if !amd64FoldedAddressSurvives(f, allocation, loadID, consumerID) {
+		return false
+	}
+	value := f.InstructionOperands(loadID)[0].Reg
+	start := allocation.InstructionPositions[loadID]*6 + 2
+	end := allocation.InstructionPositions[consumerID]*6 + 2
+	location := allocation.LocationAt(value, start)
+	if location.Kind == LocationRematerialize {
+		data := f.VRegs[value]
+		if data.Def%6 != 3 || int(data.Def/6) >= len(f.Insts) {
+			return false
+		}
+		producer := f.Insts[data.Def/6]
+		op := SemanticOpcode(producer.Op)
+		return producer.Result == value && (op == wasm.InstrI32Const || op == wasm.InstrI64Const)
+	}
+	if location.Kind != LocationRegister && location.Kind != LocationSpill {
+		return false
+	}
+	// Keep the delayed read inside the allocator's existing live interval.
+	live := false
+	for _, interval := range allocation.Intervals {
+		if interval.Reg != value || interval.Start > start || interval.End < end {
+			continue
+		}
+		if interval.Flags&liveIntervalSegmented == 0 {
+			live = true
+		} else {
+			for _, segment := range allocationIntervalSegments(&allocation.Allocation, interval) {
+				live = live || segment.Start <= start && segment.End >= end
+			}
+		}
+		break
+	}
+	if !live {
+		return false
+	}
+	for pos := allocation.InstructionPositions[loadID] + 1; pos < allocation.InstructionPositions[consumerID]; pos++ {
+		id := schedule.Order[pos]
+		in := f.Insts[id]
+		for ordinal := uint32(0); ordinal < in.ResultCount(); ordinal++ {
+			result := in.Result + VReg(ordinal)
+			if f.VRegs[result].Flags&VRegElided == 0 && result != value && allocation.LocationAt(result, pos*6+3) == location {
+				return false
+			}
+		}
+	}
+	return true
 }

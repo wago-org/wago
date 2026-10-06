@@ -491,6 +491,12 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			}
 			fusionBefore[producer] = consumer
 			fusionSource[consumer] = producer
+			// A sink into the comparison would form a three-instruction
+			// adjacency chain. Its first link could force the comparison before
+			// all other instructions, violating terminal branch placement.
+			if incoming := sinkProducer[producer]; incoming != ^uint32(0) {
+				sinkBefore[incoming], sinkProducer[producer] = ^uint32(0), ^uint32(0)
+			}
 			if sinkProducer[consumer] == producer {
 				sinkBefore[producer] = ^uint32(0)
 				sinkProducer[consumer] = ^uint32(0)
@@ -657,7 +663,8 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 						target = reuse.lateBefore[previous]
 					}
 				}
-				if target < uint32(len(remaining)) && remaining[target] && ready(railssa.BlockID(blockID), target, remaining) {
+				if target < uint32(len(remaining)) && remaining[target] &&
+					(!scheduleControlOp(f.Insts[target].Op) || pendingCount == 1) && ready(railssa.BlockID(blockID), target, remaining) {
 					best = target
 				}
 			}
@@ -1069,6 +1076,7 @@ func validateInductionPlacement(f *Func, induction railssa.Induction) (instructi
 }
 
 func scheduleControlOp(kind wasm.InstrKind) bool {
+	kind = SemanticOpcode(kind)
 	return kind == wasm.InstrIf || kind == wasm.InstrBr || kind == wasm.InstrBrIf || kind == wasm.InstrBrTable || kind == wasm.InstrReturn || kind == wasm.InstrUnreachable
 }
 
@@ -1278,7 +1286,13 @@ func verifySchedule(f *Func, dag *DependencyDAG, schedule *Schedule, position []
 		if range_.Start != expectedStart || uint64(range_.Start)+uint64(range_.Count) > uint64(len(schedule.Order)) {
 			return fmt.Errorf("railmach: schedule block %d has malformed range %#v", blockID, range_)
 		}
-		for _, instruction := range schedule.Order[range_.Start : range_.Start+range_.Count] {
+		for offset, instruction := range schedule.Order[range_.Start : range_.Start+range_.Count] {
+			if int(instruction) >= len(f.Insts) {
+				return fmt.Errorf("railmach: schedule block %d has invalid instruction %d", blockID, instruction)
+			}
+			if scheduleControlOp(f.Insts[instruction].Op) && uint32(offset)+1 != range_.Count {
+				return fmt.Errorf("railmach: instruction follows control %d in block %d", instruction, blockID)
+			}
 			planned := scheduleInstructionBlock(f, schedule, instruction)
 			if planned != railssa.BlockID(blockID) {
 				return fmt.Errorf("railmach: instruction %d is emitted in block %d, planned %d", instruction, blockID, planned)

@@ -612,6 +612,9 @@ func amd64RailMachMayUseBMI2(plan *nativeBackendPlan) bool {
 	}
 	for instructionID, instruction := range plan.Machine.Insts {
 		if !plan.ImmediateProducer.has(uint32(instructionID)) {
+			if amd64BMI2ShiftKind(railmach.SemanticOpcode(instruction.Op)) {
+				return true
+			}
 			continue
 		}
 		semanticOp := railmach.SemanticOpcode(instruction.Op)
@@ -1152,13 +1155,30 @@ func amd64RailMachCanForwardPendingSpill(plan *nativeBackendPlan, instructionID 
 	if plan == nil || plan.Machine == nil || plan.Allocation == nil || value == 0 || int(value) >= len(plan.Machine.VRegs) || int(instructionID) >= len(plan.Machine.Insts) {
 		return false
 	}
-	if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-		return true
-	}
 	instruction := plan.Machine.Insts[instructionID]
 	semanticOp := railmach.SemanticOpcode(instruction.Op)
 	if semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect || semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill || nativeControlInstruction(instruction.Op) {
 		return false
+	}
+	if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+		// The forwarded value stays in the previous result scratch. Operand
+		// reloads run before this instruction, and shuffled vector allocation
+		// shares that scratch with its first spilled operand. Do not omit the
+		// store/reload when another operand would overwrite the pending value.
+		operands := plan.Machine.InstructionOperands(instructionID)
+		for _, operand := range operands {
+			if operand.Reg == value || plan.Machine.VRegs[operand.Reg].Bank != railmach.BankFPR {
+				continue
+			}
+			if operand.Flags&railmach.OperandColdRemat == 0 && plan.Allocation.LocationAt(operand.Reg, position).Kind == railmach.LocationRegister {
+				continue
+			}
+			ordinal := amd64RailMachOperandScratchOrdinal(plan, operands, operand.Reg, railmach.BankFPR, position)
+			if amd64RailMachFPROperandScratch(plan, ordinal) == amd64RailMachFPRResultScratch(plan) {
+				return false
+			}
+		}
+		return true
 	}
 	if instruction.Result != 0 && plan.Allocation.LocationAt(instruction.Result, position).Kind != railmach.LocationRegister {
 		return false
@@ -1824,6 +1844,23 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			if err := restoreRegionalVictims(nextPosition, ^uint32(0)); err != nil {
 				return nil, 0, true, err
 			}
+			// Allocation transitions belong to schedule positions, even when a late
+			// rewrite removes the instruction that originally occupied that position.
+			for _, fragment := range plan.Allocation.Fragments {
+				if fragment.Start != nextPosition {
+					continue
+				}
+				dst := amd64RailMachPhysical(plan, fragment.Location)
+				if fragment.Victim != 0 {
+					slot := railmach.Location{Kind: railmach.LocationSpill, Bank: fragment.Location.Bank, Index: fragment.VictimSlot}
+					if err := amd64RailMachWriteLocation(&a, plan, fragment.Victim, slot, dst); err != nil {
+						return nil, 0, true, err
+					}
+				}
+				if _, err := readLocation(fragment.Reg, plan.Allocation.Locations[fragment.Reg], dst, 0); err != nil {
+					return nil, 0, true, err
+				}
+			}
 			emitCalleeRestoreBefore(instructionID)
 			instructionResult := plan.Machine.Insts[instructionID].Result
 			if skipInstruction.has(instructionID) || plan.PostRASkip.has(instructionID) || plan.AMD64DeadStoreSkip.has(instructionID) || plan.AMD64GlobalUpdateSkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
@@ -1870,21 +1907,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			if currentResultOverrideValid {
 				currentResultOverride = amd64RailMachPhysical(plan, edgeResultRename.destination)
 			}
-			for _, fragment := range plan.Allocation.Fragments {
-				if fragment.Start != currentPosition {
-					continue
-				}
-				dst := amd64RailMachPhysical(plan, fragment.Location)
-				if fragment.Victim != 0 {
-					slot := railmach.Location{Kind: railmach.LocationSpill, Bank: fragment.Location.Bank, Index: fragment.VictimSlot}
-					if err := amd64RailMachWriteLocation(&a, plan, fragment.Victim, slot, dst); err != nil {
-						return nil, 0, true, err
-					}
-				}
-				if _, err := readLocation(fragment.Reg, plan.Allocation.Locations[fragment.Reg], dst, 0); err != nil {
-					return nil, 0, true, err
-				}
-			}
+
 			foldedImmediateID, hasFoldedImmediate := immediateProducer.get(instructionID)
 			if semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill {
 				// Bulk-memory lowering consumes all three values from registers. Do
@@ -1937,6 +1960,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			shiftRCXRestore := false
 			_, hasImmediateOperand := immediateProducer.get(instructionID)
 			immediateShift := hasImmediateOperand && (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr)
+			variableBMI2Shift := plan.AMD64BMI2 && !immediateShift && amd64BMI2ShiftKind(semanticOp)
 			_, constantUnsignedI32Division := amd64RailMachUnsignedI32ConstantDivisor(plan, instruction, operands)
 			_, constantSignedI32Division := amd64RailMachSignedI32ConstantDivisor(plan, instruction, operands)
 			constantI32InputFree := (constantUnsignedI32Division || constantSignedI32Division) && operands[0].Flags&railmach.OperandFixed == 0
@@ -1953,10 +1977,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 				}
 			}
-			if !immediateShift && (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr) && len(operands) == 2 {
-				lhs := plan.Allocation.LocationAt(operands[0].Reg, currentPosition)
+			if !immediateShift && !variableBMI2Shift && (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr) && len(operands) == 2 {
 				result := plan.Allocation.LocationAt(instruction.Result, currentPosition)
-				lhsInRCX := operands[0].Reg != operands[1].Reg && lhs.Kind == railmach.LocationRegister && amd64RailMachPhysical(plan, lhs) == amd64.RCX
+				// Cold rematerialization can move the input away from its original
+				// allocation. Preserve the register the emitter actually consumes.
+				lhsInRCX := operands[0].Reg != operands[1].Reg && reg(operands[0].Reg) == amd64.RCX
 				resultInRCX := result.Kind == railmach.LocationRegister && amd64RailMachPhysical(plan, result) == amd64.RCX
 				liveAcrossRCX := amd64RailMachRegisterLiveAfter(plan, 1, currentPosition, instruction.Result)
 				if lhsInRCX || liveAcrossRCX {
@@ -1967,7 +1992,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					shiftRCXRestore = liveAcrossRCX && !resultInRCX
 				}
 			}
-			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect && !immediateShift {
+			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect && !immediateShift && !variableBMI2Shift {
 				if moveRange, ok := nativeFixedMoveRange(plan, instructionID); ok {
 					if err := emitAMD64RailMachMoveRange(&a, plan, moveRange); err != nil {
 						return nil, 0, true, err
@@ -2897,10 +2922,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovGprToXmm(dst, src, true)
 					a.Punpcklqdq(dst, dst)
 				default:
-					if dst != src {
-						a.VMovdqu(dst, src)
-					}
-					a.Punpcklqdq(dst, dst)
+					a.VPunpcklqdq(dst, src, src)
 				}
 				continue
 			case railmach.OpAMD64I8x16ExtractLaneS, railmach.OpAMD64I8x16ExtractLaneU,
@@ -3923,12 +3945,19 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					continue
 				}
 				address := amd64.R10
-				if source := reg(operands[0].Reg); source != address {
+				source := reg(operands[0].Reg)
+				// Selected memory32 operands have already been materialized at
+				// their exact width, just like scalar accesses. Keep the full
+				// offset check before narrowing: large offsets need a private
+				// scratch because their address adjustment is destructive.
+				if access.Offset <= math.MaxInt32 && amd64RailMachCanUseMemoryAddressDirectly(plan, operands[0].Reg, currentPosition, uint32(access.Offset), false) {
+					address = source
+				} else if source != address {
 					a.MovReg32(address, source)
 				}
 				end := access.Offset + width
 				if !railMachElidesMemoryBoundsCheck(plan, instructionID) && !memoryChecked(operands[0].Reg, end) {
-					emitAMD64RailMachBoundsCheck(&a, plan, address, end, instructionID, &coldTrapPatches, !store)
+					emitAMD64RailMachBoundsCheck(&a, plan, address, end, instructionID, &coldTrapPatches, !store || address == amd64.RSI)
 				}
 				disp := int32(0)
 				if access.Offset <= math.MaxInt32 {
@@ -4144,7 +4173,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.ShiftImm(shift, dst, 1, false)
 				continue
 			}
-			if shiftRCXSaved && plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister && amd64RailMachPhysical(plan, plan.Allocation.LocationAt(operands[0].Reg, currentPosition)) == amd64.RCX {
+			if shiftRCXSaved && lhs == amd64.RCX {
 				lhs = amd64.R11
 			}
 			producer, hasImmediateProducer := immediateProducer.get(instructionID)
@@ -4256,7 +4285,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						return nil, 0, true, fmt.Errorf("RailMach forwarded store %d has no value", storeID)
 					}
 					value := storeOperands[1].Reg
-					src, err := amd64RailMachReadValue(&a, plan, value, dst)
+					src, err := amd64RailMachReadLocation(&a, plan, value, plan.Allocation.LocationAt(value, currentPosition), dst, 0)
 					if err != nil {
 						return nil, 0, true, err
 					}
@@ -4380,6 +4409,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			if amd64DirectFloatBinaryKind(semanticOp) {
 				if memoryFold {
+					if plan.Machine.Insts[foldedLoadID].Result == operands[0].Reg {
+						lhs = reg(operands[1].Reg)
+					}
 					if err := emitAMD64FoldedFloatMemory(&a, plan, foldedLoadID, instructionID, lhs, dst, fn.Index, metadata, &coldTrapPatches); err != nil {
 						return nil, 0, true, err
 					}
@@ -4679,6 +4711,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr {
+				if variableBMI2Shift {
+					count := reg(operands[1].Reg)
+					switch semanticOp {
+					case wasm.InstrI32Shl, wasm.InstrI64Shl:
+						a.Shlx(dst, lhs, count, wide)
+					case wasm.InstrI32ShrS, wasm.InstrI64ShrS:
+						a.Sarx(dst, lhs, count, wide)
+					case wasm.InstrI32ShrU, wasm.InstrI64ShrU:
+						a.Shrx(dst, lhs, count, wide)
+					}
+					continue
+				}
 				if producer != ^uint32(0) && plan.AMD64BMI2 && (semanticOp == wasm.InstrI32Rotl || semanticOp == wasm.InstrI64Rotl || semanticOp == wasm.InstrI32Rotr || semanticOp == wasm.InstrI64Rotr) && dst != lhs {
 					count := byte(plan.Machine.Insts[producer].Aux)
 					if semanticOp == wasm.InstrI32Rotl || semanticOp == wasm.InstrI64Rotl {
@@ -6541,7 +6585,9 @@ func emitAMD64RailMachMoveRangeAt(a *amd64.Asm, plan *nativeBackendPlan, moveRan
 				return err
 			}
 			if src != temporary {
-				if move.Bank == railmach.BankFPR {
+				if typ == railmach.TypeV128 {
+					a.VMovdqu(temporary, src)
+				} else if move.Bank == railmach.BankFPR {
 					a.FMov(temporary, src, typ == railmach.TypeF64)
 				} else if typ == railmach.TypeI32 {
 					a.MovReg32(temporary, src)
@@ -6554,7 +6600,14 @@ func emitAMD64RailMachMoveRangeAt(a *amd64.Asm, plan *nativeBackendPlan, moveRan
 				return err
 			}
 		case railmach.MoveCopy, railmach.MoveRematerialize:
-			scratch := temporary
+			// R10/XMM15 may hold a parallel-copy cycle across this move.
+			// A constant whose producer was elided is rematerialized here even
+			// when SSA exit originally classified this as an ordinary copy.
+			// Use the separate transfer temporary for spill destinations.
+			scratch := amd64.R11
+			if move.Bank == railmach.BankFPR {
+				scratch = 14
+			}
 			if move.Dst.Kind == railmach.LocationRegister {
 				scratch = amd64RailMachPhysical(plan, move.Dst)
 			}

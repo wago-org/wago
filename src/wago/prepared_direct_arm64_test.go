@@ -344,8 +344,8 @@ func testPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T, module []b
 	if fn.directIntMode != preparedIntCallBlock {
 		t.Fatalf("call_indirect direct mode = %d, want prebound call block", fn.directIntMode)
 	}
-	if !fn.directIntFast || !fn.isolatedFast {
-		t.Fatalf("direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.isolatedFast)
+	if !fn.directIntFast || !fn.directIsolated {
+		t.Fatalf("direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.directIsolated)
 	}
 	if fn.directLeafIntFast {
 		t.Fatal("call_indirect caller selected the call-free direct leaf entry")

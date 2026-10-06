@@ -150,6 +150,20 @@ func (a *Asm) Rorx(dst, src Reg, count byte, w bool) {
 	a.emit(count)
 }
 
+// Shlx, Shrx and Sarx emit BMI2 variable shifts with independent source,
+// destination and count registers. Counts are masked to the operand width.
+func (a *Asm) Shlx(dst, src, count Reg, w bool) {
+	a.vex3RRRMapWL(vexMap0F38, 1, 0xF7, dst, count, src, w, 0)
+}
+
+func (a *Asm) Shrx(dst, src, count Reg, w bool) {
+	a.vex3RRRMapWL(vexMap0F38, 3, 0xF7, dst, count, src, w, 0)
+}
+
+func (a *Asm) Sarx(dst, src, count Reg, w bool) {
+	a.vex3RRRMapWL(vexMap0F38, 2, 0xF7, dst, count, src, w, 0)
+}
+
 func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool, l byte) {
 	rBit, xBit, bBit := byte(1), byte(1), byte(1) // inverted REX.R / REX.X / REX.B
 	if reg >= 8 {
@@ -657,35 +671,36 @@ func (a *Asm) VPshufb(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, ds
 func (a *Asm) VPshufbRipPlaceholder(dst, s1 Reg) int {
 	return a.vex3MemRipPlaceholder(vexMap0F38, 0b01, 0x00, dst, s1)
 }
-func (a *Asm) VPhaddw(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x01, dst, s1, s2) }
-func (a *Asm) VPhaddd(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x02, dst, s1, s2) }
-func (a *Asm) VPmulhrsw(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x0B, dst, s1, s2) }
-func (a *Asm) VPunpcklbw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x60, dst, s1, s2) }
-func (a *Asm) VPunpcklwd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x61, dst, s1, s2) }
-func (a *Asm) VPunpckldq(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x62, dst, s1, s2) }
-func (a *Asm) VPunpckhbw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x68, dst, s1, s2) }
-func (a *Asm) VPunpckhwd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x69, dst, s1, s2) }
-func (a *Asm) VPunpckhdq(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x6A, dst, s1, s2) }
-func (a *Asm) VPpacksswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x63, dst, s1, s2) }
-func (a *Asm) VPpackssdw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x6B, dst, s1, s2) }
-func (a *Asm) VPpackuswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x67, dst, s1, s2) }
-func (a *Asm) VPpackusdw(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x2B, dst, s1, s2) }
-func (a *Asm) VPmaddwd(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xF5, dst, s1, s2) }
-func (a *Asm) VPmullw(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xD5, dst, s1, s2) }
-func (a *Asm) VPminsb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x38, dst, s1, s2) }
-func (a *Asm) VPminub(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xDA, dst, s1, s2) }
-func (a *Asm) VPmaxsb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x3C, dst, s1, s2) }
-func (a *Asm) VPmaxub(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xDE, dst, s1, s2) }
-func (a *Asm) VPavgb(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xE0, dst, s1, s2) }
-func (a *Asm) VPminsw(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xEA, dst, s1, s2) }
-func (a *Asm) VPminuw(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x3A, dst, s1, s2) }
-func (a *Asm) VPmaxsw(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xEE, dst, s1, s2) }
-func (a *Asm) VPmaxuw(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x3E, dst, s1, s2) }
-func (a *Asm) VPavgw(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xE3, dst, s1, s2) }
-func (a *Asm) VPminsd(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x39, dst, s1, s2) }
-func (a *Asm) VPminud(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x3B, dst, s1, s2) }
-func (a *Asm) VPmaxsd(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x3D, dst, s1, s2) }
-func (a *Asm) VPmaxud(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x3F, dst, s1, s2) }
+func (a *Asm) VPhaddw(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x01, dst, s1, s2) }
+func (a *Asm) VPhaddd(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x02, dst, s1, s2) }
+func (a *Asm) VPmulhrsw(dst, s1, s2 Reg)   { a.vex3RRRMap(vexMap0F38, 0b01, 0x0B, dst, s1, s2) }
+func (a *Asm) VPunpcklbw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x60, dst, s1, s2) }
+func (a *Asm) VPunpcklwd(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x61, dst, s1, s2) }
+func (a *Asm) VPunpckldq(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x62, dst, s1, s2) }
+func (a *Asm) VPunpcklqdq(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x6C, dst, s1, s2) }
+func (a *Asm) VPunpckhbw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x68, dst, s1, s2) }
+func (a *Asm) VPunpckhwd(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x69, dst, s1, s2) }
+func (a *Asm) VPunpckhdq(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x6A, dst, s1, s2) }
+func (a *Asm) VPpacksswb(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x63, dst, s1, s2) }
+func (a *Asm) VPpackssdw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x6B, dst, s1, s2) }
+func (a *Asm) VPpackuswb(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x67, dst, s1, s2) }
+func (a *Asm) VPpackusdw(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x2B, dst, s1, s2) }
+func (a *Asm) VPmaddwd(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xF5, dst, s1, s2) }
+func (a *Asm) VPmullw(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xD5, dst, s1, s2) }
+func (a *Asm) VPminsb(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x38, dst, s1, s2) }
+func (a *Asm) VPminub(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xDA, dst, s1, s2) }
+func (a *Asm) VPmaxsb(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x3C, dst, s1, s2) }
+func (a *Asm) VPmaxub(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xDE, dst, s1, s2) }
+func (a *Asm) VPavgb(dst, s1, s2 Reg)      { a.vex3RRR(0b01, 0xE0, dst, s1, s2) }
+func (a *Asm) VPminsw(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xEA, dst, s1, s2) }
+func (a *Asm) VPminuw(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x3A, dst, s1, s2) }
+func (a *Asm) VPmaxsw(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xEE, dst, s1, s2) }
+func (a *Asm) VPmaxuw(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x3E, dst, s1, s2) }
+func (a *Asm) VPavgw(dst, s1, s2 Reg)      { a.vex3RRR(0b01, 0xE3, dst, s1, s2) }
+func (a *Asm) VPminsd(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x39, dst, s1, s2) }
+func (a *Asm) VPminud(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x3B, dst, s1, s2) }
+func (a *Asm) VPmaxsd(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x3D, dst, s1, s2) }
+func (a *Asm) VPmaxud(dst, s1, s2 Reg)     { a.vex3RRRMap(vexMap0F38, 0b01, 0x3F, dst, s1, s2) }
 func (a *Asm) VPshufbMemIdx(dst, s1, base, index Reg, disp int32) {
 	a.vex3MemIdx(vexMap0F38, 0b01, 0x00, dst, s1, true, base, index, disp)
 }

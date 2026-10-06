@@ -35,6 +35,125 @@ func TestAMD64RailMachDerivesMixedBoundsFromCachedLimit(t *testing.T) {
 	}
 }
 
+func TestAMD64RegionalReloadSurvivesFoldedInstruction(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x01, 0x20, 0x00, 0x28, 0x02, 0x00, 0x6a, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var load uint32
+	found := false
+	for id, inst := range plan.Machine.Insts {
+		if railmach.SemanticOpcode(inst.Op) == wasm.InstrI32Load && plan.PostRASkip.has(uint32(id)) {
+			load, found = uint32(id), true
+		}
+	}
+	if !found {
+		t.Fatal("fixture must fold its load into the add")
+	}
+	value := plan.Machine.InstructionOperands(load)[0].Reg
+	position := plan.Allocation.InstructionPositions[load]*6 + 2
+	// Force the allocator product that exposed the corpus failure: a spilled
+	// address becomes resident exactly at the eliminated load. Reserve a
+	// separate spill home so the emitted reload has an unambiguous encoding.
+	slot := plan.Allocation.SpillSlots
+	plan.Allocation.SpillSlots++
+	plan.Allocation.Locations[value] = railmach.Location{Kind: railmach.LocationSpill, Bank: railmach.BankGPR, Index: slot}
+	plan.Allocation.Fragments = []railmach.AllocationFragment{{
+		Reg: value, Start: position, End: position + 6,
+		Location: railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 3},
+	}}
+	plan.Frame.SpillBytes += 16
+	plan.Frame.TotalBytes += 16
+	code, _, ok, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("emit: admitted=%v err=%v", ok, err)
+	}
+	var reload amd64.Asm
+	reload.LoadRsp32(amd64.R8, int32(slot)*8)
+	if !bytes.Contains(code, reload.B) {
+		t.Fatalf("folded load lost regional entry reload %x in %x", reload.B, code)
+	}
+}
+
+func TestAMD64VariableShiftUsesColdRematerializedLHS(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x01, 0x20, 0x00, 0x74, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target.FeatureBits[0] &^= uint64(1) << uint16(corecompiler.TargetFeatureAMD64BMI2)
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shift uint32
+	found := false
+	for id, inst := range plan.Machine.Insts {
+		if railmach.SemanticOpcode(inst.Op) == wasm.InstrI32Shl {
+			shift, found = uint32(id), true
+		}
+	}
+	if !found {
+		t.Fatal("missing variable shift")
+	}
+	operands := plan.Machine.InstructionOperands(shift)
+	lhs := operands[0].Reg
+	// A cold use is rematerialized into RSI even when its original allocation
+	// was RCX. RCX may already contain the count by this scheduled position.
+	operands[0].Flags |= railmach.OperandColdRemat
+	plan.Machine.VRegs[lhs].Flags |= railmach.VRegElided
+	plan.Allocation.Locations[lhs] = railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1}
+	code, _, ok, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("emit: admitted=%v err=%v", ok, err)
+	}
+	pos := plan.Allocation.InstructionPositions[shift]*6 + 2
+	dst := amd64RailMachPhysical(plan, plan.Allocation.LocationAt(plan.Machine.Insts[shift].Result, pos))
+	if dst == amd64.RCX {
+		dst = amd64.R10
+	}
+	var want amd64.Asm
+	want.MovReg64(dst, amd64.RSI)
+	want.ShiftCL(4, dst, false)
+	if !bytes.Contains(code, want.B) {
+		t.Fatalf("shift must consume rematerialized lhs: missing %x in %x", want.B, code)
+	}
+}
+
 func TestAMD64RailMachUsesRelativeJumpTableForDenseBrTable(t *testing.T) {
 	body := make([]byte, 0, 64)
 	for range 9 {
@@ -202,7 +321,7 @@ func TestAMD64RailMachReloadsCachedMemoryBoundOnlyAfterGrowingDirectCall(t *test
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
 				wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
 				wasmtest.Section(10, wasmtest.Vec(
-					wasmtest.Code(tc.callee),
+					wasmtest.Code(nonInlinableLeafBody(tc.callee)),
 					wasmtest.Code(caller),
 				)),
 			)
@@ -462,6 +581,79 @@ func TestAMD64PublishesTransitiveSignalGuardFreeClosure(t *testing.T) {
 	}
 }
 
+func TestAMD64BMI2VariableShiftsReleaseCountRegister(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		typ  wasm.ValType
+		op   byte
+	}{
+		{"i32.shl", wasm.I32, 0x74}, {"i32.shr_s", wasm.I32, 0x75}, {"i32.shr_u", wasm.I32, 0x76},
+		{"i64.shl", wasm.I64, 0x86}, {"i64.shr_s", wasm.I64, 0x87}, {"i64.shr_u", wasm.I64, 0x88},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{tc.typ, tc.typ}, []wasm.ValType{tc.typ}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, tc.op, 0x0b}))),
+			)
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, bmi2 := range []bool{false, true} {
+				target.FeatureBits[0] &^= uint64(1) << uint16(corecompiler.TargetFeatureAMD64BMI2)
+				if bmi2 {
+					target.FeatureBits[0] |= uint64(1) << uint16(corecompiler.TargetFeatureAMD64BMI2)
+				}
+				fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var planner nativeBackendPlanner
+				plan, err := planner.Plan(fn.Structured, target)
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for id, inst := range plan.Machine.Insts {
+					if !amd64BMI2ShiftKind(railmach.SemanticOpcode(inst.Op)) {
+						continue
+					}
+					found = true
+					operands := plan.Machine.InstructionOperands(uint32(id))
+					fixed := operands[1].Flags&railmach.OperandFixed != 0
+					if fixed == bmi2 {
+						t.Fatalf("BMI2=%v: count fixed=%v", bmi2, fixed)
+					}
+				}
+				if !found {
+					t.Fatal("missing shift")
+				}
+				if got := amd64RailMachMayUseBMI2(plan); got != bmi2 {
+					t.Fatalf("BMI2=%v: artifact requirement=%v", bmi2, got)
+				}
+				code, _, ok, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+				if err != nil || !ok {
+					t.Fatalf("emit: %v %v", ok, err)
+				}
+				hasBMI2 := false
+				for i := 0; i+4 < len(code); i++ {
+					if code[i] == 0xc4 && code[i+1]&0x1f == 2 && code[i+3] == 0xf7 {
+						hasBMI2 = true
+					}
+				}
+				if hasBMI2 != bmi2 {
+					t.Fatalf("BMI2=%v: shift encoding=%x", bmi2, code)
+				}
+			}
+		})
+	}
+}
+
 func TestAMD64PublishesFoldedRotateBMI2Requirement(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -542,5 +734,65 @@ func TestAMD64StructuredWritesSIMDBinaryDirectlyToTeeLocal(t *testing.T) {
 	}
 	if got := metrics.Functions[0].NativeBytes; got > 200 {
 		t.Fatalf("direct SIMD tee emitted %d bytes, want at most 200", got)
+	}
+}
+
+func TestAMD64LateFloatMemoryFoldWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		middle             []byte
+		op                 byte
+		live, shared, want bool
+	}{
+		{"add", nil, 0xa0, true, false, true},
+		{"multiply", nil, 0xa2, true, false, true},
+		{"subtract left", nil, 0xa1, true, false, false},
+		{"address dies", nil, 0xa0, false, false, false},
+		{"store barrier", []byte{0x41, 0, 0x20, 2, 0x39, 3, 0}, 0xa0, true, false, false},
+		{"division barrier", []byte{0x41, 1, 0x41, 0, 0x6e, 0x1a}, 0xa0, true, false, false},
+		{"shared memory", nil, 0xa0, true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x20, 0, 0x2b, 3, 0}
+			body = append(body, tc.middle...)
+			body = append(body, 0x20, 2, 0x20, 1, 0x2b, 3, 0, 0xa2, tc.op)
+			if tc.live {
+				body = append(body, 0x20, 0, 0x41, 63, 0x71, 0x41, 42, 0x3a, 0, 0)
+			}
+			body = append(body, 0x0b)
+			fn, plan := simdAddressTestPlan(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.F64}, []wasm.ValType{wasm.F64}, body)
+			if tc.shared {
+				fn.Structured.Module.Memories[0].Shared = true
+				fn.Structured.Module.Memories[0].Limits.HasMax = true
+				fn.Structured.Module.Memories[0].Limits.Max = 1
+				target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+				if err != nil {
+					t.Fatal(err)
+				}
+				plan, err = (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			first := ^uint32(0)
+			for id, in := range plan.Machine.Insts {
+				if railmach.SemanticOpcode(in.Op) == wasm.InstrF64Load {
+					first = uint32(id)
+					break
+				}
+			}
+			if first == ^uint32(0) {
+				t.Fatal("missing fixture load")
+			}
+			folded := false
+			for id := range plan.Machine.Insts {
+				if source, ok := plan.PostRAMemoryFrom.get(uint32(id)); ok && source == first {
+					folded = true
+				}
+			}
+			if folded != tc.want {
+				t.Fatalf("first load folded=%v, want %v", folded, tc.want)
+			}
+		})
 	}
 }

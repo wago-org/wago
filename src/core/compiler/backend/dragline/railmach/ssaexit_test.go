@@ -18,6 +18,42 @@ func TestResolveParallelBreaksRegisterCycle(t *testing.T) {
 	if len(moves) != 3 || moves[0].Kind != MoveSaveTemporary || moves[1].Kind != MoveCopy || moves[2].Kind != MoveRestoreTemporary || debt.Cycles != 1 {
 		t.Fatalf("cycle moves=%#v debt=%#v", moves, debt)
 	}
+	// The saved location contains v2, not v1. The finalizer uses Reg to
+	// choose the save width, so using v1 truncates an i64 in an i32/i64 swap.
+	if moves[0].Reg != 2 || moves[2].Reg != 2 {
+		t.Fatalf("cycle must save and restore the same source value: %#v", moves)
+	}
+}
+
+func TestResolveParallelPreservesMixedWidthValues(t *testing.T) {
+	for _, kind := range []LocationKind{LocationRegister, LocationSpill} {
+		left := Location{Kind: kind, Bank: BankGPR, Index: 0}
+		right := Location{Kind: kind, Bank: BankGPR, Index: 1}
+		copies := []pendingCopy{{src: right, dst: left, reg: 1}, {src: left, dst: right, reg: 2}}
+		var moves []PhysicalMove
+		if err := resolveParallel(&moves, copies, 0, 0, PlaceSplitEdge, &CopyDebt{}); err != nil {
+			t.Fatal(err)
+		}
+		locations := map[Location]uint64{left: 0x12345678abcdef01, right: 0xdeadbeef}
+		var temps [2]uint64
+		for _, move := range moves {
+			value := locations[move.Src]
+			if move.Kind == MoveRestoreTemporary {
+				value = temps[move.Temporary]
+			}
+			if move.Reg == 1 {
+				value = uint64(uint32(value))
+			}
+			if move.Kind == MoveSaveTemporary {
+				temps[move.Temporary] = value
+			} else {
+				locations[move.Dst] = value
+			}
+		}
+		if locations[left] != 0xdeadbeef || locations[right] != 0x12345678abcdef01 {
+			t.Fatalf("location kind %d truncated cycle: %#v", kind, locations)
+		}
+	}
 }
 
 func TestResolveParallelKeepsCycleTemporaryAcrossSpillCopy(t *testing.T) {

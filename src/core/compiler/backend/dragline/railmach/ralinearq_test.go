@@ -293,7 +293,8 @@ func TestExtendLoopLiveIntervalsUsesScheduledBlockBounds(t *testing.T) {
 			{InstStart: 1, InstCount: 2, Flags: railssa.BlockLoopHeader},
 			{InstStart: 3, InstCount: 2},
 		},
-		Edges: []Edge{{From: 2, To: 1}},
+		Edges:     []Edge{{From: 2, To: 1}},
+		Transfers: []EdgeTransfer{{Src: 1, Dst: 2, From: 2, To: 1}},
 	}
 	// Scheduling moved an invariant into the preheader, making the scheduled
 	// loop occupy [2, 5) even though its source-linear extent is [1, 5).
@@ -313,6 +314,29 @@ func TestExtendLoopLiveIntervalsUsesScheduledBlockBounds(t *testing.T) {
 	}
 	if got, want := ends[2], uint32(14); got != want {
 		t.Fatalf("loop block parameter end = %d, want unchanged %d", got, want)
+	}
+}
+
+func TestExtendLoopLiveIntervalsDistinguishesEmptyPreheaderParameters(t *testing.T) {
+	// Both parameters have logical position zero. Only v2 belongs to the
+	// loop header; v1 is defined in the empty preheader and must survive the
+	// backedge even when its last textual use precedes the loop's tail.
+	f := &Func{
+		Insts: make([]Inst, 3),
+		VRegs: []VRegData{{}, {Flags: VRegBlockParam}, {Flags: VRegBlockParam}},
+		Blocks: []Block{
+			{InstStart: 0},
+			{InstStart: 0, InstCount: 1, Flags: railssa.BlockLoopHeader},
+			{InstStart: 1, InstCount: 2},
+		},
+		Edges:     []Edge{{From: 0, To: 1}, {From: 2, To: 1}},
+		Transfers: []EdgeTransfer{{Dst: 1, To: 0}, {Dst: 2, To: 1}},
+	}
+	starts := []uint32{0, 0, 0}
+	ends := []uint32{0, 2, 2}
+	extendLoopLiveIntervals(f, nil, starts, ends, []bool{false, true, true})
+	if ends[1] != 18 || ends[2] != 2 {
+		t.Fatalf("preheader/header ends = %v, want [0 18 2]", ends)
 	}
 }
 
@@ -395,5 +419,42 @@ func TestAllocateGreedyPUsesVerifiedSchedulePositions(t *testing.T) {
 	}
 	if err := VerifyAllocation(f, &allocation.Allocation, DefaultLinearQConfig(TargetAMD64)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAllocateLinearQLoopIncomingValueEndsBeforeHeader(t *testing.T) {
+	for _, target := range []Target{TargetAMD64, TargetARM64} {
+		f := &Func{
+			Target: target,
+			Insts: []Inst{
+				{Op: wasm.InstrI32Const, Result: 1, Aux: 7},
+				{Op: wasm.InstrI32Add, Result: 3, OperandStart: 0, OperandCount: 2},
+				{Op: wasm.InstrBrIf, OperandStart: 2, OperandCount: 1},
+			},
+			Operands: []Operand{
+				{Reg: 2, Bank: BankGPR, Fixed: NoFixedReg, Flags: OperandUse},
+				{Reg: 2, Bank: BankGPR, Fixed: NoFixedReg, Flags: OperandUse},
+				{Reg: 3, Bank: BankGPR, Fixed: NoFixedReg, Flags: OperandUse},
+			},
+			VRegs: []VRegData{{},
+				{Type: TypeI32, Bank: BankGPR, Def: 3},
+				{Type: TypeI32, Bank: BankGPR, Def: 6, Flags: VRegBlockParam},
+				{Type: TypeI32, Bank: BankGPR, Def: 9},
+			},
+			Blocks:    []Block{{InstCount: 1}, {InstStart: 1, InstCount: 2, Flags: railssa.BlockLoopHeader}},
+			Edges:     []Edge{{From: 0, To: 1}, {From: 1, To: 1}},
+			Transfers: []EdgeTransfer{{From: 0, To: 1, Src: 1, Dst: 2, Type: TypeI32}, {From: 1, To: 1, Src: 3, Dst: 2, Edge: 1, Type: TypeI32}},
+		}
+		allocation, err := AllocateLinearQ(f, LinearQConfig{GPRs: 1, FPRs: 1}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		incoming, ok := allocationInterval(allocation.Intervals, 1)
+		if !ok || incoming.End >= 6 {
+			t.Fatalf("target %v: incoming value incorrectly live in loop: %+v", target, incoming)
+		}
+		if allocation.SpillSlots != 0 {
+			t.Fatalf("target %v: nonoverlapping incoming/phi/latch values spilled: %+v", target, allocation.Locations)
+		}
 	}
 }

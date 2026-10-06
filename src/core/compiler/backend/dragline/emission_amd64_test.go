@@ -417,7 +417,7 @@ func TestAMD64RailMachRetainsGlobalDescriptorsAcrossLocalCall(t *testing.T) {
 			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
 			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
 		)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(calleeBody), wasmtest.Code([]byte{0x0b}), wasmtest.Code(callerBody))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(nonInlinableLeafBody(calleeBody)), wasmtest.Code(nonInlinableLeafBody([]byte{0x0b})), wasmtest.Code(callerBody))),
 	)
 	module, err := wasm.DecodeModule(source)
 	if err != nil {
@@ -498,7 +498,7 @@ func TestAMD64RailMachRefreshesGlobalDescriptorsAfterEightArgumentCall(t *testin
 			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code(append(append([]byte(nil), globalUpdates...), 0x0b)),
+			wasmtest.Code(nonInlinableLeafBody(append(append([]byte(nil), globalUpdates...), 0x0b))),
 			wasmtest.Code(callerBody),
 		)),
 	)
@@ -1109,6 +1109,9 @@ func TestAMD64RailMachImmediateRotateSkipsVariableCountRepair(t *testing.T) {
 	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !target.HasFeature(corecompiler.TargetFeatureAMD64BMI2) {
+		t.Skip("host does not support BMI2")
 	}
 	function, err := buildCompilerFunc(module, 0, new(railssa.StackFunc))
 	if err != nil {
@@ -2974,5 +2977,96 @@ func assertAMD64RailMachFinalized(t *testing.T, source []byte) {
 	}
 	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
 		t.Fatalf("RailMach metrics = %#v", metrics.Functions)
+	}
+}
+
+func TestAMD64RailMachPendingFloatSpillSurvivesOperandReloads(t *testing.T) {
+	for _, shuffled := range []bool{false, true} {
+		for _, forwarded := range []railmach.VReg{1, 2} {
+			machine := railmach.Func{
+				VRegs:    []railmach.VRegData{{}, {Bank: railmach.BankFPR, Type: railmach.TypeV128}, {Bank: railmach.BankFPR, Type: railmach.TypeV128}, {Bank: railmach.BankFPR, Type: railmach.TypeV128}},
+				Insts:    []railmach.Inst{{Op: railmach.OpAMD64V128Xor, Result: 3, OperandCount: 2}},
+				Operands: []railmach.Operand{{Reg: 1, Bank: railmach.BankFPR}, {Reg: 2, Bank: railmach.BankFPR}},
+			}
+			allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{{}, {Kind: railmach.LocationSpill, Bank: railmach.BankFPR}, {Kind: railmach.LocationSpill, Bank: railmach.BankFPR, Index: 2}, {Kind: railmach.LocationRegister, Bank: railmach.BankFPR}}}}
+			plan := nativeBackendPlan{Machine: &machine, Allocation: &allocation, AMD64ShuffledFPRs: shuffled}
+			// With shuffled vector registers the pending result lives in XMM13.
+			// A left operand reload also uses XMM13, destroying a forwarded RHS.
+			want := !shuffled || forwarded == 1
+			if got := amd64RailMachCanForwardPendingSpill(&plan, 0, forwarded, 2); got != want {
+				t.Errorf("shuffled=%v forwarded=%d: got %v, want %v", shuffled, forwarded, got, want)
+			}
+			other := railmach.VReg(3) - forwarded
+			allocation.Locations[other].Kind = railmach.LocationRegister
+			if !amd64RailMachCanForwardPendingSpill(&plan, 0, forwarded, 2) {
+				t.Errorf("shuffled=%v forwarded=%d: resident other operand prevented forwarding", shuffled, forwarded)
+			}
+			machine.Operands[other-1].Flags = railmach.OperandColdRemat
+			if got := amd64RailMachCanForwardPendingSpill(&plan, 0, forwarded, 2); got != want {
+				t.Errorf("cold shuffled=%v forwarded=%d: got %v, want %v", shuffled, forwarded, got, want)
+			}
+		}
+	}
+}
+
+func TestAMD64RailMachEdgeRematerializationPreservesCycleTemporary(t *testing.T) {
+	machine := railmach.Func{
+		Insts: []railmach.Inst{{Op: wasm.InstrI32Const, Result: 1}},
+		VRegs: []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegRematerializable, Def: 3}, {Type: railmach.TypeI32, Bank: railmach.BankGPR}},
+	}
+	spill := railmach.Location{Kind: railmach.LocationSpill, Bank: railmach.BankGPR}
+	register := railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 2}
+	exit := railmach.SSAExit{Moves: []railmach.PhysicalMove{
+		{Kind: railmach.MoveSaveTemporary, Src: spill, Reg: 2, Bank: railmach.BankGPR},
+		{Kind: railmach.MoveCopy, Src: register, Dst: spill, Reg: 1, Bank: railmach.BankGPR},
+		{Kind: railmach.MoveRestoreTemporary, Dst: register, Reg: 2, Bank: railmach.BankGPR},
+	}}
+	plan := nativeBackendPlan{Machine: &machine, Exit: &exit}
+	plan.ImmediateSkip.prepare(1, true)
+	plan.ImmediateSkip.set(0, true)
+	var got, want amd64.Asm
+	if err := emitAMD64RailMachMoveRange(&got, &plan, railmach.MoveRange{Count: 3}); err != nil {
+		t.Fatal(err)
+	}
+	want.LoadRsp32(amd64.R10, 0)
+	want.MovImm32(amd64.R11, 0)
+	want.StoreRsp32(0, amd64.R11)
+	want.MovReg32(amd64.RDX, amd64.R10)
+	if !bytes.Equal(got.B, want.B) {
+		t.Fatalf("cycle with a rematerialized spill destination = %x, want %x", got.B, want.B)
+	}
+}
+
+func TestAMD64RailMachCycleTemporaryPreservesVectorWidth(t *testing.T) {
+	for _, typ := range []railmach.MachineType{railmach.TypeF32, railmach.TypeF64, railmach.TypeV128} {
+		for _, shuffled := range []bool{false, true} {
+			for temporary := uint8(0); temporary < 2; temporary++ {
+				for index := uint16(0); index < 4; index++ {
+					loc := railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: index}
+					machine := railmach.Func{VRegs: []railmach.VRegData{{}, {Type: typ, Bank: railmach.BankFPR}}}
+					exit := railmach.SSAExit{Moves: []railmach.PhysicalMove{{Kind: railmach.MoveSaveTemporary, Src: loc, Reg: 1, Bank: railmach.BankFPR, Temporary: temporary}}}
+					plan := nativeBackendPlan{Machine: &machine, Exit: &exit, AMD64ShuffledFPRs: shuffled}
+					var got, want amd64.Asm
+					if err := emitAMD64RailMachMoveRange(&got, &plan, railmach.MoveRange{Count: 1}); err != nil {
+						t.Fatal(err)
+					}
+					dst := amd64.Reg(15)
+					if temporary == 1 {
+						dst = 14
+					}
+					src := amd64RailMachPhysical(&plan, loc)
+					if src != dst {
+						if typ == railmach.TypeV128 {
+							want.VMovdqu(dst, src)
+						} else {
+							want.FMov(dst, src, typ == railmach.TypeF64)
+						}
+					}
+					if !bytes.Equal(got.B, want.B) {
+						t.Errorf("type=%d shuffled=%t temp=%d index=%d: got %x want %x", typ, shuffled, temporary, index, got.B, want.B)
+					}
+				}
+			}
+		}
 	}
 }

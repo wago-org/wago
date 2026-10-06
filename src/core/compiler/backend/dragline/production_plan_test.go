@@ -2275,3 +2275,35 @@ func TestNativeBackendPlannerShrinkWrapsMultiBlockColdCalleeSave(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNativeScheduleScoresResourcesAfterAllocation(t *testing.T) {
+	latency := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 6564, PhysicalCopies: 70, NativeResourceCost: 1000}
+	source := railmach.ScheduleScore{Kind: railmach.ScheduleKindSourceStable, WeightedSpillDebt: 6630, PhysicalCopies: 71, NativeResourceCost: 900}
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 256, true, source, latency) || nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 256, true, latency, source) {
+		t.Fatal("post-allocation resource savings did not outweigh slightly smaller interval debt")
+	}
+}
+
+func TestNativeScheduleResourceEstimateRequiresMaterialBenefit(t *testing.T) {
+	retained := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 100, NativeResourceCost: 1000}
+	for _, tc := range []struct {
+		name      string
+		resources uint64
+		want      bool
+	}{
+		{"one-percent", 990, false},
+		{"two-percent", 980, false},
+		{"above-two-percent", 979, true},
+		{"unavailable", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := railmach.ScheduleScore{Kind: railmach.ScheduleKindSourceStable, WeightedSpillDebt: 200, NativeResourceCost: tc.resources}
+			if got := nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 32, false, candidate, retained); got != tc.want {
+				t.Fatalf("resource cost %d: got %v, want %v", tc.resources, got, tc.want)
+			}
+			if reverse := nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 32, false, retained, candidate); reverse == tc.want {
+				t.Fatalf("reverse comparison disagrees for resource cost %d", tc.resources)
+			}
+		})
+	}
+}

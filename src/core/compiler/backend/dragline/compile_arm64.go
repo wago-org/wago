@@ -1786,6 +1786,199 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 	}
 	idempotentFloatStart, idempotentFloatEnd, idempotentFloatTail := uint32(0), uint32(0), false
 	fastEpilogue := -1
+	epilogueEmitted := false
+	emitEpilogue := func() error {
+		if fastEpilogue >= 0 && !a.PatchBranch26(fastEpilogue, a.Len()) {
+			return fmt.Errorf("RailMach f32 round-trip epilogue is out of range")
+		}
+		if promotedGlobal.valid {
+			a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
+			if !a.Load64(arm64.X17, arm64.X17, promotedGlobal.index*8) || !a.Store64(arm64.X8, arm64.X17, 0) {
+				return fmt.Errorf("RailMach promoted global %d commit is not encodable", promotedGlobal.index)
+			}
+		}
+		if len(plan.Machine.Results) == 1 {
+			value := plan.Machine.Results[0]
+			scratch := arm64.X13
+			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+				scratch = 28
+			}
+			result, err := arm64RailMachReadValue(&a, plan, value, scratch)
+			if err != nil {
+				return err
+			}
+			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+				if result != arm64FPParamRegisters[0] {
+					a.NeonOrr16b(arm64FPParamRegisters[0], result, result)
+				}
+			} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR && arm64DirectPreparedClass(plan.ABI.Class) {
+				if result != arm64FPParamRegisters[0] {
+					a.FmovReg(arm64FPParamRegisters[0], result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
+				}
+			} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+				a.FmovToGpr(arm64.X0, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
+			} else if result != arm64.X0 {
+				if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
+					a.MovReg32(arm64.X0, result)
+				} else {
+					a.MovReg64(arm64.X0, result)
+				}
+			}
+		} else if len(plan.Machine.Results) > 1 {
+			for index, value := range plan.Machine.Results {
+				scratch := arm64.X17
+				if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+					scratch = 29
+				}
+				result, err := arm64RailMachReadValue(&a, plan, value, scratch)
+				if err != nil {
+					return err
+				}
+				offset := plan.Frame.ResultAreaOffset + railssa.TypeSlotOffset(plan.Stack.Results, index)*8
+				if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+					a.StrQ(arm64.SP, int32(offset), result)
+					continue
+				}
+				if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+					a.FmovToGpr(arm64.X17, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
+					result = arm64.X17
+				}
+				if !a.Store64(result, arm64.SP, offset) {
+					return fmt.Errorf("RailMach result staging offset %d is not encodable", offset)
+				}
+			}
+		}
+		calleeSaveOffset := plan.Frame.SpillBytes + plan.Frame.RootBytes
+		var postindexedCalleeFrame [2]arm64.Reg
+		if fusedLRFrame {
+			var saved [len(arm64RailMachGPRRegisters)]arm64.Reg
+			savedCount := 0
+			for index, physical := range arm64RailMachGPRRegisters {
+				if calleeGPRs&(uint64(1)<<index) != 0 && index != firstCalleeGPR {
+					saved[savedCount] = physical
+					savedCount++
+				}
+			}
+			for index := 0; index < savedCount; index += 2 {
+				a.LdpOffset(saved[index], saved[index+1], arm64.SP, int32(16+index*8))
+			}
+			postindexedCalleeFrame = [2]arm64.Reg{arm64.LR, arm64RailMachGPRRegisters[firstCalleeGPR]}
+			calleeSaveOffset = uint32(bits.OnesCount64(calleeGPRs)+1) * 8
+		} else if preindexedCalleeFrame {
+			var saved [len(arm64RailMachGPRRegisters)]arm64.Reg
+			savedCount := 0
+			for index, physical := range arm64RailMachGPRRegisters {
+				if calleeGPRs&(uint64(1)<<index) != 0 {
+					saved[savedCount] = physical
+					savedCount++
+				}
+			}
+			if savedCount&1 != 0 {
+				offset := uint32((savedCount - 1) * 8)
+				if !a.Load64(saved[savedCount-1], arm64.SP, offset) {
+					return fmt.Errorf("RailMach callee-restore offset %d is not encodable", offset)
+				}
+			}
+			for index := savedCount&^1 - 2; index >= 2; index -= 2 {
+				a.LdpOffset(saved[index], saved[index+1], arm64.SP, int32(index*8))
+			}
+			postindexedCalleeFrame = [2]arm64.Reg{saved[0], saved[1]}
+			calleeSaveOffset = uint32(savedCount * 8)
+		} else {
+			for index := 0; index < len(arm64RailMachGPRRegisters); index++ {
+				if calleeGPRs&(uint64(1)<<index) != 0 {
+					next := index + 1
+					for next < len(arm64RailMachGPRRegisters) && calleeGPRs&(uint64(1)<<next) == 0 {
+						next++
+					}
+					if next < len(arm64RailMachGPRRegisters) && calleeSaveOffset <= 504 {
+						a.LdpOffset(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[next], arm64.SP, int32(calleeSaveOffset))
+						calleeSaveOffset += 16
+						index = next
+						continue
+					}
+					if !a.Load64(arm64RailMachGPRRegisters[index], arm64.SP, calleeSaveOffset) {
+						return fmt.Errorf("RailMach callee-restore offset %d is not encodable", calleeSaveOffset)
+					}
+					calleeSaveOffset += 8
+				}
+			}
+		}
+		for index := 0; index < len(arm64FPRRegisters); index++ {
+			if calleeFPRs&(uint64(1)<<index) == 0 {
+				continue
+			}
+			if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
+				a.LdrQ(arm64FPRRegisters[index], arm64.SP, int32(calleeSaveOffset))
+				calleeSaveOffset += 16
+				continue
+			}
+			next := index + 1
+			for next < len(arm64FPRRegisters) && calleeFPRs&(uint64(1)<<next) == 0 {
+				next++
+			}
+			if next < len(arm64FPRRegisters) && calleeSaveOffset <= 504 {
+				a.LdpOffsetF64(arm64FPRRegisters[index], arm64FPRRegisters[next], arm64.SP, int32(calleeSaveOffset))
+				calleeSaveOffset += 16
+				index = next
+				continue
+			}
+			a.FLoadDisp(arm64FPRRegisters[index], arm64.SP, int32(calleeSaveOffset), true)
+			calleeSaveOffset += 8
+		}
+		if preindexedCalleeFrame {
+			a.LdpPost(postindexedCalleeFrame[0], postindexedCalleeFrame[1], arm64.SP, int32(frameBytes))
+		}
+		if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
+			if !a.Load64(arm64.X16, arm64.SP, plan.Frame.RuntimeOffset) {
+				return fmt.Errorf("RailMach result-vector home offset %d is not encodable", plan.Frame.RuntimeOffset)
+			}
+			for index := railmach.PrivateResultRegisters; index < len(plan.Machine.Results); index++ {
+				offset := railssa.TypeSlotOffset(plan.Stack.Results, index) * 8
+				if plan.Machine.VRegs[plan.Machine.Results[index]].Type == railmach.TypeV128 {
+					a.LdrQ(29, arm64.SP, int32(plan.Frame.ResultAreaOffset+offset))
+					a.StrQ(arm64.X16, int32(offset), 29)
+				} else if !a.Load64(arm64.X17, arm64.SP, plan.Frame.ResultAreaOffset+offset) || !a.Store64(arm64.X17, arm64.X16, offset) {
+					return fmt.Errorf("RailMach overflow result %d is not encodable", index)
+				}
+			}
+		}
+		if len(plan.Machine.Results) > 1 {
+			for index, value := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
+				offset := plan.Frame.ResultAreaOffset + railssa.TypeSlotOffset(plan.Stack.Results, index)*8
+				var ok bool
+				if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+					a.LdrQ(arm64FPRRegisters[index], arm64.SP, int32(offset))
+					ok = true
+				} else if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
+					ok = a.Load32(arm64RailMachGPRRegisters[index], arm64.SP, offset)
+				} else {
+					ok = a.Load64(arm64RailMachGPRRegisters[index], arm64.SP, offset)
+				}
+				if !ok {
+					return fmt.Errorf("RailMach register result %d is not encodable", index)
+				}
+			}
+		}
+		if frameBytes != 0 && !preindexedCalleeFrame {
+			if frameBytes <= 4095 {
+				a.AddSP64(frameBytes)
+			} else {
+				a.MovImm64(arm64.X16, uint64(frameBytes))
+				a.AddSPReg(arm64.X16)
+			}
+		}
+		if hasNativeCall && !fusedLRFrame {
+			if elidePreparedFrame {
+				a.LdpPost(arm64.LR, arm64.XZR, arm64.SP, 16)
+			} else {
+				a.LdpPost(arm64.FP, arm64.LR, arm64.SP, 16)
+			}
+		}
+		a.Ret()
+		epilogueEmitted = true
+		return nil
+	}
 	if kind, n, result, ok := arm64RailMachClosedCounterLoop(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		switch kind {
@@ -2238,7 +2431,12 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			blockID = int(plan.Layout.Order[layoutIndex])
 		}
 		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
+			// The exit can precede cold blocks in physical layout. Emit its
+			// return here so exit branches never fall into those blocks.
 			blockOffsets[blockID] = a.Len()
+			if err := emitEpilogue(); err != nil {
+				return nil, 0, true, err
+			}
 			continue
 		}
 		if plan.Simplified != nil && blockID < len(plan.Simplified.Reachable) && !plan.Simplified.Reachable[blockID] {
@@ -4951,7 +5149,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						return nil, 0, true, fmt.Errorf("RailMach forwarded store %d has no value", storeID)
 					}
 					value := storeOperands[1].Reg
-					src, err := arm64RailMachReadValue(&a, plan, value, dst)
+					src, err := arm64RailMachReadLocation(&a, plan, value, plan.Allocation.LocationAt(value, currentPosition), dst, 0)
 					if err != nil {
 						return nil, 0, true, err
 					}
@@ -6050,194 +6248,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 	}
 
 railMachEpilogue:
-	if fastEpilogue >= 0 && !a.PatchBranch26(fastEpilogue, a.Len()) {
-		return nil, 0, true, fmt.Errorf("RailMach f32 round-trip epilogue is out of range")
-	}
-	if promotedGlobal.valid {
-		a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
-		if !a.Load64(arm64.X17, arm64.X17, promotedGlobal.index*8) || !a.Store64(arm64.X8, arm64.X17, 0) {
-			return nil, 0, true, fmt.Errorf("RailMach promoted global %d commit is not encodable", promotedGlobal.index)
-		}
-	}
-	if len(plan.Machine.Results) == 1 {
-		value := plan.Machine.Results[0]
-		scratch := arm64.X13
-		if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-			scratch = 28
-		}
-		result, err := arm64RailMachReadValue(&a, plan, value, scratch)
-		if err != nil {
+	if !epilogueEmitted {
+		if err := emitEpilogue(); err != nil {
 			return nil, 0, true, err
 		}
-		if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
-			if result != arm64FPParamRegisters[0] {
-				a.NeonOrr16b(arm64FPParamRegisters[0], result, result)
-			}
-		} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR && arm64DirectPreparedClass(plan.ABI.Class) {
-			if result != arm64FPParamRegisters[0] {
-				a.FmovReg(arm64FPParamRegisters[0], result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
-			}
-		} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-			a.FmovToGpr(arm64.X0, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
-		} else if result != arm64.X0 {
-			if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
-				a.MovReg32(arm64.X0, result)
-			} else {
-				a.MovReg64(arm64.X0, result)
-			}
-		}
-	} else if len(plan.Machine.Results) > 1 {
-		for index, value := range plan.Machine.Results {
-			scratch := arm64.X17
-			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-				scratch = 29
-			}
-			result, err := arm64RailMachReadValue(&a, plan, value, scratch)
-			if err != nil {
-				return nil, 0, true, err
-			}
-			offset := plan.Frame.ResultAreaOffset + railssa.TypeSlotOffset(plan.Stack.Results, index)*8
-			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
-				a.StrQ(arm64.SP, int32(offset), result)
-				continue
-			}
-			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-				a.FmovToGpr(arm64.X17, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
-				result = arm64.X17
-			}
-			if !a.Store64(result, arm64.SP, offset) {
-				return nil, 0, true, fmt.Errorf("RailMach result staging offset %d is not encodable", offset)
-			}
-		}
 	}
-	calleeSaveOffset = plan.Frame.SpillBytes + plan.Frame.RootBytes
-	var postindexedCalleeFrame [2]arm64.Reg
-	if fusedLRFrame {
-		var saved [len(arm64RailMachGPRRegisters)]arm64.Reg
-		savedCount := 0
-		for index, physical := range arm64RailMachGPRRegisters {
-			if calleeGPRs&(uint64(1)<<index) != 0 && index != firstCalleeGPR {
-				saved[savedCount] = physical
-				savedCount++
-			}
-		}
-		for index := 0; index < savedCount; index += 2 {
-			a.LdpOffset(saved[index], saved[index+1], arm64.SP, int32(16+index*8))
-		}
-		postindexedCalleeFrame = [2]arm64.Reg{arm64.LR, arm64RailMachGPRRegisters[firstCalleeGPR]}
-		calleeSaveOffset = uint32(bits.OnesCount64(calleeGPRs)+1) * 8
-	} else if preindexedCalleeFrame {
-		var saved [len(arm64RailMachGPRRegisters)]arm64.Reg
-		savedCount := 0
-		for index, physical := range arm64RailMachGPRRegisters {
-			if calleeGPRs&(uint64(1)<<index) != 0 {
-				saved[savedCount] = physical
-				savedCount++
-			}
-		}
-		if savedCount&1 != 0 {
-			offset := uint32((savedCount - 1) * 8)
-			if !a.Load64(saved[savedCount-1], arm64.SP, offset) {
-				return nil, 0, true, fmt.Errorf("RailMach callee-restore offset %d is not encodable", offset)
-			}
-		}
-		for index := savedCount&^1 - 2; index >= 2; index -= 2 {
-			a.LdpOffset(saved[index], saved[index+1], arm64.SP, int32(index*8))
-		}
-		postindexedCalleeFrame = [2]arm64.Reg{saved[0], saved[1]}
-		calleeSaveOffset = uint32(savedCount * 8)
-	} else {
-		for index := 0; index < len(arm64RailMachGPRRegisters); index++ {
-			if calleeGPRs&(uint64(1)<<index) != 0 {
-				next := index + 1
-				for next < len(arm64RailMachGPRRegisters) && calleeGPRs&(uint64(1)<<next) == 0 {
-					next++
-				}
-				if next < len(arm64RailMachGPRRegisters) && calleeSaveOffset <= 504 {
-					a.LdpOffset(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[next], arm64.SP, int32(calleeSaveOffset))
-					calleeSaveOffset += 16
-					index = next
-					continue
-				}
-				if !a.Load64(arm64RailMachGPRRegisters[index], arm64.SP, calleeSaveOffset) {
-					return nil, 0, true, fmt.Errorf("RailMach callee-restore offset %d is not encodable", calleeSaveOffset)
-				}
-				calleeSaveOffset += 8
-			}
-		}
-	}
-	for index := 0; index < len(arm64FPRRegisters); index++ {
-		if calleeFPRs&(uint64(1)<<index) == 0 {
-			continue
-		}
-		if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
-			a.LdrQ(arm64FPRRegisters[index], arm64.SP, int32(calleeSaveOffset))
-			calleeSaveOffset += 16
-			continue
-		}
-		next := index + 1
-		for next < len(arm64FPRRegisters) && calleeFPRs&(uint64(1)<<next) == 0 {
-			next++
-		}
-		if next < len(arm64FPRRegisters) && calleeSaveOffset <= 504 {
-			a.LdpOffsetF64(arm64FPRRegisters[index], arm64FPRRegisters[next], arm64.SP, int32(calleeSaveOffset))
-			calleeSaveOffset += 16
-			index = next
-			continue
-		}
-		a.FLoadDisp(arm64FPRRegisters[index], arm64.SP, int32(calleeSaveOffset), true)
-		calleeSaveOffset += 8
-	}
-	if preindexedCalleeFrame {
-		a.LdpPost(postindexedCalleeFrame[0], postindexedCalleeFrame[1], arm64.SP, int32(frameBytes))
-	}
-	if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
-		if !a.Load64(arm64.X16, arm64.SP, plan.Frame.RuntimeOffset) {
-			return nil, 0, true, fmt.Errorf("RailMach result-vector home offset %d is not encodable", plan.Frame.RuntimeOffset)
-		}
-		for index := railmach.PrivateResultRegisters; index < len(plan.Machine.Results); index++ {
-			offset := railssa.TypeSlotOffset(plan.Stack.Results, index) * 8
-			if plan.Machine.VRegs[plan.Machine.Results[index]].Type == railmach.TypeV128 {
-				a.LdrQ(29, arm64.SP, int32(plan.Frame.ResultAreaOffset+offset))
-				a.StrQ(arm64.X16, int32(offset), 29)
-			} else if !a.Load64(arm64.X17, arm64.SP, plan.Frame.ResultAreaOffset+offset) || !a.Store64(arm64.X17, arm64.X16, offset) {
-				return nil, 0, true, fmt.Errorf("RailMach overflow result %d is not encodable", index)
-			}
-		}
-	}
-	if len(plan.Machine.Results) > 1 {
-		for index, value := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
-			offset := plan.Frame.ResultAreaOffset + railssa.TypeSlotOffset(plan.Stack.Results, index)*8
-			var ok bool
-			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
-				a.LdrQ(arm64FPRRegisters[index], arm64.SP, int32(offset))
-				ok = true
-			} else if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
-				ok = a.Load32(arm64RailMachGPRRegisters[index], arm64.SP, offset)
-			} else {
-				ok = a.Load64(arm64RailMachGPRRegisters[index], arm64.SP, offset)
-			}
-			if !ok {
-				return nil, 0, true, fmt.Errorf("RailMach register result %d is not encodable", index)
-			}
-		}
-	}
-	if frameBytes != 0 && !preindexedCalleeFrame {
-		if frameBytes <= 4095 {
-			a.AddSP64(frameBytes)
-		} else {
-			a.MovImm64(arm64.X16, uint64(frameBytes))
-			a.AddSPReg(arm64.X16)
-		}
-	}
-	if hasNativeCall && !fusedLRFrame {
-		if elidePreparedFrame {
-			a.LdpPost(arm64.LR, arm64.XZR, arm64.SP, 16)
-		} else {
-			a.LdpPost(arm64.FP, arm64.LR, arm64.SP, 16)
-		}
-	}
-	a.Ret()
 	hotEnd := a.Len()
 	for layoutIndex := range plan.Schedule.BlockRanges {
 		blockID := layoutIndex
@@ -8641,6 +8656,14 @@ func arm64RailMachCanPredicateEdgeMoves(plan *nativeBackendPlan, edge uint32) bo
 		if move.Kind != railmach.MoveCopy || move.Bank != railmach.BankGPR || move.Src.Kind != railmach.LocationRegister || move.Dst.Kind != railmach.LocationRegister {
 			return false
 		}
+		// A folded producer leaves its assigned register uninitialized. The
+		// general edge emitter rematerializes it; CSEL requires a live source.
+		if int(move.Reg) < len(plan.Machine.VRegs) {
+			value := plan.Machine.VRegs[move.Reg]
+			if value.Flags&railmach.VRegRematerializable != 0 && value.Def%6 == 3 && plan.ImmediateSkip.has(value.Def/6) {
+				return false
+			}
+		}
 		// A short CSEL sequence saves a hot unconditional branch. Longer
 		// parallel copies are better left as MOVs: every CSEL reads both the
 		// old destination and the flags, extending dependency chains merely to
@@ -9380,7 +9403,9 @@ func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRan
 				return err
 			}
 			if src != temporary {
-				if move.Bank == railmach.BankFPR {
+				if typ == railmach.TypeV128 {
+					a.NeonOrr16b(temporary, src, src)
+				} else if move.Bank == railmach.BankFPR {
 					a.FmovReg(temporary, src, typ == railmach.TypeF64)
 				} else if typ == railmach.TypeI32 {
 					a.MovReg32(temporary, src)
