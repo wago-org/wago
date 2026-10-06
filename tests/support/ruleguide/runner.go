@@ -335,12 +335,16 @@ func Benchmark(b *testing.B, compile Compiler) {
 					b.Fatal(err)
 				}
 				defer e.close()
+				if err = e.jm.BindTrapCell(e.trap); err != nil {
+					b.Fatal(err)
+				}
+				base := e.jm.LinMemBase()
 				in := Inputs()[3]
 				if r.Family == "simd" {
 					in[2] = uint64(uint32(r.Count))
 				}
 				e.input(in)
-				if err = e.call(); err != nil {
+				if err = e.eng.CallPrepared(e.entry, e.args, base, e.trap, e.results); err != nil {
 					b.Fatal(err)
 				}
 				if err = e.check(r, in); err != nil {
@@ -349,7 +353,7 @@ func Benchmark(b *testing.B, compile Compiler) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					if err = e.call(); err != nil {
+					if err = e.eng.CallPrepared(e.entry, e.args, base, e.trap, e.results); err != nil {
 						b.Fatal(err)
 					}
 				}

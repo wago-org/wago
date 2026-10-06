@@ -170,11 +170,15 @@ func (l *semanticLedger) check() (semanticCounts, error) {
 		}
 		if c.cmd.Type == "assert_trap" {
 			if ok, _ := specTrapMatches(r.trap, c.cmd.Text); r.status != "trap" || !ok {
+				counts.Executed--
+				counts.Excluded++
 				failures = append(failures, "wrong trap")
 			}
 			continue
 		}
 		if r.status != "return" {
+			counts.Executed--
+			counts.Excluded++
 			failures = append(failures, "unexpected trap")
 			continue
 		}
@@ -186,6 +190,8 @@ func (l *semanticLedger) check() (semanticCounts, error) {
 			matched = len(c.cmd.Expected) == 0 && matchEitherResult(specModule{}, r.raw, c.cmd.Either)
 		}
 		if !matched {
+			counts.Executed--
+			counts.Excluded++
 			failures = append(failures, fmt.Sprintf("result mismatch: case %d raw=%x", c.cmd.Line, r.raw))
 		}
 	}
@@ -439,6 +445,53 @@ func TestSemanticProfileObserverControls(t *testing.T) {
 	// Undefined high ABI-slot bits do not change an i32's 32 semantic bits.
 	if !matchResult([]uint64{0xdeadbeefffffffff}, cases[0].cmd.Expected[0]) {
 		t.Fatal("i32 high slot bits constrained")
+	}
+}
+
+func TestSemanticResultMismatchCounts(t *testing.T) {
+	modules, cases, _ := semanticFixtures()
+	for _, tc := range []struct {
+		name  string
+		index int
+		out   specActionOutcome
+		want  string
+	}{
+		{"correct-core", 0, specActionOutcome{results: []uint64{0xffffffff}}, ""},
+		{"wrong-core", 0, specActionOutcome{results: []uint64{0xffff}}, "result mismatch"},
+		{"correct-relaxed", len(cases) - 1, specActionOutcome{results: []uint64{0, 0}}, ""},
+		{"wrong-relaxed", len(cases) - 1, specActionOutcome{results: []uint64{1, 0}}, "result mismatch"},
+		{"missing-trap", len(cases) - 2, specActionOutcome{}, "wrong trap"},
+		{"unexpected-trap", 0, specActionOutcome{trap: &wago.TrapError{Code: wago.TrapUnreachable}}, "unexpected trap"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := cases[tc.index]
+			name := c.cmd.Action.Module
+			source := fmt.Sprintf("%x", sha256.Sum256(modules[name]))
+			ledger := semanticLedger{
+				expected:  map[string]string{name: source},
+				loaded:    map[string]semanticEvidence{name: {SourceSHA256: source, NativeSHA256: "test-only"}},
+				scheduled: []semanticCase{c},
+			}
+			ledger.record(c.cmd, tc.out)
+			want := semanticCounts{Requested: 1, Executed: 1}
+			if tc.want != "" {
+				want.Executed, want.Excluded = 0, 1
+			}
+			// Rechecking must not change terminal evidence or subtract twice.
+			for range 2 {
+				counts, err := ledger.check()
+				if counts != want {
+					t.Fatalf("counts=%+v want %+v", counts, want)
+				}
+				if tc.want == "" {
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("error=%v want %s", err, tc.want)
+				}
+			}
+		})
 	}
 }
 

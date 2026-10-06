@@ -29,6 +29,8 @@ type workerResetContext struct {
 	policy   CodegenPolicy
 	features shared.AMD64Features
 	types    moduleTypeCache
+	localCap int
+	ctrlCap  int
 }
 
 type workerResetOutput struct {
@@ -70,7 +72,12 @@ func workerResetLoad(t testing.TB, width int, compact bool, features shared.AMD6
 	for _, f := range m.Code {
 		total += len(f.BodyBytes)
 	}
-	return &workerResetContext{m, hints, sidecar, policy, features, buildModuleTypeCache(m, total)}
+	return &workerResetContext{
+		m: m, hints: hints, sidecar: sidecar, policy: policy, features: features,
+		types:    buildModuleTypeCache(m, total),
+		localCap: parallelLocalScratchCapacity(hints, inlineTargetTable{}, make([]bool, len(hints))),
+		ctrlCap:  workerControlFrameCap(m, hints),
+	}
 }
 
 func (c *workerResetContext) worker() *scratch {
@@ -78,9 +85,9 @@ func (c *workerResetContext) worker() *scratch {
 	sc.policy, sc.amd64Features = c.policy, c.features
 	sc.classifier = wasm.NewModuleInstructionClassifier(c.m, true)
 	sc.moduleTypes = c.types
-	// Fixed module-wide reservations for both fresh and reused workers.
-	sc.reserveLocalScratch(193)
-	sc.reserveControlFrames(moduleControlFrameCap(c.m, c.hints))
+	// Match parallel workers so large functions must grow their scratch.
+	sc.reserveLocalScratch(c.localCap)
+	sc.reserveControlFrames(c.ctrlCap)
 	return sc
 }
 
@@ -155,6 +162,29 @@ func workerResetSequences() [][]int {
 		sequences = append(sequences, []int{i})
 	}
 	return sequences
+}
+
+func TestWorkerScratchGrowth(t *testing.T) {
+	c := workerResetLoad(t, 32, false, 0)
+	sc := c.worker()
+	defer workerResetClose(sc)
+	localCap, ctrlCap := cap(sc.fnState.localType), sc.controlCap
+	if localCap >= int(c.hints[1].localCount) || ctrlCap >= moduleControlFrameCap(c.m, c.hints) {
+		t.Fatal("fixtures must exceed initial worker scratch capacities")
+	}
+	workerResetCompile(t, c, sc, 1)
+	if cap(sc.fnState.localType) <= localCap || cap(sc.fnState.localSlot) <= localCap || cap(sc.fnState.locals) <= localCap {
+		t.Fatal("large fixture did not grow local scratch")
+	}
+	workerResetCompile(t, c, sc, 9)
+	if cap(sc.ctrl) <= ctrlCap {
+		t.Fatal("control fixture did not grow control scratch")
+	}
+	fresh := c.worker()
+	defer workerResetClose(fresh)
+	if difference := workerResetEqual(workerResetCompile(t, c, sc, 0), workerResetCompile(t, c, fresh, 0)); difference != "" {
+		t.Fatalf("tiny function after scratch growth: %s", difference)
+	}
 }
 
 func TestWorkerScratchMatchesFresh(t *testing.T) {

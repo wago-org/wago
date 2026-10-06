@@ -66,6 +66,9 @@ func TestBoundsFactsChangedSourceTrapAndMemory(t *testing.T) {
 
 func TestBoundsFactsIndependentSourceChecks(t *testing.T) {
 	requireCompilerDiagnostics(t)
+	previous := multiBoundsCertEnabled
+	multiBoundsCertEnabled = true
+	defer func() { multiBoundsCertEnabled = previous }()
 	for _, sources := range []int{1, 2, len((fn{}).boundsCerts), len((fn{}).boundsCerts) + 1} {
 		t.Run(fmt.Sprint(sources), func(t *testing.T) {
 			m := boundsResearchModule(t, sources, 2)
