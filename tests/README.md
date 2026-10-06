@@ -221,3 +221,33 @@ or leak tests. Executable payload, mapped capacity, retained compiler storage,
 allocation volume, peak memory, and RSS remain separate quantities. Existing
 ownership tests own release semantics. Native execution is reported separately
 from cross-build success; these checks do not address deferred issue #801.
+
+## Synchronous and deferred host-event boundaries
+
+`host_event_boundary_test.go` uses a host-owned imported scalar global to
+observe the public callback contract. The guest writes phase 1, emits event 11,
+reads the global, writes phase 2, emits event 22, and writes phase 3 before
+return. Synchronous callbacks observe phases 1 and 2; their mutation is visible
+to the next guest instruction. Deferred callbacks both observe phase 3 and do
+not change that guest result. The callbacks use public numeric global accessors
+and retain no borrowed guest storage.
+
+The tests also check that a guest trap discards pending events, a replayed
+callback failure stops later events after guest work finishes, and a repeated
+prepared invocation has no leftover events. The same observer rejects a local
+adapter that delivers the first event early, reversed events, and a dropped
+event. Existing `host_event_test.go` tests own buffer overflow, exact signatures,
+mixed-mode rejection, and cross-instance restrictions.
+
+Verbose output records Wasm and loaded-code hashes, Go/OS/architecture, explicit
+bounds mode, required AMD64 features, callback mode, and retained event-log
+bytes. With `wago_codegenstats`, an independent diagnostic compile must reproduce
+the loaded bytes and report the established compiler path. These tests support
+ordinary Go on native AMD64/ARM64; TinyGo and precompiled-only builds are
+excluded. Cross-compilation does not count as executed delivery coverage.
+
+`BenchmarkHostEventBoundary` measures repeated prepared calls with 1, 16, and
+1,024 events, checks exact counts and sums, and reports allocations and retained
+log bytes. It omits the phase observer's global reads. Synchronous latency and
+deferred throughput are different contracts, not interchangeable optimizations.
+No production state, API, callback buffer, or instrumentation is added.
