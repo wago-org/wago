@@ -392,6 +392,9 @@ func (a *Asm) VMovdquStoreDisp(base Reg, disp int32, src Reg) {
 	a.vex3MemDisp(vexMap0F, 0b10, 0x7F, src, 0, false, base, disp)
 }
 func (a *Asm) VMovdquLoadIdx(dst, base, index Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocKillFP(dst)
+	}
 	a.vex3MemIdx(vexMap0F, 0b10, 0x6F, dst, 0, false, base, index, disp)
 }
 func (a *Asm) VMovdquStoreIdx(base, index, src Reg, disp int32) {
@@ -848,6 +851,10 @@ func (a *Asm) SseIdx(prefix, op byte, xmm, base, index Reg, disp int32) {
 		a.regallocGPSSE(prefix, 0, op, xmm, 0, true)
 		a.regallocFPSSE(prefix, 0, op, xmm, 0, true)
 		regallocScalarFP(a, prefix, 0, op, xmm, 0, false)
+		if prefix == 0xf3 && op == 0x6f {
+			// An indexed address is not a proven frame slot, even with RSP.
+			a.regallocKillFP(xmm)
+		}
 	}
 
 	if prefix != 0 {
@@ -941,6 +948,9 @@ func (a *Asm) VMovdquDisp(op byte, xmm, base Reg, disp int32) {
 // VMovdquIdx is the VEX.128 form with a base+index+displacement operand.
 // op is 0x6F for loads and 0x7F for stores.
 func (a *Asm) VMovdquIdx(op byte, xmm, base, index Reg, disp int32) {
+	if regallocCheckEnabled && op == 0x6f {
+		a.regallocKillFP(xmm)
+	}
 	a.vex3MemIdx(vexMap0F, 2, op, xmm, 0, false, base, index, disp)
 }
 

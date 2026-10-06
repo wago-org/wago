@@ -469,3 +469,20 @@ subprocess transport, compilation and guest execution are outside those timings.
 They do not measure whole-suite overhead, RSS or native execution speed. Records
 are capped at 64 KiB and captured child output at 1 MiB; these limits bound logical
 payload, not total allocator capacity or peak RSS. All changes are test-only.
+
+## Indexed vector loads in the AMD64 allocation checker
+
+`src/core/encoder/amd64/indexed_vector_enabled_test.go` verifies that indexed
+SSE and AVX vector loads invalidate all 16 destination bytes. It covers both
+raw and named encoder entry points, low/high registers, an RSP base with an
+index, and positive/negative displacements. Scalar loads are existing-behavior
+controls; stores must preserve source facts. Neighbor registers, address
+registers, and unrelated stack slots must keep their facts. No faulty native
+code is executed. Literal encoding tests run in both ordinary and checked
+builds. These tests do not qualify all FP/SIMD joins, calls, or ARM64 transport.
+
+`BenchmarkIndexedVectorEncoding` measures emission with no active observer.
+`BenchmarkIndexedVectorObserved` measures an active checker, including restoring
+known input facts on every iteration. Both reuse the byte buffer. A checker
+state test requires allocation-free kill operations and checks partial-byte
+invalidation, clone isolation, and unknown-value propagation.

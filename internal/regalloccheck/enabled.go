@@ -91,7 +91,10 @@ func (s *State) Apply(e Effect) {
 			}
 		}
 	case Kill:
-		s.Put(e.Dst, make(Value, e.Size))
+		// Missing bytes are unknown. Remove facts without allocating a zero value.
+		for i := 0; i < e.Size; i++ {
+			delete(s.cells, e.Dst.next(i))
+		}
 	case Call:
 		for loc := range s.cells {
 			if loc.Bank != Frame {
