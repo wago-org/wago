@@ -1,0 +1,140 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/divrem-sharing-831
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPairs/i32u/latency         	   15272	     15692 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/latency-biased  	   13891	     17452 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/throughput      	   21034	     11445 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/pressure        	   17125	     14281 ns/op	       307.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency         	   15156	     15756 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency-biased  	   13519	     17822 ns/op	       261.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/throughput      	   21714	     11085 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/pressure        	   17264	     14123 ns/op	       377.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency         	   14317	     16690 ns/op	       190.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency-biased  	   12769	     18660 ns/op	       197.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/throughput      	   18345	     13141 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/pressure        	   16750	     14247 ns/op	       331.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency         	   14283	     16917 ns/op	       271.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency-biased  	   12846	     18660 ns/op	       278.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/throughput      	   18595	     13054 ns/op	       272.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/pressure        	   16965	     14066 ns/op	       412.0 code-B	       0 B/op	       0 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/divrem-sharing-831
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPairs/i32u/latency         	   15168	     15641 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/latency-biased  	   13648	     17664 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/throughput      	   21027	     11611 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/pressure        	   16982	     14263 ns/op	       307.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency         	   15195	     15863 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency-biased  	   13464	     17889 ns/op	       261.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/throughput      	   21300	     11213 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/pressure        	   16558	     14505 ns/op	       377.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency         	   14168	     16572 ns/op	       190.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency-biased  	   12764	     18606 ns/op	       197.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/throughput      	   18859	     12947 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/pressure        	   17058	     14251 ns/op	       331.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency         	   14209	     16870 ns/op	       271.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency-biased  	   12727	     18509 ns/op	       278.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/throughput      	   18520	     12936 ns/op	       272.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/pressure        	   17148	     14259 ns/op	       412.0 code-B	       0 B/op	       0 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/divrem-sharing-831
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPairs/i32u/latency         	   15358	     15730 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/latency-biased  	   13704	     17320 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/throughput      	   21015	     11363 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/pressure        	   16826	     14062 ns/op	       307.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency         	   15206	     15833 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency-biased  	   13713	     17710 ns/op	       261.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/throughput      	   21331	     11214 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/pressure        	   16590	     14691 ns/op	       377.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency         	   14202	     17007 ns/op	       190.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency-biased  	   12558	     18730 ns/op	       197.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/throughput      	   18194	     12880 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/pressure        	   16852	     14201 ns/op	       331.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency         	   14059	     16600 ns/op	       271.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency-biased  	   12952	     18839 ns/op	       278.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/throughput      	   18697	     13053 ns/op	       272.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/pressure        	   17007	     14199 ns/op	       412.0 code-B	       0 B/op	       0 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/divrem-sharing-831
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPairs/i32u/latency         	   15216	     15808 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/latency-biased  	   13696	     17562 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/throughput      	   21139	     11485 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/pressure        	   16863	     14073 ns/op	       307.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency         	   15260	     15976 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency-biased  	   13664	     17550 ns/op	       261.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/throughput      	   21526	     11185 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/pressure        	   17160	     14339 ns/op	       377.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency         	   14266	     16527 ns/op	       190.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency-biased  	   12988	     18405 ns/op	       197.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/throughput      	   18602	     12938 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/pressure        	   16670	     14561 ns/op	       331.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency         	   14259	     16794 ns/op	       271.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency-biased  	   12898	     18686 ns/op	       278.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/throughput      	   18444	     13227 ns/op	       272.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/pressure        	   16300	     14533 ns/op	       412.0 code-B	       0 B/op	       0 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/divrem-sharing-831
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPairs/i32u/latency         	   15289	     15832 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/latency-biased  	   13525	     17456 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/throughput      	   21380	     11384 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/pressure        	   16485	     14320 ns/op	       307.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency         	   15217	     15660 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency-biased  	   13688	     17714 ns/op	       261.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/throughput      	   21573	     11218 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/pressure        	   17010	     14111 ns/op	       377.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency         	   14125	     16650 ns/op	       190.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency-biased  	   12836	     18749 ns/op	       197.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/throughput      	   18662	     12970 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/pressure        	   17094	     14087 ns/op	       331.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency         	   14356	     16465 ns/op	       271.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency-biased  	   13137	     18433 ns/op	       278.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/throughput      	   18751	     13363 ns/op	       272.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/pressure        	   17144	     14513 ns/op	       412.0 code-B	       0 B/op	       0 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/divrem-sharing-831
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPairs/i32u/latency         	   15043	     15579 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/latency-biased  	   13830	     17640 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/throughput      	   21014	     11597 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/pressure        	   16902	     14348 ns/op	       307.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency         	   15278	     15520 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency-biased  	   13664	     17613 ns/op	       261.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/throughput      	   21903	     11130 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/pressure        	   17085	     14180 ns/op	       377.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency         	   14343	     16631 ns/op	       190.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency-biased  	   12878	     18467 ns/op	       197.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/throughput      	   18446	     12949 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/pressure        	   17004	     14238 ns/op	       331.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency         	   14700	     16598 ns/op	       271.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency-biased  	   13056	     18485 ns/op	       278.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/throughput      	   18513	     13060 ns/op	       272.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/pressure        	   17134	     14143 ns/op	       412.0 code-B	       0 B/op	       0 allocs/op
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/divrem-sharing-831
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPairs/i32u/latency         	   15195	     15633 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/latency-biased  	   13869	     17415 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/throughput      	   21051	     11509 ns/op	       184.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32u/pressure        	   17308	     14186 ns/op	       307.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency         	   15408	     15758 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/latency-biased  	   13622	     17371 ns/op	       261.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/throughput      	   21745	     11147 ns/op	       254.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i32s/pressure        	   16147	     14091 ns/op	       377.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency         	   14481	     16511 ns/op	       190.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/latency-biased  	   13066	     18654 ns/op	       197.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/throughput      	   18426	     12894 ns/op	       191.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64u/pressure        	   16899	     14283 ns/op	       331.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency         	   14259	     16531 ns/op	       271.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/latency-biased  	   13150	     18388 ns/op	       278.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/throughput      	   18594	     12964 ns/op	       272.0 code-B	       0 B/op	       0 allocs/op
+BenchmarkPairs/i64s/pressure        	   17098	     14093 ns/op	       412.0 code-B	       0 B/op	       0 allocs/op

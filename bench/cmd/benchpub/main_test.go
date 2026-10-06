@@ -11,7 +11,12 @@ func TestSuiteRegexIncludesPublishedBoundaryBenchmarks(t *testing.T) {
 		"BenchmarkExecCallOverhead_wago",
 		"BenchmarkExecCallOverhead_wazero",
 		"BenchmarkExecTypedCall_wago",
+		"BenchmarkExecInstanceCall_wago",
 		"BenchmarkExecHostCallback_wago",
+		"BenchmarkExecHostCallbackInstance_wago",
+		"BenchmarkExecHostCallbackInstanceF64_wago",
+		"BenchmarkExecHostCallbackInstanceAlternatingF64_wago",
+		"BenchmarkExecHostCallbackResolvedF64_wago",
 		"BenchmarkExecHostRoundtrip_wago",
 		"BenchmarkExecHostRoundtrip_wazero",
 	} {

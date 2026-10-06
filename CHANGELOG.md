@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Reuse both AMD64 hardware divide results for adjacent division/remainder
+  pairs on the same local operands, reducing dependent-pair latency.
+
 - Emit one AMD64 immediate store for i64 constants representable as a signed
   imm32, and shorten guarded constant-store register lifetimes under pressure.
 - Improve AMD64 execution with bounded local and caller register reuse, direct
@@ -18,17 +21,28 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in admitted straight-line AMD64 functions.
 ### Added
 
+- Add AMD64 bounds-proof invalidation tests and compile/execution benchmarks.
+
+- Add rejection controls for omitted native padding and artifact metadata.
+
+- Add host-event timing-boundary and replay-failure controls.
+
 - Add exact core-SIMD source-pair checks and benchmarks for byte averages,
   high-byte extraction, and signed constant dot/sub expressions.
 
 - Add AMD64 loop-boundary regression checks for deferred producer placement,
   floating-point transport, register pressure, and zero-iteration traps.
 
+- Add AMD64 fresh-worker comparisons for reused compiler scratch, error recovery,
+  native execution, and worker memory release, with a test-only omitted-reset control.
+
 - Add two prebuilt Grain standard-library assertion suites to the executable
   corpus, with matching guest sources, reproducible rebuild instructions,
   preserved licenses, and independently verified WASI execution oracles.
 
 ### Fixed
+
+- Match direct and validated feature summaries for bulk table instructions.
 
 - Preserve live AMD64 values across signed i64 division when the overflow
   guard runs under register pressure.
