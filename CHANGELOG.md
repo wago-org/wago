@@ -24,6 +24,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve live AMD64 values across signed i64 division when the overflow
+  guard runs under register pressure.
+
 - AMD64 guarded i64 constant stores use a single eight-byte native store.
   ARM64 additionally checks the entire access before writing, preventing
   partial memory updates from trapping unaligned constant stores.

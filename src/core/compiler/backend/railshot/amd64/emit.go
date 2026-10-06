@@ -1065,14 +1065,13 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 
 // cmpIntMin compares the dividend in RAX against the type's most-negative value
 // (INT_MIN), for the div_s overflow check. The 32-bit INT_MIN fits an imm32; the
-// 64-bit one needs a scratch register (RAX/RDX/divisor are pinned here, so
-// allocReg avoids them).
+// 64-bit one uses the already-reserved RDX, which Cdq overwrites next. Do not
+// allocate here: a spill inside this conditional guard would be skipped when
+// the divisor is not -1, leaving the merged allocator state incorrect.
 func (f *fn) cmpIntMin(w bool) {
 	if w {
-		t := f.allocReg(0)
-		f.a.MovImm64(t, 0x8000000000000000)
-		f.a.AluRR(0x39, RAX, t, true) // cmp rax, t
-		f.release(t)
+		f.a.MovImm64(RDX, 0x8000000000000000)
+		f.a.AluRR(0x39, RAX, RDX, true) // cmp rax, INT64_MIN
 	} else {
 		f.a.AluRI(7, RAX, int32(-2147483648), false) // cmp eax, INT_MIN
 	}
