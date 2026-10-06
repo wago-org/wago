@@ -34,3 +34,34 @@ just test all                     # all of the above
 The runtime benchmark corpus is repository-level data in `corpus/`; it is not
 duplicated under tests. Regression artifacts remain under `tests/corpus`
 because they are narrow bug reproductions, not performance workloads.
+
+## AMD64 loop-boundary regression checks
+
+`src/wago/loop_boundary_*test.go` keeps the #817 experiment's useful
+checks: arithmetic and trap oracles, live stack/register pressure, native
+producer placement, and compile/prepared-call benchmarks. It tests zero, one,
+and many iterations, conditional entry, aliases, constants, subnormal values,
+signed zeros, infinities and NaNs. No additional eager-flush optimization was
+retained: the measured candidate emitted identical native code in all nine
+fixtures and had no significant timing improvement on the tested AMD CPU.
+
+The native check reads instruction addresses and direct backedge targets in
+GNU objdump output, for both SSE2 and modern encodings. Its deliberately
+inside-loop producer has the same multiply count as the pre-loop producer;
+the observer must distinguish their placement. This is a bounded single-loop
+check, not a general native control-flow analyzer. With `wago_codegenstats`, it
+also verifies the established compiler path and actual allocator spills in the
+register-pressure fixture.
+
+```sh
+go test -tags=wago_regalloccheck,wago_codegenstats ./src/wago -run '^TestLoopBoundary'
+go test ./src/wago -run '^$' -bench '^BenchmarkLoopBoundary' -benchmem
+```
+
+These tests use the existing WABT helper and skip when `wat2wasm` is unavailable;
+native placement additionally requires GNU `objdump` or `gobjdump` and skips
+when only LLVM objdump is available. WAT assembly and guest
+execution are excluded from the compile benchmark; setup and compilation are
+excluded from the prepared-call benchmark. No wall-clock threshold is asserted.
+Native ARM64 and admitted memory-region/shared-compiler loops remain outside
+this coverage.
