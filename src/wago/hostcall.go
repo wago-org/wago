@@ -513,6 +513,23 @@ func (r *CallerResolver) InvocationContext(caller HostModule) (context.Context, 
 	return ctx, nil
 }
 
+// InvocationMayCancel reports whether the active call has a cancellation or
+// deadline signal. A false result lets synchronous re-entry avoid creating a
+// cancellation watcher. The caller is authorized with the same callback scope
+// as InvocationContext. The signal belongs to this callback even during nested
+// execution; no parent context or values are exposed.
+func (r *CallerResolver) InvocationMayCancel(caller HostModule) (bool, error) {
+	if r == nil {
+		return false, fmt.Errorf("wago: nil caller resolver: %w", ErrPermissionDenied)
+	}
+	rt := r.rt.Load()
+	h, ok := resolveHostCaller(caller)
+	if rt == nil || !ok || !h.valid() || h.in == nil || h.in.rt != rt || h.scope == nil {
+		return false, fmt.Errorf("wago: invocation cancellation requires an active host call from the owning runtime: %w", ErrPermissionDenied)
+	}
+	return h.generation&hostCallMayCancel != 0, nil
+}
+
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
 	active   atomic.Uint64
@@ -520,14 +537,30 @@ type hostCallScope struct {
 	state    atomic.Pointer[hostCallState]
 }
 
+// The low generation bit stores the immutable cancellation signal. The remaining
+// bits identify the callback without increasing the boxed caller token.
+const hostCallMayCancel uint64 = 1
+const maxHostCallSequence = ^uint64(0) >> 1
+
+func invocationMayCancel(parent context.Context) bool {
+	if parent == nil {
+		return false
+	}
+	if parent.Done() != nil || parent.Err() != nil {
+		return true
+	}
+	_, hasDeadline := parent.Deadline()
+	return hasDeadline
+}
+
 func (s *hostCallScope) nextGeneration() uint64 {
 	for {
 		previous := s.sequence.Load()
-		if previous == ^uint64(0) {
+		if previous >= maxHostCallSequence {
 			panic(invalidHostReference{err: fmt.Errorf("host callback generation exhausted")})
 		}
 		if s.sequence.CompareAndSwap(previous, previous+1) {
-			return previous + 1
+			return (previous + 1) << 1
 		}
 	}
 }
@@ -721,12 +754,16 @@ func (s *hostCallScope) begin(in *Instance) instanceHostModule {
 }
 
 func (s *hostCallScope) beginReserved(in *Instance, reservation *pluginOperationReservation) instanceHostModule {
-	return s.beginReservedWithID(in, in.currentInvocationID(), reservation)
+	return s.beginReservedWithID(in, in.currentInvocationID(), reservation, activeHostInvocationContext(in).parent)
 }
 
-func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reservation *pluginOperationReservation) instanceHostModule {
+func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reservation *pluginOperationReservation, parentContext context.Context) instanceHostModule {
 	parent := s.active.Load()
+	mayCancel := invocationMayCancel(parentContext)
 	generation := s.nextGeneration()
+	if mayCancel {
+		generation |= hostCallMayCancel
+	}
 	s.active.Store(generation)
 	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: id, reservation: reservation}
 }
@@ -772,7 +809,7 @@ func (in *Instance) beginHostCallScopeReserved(reservation *pluginOperationReser
 }
 
 func (in *Instance) beginHostCallScopeReservedWithID(id invocationID, reservation *pluginOperationReservation) instanceHostModule {
-	return in.ensurePluginState().hostScope.beginReservedWithID(in, id, reservation)
+	return in.ensurePluginState().hostScope.beginReservedWithID(in, id, reservation, activeHostInvocationContext(in).parent)
 }
 
 func (in *Instance) currentInvocationID() invocationID {
@@ -2242,7 +2279,7 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHos
 		})
 		return
 	}
-	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation)
+	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	binding.callBoundUnchecked(caller, args, results)
@@ -2267,7 +2304,7 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 	defer gcTemps.release(in)
-	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation)
+	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = exact
 	var gcResultTemps gcHostTempTokens
 	gcResultTemps.exactTypes = exactTypesPtr

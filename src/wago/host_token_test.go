@@ -64,13 +64,13 @@ func TestRetainedHostTokenCannotGainLaterGeneration(t *testing.T) {
 func TestHostScopeGenerationMonotonicAndExhaustion(t *testing.T) {
 	var in Instance
 	var scope hostCallScope
-	a := scope.beginReservedWithID(&in, 1, nil)
-	b := scope.beginReservedWithID(&in, 1, nil)
+	a := scope.beginReservedWithID(&in, 1, nil, nil)
+	b := scope.beginReservedWithID(&in, 1, nil, nil)
 	if a.valid() || !b.valid() || b.generation <= a.generation {
 		t.Fatal("invalid nested generation")
 	}
 	scope.end(b.generation, b.parentGeneration)
-	c := scope.beginReservedWithID(&in, 1, nil)
+	c := scope.beginReservedWithID(&in, 1, nil, nil)
 	if b.valid() || c.generation <= b.generation {
 		t.Fatal("generation rolled back")
 	}
@@ -78,7 +78,7 @@ func TestHostScopeGenerationMonotonicAndExhaustion(t *testing.T) {
 	if !a.valid() {
 		t.Fatal("outer callback not restored")
 	}
-	scope.sequence.Store(^uint64(0))
+	scope.sequence.Store(maxHostCallSequence)
 	for i := 0; i < 2; i++ {
 		func() {
 			defer func() {
@@ -86,9 +86,9 @@ func TestHostScopeGenerationMonotonicAndExhaustion(t *testing.T) {
 					t.Error("generation exhaustion did not fail")
 				}
 			}()
-			scope.beginReservedWithID(&in, 1, nil)
+			scope.beginReservedWithID(&in, 1, nil, nil)
 		}()
-		if !a.valid() || scope.sequence.Load() != ^uint64(0) {
+		if !a.valid() || scope.sequence.Load() != maxHostCallSequence {
 			t.Fatal("exhaustion changed authority")
 		}
 	}
@@ -102,4 +102,28 @@ func TestHostTokenSize(t *testing.T) {
 	if got := unsafe.Sizeof(instanceHostModule{}); got > 64 {
 		t.Fatalf("callback token = %d bytes, want <=64", got)
 	}
+}
+
+func TestHostScopeLastGenerationCancellationBit(t *testing.T) {
+	var in Instance
+	var scope hostCallScope
+	scope.sequence.Store(maxHostCallSequence - 1)
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	caller := scope.beginReservedWithID(&in, 1, nil, parent)
+	if caller.generation != ^uint64(0) || !caller.valid() {
+		t.Fatal("last cancellable generation lost authority")
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("generation exhausted without failure")
+			}
+		}()
+		scope.beginReservedWithID(&in, 1, nil, nil)
+	}()
+	if !caller.valid() || scope.sequence.Load() != maxHostCallSequence {
+		t.Fatal("generation exhaustion changed authority")
+	}
+	scope.end(caller.generation, caller.parentGeneration)
 }
