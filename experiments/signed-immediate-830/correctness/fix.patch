@@ -1,0 +1,31 @@
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -1020,7 +1020,11 @@
+ 	// dword stores. The qword form is wrong for an arbitrary
+ 	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
+ 	// like a materialized constant would (i64.store8/16/32 route here too).
+-	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
++	// In guard mode a split store can commit its low half before its high half
++	// faults. Non-sign-extendable i64 constants use the single native store in
++	// the materialized-value path below instead.
++	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst &&
++		!(f.guardMode && size == 8 && int64(int32(top.st.cval)) != top.st.cval) {
+ 		f.stats.peep("store-imm")
+ 		v := top.st.cval
+ 		f.erase(top)
+--- a/src/core/compiler/backend/railshot/arm64/memory.go
++++ b/src/core/compiler/backend/railshot/arm64/memory.go
+@@ -1055,8 +1055,11 @@
+ 	// load-then-store dependency chain. i64 needs two 4-byte immediate stores
+ 	// (low32 at disp, high32 at disp+4); narrower stores truncate to the low `size`
+ 	// bytes exactly like a materialized constant would (i64.store8/16/32 route here
+-	// too).
+-	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
++	// too). In guard mode i64 constants use the single native store in the
++	// materialized-value path below: two stores could commit the low half before
++	// a fault on the high half.
++	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst &&
++		!(f.guardMode && size == 8) {
+ 		f.stats.peep("store-imm")
+ 		v := top.st.cval
+ 		f.erase(top)

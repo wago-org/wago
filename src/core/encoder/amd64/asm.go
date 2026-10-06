@@ -658,18 +658,15 @@ func (a *Asm) StoreImm32Mem(base Reg, disp int32, v int32) {
 	a.imm32(v)
 }
 
-// StoreImmIdx stores an immediate directly to [base+index+disp] — `mov r/m,
-// imm` (C6 /0 for a byte, C7 /0 for 16/32-bit; the reg field is the /0 digit,
-// not a register). size selects the store width: 1, 2, or 4 bytes. An 8-byte
-// (i64) store is NOT a single form here — `mov r/m64, imm32` sign-extends the
-// immediate, which is wrong for an arbitrary 64-bit pattern; callers emit two
-// 4-byte immediate stores (low32 at disp, high32 at disp+4) instead.
+// StoreImmIdx stores an immediate directly to [base+index+disp].
+// size selects 1, 2, 4, or 8 bytes. The 8-byte form sign-extends imm32;
+// callers must establish that this is the intended complete i64 value.
 func (a *Asm) StoreImmIdx(base, index Reg, disp int32, imm int32, size int) {
 	if size == 2 {
 		a.emit(0x66) // operand-size prefix for 16-bit
 	}
-	if index >= 8 || base >= 8 {
-		a.emit(a.rex(false, false, index >= 8, base >= 8))
+	if size == 8 || index >= 8 || base >= 8 {
+		a.emit(a.rex(size == 8, false, index >= 8, base >= 8))
 	}
 	op := byte(0xC7)
 	if size == 1 {
