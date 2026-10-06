@@ -30,6 +30,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve ARM64 direct synchronous host-call results under register pressure,
+  restore locals and globals after control-frame result loads, and prevent
+  general-purpose allocation from spilling floating-point registers.
+
 - Preserve live AMD64 values across signed i64 division when the overflow
   guard runs under register pressure.
 

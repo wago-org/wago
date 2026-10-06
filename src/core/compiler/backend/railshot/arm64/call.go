@@ -1359,7 +1359,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
 	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
-	p, rN := len(ft.Params), len(ft.Results)
+	p := len(ft.Params)
 	var rootOffsets []uint32
 	recordRoots := false
 	if uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) == 0 {
@@ -1463,70 +1463,50 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
 	}
-	f.reloadLocalsForCall()
-
-	if !internalGC {
-		f.deriveModuleGlobals() // arbitrary host code may have written global cells
-	}
-	f.derivePinnedGlobals()
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
-	// Read results out of the control frame onto the operand stack, honoring
-	// slot-width result layout for v128 and mixed scalar/vector signatures.
-	f.ld64(X11, linMemReg, -int32(offCustomCtx)) // reload ctrl (clobbered by the round trip)
+	// Publish each result immediately so later loads can spill it to the existing
+	// operand frame. Pin only the control pointer, never the whole result set.
+	// setDepthTypesWithGCRoots clears transient pins, so reserve X11 after it.
+	savedPins := f.pinned
+	f.pinned = f.pinned.add(X11)
+	f.ld64(X11, linMemReg, -int32(offCustomCtx))
 	if wide {
 		f.a.AddImm64(X11, X11, hcWideBase)
 	}
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
-	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
-	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
 	ctrlSlot = 0
-	for j := 0; j < rN; j++ {
-		rt := mtOf(ft.Results[j])
-		resTypes[j] = rt
+	for _, result := range ft.Results {
+		rt := mtOf(result)
+		var value *elem
 		switch {
 		case rt.isV128():
-			res[j] = f.allocFReg(0)
-			f.syncHostLoadV128(res[j], X11, resultsOffset+int32(ctrlSlot)*8)
-			f.fpinned = f.fpinned.add(res[j]) // keep across the remaining loads
+			r := f.allocFReg(0)
+			f.syncHostLoadV128(r, X11, resultsOffset+int32(ctrlSlot)*8)
+			value = f.pushVReg(r)
 		case rt.isFloat():
 			tmp := f.allocReg(0)
 			f.syncHostLoad64(tmp, X11, resultsOffset+int32(ctrlSlot)*8)
-			res[j] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[j], tmp, true)
+			r := f.allocFReg(0)
+			f.a.FmovFromGpr(r, tmp, true)
 			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[j])
+			value = f.pushFReg(r, rt)
 		default:
-			res[j] = f.allocReg(0)
-			f.syncHostLoad64(res[j], X11, resultsOffset+int32(ctrlSlot)*8)
-			f.pinned = f.pinned.add(res[j]) // keep across the remaining loads
+			r := f.allocReg(0)
+			f.syncHostLoad64(r, X11, resultsOffset+int32(ctrlSlot)*8)
+			value = f.pushReg(r, rt)
 		}
+		value.st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, result))
 		ctrlSlot += rt.stackSlots()
 	}
-	for j := 0; j < rN; j++ {
-		var value *elem
-		switch rt := resTypes[j]; {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[j])
-			value = f.pushVReg(res[j])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[j])
-			value = f.pushFReg(res[j], rt)
-		default:
-			f.pinned = f.pinned.remove(res[j])
-			value = f.pushReg(res[j], rt)
-		}
-		value.st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[j]))
+	f.pinned = savedPins
+	// A restored local or value-pinned global can occupy X11. Restore these
+	// only after the final control-frame load. Their registers remain reserved
+	// from result allocation throughout the reconstruction.
+	f.reloadLocalsForCall()
+	if !internalGC {
+		f.deriveModuleGlobals()
 	}
+	f.derivePinnedGlobals()
 	// Arbitrary host code can synchronously re-enter this instance and grow its
 	// memory. Reload after reconstructing the operand stack so the continuation
 	// cannot retain the parked activation's pre-call size.
