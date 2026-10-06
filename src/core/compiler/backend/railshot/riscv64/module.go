@@ -271,7 +271,9 @@ func admitShapeMode(m *wasm.Module, floating bool) error {
 }
 
 func admitShapeProfile(m *wasm.Module, floating, publicStarts bool) error {
-	if len(m.Code) == 0 || len(m.Code) > MaxFunctions {
+	// Import-only public modules execute exclusively through instance-owned
+	// bridges. They have no defined entry and need no placeholder instructions.
+	if len(m.Code) > MaxFunctions || len(m.Code) == 0 && (!floating || !publicStarts || m.ImportedFuncCount() == 0) {
 		return unsupported("function count outside 1..1024")
 	}
 	if publicStarts {

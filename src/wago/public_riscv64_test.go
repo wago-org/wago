@@ -232,10 +232,8 @@ func TestRV64PublicAdmissionRejectsBeforeMapping(t *testing.T) {
 		name string
 		data []byte
 	}{
-		{"import-only-reexport", wasmtest.Module(
+		{"no-functions", wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
-			wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("fn")...), 0, 0))),
-			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("imported", 0, 0))),
 		)},
 		{"empty-import-section", emptySectionModule(2)},
 		{"empty-table-section", emptySectionModule(4)},

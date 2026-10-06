@@ -468,97 +468,103 @@ func TestRV64PublicNativeReexportCancellationAndCloseWhileProducerParked(t *test
 }
 
 func TestRV64PublicNativeReexportSameEdgeNestedWideTransport(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		for _, shared := range []bool{false, true} {
-			t.Run(fmt.Sprintf("artifact%t-shared%t", artifact, shared), func(t *testing.T) {
-				types := make([]wasm.ValType, 128)
-				for i := range types {
-					types[i] = wasm.V128
-				}
-				input, want := rv64NativeVectorInputs(types)
-				nested := slices.Clone(input)
-				for i := range nested {
-					nested[i] ^= 0xa55a123456780000
-				}
-				imports := [][]byte{rv64VectorFunctionImport("host", 1)}
-				var memory *Memory
-				if shared {
-					_, memory = importedMemoryProvider(t)
-					defer memory.Close()
-					imports = append(imports, rv64VectorMemoryImport())
-				}
-				body := []byte{0x10, 0}
-				for i := range types {
-					body = append(body, 0x20)
-					body = append(body, wasmtest.ULEB(uint32(i))...)
-				}
-				body = append(body, 0x0b)
-				source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))), wasmtest.Section(2, wasmtest.Vec(imports...)), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("identity", 0, 1))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
-				var relay *Instance
-				depth, calls := 0, 0
-				var retained Caller
-				host := CallerHostCallFunc(func(caller Caller, _ HostCall) {
-					depth++
-					defer func() { depth-- }()
-					calls++
-					runtime.GC()
-					if depth == 1 {
-						retained = caller
-						got, err := relay.InvokeFromHost(context.Background(), caller, "relay", nested...)
-						if err != nil || !slices.Equal(got, nested) {
-							panic(fmt.Sprintf("same-edge nested vector cells: %v", err))
+	for _, importOnly := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			for _, shared := range []bool{false, true} {
+				t.Run(fmt.Sprintf("importonly%t-artifact%t-shared%t", importOnly, artifact, shared), func(t *testing.T) {
+					types := make([]wasm.ValType, 128)
+					for i := range types {
+						types[i] = wasm.V128
+					}
+					input, want := rv64NativeVectorInputs(types)
+					nested := slices.Clone(input)
+					for i := range nested {
+						nested[i] ^= 0xa55a123456780000
+					}
+					imports := [][]byte{rv64VectorFunctionImport("host", 1)}
+					var memory *Memory
+					if shared {
+						_, memory = importedMemoryProvider(t)
+						defer memory.Close()
+						imports = append(imports, rv64VectorMemoryImport())
+					}
+					body := []byte{0x10, 0}
+					for i := range types {
+						body = append(body, 0x20)
+						body = append(body, wasmtest.ULEB(uint32(i))...)
+					}
+					body = append(body, 0x0b)
+					source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))), wasmtest.Section(2, wasmtest.Vec(imports...)), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("identity", 0, 1))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
+					var relay *Instance
+					depth, calls := 0, 0
+					var retained Caller
+					host := CallerHostCallFunc(func(caller Caller, _ HostCall) {
+						depth++
+						defer func() { depth-- }()
+						calls++
+						runtime.GC()
+						if depth == 1 {
+							retained = caller
+							got, err := relay.InvokeFromHost(context.Background(), caller, "relay", nested...)
+							if err != nil || !slices.Equal(got, nested) {
+								panic(fmt.Sprintf("same-edge nested vector cells: %v", err))
+							}
+							if h, ok := resolveHostCaller(caller); !ok || !h.valid() {
+								panic("outer callback authority expired")
+							}
 						}
-						if h, ok := resolveHostCaller(caller); !ok || !h.valid() {
-							panic("outer callback authority expired")
+					})
+					producerImports := testImports("env.host", host)
+					if shared {
+						producerImports.Memory("env", "memory", memory)
+					}
+					producer, err := Instantiate(rv64PublicStartCompile(t, source, artifact), producerImports)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer producer.Close()
+					target, err := producer.ExportedFunc("identity")
+					if err != nil {
+						t.Fatal(err)
+					}
+					flag := NewGlobalI32(0, true)
+					defer flag.Close()
+					relayImports := NewImports().Global("env", "flag", flag).Function("env", "unused", func() {}).Function("env", "target", target)
+					if shared {
+						relayImports.Memory("env", "memory", memory)
+					}
+					relaySource := rv64NativeReexportModule(types, shared, true)
+					if importOnly {
+						relaySource = rv64PublicImportOnlyModule(types, shared, false, true)
+					}
+					relay, err = Instantiate(rv64PublicStartCompile(t, relaySource, artifact), relayImports)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer relay.Close()
+					for range 3 {
+						got, err := relay.Invoke("relay", input...)
+						if err != nil || !slices.Equal(got, want) {
+							t.Fatal("outer full256 cells lost across same-edge nested entry", got, err)
 						}
+					}
+					if calls != 6 || depth != 0 {
+						t.Fatal("nested host callback count", calls, depth)
+					}
+					if _, err := relay.InvokeFromHost(context.Background(), retained, "safe", 4); !errors.Is(err, ErrPermissionDenied) {
+						t.Fatal("retained callback authority survived", err)
+					}
+					identity := producer.nativeContext
+					producer.Close()
+					relay.Close()
+					rv64NativeHostOwners.Lock()
+					_, left := rv64NativeHostOwners.values[identity]
+					rv64NativeHostOwners.Unlock()
+					if left {
+						t.Fatal("native host owner registration survived physical close")
 					}
 				})
-				producerImports := testImports("env.host", host)
-				if shared {
-					producerImports.Memory("env", "memory", memory)
-				}
-				producer, err := Instantiate(rv64PublicStartCompile(t, source, artifact), producerImports)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer producer.Close()
-				target, err := producer.ExportedFunc("identity")
-				if err != nil {
-					t.Fatal(err)
-				}
-				flag := NewGlobalI32(0, true)
-				defer flag.Close()
-				relayImports := NewImports().Global("env", "flag", flag).Function("env", "unused", func() {}).Function("env", "target", target)
-				if shared {
-					relayImports.Memory("env", "memory", memory)
-				}
-				relay, err = Instantiate(rv64PublicStartCompile(t, rv64NativeReexportModule(types, shared, true), artifact), relayImports)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer relay.Close()
-				for range 3 {
-					got, err := relay.Invoke("relay", input...)
-					if err != nil || !slices.Equal(got, want) {
-						t.Fatal("outer full256 cells lost across same-edge nested entry", got, err)
-					}
-				}
-				if calls != 6 || depth != 0 {
-					t.Fatal("nested host callback count", calls, depth)
-				}
-				if _, err := relay.InvokeFromHost(context.Background(), retained, "safe", 4); !errors.Is(err, ErrPermissionDenied) {
-					t.Fatal("retained callback authority survived", err)
-				}
-				identity := producer.nativeContext
-				producer.Close()
-				relay.Close()
-				rv64NativeHostOwners.Lock()
-				_, left := rv64NativeHostOwners.values[identity]
-				rv64NativeHostOwners.Unlock()
-				if left {
-					t.Fatal("native host owner registration survived physical close")
-				}
-			})
+			}
 		}
 	}
 }
