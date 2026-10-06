@@ -604,7 +604,11 @@ func v128LocalAlias(e *elem) (int, bool) {
 // frame slot is still kept coherent by setLocal, but this read can use the
 // register value directly and avoid an L1 load.
 func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
-	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
+	for _, e := range f.fregUser {
+		// Only linked register owners can supply a still-live stack alias.
+		if e == nil || e.prev == nil || e.next == nil {
+			continue
+		}
 		if !e.isValue() || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
 			continue
 		}
