@@ -13,18 +13,13 @@ TEXT ·resumeNativeRaw(SB), NOSPLIT, $0-16
 	MOVD ctrl+0(FP), R9
 	MOVD foreignStackTop+8(FP), R10
 
-	// Save only Go's callee-saved GP state (see trampoline_arm64.s: Go's arm64 ABI
-	// keeps no callee-saved V registers, so V8-V15 need not be preserved for the
-	// Go side). The wasm activation's own V8-V15 are restored from the control
-	// frame in resumeWasm below.
+	// Go treats R19-R25, R27 and all FP registers as scratch. Preserve the
+	// Go SP, FP/LR and closure context, keeping the existing landing-area layout.
+	// The guest's own callee-saved registers are restored in resumeWasm below.
 	SUB  $176, R10, R10
 	MOVD RSP, R11
 	MOVD R11, 0(R10)
-	STP (R19, R20), 8(R10)
-	STP (R21, R22), 24(R10)
-	STP (R23, R24), 40(R10)
-	STP (R25, R26), 56(R10)
-	STP (R27, g), 72(R10)
+	MOVD R26, 64(R10)
 	STP (R29, R30), 88(R10)
 
 	MOVD 80(R9), R26               // X26 = saved linMem
@@ -39,11 +34,7 @@ afterResume:
 	// register, so its offsets are not modeled; no RSP write is added, so the
 	// GC/preemption window is unchanged.
 	MOVD RSP, R11
-	LDP 8(R11), (R19, R20)
-	LDP 24(R11), (R21, R22)
-	LDP 40(R11), (R23, R24)
-	LDP 56(R11), (R25, R26)
-	LDP 72(R11), (R27, g)
+	MOVD 64(R11), R26
 	LDP 88(R11), (R29, R30)
 	MOVD 0(R11), R11
 	MOVD R11, RSP

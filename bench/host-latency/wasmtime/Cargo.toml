@@ -1,0 +1,12 @@
+[package]
+name = "host-latency-wasmtime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wasmtime = { version = "=46.0.0", default-features = false, features = ["cranelift", "runtime", "std"] }
+wat = "=1.259.0"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"

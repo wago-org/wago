@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
+	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 
@@ -1147,6 +1148,16 @@ var (
 	directPreparedEntryMask   = ^(^uint(0) >> 1)
 	directPreparedLightMask   = directPreparedEntryMask >> 1
 	directPreparedBoundedMask = directPreparedEntryMask >> 2
+	directHostSegmentsMask    = directPreparedEntryMask >> 3
+	nativeScalarLeafMask      = directPreparedEntryMask >> 4
+	nativeScalarBoundedMask   = directPreparedEntryMask >> 5
+	goHostDispatchTagMask     = directPreparedEntryMask >> 6
+	integerHostContextMask    = func() uint {
+		if goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" {
+			return directPreparedEntryMask >> 7
+		}
+		return 0
+	}()
 )
 
 func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
@@ -1160,7 +1171,26 @@ func markDirectPreparedBoundedEntry(off int) int {
 }
 func directPreparedBoundedEntry(off int) bool { return uint(off)&directPreparedBoundedMask != 0 }
 func internalEntryOffset(off int) int {
-	return int(uint(off) &^ (directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask))
+	return int(uint(off) &^ (directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask | directHostSegmentsMask | nativeScalarLeafMask | nativeScalarBoundedMask | goHostDispatchTagMask | integerHostContextMask))
+}
+
+// Only fresh compiler output advertises the tagged native import ABI. The codec
+// strips this capability so older native artifacts receive untagged metadata
+// and the dynamic wrapper fallback remains valid for both code generations.
+func (c *Compiled) supportsGoHostDispatchTag() bool {
+	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&goHostDispatchTagMask != 0
+}
+
+func (c *Compiled) boundedNativeScalarLeaf() bool {
+	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarBoundedMask != 0
+}
+
+func (c *Compiled) nativeScalarLeafAllowed() bool {
+	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0
+}
+
+func (c *Compiled) boundedHostSegments() bool {
+	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&directHostSegmentsMask != 0
 }
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
@@ -1753,4 +1783,8 @@ func (in *Instance) exportedGlobalIndex(name string) (int, error) {
 		return 0, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	return idx, nil
+}
+
+func (c *Compiled) integerHostContextAllowed() bool {
+	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&integerHostContextMask != 0
 }

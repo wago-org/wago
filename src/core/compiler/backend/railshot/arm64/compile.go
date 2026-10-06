@@ -33,6 +33,10 @@ import (
 // the architecture-specific name is the public A/B oracle going forward.
 var regMergeEnabled = os.Getenv("WAGO_ARM64_NO_REG_MERGE") != "1" && os.Getenv("WAGO_REG_MERGE") != "0"
 
+// directGoImportEnabled bypasses cross-instance marshaling for bound Go imports
+// in bounded numeric functions. The dispatch tag remains an instance decision.
+var directGoImportEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_GO_IMPORT") != "1"
+
 // uxtwAddEnabled gates folding i64.add(x, i64.extend_i32_u(y)) into a single
 // UXTW extended-register add. On by default; WAGO_ARM64_NOUXTW=1 disables it for
 // A/B measurement.
@@ -404,6 +408,7 @@ type fn struct {
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
 	syncHostCalls          bool
+	dynamicHostFast        bool
 	syncHostSlots          int
 	gcTypeSubtypingRefTest bool
 	gcStructHelpers        bool
@@ -3007,6 +3012,22 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.storeForwardOK = policy.EnabledOption(optStoreForward) && len(c.BodyBytes) <= 256 && nLocals <= 8
 	f.syncHostCalls = syncHostCalls
+	f.dynamicHostFast = f.opt(optDirectGoHostImport) && syncHostCalls && !f.moduleEH && shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
+	for _, typ := range ft.Params {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
+	for _, run := range c.Locals.Runs {
+		if run.Type.Kind() != wasm.ValNum || mtOf(run.Type) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
 	if !guardMode && len(m.Memories) > 0 {
@@ -3046,11 +3067,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	touchesMemory := hints.flags.has(hintTouchesMemory)
 	// A private prepared entry establishes X26 and preserves the full Go
 	// callee-saved set, so small integer functions need not be leaves. Keep host
-	// imports, memory-touching functions, module-pinned globals, and EH state on
-	// the adapter. A module-level memory alone is harmless when this function's
+	// imports on the adapter unless the native-host candidate below is proven;
+	// memory-touching functions, module-pinned globals and EH retain the adapter. A module-level memory alone is harmless when this function's
 	// bounded scan proves that its body never reads, writes, or grows memory.
+	// A native-host candidate has a register entry, but its runtime admission
+	// still requires the module-wide work proof and a proven native import.
+	nativeHostDirect := policy.EnabledOption(optNativeLeafHost) && policy.EnabledOption(optPreparedBoundedEntry) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
 	directPrepared := policy.EnabledOption(optPreparedDirectEntry) && policy.EnabledOption(optRegABI) && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && !touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) &&
-		m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall) && len(c.BodyBytes) <= 96 && nLocals <= 8
+		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
 	// runs its linear-memory ops in THIS caller's frame, so fold it into

@@ -1,0 +1,5 @@
+{
+  "src/wago/private_fixed_owner.go": "aa63e58e10a816d4b8325d556404aa710b754d4b8cf2b3ad5496bd6684d877e7",
+  "src/wago/private_view_fixed_owner.go": "a99bdf88fc87e4633f57e3fcf459c3019ee0a4a3a092d38bb2ba4361be632048",
+  "src/wago/private_result_slot_test.go": "65424f52a71a347d7e39676604ef16f057368b12062e4da86b099839b0917fde"
+}

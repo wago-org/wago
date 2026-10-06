@@ -124,26 +124,28 @@ type instanceMemoryDirectory struct {
 // few fixed slots because real AS loops commonly interleave the business export
 // with __collect, __pin, or paired request/response exports.
 type invokeCache struct {
-	export            string
-	directEntry       uintptr
-	li                int // local index, or -1-import index for an InstanceExport re-export
-	paramSlots        int32
-	resultSlots       int32
-	slotWide          []bool // parameter slots followed by result slots; false means a 32-bit scalar
-	valid             bool
-	entryMode         preparedEntryMode
-	directIntFast     bool
-	directFloatFast   bool
-	directIntLight    bool
-	directIntBounded  bool
-	scalarWideMask    uint8 // low bits are scalar widths; mixed direct entries use the tagged FP-bank encoding
-	scalarResultWide  bool
-	hasFuncRefParams  bool
-	hasFuncRefResults bool
-	boundedWrapper    bool
-	paramWidthClass   scalarSlotWidthClass
-	resultWidthClass  scalarSlotWidthClass
-	slotIndex         uint8
+	export             string
+	directEntry        uintptr
+	li                 int // local index, or -1-import index for an InstanceExport re-export
+	paramSlots         int32
+	resultSlots        int32
+	slotWide           []bool // parameter slots followed by result slots; false means a 32-bit scalar
+	valid              bool
+	entryMode          preparedEntryMode
+	directIntFast      bool
+	directFloatFast    bool
+	directIntLight     bool
+	directIntBounded   bool
+	scalarWideMask     uint8 // low bits are scalar widths; mixed direct entries use the tagged FP-bank encoding
+	scalarResultWide   bool
+	hasFuncRefParams   bool
+	hasFuncRefResults  bool
+	boundedNumericHost bool // immutable signature/binding eligibility; entry still checks execution ownership
+	boundedWrapper     bool
+	paramWidthClass    scalarSlotWidthClass
+	resultWidthClass   scalarSlotWidthClass
+	slotIndex          uint8
+	cachedHostEntry    bool // directEntry holds the public host entry, not an internal numeric entry
 }
 
 // invokeCacheOverflow exists only when an instance requests more than four

@@ -8,6 +8,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Reduce AMD64 and ARM64 synchronous host-call round trips with bounded native
+  bridges, private prepared owners, and specialized numeric marshalling.
 - Improve AMD64 execution with bounded local and caller register reuse, direct
   branch-result transfers, memory operands, and scalar/vector loop lowering.
 - Reduce compilation work by skipping GC conversion scans for validated non-GC

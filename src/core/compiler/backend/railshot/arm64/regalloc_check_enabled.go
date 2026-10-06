@@ -280,3 +280,25 @@ func (f *fn) checkBeginRegMoves(moves []regMove, fp bool) func() {
 		}
 	}
 }
+
+// checkHostSyncHomes verifies the precondition for a future selective bridge.
+// It does not certify implicit context/global registers or narrow preservation.
+func (f *fn) checkHostSyncHomes() {
+	slot := 0
+	for _, root := range f.rootsBottomToTop() {
+		if root.elemKind() != ekValue || root.st.kind != stSlot || root.st.slotIndex() != slot {
+			panic(fmt.Sprintf("regalloccheck: host sync operand lacks canonical home at slot %d", slot))
+		}
+		slot += root.st.typ.stackSlots()
+	}
+	if f.usesCalls {
+		for i, local := range f.locals {
+			if local.reg != regNone && local.state == lsReg {
+				panic(fmt.Sprintf("regalloccheck: host sync dirty pinned local %d", i))
+			}
+		}
+	}
+	if len(f.fconsts) != 0 || len(f.vconsts) != 0 {
+		panic("regalloccheck: host sync persistent constant cache")
+	}
+}

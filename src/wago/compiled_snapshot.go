@@ -235,7 +235,8 @@ func (c *Compiled) validateInternalEntries(artifact bool) error {
 		return fmt.Errorf("compiled metadata invalid: InternalEntry length %d != Entry length %d", len(c.InternalEntry), len(c.Entry))
 	}
 	for i, entry := range c.InternalEntry {
-		if artifact && entry < 0 {
+		compileMarkers := directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask | directHostSegmentsMask | nativeScalarLeafMask | nativeScalarBoundedMask | goHostDispatchTagMask | integerHostContextMask
+		if artifact && uint(entry)&compileMarkers != 0 {
 			return fmt.Errorf("compiled metadata invalid: InternalEntry[%d] has compile-only marker", i)
 		}
 		off := internalEntryOffset(entry)

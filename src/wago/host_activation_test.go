@@ -7,6 +7,29 @@ import (
 	"testing"
 )
 
+func TestBoundedNativeIdentityRequiresLiveCallerScope(t *testing.T) {
+	var in Instance
+	state := in.ensurePluginState()
+	id := newInvocationID()
+	state.activations.boundedID.Store(uint64(id))
+	if isNativeActive(&in, id) {
+		t.Fatal("entry marker identified a parked callback without a Caller scope")
+	}
+	caller := state.hostScope.beginReservedWithID(&in, id, nil)
+	if !isNativeActive(&in, id) {
+		t.Fatal("live Caller scope did not expose its parked activation")
+	}
+	state.hostScope.end(caller.generation, caller.parentGeneration)
+	if isNativeActive(&in, id) {
+		t.Fatal("expired Caller scope exposed the retained entry marker")
+	}
+	markNativeActiveState(state, id)
+	if !isNativeActive(&in, id) {
+		t.Fatal("generic activation count was hidden by the bounded marker")
+	}
+	unmarkNativeActiveState(state, id)
+}
+
 func TestHostInvocationContextCrossInstanceChain(t *testing.T) {
 	t.Run("legacy", func(t *testing.T) { testHostInvocationContextCrossInstanceChain(t, false) })
 	t.Run("concrete", func(t *testing.T) { testHostInvocationContextCrossInstanceChain(t, true) })

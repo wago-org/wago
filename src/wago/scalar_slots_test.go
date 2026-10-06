@@ -35,6 +35,24 @@ func TestScalarSlotWidthClass(t *testing.T) {
 	}
 }
 
+// Narrow copies accept short views with sufficient capacity, like the wide
+// copy path. Exercise the small-signature path with real backing storage.
+func TestNarrowScalarSlotCopyShortViews(t *testing.T) {
+	for _, n := range []int{1, 2, 3} {
+		src := []uint64{0xabcdef0100000001, 0xabcdef0200000002, 0xabcdef0300000003}
+		dst := []uint64{99, 99, 99, 99}
+		copyPublicScalarSlotsByClass(dst[:0], src[:0], make([]bool, n), scalarSlotNarrow)
+		for i := 0; i < n; i++ {
+			if dst[i] != uint64(i+1) {
+				t.Fatalf("n=%d slot=%d: got %x", n, i, dst[i])
+			}
+		}
+		if dst[n] != 99 {
+			t.Fatalf("n=%d: copy wrote beyond signature", n)
+		}
+	}
+}
+
 func TestNarrowScalarSlotCopyUnrolledBoundaries(t *testing.T) {
 	for _, n := range []int{0, 1, 2, 3, 4, 5, 7, 8, 9, 16, 63, 64, 65, 127, 128, 129} {
 		src := make([]uint64, n)
