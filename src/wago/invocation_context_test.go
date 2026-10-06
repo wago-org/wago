@@ -708,3 +708,324 @@ func BenchmarkCallerResolverInvocationContext(b *testing.B) {
 	b.ReportMetric(float64(unsafe.Sizeof(hostCallScope{})), "scope-B")
 	b.ReportMetric(float64(unsafe.Sizeof(instancePluginState{})), "plugin-state-B")
 }
+
+// Keep this helper compatible with Wago versions that do not yet provide the
+// cheap cancellation signal. It measures the context that a synchronous guest
+// re-entry must use when the caller has a Background parent.
+func backgroundReentryContextForTest(resolver *CallerResolver, caller HostModule) context.Context {
+	if fast, ok := any(resolver).(interface {
+		InvocationMayCancel(HostModule) (bool, error)
+	}); ok {
+		mayCancel, err := fast.InvocationMayCancel(caller)
+		if err == nil && !mayCancel {
+			return context.Background()
+		}
+	}
+	ctx, err := resolver.InvocationContext(caller)
+	if err != nil {
+		panic(err)
+	}
+	return ctx
+}
+
+var backgroundReentryContextSink context.Context
+
+func TestBackgroundReentryContextAllocationBudget(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	resolver := &CallerResolver{}
+	resolver.activate(rt)
+	defer resolver.close()
+	in := &Instance{rt: rt}
+	allocs := testing.AllocsPerRun(100, func() {
+		caller := in.beginHostCallScope()
+		backgroundReentryContextSink = backgroundReentryContextForTest(resolver, caller)
+		caller.scope.end(caller.generation, caller.parentGeneration)
+	})
+	if allocs > 1 {
+		t.Fatalf("background reentry allocated %.0f times, want at most one scope allocation", allocs)
+	}
+}
+
+func TestCallerResolverInvocationMayCancel(t *testing.T) {
+	type valueKey struct{}
+	for _, tc := range []struct {
+		name   string
+		parent func() (context.Context, context.CancelFunc)
+		want   bool
+	}{
+		{"background", func() (context.Context, context.CancelFunc) { return context.Background(), func() {} }, false},
+		{"value-only", func() (context.Context, context.CancelFunc) {
+			return context.WithValue(context.Background(), valueKey{}, "private"), func() {}
+		}, false},
+		{"cancellable", func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) }, true},
+		{"deadline", func() (context.Context, context.CancelFunc) {
+			return context.WithDeadline(context.Background(), time.Now().Add(time.Hour))
+		}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := new(invocationContextTestState)
+			rt := newInvocationContextTestRuntime(t, state)
+			defer rt.Close()
+			parent, cancel := tc.parent()
+			defer cancel()
+			var got bool
+			var callbackErr error
+			var retained HostModule
+			state.outer = func(caller HostModule, _, _ []uint64) {
+				retained = caller
+				got, callbackErr = state.resolver.InvocationMayCancel(caller)
+			}
+			module, err := rt.Compile(invocationContextImportModule("outer"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := rt.Instantiate(context.Background(), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			_, err = in.InvokeValues(parent, "call")
+			if tc.want && !nativeCancellationSupported() {
+				if err == nil || !strings.Contains(err.Error(), "requires a concurrent scheduler") {
+					t.Fatalf("unsupported cancellation = %v, want scheduler rejection", err)
+				}
+				if retained != nil {
+					t.Fatal("host callback ran with unsupported cancellation")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if callbackErr != nil || got != tc.want {
+				t.Fatalf("InvocationMayCancel = %v, %v; want %v", got, callbackErr, tc.want)
+			}
+			if _, err := state.resolver.InvocationMayCancel(retained); !errors.Is(err, ErrPermissionDenied) {
+				t.Fatalf("retained caller = %v, want permission denied", err)
+			}
+			if _, err := state.resolver.InvocationMayCancel(forgedHostModule{}); !errors.Is(err, ErrPermissionDenied) {
+				t.Fatalf("forged caller = %v, want permission denied", err)
+			}
+			var nilResolver *CallerResolver
+			if _, err := nilResolver.InvocationMayCancel(retained); !errors.Is(err, ErrPermissionDenied) {
+				t.Fatalf("nil resolver = %v, want permission denied", err)
+			}
+		})
+	}
+}
+
+func TestCallerResolverInvocationMayCancelRejectsForeignCallers(t *testing.T) {
+	state := new(invocationContextTestState)
+	rt := newInvocationContextTestRuntime(t, state)
+	defer rt.Close()
+	module, err := rt.Compile(invocationContextImportModule("outer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lowLevelErr error
+	state.outer = func(caller HostModule, _, _ []uint64) {
+		_, lowLevelErr = state.resolver.InvocationMayCancel(caller)
+	}
+	lowLevel, err := Instantiate(module.Compiled(), InstantiateOptions{Imports: rt.HostImports()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lowLevel.Close()
+	if _, err := lowLevel.Invoke("call"); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(lowLevelErr, ErrPermissionDenied) {
+		t.Fatalf("low-level caller = %v, want permission denied", lowLevelErr)
+	}
+
+	foreign := new(invocationContextTestState)
+	other := newInvocationContextTestRuntime(t, foreign)
+	defer other.Close()
+	var crossErr error
+	foreign.outer = func(caller HostModule, _, _ []uint64) {
+		_, crossErr = state.resolver.InvocationMayCancel(caller)
+	}
+	otherModule, err := other.Compile(invocationContextImportModule("outer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherInstance, err := other.Instantiate(context.Background(), otherModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer otherInstance.Close()
+	if _, err := otherInstance.Invoke("call"); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(crossErr, ErrPermissionDenied) {
+		t.Fatalf("cross-runtime caller = %v, want permission denied", crossErr)
+	}
+}
+
+var invocationMayCancelBenchmarkSink bool
+
+func BenchmarkCallerResolverInvocationMayCancel(b *testing.B) {
+	rt := NewRuntime()
+	defer rt.Close()
+	resolver := &CallerResolver{}
+	resolver.activate(rt)
+	defer resolver.close()
+	in := &Instance{rt: rt}
+	caller := in.beginHostCallScope()
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mayCancel, err := resolver.InvocationMayCancel(caller)
+		if err != nil {
+			b.Fatal(err)
+		}
+		invocationMayCancelBenchmarkSink = mayCancel
+	}
+}
+
+func TestCallerResolverInvocationMayCancelReentrySnapshot(t *testing.T) {
+	for _, outerMayCancel := range []bool{false, true} {
+		name := "background"
+		if outerMayCancel {
+			name = "cancellable"
+		}
+		t.Run(name, func(t *testing.T) {
+			state := new(invocationContextTestState)
+			rt := newInvocationContextTestRuntime(t, state)
+			defer rt.Close()
+			module, err := rt.Compile(invocationContextNestedModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := rt.Instantiate(context.Background(), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			cancellable, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			outerParent, innerParent := context.Context(context.Background()), cancellable
+			if outerMayCancel {
+				outerParent, innerParent = cancellable, context.Background()
+			}
+			restoreParent := bindHostInvocationParent(in, outerParent)
+			defer restoreParent()
+			scope := &in.ensurePluginState().hostScope
+			outer := scope.beginReservedWithID(in, newInvocationID(), nil, outerParent)
+			defer scope.end(outer.generation, outer.parentGeneration)
+
+			// Re-entry replaces the current control frame before a nested guest
+			// reaches another host callback. The outer capability stays active.
+			ready := make(chan error, 1)
+			release := make(chan struct{})
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				restore, err := in.prepareHostReentryState()
+				if err != nil {
+					ready <- err
+					return
+				}
+				defer restore()
+				restoreInnerParent := bindHostInvocationParent(in, innerParent)
+				defer restoreInnerParent()
+				ready <- nil
+				<-release
+			}()
+			if err := <-ready; err != nil {
+				<-done
+				t.Fatal(err)
+			}
+			got, queryErr := state.resolver.InvocationMayCancel(outer)
+			close(release)
+			<-done
+			if queryErr != nil || got != outerMayCancel {
+				t.Fatalf("outer during re-entry = %v, %v; want %v", got, queryErr, outerMayCancel)
+			}
+
+			inner := scope.beginReservedWithID(in, newInvocationID(), nil, innerParent)
+			got, queryErr = state.resolver.InvocationMayCancel(inner)
+			_, outerErr := state.resolver.InvocationMayCancel(outer)
+			scope.end(inner.generation, inner.parentGeneration)
+			if queryErr != nil || got == outerMayCancel || !errors.Is(outerErr, ErrPermissionDenied) {
+				t.Fatalf("nested signal = %v, %v; outer = %v", got, queryErr, outerErr)
+			}
+			got, queryErr = state.resolver.InvocationMayCancel(outer)
+			if queryErr != nil || got != outerMayCancel {
+				t.Fatalf("restored outer = %v, %v; want %v", got, queryErr, outerMayCancel)
+			}
+		})
+	}
+}
+
+func BenchmarkBackgroundReentryContext(b *testing.B) {
+	rt := NewRuntime()
+	defer rt.Close()
+	resolver := &CallerResolver{}
+	resolver.activate(rt)
+	defer resolver.close()
+	in := &Instance{rt: rt}
+	in.ensurePluginState()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		caller := in.beginHostCallScope()
+		backgroundReentryContextSink = backgroundReentryContextForTest(resolver, caller)
+		caller.scope.end(caller.generation, caller.parentGeneration)
+	}
+}
+
+func TestCallerResolverInvocationMayCancelDirectEntries(t *testing.T) {
+	for _, importedStart := range []bool{false, true} {
+		name := "reexport"
+		if importedStart {
+			name = "imported-start"
+		}
+		t.Run(name, func(t *testing.T) {
+			for _, want := range []bool{false, true} {
+				state := new(invocationContextTestState)
+				rt := newInvocationContextTestRuntime(t, state)
+				parent := context.Context(context.Background())
+				cancel := func() {}
+				if want {
+					parent, cancel = context.WithCancel(parent)
+				}
+				var caller HostModule
+				var got bool
+				var queryErr error
+				state.outer = func(h HostModule, _, _ []uint64) {
+					caller = h
+					got, queryErr = state.resolver.InvocationMayCancel(h)
+				}
+				data := invocationContextReexportModule()
+				if importedStart {
+					data = invocationContextImportedStartModule()
+				}
+				module, err := rt.Compile(data)
+				if err != nil {
+					cancel()
+					rt.Close()
+					t.Fatal(err)
+				}
+				instantiateParent := context.Context(context.Background())
+				if importedStart {
+					instantiateParent = parent
+				}
+				in, err := rt.Instantiate(instantiateParent, module)
+				if err == nil && !importedStart {
+					_, err = in.invokeEntry("call", nil, invocationContextSet{callback: parent}, false, false)
+				}
+				if in != nil {
+					in.Close()
+				}
+				cancel()
+				rt.Close()
+				if err != nil || caller == nil || queryErr != nil || got != want {
+					t.Fatalf("signal = %v, %v; call = %v; want %v", got, queryErr, err, want)
+				}
+			}
+		})
+	}
+}
