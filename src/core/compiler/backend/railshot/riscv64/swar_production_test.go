@@ -264,3 +264,29 @@ func TestSWARProductionOwnedMemoryExportsRetainPrivatePolicy(t *testing.T) {
 		t.Fatal("owned memory export changed lowering", err)
 	}
 }
+
+func TestSWARProductionOwnedGlobalExportsRetainPrivatePolicy(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, true, append(append([]byte{0xfd, 12}, make([]byte, 16)...), 0x0b)))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("g", 3, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModulePlain); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("private global export policy widened", err)
+	}
+	public, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+	if err != nil || public == nil || public.CodeImage != nil {
+		t.Fatal("production global export route", err)
+	}
+	m.Exports = m.Exports[:1]
+	reference, err := compileSWARDecodedModule(m, emissionMode{production: true, interruptible: true}, swarModulePlain)
+	if err != nil || !bytes.Equal(reference.code, public.Code) {
+		t.Fatal("owned global export changed lowering", err)
+	}
+}

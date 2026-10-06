@@ -231,7 +231,7 @@ func TestRV64PublicSWARArtifactProfileRejectionsBeforeMapping(t *testing.T) {
 			v.Types[0].Params = make([]ValueTypeDescriptor, 129)
 		}},
 		{"ISA", func(v *Compiled) { v.requiredAMD64Features = 1 }},
-		{"global-export", func(v *Compiled) { v.GlobalExports = map[string]int{"g": 0} }},
+		{"global-export-index", func(v *Compiled) { v.GlobalExports = map[string]int{"g": 0} }},
 		{"start", func(v *Compiled) { v.HasStart = true }},
 	} {
 		t.Run(test.name, func(t *testing.T) {

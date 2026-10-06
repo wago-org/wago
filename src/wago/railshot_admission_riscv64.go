@@ -85,8 +85,16 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
 	if vectorProfile {
-		if c.memoryImportCount() != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 {
-			return reject("SIMD profile requires owned state without global exports")
+		if len(c.GlobalExports) > railshot.MaxFunctions {
+			return reject("global export count bound")
+		}
+		for _, index := range c.GlobalExports {
+			if index < 0 || index >= len(c.Globals) {
+				return reject("global export index bound")
+			}
+		}
+		if c.memoryImportCount() != 0 || len(c.GlobalImports) != 0 {
+			return reject("SIMD profile requires owned state")
 		}
 	}
 	maxArity := 256

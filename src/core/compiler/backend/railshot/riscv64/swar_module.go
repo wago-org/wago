@@ -79,9 +79,9 @@ func compileSWARDecodedModule(m *wasm.Module, mode emissionMode, policy swarModu
 	return compileSWARDecodedModuleProfile(m, mode, policy, false)
 }
 
-// The production adapter can expose its owned memory32 through the current
-// public Memory lifecycle. Private pilots retain their original export policy.
-func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy swarModulePolicy, allowMemoryExports bool) (*swarModuleImage, error) {
+// The production adapter can expose owned memory32 and numeric/vector globals
+// through current public lifecycles. Private pilots retain their export policy.
+func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy swarModulePolicy, allowStateExports bool) (*swarModuleImage, error) {
 	if m == nil || !mode.production || policy > swarModuleHosts {
 		return nil, unsupported("SWAR decoded module production/policy")
 	}
@@ -151,7 +151,10 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		types[i] = &sub.Comp
 	}
 	for _, ex := range m.Exports {
-		if allowMemoryExports && ex.Index.Kind == wasm.ExternMem && ex.Index.Index == 0 && len(m.Memories) == 1 {
+		if allowStateExports && ex.Index.Kind == wasm.ExternGlobal && uint64(ex.Index.Index) < uint64(len(m.Globals)) {
+			continue
+		}
+		if allowStateExports && ex.Index.Kind == wasm.ExternMem && ex.Index.Index == 0 && len(m.Memories) == 1 {
 			continue
 		}
 		if ex.Index.Kind != wasm.ExternFunc || uint64(ex.Index.Index) < uint64(imported) || uint64(ex.Index.Index) >= uint64(imported+len(m.Code)) {
