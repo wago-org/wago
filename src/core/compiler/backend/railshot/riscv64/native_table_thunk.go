@@ -12,6 +12,36 @@ import (
 
 const nativeTableFrameBytes = nativeImportFrameBytes + 16 + HostFixedFrameBytes + 2*nativeImportTransportBytes
 
+// Keep the private call helper image-relative and bounded. The return address
+// reaches the skip envelope; continuation then reconstructs caller values from
+// their canonical homes. All source/descriptor lifetimes belong to the owner.
+func (f *integerEmitter) nativeTableCall(key uint64, argumentSlots, resultSlots int) {
+	if !f.mode.production {
+		f.err = unsupported("foreign table call requires production framed ABI")
+		return
+	}
+	code, err := nativeTableThunkAt(key, argumentSlots, resultSlots, f.mode.functionIndex, f.sourcePC)
+	if err != nil {
+		f.err = err
+		return
+	}
+	if len(code) > MaxCodeBytes-f.a.Len()-16 {
+		f.err = unsupported("foreign table bridge image bound")
+		return
+	}
+	call := f.a.JumpLong(true)
+	skip := f.a.JumpLong(false)
+	start := f.a.Len()
+	f.a.B = append(f.a.B, code...)
+	if err := f.a.PatchLong(call, int64(start)); err != nil {
+		f.err = err
+		return
+	}
+	if err := f.a.PatchLong(skip, int64(f.a.Len())); err != nil {
+		f.err = err
+	}
+}
+
 // Private groundwork only: public imported-table admission remains closed.
 // X14 carries an immutable, physically retained canonical40-byte descriptor;
 // its target must be a qualified framed RV64 local wrapper. The activation owner
@@ -19,7 +49,18 @@ const nativeTableFrameBytes = nativeImportFrameBytes + 16 + HostFixedFrameBytes 
 // normal return or cold unwind. Root call buffers must fit the exact signature.
 // No absolute runtime address is embedded in this image. The owner publishes it
 // through the normal W^X/process-wide icache mapper, and rebinds after cold exit.
+// Include the call/skip envelope and descriptor row guards in admission. The
+// transport copies cost eight bytes per cell; leave ample fixed-width slack for
+// context copies, identity checks, arbitrary constants and two trap islands.
+func nativeTableCallCodeBound(argumentSlots, resultSlots int) int {
+	return 4096 + 16*(argumentSlots+resultSlots)
+}
+
 func nativeTableThunk(key uint64, argumentSlots, resultSlots int, functionIndex uint32) ([]byte, error) {
+	return nativeTableThunkAt(key, argumentSlots, resultSlots, functionIndex, ^uint32(0))
+}
+
+func nativeTableThunkAt(key uint64, argumentSlots, resultSlots int, functionIndex, sourcePC uint32) ([]byte, error) {
 	if argumentSlots < 0 || argumentSlots > 256 || resultSlots < 0 || resultSlots > 256 || functionIndex >= MaxFunctions {
 		return nil, fmt.Errorf("rv64: native table bridge requires bounded signature and source index")
 	}
@@ -174,13 +215,13 @@ func nativeTableThunk(key uint64, argumentSlots, resultSlots int, functionIndex 
 			return nil, err
 		}
 	}
-	f.emitProductionTrap(abi.TrapCalledFnNotLinked, ^uint32(0))
+	f.emitProductionTrap(abi.TrapCalledFnNotLinked, sourcePC)
 	for _, site := range []int{below, short} {
 		if err := a.PatchLong(site, int64(a.Len())); err != nil {
 			return nil, err
 		}
 	}
-	f.emitProductionTrap(abi.TrapStackFenceBreached, ^uint32(0))
+	f.emitProductionTrap(abi.TrapStackFenceBreached, sourcePC)
 	if err := a.Err(); err != nil {
 		return nil, err
 	}

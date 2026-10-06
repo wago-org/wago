@@ -85,7 +85,11 @@ func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int) {
 		f.Load(5, f.SpillOffset(base+j), wide)
 		f.a.Sd(enc.X5, enc.X10, int32(j*8))
 	}
-	f.a.Jalr(enc.RA, enc.X28, 0)
+	if f.mode.foreignTableCalls {
+		f.nativeTableCall(sig.key, len(sig.params), len(sig.results))
+	} else {
+		f.a.Jalr(enc.RA, enc.X28, 0)
+	}
 	f.restoreCallTransport()
 	for j, wide := range sig.results {
 		if wide {
@@ -112,6 +116,24 @@ func (f *integerEmitter) ownedIndirectTarget(key uint64) {
 	f.a.Ld(enc.X7, enc.X6, 16)
 	f.a.Constant64(enc.X5, int64(key))
 	f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	if f.mode.foreignTableCalls {
+		// The owner supplies retained immutable canonical descriptors. Verify the
+		// copied table row still names that exact entry/key/home before root writes.
+		f.a.Ld(enc.X14, enc.X6, 32)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
+		f.a.Constant64(enc.X5, 7)
+		f.a.And(enc.X5, enc.X14, enc.X5)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X5, enc.Zero))
+		f.a.Ld(enc.X7, enc.X14, 0)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X28))
+		f.a.Ld(enc.X7, enc.X14, 8)
+		f.a.Constant64(enc.X5, int64(key))
+		f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+		f.a.Ld(enc.X7, enc.X14, 16)
+		f.a.Ld(enc.X5, enc.X6, 24)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+		return
+	}
 	// Preserve the framed local-wrapper and exact instance identity contracts.
 	// Sharing linear memory does not make two consumers the same instance.
 	f.a.Ld(enc.X7, enc.X6, 24)

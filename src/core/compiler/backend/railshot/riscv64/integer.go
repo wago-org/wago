@@ -19,9 +19,10 @@ const (
 )
 
 type integerSummary struct {
-	maxStack int
-	context  bool
-	calls    int
+	maxStack         int
+	context          bool
+	calls            int
+	tableBridgeBytes int
 }
 type integerControl struct {
 	base                           int
@@ -83,6 +84,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	live := true
 	contextUsed := false
 	callCount := 0
+	tableBridgeBytes := 0
 	popAny := func() (bool, bool, error) {
 		if h <= ctrl[depth-1].base {
 			if !live {
@@ -592,6 +594,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("private table call_indirect shape")
 			}
 			sig := state.types[typeIndex]
+			tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
 			callCount++
 			budget += len(sig.params) + len(sig.results)
 			if callCount > maxDirectCalls || budget > integerBudget {
@@ -939,7 +942,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	if r.HasNext() {
 		return integerSummary{}, fmt.Errorf("rv64: trailing validated bytecode")
 	}
-	return integerSummary{maxStack: peak, context: contextUsed, calls: callCount}, nil
+	return integerSummary{maxStack: peak, context: contextUsed, calls: callCount, tableBridgeBytes: tableBridgeBytes}, nil
 }
 
 func integerOpcode(op byte) (shared.IntOp, bool, bool, bool, bool) {
@@ -1118,6 +1121,9 @@ func (f *integerEmitter) operation(op shared.IntOp, w, unary, resultWide bool) {
 }
 
 func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summary integerSummary, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if mode.foreignTableCalls && summary.tableBridgeBytes > MaxCodeBytes-(64<<10) {
+		return nil, FunctionInfo{}, nil, unsupported("foreign table bridge admission bound")
+	}
 	var widths [256]bool
 	n := len(ft.Params)
 	for i, t := range ft.Params {
@@ -1197,5 +1203,8 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		contextOffset = -8
 	}
 	code, info, err := frameFunctionCalls(f.a.B, widths[:n], len(ft.Params), summary.maxStack, true, contextOffset, info, f.calls)
+	if err == nil && mode.foreignTableCalls && len(code) > MaxCodeBytes {
+		return nil, FunctionInfo{}, nil, unsupported("foreign table function image bound")
+	}
 	return code, info, f.calls, err
 }

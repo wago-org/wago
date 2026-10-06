@@ -73,7 +73,22 @@ func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, 
 	f.Load(5, spill(indexSlot), false)
 	f.ownedIndirectTarget(key)
 	f.swarCallArguments(sig, base, spill)
-	f.a.Jalr(enc.RA, enc.X28, 0)
+	if f.mode.foreignTableCalls {
+		params, results := len(sig.Params), len(sig.Results)
+		for _, typ := range sig.Params {
+			if wasm.EqualValType(typ, wasm.V128) {
+				params++
+			}
+		}
+		for _, typ := range sig.Results {
+			if wasm.EqualValType(typ, wasm.V128) {
+				results++
+			}
+		}
+		f.nativeTableCall(key, params, results)
+	} else {
+		f.a.Jalr(enc.RA, enc.X28, 0)
+	}
 	f.swarCallResults(sig, base, spill)
 }
 
