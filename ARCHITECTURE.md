@@ -440,6 +440,11 @@ stack** whose nodes (`elem`) hold deferred operations and values. A value's
 | `stSlot` | A value in a native frame slot |
 | `stMemRef` | A checked memory read deferred until consumption |
 
+AMD64 retains both RAX and RDX results for a division immediately followed by
+matching local reads and a remainder of the same width and signedness. Earlier
+pending traps materialize first. Constants and bytecode-sensitive regional
+lifetimes retain their existing lowering; no intervening instruction is moved.
+
 Pure, stack-neutral instructions are recorded symbolically and stay
 register-resident. Only when a value is actually **consumed**, or a
 side-effecting instruction appears (`local.set`, `global.set`, `br_if`, a call,
