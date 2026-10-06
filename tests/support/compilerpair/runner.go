@@ -216,9 +216,25 @@ func RunMatrix(t *testing.T, compile Compiler, diagnostics bool) {
 	t.Run("independent-v8", func(t *testing.T) { independent(t, fixtures) })
 }
 
+type nodeFeatureProbe struct {
+	Name string
+	Wasm []byte
+}
+
+func independentFeatureProbes() []nodeFeatureProbe {
+	return []nodeFeatureProbe{
+		{"exception-handling (try_table)", module([]function{{body: []byte{0, 0x1f, 0x40, 0, 0x0b, 0x0b}}}, nil, false)},
+		{"GC (i31)", module([]function{{results: []wasm.ValType{wasm.I32}, body: []byte{0, 0x41, 0, 0xfb, 0x1c, 0xfb, 0x1d, 0x0b}}}, nil, false)},
+	}
+}
+
 // The reference engine receives the exact same Wasm bytes, with no expected
-// answers in its script. Missing Node is a separate skip, not native coverage.
+// answers in its script. Missing Node or proposals are separate skips.
 func independent(t *testing.T, fixtures []Fixture) {
+	independentWithProbes(t, fixtures, independentFeatureProbes())
+}
+
+func independentWithProbes(t *testing.T, fixtures []Fixture, probes []nodeFeatureProbe) {
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node/V8 independent engine unavailable")
@@ -233,11 +249,49 @@ func independent(t *testing.T, fixtures []Fixture) {
 	for i, f := range fixtures {
 		inputs[i] = input{f.ID, f.Wasm, len(f.Want), len(f.Memory) != 0}
 	}
-	payload, err := json.Marshal(inputs)
+	payload, err := json.Marshal(struct {
+		Probes   []nodeFeatureProbe
+		Fixtures []input
+	}{probes, inputs})
 	if err != nil {
 		t.Fatal(err)
 	}
-	script := `let data='';process.stdin.on('data',b=>data+=b);process.stdin.on('end',async()=>{try{const rows=[];for(const f of JSON.parse(data)){const raw=Buffer.from(f.Wasm,'base64');const events=[];const {instance}=await WebAssembly.instantiate(raw,{env:{event:x=>events.push(x)}});const values=[];for(let i=0;i<f.Functions;i++){try{events.length=0;const x=instance.exports['f'+i]();values.push({values:(x===undefined?[]:Array.isArray(x)?x:[x]).map(String),trap:false,events:events.slice()})}catch(e){if(!(e instanceof WebAssembly.RuntimeError))throw e;values.push({values:[],trap:true})}}rows.push({id:f.ID,values,memory:f.Memory?Array.from(new Uint8Array(instance.exports.memory.buffer,0,4)):[]})}console.log(JSON.stringify({node:process.version,v8:process.versions.v8,rows}))}catch(e){console.error(e);process.exitCode=1}});`
+	script := `
+let data = '';
+process.stdin.on('data', b => data += b);
+process.stdin.on('end', async () => {
+  try {
+    const {Probes, Fixtures} = JSON.parse(data);
+    const unsupported = Probes.filter(p => !WebAssembly.validate(Buffer.from(p.Wasm, 'base64'))).map(p => p.Name);
+    if (unsupported.length) {
+      console.log(JSON.stringify({node: process.version, v8: process.versions.v8, unsupported}));
+      return;
+    }
+    const rows = [];
+    for (const f of Fixtures) {
+      const raw = Buffer.from(f.Wasm, 'base64');
+      const events = [];
+      const {instance} = await WebAssembly.instantiate(raw, {env: {event: x => events.push(x)}});
+      const values = [];
+      for (let i = 0; i < f.Functions; i++) {
+        try {
+          events.length = 0;
+          const x = instance.exports['f' + i]();
+          values.push({values: (x === undefined ? [] : Array.isArray(x) ? x : [x]).map(String), trap: false, events: events.slice()});
+        } catch (e) {
+          if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          values.push({values: [], trap: true});
+        }
+      }
+      rows.push({id: f.ID, values, memory: f.Memory ? Array.from(new Uint8Array(instance.exports.memory.buffer, 0, 4)) : []});
+    }
+    console.log(JSON.stringify({node: process.version, v8: process.versions.v8, rows}));
+  } catch (e) {
+    console.error(e);
+    process.exitCode = 1;
+  }
+});`
+
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, node, "-e", script)
@@ -247,8 +301,9 @@ func independent(t *testing.T, fixtures []Fixture) {
 		t.Fatalf("independent V8: %v %s", err, out)
 	}
 	var report struct {
-		Node, V8 string
-		Rows     []struct {
+		Node, V8    string
+		Unsupported []string
+		Rows        []struct {
 			ID     string
 			Values []struct {
 				Values []string
@@ -260,6 +315,9 @@ func independent(t *testing.T, fixtures []Fixture) {
 	}
 	if err := json.Unmarshal(out, &report); err != nil {
 		t.Fatal(err)
+	}
+	if len(report.Unsupported) != 0 {
+		t.Skipf("Node %s / V8 %s lacks required Wasm features: %v", report.Node, report.V8, report.Unsupported)
 	}
 	if len(report.Rows) != len(fixtures) {
 		t.Fatal("independent engine omitted a fixture")
