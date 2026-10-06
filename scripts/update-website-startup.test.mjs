@@ -34,6 +34,7 @@ test("renders matched end-to-end architecture panels with standardized engines",
   assert.equal(matches(html, /data-startup-arch-target=/g), 2);
   assert.equal(matches(html, /data-startup-arch-panel=/g), 2);
   assert.match(html, />wago<span class="rank__mode">single-pass<\/span>/);
+  assert.match(html, />wazy<span class="rank__tag">compiler<\/span>/);
   assert.match(html, />wasmtime<span class="rank__tag">cranelift<\/span>/);
   assert.match(html, />v8<span class="rank__tag">turboshaft<\/span>/);
   assert.match(html, />wasm3<span class="rank__tag">interpreter<\/span>/);
@@ -64,6 +65,7 @@ test("rejects architecture captures from different source commits", () => {
 function dataset(architecture, machine) {
   const runtimes = {
     wago: { label: "wago", tag: "single-pass" },
+    wazy: { label: "wazy", tag: "compiler" },
     wazero: { label: "wazero", tag: "compiler" },
     wasmtime: { label: "wasmtime", tag: "cranelift" },
     v8: { label: "v8", tag: "turboshaft" },
@@ -79,7 +81,7 @@ function dataset(architecture, machine) {
     unit: "ms",
     architecture,
     runtimes,
-    workloads: [{ id: "fib", label: "fib", desc: "recursive Fibonacci", results: { wago: 1, wazero: 2, wasmtime: 3, v8: 4, wasm3: 5, wasmi: 6, wavm: 7 } }],
+    workloads: [{ id: "fib", label: "fib", desc: "recursive Fibonacci", results: { wago: 1, wazy: 1.5, wazero: 2, wasmtime: 3, v8: 4, wasm3: 5, wasmi: 6, wavm: 7 } }],
   };
 }
 
