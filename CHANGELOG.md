@@ -21,17 +21,37 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in admitted straight-line AMD64 functions.
 ### Added
 
+- Add AMD64 bounds-proof invalidation tests and compile/execution benchmarks.
+
+- Add rejection controls for omitted native padding and artifact metadata.
+
+- Add host-event timing-boundary and replay-failure controls.
+
+- Add exact core-SIMD source-pair checks and benchmarks for byte averages,
+  high-byte extraction, and signed constant dot/sub expressions.
+
+- Add semantic result-profile controls and loaded-artifact/omitted-case checks
+  to the conformance test runner.
+
+- Add shared/established compiler-path comparisons at admission boundaries,
+  with typed-control validation, execution controls, and paired benchmarks.
+
 - Add bounded rule-directed scalar, SWAR, and SIMD compiler checks, independent
   result models, activation controls, and equal-budget generation benchmarks.
 
 - Add AMD64 loop-boundary regression checks for deferred producer placement,
   floating-point transport, register pressure, and zero-iteration traps.
 
+- Add AMD64 fresh-worker comparisons for reused compiler scratch, error recovery,
+  native execution, and worker memory release, with a test-only omitted-reset control.
+
 - Add two prebuilt Grain standard-library assertion suites to the executable
   corpus, with matching guest sources, reproducible rebuild instructions,
   preserved licenses, and independently verified WASI execution oracles.
 
 ### Fixed
+
+- Match direct and validated feature summaries for bulk table instructions.
 
 - Preserve live AMD64 values across signed i64 division when the overflow
   guard runs under register pressure.
