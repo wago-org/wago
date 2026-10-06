@@ -113,3 +113,26 @@ func moduleUsesSWAR(m *wasm.Module) (bool, error) {
 	}
 	return false, nil
 }
+
+// UsesSWAR shares the bounded compiler selector with public import admission.
+// The shared frontend does not populate Codegen.Features with Wasm SIMD
+// requirements, so that field cannot select the public vector import profile.
+func UsesSWAR(m *wasm.Module) (bool, error) {
+	if m == nil || len(m.Types) > MaxFunctions || len(m.Code) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Globals) > 256 || len(m.Data) > 256 {
+		return false, unsupported("SWAR selector decoded count bound")
+	}
+	remaining := MaxModuleBytes
+	for _, fn := range m.Code {
+		if len(fn.BodyBytes) > remaining {
+			return false, unsupported("SWAR selector instruction/data size bound")
+		}
+		remaining -= len(fn.BodyBytes)
+	}
+	for _, data := range m.Data {
+		if len(data.Init) > remaining {
+			return false, unsupported("SWAR selector instruction/data size bound")
+		}
+		remaining -= len(data.Init)
+	}
+	return moduleUsesSWAR(m)
+}

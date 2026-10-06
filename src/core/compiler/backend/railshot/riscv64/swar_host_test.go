@@ -134,7 +134,7 @@ func TestSWARScalarHostUnusedSignatureBoundsAndDeadTyping(t *testing.T) {
 	if code, _, _, err := compileSWARPairsWithImports(fn, ft, nil, types, functions, nil, 0, table, nil, 0, 256, mode); code != nil || err == nil {
 		t.Fatal("imports with private references admitted", err)
 	}
-	for _, sig := range []*wasm.CompType{{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}}, {Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.V128}}, {Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.FuncRef}}, {Kind: wasm.CompFunc, Params: make([]wasm.ValType, 129)}} {
+	for _, sig := range []*wasm.CompType{{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.FuncRef}}, {Kind: wasm.CompFunc, Params: make([]wasm.ValType, 129)}} {
 		bad := append([]*wasm.CompType(nil), functions...)
 		bad[0] = sig // Uncalled import0 must be checked, not only target255.
 		if code, _, _, err := compileSWARPairsWithImports(fn, ft, nil, types, bad, nil, 0, nil, nil, 0, 256, mode); code != nil || err == nil {

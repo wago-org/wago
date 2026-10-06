@@ -31,11 +31,19 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	if m == nil {
 		return railshot.CompileModuleWith(m, opts)
 	}
+	maxImportArity := coreruntime.MaxHostArity
+	vectorProfile, err := railshot.UsesSWAR(m)
+	if err != nil {
+		return nil, err
+	}
+	if vectorProfile {
+		maxImportArity = 128
+	}
 	for i, im := range m.Imports {
 		if im.Type.Kind == wasm.ExternFunc {
 			ft, ok := m.ImportFuncType(i)
-			if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
-				return nil, fmt.Errorf("%w: public host signature arity", railshot.ErrUnsupported)
+			if !ok || len(ft.Params) > maxImportArity || len(ft.Results) > maxImportArity {
+				return nil, fmt.Errorf("%w: public function import signature arity", railshot.ErrUnsupported)
 			}
 		}
 	}

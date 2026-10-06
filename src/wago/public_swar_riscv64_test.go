@@ -548,8 +548,18 @@ func TestRV64PublicSWARSourceUnsupportedStateImportsRemainClosed(t *testing.T) {
 			t.Fatal("rejected fixture must be normally valid", err)
 		}
 		c, err := Compile(nil, source)
+		if test.importedFunction {
+			if err != nil {
+				t.Fatal("native vector import source rejected", err)
+			}
+			defer c.Close()
+			if in, err := Instantiate(c, testImports("env.state", HostCallFunc(func(HostCall) {}))); in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.codeCache.base != 0 {
+				t.Fatal("unused vector Go host import published", err)
+			}
+			continue
+		}
 		if c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-			t.Fatal("vector state or vector host import accepted", test.kind, err)
+			t.Fatal("unsupported vector state import accepted", test.kind, err)
 		}
 	}
 }

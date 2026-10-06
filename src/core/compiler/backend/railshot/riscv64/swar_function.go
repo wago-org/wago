@@ -61,12 +61,12 @@ func walkSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory32 bool, 
 	return walkSWARPairsWithImports(fn, ft, memory32, types, functions, globals, dataCount, table, typeKeys, elementCount, 0, emit)
 }
 
-// importedFunctions is an explicit, immutable scalar-only prefix of the actual
+// importedFunctions is an explicit, immutable numeric/vector prefix of the actual
 // validated function directory. Imports use live same-instance dynamic dispatch;
 // tables/imported references and foreign-instance dispatch remain unsupported.
 func walkSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, emit *integerEmitter) (swarSummary, error) {
 	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil || len(functions) == importedFunctions) {
-		return swarSummary{}, unsupported("SWAR scalar host prefix bound/defined functions/table")
+		return swarSummary{}, unsupported("SWAR import prefix bound/defined functions/table")
 	}
 	if elementCount < 0 || elementCount > MaxOwnedElementSegments || elementCount != 0 && table == nil {
 		return swarSummary{}, unsupported("SWAR owned element directory bound/table")
@@ -97,7 +97,7 @@ func walkSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory32 bool, t
 			return swarSummary{}, err
 		}
 		if i < importedFunctions {
-			if err := swarScalarHostSignature(typ); err != nil {
+			if err := swarImportSignature(typ); err != nil {
 				return swarSummary{}, err
 			}
 		}

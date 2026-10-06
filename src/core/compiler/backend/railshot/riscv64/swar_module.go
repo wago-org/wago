@@ -49,7 +49,7 @@ func compileSWARTableModule(data []byte, mode emissionMode) (*swarModuleImage, e
 	return compileSWARModulePolicy(data, mode, swarModuleTables)
 }
 
-// This separate private policy permits scalar function imports, with defined
+// This separate private policy permits numeric/vector function imports, with defined
 // mixed functions and owned synchronous dispatch. Tables/reexports stay closed.
 func compileSWARHostModule(data []byte, mode emissionMode) (*swarModuleImage, error) {
 	return compileSWARModulePolicy(data, mode, swarModuleHosts)
@@ -223,8 +223,8 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			continue
 		}
 		ft, ok := m.ImportFuncType(entry)
-		if !ok || swarScalarHostSignature(ft) != nil {
-			return nil, unsupported("SWAR module imported scalar signature")
+		if !ok || swarImportSignature(ft) != nil {
+			return nil, unsupported("SWAR module imported carrier signature")
 		}
 		functions[functionImport] = ft
 		hostSignatures[functionImport] = swarHostSignature{params: append([]wasm.ValType(nil), ft.Params...), results: append([]wasm.ValType(nil), ft.Results...)}

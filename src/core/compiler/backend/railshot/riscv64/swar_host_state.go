@@ -14,35 +14,25 @@ import (
 
 type swarHostSignature struct{ params, results []wasm.ValType }
 
-func swarScalarHostSignature(sig *wasm.CompType) error {
-	if err := swarCallSignature(sig); err != nil {
-		return err
-	}
-	for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
-		for _, typ := range list {
-			if swarClassOf(typ) == swarV128 {
-				return unsupported("SWAR host scalar signature")
-			}
-		}
-	}
-	return nil
+func swarImportSignature(sig *wasm.CompType) error {
+	return swarCallSignature(sig)
 }
 
-// Generate only bounded scalar thunks, with an aggregate image budget already
+// Generate bounded numeric/vector transport templates, with an image budget already
 // reduced by every admitted defined function. Empty inputs retain nil images.
 func swarHostThunks(signatures []swarHostSignature, limit int) ([]byte, []int, error) {
 	if len(signatures) > MaxHostFunctionImports || limit < 0 || limit > MaxCodeBytes {
 		return nil, nil, unsupported("SWAR host thunk resource bound")
 	}
 	for _, sig := range signatures {
-		if err := swarScalarHostSignature(&wasm.CompType{Kind: wasm.CompFunc, Params: sig.params, Results: sig.results}); err != nil {
+		if err := swarImportSignature(&wasm.CompType{Kind: wasm.CompFunc, Params: sig.params, Results: sig.results}); err != nil {
 			return nil, nil, err
 		}
 	}
 	var code []byte
 	var entries []int
 	for i, sig := range signatures {
-		body := HostIndirectSyncThunk(uint32(i), len(sig.params), len(sig.results))
+		body := HostIndirectSyncThunk(uint32(i), swarSignatureSlots(sig.params), swarSignatureSlots(sig.results))
 		padding := (-len(code)) & 15
 		if len(body) == 0 || len(body)&3 != 0 || len(body) > limit-len(code)-padding {
 			return nil, nil, unsupported("SWAR host thunk image bound")
@@ -96,7 +86,7 @@ func (image *swarModuleImage) instantiateHostsWithArena(job *coreruntime.JobMemo
 		}
 		previousEnd = info.Entry + info.CodeBytes
 	}
-	// Reproduce the bounded thunk layout from all declared scalar signatures,
+	// Reproduce the bounded thunk layout from all declared carrier signatures,
 	// including unused imports, before sealing or allocating any owner arena.
 	expected, entries, err := swarHostThunks(image.hosts, MaxCodeBytes-len(image.code))
 	if err != nil {

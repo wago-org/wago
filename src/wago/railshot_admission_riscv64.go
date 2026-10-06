@@ -40,6 +40,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.NumImports+len(c.Funcs) > railshot.MaxFunctions || c.dynamicImports != (c.NumImports > 0) {
 		return reject("dynamic function import shape")
 	}
+	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
 	if c.NumImports != 0 {
 		if !c.needsFuncRefContextHeader || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 			return reject("host imports require an instance context anchor without tables")
@@ -49,14 +50,18 @@ func railshotValidateCompiled(c *Compiled) error {
 				return reject("imported-function reexport lowering is pending")
 			}
 		}
+		maxImportArity := coreruntime.MaxHostArity
+		if vectorProfile {
+			maxImportArity = 128
+		}
 		for _, sig := range c.importFuncSigs {
-			if len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
-				return reject("host signature arity")
+			if len(sig.Params) > maxImportArity || len(sig.Results) > maxImportArity {
+				return reject("function import signature arity")
 			}
 			for _, values := range [][]ValType{sig.Params, sig.Results} {
 				for _, typ := range values {
-					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
-						return reject("nonscalar host signature")
+					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) {
+						return reject("unsupported function import signature")
 					}
 				}
 			}
@@ -74,7 +79,6 @@ func railshotValidateCompiled(c *Compiled) error {
 	if len(c.GlobalImports) > len(c.Globals) {
 		return reject("global import index shape")
 	}
-	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
 	for i, global := range c.GlobalImports {
 		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.Type != c.Globals[i].Type || global.Mutable != c.Globals[i].Mutable {
 			return reject("global import type/mutability shape")
@@ -174,8 +178,8 @@ func railshotValidateCompiled(c *Compiled) error {
 func railshotNeedsImportContextHeader(count int) bool { return count > 0 }
 
 // Binding policy runs before prepareCodeMapping, including trusted artifacts.
-// This milestone admits synchronous scalar callbacks and owned host handles.
-// Unsupported foreign targets and replay protocols cannot publish a thunk.
+// Numeric/vector native bindings use retained framed bridges. Go callbacks and
+// owned host handles retain their separately qualified scalar protocol.
 func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store *referenceStore) error {
 	c = c.executionView()
 	if c.NumImports == 0 && len(c.Imports) == 0 {
@@ -188,6 +192,9 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 		value := imports[c.functionImportBindingKey(i)]
 		switch value := value.(type) {
 		case *HostFuncRef:
+			if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
 			// The shared attachment path repeats this check under its ownership
 			// lock before retaining the handle; reject invalid input before mapping.
 			if err := value.validateImport(store, c.importFuncSigs[i]); err != nil {
@@ -202,6 +209,9 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 		case I32HostEvent, gatedI32HostEvent:
 			return fmt.Errorf("%w: public RV64 import %q target ownership/protocol is pending", railshot.ErrUnsupported, key)
 		}
+		if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
+			return fmt.Errorf("public RV64 import %q: %w", key, err)
+		}
 		if _, err := bindSyncHostImport(value, c.importFuncSigs[i]); err != nil {
 			return fmt.Errorf("public RV64 import %q: %w", key, err)
 		}
@@ -211,4 +221,20 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 
 func rv64ImportedInitializer(c *Compiled, index int, typ ValType) bool {
 	return index >= 0 && index < len(c.GlobalImports) && !c.GlobalImports[index].Mutable && c.GlobalImports[index].Type == typ
+}
+
+// This binding-dependent gate runs for every host import, including unused
+// signatures and trusted artifacts, before executable mapping or owner retention.
+func rv64ScalarHostSignature(sig FuncSig) error {
+	if len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
+		return fmt.Errorf("%w: public RV64 scalar host signature arity", railshot.ErrUnsupported)
+	}
+	for _, types := range [][]ValType{sig.Params, sig.Results} {
+		for _, typ := range types {
+			if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+				return fmt.Errorf("%w: public RV64 nonscalar host signature", railshot.ErrUnsupported)
+			}
+		}
+	}
+	return nil
 }
