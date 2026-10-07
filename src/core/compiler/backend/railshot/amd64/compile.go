@@ -445,12 +445,13 @@ type fn struct {
 	moduleGlobalRegionalLeaseSlot uint32
 
 	// Control-flow state (Phase 3).
-	ctrl        []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
-	unreachable bool        // in dead code after an unconditional branch/trap
-	ehTryDepth  int         // live reachable try_table records; bounded by ehTryCap
-	ehRootCount int         // compile-time assigned fixed exception roots; bounded by ehRootCap
-	ehTryCap    int         // this function's reserved try_table records (max nesting depth)
-	ehRootCap   int         // this function's reserved exception roots (catch_ref clauses)
+	nonzeroCtrlHeights int         // active frames retaining an operand prefix
+	ctrl               []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
+	unreachable        bool        // in dead code after an unconditional branch/trap
+	ehTryDepth         int         // live reachable try_table records; bounded by ehTryCap
+	ehRootCount        int         // compile-time assigned fixed exception roots; bounded by ehRootCap
+	ehTryCap           int         // this function's reserved try_table records (max nesting depth)
+	ehRootCap          int         // this function's reserved exception roots (catch_ref clauses)
 
 	// sc holds per-function scratch whose backing is reused across the module:
 	// The intrusive return chain, brFoldSites and trapSites live there so each
@@ -533,6 +534,12 @@ type transient struct {
 	v128Pool          []poolConst // reusable 4/8/16-byte trailing rip-relative constants
 	poolSites         []poolSite  // flat intrusive site lists; no per-constant allocation
 	literalWords      []uint64    // packed compaction island plan; reusable per worker
+
+	// High-water marks include stale slots past slice length. Only writes since
+	// the last recycling checkpoint need clearing; unused capacity stays clean.
+	tmpRootsWritten    int
+	tmpBelowWritten    int
+	tmpDeferredWritten int
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -3319,6 +3326,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		bmi2Rorx = false
 	}
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
+	// Transfer pointer scratch ownership to the active function. Cached slice
+	// headers must not keep detached backings alive when these buffers grow.
+	sc.transient.tmpRoots = nil
+	sc.transient.tmpBelow = nil
+	sc.transient.tmpDeferred = nil
+	sc.transient.tmpRootsWritten = 0
+	sc.transient.tmpBelowWritten = 0
+	sc.transient.tmpDeferredWritten = 0
 	state = f
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)

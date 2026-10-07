@@ -2046,6 +2046,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		}
 	}
 	f.tmpDeferred = deferred[:0]
+	f.tmpDeferredWritten = max(f.tmpDeferredWritten, len(deferred))
 
 	// Consume the args while preserving collector identity for every value below
 	// the arguments. Those canonical slots remain live across the native call.

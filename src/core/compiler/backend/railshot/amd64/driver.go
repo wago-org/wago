@@ -116,10 +116,8 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 // excluded: their caller can still own temporary node handles. Profiling keeps
 // stable node identities for its source-origin map and does not take this path.
 func (f *fn) recycleEmptyOperandArena() {
-	for i := range f.ctrl {
-		if f.ctrl[i].height != 0 {
-			return
-		}
+	if f.nonzeroCtrlHeights != 0 {
+		return
 	}
 	for _, user := range f.regUser {
 		if user != nil {
@@ -134,12 +132,13 @@ func (f *fn) recycleEmptyOperandArena() {
 	if _, reserved := f.s.nodeMemory(); reserved > f.sc.nodeScratchPeak {
 		f.sc.nodeScratchPeak = reserved
 	}
-	// The active function can grow these buffers after copying sc.transient.
-	// Clear both current and cached backings before their node addresses recur.
-	clear(f.tmpRoots[:cap(f.tmpRoots)])
-	clear(f.tmpBelow[:cap(f.tmpBelow)])
-	clear(f.tmpDeferred[:cap(f.tmpDeferred)])
-	f.sc.clearNodeReferences()
+	// Slots beyond these high-water marks have already been cleared. Capacity
+	// retained from a wider function therefore costs nothing at later checkpoints.
+	clear(f.tmpRoots[:f.tmpRootsWritten])
+	clear(f.tmpBelow[:f.tmpBelowWritten])
+	clear(f.tmpDeferred[:f.tmpDeferredWritten])
+	f.tmpRootsWritten, f.tmpBelowWritten, f.tmpDeferredWritten = 0, 0, 0
+	f.stats.peep("operand-arena-recycle")
 	f.s.reset()
 }
 

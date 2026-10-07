@@ -532,6 +532,10 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 	}
 	fr.callFreeLoopPrefix = f.callFreeLoopDepth
 	fr.ehDepth = uint16(f.ehTryDepth)
+	// Base heights are fixed before push and immutable while the frame is active.
+	if fr.height != 0 {
+		f.nonzeroCtrlHeights++
+	}
 	f.ctrl = append(f.ctrl, *fr)
 }
 
@@ -806,6 +810,7 @@ func (f *fn) rootsBottomToTop() []*elem {
 		rs[i], rs[j] = rs[j], rs[i]
 	}
 	f.tmpRoots = rs
+	f.tmpRootsWritten = max(f.tmpRootsWritten, len(rs))
 	return rs
 }
 
@@ -2046,6 +2051,9 @@ func (f *fn) opEnd() error {
 	firstEnd, secondEnd, ends := f.frameEndSites(&fr)
 	if fr.has(ctrlLoopCallFree) {
 		f.callFreeLoopDepth--
+	}
+	if fr.height != 0 {
+		f.nonzeroCtrlHeights--
 	}
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]

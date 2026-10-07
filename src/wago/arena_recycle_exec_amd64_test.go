@@ -8,6 +8,9 @@ import (
 	"encoding/hex"
 	"testing"
 
+	backend "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -20,7 +23,8 @@ func withArenaRecyclePrefix(t *testing.T, data []byte) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix := bytes.Repeat([]byte{0x41, 0, 0x1a}, 600)
+	// Keep const and drop nonadjacent so lowering allocates an operand node.
+	prefix := bytes.Repeat([]byte{0x41, 0, 0x01, 0x1a}, 600)
 	out := append([]byte(nil), data[:8]...)
 	for offset := 8; offset < len(data); {
 		id := data[offset]
@@ -75,7 +79,9 @@ func TestArenaRecycleBeforeGCAndExceptionCalls(t *testing.T) {
 		{"exception-gc", eh, 180, GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), withArenaRecyclePrefix(t, tc.data))
+			data := withArenaRecyclePrefix(t, tc.data)
+			assertGCModuleArenaRecycled(t, data)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,5 +96,36 @@ func TestArenaRecycleBeforeGCAndExceptionCalls(t *testing.T) {
 				t.Fatalf("got %v, %v; want %d", got, err, tc.want)
 			}
 		})
+	}
+}
+
+func assertGCModuleArenaRecycled(t *testing.T, data []byte) {
+	t.Helper()
+	if !compilerTelemetryEnabled || codeProfileEnabled {
+		return
+	}
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats backend.ModuleStats
+	cm, err := backend.CompileModuleWith(m, backend.CompileOptions{
+		Workers: 1, Stats: &stats, GCStructHelpers: true, GCArrayHelpers: true, GCTypeSubtypingRefTest: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	for i, s := range stats.Funcs {
+		if s.Peephole["operand-arena-recycle"] == 0 {
+			t.Fatalf("function %d did not recycle operand arena", i)
+		}
 	}
 }
