@@ -20,14 +20,11 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		for _, global := range c.Globals {
 			hasReferenceGlobal = hasReferenceGlobal || global.Type == ValFuncRef
 		}
-		if !hasReferenceGlobal {
-			if c.needsFuncRefDescs() {
-				return fmt.Errorf("reference descriptors require retained reference state")
-			}
+		if !hasReferenceGlobal && !c.needsFuncRefDescs() {
 			return nil
 		}
-		if !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled {
-			return fmt.Errorf("immutable references require the framed retained reference ABI")
+		if !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+			return fmt.Errorf("references require the framed retained reference ABI and feature")
 		}
 		if c.needsFuncRefDescs() {
 			return rv64ValidateReferenceFunctionKeys(c)

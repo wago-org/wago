@@ -52,12 +52,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	var locals [256]bool
 	var localRefs [256]bool
 	privateRefs := floating && (state.ownedTable || state.importReferences)
-	descriptorRefs := floating && state.ownedTable
-	if floating && state.importReferences {
-		for _, global := range state.globals {
-			descriptorRefs = descriptorRefs || !global.mutable && wasm.EqualValType(global.typ, wasm.FuncRef)
-		}
-	}
+	// Public ref.func bodies use the existing instance descriptor directory;
+	// they do not require a table or a reference-valued global.
+	descriptorRefs := privateRefs
 	nlocals := len(ft.Params)
 	for i, t := range ft.Params {
 		locals[i] = scalarWide(t)

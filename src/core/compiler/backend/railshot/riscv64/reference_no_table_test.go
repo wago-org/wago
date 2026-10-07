@@ -40,7 +40,7 @@ func TestReferenceCarriersWithoutTableDoNotEnableTableInstructions(t *testing.T)
 	}
 }
 
-// Null carriers authorize neither a descriptor load nor a different reference
+// Public carriers admit valid descriptor indices, but not a different reference
 // class, including in unreachable code. Private pilots retain their own gate.
 func TestNullReferenceCarrierInstructionGates(t *testing.T) {
 	ft := &wasm.CompType{Kind: wasm.CompFunc}
@@ -55,8 +55,8 @@ func TestNullReferenceCarrierInstructionGates(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, body := range [][]byte{
-		{0xd2, 0, 0x1a, 0x0b}, // Existing function index without descriptor state.
-		{0x00, 0xd2, 0, 0x1a, 0x0b},
+		{0xd2, 1, 0x1a, 0x0b}, // Out-of-range function index.
+		{0x00, 0xd2, 1, 0x1a, 0x0b},
 		{0xd0, 0x6f, 0x1a, 0x0b},
 		{0x00, 0xd0, 0x6f, 0x1a, 0x0b},
 		{0x42, 0, 0xd1, 0x1a, 0x0b},
@@ -79,5 +79,17 @@ func TestNullReferenceCarrierInstructionGates(t *testing.T) {
 	_, b := walkSWARPairsWithImportMode(fn, ft, false, nil, functions, nil, 0, nil, nil, 0, 0, false, false, nil)
 	if !errors.Is(a, ErrUnsupported) || !errors.Is(b, ErrUnsupported) {
 		t.Fatal("private pilot widened", a, b)
+	}
+	fn.BodyBytes = []byte{0xd2, 0, 0x1a, 0x0b}
+	_, a = walkInteger(fn, ft, &state, nil)
+	_, b = walkSWARPairsWithImportMode(fn, ft, false, nil, functions, nil, 0, nil, nil, 0, 0, false, false, nil)
+	if !errors.Is(a, ErrUnsupported) || !errors.Is(b, ErrUnsupported) {
+		t.Fatal("private descriptor pilot widened", a, b)
+	}
+	state.importReferences = true
+	_, a = walkInteger(fn, ft, &state, nil)
+	_, b = walkSWARPairsWithImportMode(fn, ft, false, nil, functions, nil, 0, nil, nil, 0, 0, true, false, nil)
+	if a != nil || b != nil {
+		t.Fatal("public descriptor carrier rejected", a, b)
 	}
 }

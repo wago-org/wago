@@ -83,7 +83,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 		return swarSummary{}, err
 	}
 	privateRefs := table != nil || foreignTableCalls
-	descriptorRefs := table != nil
+	descriptorRefs := privateRefs
 	if dataCount < 0 || dataCount > 256 {
 		return swarSummary{}, unsupported("SWAR passive data directory bound")
 	}
@@ -92,7 +92,6 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 	}
 	for _, global := range globals {
 		reference := foreignTableCalls && !global.Mutable && wasm.EqualValType(global.Type, wasm.FuncRef)
-		descriptorRefs = descriptorRefs || reference
 		if !swarCarrierType(global.Type) && !reference {
 			return swarSummary{}, unsupported("SWAR global carrier")
 		}

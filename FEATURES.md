@@ -23,7 +23,11 @@ local globals and imported-i32 active-data offsets. Bounded integer constant
 expressions support add/sub/mul and immutable imported integer reads (128 bytes,
 eight operands), including prior immutable local globals. Immutable nullable
 funcref globals support local copy chains, exports, and same-Runtime imports
-from explicit Global owners with an owned or host-created imported table. Frozen
+from explicit Global owners with no table, an owned table, or a host-created
+imported table. Nullable funcref locals and control values, including body-level
+`ref.func` of export-declared local or native-imported numeric/vector functions,
+also work without globals or tables. Function signatures remain numeric/vector;
+Go callback and HostFuncRef reexports remain rejected. Frozen
 attachments retain the actual descriptor storage through producer retirement,
 parked callbacks, and indirect calls. Imported host tables retain the actual
 descriptor owners after writers return or close. Reference imports combined with
