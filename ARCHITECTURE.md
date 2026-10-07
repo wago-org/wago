@@ -113,8 +113,12 @@ width through table.get, locals, typed select and inline block joins. Set, fill,
 grow and copy retain physical descriptor owners through interruption and cold
 unwinding; storage accepts different signatures and indirect calls check exact
 keys. Older table artifacts without bit 52 reject before publication; table-free
-artifacts retain their existing contract. Function imports combined with tables
-remain gated. QEMU correctness does not establish native
+artifacts retain their existing contract. The cooperative public profile combines
+that table with numeric Go/native function imports, with structural signature
+keys covering the full imported and defined function namespace. Element and
+ref.func targets must be defined local wrappers; imported reference proxies stay
+gated. Up to 256 function imports, 256 globals, one memory and one table share a
+514-import bound. QEMU correctness does not establish native
 instruction-cache or performance qualification.
 
 RV64 host calls retain the framed cooperative park/resume boundary. The

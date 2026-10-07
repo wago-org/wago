@@ -62,14 +62,15 @@ func walkSWARPairsWithElements(fn *wasm.Func, ft *wasm.CompType, memory32 bool, 
 }
 
 // importedFunctions is an explicit, immutable numeric/vector prefix of the actual
-// validated function directory. Imports use live same-instance dynamic dispatch;
-// tables/imported references and foreign-instance dispatch remain unsupported.
+// validated function directory. Imports use live same-instance dynamic dispatch.
+// The legacy entry keeps tables separate; the retained public profile can
+// combine them while imported reference proxies remain unsupported.
 func walkSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, emit *integerEmitter) (swarSummary, error) {
 	return walkSWARPairsWithImportMode(fn, ft, memory32, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, false, false, emit)
 }
 
 func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable bool, emit *integerEmitter) (swarSummary, error) {
-	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil || len(functions) == importedFunctions) {
+	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
 		return swarSummary{}, unsupported("SWAR import prefix bound/defined functions/table")
 	}
 	if elementCount < 0 || elementCount > MaxOwnedElementSegments || elementCount != 0 && table == nil {
@@ -697,8 +698,8 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if uint64(index) >= uint64(len(functions)) {
-					return swarSummary{}, unsupported("SWAR owned ref.func index")
+				if uint64(index) < uint64(importedFunctions) || uint64(index) >= uint64(len(functions)) {
+					return swarSummary{}, unsupported("SWAR defined ref.func index")
 				}
 				usesTraps = true
 				if err := push(swarFuncRef); err != nil {

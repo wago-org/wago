@@ -12,6 +12,13 @@ This is the feature-support matrix for Wago's pure-Go, no-cgo engine. Wago
 supports Linux, macOS, and Windows on amd64 and arm64. For planned work, see
 [ROADMAP.md](ROADMAP.md).
 
+Experimental Linux/RV64 requires `wago_rv64_experimental`. Its bounded numeric
+profile includes scalar/SWAR SIMD execution and one nullable funcref table32
+combined with numeric function imports. Imported reference proxies, GC/EH,
+threads, memory64 and table64 remain unavailable. This is not a supported
+release target; native cache and performance qualification remain outstanding.
+See [the runtime contract](ARCHITECTURE.md).
+
 ## Start here
 
 Use this file to check whether a WebAssembly feature can run in your selected

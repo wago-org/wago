@@ -6,14 +6,15 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 const (
 	MaxHostFunctionImports = 256
-	MaxProductionImports   = MaxHostFunctionImports + 256 + 1
+	MaxProductionImports   = MaxHostFunctionImports + 256 + 1 + 1 // functions, globals, memory, table
 	trapImportMissing      = 11
 	trapImportContext      = 12
 )
 
 // Only dynamic per-instance targets are emitted. Foreign bindings, immediate
-// code/home pointers, EH transfer, and imported reexports require further
-// qualified lowering. Byte-only and isolated compilers retain their old gates.
+// code/home pointers and EH transfer need separate lowering. The public retained
+// table profile can combine numeric imports with defined canonical references.
+// Byte-only and isolated compilers retain their old gates.
 func admitHostBindings(m *wasm.Module, opts *CompileOptions) error {
 	count := 0
 	for _, im := range m.Imports {
@@ -32,8 +33,8 @@ func admitHostBindings(m *wasm.Module, opts *CompileOptions) error {
 			return unsupported("dynamic host binding identity")
 		}
 	}
-	if count != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
-		return unsupported("function imports with private references are pending")
+	if count != 0 && (len(m.Tables)+m.ImportedTableCount() != 0 || len(m.Elements) != 0) && (!opts.Interruptible || !opts.ForeignTableCalls) {
+		return unsupported("function imports with tables require the retained public table ABI")
 	}
 	opts.hostImports = count != 0
 	return nil

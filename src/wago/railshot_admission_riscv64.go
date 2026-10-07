@@ -41,10 +41,13 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.NumImports+len(c.Funcs) > railshot.MaxFunctions || c.dynamicImports != (c.NumImports > 0) {
 		return reject("dynamic function import shape")
 	}
+	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxProductionImports {
+		return reject("aggregate import bound")
+	}
 	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
 	if c.NumImports != 0 {
-		if !c.needsFuncRefContextHeader || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
-			return reject("host imports require an instance context anchor without tables")
+		if !c.needsFuncRefContextHeader {
+			return reject("host imports require an instance context anchor")
 		}
 		maxImportArity := coreruntime.MaxHostArity
 		if vectorProfile {

@@ -1,5 +1,11 @@
 # Wago roadmap
 
+Experimental Linux/RV64 now combines a bounded owned/imported funcref table32
+with numeric function imports, including retained foreign targets and parked
+host callbacks. Remaining work includes imported reference proxies, broader
+WebAssembly parity, and native cache/runtime/performance qualification. The
+experimental build tag and unsupported-feature admission remain in place.
+
 AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
 compile-time optimization tiers and are recorded in native artifact requirements
 when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline

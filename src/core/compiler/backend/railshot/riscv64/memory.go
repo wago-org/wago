@@ -101,8 +101,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	for _, im := range m.Imports {
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
-			if !production || !hostImports || s.ownedTable {
-				return s, unsupported("function imports require qualified dynamic host bindings without tables")
+			if !production || !hostImports || s.ownedTable && !importedTables {
+				return s, unsupported("function imports require qualified dynamic bindings and retained table contexts")
 			}
 			s.importedFunctions++
 		case wasm.ExternTable:

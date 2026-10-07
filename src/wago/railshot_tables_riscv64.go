@@ -53,7 +53,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		}
 		remaining -= len(e.Values)
 		for _, v := range e.Values {
-			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(len(c.Funcs)) {
+			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) < uint64(c.NumImports) || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
 				return fmt.Errorf("element requires a defined local function")
 			}
 		}
@@ -70,16 +70,22 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		}
 		remaining -= len(e.Values)
 		for _, v := range e.Values {
-			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(len(c.Funcs)) {
+			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) < uint64(c.NumImports) || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
 				return fmt.Errorf("element state requires a defined local function")
 			}
 		}
 	}
-	if len(c.FuncTypeID) != len(c.Funcs) {
+	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return fmt.Errorf("private table signature-key count")
 	}
 	var params, results [256]wasm.ValType
-	for i, sig := range c.Funcs {
+	for i := range c.FuncTypeID {
+		var sig FuncSig
+		if i < c.NumImports {
+			sig = c.importFuncSigs[i]
+		} else {
+			sig = c.Funcs[i-c.NumImports]
+		}
 		for j, t := range sig.Params {
 			params[j] = rv64NumericWasmType(t)
 		}

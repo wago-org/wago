@@ -79,11 +79,12 @@ func compileSWARDecodedModule(m *wasm.Module, mode emissionMode, policy swarModu
 }
 
 type swarStateProfile struct {
-	publicStarts    bool
-	exports         bool
-	importedMemory  bool
-	importedGlobals bool
-	importedTable   bool
+	publicStarts         bool
+	exports              bool
+	importedMemory       bool
+	importedGlobals      bool
+	importedTable        bool
+	functionTableImports bool // public retained controls only; private pilots stay separate
 }
 
 // Production integrates qualified state with current public lifecycles.
@@ -101,6 +102,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 	}
 	tables, hosts := policy == swarModuleTables, policy == swarModuleHosts
+	hosts = hosts || tables && state.functionTableImports && state.publicStarts && state.exports && mode.interruptible && mode.foreignTableCalls
 	mode.borrowedTable = state.importedTable && mode.foreignTableCalls && mode.interruptible && m.ImportedTableCount() != 0
 	var err error
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
@@ -135,8 +137,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, unsupported("SWAR module scalar function imports only")
 		}
 	}
-	// State imports qualify with scalar host dispatch or a private owned table.
-	// Function imports and tables remain separate policies.
+	// Only the public retained profile combines function imports and tables.
 	// Function indices count only function imports, never state imports.
 	if memoryImports > 1 || memoryImports+len(m.Memories) > 1 {
 		return nil, unsupported("SWAR imported memory profile")
@@ -256,11 +257,10 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			typeKeys[i] = key
 		}
 		functionKeys = make([]uint64, len(functions))
-		for i, index := range m.FuncTypes {
-			if index.Rec || uint64(index.Index) >= uint64(len(typeKeys)) {
-				return nil, unsupported("SWAR table function type index")
-			}
-			functionKeys[i] = typeKeys[index.Index]
+		for i, ft := range functions {
+			// The function namespace includes imported ordinals; all admitted
+			// signatures are numeric and use their complete structural identity.
+			functionKeys[i] = wasm.StructuralFuncTypeKey(ft)
 		}
 	}
 	summaries := make([]swarSummary, len(m.Code))

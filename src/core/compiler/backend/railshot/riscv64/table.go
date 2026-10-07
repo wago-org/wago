@@ -69,6 +69,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	if len(m.Tables) != 0 && m.Tables[0].Init != nil || t.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) {
 		return false, unsupported("private nullable funcref table32 only")
 	}
+	imported := m.ImportedFuncCount()
 	for _, e := range m.Elements {
 		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Exprs) != 0 {
 			return false, unsupported("private legacy function-index element mode")
@@ -81,7 +82,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 			return false, unsupported("inactive element offset")
 		}
 		for _, f := range e.Kind.Funcs {
-			if uint64(f) >= uint64(len(m.Code)) {
+			if uint64(f) < uint64(imported) || uint64(f) >= uint64(imported+len(m.Code)) {
 				return false, unsupported("element requires a defined function")
 			}
 		}
