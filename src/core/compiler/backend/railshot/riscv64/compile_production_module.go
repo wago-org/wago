@@ -26,7 +26,9 @@ func AdmitProductionSource(data []byte) error {
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
 		return err
 	}
-	return admitProductionWire(data)
+	// Public state/import/table support makes their empty sections inert.
+	// Private pilots preserve the original nonempty-section execution policy.
+	return admitProductionWireProfile(data, true)
 }
 
 // CompileModuleWith compiles decoded modules for the production wrapper ABI.
@@ -141,7 +143,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 		opts.MemoryPressure()
 	}
 	image, err := stageProduction(c, opts.DeferCodeMapping)
-	if err != nil || !opts.DeferCodeMapping {
+	if err != nil || !opts.DeferCodeMapping || image.CodeImage == nil {
 		return image, err
 	}
 	// The shared compiler contract represents deferred heap ownership as Code

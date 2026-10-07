@@ -244,18 +244,21 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	if err != nil {
 		return decoded, nil, 0, err
 	}
-	image, err = coreruntime.NewCodeBuffer(codeLen)
-	if err != nil {
-		return decoded, nil, 0, wrapContextError("allocate compiled code section", err)
-	}
-	code, err := image.AppendSpace(codeLen)
-	if err != nil {
-		_ = image.Close()
-		return decoded, nil, 0, wrapContextError("size compiled code section", err)
-	}
-	if _, err := io.ReadFull(r, code); err != nil {
-		_ = image.Close()
-		return decoded, nil, 0, wrapContextError("truncated code section", err)
+	var code []byte
+	if codeLen != 0 {
+		image, err = coreruntime.NewCodeBuffer(codeLen)
+		if err != nil {
+			return decoded, nil, 0, wrapContextError("allocate compiled code section", err)
+		}
+		code, err = image.AppendSpace(codeLen)
+		if err != nil {
+			_ = image.Close()
+			return decoded, nil, 0, wrapContextError("size compiled code section", err)
+		}
+		if _, err := io.ReadFull(r, code); err != nil {
+			_ = image.Close()
+			return decoded, nil, 0, wrapContextError("truncated code section", err)
+		}
 	}
 	metadataLen, err := readSectionHeader(compiledSectionMetadata, "metadata", limits.MaxMetadataBytes)
 	if err != nil {
@@ -276,6 +279,14 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compile
 	if err := unmarshalCompiledMetadataBudget(decoded, metadata, budget); err != nil {
 		_ = image.Close()
 		return decoded, nil, 0, err
+	}
+	if image == nil && !decoded.hasNoFunctionCode() {
+		// Empty defined code does not imply a state-only module: imported
+		// bridges preserve their established mapped code-owner lifetime.
+		image, err = coreruntime.NewCodeBuffer(0)
+		if err != nil {
+			return decoded, nil, 0, wrapContextError("allocate compiled code section", err)
+		}
 	}
 	return decoded, image, 0, nil
 }

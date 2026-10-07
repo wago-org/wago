@@ -12,6 +12,10 @@ import (
 // Defined starts execute through public construction; private wire admission
 // remains a separate profile without a start lifecycle.
 func admitProductionWire(data []byte) error {
+	return admitProductionWireProfile(data, false)
+}
+
+func admitProductionWireProfile(data []byte, public bool) error {
 	r := wasm.ReaderFrom(data[8:])
 	for r.HasNext() {
 		id, err := r.Byte()
@@ -33,7 +37,7 @@ func admitProductionWire(data []byte) error {
 		if id == 2 {
 			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
 			count, err := section.U32()
-			if err != nil || count == 0 || count > MaxProductionImports {
+			if err != nil || count == 0 && !public || count > MaxProductionImports {
 				return unsupported("production import section count bound")
 			}
 			// Decoded admission checks every import's kind/type and aggregate bounds.
@@ -45,7 +49,7 @@ func admitProductionWire(data []byte) error {
 			if id == 9 {
 				limit = MaxOwnedElementSegments
 			}
-			if err != nil || count == 0 || count > limit {
+			if err != nil || count == 0 && !public || count > limit {
 				return unsupported("bounded private table/element section")
 			}
 		}

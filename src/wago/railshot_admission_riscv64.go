@@ -21,8 +21,11 @@ func railshotValidateCompiled(c *Compiled) error {
 	if !c.nativeContextTrapABI {
 		return reject("native-context trap ABI is required")
 	}
-	if len(c.code) > railshot.MaxCodeBytes || len(c.Funcs) == 0 && c.NumImports == 0 || len(c.Funcs) > railshot.MaxFunctions || len(c.Types) > railshot.MaxFunctions || len(c.GCTypeDescs) > railshot.MaxFunctions || len(c.Globals) > 256 {
+	if len(c.code) > railshot.MaxCodeBytes || len(c.Funcs) > railshot.MaxFunctions || len(c.Types) > railshot.MaxFunctions || len(c.GCTypeDescs) > railshot.MaxFunctions || len(c.Globals) > 256 {
 		return reject("bounded artifact shape")
+	}
+	if len(c.Funcs) == 0 && c.NumImports == 0 && !c.hasNoFunctionCode() {
+		return reject("state-only artifact contains code or function entries")
 	}
 	if c.activeDataCount() > rv64runtime.MaxDataSegments || len(c.PassiveData) > rv64runtime.MaxDataSegments {
 		return reject("data descriptor count bound")

@@ -49,8 +49,8 @@ func TestImportOnlyRV64ProductionImageAndPrivateGates(t *testing.T) {
 		}
 		pressure := 0
 		image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-		if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-			t.Fatal("functionless module reached staging", err, pressure)
+		if err != nil || image == nil || len(image.Code) != 0 || image.CodeImage != nil || len(image.Entry) != 0 || pressure != 1 {
+			t.Fatal("type-only module invented executable code", err, pressure)
 		}
 	}
 }

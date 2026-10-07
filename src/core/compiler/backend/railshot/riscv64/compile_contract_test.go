@@ -88,12 +88,15 @@ func TestProductionDecodedCompilerRejectsSemanticDependencies(t *testing.T) {
 	}
 }
 
-func TestProductionSourceRetainsWireAdmission(t *testing.T) {
+func TestProductionSourceRetainsPrivateWireAdmission(t *testing.T) {
 	base := binaryModule(fixtureFunc{result: 0x7f, body: []byte{0x41, 7, 0x0b}})
-	for _, section := range []byte{2, 4} {
+	for _, section := range []byte{2, 4, 9} {
 		before := byte(3)
 		if section == 4 {
 			before = 7
+		}
+		if section == 9 {
+			before = 10
 		}
 		data := modifySection(base, before, section, []byte{0}, false)
 		m, err := wasm.DecodeModule(data)
@@ -106,8 +109,11 @@ func TestProductionSourceRetainsWireAdmission(t *testing.T) {
 		if err := wasm.ValidateModule(m); err != nil {
 			t.Fatal(err)
 		}
-		if err := AdmitProductionSource(data); !errors.Is(err, ErrUnsupported) {
-			t.Fatal("unsupported provenance disappeared after decoding", section, err)
+		if err := AdmitProductionSource(data); err != nil {
+			t.Fatal("empty public section rejected", section, err)
+		}
+		if err := admitProductionWire(data); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("private empty-section provenance disappeared", section, err)
 		}
 	}
 	if err := AdmitProductionSource(base); err != nil {

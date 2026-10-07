@@ -216,27 +216,11 @@ func TestRV64PublicActiveCancellationAndClose(t *testing.T) {
 
 func TestRV64PublicAdmissionRejectsBeforeMapping(t *testing.T) {
 	base := multiValueControlCallModule()
-	emptySectionModule := func(section byte) []byte {
-		parts := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})))}
-		if section == 2 {
-			parts = append(parts, wasmtest.Section(2, []byte{0}))
-		}
-		parts = append(parts, wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))))
-		if section == 4 {
-			parts = append(parts, wasmtest.Section(4, []byte{0}))
-		}
-		parts = append(parts, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 7, 0x0b}))))
-		return wasmtest.Module(parts...)
-	}
 	for _, shape := range []struct {
 		name string
 		data []byte
 	}{
-		{"no-functions", wasmtest.Module(
-			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
-		)},
-		{"empty-import-section", emptySectionModule(2)},
-		{"empty-table-section", emptySectionModule(4)},
+		{"empty-tag-section", wasmtest.Module(wasmtest.Section(13, []byte{0}))},
 	} {
 		t.Run(shape.name, func(t *testing.T) {
 			compiled, err := Compile(nil, shape.data)

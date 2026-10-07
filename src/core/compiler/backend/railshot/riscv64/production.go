@@ -32,6 +32,11 @@ func CompileProduction(data []byte, opts ProductionOptions) (*enc.CompiledModule
 }
 
 func stageProduction(c *Compiled, deferMapping bool) (*enc.CompiledModule, error) {
+	if len(c.code) == 0 && len(c.functions) == 0 && c.state.importedFunctions == 0 {
+		// State-only modules have nothing to publish. In particular, do not
+		// create the page-rounded empty code mapping used by imported bridges.
+		return &enc.CompiledModule{}, nil
+	}
 	var err error
 	var image *coreruntime.CodeBuffer
 	if deferMapping {

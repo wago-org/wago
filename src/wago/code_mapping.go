@@ -624,11 +624,20 @@ func (c *Compiled) checkOpen() error {
 	return nil
 }
 
+// hasNoFunctionCode identifies state-only modules. Imported-function modules
+// retain their existing mapping and thunk lifetime even without defined code.
+func (c *Compiled) hasNoFunctionCode() bool {
+	return c.NumImports == 0 && len(c.Funcs) == 0 && len(c.code) == 0 && len(c.Entry) == 0 && len(c.InternalEntry) == 0
+}
+
 // mapCodeLocked installs one exact-length readable view. Callers hold the cache
 // lock; the compiler also calls this before publishing either metadata view.
 func (c *Compiled) mapCodeLocked() error {
 	cc := c.codeCache
 	if cc.mem != nil {
+		return nil
+	}
+	if c.hasNoFunctionCode() {
 		return nil
 	}
 	codeLen := len(c.code)
@@ -711,6 +720,12 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 	}
 	if err := c.mapCodeLocked(); err != nil {
 		return 0, err
+	}
+	if cc.mem == nil && c.hasNoFunctionCode() {
+		// Instance ownership must still keep metadata and attached resources
+		// alive through Close, but there is no code to seal or register.
+		cc.refs++
+		return 0, nil
 	}
 	if !cc.sealed {
 		if err := c.sealCode(cc.mem); err != nil {

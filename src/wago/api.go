@@ -3683,14 +3683,16 @@ func (c *Compiled) readFromWithLimits(r io.Reader, limits ArtifactLimits, exactB
 	if err := finishDecodedCompiled(decoded); err != nil {
 		return n, err
 	}
-	mapping, base, err := image.Take()
-	if err != nil {
-		return n, wrapContextError("load compiled code image", err)
-	}
 	decoded.ensureCodeCache()
-	decoded.codeCache.mem = mapping
-	decoded.codeCache.base = base
-	decoded.codeCache.flags |= compiledCacheWritableCode
+	if image != nil {
+		mapping, base, err := image.Take()
+		if err != nil {
+			return n, wrapContextError("load compiled code image", err)
+		}
+		decoded.codeCache.mem = mapping
+		decoded.codeCache.base = base
+		decoded.codeCache.flags |= compiledCacheWritableCode
+	}
 	decodedLimit := limits.MaxDecodedBytes
 	if decodedLimit == 0 {
 		decodedLimit = DefaultArtifactLimits().MaxDecodedBytes

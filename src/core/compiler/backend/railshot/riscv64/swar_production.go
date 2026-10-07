@@ -33,7 +33,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	if err != nil {
 		return nil, err
 	}
-	return stageProductionModule(&Compiled{code: image.code, functions: image.functions}, opts)
+	return stageProductionModule(&Compiled{code: image.code, functions: image.functions, state: moduleState{importedFunctions: len(image.hosts)}}, opts)
 }
 
 // moduleUsesSWAR walks encoded instructions, skipping their actual immediates;
