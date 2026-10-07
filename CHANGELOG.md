@@ -240,6 +240,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   [#949](https://github.com/wago-org/wago/pull/949),
   [#861](https://github.com/wago-org/wago/pull/861))
 
+- Add bounded AMD64 integer conditional-join regression profiles with independent
+  result checks, native placement controls, and compile/execution benchmarks.
+
 ### Fixed
 
 - Order ordinary guest stores before the lock-free empty-notify check with a full memory
