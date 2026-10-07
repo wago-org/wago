@@ -169,29 +169,4 @@ func TestRV64PublicReferenceCopyAdmission(t *testing.T) {
 			t.Fatal("invalid reference copy artifact", index)
 		}
 	}
-	for _, vector := range []bool{false, true} {
-		if c, err := Compile(NewRuntimeConfig(), rv64ReferenceCopyModule(t, vector, false, true, false, 256, true)); c != nil || err == nil {
-			if c != nil {
-				c.Close()
-			}
-			t.Fatal("exported imported target through copy chain", vector, err)
-		}
-		hidden := rv64TableStageCompile(t, fmt.Sprintf("ref-copy-hidden-vector%t", vector), rv64ReferenceCopyModule(t, vector, false, true, false, 256, false), false)
-		v := *hidden.executionView()
-		v.GlobalExports = map[string]int{"last": 255}
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("imported target artifact chain")
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("loaded exported imported target chain")
-		}
-	}
 }

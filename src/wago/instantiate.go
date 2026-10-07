@@ -867,11 +867,11 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	var initErr error
 	var tableDesc []byte
 	var funcRefDescs []byte
-	var importRefEntries []uint64
+	var importRefEntries []importReferenceEntry
 	var writeTableEntry func([]byte, uint32)
 	if c.needsFuncRefDescs() {
 		if railshotNativeContextTrapABI() {
-			importRefEntries = make([]uint64, c.NumImports)
+			importRefEntries = make([]importReferenceEntry, c.NumImports)
 		}
 		selfLinMem := uint64(jm.LinMemBase())
 		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes * (len(c.FuncTypeID) + 1))
@@ -1022,7 +1022,8 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 					if !ok || addr == 0 || addr&15 != 0 {
 						return nil, fmt.Errorf("instantiate: RV64 import %d lacks an aligned published wrapper", fidx)
 					}
-					importRefEntries[fidx] = addr
+					native, _ := imports[c.functionImportBindingKey(fidx)].(*InstanceExport)
+					importRefEntries[fidx] = importReferenceEntry{address: addr, native: native}
 					code, home, kind = addr, selfLinMem, abi.FuncRefEntryLocalWrapper
 				} else if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					code = uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])

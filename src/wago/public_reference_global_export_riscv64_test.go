@@ -5,7 +5,6 @@ package wago
 import (
 	"context"
 	"fmt"
-	"os"
 	"runtime"
 	"testing"
 	"time"
@@ -177,38 +176,6 @@ func TestRV64PublicReferenceGlobalExportImportedPrefix(t *testing.T) {
 				}
 				importedGlobalInvoke(t, in, "isnull", []uint64{0})
 			})
-		}
-	}
-}
-
-func TestRV64PublicReferenceGlobalExportImportGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source and artifact metadata gate")
-	}
-	for _, vector := range []bool{false, true} {
-		source := rv64ReferenceGlobalExportModule(t, vector, true, false, 1)
-		if c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), source); c != nil || err == nil {
-			if c != nil {
-				c.Close()
-			}
-			t.Fatal("unqualified imported proxy exported", vector, err)
-		}
-		c := rv64TableStageCompile(t, fmt.Sprintf("ref-export-import-gate-vector%t", vector), rv64ReferenceGlobalModule(vector, false, true, false, 1), false)
-		v := *c.executionView()
-		v.GlobalExports = map[string]int{"reference": 0}
-		if err := railshotValidateCompiled(&v); err == nil {
-			t.Fatal("unqualified imported proxy metadata")
-		}
-		blob, err := marshalCompiled(&v)
-		if err != nil {
-			continue
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if loaded != nil {
-			loaded.Close()
-		}
-		if err == nil {
-			t.Fatal("unqualified imported proxy artifact")
 		}
 	}
 }

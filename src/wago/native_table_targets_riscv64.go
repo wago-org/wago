@@ -265,7 +265,7 @@ func (s *rv64NativeTableTargets) authenticatedRow(row []byte) bool {
 			if function >= len(owner.importReferenceEntries()) {
 				return false
 			}
-			entry = owner.importReferenceEntries()[function]
+			entry = owner.importReferenceEntries()[function].address
 			if entry == 0 || entry&15 != 0 {
 				return false
 			}

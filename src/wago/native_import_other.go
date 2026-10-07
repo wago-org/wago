@@ -45,3 +45,8 @@ func railshotCanReenter(*Instance, invocationID) bool                   { return
 func railshotCallbackHostScope(_ *Instance, _ uintptr, ordinary *hostCallScope) *hostCallScope {
 	return ordinary
 }
+
+func railshotCanonicalImportedFuncref(*referenceStore, *Instance, *InstanceExport, int, uint64) bool {
+	return false
+}
+func railshotFuncRefMatchesFunction(*Instance, FuncRef, uint32) bool { return false }

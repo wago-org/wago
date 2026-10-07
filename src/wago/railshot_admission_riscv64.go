@@ -182,17 +182,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			if index < 0 || index >= len(c.Globals) {
 				return reject("reference global export index")
 			}
-			global := c.Globals[index]
-			if global.Type == ValFuncRef {
-				// All links were checked above and strictly decrease within the
-				// bounded global directory, so at most 255 copies can be followed.
-				for global.HasInitGlobal {
-					global = c.Globals[global.InitGlobal]
-				}
-			}
-			if global.Type == ValFuncRef && global.HasInitFunc && uint64(global.InitFunc) < uint64(c.NumImports) {
-				return reject("reference global export requires a local function target")
-			}
+
 		}
 	}
 	for _, data := range c.Data {
@@ -235,6 +225,39 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 	}
 	if err := rv64ValidateResolvedTable(c, imports, store); err != nil {
 		return err
+	}
+	hasReferenceGlobal := false
+	for _, global := range c.Globals {
+		if global.Type == ValFuncRef {
+			hasReferenceGlobal = true
+			break
+		}
+	}
+	if hasReferenceGlobal {
+		// Immutable exported reference chains are bounded and validated above.
+		// Reject unqualified token owners before mapping or attaching any import.
+		for _, index := range c.GlobalExports {
+			global := c.Globals[index]
+			if global.Type != ValFuncRef {
+				continue
+			}
+			for global.HasInitGlobal {
+				global = c.Globals[global.InitGlobal]
+			}
+			if !global.HasInitFunc || int(global.InitFunc) >= c.NumImports {
+				continue
+			}
+			ex, ok := imports[c.functionImportBindingKey(int(global.InitFunc))].(*InstanceExport)
+			if !ok || ex == nil || ex.inst == nil || store == nil {
+				return fmt.Errorf("%w: RV64 reference export requires a same-Runtime native function", railshot.ErrUnsupported)
+			}
+			ex.inst.lifeMu.Lock()
+			sameStore := ex.inst.refStore == store
+			ex.inst.lifeMu.Unlock()
+			if !sameStore {
+				return fmt.Errorf("%w: RV64 reference export requires the same Runtime", railshot.ErrUnsupported)
+			}
+		}
 	}
 	var reexported [railshot.MaxHostFunctionImports]bool
 	for _, index := range c.Exports {

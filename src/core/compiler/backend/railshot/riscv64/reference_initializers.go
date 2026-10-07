@@ -32,8 +32,8 @@ func admitImmutableFunctionGlobal(global wasm.Global, m *wasm.Module, limit int)
 	return nil
 }
 
-// Native imports use importer-owned proxies on RV64. Public token identity for
-// those proxies needs separate qualification; export only null or local targets.
+// Export chains are validated before folding. Imported-function targets need
+// same-store native binding validation at public instantiation.
 func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 	imported := m.ImportedGlobalCount()
 	// Each copy reduces the global index. The public profile has at most 256
@@ -50,13 +50,6 @@ func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 			r := wasm.ReaderFrom(global.Init.BodyBytes[1:])
 			index, _ = r.U32()
 			continue
-		}
-		value, err := tableElementExpression(global.Init)
-		if err != nil {
-			return err
-		}
-		if !value.Null && uint64(value.FuncIndex) < uint64(m.ImportedFuncCount()) {
-			return unsupported("reference global export requires a local function target")
 		}
 		return nil
 	}

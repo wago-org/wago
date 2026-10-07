@@ -2284,6 +2284,15 @@ func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attached
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// RV64's imported descriptors are importer-owned wrappers. Authenticate
+	// their frozen publication metadata even when a token was already issued.
+	if railshotNativeContextTrapABI() && source != nil {
+		if index, own := source.funcrefDescriptorIndex(descriptor); own && index < source.c.NumImports {
+			if _, _, valid := s.canonicalFuncrefOwnerLocked(source, descriptor); !valid {
+				return 0, fmt.Errorf("invalid funcref result descriptor")
+			}
+		}
+	}
 	if entry := s.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil {
 		if entry.owner != nil && entry.owner.hostEvents != nil {
 			return 0, deferredHostEventCalleeError()
@@ -3199,12 +3208,23 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		if fidx >= len(source.c.Imports) || fidx >= len(source.c.importFuncSigs) {
 			return nil, 0, false
 		}
-		key := source.c.functionImportBindingKey(fidx)
+		var binding any
+		if railshotNativeContextTrapABI() {
+			if native := source.importReferenceNative(fidx); native != nil {
+				binding = native
+			}
+		}
+		if binding == nil {
+			binding = source.imports[source.c.functionImportBindingKey(fidx)]
+		}
 		off := (fidx + 1) * coreruntime.FuncRefDescBytes
 		refSlot := binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
-		if ex, ok := source.imports[key].(*InstanceExport); ok {
+		if ex, ok := binding.(*InstanceExport); ok {
 			if ex == nil || ex.inst == nil || ex.inst.refStore != s || ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 				return nil, 0, false
+			}
+			if railshotNativeContextTrapABI() {
+				return source, descriptor, railshotCanonicalImportedFuncref(s, source, ex, fidx, descriptor)
 			}
 			entry := source.funcRefDescs[off : off+coreruntime.FuncRefDescBytes]
 			expectedCode := uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
@@ -3237,7 +3257,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 			_, registered := s.instances[ex.inst]
 			return ex.inst, canonical, registered
 		}
-		hostOwner, ok := source.imports[key].(*HostFuncRef)
+		hostOwner, ok := binding.(*HostFuncRef)
 		if !ok || hostOwner == nil || hostOwner.store != s || refSlot != descriptor {
 			return nil, 0, false
 		}
@@ -3286,8 +3306,13 @@ func (in *Instance) funcrefFunctionIdentity(descriptor uint64) (funcrefIdentity,
 	if fidx >= len(in.c.Imports) {
 		return funcrefIdentity{}, false
 	}
-	export, ok := in.imports[in.c.functionImportBindingKey(fidx)].(*InstanceExport)
-	if !ok || export == nil || export.inst == nil || export.localIdx < 0 {
+	var export *InstanceExport
+	if railshotNativeContextTrapABI() {
+		export = in.importReferenceNative(fidx)
+	} else {
+		export, _ = in.imports[in.c.functionImportBindingKey(fidx)].(*InstanceExport)
+	}
+	if export == nil || export.inst == nil || export.localIdx < 0 {
 		return funcrefIdentity{}, false
 	}
 	return funcrefIdentity{instance: export.inst, localIdx: export.localIdx}, true
@@ -3365,11 +3390,14 @@ func (in *Instance) funcrefStoreForAttachedEgress() (*referenceStore, error) {
 
 // FuncRefMatchesFunction reports whether ref has the canonical identity of the
 // function at index in this instance's Wasm function index space. It compares
-// descriptor identity rather than opaque public token bits, so imported aliases
+// canonical function identity rather than opaque public token bits, so imported aliases
 // and cross-instance references remain stable across store tokenization.
 func (in *Instance) FuncRefMatchesFunction(ref FuncRef, index uint32) bool {
 	if in == nil || ref.token == 0 {
 		return false
+	}
+	if railshotNativeContextTrapABI() {
+		return railshotFuncRefMatchesFunction(in, ref, index)
 	}
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
