@@ -111,6 +111,9 @@ func TestCompactExecutionDataCodecAndMutationIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
+	if c.boundsMode != BoundsChecksExplicit {
+		t.Fatalf("codec fixture uses %v bounds checks, want explicit", c.boundsMode)
+	}
 	if c.executionView().compactData == nil || len(c.Data) != minCompactActiveData {
 		t.Fatal("public/execution data representations incorrect")
 	}
