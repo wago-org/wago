@@ -23,6 +23,9 @@ func (a *Asm) Vcvtpd2ps(dst, src Reg) {
 }
 
 func (a *Asm) MovdquRipPlaceholder(dst Reg) int {
+	if regallocCheckEnabled {
+		a.regallocFPWrite(regallocFPRegMask(dst))
+	}
 	a.emit(0xF3)
 	if dst >= 8 {
 		a.emit(a.rexPrefix(0x44))
@@ -37,6 +40,9 @@ func (a *Asm) MovdquRipPlaceholder(dst Reg) int {
 func (a *Asm) EmitBytes(bs []byte) { a.B = append(a.B, bs...) }
 
 func (a *Asm) MovsRipPlaceholder(dst Reg, f64 bool) int {
+	if regallocCheckEnabled {
+		a.regallocFPWrite(regallocFPRegMask(dst))
+	}
 	if f64 {
 		a.emit(0xF2)
 	} else {

@@ -25,7 +25,7 @@ func (*fn) checkHostSyncHomes() {}
 func (*fn) checkEndLifetimes()  {}
 
 // Ordinary trap scopes must not capture a diagnostic mask in a defer.
-type regallocGPWriteMask struct{}
+type regallocWriteMask struct{}
 
-func (*fn) checkTerminalGPWrites() regallocGPWriteMask { return regallocGPWriteMask{} }
-func (*fn) checkRestoreGPWrites(regallocGPWriteMask)   {}
+func (*fn) checkTerminalWrites() regallocWriteMask { return regallocWriteMask{} }
+func (*fn) checkRestoreWrites(regallocWriteMask)   {}

@@ -4491,6 +4491,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
+	// Body results are canonical; terminal reloads may reuse cache registers.
+	// Attempt cleanup owns observer restoration if return emission panics.
+	var returnWrites regallocWriteMask
+	if regallocCheckEnabled {
+		returnWrites = f.checkTerminalWrites()
+	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
@@ -4542,6 +4548,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		a.LdpPost(FP, LR, SP, 16) // restore FP/LR
 	}
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreWrites(returnWrites)
+	}
 	if profileEnabled {
 		f.collectProfileSources(internalOff)
 	}
@@ -4580,6 +4589,11 @@ func (f *fn) emitPhasePadding() {
 // return, br to the function label) has already placed the results in slots
 // [0, resultN).
 func (f *fn) epilogue() {
+	// Every reaching path has already placed results in canonical slots.
+	var returnWrites regallocWriteMask
+	if regallocCheckEnabled {
+		returnWrites = f.checkTerminalWrites()
+	}
 	a := f.a
 	f.storeModuleGlobals(X2)     // Go exit: module-pinned registers → cells
 	f.ld64(X1, SP, frResultsOff) // results ptr (X1 is free at the epilogue)
@@ -4605,6 +4619,9 @@ func (f *fn) epilogue() {
 		a.LdpPost(FP, LR, SP, 16) // restore FP/LR
 	}
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreWrites(returnWrites)
+	}
 }
 
 func abiValOff(ts []wasm.ValType, idx int) int32 {

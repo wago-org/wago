@@ -9,6 +9,7 @@ const regallocCheckEnabled = true
 type regallocState struct {
 	regallocObserver func(regalloccheck.Effect)
 	gpWriteObserver  func(uint32)
+	fpWriteObserver  func(uint32)
 }
 
 // ObserveGPWrites installs a physical GP destination observer independently of
@@ -27,6 +28,9 @@ func (a *Asm) regallocGPWrite(mask uint32) {
 	}
 }
 
+// GP and FP ModRM destinations use the same physical extension-bit rules.
+func regallocGPRegMask(reg Reg) uint32 { return regallocFPRegMask(reg) }
+
 // The one-byte register ALU family uses either ModRM destination direction.
 // CMP and TEST only update flags. MOV and XCHG also use this shared seam.
 func (a *Asm) regallocGPRR(op byte, rm, reg Reg, rex bool) {
@@ -36,16 +40,34 @@ func (a *Asm) regallocGPRR(op byte, rm, reg Reg, rex bool) {
 	switch {
 	case op <= 0x33 && op&7 <= 3:
 		if op&2 == 0 {
-			a.regallocGPWrite(1 << rm)
+			a.regallocGPWrite(regallocGPRegMask(rm))
 		} else {
-			a.regallocGPWrite(1 << reg)
+			a.regallocGPWrite(regallocGPRegMask(reg))
 		}
 	case op == 0x88 || op == 0x89:
-		a.regallocGPWrite(1 << rm)
+		a.regallocGPWrite(regallocGPRegMask(rm))
 	case op == 0x8a || op == 0x8b:
-		a.regallocGPWrite(1 << reg)
+		a.regallocGPWrite(regallocGPRegMask(reg))
 	case op == 0x86 || op == 0x87:
-		a.regallocGPWrite(1<<rm | 1<<reg)
+		a.regallocGPWrite(regallocGPRegMask(rm) | regallocGPRegMask(reg))
+	case op >= 0x38 && op <= 0x3b || op == 0x84 || op == 0x85: // CMP, TEST
+	case op == 0xff:
+		switch reg & 7 {
+		case 0, 1: // INC/DEC r/m
+			a.regallocGPWrite(regallocGPRegMask(rm))
+		case 2, 3: // CALL r/m
+			a.regallocGPWrite(0xffff)
+			regallocCall(a)
+		case 4, 5: // JMP
+		case 6: // PUSH r/m
+			a.regallocGPWrite(1 << RSP)
+		default:
+			a.regallocGPWrite(0xffff)
+			a.regallocFPWrite(0xffff)
+		}
+	default:
+		a.regallocGPWrite(0xffff)
+		a.regallocFPWrite(0xffff)
 	}
 }
 
@@ -57,19 +79,37 @@ func regallocLegacyByteReg(r Reg) Reg {
 	return r
 }
 
-// Memory destinations and address operands do not write a GP register.
+// Classify GP effects of generic one-byte memory forms, including XCHG and
+// group-5 implicit writes. Unknown forms cannot establish GP preservation.
 func (a *Asm) regallocGPMem(op byte, reg Reg, rex bool) {
-	if !rex && op&1 == 0 && (op <= 0x33 || op == 0x8a) {
+	if !rex && op&1 == 0 && (op <= 0x33 || op == 0x86 || op == 0x8a) {
 		reg = regallocLegacyByteReg(reg)
 	}
 	switch {
 	case op <= 0x33 && op&6 == 2:
-		a.regallocGPWrite(1 << reg)
+		a.regallocGPWrite(regallocGPRegMask(reg))
 	case op == 0x63 || op == 0x8a || op == 0x8b || op == 0x8d:
-		a.regallocGPWrite(1 << reg)
-	case op == 0xff && reg == 2: // CALL r/m64
+		a.regallocGPWrite(regallocGPRegMask(reg))
+	case op == 0x86 || op == 0x87: // XCHG also writes its register operand
+		a.regallocGPWrite(regallocGPRegMask(reg))
+	case op <= 0x33 && op&7 <= 1: // ALU memory destination
+	case op >= 0x38 && op <= 0x3b || op == 0x84 || op == 0x85 || op == 0x88 || op == 0x89:
+		// CMP, TEST, MOV to memory
+	case op == 0xff:
+		switch reg & 7 {
+		case 0, 1, 4, 5: // INC/DEC memory or JMP
+		case 2, 3: // CALL r/m
+			a.regallocGPWrite(0xffff)
+			regallocCall(a)
+		case 6: // PUSH r/m
+			a.regallocGPWrite(1 << RSP)
+		default:
+			a.regallocGPWrite(0xffff)
+			a.regallocFPWrite(0xffff)
+		}
+	default:
 		a.regallocGPWrite(0xffff)
-		regallocCall(a)
+		a.regallocFPWrite(0xffff)
 	}
 }
 
@@ -77,6 +117,7 @@ func (a *Asm) regallocGPMem(op byte, reg Reg, rex bool) {
 // Call invalidates both register banks; caller-frame effects require separate
 // contracts for argument/result slots and changes to the frame origin.
 func regallocCall(a *Asm) {
+	a.regallocFPWrite(0xffff)
 	if a.regallocObserver != nil {
 		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Call})
 	}
@@ -173,32 +214,40 @@ func regallocVexScalarFP(a *Asm, opcodeMap, pp, op byte, dst, left Reg, l byte) 
 // memory. Mandatory prefixes distinguish scalar GP conversions from packed FP
 // conversions and MOVD/Q from the FP-only F3 MOVQ form.
 func (a *Asm) regallocGPSSE(prefix, opcodeMap, op byte, reg, rm Reg, memory bool) {
+	if regallocFPSSEMask(prefix, opcodeMap, op, reg, rm, memory) == 0xffff {
+		a.regallocGPWrite(0xffff)
+		return
+	}
 	if opcodeMap == 0 {
 		switch op {
 		case 0x2c, 0x2d: // CVTTSS/SD2SI, CVTSS/SD2SI
 			if prefix == 0xf2 || prefix == 0xf3 {
-				a.regallocGPWrite(1 << reg)
+				a.regallocGPWrite(regallocGPRegMask(reg))
 			}
 		case 0x50, 0xd7, 0xc5: // MOVMSKPS/PD, PMOVMSKB, PEXTRW
 			if !memory && (prefix == 0 || prefix == 0x66) {
-				a.regallocGPWrite(1 << reg)
+				a.regallocGPWrite(regallocGPRegMask(reg))
 			}
 		case 0x7e: // MOVD/Q r/m, xmm (or mm)
 			if !memory && (prefix == 0 || prefix == 0x66) {
-				a.regallocGPWrite(1 << rm)
+				a.regallocGPWrite(regallocGPRegMask(rm))
 			}
 		}
 	} else if opcodeMap == 0x3a && prefix == 0x66 && !memory {
 		switch op {
 		case 0x14, 0x15, 0x16, 0x17: // PEXTRB/W/D/Q, EXTRACTPS
-			a.regallocGPWrite(1 << rm)
+			a.regallocGPWrite(regallocGPRegMask(rm))
 		}
 	}
 }
 
 func (a *Asm) regallocGPVEX(opcodeMap, pp, op byte, reg, rm Reg, memory bool) {
+	if pp&^3 != 0 {
+		a.regallocGPWrite(0xffff)
+		return
+	}
 	if opcodeMap == vexMap0F3A && pp == 3 && op == 0xf0 { // RORX
-		a.regallocGPWrite(1 << reg)
+		a.regallocGPWrite(regallocGPRegMask(reg))
 		return
 	}
 	var m byte
@@ -209,6 +258,7 @@ func (a *Asm) regallocGPVEX(opcodeMap, pp, op byte, reg, rm Reg, memory bool) {
 	case vexMap0F3A:
 		m = 0x3a
 	default:
+		a.regallocGPWrite(0xffff)
 		return
 	}
 	prefix := [...]byte{0, 0x66, 0xf3, 0xf2}[pp&3]

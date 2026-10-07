@@ -10,6 +10,7 @@ const regallocCheckEnabled = true
 // Call invalidates both register banks; caller-frame effects require separate
 // contracts for argument/result slots and changes to the frame origin.
 func regallocCall(a *Asm) {
+	a.regallocFPWrites(^uint32(0))
 	if a.regallocObserver != nil {
 		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Call})
 	}
@@ -18,6 +19,7 @@ func regallocCall(a *Asm) {
 type regallocState struct {
 	regallocObserver func(regalloccheck.Effect)
 	gpWriteObserver  func(uint32)
+	fpWriteObserver  func(uint32)
 }
 
 // ObserveGPWrites installs an independent physical GP-write observer. Restore the
@@ -135,6 +137,7 @@ func (a *Asm) regallocCrossCopy(dst, src Reg, dstFP bool, size int) {
 // An untracked FP definition invalidates the previous vector identity. The
 // backend installs a semantic result identity when its contract permits one.
 func (a *Asm) regallocKillFP(dst Reg) {
+	a.regallocFPWrites(uint32(1) << r(dst))
 	if a.regallocObserver != nil {
 		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Kill,
 			Dst: regalloccheck.Register(regalloccheck.FP, uint8(r(dst))), Size: 16})

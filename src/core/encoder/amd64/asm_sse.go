@@ -49,6 +49,7 @@ func (a *Asm) sseMapRR(format uint32, op byte, reg, rm Reg) {
 	}
 	if regallocCheckEnabled {
 		a.regallocGPSSE(byte(format), byte(format>>8), op, reg, rm, false)
+		a.regallocFPSSE(byte(format), byte(format>>8), op, reg, rm, false)
 		regallocScalarFP(a, byte(format), byte(format>>8), op, reg, 0, false)
 	}
 
@@ -141,6 +142,7 @@ func vexFormat(opcodeMap, pp, l byte, w bool) uint16 {
 func (a *Asm) vexRR(format uint16, op byte, dst, src1, src2 Reg) {
 	if regallocCheckEnabled {
 		a.regallocGPVEX(byte(format)&0x1f, byte(format>>8)&3, op, dst, src2, false)
+		a.regallocFPVEX(byte(format)&0x1f, byte(format>>8)&3, op, dst, src1, src2, false)
 		regallocVexScalarFP(a, byte(format)&0x1f, byte(format>>8)&3, op, dst, src1, byte(format>>10)&1)
 	}
 
@@ -221,6 +223,7 @@ func (a *Asm) vex3MemDisp(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 boo
 func (a *Asm) vex3MemDispL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, disp int32, l byte) {
 	if regallocCheckEnabled {
 		a.regallocGPVEX(opcodeMap, pp, op, reg, 0, true)
+		a.regallocFPVEX(opcodeMap, pp, op, reg, src1, 0, true)
 		left := src1
 		if !hasSrc1 {
 			left = 0
@@ -240,6 +243,7 @@ func (a *Asm) vex3MemIdx(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool
 func (a *Asm) vex3MemIdxL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base, index Reg, disp int32, l byte) {
 	if regallocCheckEnabled {
 		a.regallocGPVEX(opcodeMap, pp, op, reg, 0, true)
+		a.regallocFPVEX(opcodeMap, pp, op, reg, src1, 0, true)
 		left := src1
 		if !hasSrc1 {
 			left = 0
@@ -255,6 +259,7 @@ func (a *Asm) vex3MemIdxL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 boo
 func (a *Asm) vex3MemRipPlaceholder(opcodeMap, pp, op byte, reg, src1 Reg) int {
 	if regallocCheckEnabled {
 		a.regallocGPVEX(opcodeMap, pp, op, reg, 0, true)
+		a.regallocFPVEX(opcodeMap, pp, op, reg, src1, 0, true)
 		regallocVexScalarFP(a, opcodeMap, pp, op, reg, src1, 0)
 	}
 
@@ -660,6 +665,9 @@ func (a *Asm) vexShiftDwordImmL(ext byte, dst, src Reg, imm, l byte) {
 }
 
 func (a *Asm) vexShiftImmL(op, ext byte, dst, src Reg, imm, l byte) {
+	if regallocCheckEnabled {
+		a.regallocFPShift(op, ext, dst)
+	}
 	vvvv := (^byte(dst)) & 0x0F
 	byte2 := (vvvv << 3) | ((l & 1) << 2) | 0b01
 	modrm := byte(0xC0 | ((ext & 7) << 3) | byte(src&7))
@@ -790,6 +798,7 @@ func (a *Asm) fmemDisp(op byte, xmm, base Reg, disp int32, f64 bool) {
 	}
 	if regallocCheckEnabled {
 		a.regallocGPSSE(sdPrefix(f64), 0, op, xmm, 0, true)
+		a.regallocFPSSE(sdPrefix(f64), 0, op, xmm, 0, true)
 		regallocScalarFP(a, sdPrefix(f64), 0, op, xmm, 0, false)
 	}
 
@@ -809,6 +818,7 @@ func (a *Asm) FStoreDisp(base Reg, disp int32, xmm Reg, f64 bool) {
 func (a *Asm) fmemIdx(op byte, xmm, base, index Reg, disp int32, f64 bool) {
 	if regallocCheckEnabled {
 		a.regallocGPSSE(sdPrefix(f64), 0, op, xmm, 0, true)
+		a.regallocFPSSE(sdPrefix(f64), 0, op, xmm, 0, true)
 		regallocScalarFP(a, sdPrefix(f64), 0, op, xmm, 0, false)
 	}
 
@@ -836,6 +846,7 @@ func (a *Asm) FStoreIdx(base, index, xmm Reg, disp int32, f64 bool) {
 func (a *Asm) SseIdx(prefix, op byte, xmm, base, index Reg, disp int32) {
 	if regallocCheckEnabled {
 		a.regallocGPSSE(prefix, 0, op, xmm, 0, true)
+		a.regallocFPSSE(prefix, 0, op, xmm, 0, true)
 		regallocScalarFP(a, prefix, 0, op, xmm, 0, false)
 	}
 
@@ -956,6 +967,9 @@ func (a *Asm) YBroadcastSDLoadIdx(dst, base, index Reg, disp int32) {
 	a.vex3MemIdxL(vexMap0F38, 1, 0x19, dst, 0, false, base, index, disp, 1)
 }
 func (a *Asm) YBroadcastSDRipPlaceholder(dst Reg) int {
+	if regallocCheckEnabled {
+		a.regallocFPWrite(regallocFPRegMask(dst))
+	}
 	a.vex3MemPrefixL(vexMap0F38, 1, dst, 0, false, RAX, 0, false, 1)
 	a.emit(0x19, ((byte(dst)&7)<<3)|0x05)
 	a.recordRipAddress()

@@ -24,11 +24,19 @@ func (a *Asm) evexPrefix(opcodeMap, pp byte, w bool, dst, src1 Reg, base, index 
 }
 
 func (a *Asm) evexRRR(opcodeMap, pp, op byte, w bool, dst, src1, src2 Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPVEX(opcodeMap, pp, op, dst, src2, false)
+		a.regallocFPVEX(opcodeMap, pp, op, dst, src1, src2, false)
+	}
 	a.evexPrefix(opcodeMap, pp, w, dst, src1, src2, 0, false)
 	a.emit(op, 0xc0|byte(dst&7)<<3|byte(src2&7))
 }
 
 func (a *Asm) evexRR(opcodeMap, pp, op byte, w bool, dst, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocGPVEX(opcodeMap, pp, op, dst, src, false)
+		a.regallocFPVEX(opcodeMap, pp, op, dst, 0, src, false)
+	}
 	a.evexPrefix(opcodeMap, pp, w, dst, 0, src, 0, false)
 	a.emit(op, 0xc0|byte(dst&7)<<3|byte(src&7))
 }
@@ -51,6 +59,10 @@ func evexAddrMode(base Reg, disp, tupleScale int32) (mod byte, encodedDisp int32
 }
 
 func (a *Asm) evexMemIdx(opcodeMap, pp, op byte, w bool, reg, base, index Reg, disp, tupleScale int32) {
+	if regallocCheckEnabled {
+		a.regallocGPVEX(opcodeMap, pp, op, reg, 0, true)
+		a.regallocFPVEX(opcodeMap, pp, op, reg, 0, 0, true)
+	}
 	a.evexPrefix(opcodeMap, pp, w, reg, 0, base, index, true)
 	mod, encodedDisp := evexAddrMode(base, disp, tupleScale)
 	a.recordAddress(base, mod)
@@ -89,6 +101,9 @@ func (a *Asm) ZPternlogd(dst, src1, src2 Reg, imm byte) {
 // instruction computes each output bit from dst, src1, and src2 using imm as a
 // truth table, with dst also serving as the destructive result.
 func (a *Asm) XPternlogd(dst, src1, src2 Reg, imm byte) {
+	if regallocCheckEnabled {
+		a.regallocFPWrite(regallocFPRegMask(dst))
+	}
 	p0 := byte(0xf3) // 0F3A map; XMM form uses EVEX.L'L=00.
 	if dst >= 8 {
 		p0 &^= 0x80
@@ -103,6 +118,9 @@ func (a *Asm) XPternlogd(dst, src1, src2 Reg, imm byte) {
 // XPrordImm rotates each 32-bit lane of src right by imm in a 128-bit XMM
 // vector. EVEX.vvvv encodes the destination for this opcode-group form.
 func (a *Asm) XPrordImm(dst, src Reg, imm byte) {
+	if regallocCheckEnabled {
+		a.regallocFPWrite(uint32(1) << (dst & 15))
+	}
 	p0 := byte(0xf1) // 0F map; ModRM.reg is the /0 opcode extension.
 	if src >= 8 {
 		p0 &^= 0x20

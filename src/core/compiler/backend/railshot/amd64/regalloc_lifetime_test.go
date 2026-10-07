@@ -115,7 +115,7 @@ func TestRegallocImmutableGPRestoresObserverOnPanicAndReuse(t *testing.T) {
 func TestRegallocTerminalScopeRestoresBodyReservation(t *testing.T) {
 	f := cachedLifetimeFunction(t)
 	reg := f.iconsts[0].reg
-	func() { saved := f.checkTerminalGPWrites(); defer f.checkRestoreGPWrites(saved); f.a.MovImm64(reg, 0) }()
+	func() { saved := f.checkTerminalWrites(); defer f.checkRestoreWrites(saved); f.a.MovImm64(reg, 0) }()
 	requireAllocationFailure(t, "immutable GP", func() { f.a.MovImm64(reg, 0) })
 }
 

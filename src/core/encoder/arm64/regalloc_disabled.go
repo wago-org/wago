@@ -27,3 +27,6 @@ func (*Asm) regallocKillFP(Reg)                    {}
 func (*Asm) ObserveGPWrites(func(uint32)) func(uint32) { return nil }
 func (*Asm) regallocGPWrites(uint32)                   {}
 func regallocGPMask(Reg, bool) uint32                  { return 0 }
+
+func (*Asm) ObserveFPWrites(func(uint32)) func(uint32) { return nil }
+func (*Asm) regallocFPWrites(uint32)                   {}

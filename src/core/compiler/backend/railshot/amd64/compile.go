@@ -4888,9 +4888,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	}
 	// Results are canonical now; this terminal return cannot use body caches.
 	// Attempt cleanup owns observer restoration if epilogue emission panics.
-	var returnGPWrites regallocGPWriteMask
+	var returnGPWrites regallocWriteMask
 	if regallocCheckEnabled {
-		returnGPWrites = f.checkTerminalGPWrites()
+		returnGPWrites = f.checkTerminalWrites()
 	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
@@ -4946,7 +4946,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 	if regallocCheckEnabled {
-		f.checkRestoreGPWrites(returnGPWrites)
+		f.checkRestoreWrites(returnGPWrites)
 	}
 	f.emitNativeGCStubs()
 	if profileEnabled {
@@ -5032,9 +5032,9 @@ func (f *fn) patchFrameSize() error {
 // the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
 	// On panic, compileFuncAttempt retires the abandoned function's observer.
-	var returnGPWrites regallocGPWriteMask
+	var returnGPWrites regallocWriteMask
 	if regallocCheckEnabled {
-		returnGPWrites = f.checkTerminalGPWrites()
+		returnGPWrites = f.checkTerminalWrites()
 	}
 	a := f.a
 	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
@@ -5057,7 +5057,7 @@ func (f *fn) epilogue() {
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 	if regallocCheckEnabled {
-		f.checkRestoreGPWrites(returnGPWrites)
+		f.checkRestoreWrites(returnGPWrites)
 	}
 }
 
