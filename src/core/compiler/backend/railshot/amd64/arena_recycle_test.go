@@ -10,7 +10,7 @@ import (
 )
 
 func TestRecycleEmptyOperandArenaPreservesLiveOwners(t *testing.T) {
-	for _, kind := range []string{"control-prefix", "integer-register", "float-register"} {
+	for _, kind := range []string{"control-prefix", "deferred-if-prefix", "integer-register", "float-register"} {
 		t.Run(kind, func(t *testing.T) {
 			sc := newScratchWithStackCap(defaultStackArenaCap)
 			f := &sc.fnState
@@ -21,6 +21,10 @@ func TestRecycleEmptyOperandArenaPreservesLiveOwners(t *testing.T) {
 			case "control-prefix":
 				f.ctrl[0].height = 1
 				f.nonzeroCtrlHeights = 1
+			case "deferred-if-prefix":
+				fr := ctrlFrame{kind: cfIf, flags: ctrlIfDeferredPrefix}
+				f.ensureCtrlMerge(&fr).baseTypeTop = node
+				f.pushCtrl(&fr)
 			case "integer-register":
 				f.regUser[0] = node
 			case "float-register":
