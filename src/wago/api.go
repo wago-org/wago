@@ -1131,7 +1131,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, wrapContextError("validate", err)
 	}
 	requirements := analyzeModuleRequirementsWithValidation(m, &validationAnalysis)
-	if err := railshotAdmitSource(wasmBytes); err != nil {
+	if err := railshotAdmitSource(wasmBytes, m); err != nil {
 		return nil, wrapContextError("compile", err)
 	}
 	requiredByModule := requirements.features

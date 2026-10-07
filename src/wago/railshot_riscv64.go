@@ -67,4 +67,9 @@ func railshotHostIndirectOwnedSyncThunk(index uint32, params, results int) []byt
 	return railshot.HostIndirectOwnedSyncThunk(index, params, results)
 }
 
-func railshotAdmitSource(data []byte) error { return railshot.AdmitProductionSource(data) }
+func railshotAdmitSource(data []byte, m *wasm.Module) error {
+	if err := railshot.AdmitProductionSource(data); err != nil {
+		return err
+	}
+	return railshot.AdmitPublicInitializers(m)
+}

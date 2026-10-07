@@ -36,6 +36,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
+	if err := AdmitPublicInitializers(m); err != nil {
+		return nil, err
+	}
 	if _, err := admitTableProfile(m, true, opts.Interruptible && opts.ForeignTableCalls); err != nil {
 		return nil, err
 	}

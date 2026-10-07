@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -144,15 +146,31 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject(err.Error())
 	}
 	for i, global := range c.Globals {
-		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.HasInitFunc || len(global.InitExpr) != 0 {
+		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.HasInitFunc {
 			return reject("global initializer lowering is pending")
+		}
+		if len(global.InitExpr) != 0 {
+			if i < len(c.GlobalImports) || global.HasInitGlobal {
+				return reject("conflicting global initializer")
+			}
+			if err := rv64ValidateIntegerInitializer(c, global.InitExpr, global.Type); err != nil {
+				return reject(err.Error())
+			}
 		}
 		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64ImportedInitializer(c, global.InitGlobal, global.Type)) {
 			return reject("global initializer requires an immutable scalar import of the exact type")
 		}
 	}
 	for _, data := range c.Data {
-		if c.memoryCount() != 1 || data.MemoryIndex != 0 || len(data.Offset.Expr) != 0 || (data.Offset.HasGlobal && !rv64ImportedInitializer(c, data.Offset.Global, ValI32)) {
+		if len(data.Offset.Expr) != 0 {
+			if data.Offset.HasGlobal {
+				return reject("conflicting data initializer")
+			}
+			if err := rv64ValidateIntegerInitializer(c, data.Offset.Expr, ValI32); err != nil {
+				return reject(err.Error())
+			}
+		}
+		if c.memoryCount() != 1 || data.MemoryIndex != 0 || (data.Offset.HasGlobal && !rv64ImportedInitializer(c, data.Offset.Global, ValI32)) {
 			return reject("data initializer lowering is pending")
 		}
 	}
@@ -297,4 +315,17 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
 	}
 	return nil
+}
+
+func rv64ValidateIntegerInitializer(c *Compiled, body []byte, expected ValType) error {
+	if (expected != ValI32 && expected != ValI64) || !c.requiredFeatures.IsEnabled(CoreFeatureExtendedConst) {
+		return fmt.Errorf("integer expression requires its numeric feature metadata")
+	}
+	return railshot.ValidateIntegerInitializer(body, rv64NumericWasmType(expected), func(index uint32) (wasm.ValType, bool) {
+		if uint64(index) >= uint64(len(c.GlobalImports)) {
+			return wasm.ValType{}, false
+		}
+		g := c.GlobalImports[index]
+		return rv64NumericWasmType(g.Type), !g.Mutable
+	})
 }

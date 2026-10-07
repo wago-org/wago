@@ -45,7 +45,7 @@ func TestPublicImportedElementOffset(t *testing.T) {
 				}},
 				{"truncated", func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x23, 0x80} }},
 				{"trailing", func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x23, 0, 0x0b, 0x0b} }},
-				{"extended", func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x23, 0, 0x41, 1, 0x6a, 0x0b} }},
+				{"unsupported-arithmetic", func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x23, 0, 0x41, 1, 0x71, 0x0b} }},
 				{"structured", func(m *wasm.Module) {
 					m.Elements[0].Mode.Offset.Instrs = []wasm.Instruction{{Kind: wasm.InstrGlobalGet}}
 				}},

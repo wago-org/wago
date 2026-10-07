@@ -137,9 +137,12 @@ uses shared runtime initializer metadata without duplicating private table-owner
 payloads. Public scalar/SWAR global initializers also copy exact immutable
 imported numeric values, including both V128 halves, into distinct local cells;
 active data offsets accept immutable imported i32 globals. The shared runtime
-owns these global/data payloads without duplicate private SWAR state. Extended
-expressions, typed references and explicit table initializers
-remain unavailable.
+owns these global/data payloads without duplicate private SWAR state. Integer
+initializers and active offsets support i32/i64 constants, immutable imported
+integer reads, and matching add/sub/mul, bounded to 128 bytes and eight operands.
+Source checks precede folding; artifact checks precede runtime evaluation. Prior
+local-global reads, broader expressions, typed references and explicit table
+initializers remain unavailable.
 
 RV64 host calls retain the framed cooperative park/resume boundary. The
 bounded/live host portals and native scalar leaf optimization are unavailable

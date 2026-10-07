@@ -39,6 +39,7 @@ func rv64TableStageCompile(t *testing.T, name string, source []byte, artifact bo
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Logf("loaded compiler-free artifact %s", name)
 		return c
 	}
 	c := rv64PublicStartCompile(t, source, artifact)

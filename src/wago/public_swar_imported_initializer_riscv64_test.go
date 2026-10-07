@@ -325,6 +325,10 @@ func TestRV64PublicSWARImportedInitializerFailureOrder(t *testing.T) {
 }
 
 func TestRV64PublicSWARImportedInitializerIndexBoundary(t *testing.T) {
+	rv64SWARImportedInitializerIndexBoundary(t, false)
+}
+
+func rv64SWARImportedInitializerIndexBoundary(t *testing.T, arithmetic bool) {
 	for _, copyLocal := range []bool{false, true} {
 		for _, artifact := range []bool{false, true} {
 			t.Run(fmt.Sprintf("copy%t-artifact%t", copyLocal, artifact), func(t *testing.T) {
@@ -365,9 +369,16 @@ func TestRV64PublicSWARImportedInitializerIndexBoundary(t *testing.T) {
 				body := append([]byte{0x23}, wasmtest.ULEB(uint32(resultIndex))...)
 				body = append(body, 0x0b)
 				segment := append([]byte{0, 0x23}, wasmtest.ULEB(uint32(offsetIndex))...)
+				if arithmetic {
+					segment = append(segment, 0x41, 2, 0x6c, 0x41, 1, 0x6a)
+				}
 				segment = append(segment, 0x0b, 1, 42)
 				sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("memory", 2, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))), wasmtest.Section(11, wasmtest.Vec(segment)))
-				c := rv64TableStageCompile(t, fmt.Sprintf("swar-init-boundary-copy%t", copyLocal), wasmtest.Module(sections...), artifact)
+				key := fmt.Sprintf("swar-init-boundary-copy%t", copyLocal)
+				if arithmetic {
+					key += "-arithmetic"
+				}
+				c := rv64TableStageCompile(t, key, wasmtest.Module(sections...), artifact)
 				if len(c.Globals) != 256 {
 					t.Fatal("global carrier limit")
 				}
@@ -377,7 +388,11 @@ func TestRV64PublicSWARImportedInitializerIndexBoundary(t *testing.T) {
 				}
 				defer in.Close()
 				importedGlobalInvoke(t, in, "get", []uint64{0xfedcba9876543210, 0x0123456789abcdef})
-				if in.Memory().UnsafeBytes()[7] != 42 || in.Memory().UnsafeBytes()[9] != 0 {
+				position := 7
+				if arithmetic {
+					position = 15
+				}
+				if in.Memory().UnsafeBytes()[position] != 42 || in.Memory().UnsafeBytes()[9] != 0 {
 					t.Fatal("global offset namespace")
 				}
 			})

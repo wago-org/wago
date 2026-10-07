@@ -31,17 +31,14 @@ func admittedScalarConst(expr wasm.Expr, typ wasm.ValType, production bool, impo
 }
 
 func admitI32Offset(expr wasm.Expr, m *wasm.Module, public bool) error {
+	if public {
+		return admitModuleIntegerInitializer(expr, wasm.I32, m)
+	}
 	if len(expr.Instrs) != 0 {
 		return unsupported("i32 offset must be byte-backed")
 	}
-	if len(expr.BodyBytes) == 0 || expr.BodyBytes[0] != 0x23 {
-		_, err := plainConst(expr, false)
-		return err
-	}
-	if !public {
-		return unsupported("i32 offset requires public imported i32 global")
-	}
-	return admitImportedGlobalExpression(expr, m, wasm.I32)
+	_, err := plainConst(expr, false)
+	return err
 }
 
 // An exact immutable imported global read is resolved after runtime attachment.

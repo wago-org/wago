@@ -14,7 +14,11 @@ func admitSWARPublicInitializers(m *wasm.Module, memory *wasm.MemType) error {
 		if swarClassOf(global.Type.Type) == swarInvalid {
 			return unsupported("SWAR global initializer carrier")
 		}
-		if len(global.Init.BodyBytes) > 0 && global.Init.BodyBytes[0] == 0x23 {
+		if scalarType(global.Type.Type, false) {
+			if err := admitModuleIntegerInitializer(global.Init, global.Type.Type, m); err != nil {
+				return err
+			}
+		} else if len(global.Init.BodyBytes) > 0 && global.Init.BodyBytes[0] == 0x23 {
 			if err := admitImportedGlobalExpression(global.Init, m, global.Type.Type); err != nil {
 				return err
 			}

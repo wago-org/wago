@@ -12,7 +12,7 @@ import (
 
 type railshotCompiledModule = encoder.CompiledModule
 
-func railshotAdmitSource([]byte) error {
+func railshotAdmitSource([]byte, *wasm.Module) error {
 	return fmt.Errorf("source compilation is unavailable in a precompiled runtime")
 }
 
