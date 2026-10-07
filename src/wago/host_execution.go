@@ -1062,6 +1062,13 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 // imports without invoking that instance through its Go API. Give those sources
 // private control frames before their import descriptors bind the context.
 func (in *Instance) prepareNativeImportReentries(id invocationID) (func(), error) {
+	// RV64 native imports allocate their control frame and transport on the
+	// calling activation's stack and never enter the producer's Go engine.
+	// A foreign callback's authority does not own the producer's public gate:
+	// swapping its scratch here races unrelated parked producer invocations.
+	if railshotNativeContextTrapABI() {
+		return nil, nil
+	}
 	for _, binding := range in.imports {
 		if ex, ok := binding.(*InstanceExport); ok && ex != nil && ex.inst != nil {
 			return in.prepareNativeImportReentriesSlow(id)
