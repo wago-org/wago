@@ -432,3 +432,40 @@ switches. SIMD pairs
 compare a constant count with an equal dynamic count. Setup is outside native
 call timing. No wall-clock threshold is asserted. The support code adds no
 production instrumentation or retained production memory.
+
+
+### Corpus child execution identity
+
+The existing `bench/suite` corpus subprocess lane now requires one bounded
+completion record per requested stage. The parent checks the catalog's pinned
+Wasm digest against the bytes used by the child, stage/export/init/bounds and
+Go target identity, completed invocation counts, arguments and raw result slots.
+Direct exports must be unique within a catalog module because child selection
+uses the export name. Nonzero child exits, timeouts, missing/duplicate records
+and log/record limits fail qualification. Existing per-case result checks remain.
+
+Run controls and the default corpus from the repository root:
+
+```sh
+go test ./bench/suite -run '^TestCorpus(Completion|ChildOutput|$)' -count=1
+go test -tags=wago_regalloccheck ./bench/suite -run '^TestCorpus(Completion|ChildOutput|$)' -count=1
+go test ./bench/suite -run '^$' -bench '^BenchmarkCorpusCompletion$' -benchmem
+```
+
+Controls compile but omit a zero-returning invocation, and execute different
+valid Wasm bytes with the same interface/result. Both must fail for the intended
+count/identity reason. Additional controls cover protocol, raw-result, argument,
+configuration and bounded-output checks, including `io.Copy`'s reader path.
+
+This is a bounded extension of #819. It covers the Wago direct corpus child
+lane, not command/semantic adapters, cross-engine comparison, NaN normalization,
+loaded native-image hashes or independently observed compiler-path selection.
+Those remain separate qualifications. AMD64 execution does not qualify ARM64;
+run the same native test there before claiming cross-target coverage.
+
+Benchmarks retain the old marker check as an observer-cost baseline and measure
+the new record checker and SHA-256 separately. Setup, JSON serialization,
+subprocess transport, compilation and guest execution are outside those timings.
+They do not measure whole-suite overhead, RSS or native execution speed. Records
+are capped at 64 KiB and captured child output at 1 MiB; these limits bound logical
+payload, not total allocator capacity or peak RSS. All changes are test-only.

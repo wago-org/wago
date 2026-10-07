@@ -36,6 +36,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   control-flow verification core.
 - Add an experimental shared scalar compiler path for AMD64 and ARM64.
 - Add Wazy to the cross-runtime benchmark corpus and publish its results.
+- Bind corpus child completion to loaded input identity and exact invocation
+  evidence, with omitted-call and same-result substitution controls.
+
 - Add AMD64 bounds-proof invalidation tests and compile/execution benchmarks.
 
 - Add rejection controls for omitted native padding and artifact metadata.
