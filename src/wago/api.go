@@ -208,7 +208,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return compileWithConfigAndInstructions(cfg, wasmBytes, nil)
 }
 
-func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, instructions map[string]*registeredInstruction) (*Compiled, error) {
+func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, instructions map[instructionKey]*registeredInstruction) (*Compiled, error) {
 	if cfg == nil {
 		cfg = NewRuntimeConfig()
 	}
@@ -1094,7 +1094,7 @@ func narrowFrontendFeatures(features *frontend.Features, requiredByModule CoreFe
 	}
 }
 
-func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[string]*registeredInstruction) (*Compiled, error) {
+func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[instructionKey]*registeredInstruction) (*Compiled, error) {
 	if cfg.maxModuleBytes != 0 && uint64(len(wasmBytes)) > cfg.maxModuleBytes {
 		return nil, &wruntime.ResourceLimitError{
 			Resource:  "module bytes",
@@ -1144,7 +1144,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if imp.Type.Kind != wasm.ExternFunc {
 			continue
 		}
-		if ins := instructions[imp.Module+"."+imp.Name]; ins != nil {
+		if ins := instructions[instructionKey{imp.Module, imp.Name}]; ins != nil {
 			ft, ok := m.FuncSignature(functionIndex)
 			if !ok {
 				return nil, fmt.Errorf("compile: instruction import %q has no function signature", imp.Module+"."+imp.Name)

@@ -65,7 +65,7 @@ type Runtime struct {
 	moduleOwner   map[string]string            // import module -> owning plugin ID
 	caps          map[Capability]string
 	capOrder      []Capability
-	instructions  map[string]*registeredInstruction
+	instructions  map[instructionKey]*registeredInstruction
 	pluginRuns    []registeredPluginRun
 }
 
@@ -194,7 +194,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		importOwner:  map[string]string{},
 		moduleOwner:  map[string]string{},
 		caps:         map[Capability]string{},
-		instructions: map[string]*registeredInstruction{},
+		instructions: map[instructionKey]*registeredInstruction{},
 		instances:    map[*Instance]uint64{},
 	}
 	rt.stateCond = sync.NewCond(&rt.mu)
@@ -525,7 +525,7 @@ type PreparedCompile struct {
 	cfg          *RuntimeConfig
 	bindings     moduleBindings
 	hooks        *hookRegistry
-	instructions map[string]*registeredInstruction
+	instructions map[instructionKey]*registeredInstruction
 	cacheable    bool
 	consumed     bool
 	finished     bool
@@ -546,7 +546,7 @@ func (rt *Runtime) prepareCompile(wasmBytes []byte, allowLoading bool) (*Prepare
 	cfg := rt.cfg.clone()
 	hooks := rt.loadHooks()
 	bindings := rt.snapshotModuleBindingsLocked(hooks)
-	instructions := make(map[string]*registeredInstruction, len(rt.instructions))
+	instructions := make(map[instructionKey]*registeredInstruction, len(rt.instructions))
 	for key, ins := range rt.instructions {
 		instructions[key] = ins
 	}
@@ -1576,7 +1576,7 @@ func (rt *Runtime) rollbackCommittedPluginPlan(ctx context.Context) error {
 	rt.moduleOwner = map[string]string{}
 	rt.caps = map[Capability]string{}
 	rt.capOrder = nil
-	rt.instructions = map[string]*registeredInstruction{}
+	rt.instructions = map[instructionKey]*registeredInstruction{}
 	rt.storeHooks(&hookRegistry{})
 	rt.pluginRuns = nil
 	rt.managedActive.Store(false)
