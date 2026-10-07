@@ -250,7 +250,11 @@ func (i *installer) offerPathRefresh(configFile string) {
 	yes := strings.EqualFold(choice, "yes") || strings.EqualFold(choice, "y")
 	if yes {
 		i.answer(question, "Yes")
-		if err := os.WriteFile(requestFile, []byte(configFile+"\n"), 0o600); err != nil {
+		refreshPath := configFile
+		if runtime.GOOS == "windows" {
+			refreshPath = i.binDir
+		}
+		if err := os.WriteFile(requestFile, []byte(refreshPath+"\n"), 0o600); err != nil {
 			i.retry("Could not prepare PATH refresh")
 			return
 		}

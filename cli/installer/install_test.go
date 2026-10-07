@@ -914,7 +914,11 @@ func TestPathRefreshIsOfferedOnlyAfterAddingPath(t *testing.T) {
 	if got, want := output.String(), "\nRefresh PATH now? Yes\n"; got != want {
 		t.Fatalf("refresh prompt = %q, want %q", got, want)
 	}
-	if got, err := os.ReadFile(requestFile); err != nil || string(got) != "/home/wago/.zshrc\n" {
+	wantRequest := "/home/wago/.zshrc\n"
+	if runtime.GOOS == "windows" {
+		wantRequest = installer.binDir + "\n"
+	}
+	if got, err := os.ReadFile(requestFile); err != nil || string(got) != wantRequest {
 		t.Fatalf("refresh request = %q, %v", got, err)
 	}
 	if !installer.pathRefresh {
