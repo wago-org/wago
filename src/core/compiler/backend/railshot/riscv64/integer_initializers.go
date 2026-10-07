@@ -129,7 +129,9 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 		for _, ex := range m.Exports {
 			if ex.Index.Kind == wasm.ExternGlobal {
 				if typ, ok := m.GlobalTypeByIndex(ex.Index.Index); ok && wasm.EqualValType(typ.Type, wasm.FuncRef) {
-					return unsupported("reference global export")
+					if err := admitReferenceGlobalExport(m, ex.Index.Index); err != nil {
+						return err
+					}
 				}
 			}
 		}

@@ -176,8 +176,12 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("reference-global export count bound")
 		}
 		for _, index := range c.GlobalExports {
-			if index >= 0 && index < len(c.Globals) && c.Globals[index].Type == ValFuncRef {
-				return reject("reference global export")
+			if index < 0 || index >= len(c.Globals) {
+				return reject("reference global export index")
+			}
+			global := c.Globals[index]
+			if global.Type == ValFuncRef && global.HasInitFunc && uint64(global.InitFunc) < uint64(c.NumImports) {
+				return reject("reference global export requires a local function target")
 			}
 		}
 	}

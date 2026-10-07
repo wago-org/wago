@@ -98,3 +98,27 @@ func TestNumericPublicInitializersPreserveMixedExportBounds(t *testing.T) {
 		image.CodeImage.Close()
 	}
 }
+
+func TestPublicLocalReferenceGlobalExports(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, null := range []bool{false, true} {
+			m := referenceGlobalFixture(t, vector)
+			m.Globals[0].Init.BodyBytes = []byte{0xd2, 1, 0x0b}
+			if null {
+				m.Globals[0].Init.BodyBytes = []byte{0xd0, 0x70, 0x0b}
+			}
+			ex := m.Exports[0]
+			ex.Name = "reference"
+			ex.Index.Kind = wasm.ExternGlobal
+			ex.Index.Index = 1
+			m.Exports = append(m.Exports, ex)
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, ImportBindings: hostImportBindings(1)})
+			if image == nil || err != nil {
+				t.Fatal("local reference global export", vector, null, err)
+			}
+			if image.CodeImage != nil {
+				image.CodeImage.Close()
+			}
+		}
+	}
+}

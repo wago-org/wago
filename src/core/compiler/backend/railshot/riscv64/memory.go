@@ -202,7 +202,9 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			s.memoryExports[ex.Name] = true
 		case wasm.ExternGlobal:
 			if uint64(ex.Index.Index) < uint64(len(s.globals)) && wasm.EqualValType(s.globals[ex.Index.Index].typ, wasm.FuncRef) {
-				return s, unsupported("reference global export")
+				if err := admitReferenceGlobalExport(m, ex.Index.Index); err != nil {
+					return s, err
+				}
 			}
 			s.globalExports[ex.Name] = int(ex.Index.Index)
 		case wasm.ExternTable:
