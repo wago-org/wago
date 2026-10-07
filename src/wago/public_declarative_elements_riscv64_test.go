@@ -213,7 +213,7 @@ func TestRV64PublicDeclarativeElementMetadata(t *testing.T) {
 				"context":       func(v *Compiled) { v.nativeTableContextABI = false },
 				"reference-abi": func(v *Compiled) { v.nativeTableReferenceABI = false },
 				"active":        func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
-				"passive":       func(v *Compiled) { v.passiveElems[0].Mode = ElemModePassive },
+				"unknown-mode":  func(v *Compiled) { v.passiveElems[0].Mode = ElemMode(255) },
 				"payload":       func(v *Compiled) { v.passiveElems[0].Values = []RefInit{{FuncIndex: 0}} },
 				"offset":        func(v *Compiled) { v.passiveElems[0].Offset.Base = 1 },
 				"global":        func(v *Compiled) { v.passiveElems[0].Offset.HasGlobal = true },

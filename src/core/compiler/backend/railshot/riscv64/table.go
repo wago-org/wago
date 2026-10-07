@@ -41,6 +41,27 @@ func tableElementExpression(expr wasm.Expr) (wasm.FuncrefElementExpr, error) {
 	return value, nil
 }
 
+// Element payloads may copy immutable construction-time globals under the
+// retained public ABI. Keep table initializers and declarative payloads on the
+// literal profile; private owners cannot resolve shared global cells.
+func elementInitializerExpression(expr wasm.Expr, m *wasm.Module, mode wasm.ElemModeKind, public bool) (wasm.ElementExpr, error) {
+	if len(expr.BodyBytes) != 0 && expr.BodyBytes[0] == 0x23 {
+		if !public || mode != wasm.ElemActive && mode != wasm.ElemPassive {
+			return wasm.ElementExpr{}, unsupported("element global requires an active/passive public segment")
+		}
+		if err := admitGlobalExpression(expr, m, wasm.FuncRef, m.ImportedGlobalCount()+len(m.Globals)); err != nil {
+			return wasm.ElementExpr{}, err
+		}
+		value, err := wasm.ParseElementExpr(expr)
+		if err != nil {
+			return wasm.ElementExpr{}, unsupported("element global expression")
+		}
+		return value, nil
+	}
+	value, err := tableElementExpression(expr)
+	return wasm.ElementExpr{RefType: wasm.FuncRef.Ref(), Null: value.Null, FuncIndex: value.FuncIndex}, err
+}
+
 // Table initialization shares the literal element profile and canonical public
 // descriptors. Validate the index even when the initial table size is zero.
 func admitTableInitializer(expr wasm.Expr, m *wasm.Module) error {
@@ -55,7 +76,7 @@ func admitTableInitializer(expr wasm.Expr, m *wasm.Module) error {
 }
 
 // Bound decoded resource metadata before validation or payload copies.
-func ownedTableBounds(m *wasm.Module) error {
+func ownedTableBounds(m *wasm.Module, public bool) error {
 	if len(m.Imports) > MaxProductionImports {
 		return unsupported("table import count bound")
 	}
@@ -78,7 +99,7 @@ func ownedTableBounds(m *wasm.Module) error {
 			return unsupported("element payload bound")
 		}
 		for _, expr := range e.Kind.Exprs {
-			if _, err := tableElementExpression(expr); err != nil {
+			if _, err := elementInitializerExpression(expr, m, e.Mode.Kind, public); err != nil {
 				return err
 			}
 		}
@@ -93,7 +114,7 @@ func admitOwnedTable(m *wasm.Module, production bool) (bool, error) {
 // Imported storage uses the retained canonical target ABI, never the private
 // same-instance pilot. Count and capacity limits precede validation/copies.
 func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, error) {
-	if err := ownedTableBounds(m); err != nil {
+	if err := ownedTableBounds(m, production && importedTables); err != nil {
 		return false, err
 	}
 	if m.ImportedTableCount() != 0 && (!production || !importedTables) {
@@ -122,8 +143,8 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	imported := m.ImportedFuncCount()
 	for _, e := range m.Elements {
-		if !hasTable && e.Mode.Kind != wasm.ElemDeclarative {
-			return false, unsupported("table-free elements must be declarative")
+		if !hasTable && e.Mode.Kind != wasm.ElemDeclarative && e.Mode.Kind != wasm.ElemPassive {
+			return false, unsupported("table-free elements must be passive or declarative")
 		}
 		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 {
 			return false, unsupported("element mode/table")
@@ -139,11 +160,11 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 				return false, unsupported("public nullable funcref element expressions required")
 			}
 			for _, expr := range e.Kind.Exprs {
-				value, err := tableElementExpression(expr)
+				value, err := elementInitializerExpression(expr, m, e.Mode.Kind, production && importedTables)
 				if err != nil {
 					return false, err
 				}
-				if !value.Null && uint64(value.FuncIndex) >= uint64(imported+len(m.Code)) {
+				if !value.Null && !value.HasGlobal && uint64(value.FuncIndex) >= uint64(imported+len(m.Code)) {
 					return false, unsupported("element expression function index")
 				}
 			}

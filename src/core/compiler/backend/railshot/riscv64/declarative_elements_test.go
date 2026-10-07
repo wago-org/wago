@@ -23,7 +23,6 @@ func TestTableFreeDeclarativeElementProfile(t *testing.T) {
 	}
 	for name, mutate := range map[string]func(*wasm.Module){
 		"active":  func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemActive },
-		"passive": func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemPassive },
 		"offset":  func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x41, 0, 0x0b} },
 		"index":   func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 1 },
 		"count":   func(m *wasm.Module) { m.Elements = make([]wasm.Elem, 257) },

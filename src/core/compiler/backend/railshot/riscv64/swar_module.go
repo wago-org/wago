@@ -443,7 +443,7 @@ func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
 				return unsupported("SWAR public element expressions required")
 			}
 			for _, expr := range element.Kind.Exprs {
-				if _, err := tableElementExpression(expr); err != nil {
+				if _, err := elementInitializerExpression(expr, m, element.Mode.Kind, publicStarts); err != nil {
 					return err
 				}
 				if !consume(len(expr.BodyBytes)) {

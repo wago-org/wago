@@ -314,6 +314,29 @@ func rv64PublishedDescriptor(owner *Instance, descriptor uint64) ([]byte, bool) 
 // pruning prior writers: their final-root release can reacquire that lease.
 // The caller releases the returned redundant root and prunes after unlocking.
 func railshotPublishConstructedTableProducer(table *Table, in *Instance) *Instance {
+	// Active elements can copy descriptors from imported immutable globals
+	// before the first native invocation. Frozen global attachments already
+	// pin and quiesce these actual owners; publish their exact rows even when
+	// a later initializer failed. No root may be released under the native lease.
+	// This borrowed candidate set is not an activation scope: do not add/release.
+	if references := in.importGlobalReferences(); len(references) != 0 {
+		var candidates rv64NativeTableTargets
+		for _, reference := range references {
+			if reference.owner == nil {
+				continue
+			}
+			duplicate := false
+			for _, owner := range candidates.owners[:candidates.count] {
+				duplicate = duplicate || owner == reference.owner
+			}
+			if !duplicate {
+				// Admission caps the complete imported/local global space at 256.
+				candidates.owners[candidates.count] = reference.owner
+				candidates.count++
+			}
+		}
+		candidates.publishHostTableReferenceRows(table)
+	}
 	if !in.retainResourceRoot() {
 		return nil
 	}

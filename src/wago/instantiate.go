@@ -1155,8 +1155,10 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 				// entry. Once copied through an imported global into another instance's
 				// table, use the producer's offset-0 wrapper and explicit cross-instance
 				// home tag so ordinary call_indirect performs the required context switch.
+				// RV64's retained reference ABI already publishes framed wrappers in
+				// canonical descriptors. Its table guards require an unchanged row.
 				global := globalCells[value.GlobalIndex]
-				if global.owner != nil && global.owner.instance != nil && global.owner.instance.nativeContext != nativeContextPtr {
+				if !c.nativeTableReferenceABI && global.owner != nil && global.owner.instance != nil && global.owner.instance.nativeContext != nativeContextPtr {
 					producer := global.owner.instance
 					if fidx, ok := producer.funcrefDescriptorIndex(bits); ok {
 						li := fidx - producer.c.NumImports
