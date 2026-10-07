@@ -104,6 +104,14 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 		}
 	}
 	hasReferenceGlobal := false
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternGlobal && wasm.EqualValType(im.Type.GlobalType().Type, wasm.FuncRef) {
+			if !admitImportedFunctionGlobal(m, im.Type.GlobalType()) {
+				return unsupported("reference global import requires immutable funcref and owned table")
+			}
+			hasReferenceGlobal = true
+		}
+	}
 	for i, global := range m.Globals {
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
 			hasReferenceGlobal = true

@@ -119,8 +119,9 @@ keys covering the full imported and defined function namespace. Imported element
 and ref.func targets use importer-owned canonical descriptors for published
 Go, HostFuncRef or native import thunks. Authentication checks an independent
 frozen entry directory; retaining the importer preserves thunk mappings and
-attached owners. Equality, reference signatures and external reference-token APIs
-remain gated; cross-binding canonical identity is not yet qualified. Up to 256
+attached owners. Exported immutable funcref globals issue same-Runtime tokens
+with canonical native/HostFuncRef identity; raw Go callback references remain
+ineligible for public tokens. Reference-valued signatures remain gated. Up to 256
 function imports, 256 globals, one memory and one table share a
 514-import bound. QEMU correctness does not establish native
 instruction-cache or performance qualification.
@@ -140,9 +141,19 @@ active data offsets accept immutable imported i32 globals. The shared runtime
 owns these global/data payloads without duplicate private SWAR state. Integer
 initializers and active offsets support i32/i64 constants, immutable imported
 integer reads, and matching add/sub/mul, bounded to 128 bytes and eight operands.
-Source checks precede folding; artifact checks precede runtime evaluation. Prior
-local-global reads, broader expressions, typed references and explicit table
-initializers remain unavailable.
+Source checks precede folding; artifact checks precede runtime evaluation.
+Bounded immutable prior-local copies and integer expressions are also supported.
+Immutable nullable funcref imports require explicit same-Runtime Global owners
+and a module-owned table. A frozen sidecar records each distinct imported cell,
+its raw descriptor, and its actual descriptor-storage owner; one physical root
+per owner lasts until consumer teardown. Native scopes traverse these edges
+within the existing owner/edge bounds, authenticate complete descriptors, and
+keep roots across parked callbacks and cold unwinding. Imported aliases and
+local copies may first issue public tokens after producer retirement without
+reopening direct producer access. Host-token canonical identity may name a
+different importer from the raw slot's storage owner. Reference-global imports
+combined with borrowed tables, mutable reference globals and typed references
+remain gated pending separate ownership qualification.
 
 RV64 host calls retain the framed cooperative park/resume boundary. The
 bounded/live host portals and native scalar leaf optimization are unavailable

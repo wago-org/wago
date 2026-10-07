@@ -245,6 +245,7 @@ func TestRV64PublicReferenceGlobalArtifactAdmission(t *testing.T) {
 		func(v *Compiled) { v.GlobalExports = map[string]int{"reference": 1} },
 		func(v *Compiled) {
 			v.GlobalImports = []GlobalImportDef{{Module: "env", Name: "reference", Type: ValFuncRef, HasValueType: v.Globals[0].HasValueType, ValueTypeIndex: v.Globals[0].ValueTypeIndex}}
+			v.tableImport = "env.table" // Reference imports currently require an owned table.
 		},
 		func(v *Compiled) { v.ValueTypes[v.Globals[0].ValueTypeIndex].Ref.Nullable = false },
 		func(v *Compiled) { v.HasTable = false },

@@ -200,6 +200,9 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		return Value{}, fmt.Errorf("exported global %q is v128; use GlobalV128", name)
 	}
 	cell := in.globalCells[idx]
+	if value, handled, err := railshotImportedGlobalValue(in, cell); handled {
+		return value, err
+	}
 	if isReferenceValType(g.Type) && cell.owner != nil {
 		value, err := cell.getValueNoLease()
 		if err != nil {

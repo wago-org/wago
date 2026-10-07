@@ -483,6 +483,7 @@ func (in *Instance) releaseResources() {
 	detachImportedFunctions(in)
 	detachImportedHostFuncRefs(in)
 	detachImportedGlobals(in)
+	railshotReleaseGlobalReferences(in.importGlobalReferences())
 	detachImportedTables(in)
 	detachImportedTags(in)
 	if in.gc != nil {
@@ -565,6 +566,7 @@ func (in *Instance) releaseResources() {
 	in.funcRefDescs = nil
 	if state := in.importState.Load(); state != nil {
 		state.importRefEntries = nil
+		state.globalRefEntries = nil
 	}
 	in.passiveDataDesc = nil
 	in.serArgs = nil

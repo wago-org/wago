@@ -5,9 +5,12 @@ with numeric function imports, including retained foreign targets and parked
 host callbacks, imported references through owned thunks, and bounded nullable
 funcref element expressions with immutable imported-i32 offsets. Scalar/SWAR
 initialization supports numeric/vector imported-global copies and imported-i32
-data offsets, with bounded integer constant add/sub/mul expressions. Remaining work
-includes reference signatures/equality, broader
-WebAssembly parity, and native cache/runtime/performance qualification. The
+data offsets, with bounded integer constant add/sub/mul expressions. Immutable
+nullable funcref globals support local copies, exports, and explicit same-Runtime
+imports into modules with owned tables. Remaining work includes reference-global
+imports combined with borrowed tables, mutable reference globals, reference
+signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
+qualification. The
 experimental build tag and unsupported-feature admission remain in place.
 
 AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional

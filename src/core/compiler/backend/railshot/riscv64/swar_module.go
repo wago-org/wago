@@ -133,7 +133,8 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			}
 			memoryImports++
 		case wasm.ExternGlobal:
-			if !state.importedGlobals || swarClassOf(im.Type.GlobalType().Type) == swarInvalid {
+			reference := tables && state.exports && state.publicInitializers && state.importedTable && mode.foreignTableCalls && admitImportedFunctionGlobal(m, im.Type.GlobalType())
+			if !state.importedGlobals || swarClassOf(im.Type.GlobalType().Type) == swarInvalid && !reference {
 				return nil, unsupported("SWAR numeric global import profile")
 			}
 			globalImports++

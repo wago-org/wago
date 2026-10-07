@@ -613,6 +613,9 @@ func (g *Global) getValueNoLease() (Value, error) {
 	if store == nil {
 		return Value{}, fmt.Errorf("global has no compatible reference store")
 	}
+	if value, handled, err := railshotImportedGlobalValue(source, g); handled {
+		return value, err
+	}
 	if typ == ValExternRef {
 		public, handled, err := source.publicExternFromGlobal(bits)
 		if err != nil {

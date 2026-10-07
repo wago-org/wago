@@ -163,6 +163,24 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 				}
 			}
 		}
+		for _, entry := range owner.importGlobalReferences() {
+			edges++
+			if edges > 4096 {
+				return fmt.Errorf("RV64 reference attachment edge bound")
+			}
+			descriptor, _, err := rv64ReferenceGlobalSnapshot(entry.global, owner.refStore, true)
+			if err != nil || descriptor != entry.descriptor {
+				return fmt.Errorf("RV64 immutable reference attachment changed")
+			}
+			if descriptor != 0 {
+				if err := s.add(entry.owner); err != nil {
+					return err
+				}
+				if _, valid := rv64PublishedDescriptor(entry.owner, descriptor); !valid {
+					return fmt.Errorf("RV64 reference attachment descriptor changed")
+				}
+			}
+		}
 		for index := 0; index < owner.c.tableImportCount(); index++ {
 			table, ok := owner.imports.table(owner.c.tableImportBindingKey(index))
 			if !ok {
@@ -239,57 +257,56 @@ func (s *rv64NativeTableTargets) validateTable(table []byte) error {
 
 func (s *rv64NativeTableTargets) authenticatedRow(row []byte) bool {
 	descriptor := binary.LittleEndian.Uint64(row[coreruntime.TableEntryRefSlotOffset:])
-	if descriptor == 0 || descriptor&7 != 0 {
-		return false
-	}
 	for _, owner := range s.owners[:s.count] {
-		// Membership uses the owner's actual allocation before reading any candidate.
-		base := uint64(offHeapSlicePtr(owner.funcRefDescs))
-		if base == 0 || descriptor < base+coreruntime.FuncRefDescBytes || descriptor-base >= uint64(len(owner.funcRefDescs)) {
-			continue
+		canonical, ok := rv64PublishedDescriptor(owner, descriptor)
+		if ok {
+			return bytes.Equal(row, canonical[:coreruntime.TableEntryBytes])
 		}
-		offset := descriptor - base
-		if offset%coreruntime.FuncRefDescBytes != 0 || offset+coreruntime.FuncRefDescBytes > uint64(len(owner.funcRefDescs)) {
-			return false
-		}
-		function := int(offset/coreruntime.FuncRefDescBytes) - 1
-		local := function - owner.c.NumImports
-		if function >= len(owner.c.FuncTypeID) {
-			return false
-		}
-		var entry uint64
-		if local < 0 {
-			// This directory is frozen at publication, not read back from the
-			// writable dispatch/descriptor arena. Retaining owner keeps its shared
-			// code cache, private thunk mapping and import attachments alive.
-			if function >= len(owner.importReferenceEntries()) {
-				return false
-			}
-			entry = owner.importReferenceEntries()[function].address
-			if entry == 0 || entry&15 != 0 {
-				return false
-			}
-		} else {
-			if local >= len(owner.c.Entry) || local >= len(owner.c.Funcs) {
-				return false
-			}
-			code := owner.c.Entry[local]
-			if code < 0 || code&15 != 0 || uint64(code) >= uint64(len(owner.c.code)) {
-				return false
-			}
-			entry = uint64(owner.base) + uint64(code)
-		}
-		canonical := owner.funcRefDescs[int(offset) : int(offset)+coreruntime.FuncRefDescBytes]
-		if !bytes.Equal(row, canonical[:coreruntime.TableEntryBytes]) {
-			return false
-		}
-		return binary.LittleEndian.Uint64(canonical) == entry &&
-			binary.LittleEndian.Uint64(canonical[coreruntime.TableEntrySigKeyOffset:]) == owner.c.FuncTypeID[function] &&
-			binary.LittleEndian.Uint64(canonical[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(owner.jm.LinMemBase())|abi.FuncRefLocalWrapperHomeTag &&
-			binary.LittleEndian.Uint64(canonical[coreruntime.TableEntryRefSlotOffset:]) == descriptor &&
-			binary.LittleEndian.Uint64(canonical[coreruntime.FuncRefContextOffset:]) == uint64(owner.nativeContext)
 	}
 	return false
+}
+
+// Membership is established against retained storage before reading a slot.
+// Both token and native-entry paths authenticate the complete publication ABI.
+func rv64PublishedDescriptor(owner *Instance, descriptor uint64) ([]byte, bool) {
+	if owner == nil || owner.c == nil || owner.jm == nil || owner.nativeContext == 0 || descriptor == 0 || descriptor&7 != 0 {
+		return nil, false
+	}
+	function, ok := owner.funcrefDescriptorIndex(descriptor)
+	if !ok {
+		return nil, false
+	}
+	offset := (function + 1) * coreruntime.FuncRefDescBytes
+	if offset+coreruntime.FuncRefDescBytes > len(owner.funcRefDescs) {
+		return nil, false
+	}
+	local := function - owner.c.NumImports
+	var entry uint64
+	if local < 0 {
+		if function >= len(owner.importReferenceEntries()) {
+			return nil, false
+		}
+		entry = owner.importReferenceEntries()[function].address
+		if entry == 0 || entry&15 != 0 {
+			return nil, false
+		}
+	} else {
+		if local >= len(owner.c.Entry) || local >= len(owner.c.Funcs) {
+			return nil, false
+		}
+		code := owner.c.Entry[local]
+		if owner.base == 0 || code < 0 || code&15 != 0 || uint64(code) >= uint64(len(owner.c.code)) {
+			return nil, false
+		}
+		entry = uint64(owner.base) + uint64(code)
+	}
+	canonical := owner.funcRefDescs[offset : offset+coreruntime.FuncRefDescBytes]
+	valid := binary.LittleEndian.Uint64(canonical) == entry &&
+		binary.LittleEndian.Uint64(canonical[coreruntime.TableEntrySigKeyOffset:]) == owner.c.FuncTypeID[function] &&
+		binary.LittleEndian.Uint64(canonical[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(owner.jm.LinMemBase())|abi.FuncRefLocalWrapperHomeTag &&
+		binary.LittleEndian.Uint64(canonical[coreruntime.TableEntryRefSlotOffset:]) == descriptor &&
+		binary.LittleEndian.Uint64(canonical[coreruntime.FuncRefContextOffset:]) == uint64(owner.nativeContext)
+	return canonical, valid
 }
 
 // Publish a newly constructed writer while native execution is leased, without

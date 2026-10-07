@@ -54,3 +54,16 @@ func railshotFuncRefMatchesFunction(*Instance, FuncRef, uint32) bool { return fa
 func railshotCanonicalHostFuncref(*referenceStore, *Instance, *HostFuncRef, int, uint64) (*Instance, uint64, bool) {
 	return nil, 0, false
 }
+
+type importGlobalReference struct{}
+
+func railshotFreezeGlobalReferences(*Compiled, []*resolvedGlobalImport, *referenceStore) ([]importGlobalReference, error) {
+	return nil, nil
+}
+func railshotReleaseGlobalReferences([]importGlobalReference) {}
+func railshotImportedGlobalValue(*Instance, *Global) (Value, bool, error) {
+	return Value{}, false, nil
+}
+func railshotCanonicalGlobalFuncref(*referenceStore, *Instance, uint64) (*Instance, uint64, bool) {
+	return nil, 0, false
+}

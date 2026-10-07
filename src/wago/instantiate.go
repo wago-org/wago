@@ -489,6 +489,15 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	if err != nil {
 		return nil, err
 	}
+	globalRefs, err := railshotFreezeGlobalReferences(c, importGlobals, opts.store)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if !b.success {
+			railshotReleaseGlobalReferences(globalRefs)
+		}
+	}()
 	stackBytes := opts.nativeStackBytes
 	if stackBytes == 0 {
 		stackBytes = c.nativeStackBytes()
@@ -1722,6 +1731,9 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	}
 	if len(importRefEntries) != 0 {
 		in.ensureImportState().importRefEntries = importRefEntries
+	}
+	if len(globalRefs) != 0 {
+		in.ensureImportState().globalRefEntries = globalRefs
 	}
 	if codeProfileEnabled {
 		b.bindProfileInstance(in)

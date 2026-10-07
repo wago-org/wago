@@ -3276,6 +3276,9 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		}
 		return hostOwner.canonicalDescriptor(source, descriptor, source.c.importFuncSigs[fidx])
 	}
+	if railshotNativeContextTrapABI() {
+		return railshotCanonicalGlobalFuncref(s, source, descriptor)
+	}
 	for candidate := range s.instances {
 		if candidate.ownsLocalFuncrefDescriptor(descriptor) {
 			return candidate, descriptor, true

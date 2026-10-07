@@ -85,7 +85,15 @@ type Instance struct {
 type instanceImportState struct {
 	pluginGCImports  map[uint32]struct{}
 	funcrefImports   atomic.Pointer[funcrefImportContainers]
-	importRefEntries []importReferenceEntry // RV64 immutable wrappers and native attachments
+	importRefEntries []importReferenceEntry  // RV64 immutable wrappers and native attachments
+	globalRefEntries []importGlobalReference // RV64 immutable cells and retained descriptor storage
+}
+
+func (in *Instance) importGlobalReferences() []importGlobalReference {
+	if state := in.importState.Load(); state != nil {
+		return state.globalRefEntries
+	}
+	return nil
 }
 
 type importReferenceEntry struct {

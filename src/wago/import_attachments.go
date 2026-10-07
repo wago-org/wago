@@ -256,6 +256,11 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, p
 		if imp.Type != ValFuncRef {
 			continue
 		}
+		// RV64 immutable imports cannot receive consumer-produced references.
+		// Their frozen roots and ordinary cell attachments last until teardown.
+		if railshotNativeContextTrapABI() && !imp.Mutable && len(in.importGlobalReferences()) != 0 {
+			continue
+		}
 		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 		if !ok || provided.Global == nil {
 			continue

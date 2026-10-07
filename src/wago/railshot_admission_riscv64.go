@@ -82,7 +82,15 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("global import index shape")
 	}
 	for i, global := range c.GlobalImports {
-		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.Type != c.Globals[i].Type || global.Mutable != c.Globals[i].Mutable {
+		reference := global.Type == ValFuncRef && !global.Mutable && c.tableCount() == 1 && c.tableImportCount() == 0
+		if reference {
+			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
+			if err != nil || exact != plain {
+				return reject("reference global import exact type")
+			}
+		}
+		if (!reference && global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.Type != c.Globals[i].Type || global.Mutable != c.Globals[i].Mutable {
 			return reject("global import type/mutability shape")
 		}
 	}
@@ -152,10 +160,13 @@ func railshotValidateCompiled(c *Compiled) error {
 			hasReferenceGlobal = true
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
-			if err != nil || exact != plain || i < len(c.GlobalImports) || global.Mutable || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() != 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+			if err != nil || exact != plain || global.Mutable || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() != 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
 				return reject("immutable local reference global and retained table required")
 			}
-			if global.HasInitGlobal && (global.HasInitFunc || global.InitGlobal < len(c.GlobalImports) || !rv64InitializerGlobal(c, global.InitGlobal, ValFuncRef, i)) {
+			if i < len(c.GlobalImports) && (global.HasInitFunc || global.HasInitGlobal) {
+				return reject("reference import initializer")
+			}
+			if global.HasInitGlobal && (global.HasInitFunc || !rv64InitializerGlobal(c, global.InitGlobal, ValFuncRef, i)) {
 				return reject("reference initializer requires an earlier immutable local global")
 			}
 			continue
@@ -219,10 +230,13 @@ func railshotNeedsImportContextHeader(count int) bool { return count > 0 }
 // owned host handles retain their separately qualified scalar protocol.
 func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store *referenceStore) error {
 	c = c.executionView()
-	if c.NumImports == 0 && len(c.Imports) == 0 && c.tableImportCount() == 0 {
+	if c.NumImports == 0 && len(c.Imports) == 0 && c.tableImportCount() == 0 && len(c.GlobalImports) == 0 {
 		return nil
 	}
 	if err := railshotValidateCompiled(c); err != nil {
+		return err
+	}
+	if err := rv64ValidateResolvedGlobals(c, imports, store); err != nil {
 		return err
 	}
 	if err := rv64ValidateResolvedTable(c, imports, store); err != nil {
