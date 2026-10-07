@@ -8,6 +8,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Bound AMD64 compiler scratch growth by recycling operand arenas at proven-empty
+  instruction boundaries, tracking control-frame eligibility in constant time
+  and clearing only pointer slots written since the previous cleanup.
+- Reduce data-section decoding and execution-snapshot allocations with checked
+  vector preallocation and compact immutable active-data records, preserving
+  public data ownership and artifact encoding.
 - Reduce AMD64 and ARM64 synchronous host-call round trips with bounded native
   bridges, private prepared owners, and specialized numeric marshalling. This
   adds 32 bytes to the instance plugin sidecar and about 192 KiB to stripped
