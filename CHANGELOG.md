@@ -6,6 +6,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+## [v0.1.0-beta.12] - 2026-10-07
+
 ### Changed
 
 - Reduce AMD64 compilation allocations and repeated work in immutable-table
@@ -348,7 +350,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   incomplete typed-select immediate decoding.
 - Fixed Beta discovery and retracted legacy tagged Canary module versions.
 
-[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.11...HEAD
+[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.12...HEAD
+[v0.1.0-beta.12]: https://github.com/wago-org/wago/compare/v0.1.0-beta.11...v0.1.0-beta.12
 [v0.1.0-beta.11]: https://github.com/wago-org/wago/compare/v0.1.0-beta.10...v0.1.0-beta.11
 [v0.1.0-beta.10]: https://github.com/wago-org/wago/compare/v0.1.0-beta.9...v0.1.0-beta.10
 [v0.1.0-beta.9]: https://github.com/wago-org/wago/compare/v0.1.0-beta.8...v0.1.0-beta.9
