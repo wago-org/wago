@@ -13,11 +13,6 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-func numericContextDetached(in *Instance) bool {
-	p := in.eng.PreparedScalarHost()
-	return p != nil && p.DetachedNumericContext()
-}
-
 func TestDetachedNumericResourceIsolation(t *testing.T) {
 	if !detachedNumericHostEnabled || (goruntime.GOARCH != "amd64" && (goruntime.GOARCH != "arm64" || !armDetachedNumericEnabled)) || codeProfileEnabled {
 		t.Skip("detached numeric context")

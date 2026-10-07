@@ -9,7 +9,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 ### Changed
 
 - Reduce AMD64 and ARM64 synchronous host-call round trips with bounded native
-  bridges, private prepared owners, and specialized numeric marshalling.
+  bridges, private prepared owners, and specialized numeric marshalling. This
+  adds 32 bytes to the instance plugin sidecar and about 192 KiB to stripped
+  Go runtime binaries (63.3 KiB for the minimal TinyGo runtime).
 - Reuse both AMD64 hardware divide results for adjacent division/remainder
   pairs on the same local operands, reducing dependent-pair latency.
 

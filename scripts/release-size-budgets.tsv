@@ -1,8 +1,11 @@
 # Go 1.27.1 / TinyGo 0.42.0 release toolchains; linux/amd64 stripped bytes.
 # PR #780: retain the measured Railshot execution improvements. CI measured
 # standard/minimal/tiny at 9,588,896 / 9,220,256 / 2,812,360 bytes respectively.
+# PR #872: bounded host-call bridges add 196,608 / 196,608 / 64,792 bytes.
+# Measured standard/minimal: 9,871,520 / 9,445,536; TinyGo CI: 2,886,696.
+# Keep explicit caps with 13-34 KiB headroom; manager remains unchanged.
 # profile	max_linux_amd64_bytes
 manager	9950000
-runtime-standard	9670000
-runtime-minimal	9300000
-runtime-minimal-tiny	2820000
+runtime-standard	9900000
+runtime-minimal	9480000
+runtime-minimal-tiny	2900000
