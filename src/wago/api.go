@@ -4819,6 +4819,11 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 		retry := time.NewTicker(50 * time.Microsecond)
 		defer retry.Stop()
 		for watchState.Load()&watchStopped == 0 {
+			// Cooperative hosts can overwrite the one-shot trap while publishing
+			// a host call. Restore cancellation until this invocation stops.
+			if !wruntime.HostInterruptSupported() && atomic.LoadUint32(trap) != uint32(wruntime.TrapInterrupted) {
+				wruntime.RequestInterrupt(activeTrap)
+			}
 			<-retry.C
 		}
 
