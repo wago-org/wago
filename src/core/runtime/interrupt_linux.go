@@ -477,11 +477,34 @@ func RequestInterruptAsync(trap []byte) func() {
 	var stopOnce sync.Once
 	go func() {
 		defer close(stopped)
+		var request *interruptRequest
+		defer func() {
+			if request != nil {
+				releaseInterruptRequest(request, trapPtr)
+			}
+		}()
 		retry := time.NewTicker(50 * time.Microsecond)
 		defer retry.Stop()
 		for attempt := 0; attempt < 256; attempt++ {
-			if requestInterruptPointer(trapPtr) {
-				return
+			// A queued delivery must retain its authenticated token until the
+			// retry owner finishes. Reacquiring every tick invalidates signals
+			// that the kernel has queued but has not delivered yet.
+			if request == nil {
+				request = acquireInterruptRequest(trapPtr)
+				if request != nil {
+					atomic.StoreUint32(&request.ack, 0)
+				}
+			}
+			if request != nil {
+				if sig := atomic.LoadUint32(&interruptSignal); sig != 0 {
+					broadcastInterruptSignal(sig, request.token)
+					for yield := 0; yield < 64 && atomic.LoadUint32(&request.ack) == 0; yield++ {
+						goruntime.Gosched()
+					}
+					if atomic.LoadUint32(&request.ack) != 0 {
+						return
+					}
+				}
 			}
 			select {
 			case <-done:

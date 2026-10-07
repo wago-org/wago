@@ -8,6 +8,7 @@ import (
 	goruntime "runtime"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -780,6 +781,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if ownedThunkAddr != nil {
 				addr = ownedThunkAddr[uint32(i)]
 			}
+			ordinaryGoThunk := addr == 0
 			if addr == 0 && i < len(sharedThunkOffsets) && sharedThunkOffsets[i] != noHostThunkOffset {
 				addr = uint64(sharedThunkBase) + uint64(sharedThunkOffsets[i])
 			}
@@ -789,7 +791,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], addr)
 			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], selfLinMem)
 			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(nativeContextPtr))
-			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
+			callerContext := uint64(nativeContextPtr)
+			if (goruntime.GOARCH == "arm64" || goruntime.GOARCH == "amd64") && c.supportsGoHostDispatchTag() && syncMode && ordinaryGoThunk {
+				if callerContext&runtime.ImportDispatchCallerGoHostTag != 0 {
+					return nil, fmt.Errorf("unaligned native caller context")
+				}
+				callerContext |= runtime.ImportDispatchCallerGoHostTag
+			}
+			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], callerContext)
 		}
 		jm.SetImportDispatchPtr(uintptr(unsafe.Pointer(&dispatch[0])))
 	}
@@ -1577,6 +1586,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if codeProfileEnabled {
 		b.bindProfileInstance(in)
 	}
+	if c.boundedHostSegments() && len(syncHosts) > 1 {
+		if shapes := boundedMultiHostShapes(syncHosts); shapes != nil {
+			in.ensurePluginState().multiHost = &boundedMultiHostLayout{shapes: shapes}
+		}
+	}
 	if opts.InvokeCacheSlots != 0 && opts.InvokeCacheSlots != 4 {
 		state := in.ensurePluginState()
 		state.invokeCacheSlots = uint8(opts.InvokeCacheSlots)
@@ -1617,6 +1631,32 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				unregisterHostControl(in)
 			}
 		}()
+	}
+	if !codeProfileEnabled && in.syncMode && c.boundedHostSegments() && len(syncHosts) == 1 &&
+		(syncHosts[0].scalarKind == syncHostScalar || syncHosts[0].scalarKind == syncHostTypedI32 || syncHosts[0].scalarKind == syncHostTypedI32x2) &&
+		in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0 {
+		binding := &syncHosts[0]
+		slots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
+		var err error
+		if binding.scalarKind == syncHostScalar {
+			_, err = eng.PrepareScalarHostView(runtimebridge.GrantHostScalarCall(), in.serArgs, in.trap, in.results, in.ctrl, slots)
+		} else {
+			_, err = eng.PrepareScalarHost(runtimebridge.GrantHostScalarCall(), in.serArgs, in.trap, in.results, in.ctrl, slots)
+		}
+		if err != nil {
+			return nil, wrapContextError("instantiate: prepare scalar host bridge", err)
+		}
+		if prepared := eng.PreparedScalarHost(); prepared != nil && detachedNumericHostEnabled && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" && armDetachedNumericEnabled) && c.supportsGoHostDispatchTag() && detachedNumericGoDispatch(jm) && c.NumImports == 1 && memoryCount <= 1 && !threadedControl && len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil && !c.needsFuncRefContext() && len(in.hostLog) == 0 && syncHosts[0].gate == nil {
+			if err := prepared.DetachNumericContext(runtimebridge.GrantHostScalarCall(), jm); err != nil {
+				return nil, err
+			}
+			if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" && armIntegerNumericEnabled) && integerNumericHostEnabled && c.integerHostContextAllowed() {
+				if err := prepared.EnableIntegerGuestContext(runtimebridge.GrantHostScalarCall()); err != nil {
+					return nil, err
+				}
+			}
+		}
+
 	}
 	if memoryCount > 1 || threadedControl {
 		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir}

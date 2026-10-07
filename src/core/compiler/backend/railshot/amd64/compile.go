@@ -33,6 +33,9 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
+// Binding-time Go classification permits direct control-frame calls in bounded numeric functions.
+var directGoImportEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_GO_IMPORT") != "1"
+
 // Lend R11 to guarded call-making local pins. The second lease below can
 // also use R10; call capture and spill contracts still apply.
 // WAGO_AMD64_GUARD_CALL_PIN=0 restores the previous pin pool for comparison.
@@ -538,6 +541,7 @@ type fn struct {
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
 	syncHostCalls          bool
+	dynamicHostFast        bool
 	syncHostSlots          int  // symmetric control-frame capacity; >64 selects the wide extension
 	gcTypeSubtypingRefTest bool // typed function tests/casts resolve exact declared type identity after dynamic loads
 	gcStructHelpers        bool // exact staged numeric struct ops use the same parked Go re-entry frame
@@ -3521,6 +3525,22 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.ehTryCap, f.ehRootCap = shape.TryRecords, shape.RootRecords
 	}
 	f.syncHostCalls = syncHostCalls
+	f.dynamicHostFast = f.opt(optDirectGoHostImport) && syncHostCalls && !f.moduleEH && shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
+	for _, typ := range ft.Params {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
+	for _, run := range c.Locals.Runs {
+		if run.Type.Kind() != wasm.ValNum || mtOf(run.Type) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
 	f.gcStructHelpers = gcStructHelpers

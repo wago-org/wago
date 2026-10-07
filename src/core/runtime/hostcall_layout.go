@@ -75,6 +75,7 @@ func RegisterHostCtrlFrame(ctrl []byte) error {
 
 // UnregisterHostCtrlFrame removes a frame registered at instance activation.
 func UnregisterHostCtrlFrame(ctrl []byte) {
+	unregisterNativeScalarLeaf(ctrl)
 	if len(ctrl) == ctrlFrameSize {
 		return
 	}

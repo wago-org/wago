@@ -8,6 +8,15 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Reduce AMD64 and ARM64 synchronous host-call round trips with bounded native
+  bridges, private prepared owners, and specialized numeric marshalling. This
+  adds 32 bytes to the instance plugin sidecar and about 192 KiB to stripped
+  Go runtime binaries (63.3 KiB for the minimal TinyGo runtime).
+  
+## [v0.1.0-beta.12] - 2026-10-07
+
+### Changed
+
 - Reduce AMD64 compilation allocations and repeated work in immutable-table
   analysis, adapter grouping, spill tracking, local realization, and barriers.
 - Avoid callback-context allocations and cancellation watchers for synchronous
@@ -351,7 +360,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   incomplete typed-select immediate decoding.
 - Fixed Beta discovery and retracted legacy tagged Canary module versions.
 
-[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.11...HEAD
+[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.12...HEAD
+[v0.1.0-beta.12]: https://github.com/wago-org/wago/compare/v0.1.0-beta.11...v0.1.0-beta.12
 [v0.1.0-beta.11]: https://github.com/wago-org/wago/compare/v0.1.0-beta.10...v0.1.0-beta.11
 [v0.1.0-beta.10]: https://github.com/wago-org/wago/compare/v0.1.0-beta.9...v0.1.0-beta.10
 [v0.1.0-beta.9]: https://github.com/wago-org/wago/compare/v0.1.0-beta.8...v0.1.0-beta.9

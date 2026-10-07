@@ -21,6 +21,8 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
 	optimization.Bind("prepared-light-entry", &preparedLightEntryEnabled),
 	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
+	optimization.Bind("native-leaf-host", &nativeLeafHostEnabled),
+	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
 	optimization.Bind("loop-int-const", &loopIntConstEnabled),
 	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
 	optimization.Bind("convert-read", &convertReadEnabled),
@@ -84,6 +86,8 @@ var (
 	optPreparedDirectEntry  = optimizationBindings.Option("prepared-direct-entry")
 	optPreparedLightEntry   = optimizationBindings.Option("prepared-light-entry")
 	optPreparedBoundedEntry = optimizationBindings.Option("prepared-bounded-entry")
+	optNativeLeafHost       = optimizationBindings.Option("native-leaf-host")
+	optDirectGoHostImport   = optimizationBindings.Option("direct-go-host-import")
 	optLoopIntConst         = optimizationBindings.Option("loop-int-const")
 	optIndexedBaseReuse     = optimizationBindings.Option("indexed-base-reuse")
 	optConvertRead          = optimizationBindings.Option("convert-read")

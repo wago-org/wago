@@ -535,8 +535,14 @@ func (c *Compiled) hasFuncrefImportContainers() bool {
 	return indexes.funcrefImportState.Load() == 2
 }
 
+// mayImportFuncrefStorage is the cheap immutable module-shape check. Callers
+// on an import-free hot path can avoid entering the detailed import scan.
+func (in *Instance) mayImportFuncrefStorage() bool {
+	return in != nil && in.c != nil && (len(in.c.GlobalImports) != 0 || in.c.tableImport != "")
+}
+
 func (in *Instance) importsFuncrefStorage() bool {
-	if in == nil || in.c == nil || len(in.c.GlobalImports) == 0 && in.c.tableImport == "" {
+	if !in.mayImportFuncrefStorage() {
 		return false
 	}
 	return in.c.hasFuncrefImportContainers()

@@ -86,6 +86,7 @@ var (
 	preparedDirectEntryEnabled  = os.Getenv("WAGO_ARM64_NO_PREPARED_DIRECT_ENTRY") != "1"
 	preparedLightEntryEnabled   = os.Getenv("WAGO_ARM64_NO_PREPARED_LIGHT_ENTRY") != "1"
 	preparedBoundedEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_BOUNDED_ENTRY") != "1"
+	nativeLeafHostEnabled       = os.Getenv("WAGO_ARM64_NO_NATIVE_LEAF_HOST") != "1"
 	loopIntConstEnabled         = os.Getenv("WAGO_ARM64_NO_LOOP_INT_CONST") != "1"
 	indexedBaseReuseEnabled     = os.Getenv("WAGO_ARM64_NO_INDEXED_BASE_REUSE") != "1"
 	convertReadEnabled          = os.Getenv("WAGO_ARM64_NO_CONVERT_READ") != "1"

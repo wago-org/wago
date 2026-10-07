@@ -107,7 +107,7 @@ func TestHostCallExposesExactReferenceType(t *testing.T) {
 	}}
 	sig := FuncSig{Params: []ValType{ValFuncRef}, Results: []ValType{ValFuncRef}}
 	call := HostCall{
-		params: []uint64{0}, results: []uint64{0}, sig: &sig,
+		params: compactHostSlots([]uint64{0}), results: compactHostSlots([]uint64{0}), sig: &sig,
 		exact: &DefinedTypeDescriptor{Params: []ValueTypeDescriptor{exact}, Results: []ValueTypeDescriptor{exact}},
 	}
 	if got := call.ParamType(0); got != exact {
