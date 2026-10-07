@@ -12,6 +12,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   bridges, private prepared owners, and specialized numeric marshalling. This
   adds 32 bytes to the instance plugin sidecar and about 192 KiB to stripped
   Go runtime binaries (63.3 KiB for the minimal TinyGo runtime).
+
+### Added
+
+- Bind corpus child completion to loaded input identity and exact invocation
+  evidence, with omitted-call and same-result substitution controls.
   
 ## [v0.1.0-beta.12] - 2026-10-07
 
@@ -45,9 +50,6 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   control-flow verification core.
 - Add an experimental shared scalar compiler path for AMD64 and ARM64.
 - Add Wazy to the cross-runtime benchmark corpus and publish its results.
-- Bind corpus child completion to loaded input identity and exact invocation
-  evidence, with omitted-call and same-result substitution controls.
-
 - Add AMD64 bounds-proof invalidation tests and compile/execution benchmarks.
 
 - Add rejection controls for omitted native padding and artifact metadata.
