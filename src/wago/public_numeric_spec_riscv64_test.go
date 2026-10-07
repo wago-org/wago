@@ -23,7 +23,7 @@ func TestRV64PublicPinnedNumericSpecExecution(t *testing.T) {
 	if dir == "" {
 		t.Skip("prepare repository-pinned fixtures with scripts/prepare-riscv64-numeric-spec.py and set WAGO_RV64_NUMERIC_SPEC_JSON_DIR")
 	}
-	manifest, err := rv64PublicNumericManifest(dir)
+	manifest, err := rv64PublicNumericManifest(dir, "numeric")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,8 +31,11 @@ func TestRV64PublicPinnedNumericSpecExecution(t *testing.T) {
 	rv64PublicSpecRun(t, dir, manifest, want)
 }
 
-func rv64PublicNumericManifest(dir string) (*simdfixture.Manifest, error) {
-	data, err := simdfixture.Read(dir, "rv64-numeric-manifest.json", 256<<10)
+func rv64PublicNumericManifest(dir, profile string) (*simdfixture.Manifest, error) {
+	if profile != "numeric" && profile != "float" {
+		return nil, fmt.Errorf("unknown pinned numeric profile %q", profile)
+	}
+	data, err := simdfixture.Read(dir, "rv64-"+profile+"-manifest.json", 256<<10)
 	if err != nil {
 		return nil, err
 	}
@@ -40,13 +43,21 @@ func rv64PublicNumericManifest(dir string) (*simdfixture.Manifest, error) {
 	if err := simdfixture.Decode(data, &manifest); err != nil {
 		return nil, err
 	}
-	if err := rv64PublicNumericProvenance(&manifest); err != nil {
+	if err := rv64PublicNumericProvenance(&manifest, profile); err != nil {
 		return nil, err
 	}
 	return &manifest, nil
 }
 
-func rv64PublicNumericProvenance(manifest *simdfixture.Manifest) error {
+func rv64PublicNumericProvenance(manifest *simdfixture.Manifest, profile string) error {
+	sourceHash, fileHash, sourceCount, fileCount := rv64NumericSpecSourcesSHA256, rv64NumericSpecFilesSHA256, 4, 167
+	switch profile {
+	case "numeric":
+	case "float":
+		sourceHash, fileHash, sourceCount, fileCount = rv64FloatSpecSourcesSHA256, rv64FloatSpecFilesSHA256, 6, 56
+	default:
+		return fmt.Errorf("unknown pinned numeric profile %q", profile)
+	}
 	archives := map[string]bool{
 		"83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677": true, // Linux amd64
 		"5e35416ee8725dc7cc0572e4392a8117cbf008b0e34c0db65c75506b0299cdbf": true, // Linux arm64
@@ -55,13 +66,13 @@ func rv64PublicNumericProvenance(manifest *simdfixture.Manifest) error {
 	}
 	binaryHash, err := hex.DecodeString(manifest.WabtBinarySHA256)
 	if manifest.SpecCommit != "05ca4182176763112561ae20153975c12bd689e4" || manifest.WabtVersion != "1.0.41" ||
-		!archives[manifest.WabtArchiveSHA256] || err != nil || len(binaryHash) != sha256.Size || len(manifest.Sources) != 4 || len(manifest.Files) != 167 {
+		!archives[manifest.WabtArchiveSHA256] || err != nil || len(binaryHash) != sha256.Size || len(manifest.Sources) != sourceCount || len(manifest.Files) != fileCount {
 		return fmt.Errorf("unexpected pinned numeric source/tool provenance")
 	}
 	for _, expected := range []struct {
 		rows map[string]string
 		hash string
-	}{{manifest.Sources, rv64NumericSpecSourcesSHA256}, {manifest.Files, rv64NumericSpecFilesSHA256}} {
+	}{{manifest.Sources, sourceHash}, {manifest.Files, fileHash}} {
 		actual, err := simdfixture.HashRows(expected.rows)
 		if err != nil || actual != expected.hash {
 			return fmt.Errorf("pinned numeric fixture manifest differs: got %s, want %s (%v)", actual, expected.hash, err)

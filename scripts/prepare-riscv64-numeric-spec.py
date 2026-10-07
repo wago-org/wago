@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
-"""Prepare four pinned Release 2 numeric fixtures without fetching tools or source.
+"""Prepare pinned Release 2 numeric or float fixtures without fetching tools or source.
 
-Usage: scripts/prepare-riscv64-numeric-spec.py SPEC_CHECKOUT OUTPUT_DIRECTORY WAST2JSON
+Usage: scripts/prepare-riscv64-numeric-spec.py [--profile numeric|float] SPEC_CHECKOUT OUTPUT_DIRECTORY WAST2JSON
+The default numeric profile preserves the original four-file corpus.
 Use the existing WABT 1.0.41 binary bootstrapped by scripts/bootstrap-wabt.sh.
 The output directory must not exist. Generation has a 30-second limit per
 subprocess and a 1 GiB address-space ceiling for each WABT process.
 """
+import argparse
 import hashlib
 import json
 import pathlib
 import resource
 import subprocess
-import sys
 import tempfile
 
-SOURCES = ("conversions.wast", "i32.wast", "i64.wast", "int_exprs.wast")
+PROFILES = {
+    "numeric": ("conversions.wast", "i32.wast", "i64.wast", "int_exprs.wast"),
+    "float": ("f32.wast", "f64.wast", "f32_bitwise.wast", "f64_bitwise.wast", "f32_cmp.wast", "f64_cmp.wast"),
+}
 PIN = "05ca4182176763112561ae20153975c12bd689e4"
 ARCHIVES = {
     "83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677",
@@ -42,10 +46,14 @@ def bound_child():
 
 
 def main():
-    if len(sys.argv) != 4:
-        raise SystemExit(__doc__)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", choices=PROFILES, default="numeric")
+    parser.add_argument("source")
+    parser.add_argument("output")
+    parser.add_argument("wast2json")
+    args = parser.parse_args()
     repo = pathlib.Path(__file__).resolve().parent.parent
-    source, output, wabt = (pathlib.Path(arg).resolve() for arg in sys.argv[1:])
+    source, output, wabt = (pathlib.Path(arg).resolve() for arg in (args.source, args.output, args.wast2json))
     recorded = run("git", "-C", str(repo), "ls-tree", "HEAD", "tests/conformance/spec-v2").decode().split()[2]
     if recorded != PIN or run("git", "-C", str(source), "rev-parse", "HEAD").decode().strip() != PIN:
         raise SystemExit("source checkout or repository pin differs from the numeric suite pin")
@@ -60,7 +68,7 @@ def main():
         stage = pathlib.Path(tmp) / "fixtures"
         stage.mkdir()
         sources = {}
-        for name in SOURCES:
+        for name in PROFILES[args.profile]:
             fixture = source / "test/core" / name
             relative = fixture.relative_to(source).as_posix()
             committed = run("git", "-C", str(source), "show", PIN + ":" + relative)
@@ -84,7 +92,7 @@ def main():
                     "wabt_archive_sha256": stamps["archive_sha256"],
                     "wabt_binary_sha256": stamps["binary_sha256"],
                     "sources": sources, "files": files}
-        (stage / "rv64-numeric-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        (stage / ("rv64-" + args.profile + "-manifest.json")).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         stage.rename(output)
     print("Prepared", len(sources), "sources,", len(files), "files,", total, "bytes")
     print("sources_sha256", hash_rows(sources))
