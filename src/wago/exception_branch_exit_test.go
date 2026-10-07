@@ -20,6 +20,9 @@ import (
 // Conditional fallthrough throws inside the try and must still return 99.
 func exceptionBranchExitModule(kind string, nesting int) []byte {
 	outType := byte(0x40)
+	if kind == "br_i32" {
+		outType = 0x7f
+	}
 	if kind == "br_on_non_null" {
 		outType = 0x70
 	}
@@ -37,6 +40,8 @@ func exceptionBranchExitModule(kind string, nesting int) []byte {
 	}
 	target := byte(nesting)
 	switch kind {
+	case "br_i32":
+		body = append(body, 0x41, 42, 0x0c, target)
 	case "br":
 		body = append(body, 0x0c, target)
 	case "br_if":
@@ -83,7 +88,7 @@ func exceptionBranchExitModule(kind string, nesting int) []byte {
 }
 
 func TestExceptionBranchExitsDiscardHandlers(t *testing.T) {
-	for _, kind := range []string{"br", "br_if", "br_if_eqz", "br_if_compare", "br_table", "br_table_large", "br_on_null", "br_on_non_null", "br_on_cast", "br_on_cast_fail"} {
+	for _, kind := range []string{"br", "br_i32", "br_if", "br_if_eqz", "br_if_compare", "br_table", "br_table_large", "br_on_null", "br_on_non_null", "br_on_cast", "br_on_cast_fail"} {
 		for nesting := 1; nesting <= 3; nesting++ {
 			t.Run(fmt.Sprintf("%s/depth%d", kind, nesting), func(t *testing.T) {
 				c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", false), exceptionBranchExitModule(kind, nesting))

@@ -83,3 +83,30 @@ func (a *Asm) ZPternlogd(dst, src1, src2 Reg, imm byte) {
 	a.evexRRR(vexMap0F3A, 1, 0x25, false, dst, src1, src2)
 	a.emit(imm)
 }
+
+// XPternlogd emits the 128-bit AVX-512VL ternary-logic form. The XMM register
+// namespace is limited to 0..15, so EVEX.R' and EVEX.V' remain one. The
+// instruction computes each output bit from dst, src1, and src2 using imm as a
+// truth table, with dst also serving as the destructive result.
+func (a *Asm) XPternlogd(dst, src1, src2 Reg, imm byte) {
+	p0 := byte(0xf3) // 0F3A map; XMM form uses EVEX.L'L=00.
+	if dst >= 8 {
+		p0 &^= 0x80
+	}
+	if src2 >= 8 {
+		p0 &^= 0x20
+	}
+	p1 := byte(0x05) | ((^byte(src1) & 0x0f) << 3)
+	a.emit(0x62, p0, p1, 0x08, 0x25, 0xc0|byte(dst&7)<<3|byte(src2&7), imm)
+}
+
+// XPrordImm rotates each 32-bit lane of src right by imm in a 128-bit XMM
+// vector. EVEX.vvvv encodes the destination for this opcode-group form.
+func (a *Asm) XPrordImm(dst, src Reg, imm byte) {
+	p0 := byte(0xf1) // 0F map; ModRM.reg is the /0 opcode extension.
+	if src >= 8 {
+		p0 &^= 0x20
+	}
+	p1 := byte(0x05) | ((^byte(dst) & 0x0f) << 3) // 66 prefix, W=0
+	a.emit(0x62, p0, p1, 0x08, 0x72, 0xc0|byte(src&7), imm)
+}

@@ -40,7 +40,7 @@ func TestTaglessExceptionHandlingOmitsIntervalSidecarsAMD64(t *testing.T) {
 	if !hints[0].flags.has(hintModuleEH) {
 		t.Fatal("tagless try_table module was not classified as exception handling")
 	}
-	if hints[0].flags.has(hintIntervalRegionStorage) || len(view.localLastGet) != 0 || len(view.localScore) != 64 {
-		t.Fatalf("tagless EH interval sidecars = interval:%v scores:%d last-gets:%d, want false/64/0", hints[0].flags.has(hintIntervalRegionStorage), len(view.localScore), len(view.localLastGet))
+	if hints[0].flags.has(hintIntervalRegionStorage) || hints[0].hasWideLocalScores() || len(view.localLastGet) != 0 || len(view.localScore) != 64 {
+		t.Fatalf("tagless EH sidecars = interval:%v wide:%v scores:%d last-gets:%d, want false/false/64/0", hints[0].flags.has(hintIntervalRegionStorage), hints[0].hasWideLocalScores(), len(view.localScore), len(view.localLastGet))
 	}
 }

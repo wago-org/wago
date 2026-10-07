@@ -1,12 +1,12 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,6 +15,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
+	"github.com/wago-org/wago/cli/manager/internal/plugin/gocommand"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/cli/manager/internal/registry"
 )
@@ -50,7 +51,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		progress.Fail("Plugin fetch failed")
 		fatal("add: %v", err)
 	}
-	if !automation.NoInput() {
+	if !options.grantAll && !automation.NoInput() {
 		prompts, err := findPackageInstallPrompts(pluginContext(options.ctx), specs)
 		if err != nil {
 			progress.Fail("Plugin fetch failed")
@@ -102,7 +103,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		printPluginPlanWarnings(reviewed.Warnings)
 		progress.Finish("Permissions checked")
 		progress.Begin("Building plugin runtime")
-		if err := stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config()); err != nil {
+		if err := stageAndPublishLockedState(pluginContext(options.ctx), mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config()); err != nil {
 			return err
 		}
 		installedLock = reviewed.Lock
@@ -212,7 +213,7 @@ func pkgRemove(name string, options pkgOpts) {
 			printPluginPlanWarnings(reviewed.Warnings)
 			lock = reviewed.Lock
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false, selection.config())
+		return stageAndPublishLockedState(pluginContext(options.ctx), mutation, src, buildDir, manifest, lock, false, selection.config())
 	})
 	if err != nil {
 		fatal("plugin remove: %v", err)
@@ -272,7 +273,7 @@ func pkgUpdate(target string, options pkgOpts) {
 			return err
 		}
 		printPluginPlanWarnings(reviewed.Warnings)
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config())
+		return stageAndPublishLockedState(pluginContext(options.ctx), mutation, src, buildDir, manifest, reviewed.Lock, options.verbose, selection.config())
 	})
 	if err != nil {
 		fatal("plugin update: %v", err)
@@ -280,7 +281,9 @@ func pkgUpdate(target string, options pkgOpts) {
 	fmt.Printf("%s updated the complete plugin graph\n", cyan("✓"))
 }
 
-func stageAndPublishLockedState(mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool, config pluginbuild.Config) error {
+// stageAndPublishLockedState retains one cancellation context across every Go
+// subprocess while the caller owns the project metadata mutation lock.
+func stageAndPublishLockedState(ctx context.Context, mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool, config pluginbuild.Config) error {
 	manifestData, err := project.EncodeManifest(manifest)
 	if err != nil {
 		return err
@@ -301,57 +304,120 @@ func stageAndPublishLockedState(mutation *project.Mutation, manifestDir, buildDi
 		return err
 	}
 	defer os.RemoveAll(staged)
-	if err := pluginbuild.EnsureModule(staged); err != nil {
+	if err := pluginbuild.EnsureModuleContext(ctx, staged); err != nil {
 		return err
 	}
-	if err := pluginbuild.RejectLockedSourceReplacements(staged, input.Sources); err != nil {
+	if err := pluginbuild.RejectLockedSourceReplacementsContext(ctx, staged, input.Sources); err != nil {
 		return err
 	}
 	for _, source := range input.Sources {
-		if err := pluginbuild.Get(staged, source.Module+"@"+source.Version, verbose); err != nil {
+		if err := pluginbuild.GetContext(ctx, staged, source.Module+"@"+source.Version, verbose); err != nil {
 			return fmt.Errorf("fetch %s@%s: %w", source.Module, source.Version, err)
 		}
 	}
-	if err := pluginbuild.RunGo(staged, verbose, "mod", "verify"); err != nil {
+	if err := pluginbuild.RunGoContext(ctx, staged, verbose, "mod", "verify"); err != nil {
 		return fmt.Errorf("verify plugin checksums: %w", err)
 	}
-	if err := verifySourceChecksums(staged, input.Sources); err != nil {
+	if err := verifySourceChecksumsContext(ctx, staged, input.Sources); err != nil {
 		return err
 	}
-	bin, _, err := pluginbuild.EnsureBinary(staged, input, true, verbose, config)
+	_, _, err = pluginbuild.EnsureVerifiedBinaryContext(ctx, staged, input, true, verbose, config, verifyStagedRuntimeContext)
 	if err != nil {
 		return err
 	}
-	if err := verifyStagedRuntime(bin); err != nil {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Do not publish a build whose owner canceled while validation ran.
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return publishPluginTransaction(mutation, buildDir, staged, manifestData, lockData)
 }
 
-func verifyStagedRuntime(binary string) error {
-	command := exec.Command(binary)
-	command.Env = append(os.Environ(), "WAGO_INTERNAL_VALIDATE_PLUGIN_SET=1")
-	automation.ConfigureCommand(command)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("verify staged plugin runtime: %w: %s", err, strings.TrimSpace(string(output)))
+const (
+	// Validation should only execute generated initialization; ten seconds
+	// leaves cold hosts headroom without extending the metadata lock forever.
+	stagedRuntimeTimeout     = 10 * time.Second
+	stagedRuntimeWaitDelay   = time.Second
+	stagedRuntimeOutputLimit = 64 << 10
+)
+
+type limitedRuntimeOutput struct {
+	buffer   bytes.Buffer
+	exceeded bool
+}
+
+func (output *limitedRuntimeOutput) Write(data []byte) (int, error) {
+	remaining := stagedRuntimeOutputLimit - output.buffer.Len()
+	if remaining > 0 {
+		if remaining > len(data) {
+			remaining = len(data)
+		}
+		_, _ = output.buffer.Write(data[:remaining])
 	}
-	if len(strings.TrimSpace(string(output))) != 0 {
-		return fmt.Errorf("verify staged plugin runtime produced unexpected output: %s", strings.TrimSpace(string(output)))
+	if remaining < len(data) {
+		output.exceeded = true
+	}
+	return len(data), nil
+}
+
+func (output *limitedRuntimeOutput) String() string { return output.buffer.String() }
+
+func verifyStagedRuntime(binary string) error {
+	return verifyStagedRuntimeContext(context.Background(), binary)
+}
+
+func verifyStagedRuntimeContext(ctx context.Context, binary string) error {
+	validationContext, cancel := context.WithTimeout(pluginContext(ctx), stagedRuntimeTimeout)
+	defer cancel()
+	command, err := stagedRuntimeCommand(validationContext, binary)
+	if err != nil {
+		return fmt.Errorf("verify staged plugin runtime: %w", err)
+	}
+	command.WaitDelay = stagedRuntimeWaitDelay
+	if command.Env == nil {
+		command.Env = os.Environ()
+	}
+	command.Env = append(command.Env, "WAGO_INTERNAL_VALIDATE_PLUGIN_SET=1")
+	// A plugin runtime is untrusted until validation succeeds, so both process
+	// lifetime and retained diagnostic output must remain bounded.
+	automation.ConfigureCommand(command)
+	var output limitedRuntimeOutput
+	command.Stdout, command.Stderr = &output, &output
+	err = runBoundStagedRuntime(command)
+	if contextErr := validationContext.Err(); contextErr != nil {
+		return fmt.Errorf("verify staged plugin runtime: %w", contextErr)
+	}
+	if output.exceeded {
+		return fmt.Errorf("verify staged plugin runtime exceeded %d-byte output limit: %s", stagedRuntimeOutputLimit, strings.TrimSpace(output.String()))
+	}
+	if err != nil {
+		return fmt.Errorf("verify staged plugin runtime: %w: %s", err, strings.TrimSpace(output.String()))
+	}
+	if len(strings.TrimSpace(output.String())) != 0 {
+		return fmt.Errorf("verify staged plugin runtime produced unexpected output: %s", strings.TrimSpace(output.String()))
 	}
 	return nil
 }
 
 func verifySourceChecksums(buildDir string, sources []project.PluginSource) error {
+	return verifySourceChecksumsContext(context.Background(), buildDir, sources)
+}
+
+func verifySourceChecksumsContext(ctx context.Context, buildDir string, sources []project.PluginSource) error {
 	// Reconcile the generated module before listing it. Newer Go toolchains can
 	// require a harmless go.mod normalization (for example, `go 1.22` to
 	// `go 1.22.0`) before they will report its selected modules.
-	command := exec.Command("go", "list", "-mod=mod", "-m", "-json", "all")
+	command := gocommand.New(ctx, "list", "-mod=mod", "-m", "-json", "all")
 	command.Dir = buildDir
 	command.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
-	automation.ConfigureCommand(command)
+	automation.ConfigureCommand(command.Cmd)
 	output, err := command.CombinedOutput()
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("read selected module checksums: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
@@ -369,11 +435,18 @@ func verifySourceChecksums(buildDir string, sources []project.PluginSource) erro
 		}
 	}
 	for _, source := range sources {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		// The generated runtime deliberately links the active Wago checkout during
 		// core development. Its complete local tree is part of the build hash; it
 		// is not a downloaded plugin artifact and therefore has no module h1.
 		if source.Module == "github.com/wago-org/wago" {
-			if _, local := pluginbuild.SourceDir(); local {
+			_, local := pluginbuild.SourceDirContext(ctx)
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if local {
 				continue
 			}
 		}
@@ -381,12 +454,15 @@ func verifySourceChecksums(buildDir string, sources []project.PluginSource) erro
 		if !ok || got.Version != source.Version {
 			return fmt.Errorf("locked source %s@%s is not the selected module version %s@%s", source.Module, source.Version, got.Module, got.Version)
 		}
-		download := exec.Command("go", "mod", "download", "-json", source.Module+"@"+source.Version)
+		download := gocommand.New(ctx, "mod", "download", "-json", source.Module+"@"+source.Version)
 		download.Dir = buildDir
 		download.Env = appendEnvironmentValue(os.Environ(), "GOWORK", "off")
-		automation.ConfigureCommand(download)
+		automation.ConfigureCommand(download.Cmd)
 		data, err := download.Output()
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("download locked source %s@%s: %w", source.Module, source.Version, err)
 		}
 		var artifact struct {
@@ -504,7 +580,7 @@ func pluginRuntimeBinary() (string, bool, error) {
 		if err != nil {
 			return err
 		}
-		bin, _, err = pluginbuild.EnsureBinary(environment.buildDir, input, changed, false, environment.selection.config())
+		bin, _, err = pluginbuild.EnsureVerifiedBinaryContext(context.Background(), environment.buildDir, input, changed, false, environment.selection.config(), verifyStagedRuntimeContext)
 		configured = err == nil
 		return err
 	})

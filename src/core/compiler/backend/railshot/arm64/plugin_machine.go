@@ -31,12 +31,23 @@ func pluginARM64Lowering(instruction coreplugins.Instruction) *plugincodegen.Low
 
 func (c *pluginARM64Context) Encoder() *a64.Asm { return c.f.a }
 
-func (c *pluginARM64Context) InputI32(index int) (a64.Reg, error) {
+func (c *pluginARM64Context) scalarInputSlot(index int) (int, error) {
 	if index < 0 || index >= len(c.paramSlots) {
 		return 0, fmt.Errorf("arm64 plugin input %d out of range", index)
 	}
+	if index < len(c.paramCustom) && !c.paramCustom[index].IsZero() {
+		return 0, fmt.Errorf("arm64 plugin input %d is custom", index)
+	}
+	return c.paramSlots[index], nil
+}
+
+func (c *pluginARM64Context) InputI32(index int) (a64.Reg, error) {
+	slot, err := c.scalarInputSlot(index)
+	if err != nil {
+		return 0, err
+	}
 	r := c.AllocGP()
-	c.f.ld64(r, SP, c.f.spillOff(c.paramSlots[index]))
+	c.f.ld64(r, SP, c.f.spillOff(slot))
 	if width := c.paramWidth[index]; width < 32 {
 		mask := uint32((uint64(1) << uint(width)) - 1)
 		if !c.f.a.AndImm32(r, r, mask) {
@@ -147,14 +158,15 @@ func (c *pluginARM64Context) ReleaseVector(reg a64.Reg) {
 func (*pluginARM64Context) MemoryBase() a64.Reg { return linMemReg }
 
 func (c *pluginARM64Context) CheckedMemory(input int, offset uint32, size int) (a64.Reg, a64.Reg, int32, error) {
-	if input < 0 || input >= len(c.paramSlots) {
-		return 0, 0, 0, fmt.Errorf("arm64 plugin memory input %d out of range", input)
+	slot, err := c.scalarInputSlot(input)
+	if err != nil {
+		return 0, 0, 0, err
 	}
 	if size <= 0 {
 		return 0, 0, 0, fmt.Errorf("arm64 plugin memory access has invalid size %d", size)
 	}
-	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(c.paramSlots[input])})
-	ea, owned, _, disp := c.f.memAddr(uint64(offset), size, true, 0)
+	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(slot)})
+	ea, owned, _, disp := c.f.memAddr(uint64(offset), size, true, 0, c.f.guardMode)
 	if owned {
 		c.f.pinned = c.f.pinned.add(ea)
 		c.gp = c.gp.add(ea)
@@ -277,7 +289,7 @@ func (f *fn) emitPluginARM64(lowering *plugincodegen.Lowering, inputWidths []int
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
-		if err := lowering.Managed(ctx); err != nil {
+		if err := lowering.Managed((*managedPluginARM64Context)(ctx)); err != nil {
 			return err
 		}
 	case plugincodegen.CompatibilityFullAccess:
@@ -333,7 +345,7 @@ func (f *fn) emitPluginARM64Custom(lowering *plugincodegen.Lowering, inputWidths
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
-		if err := lowering.Managed(ctx); err != nil {
+		if err := lowering.Managed((*managedPluginARM64Context)(ctx)); err != nil {
 			return err
 		}
 	case plugincodegen.CompatibilityFullAccess:

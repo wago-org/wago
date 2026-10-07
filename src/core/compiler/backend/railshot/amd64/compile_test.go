@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"runtime"
 	"testing"
 	"unsafe"
 
@@ -171,6 +172,8 @@ func TestWorkerControlFrameCapBoundsModuleOutlier(t *testing.T) {
 func TestParallelControlFrameScratchDoesNotMultiplyOutlier(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	const workers, depth = 4, 40
+	previousProcs := runtime.GOMAXPROCS(workers)
+	defer runtime.GOMAXPROCS(previousProcs)
 	m := benchParallelControlOutlierModule(t, 64, depth)
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{Workers: workers, Stats: &stats})
@@ -181,8 +184,11 @@ func TestParallelControlFrameScratchDoesNotMultiplyOutlier(t *testing.T) {
 		defer cm.CodeImage.Close()
 	}
 	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
-	if got, want := stats.Compile.ControlScratchReserved, uint64(workers*maxWorkerInitialControlFrames)*frameBytes; got != want {
-		t.Fatalf("parallel control scratch reserved = %d, want %d", got, want)
+	// Target scratch is lazy: an idle worker reserves nothing. Scheduling can
+	// give one worker the whole module, so count only workers that used scratch.
+	perWorker := uint64(maxWorkerInitialControlFrames) * frameBytes
+	if got := stats.Compile.ControlScratchReserved; got == 0 || got > workers*perWorker || got%perWorker != 0 {
+		t.Fatalf("parallel control scratch reserved = %d, want a positive multiple of %d at most %d", got, perWorker, workers*perWorker)
 	}
 	oldReservation := uint64(workers*(depth+1)) * frameBytes
 	if stats.Compile.ControlScratchPeak >= oldReservation {

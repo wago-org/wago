@@ -32,6 +32,7 @@ func (f *fn) setStackGCRoot(e *elem, root bool) {
 // every push/pop/replace with no reader on the other side.
 
 func (f *fn) replaceStorage(e *elem, st storage) {
+	f.s.forgetSpill(e)
 	f.s.canonicalSlots = false
 	// Replacements move the same semantic value between registers, locals, and
 	// spills. Preserve collector-root identity; raw resolved addresses live in
@@ -45,6 +46,10 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 		st.cold = e.st.cold
 	}
 	e.st = st
+	if e.prev != nil && e.next != nil {
+		f.s.recordStorageEffects(st)
+		f.s.noteSpill(st)
+	}
 }
 
 func (f *fn) pushValue(st storage) *elem {

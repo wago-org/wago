@@ -32,6 +32,8 @@ const (
 	ImportDispatchTargetContextOffset = 16
 	ImportDispatchCallerContextOffset = 24
 	ImportDispatchEntryBytes          = 32
+	// Native backends tag the aligned caller-context word for ordinary synchronous Go thunks.
+	ImportDispatchCallerGoHostTag uint64 = 1
 )
 
 // PassiveElemDescBytes is the size of one passive element segment descriptor:

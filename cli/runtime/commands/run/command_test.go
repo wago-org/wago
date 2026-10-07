@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
@@ -27,6 +29,73 @@ func (testEnvironment) LoadRuntime(cfg *wago.RuntimeConfig, guestArgs []string) 
 	return wago.NewRuntime(wago.WithRuntimeConfig(cfg), wago.WithGuestArguments(guestArgs))
 }
 func (testEnvironment) ArtifactCache() artifactcache.Cache { return artifactcache.Cache{} }
+
+type runTeardownEnvironment struct{ plugin *runTeardownPlugin }
+
+func (runTeardownEnvironment) ProfileFlags() []command.Flag { return nil }
+
+func (environment runTeardownEnvironment) LoadRuntime(config *wago.RuntimeConfig, guestArgs []string) *wago.Runtime {
+	runtime := wago.NewRuntime(wago.WithRuntimeConfig(config), wago.WithGuestArguments(guestArgs))
+	definition := wago.PluginDefinition{
+		ID: "example.com/cli/run-teardown", Version: "1.0.0",
+		Provenance: wago.PluginProvenance{Repository: "https://example.com/cli/run-teardown", License: "MIT"},
+		Authorities: []wago.AuthorityRequest{{
+			Name: wago.AuthorityModuleCloseObserve, Mode: wago.AuthorityRequired, Reason: "verify run teardown",
+		}},
+	}
+	grants := []wago.AuthorityGrant{{Name: wago.AuthorityModuleCloseObserve}}
+	if environment.plugin.exitCode != nil {
+		definition.Authorities = append(definition.Authorities, wago.AuthorityRequest{
+			Name: wago.AuthorityHostImportDefine, Mode: wago.AuthorityRequired,
+			Reason: "request a guest exit", Scope: wago.AuthorityScope{Modules: []string{"env"}},
+		})
+		grants = append(grants, wago.AuthorityGrant{
+			Name: wago.AuthorityHostImportDefine, Scope: wago.AuthorityScope{Modules: []string{"env"}},
+		})
+	}
+	digest, err := wago.DefinitionDigest(definition)
+	if err != nil {
+		panic(err)
+	}
+	plugins := wago.PluginSet{
+		Providers: []wago.PluginProvider{{Definition: definition, New: func() wago.Plugin { return environment.plugin }}},
+		Selections: []wago.PluginSelection{{
+			ID: definition.ID, DefinitionDigest: digest, Direct: true,
+			Dependencies: map[string]string{},
+			Grants:       grants,
+		}},
+	}
+	if err := runtime.LoadPlugins(context.Background(), plugins); err != nil {
+		panic(err)
+	}
+	return runtime
+}
+
+func (runTeardownEnvironment) ArtifactCache() artifactcache.Cache { return artifactcache.Cache{} }
+
+type runTeardownPlugin struct {
+	moduleClosed func()
+	stop         func(context.Context) error
+	exitCode     *int32
+}
+
+func (plugin *runTeardownPlugin) Register(registrar *wago.Registrar) error {
+	if plugin.exitCode != nil {
+		imports, err := registrar.HostImports()
+		if err != nil {
+			return err
+		}
+		imports.HostFunc("env", "exit", func() { panic(wago.HostExit{Code: *plugin.exitCode}) })
+	}
+	observer, err := registrar.ModuleCloseObserver()
+	if err != nil {
+		return err
+	}
+	if err := observer.Observe(func(wago.ModuleCloseEvent) { plugin.moduleClosed() }); err != nil {
+		return err
+	}
+	return registrar.Lifecycle(wago.PluginLifecycle{Stop: plugin.stop})
+}
 
 func TestOptimizationFlags(t *testing.T) {
 	knobs := wago.NewRuntimeConfig().OptimizationInfos()
@@ -411,6 +480,184 @@ func TestRunExecValueMode(t *testing.T) {
 	}
 	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, nil, nil))
 	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, nil, map[string]bool{"no-deferred-bounds-checking": true}))
+}
+
+func TestRunSuccessWaitsForTeardown(t *testing.T) {
+	t.Setenv("WAGO_BARE", "1")
+	moduleClosed := make(chan struct{})
+	stopStarted := make(chan struct{})
+	stopRelease := make(chan struct{})
+	stopped := make(chan struct{})
+	plugin := &runTeardownPlugin{
+		moduleClosed: func() { close(moduleClosed) },
+		stop: func(ctx context.Context) error {
+			close(stopStarted)
+			select {
+			case <-stopRelease:
+				close(stopped)
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	}
+	path := filepath.Join(t.TempDir(), "start.wasm")
+	if err := os.WriteFile(path, startModule(false), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		implementation{environment: runTeardownEnvironment{plugin: plugin}}.Run(command.NewContext([]string{path}, nil, nil))
+		close(done)
+	}()
+	select {
+	case <-stopStarted:
+	case <-time.After(5 * time.Second):
+		close(stopRelease)
+		t.Fatal("run did not start runtime teardown")
+	}
+	select {
+	case <-moduleClosed:
+	default:
+		close(stopRelease)
+		t.Fatal("run started runtime teardown before closing its module")
+	}
+	select {
+	case <-done:
+		close(stopRelease)
+		t.Fatal("run returned before plugin teardown completed")
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(stopRelease)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return after teardown was released")
+	}
+	select {
+	case <-stopped:
+	default:
+		t.Fatal("run returned without completing plugin teardown")
+	}
+}
+
+func TestRunTrapWaitsForTeardown(t *testing.T) {
+	const childMarker = "WAGO_RUN_TRAP_TEARDOWN_CHILD"
+	if os.Getenv(childMarker) == "1" {
+		plugin := &runTeardownPlugin{
+			moduleClosed: func() {
+				_ = os.WriteFile(os.Getenv("WAGO_RUN_TEARDOWN_MODULE_MARKER"), []byte("closed"), 0o600)
+			},
+			stop: func(context.Context) error {
+				return os.WriteFile(os.Getenv("WAGO_RUN_TEARDOWN_STOPPED_MARKER"), []byte("stopped"), 0o600)
+			},
+		}
+		implementation{environment: runTeardownEnvironment{plugin: plugin}}.Run(command.NewContext(
+			[]string{os.Getenv("WAGO_RUN_TEARDOWN_MODULE")}, nil, nil,
+		))
+		return
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "trap.wasm")
+	if err := os.WriteFile(path, startModule(true), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	moduleMarker := filepath.Join(dir, "module-closed")
+	stoppedMarker := filepath.Join(dir, "stop-finished")
+	child := exec.Command(os.Args[0], "-test.run=^TestRunTrapWaitsForTeardown$", "-test.count=1")
+	child.Env = append(os.Environ(),
+		childMarker+"=1", "WAGO_BARE=1",
+		"WAGO_RUN_TEARDOWN_MODULE="+path,
+		"WAGO_RUN_TEARDOWN_MODULE_MARKER="+moduleMarker,
+		"WAGO_RUN_TEARDOWN_STOPPED_MARKER="+stoppedMarker,
+	)
+	combined, err := child.CombinedOutput()
+	if err == nil {
+		t.Fatalf("trapping run unexpectedly succeeded\n%s", combined)
+	}
+	if _, err := os.Stat(moduleMarker); err != nil {
+		t.Fatalf("trapping run did not close its module before exit: %v\n%s", err, combined)
+	}
+	if _, err := os.Stat(stoppedMarker); err != nil {
+		t.Fatalf("trapping run exited without completing teardown: %v\n%s", err, combined)
+	}
+}
+
+func TestRunZeroGuestExitReportsTeardownFailure(t *testing.T) {
+	const childMarker = "WAGO_RUN_EXIT_TEARDOWN_CHILD"
+	if code := os.Getenv(childMarker); code != "" {
+		exitCode := int32(0)
+		if code == "7" {
+			exitCode = 7
+		}
+		plugin := &runTeardownPlugin{
+			exitCode: &exitCode,
+			moduleClosed: func() {
+				_ = os.WriteFile(os.Getenv("WAGO_RUN_EXIT_MODULE_MARKER"), []byte("closed"), 0o600)
+			},
+			stop: func(context.Context) error {
+				return errors.New("forced teardown failure")
+			},
+		}
+		implementation{environment: runTeardownEnvironment{plugin: plugin}}.Run(command.NewContext(
+			[]string{os.Getenv("WAGO_RUN_EXIT_MODULE")}, nil, nil,
+		))
+		return
+	}
+	for _, tc := range []struct {
+		guestCode string
+		wantCode  int
+	}{{"0", 1}, {"7", 7}} {
+		t.Run(tc.guestCode, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "exit.wasm")
+			if err := os.WriteFile(path, exitStartModule(), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			moduleMarker := filepath.Join(dir, "module-closed")
+			child := exec.Command(os.Args[0], "-test.run=^TestRunZeroGuestExitReportsTeardownFailure$", "-test.count=1")
+			child.Env = append(os.Environ(),
+				childMarker+"="+tc.guestCode, "WAGO_BARE=1", "WAGO_RUN_EXIT_MODULE="+path,
+				"WAGO_RUN_EXIT_MODULE_MARKER="+moduleMarker,
+			)
+			combined, err := child.CombinedOutput()
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() != tc.wantCode {
+				t.Fatalf("exit = %v, output = %s; want code %d", err, combined, tc.wantCode)
+			}
+			if _, err := os.Stat(moduleMarker); err != nil {
+				t.Fatalf("guest exit did not close its module: %v\n%s", err, combined)
+			}
+			if tc.guestCode == "0" && !bytes.Contains(combined, []byte("forced teardown failure")) {
+				t.Fatalf("zero guest exit hid teardown failure: %s", combined)
+			}
+		})
+	}
+}
+
+func exitStartModule() []byte {
+	// (module (import "env" "exit" (func))
+	//   (func (export "_start") (call 0)))
+	return []byte{0, 'a', 's', 'm', 1, 0, 0, 0,
+		1, 4, 1, 0x60, 0, 0,
+		2, 12, 1, 3, 'e', 'n', 'v', 4, 'e', 'x', 'i', 't', 0, 0,
+		3, 2, 1, 0,
+		7, 10, 1, 6, '_', 's', 't', 'a', 'r', 't', 0, 1,
+		10, 6, 1, 4, 0, 0x10, 0, 0x0b}
+}
+
+func startModule(trap bool) []byte {
+	body := []byte{0x00, 0x0b}
+	if trap {
+		body = []byte{0x00, 0x00, 0x0b}
+	}
+	module := []byte{0x00, 'a', 's', 'm', 1, 0, 0, 0,
+		1, 4, 1, 0x60, 0, 0,
+		3, 2, 1, 0,
+		7, 10, 1, 6, '_', 's', 't', 'a', 'r', 't', 0, 0,
+		10, byte(len(body) + 2), 1, byte(len(body))}
+	return append(module, body...)
 }
 
 func TestRunExecInvokesReactorInitializerInOrder(t *testing.T) {

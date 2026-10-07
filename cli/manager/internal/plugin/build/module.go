@@ -9,6 +9,7 @@ package build
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/automation"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/cli/manager/internal/plugin/gocommand"
 
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/internal/atomicfile"
@@ -112,8 +114,14 @@ func cloneStringMap(input map[string]string) map[string]string {
 // because a cached project build may have been created from a different Wago
 // checkout than the currently selected runtime.
 func EnsureModule(dir string) error {
-	return withBuildLock(dir, func() error {
-		_, err := syncBuildModule(dir)
+	return EnsureModuleContext(context.Background(), dir)
+}
+
+// EnsureModuleContext makes module reconciliation cancelable while a plugin
+// mutation holds the project lock; the legacy entry point stays unchanged.
+func EnsureModuleContext(ctx context.Context, dir string) error {
+	return withBuildLockContext(ctx, dir, func() error {
+		_, err := syncBuildModuleContext(ctx, dir)
 		return err
 	})
 }
@@ -122,6 +130,10 @@ func EnsureModule(dir string) error {
 // for this invocation. changed reports whether go.mod changed, which invalidates
 // an otherwise matching executable cache entry.
 func syncBuildModule(dir string) (changed bool, err error) {
+	return syncBuildModuleContext(context.Background(), dir)
+}
+
+func syncBuildModuleContext(ctx context.Context, dir string) (changed bool, err error) {
 	gomod := filepath.Join(dir, "go.mod")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return false, err
@@ -131,27 +143,30 @@ func syncBuildModule(dir string) (changed bool, err error) {
 	current := goModJSON{}
 	if exists {
 		var err error
-		current, err = readGoModStrict(dir)
+		current, err = readGoModStrictContext(ctx, dir)
 		if err != nil {
 			return false, fmt.Errorf("read generated build module: %w", err)
 		}
 	}
-	src, haveSrc := SourceDir()
+	src, haveSrc := SourceDirContext(ctx)
 	goVer := strings.TrimPrefix(runtime.Version(), "go")
 	if haveSrc {
-		if v := wagoGoDirective(src); v != "" {
+		if v := wagoGoDirectiveContext(ctx, src); v != "" {
 			goVer = v
 		}
 	}
 	desiredReplaces := map[string]string{}
 	if haveSrc {
 		desiredReplaces[wagoModuleName] = filepath.ToSlash(src)
-		for _, replacement := range mirroredReplaces(src) {
+		for _, replacement := range mirroredReplacesContext(ctx, src) {
 			old, replacement, ok := strings.Cut(replacement, "=")
 			if ok && old != wagoModuleName {
 				desiredReplaces[old] = replacement
 			}
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
 	}
 	var edits [][]string
 	if !exists {
@@ -183,12 +198,15 @@ func syncBuildModule(dir string) (changed bool, err error) {
 	// ensureBuiltBinary) resolves it from the module proxy — a globally-installed
 	// wago needs no source checkout to build a project's plugins.
 	for _, args := range edits {
-		cmd := exec.Command("go", args...)
-		configureGeneratedModuleGoCommand(cmd)
+		cmd := generatedModuleGoCommandContext(ctx, args...)
+		configureGeneratedModuleGoCommand(cmd.Cmd)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if !exists {
 				os.Remove(gomod)
+			}
+			if ctx.Err() != nil {
+				return false, ctx.Err()
 			}
 			return false, fmt.Errorf("go %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 		}
@@ -210,16 +228,27 @@ type goModJSON struct {
 }
 
 func readGoMod(dir string) (goModJSON, bool) {
-	m, err := readGoModStrict(dir)
+	return readGoModContext(context.Background(), dir)
+}
+
+func readGoModContext(ctx context.Context, dir string) (goModJSON, bool) {
+	m, err := readGoModStrictContext(ctx, dir)
 	return m, err == nil
 }
 
 func readGoModStrict(dir string) (goModJSON, error) {
-	cmd := exec.Command("go", "mod", "edit", "-json")
-	configureGeneratedModuleGoCommand(cmd)
+	return readGoModStrictContext(context.Background(), dir)
+}
+
+func readGoModStrictContext(ctx context.Context, dir string) (goModJSON, error) {
+	cmd := generatedModuleGoCommandContext(ctx, "mod", "edit", "-json")
+	configureGeneratedModuleGoCommand(cmd.Cmd)
 	cmd.Dir = dir
 	data, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return goModJSON{}, ctx.Err()
+		}
 		return goModJSON{}, err
 	}
 	var m goModJSON
@@ -240,6 +269,12 @@ func moduleVersionSpec(path, version string) string {
 // substituting mutable local code (or another module release) for an exact
 // version and checksum recorded in wago-lock.json.
 func RejectLockedSourceReplacements(dir string, sources []project.PluginSource) error {
+	return RejectLockedSourceReplacementsContext(context.Background(), dir, sources)
+}
+
+// RejectLockedSourceReplacementsContext bounds the go.mod inspection command
+// before a canceled staged build can advance to source fetching.
+func RejectLockedSourceReplacementsContext(ctx context.Context, dir string, sources []project.PluginSource) error {
 	if len(sources) == 0 {
 		return nil
 	}
@@ -249,7 +284,7 @@ func RejectLockedSourceReplacements(dir string, sources []project.PluginSource) 
 		}
 		return err
 	}
-	m, err := readGoModStrict(dir)
+	m, err := readGoModStrictContext(ctx, dir)
 	if err != nil {
 		return fmt.Errorf("read generated build module: %w", err)
 	}
@@ -277,14 +312,22 @@ func RejectLockedSourceReplacements(dir string, sources []project.PluginSource) 
 
 // wagoGoDirective returns wago's declared go version (e.g. "1.22"), or "".
 func wagoGoDirective(src string) string {
-	m, _ := readGoMod(src)
+	return wagoGoDirectiveContext(context.Background(), src)
+}
+
+func wagoGoDirectiveContext(ctx context.Context, src string) string {
+	m, _ := readGoModContext(ctx, src)
 	return m.Go
 }
 
 // mirroredReplaces renders wago's `replace` directives as `old=new` specs for the
 // build module, resolving filesystem paths to absolute (relative to src).
 func mirroredReplaces(src string) []string {
-	m, ok := readGoMod(src)
+	return mirroredReplacesContext(context.Background(), src)
+}
+
+func mirroredReplacesContext(ctx context.Context, src string) []string {
+	m, ok := readGoModContext(ctx, src)
 	if !ok {
 		return nil
 	}
@@ -324,7 +367,13 @@ func isFilesystemPath(p string) bool {
 // otherwise it captures it and only surfaces it on failure (quiet success, like
 // npm). Errors include the tail of go's output for context.
 func RunGo(dir string, verbose bool, args ...string) error {
-	return withBuildLock(dir, func() error { return runGo(dir, verbose, args...) })
+	return RunGoContext(context.Background(), dir, verbose, args...)
+}
+
+// RunGoContext waits for a canceled Go command to exit before its caller can
+// remove staging files or release the project mutation lock.
+func RunGoContext(ctx context.Context, dir string, verbose bool, args ...string) error {
+	return withBuildLockContext(ctx, dir, func() error { return runGoContext(ctx, dir, verbose, args...) })
 }
 
 func configureGeneratedModuleGoCommand(command *exec.Cmd) {
@@ -342,17 +391,32 @@ func configureGeneratedModuleGoCommand(command *exec.Cmd) {
 	automation.ConfigureCommand(command)
 }
 
-func runGo(dir string, verbose bool, args ...string) error {
-	cmd := exec.Command("go", args...)
+// Only cancelable builds need WaitDelay. Keeping the background wrappers on
+// their old wait behavior avoids changing unrelated generated-module callers.
+func generatedModuleGoCommandContext(ctx context.Context, args ...string) *gocommand.Command {
+	return gocommand.New(ctx, args...)
+}
+
+func runGoContext(ctx context.Context, dir string, verbose bool, args ...string) error {
+	cmd := generatedModuleGoCommandContext(ctx, args...)
+	// A canceled go command can leave compiler children holding stdout/stderr.
+	// Bound pipe draining after the direct process has been killed and reaped.
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
-	configureGeneratedModuleGoCommand(cmd)
+	configureGeneratedModuleGoCommand(cmd.Cmd)
 	if verbose {
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
-		return cmd.Run()
+		err := cmd.Run()
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
 	}
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if err != nil && len(out) > 0 {
 		os.Stderr.Write(out)
 	}
@@ -361,15 +425,24 @@ func runGo(dir string, verbose bool, args ...string) error {
 
 // goGetDep runs `go get modspec` in the build module (verbose streams output).
 func Get(dir, modspec string, verbose bool) error {
+	return GetContext(context.Background(), dir, modspec, verbose)
+}
+
+// GetContext preserves FetchError classification for ordinary failures while
+// returning the caller's cancellation directly for an interrupted fetch.
+func GetContext(ctx context.Context, dir, modspec string, verbose bool) error {
 	if verbose {
-		return RunGo(dir, true, "get", modspec)
+		return RunGoContext(ctx, dir, true, "get", modspec)
 	}
-	return withBuildLock(dir, func() error {
-		cmd := exec.Command("go", "get", modspec)
+	return withBuildLockContext(ctx, dir, func() error {
+		cmd := generatedModuleGoCommandContext(ctx, "get", modspec)
 		cmd.Dir = dir
 		cmd.Env = os.Environ()
-		configureGeneratedModuleGoCommand(cmd)
+		configureGeneratedModuleGoCommand(cmd.Cmd)
 		out, err := cmd.CombinedOutput()
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err == nil {
 			return nil
 		}
@@ -412,7 +485,7 @@ func writeMain(dir string, input Input, config Config, buildIdentity string) err
 	if err != nil {
 		return err
 	}
-	return atomicfile.ReplaceFile(filepath.Join(dir, "main.go"), atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+	return atomicfile.ReplaceFileWithMode(filepath.Join(dir, "main.go"), atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 		_, err := writer.Write(data)
 		return err
 	})
@@ -458,27 +531,48 @@ func renderMain(input Input, config Config, buildIdentity string) ([]byte, error
 // ensureBuiltBinary builds (or reuses a cached) custom wago binary at
 // .wago/bin/wago for deps. cached reports a hash hit (deps + toolchain unchanged).
 func EnsureBinary(dir string, input Input, force, verbose bool, config Config) (bin string, cached bool, err error) {
-	err = withBuildLock(dir, func() error {
-		bin, cached, err = ensureBinary(dir, input, force, verbose, config)
+	return EnsureBinaryContext(context.Background(), dir, input, force, verbose, config)
+}
+
+// EnsureBinaryContext carries mutation cancellation through tidy, fingerprint
+// discovery, and compilation without changing other build callers.
+func EnsureBinaryContext(ctx context.Context, dir string, input Input, force, verbose bool, config Config) (bin string, cached bool, err error) {
+	err = withBuildLockContext(ctx, dir, func() error {
+		bin, cached, err = ensureBinaryContext(ctx, dir, input, force, verbose, config, nil)
 		return err
 	})
 	return bin, cached, err
 }
 
-func ensureBinary(dir string, input Input, force, verbose bool, config Config) (bin string, cached bool, err error) {
+// EnsureVerifiedBinaryContext validates a candidate before it replaces the
+// active plugin runtime. A cache hit from an older build is validated once and
+// marked with the exact build hash before it can be selected.
+func EnsureVerifiedBinaryContext(ctx context.Context, dir string, input Input, force, verbose bool, config Config, verify func(context.Context, string) error) (bin string, cached bool, err error) {
+	if verify == nil {
+		return "", false, fmt.Errorf("plugin runtime verifier is required")
+	}
+	err = withBuildLockContext(ctx, dir, func() error {
+		bin, cached, err = ensureBinaryContext(ctx, dir, input, force, verbose, config, verify)
+		return err
+	})
+	return bin, cached, err
+}
+
+func ensureBinaryContext(ctx context.Context, dir string, input Input, force, verbose bool, config Config, verify func(context.Context, string) error) (bin string, cached bool, err error) {
 	bin = BinaryPath(dir)
 	hashFile := bin + ".hash"
+	verifiedFile := bin + ".verified"
 	// Check before reconciliation so a preexisting replacement cannot be
 	// silently dropped and mistaken for a reusable exact-source build.
-	if err := RejectLockedSourceReplacements(dir, input.Sources); err != nil {
+	if err := RejectLockedSourceReplacementsContext(ctx, dir, input.Sources); err != nil {
 		return "", false, err
 	}
-	if _, err := syncBuildModule(dir); err != nil {
+	if _, err := syncBuildModuleContext(ctx, dir); err != nil {
 		return "", false, err
 	}
 	// syncBuildModule may mirror replaces from a development Wago checkout.
 	// Locked plugin sources must remain exact even in that configuration.
-	if err := RejectLockedSourceReplacements(dir, input.Sources); err != nil {
+	if err := RejectLockedSourceReplacementsContext(ctx, dir, input.Sources); err != nil {
 		return "", false, err
 	}
 	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
@@ -489,28 +583,43 @@ func ensureBinary(dir string, input Input, force, verbose bool, config Config) (
 	if err := writeMain(dir, input, config, "pending-"+Hash(input, config)); err != nil {
 		return "", false, err
 	}
-	if err := tidyBuildModule(dir, verbose); err != nil {
-		_, haveSrc := SourceDir()
+	if err := tidyBuildModuleContext(ctx, dir, verbose); err != nil {
+		if ctx.Err() != nil {
+			return "", false, ctx.Err()
+		}
+		_, haveSrc := SourceDirContext(ctx)
 		if !haveSrc {
 			return "", false, fmt.Errorf("go mod tidy: %w\n  (wago may not be published yet; set WAGO_SRC to a wago checkout to build from source)", err)
 		}
 		return "", false, fmt.Errorf("go mod tidy: %w", err)
 	}
-	want, cacheable, err := resolvedBuildHash(dir, input, config)
+	want, cacheable, err := resolvedBuildHashContext(ctx, dir, input, config)
 	if err != nil {
 		return "", false, err
 	}
 	if !force && cacheable {
 		if b, err := os.ReadFile(hashFile); err == nil && strings.TrimSpace(string(b)) == want {
 			if _, err := os.Stat(bin); err == nil {
+				if verify != nil {
+					marker, markerErr := verifiedBinaryMarker(bin, want)
+					if markerErr != nil {
+						return "", false, markerErr
+					}
+					if validated, err := os.ReadFile(verifiedFile); err != nil || strings.TrimSpace(string(validated)) != marker {
+						if err := verify(ctx, bin); err != nil {
+							return "", false, err
+						}
+						if err := atomicfile.ReplaceFileWithMode(verifiedFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+							_, err := io.WriteString(writer, marker)
+							return err
+						}); err != nil {
+							return "", false, fmt.Errorf("publish verified plugin build hash: %w", err)
+						}
+					}
+				}
 				return bin, true, nil
 			}
 		}
-	}
-	// Invalidate the old key before replacing the binary. A crash can now cause
-	// an extra rebuild, but it cannot pair a new binary with an old valid key.
-	if err := os.Remove(hashFile); err != nil && !os.IsNotExist(err) {
-		return "", false, fmt.Errorf("invalidate plugin build hash: %w", err)
 	}
 	buildIdentity := newBuildIdentity(want)
 	if err := writeMain(dir, input, config, buildIdentity); err != nil {
@@ -537,18 +646,40 @@ func ensureBinary(dir string, input Input, force, verbose bool, config Config) (
 	if verbose {
 		fmt.Fprintf(os.Stderr, "%s go %s\n", ui.Dim("→"), strings.Join(buildStep, " "))
 	}
-	if err := runGo(dir, verbose, buildStep...); err != nil {
+	if err := runGoContext(ctx, dir, verbose, buildStep...); err != nil {
 		_ = os.Remove(staged)
 		return "", false, fmt.Errorf("go build: %w", err)
 	}
 	// Local sources are outside the build lock. Prove that they did not change
 	// between the cache decision and compilation before publishing the result.
-	after, afterCacheable, err := resolvedBuildHash(dir, input, config)
+	after, afterCacheable, err := resolvedBuildHashContext(ctx, dir, input, config)
 	if err != nil {
 		return "", false, err
 	}
 	if err := rejectChangedBuildInputs(want, after); err != nil {
 		return "", false, err
+	}
+	var marker string
+	if verify != nil {
+		if err := verify(ctx, staged); err != nil {
+			return "", false, err
+		}
+		if err := ctx.Err(); err != nil {
+			return "", false, err
+		}
+		marker, err = verifiedBinaryMarker(staged, want)
+		if err != nil {
+			return "", false, err
+		}
+	}
+	// Preserve the active binary and its cache key through validation failures.
+	// Invalidate both keys before replacing it so a crash cannot claim that the
+	// newly installed binary was already verified.
+	if err := os.Remove(hashFile); err != nil && !os.IsNotExist(err) {
+		return "", false, fmt.Errorf("invalidate plugin build hash: %w", err)
+	}
+	if err := os.Remove(verifiedFile); err != nil && !os.IsNotExist(err) {
+		return "", false, fmt.Errorf("invalidate verified plugin build hash: %w", err)
 	}
 	if err := atomicfile.CommitTempFile(staged, bin, atomicfile.Options{Mode: 0o755, Sync: true}); err != nil {
 		return "", false, fmt.Errorf("install plugin build: %w", err)
@@ -556,16 +687,44 @@ func ensureBinary(dir string, input Input, force, verbose bool, config Config) (
 	if !cacheable || !afterCacheable {
 		return bin, false, nil
 	}
-	if err := atomicfile.ReplaceFile(hashFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+	if err := atomicfile.ReplaceFileWithMode(hashFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
 		_, err := io.WriteString(writer, want)
 		return err
 	}); err != nil {
 		return "", false, fmt.Errorf("publish plugin build hash: %w", err)
 	}
+	if verify != nil {
+		if err := atomicfile.ReplaceFileWithMode(verifiedFile, atomicfile.Options{Mode: 0o644}, func(writer io.Writer) error {
+			_, err := io.WriteString(writer, marker)
+			return err
+		}); err != nil {
+			return "", false, fmt.Errorf("publish verified plugin build hash: %w", err)
+		}
+	}
 	return bin, false, nil
 }
 
+// The marker binds validation to executable bytes as well as build inputs.
+// If a filesystem crash restores an older binary but retains a newer marker,
+// the next cache hit must validate the bytes it will actually execute.
+func verifiedBinaryMarker(path, buildHash string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return buildHash + "\n" + hex.EncodeToString(hash.Sum(nil)), nil
+}
+
 func tidyBuildModule(dir string, verbose bool) error {
+	return tidyBuildModuleContext(context.Background(), dir, verbose)
+}
+
+func tidyBuildModuleContext(ctx context.Context, dir string, verbose bool) error {
 	_, vendorMode, err := inspectVendorModules(dir)
 	if err != nil {
 		return err
@@ -576,7 +735,7 @@ func tidyBuildModule(dir string, verbose bool) error {
 	if verbose {
 		fmt.Fprintf(os.Stderr, "%s go mod tidy\n", ui.Dim("→"))
 	}
-	return runGo(dir, verbose, "mod", "tidy")
+	return runGoContext(ctx, dir, verbose, "mod", "tidy")
 }
 
 func rejectChangedBuildInputs(want, after string) error {
@@ -634,7 +793,11 @@ func Hash(input Input, config Config) string {
 // available (WAGO_SRC, or running inside the wago module). When false, wago is
 // taken from the module proxy instead — the published-install path.
 func SourceDir() (string, bool) {
-	d, err := ModuleDir()
+	return SourceDirContext(context.Background())
+}
+
+func SourceDirContext(ctx context.Context) (string, bool) {
+	d, err := ModuleDirContext(ctx)
 	if err != nil {
 		return "", false
 	}
@@ -644,6 +807,10 @@ func SourceDir() (string, bool) {
 // wagoModuleDir locates the wago source to build against. Uses WAGO_SRC if set,
 // else the current Go module when that is github.com/wago-org/wago.
 func ModuleDir() (string, error) {
+	return ModuleDirContext(context.Background())
+}
+
+func ModuleDirContext(ctx context.Context) (string, error) {
 	if d := os.Getenv("WAGO_SRC"); d != "" {
 		return d, nil
 	}
@@ -651,8 +818,8 @@ func ModuleDir() (string, error) {
 		return source, nil
 	}
 	// Inside a wago checkout (e.g. hacking on wago itself)? Use it.
-	command := exec.Command("go", "env", "GOMOD")
-	automation.ConfigureCommand(command)
+	command := generatedModuleGoCommandContext(ctx, "env", "GOMOD")
+	automation.ConfigureCommand(command.Cmd)
 	if out, err := command.Output(); err == nil {
 		gomod := strings.TrimSpace(string(out))
 		if gomod != "" && gomod != os.DevNull {
@@ -660,6 +827,9 @@ func ModuleDir() (string, error) {
 				return filepath.Dir(gomod), nil
 			}
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 	// Otherwise the source the installer keeps at ~/.wago/src, so an installed
 	// wago builds plugins with no checkout. (Only needed while wago is unpublished;

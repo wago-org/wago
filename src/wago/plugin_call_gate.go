@@ -11,12 +11,15 @@ const pluginCallGateClosed = uint64(1) << 63
 // pluginCallGate owns every callback that can enter one plugin from guest or
 // retained native code. Shutdown closes admission before Stop, lets Stop release
 // plugin-owned blockers, and then drains admitted calls before teardown proceeds.
-// A reference that outlives its Runtime cannot enter stopped plugin code.
+// Terminal instance observers have a separate shutdown lane, drained before
+// their core handles are revoked. References cannot enter code after teardown.
 type pluginCallGate struct {
 	state       atomic.Uint64 // high bit closes admission; low bits count calls or operation reservations
 	drained     chan struct{}
 	drainOnce   sync.Once
 	inactiveErr error
+	terminalMu  sync.RWMutex
+	terminal    bool
 }
 
 // pluginOperationReservation pins the exact plugin generation selected when a
@@ -135,6 +138,47 @@ func (g *pluginCallGate) release() {
 }
 
 func (g *pluginCallGate) signalDrained() { g.drainOnce.Do(func() { close(g.drained) }) }
+
+// beginTerminalCallbacks keeps only terminal lifecycle observers callable while
+// ordinary callback admission is closed during plugin shutdown.
+func (g *pluginCallGate) beginTerminalCallbacks() {
+	if g == nil {
+		return
+	}
+	g.terminalMu.Lock()
+	g.terminal = true
+	g.terminalMu.Unlock()
+}
+
+func (g *pluginCallGate) enterTerminalOrOrdinary(ordinary func() error) (terminal bool, err error) {
+	if g == nil {
+		return true, nil
+	}
+	g.terminalMu.RLock()
+	if g.terminal {
+		return true, nil
+	}
+	// Keep the transition excluded until ordinary admission has committed, so
+	// shutdown cannot close the ordinary gate between the two decisions.
+	err = ordinary()
+	g.terminalMu.RUnlock()
+	return false, err
+}
+
+func (g *pluginCallGate) releaseTerminal() {
+	if g != nil {
+		g.terminalMu.RUnlock()
+	}
+}
+
+func (g *pluginCallGate) endTerminalCallbacks() {
+	if g == nil {
+		return
+	}
+	g.terminalMu.Lock()
+	g.terminal = false
+	g.terminalMu.Unlock()
+}
 
 func (g *pluginCallGate) closeAndWait() error {
 	if g == nil {

@@ -620,10 +620,14 @@ func (f *fn) fminmaxInto(dst Reg, f64, isMax bool) {
 			dst = f.allocFReg(maskOf(xa, xb))
 		}
 	}
-	if dst != xa {
-		f.a.FmovReg(dst, xa, f64)
+	if dst == xb && dst != xa {
+		f.scalarFMinMaxInto(dst, xa, f64, isMax)
+	} else {
+		if dst != xa {
+			f.a.FmovReg(dst, xa, f64)
+		}
+		f.scalarFMinMaxInto(dst, xb, f64, isMax)
 	}
-	f.scalarFMinMaxInto(dst, xb, f64, isMax)
 	if xaOwned && dst != xa {
 		f.releaseF(xa)
 	}
@@ -815,6 +819,7 @@ func (f *fn) loadFConstBits(bits uint64, f64 bool) Reg {
 // f2iTrunc converts float→int with truncation, trapping (TruncOverflow) on NaN or
 // out-of-range. srcF64 selects the source width; dstWide the i64 destination.
 func (f *fn) f2iTrunc(dstWide, srcF64, signed bool) {
+	f.materializePendingTraps()
 	x := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(x)
 
@@ -1024,7 +1029,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, 0)
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, 0, f.guardMode)
 	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow, aliasLocal))
 	if eaOwned {
 		f.regUser[ea] = e
@@ -1055,7 +1060,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		return nil
 	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, f.guardMode)
 	f.pinned = f.pinned.add(ea)
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)

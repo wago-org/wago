@@ -251,7 +251,6 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 		f.a.MovRegReg32(RCX, RCX)
 	}
 	f.loadTableDescriptor(R8, dstTableIdx)
-	f.loadTableDescriptor(R9, srcTableIdx)
 	f.a.Load32(RAX, R8, 0)
 	if dst64 {
 		f.a.MovReg64(RDX, RDI)
@@ -263,7 +262,11 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 		f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
 		f.trapTableUnlessLE(RDX, RAX)
 	}
-	f.a.Load32(RAX, R9, 0)
+	// The destination descriptor is dead once its entry address is formed.
+	// Reuse R8 for the source; R9 may still hold a live pinned local.
+	f.typedTableEntryAddr(RDI, R8, dstTableIdx)
+	f.loadTableDescriptor(R8, srcTableIdx)
+	f.a.Load32(RAX, R8, 0)
 	if src64 {
 		f.a.MovReg64(RDX, RSI)
 		f.a.Add64(RDX, RCX)
@@ -275,8 +278,7 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 		f.trapTableUnlessLE(RDX, RAX)
 	}
 	externref := f.tableIsExternref(dstTableIdx)
-	f.typedTableEntryAddr(RDI, R8, dstTableIdx)
-	f.typedTableEntryAddr(RSI, R9, srcTableIdx)
+	f.typedTableEntryAddr(RSI, R8, srcTableIdx)
 	f.a.ShiftImm(4, RCX, entryStrideShift(externref), true)
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)
@@ -523,6 +525,7 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()), tableIdx)
 	f.pinned = f.pinned.add(entry)
 	slot := f.allocReg(0)
@@ -547,6 +550,7 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	if f.gcStructHelpers && (f.tableIsGCObjectRef(tableIdx) || (f.m.TableCount() == 3 && tableIdx == 2 && f.tableIsExternref(tableIdx))) {
 		tt, ok := f.m.TableType(tableIdx)
 		if !ok {
@@ -646,11 +650,14 @@ func (f *fn) refEq() {
 }
 
 func (f *fn) refAsNonNull() {
-	ref := f.materialize(f.popValue())
+	f.materializePendingTraps()
+	value := f.popValue()
+	gcRoot := value.st.hasGCRoot()
+	ref := f.materialize(value)
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapNullReference)
 	result := f.pushReg(ref, mtI64)
-	f.markGCReference(result)
+	f.setStackGCRoot(result, gcRoot)
 }
 
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {

@@ -42,10 +42,10 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 5 -->
+<!-- artifact:codec-version 6 -->
 
 Compiled artifacts use a strict ordered section stream. It has a fixed
-header and section count, followed by length-delimited native-code and metadata
+header with a native-architecture ID and section count, followed by length-delimited native-code and metadata
 sections. Wago rejects unknown, duplicate, reordered, truncated, over-limit, and
 non-canonical section encodings. `Compiled.WriteTo` streams code without making a
 second full image. `Compiled.ReadFromWithLimits` reads code directly into an RW
@@ -58,9 +58,10 @@ dotted flat-key collisions from crossing module authority boundaries. Artifact
 decoding also caps the expanded function-import directory at 64 MiB, so compact
 empty names cannot produce an unbounded slice allocation. Version 2 replaced the
 initial version 1 format when generated `memory.grow` code and the native instance
-context gained a runtime memory-page quota. The current format is version 5,
-which rejects version-4 native code compiled with the former EH tag-directory
-basedata offset. Version 4 records optional CPU requirements as well as exact
+context gained a runtime memory-page quota. The current format is version 6,
+which rejects foreign-architecture native code before allocating an executable
+mapping. Version 5 rejected version-4 native code compiled with the former EH
+tag-directory basedata offset. Version 4 records optional CPU requirements and exact
 native GC metadata. Wago rejects all earlier versions; there is no compatibility
 decoder or dual-format ambiguity.
 
@@ -439,6 +440,11 @@ stack** whose nodes (`elem`) hold deferred operations and values. A value's
 | `stSlot` | A value in a native frame slot |
 | `stMemRef` | A checked memory read deferred until consumption |
 
+AMD64 retains both RAX and RDX results for a division immediately followed by
+matching local reads and a remainder of the same width and signedness. Earlier
+pending traps materialize first. Constants and bytecode-sensitive regional
+lifetimes retain their existing lowering; no intervening instruction is moved.
+
 Pure, stack-neutral instructions are recorded symbolically and stay
 register-resident. Only when a value is actually **consumed**, or a
 side-effecting instruction appears (`local.set`, `global.set`, `br_if`, a call,
@@ -468,8 +474,7 @@ The `wago_regalloccheck` build tag adds an independent symbolic transfer checker
 at canonical-stack, control-edge and ABI-shuffle seams, plus immutable-cache
 call-clobber checks. The ordinary build retains no checker state or work. This
 first version assumes correct window inputs and does not verify arbitrary
-instructions between windows or whole-CFG equivalence; see the
-[checker contract](docs/register-allocation-checker.md).
+instructions between windows or whole-CFG equivalence.
 
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's
@@ -711,15 +716,13 @@ and passes it to the active callee's dispatcher. Private, non-GC, non-threaded
 instances can reuse parked native context if its version has not changed;
 nested entries and guarded host access invalidate it. Shared or unknown state
 uses full restoration. Native and collector leases, parked roots, and scheduler
-entry/resume protocols are still required. See
-[host-call measurements and proof limits](https://github.com/wago-org/knowledge/blob/main/docs/host-roundtrip-performance.md).
+entry/resume protocols are still required.
 
 `func(Caller, HostCall)` is the callback ABI for memory, reference operations,
 invocation context, and authorized synchronous re-entry. `Caller` wraps a
 private immutable token and expires when the callback returns. All host
 functions use flat `(module, name)` registration and retain normal plugin gate
-and reservation checks. See the
-[concrete caller design and measurements](https://github.com/wago-org/knowledge/blob/main/docs/host-caller-performance.md).
+and reservation checks.
 
 ---
 
@@ -936,8 +939,7 @@ Profiling builds attach `wago profile` through `cli/internal/profiling`; ordinar
 and runtime builds omit it entirely. `bench/cmd/wagoprof` is a thin standalone
 wrapper. CPU weights, elapsed phases, and static compiler counts remain distinct.
 No asynchronous guest-stack or Wasm instruction-map support is implied by symbol
-registration. See [Profiling workloads](docs/profiling.md) for tested capabilities
-and current limitations.
+registration.
 
 Optional boundary spans share the journal byte budget and reserve completion
 storage at entry. Invocation ancestry follows the existing host control-frame
@@ -991,9 +993,7 @@ rate separately from observed samples and their event periods. Linux perf uses
 an acknowledged enable/disable handshake around the selected phase. Native flat
 attribution has been exercised with perf on Linux/amd64 and Samply on macOS/arm64;
 this does not qualify asynchronous native stacks. Release-size and ordinary-build
-allocation gates are separate from sampling overhead. See
-[profiling qualification](docs/profiling-qualification.md) for measurements,
-toolchain details, and remaining limitations.
+allocation gates are separate from sampling overhead.
 
 Capture phases include an explicit trusted-artifact reload path. The runner
 serializes only its own freshly compiled module, records artifact preparation
@@ -1081,8 +1081,7 @@ quiet converters and non-returning guest calls cannot wait indefinitely.
 Cancellation terminates private process groups on Linux/macOS and retains an
 incomplete manifest and available raw evidence. Saved inputs share explicit file,
 decompression, image, sample, code, metadata, and aggregation limits. The journal's
-64 MiB budget is not a bound on total reporting memory. See
-[resource limits and capture safety](docs/profiling.md) for defaults and coverage.
+64 MiB budget is not a bound on total reporting memory.
 
 ### Remaining qualification and acceptance
 

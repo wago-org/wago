@@ -76,8 +76,8 @@ func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	// gcResolverAndRelocs packs a saturated 24-bit conservative GC resolver-site
-	// count plus an 8-bit outgoing local-call relocation reservation hint.
+	// gcResolverAndRelocs packs a saturated 21-bit GC resolver-site count, three
+	// exact flags, and an 8-bit outgoing call-relocation reservation hint.
 	gcResolverAndRelocs uint32
 	localStart          uint32
 	lastGetStartPlus1   uint32 // zero when interval-region side storage was not retained
@@ -102,13 +102,22 @@ type funcHints struct {
 }
 
 const (
-	// Four million resolver sites is already far beyond the validated function
-	// body limit. Spend the two high bits of the old 24-bit counter on exact
-	// dynamic-call classification without growing the 64-byte hint header.
-	gcResolverSiteMask         = uint32(1<<22 - 1)
+	// The resolver-site count is a saturated sizing hint. Its upper three bits
+	// record exact side-storage and dynamic-call facts without widening the header.
+	gcResolverSiteMask         = uint32(1<<21 - 1)
+	wideLocalScoreMask         = uint32(1 << 21)
 	nonDirectCallMask          = uint32(1 << 22)
 	unsupportedDynamicCallMask = uint32(1 << 23)
 )
+
+func (h funcHints) hasWideLocalScores() bool { return h.gcResolverAndRelocs&wideLocalScoreMask != 0 }
+func (h *funcHints) setWideLocalScores(enabled bool) {
+	if enabled {
+		h.gcResolverAndRelocs |= wideLocalScoreMask
+	} else {
+		h.gcResolverAndRelocs &^= wideLocalScoreMask
+	}
+}
 
 func (h *funcHints) addGCResolverSite() {
 	if h.gcResolverAndRelocs&gcResolverSiteMask != gcResolverSiteMask {
@@ -173,7 +182,7 @@ type funcHintSidecar struct {
 
 func retainedLocalScoreCount(h funcHints) int {
 	n := int(h.localCount)
-	if n > 64 && !h.flags.has(hintIntervalRegionStorage) {
+	if n > 64 && !h.flags.has(hintIntervalRegionStorage) && !h.hasWideLocalScores() {
 		return 64
 	}
 	return n
@@ -338,7 +347,10 @@ func markGlobalEligible(accum *shared.GlobalHintAccumulator, idx uint32) {
 }
 
 type immutableTableHint struct {
-	local             bool
+	local bool
+	// Temporary proof fields occupy existing padding and are cleared before publication.
+	proofState        uint8
+	lastType          uint32
 	typeKey           uint64
 	typed             bool
 	monomorphicTarget int // local function index when every non-null entry is identical; -1 otherwise
@@ -637,7 +649,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true
 				}
 				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
-			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+			case wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 				h.flags.set(hintUsesBulkMem | hintTouchesMemory)
 			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
 				if directGCResolverInstruction(m, gcTypeLayouts, in.Kind, in.Index, in.Index2) {
@@ -1243,7 +1255,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
 			}
-			if imm.UsesBulkMemory {
+			if imm.UsesBulkMemory || imm.Kind == wasm.InstrMemoryInit {
 				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
 				s.h.flags.set(hintUsesBulkMem)
 			}
@@ -1291,7 +1303,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
 			}
-			if imm.UsesBulkMemory {
+			if imm.UsesBulkMemory || imm.Kind == wasm.InstrMemoryInit {
 				s.h.flags.set(hintUsesBulkMem)
 			}
 		}

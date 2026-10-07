@@ -46,7 +46,7 @@ func TestArtifactDecodedBudgetBeforeMetadataRead(t *testing.T) {
 	// A valid framing prefix suffices: rejection must precede payload reading.
 	var data []byte
 	data = append(data, []byte(wagoMagic)...)
-	data = append(data, wagoVersion, compiledSectionCount, compiledSectionCode, 0, compiledSectionMetadata, 64)
+	data = append(data, wagoVersion, compiledHeader, compiledSectionCode, 0, compiledSectionMetadata, 64)
 	limits := DefaultArtifactLimits()
 	limits.MaxDecodedBytes = 32
 	_, image, _, err := readCompiledFrom(bytes.NewReader(data), limits)

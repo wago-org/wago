@@ -26,9 +26,17 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 		return f.atomicLoad(d)
 	case d.Class == railshared.AtomicStore:
 		return f.atomicStore(d)
-	case d.Class == railshared.AtomicRMW && (d.Operation == railshared.AtomicAdd || d.Operation == railshared.AtomicXchg):
+	case d.Class == railshared.AtomicRMW && (d.Operation == railshared.AtomicAdd || d.Operation == railshared.AtomicSub):
+		if handled, err := f.atomicRMWDroppedNext(r, d); handled || err != nil {
+			return err
+		}
+		return f.atomicRMWNative(d)
+	case d.Class == railshared.AtomicRMW && d.Operation == railshared.AtomicXchg:
 		return f.atomicRMWNative(d)
 	case d.Class == railshared.AtomicRMW:
+		if handled, err := f.atomicRMWDroppedNext(r, d); handled || err != nil {
+			return err
+		}
 		return f.atomicRMWCAS(d)
 	case d.Class == railshared.AtomicCmpxchg:
 		return f.atomicCmpxchg(d)
@@ -200,7 +208,13 @@ func (f *fn) atomicRMWNative(d railshared.Atomic) error {
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)
 	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
-	if d.Operation == railshared.AtomicAdd {
+	if d.Operation == railshared.AtomicAdd || d.Operation == railshared.AtomicSub {
+		if d.Operation == railshared.AtomicSub {
+			// The low d.Size bits of a full-width two's-complement negation are
+			// exactly the modular negative required by the memory operation.
+			f.a.Neg(value, d.ResultSize == 8)
+			f.stats.peep("atomic-sub-xadd")
+		}
 		f.a.LockXaddIdx(base, ea, value, disp, int(d.Size))
 	} else {
 		f.a.XchgIdx(base, ea, value, disp, int(d.Size))
@@ -218,5 +232,68 @@ func (f *fn) atomicRMWNative(d railshared.Atomic) error {
 	} else {
 		f.pushReg(value, mtI32)
 	}
+	return nil
+}
+
+// atomicRMWDroppedNext uses a native locked ALU form when the next Wasm
+// instruction discards the old RMW value. The body loop consumes that drop in
+// emitFE, so this path leaves no result on the operand stack.
+func (f *fn) atomicRMWDroppedNext(r *wasm.Reader, d railshared.Atomic) (bool, error) {
+	switch d.Operation {
+	case railshared.AtomicAdd, railshared.AtomicSub, railshared.AtomicAnd, railshared.AtomicOr, railshared.AtomicXor:
+	default:
+		return false, nil
+	}
+	if next, ok := r.Peek(); !ok || next != 0x1a { // drop: the old value is unobserved
+		return false, nil
+	}
+	if _, err := r.Byte(); err != nil {
+		return true, err
+	}
+	return true, f.atomicRMWNoResult(d)
+}
+
+func (f *fn) atomicRMWNoResult(d railshared.Atomic) error {
+	f.materializePendingLoads()
+	f.invalidateStoreForward()
+	value := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(value)
+	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	opcode := byte(0)
+	switch d.Operation {
+	case railshared.AtomicAdd:
+		opcode = 0x01
+		if d.Size == 1 {
+			opcode = 0x00
+		}
+	case railshared.AtomicSub:
+		opcode = 0x29
+		if d.Size == 1 {
+			opcode = 0x28
+		}
+	case railshared.AtomicAnd:
+		opcode = 0x21
+		if d.Size == 1 {
+			opcode = 0x20
+		}
+	case railshared.AtomicOr:
+		opcode = 0x09
+		if d.Size == 1 {
+			opcode = 0x08
+		}
+	case railshared.AtomicXor:
+		opcode = 0x31
+		if d.Size == 1 {
+			opcode = 0x30
+		}
+	default:
+		return fmt.Errorf("amd64: unsupported no-result atomic RMW operation %d", d.Operation)
+	}
+	f.a.LockAluIdx(opcode, base, ea, value, disp, int(d.Size))
+	f.release(base)
+	f.release(ea)
+	f.pinned = f.pinned.remove(value)
+	f.release(value)
+	f.stats.peep("atomic-rmw-dead-result")
 	return nil
 }

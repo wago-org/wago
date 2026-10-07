@@ -16,6 +16,9 @@ data; `scripts/update-website-bench.mjs` does the same for performance data.
 
 Install Node.js, `hyperfine`, and every runtime in `runtimes.json`. The sweep
 requires the complete runtime set so a partial comparison cannot be published.
+Wazy is measured through its compiler CLI; install the pinned release used by
+the current captures with
+`go install github.com/samyfodil/wazy/cmd/wazy@v0.3.0`.
 
 ## Layout
 

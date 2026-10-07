@@ -28,7 +28,7 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	return &command.Cmd{
 		Name: "add", Summary: "add and enable plugins, then rebuild Wago",
-		Long:       "GitHub plugins may use owner/repository[/subpackage] shorthand. Package roots offer everything or selected subpackages interactively; --no-input installs everything.",
+		Long:       "GitHub plugins may use owner/repository[/subpackage] shorthand. Package roots offer everything or selected subpackages interactively; --allow-all or --no-input installs everything. --allow-all also accepts the proposed exact contract bindings.",
 		Automation: command.DryRun,
 		Args:       "<plugin-id>[@range]...",
 		Flags: []command.Flag{
@@ -36,7 +36,7 @@ func Command(environment Environment) *command.Cmd {
 			{Name: "force", Short: "f", Bool: true, Help: "ignore the build cache / fetch the latest version"},
 			{Name: "verbose", Short: "v", Bool: true, Help: "stream the underlying go output"},
 			{Name: "allow", Arg: "<authority,...>", Help: "grant only these requested authorities without prompting"},
-			{Name: "allow-all", Bool: true, Help: "grant every requested authority without prompting"},
+			{Name: "allow-all", Bool: true, Help: "install everything and accept requested authorities and proposed exact contract bindings without prompting"},
 			{Name: "deny-all", Bool: true, Help: "deny every requested authority without prompting"},
 			{Name: "accept-contracts", Bool: true, Help: "accept the proposed exact contract bindings without prompting"},
 			{Name: "scopes", Arg: "<json>", Help: "set narrower scopes by Plugin ID and exact Authority"},
@@ -65,7 +65,7 @@ func Command(environment Environment) *command.Cmd {
 				Authorities:     plugin.SplitCommaList(c.Str("allow")),
 				GrantAll:        c.Bool("allow-all"),
 				DenyAll:         c.Bool("deny-all"),
-				AcceptContracts: c.Bool("accept-contracts"),
+				AcceptContracts: c.Bool("accept-contracts") || c.Bool("allow-all"),
 				Scopes:          scopes,
 			}
 			if len(options.Modules) == 0 {

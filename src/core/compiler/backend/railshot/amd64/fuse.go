@@ -21,7 +21,7 @@ func invertCond(c Cond) Cond { return c ^ 1 }
 // isFusableCompare reports whether e is a deferred relational/eqz node whose flag
 // result can be branched on directly.
 func isFusableCompare(e *elem) bool {
-	return e != nil && e.isDeferred() && (isCompare(e.deferredOp()) || e.deferredOp() == opEqz)
+	return e != nil && e.isDeferred() && (isCompare(e.deferredOp()) || isFloatCompare(e.deferredOp()) || e.deferredOp() == opEqz)
 }
 
 // tryMaskedEqzToFlags recognizes `(x & mask) == 0`, the core reduction used by
@@ -197,6 +197,16 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		return cc
 	}
+	if isFloatCompare(node.deferredOp()) {
+		cc := f.emitFloatCompareFlags(node)
+		f.erase(node)
+		f.stats.peep("float-branch-fuse")
+		return applyInvert(cc)
+	}
+	if cc, ok := f.tryMemoryCompareToFlags(node); ok {
+		f.erase(node)
+		return applyInvert(cc)
+	}
 	w := node.valueType().is64()
 	if node.deferredOp() == opEqz {
 		// TEST does not write its operand, so a register-resident value (a pinned
@@ -299,20 +309,29 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
 			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
 	}
+	k := f.flushBelow(top)
 	coldExit := f.callFreeLoopExit(fi)
 	var saved localStateSnapshot
-	if coldExit {
-		saved, coldExit = f.snapshotLocalStates()
+	if coldExit && len(f.locals) > len(saved) {
+		coldExit = false
 	}
 	if !coldExit {
 		f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	}
-	k := f.flushBelow(top)
 	if loopHeader && f.a.Len() != f.ctrl[len(f.ctrl)-1].controlSite {
 		loopHeader = false
 	}
 	cc := f.condenseToFlags(top)
-	f.restoreCallFreePins()
+	if coldExit {
+		// Predicate evaluation can reclaim pins too. Snapshot the state actually
+		// present on the fallthrough path, after all deferred work has run.
+		saved, _ = f.snapshotLocalStates()
+	} else if f.pinRelinquished {
+		// The compare can home a pin after the initial convergence. All lazy
+		// zeros were materialized above, so this repair emits only flag-preserving
+		// loads and stores before the conditional jump.
+		f.convergeBranchLocals(fr)
+	}
 	a := fr.branchArity()
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if coldExit {

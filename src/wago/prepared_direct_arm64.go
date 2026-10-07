@@ -58,7 +58,25 @@ func (in *Instance) invokeCachedDirectInt1(ic *invokeCache, entry uintptr, arg u
 }
 
 func (in *Instance) invokeCachedDirectI32ToI32(ic *invokeCache, arg uint64) ([]uint64, error) {
-	return in.invokeCachedDirectInt1(ic, ic.directEntry, arg)
+	wruntime.PreparePreparedIntTrap(in.trap)
+	var result uint64
+	var err error
+	if ic.directIntLight {
+		result, err = in.eng.EnterPreparedIntLightBounded(ic.directEntry, in.jm.LinMemBase(), uint64(uint32(arg)), 0, 0, 0)
+	} else {
+		result, err = in.eng.EnterPreparedIntBounded(ic.directEntry, in.jm.LinMemBase(), uint64(uint32(arg)), 0, 0, 0)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+	}
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:1]
+	out[0] = uint64(uint32(result))
+	return out, nil
 }
 
 func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
@@ -81,14 +99,22 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 
 func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
-	if err := in.beginDirectInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+	if !in.tryBeginDirectInvocation() {
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+		}
 	}
-	if fn.directIsolated && fn.tryDirectGate() {
-		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
-		fn.directGate.Unlock()
-		in.endDirectInvocation()
-		return out, err
+	if fn.directIsolated {
+		held, valid := fn.tryDirectGateState()
+		if valid {
+			out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
+			fn.directGate.Unlock()
+			in.endDirectInvocation()
+			return out, err
+		}
+		if held {
+			fn.directGate.Unlock()
+		}
 	}
 	out, err := fn.invokeDirectIntFixedShared(a0, a1, a2, a3)
 	in.endDirectInvocation()

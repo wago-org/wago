@@ -97,14 +97,22 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 
 func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
-	if err := in.beginDirectInvocation(); err != nil {
-		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+	if !in.tryBeginDirectInvocation() {
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+		}
 	}
-	if fn.directIsolated && fn.tryDirectGate() {
-		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
-		fn.directGate.Unlock()
-		in.endDirectInvocation()
-		return out, err
+	if fn.directIsolated {
+		held, valid := fn.tryDirectGateState()
+		if valid {
+			out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
+			fn.directGate.Unlock()
+			in.endDirectInvocation()
+			return out, err
+		}
+		if held {
+			fn.directGate.Unlock()
+		}
 	}
 	lease := in.lockPreparedInvocation()
 	args := [4]uint64{a0, a1, a2, a3}

@@ -1,0 +1,57 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index 193d80f3..eb9fe88a 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -1015,9 +1015,9 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
+ 		f.materializePendingLoads()
+ 	}
+ 	// A constant value stores as an immediate directly (selectInstr's `mov r/m,
+-	// imm` form) — no register, no load-then-store dependency chain. i64 needs
+-	// two 4-byte immediate stores (low32 at disp, high32 at disp+4): a single
+-	// 64-bit imm-store sign-extends imm32, which is wrong for an arbitrary
++	// imm` form) — no register, no load-then-store dependency chain. An i64
++	// sign-extension of imm32 uses one qword store; other patterns need two
++	// dword stores. The qword form is wrong for an arbitrary
+ 	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
+ 	// like a materialized constant would (i64.store8/16/32 route here too).
+ 	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
+@@ -1025,7 +1025,10 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
+ 		v := top.st.cval
+ 		f.erase(top)
+ 		ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
+-		if size == 8 {
++		if size == 8 && int64(int32(v)) == v {
++			f.stats.peep("store-imm64-signext")
++			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 8)
++		} else if size == 8 {
+ 			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 4)
+ 			f.a.StoreImmIdx(RBX, ea, disp+4, int32(v>>32), 4)
+ 		} else {
+diff --git a/src/core/encoder/amd64/asm.go b/src/core/encoder/amd64/asm.go
+index 937a9d34..e1722a7c 100644
+--- a/src/core/encoder/amd64/asm.go
++++ b/src/core/encoder/amd64/asm.go
+@@ -658,18 +658,15 @@ func (a *Asm) StoreImm32Mem(base Reg, disp int32, v int32) {
+ 	a.imm32(v)
+ }
+ 
+-// StoreImmIdx stores an immediate directly to [base+index+disp] — `mov r/m,
+-// imm` (C6 /0 for a byte, C7 /0 for 16/32-bit; the reg field is the /0 digit,
+-// not a register). size selects the store width: 1, 2, or 4 bytes. An 8-byte
+-// (i64) store is NOT a single form here — `mov r/m64, imm32` sign-extends the
+-// immediate, which is wrong for an arbitrary 64-bit pattern; callers emit two
+-// 4-byte immediate stores (low32 at disp, high32 at disp+4) instead.
++// StoreImmIdx stores an immediate directly to [base+index+disp].
++// size selects 1, 2, 4, or 8 bytes. The 8-byte form sign-extends imm32;
++// callers must establish that this is the intended complete i64 value.
+ func (a *Asm) StoreImmIdx(base, index Reg, disp int32, imm int32, size int) {
+ 	if size == 2 {
+ 		a.emit(0x66) // operand-size prefix for 16-bit
+ 	}
+-	if index >= 8 || base >= 8 {
+-		a.emit(a.rex(false, false, index >= 8, base >= 8))
++	if size == 8 || index >= 8 || base >= 8 {
++		a.emit(a.rex(size == 8, false, index >= 8, base >= 8))
+ 	}
+ 	op := byte(0xC7)
+ 	if size == 1 {

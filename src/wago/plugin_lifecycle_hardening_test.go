@@ -527,6 +527,326 @@ func TestRuntimeCloseStopsAdmissionBeforeReleasingBlockingHostCall(t *testing.T)
 	}
 }
 
+func TestRuntimeCloseDeliversAfterCloseForBlockedInvocation(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	stopped, afterClose := make(chan struct{}), make(chan struct{})
+	unblockerDef := testDefinition("example.com/close/unblocker")
+	unblocker := PluginProvider{Definition: unblockerDef, New: func() Plugin {
+		return pluginFunc(func(r *Registrar) error {
+			return r.Lifecycle(PluginLifecycle{Stop: func(context.Context) error {
+				close(stopped)
+				releaseOnce.Do(func() { close(release) })
+				return nil
+			}})
+		})
+	}}
+	def := testDefinition("example.com/close/blocked-after-close")
+	def.Requires = []PluginRequirement{{ID: unblockerDef.ID, Version: "^1.0.0"}}
+	def.Authorities = []AuthorityRequest{{Name: AuthorityInstanceCloseObserve, Mode: AuthorityRequired, Reason: "observe terminal close"}}
+	provider := PluginProvider{Definition: def, New: func() Plugin {
+		return pluginFunc(func(r *Registrar) error {
+			observer, err := r.InstanceCloseObserver()
+			if err != nil {
+				return err
+			}
+			return observer.After(func(InstanceCloseEvent) { close(afterClose) })
+		})
+	}}
+	rt := NewRuntime()
+	if err := rt.LoadPlugins(context.Background(), testSet(t, unblocker, provider)); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(voidImportCallModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) {
+		close(entered)
+		<-release
+	}))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := rt.CloseContext(ctx); errors.Is(err, context.DeadlineExceeded) {
+			t.Error("runtime cleanup timed out")
+		}
+		_ = mod.Close()
+	})
+	callDone := make(chan error, 1)
+	go func() { _, err := in.Invoke("call"); callDone <- err }()
+	awaitCloseSignal(t, entered)
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("dependency Stop could not release the blocked invocation")
+	}
+	<-callDone // interruption or successful unwind are both valid
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-afterClose:
+	default:
+		t.Fatal("AfterClose was skipped when the blocked invocation unwound")
+	}
+}
+
+func TestTerminalPluginHookAdmissionExcludesShutdownTransition(t *testing.T) {
+	type atomicTerminalAdmitter interface {
+		enterTerminalOrOrdinary(func() error) (bool, error)
+		beginTerminalCallbacks()
+		releaseTerminal()
+		endTerminalCallbacks()
+	}
+	gate := newPluginCallGate("terminal-transition")
+	admitter, ok := any(gate).(atomicTerminalAdmitter)
+	if !ok {
+		t.Fatal("terminal callback admission is not atomic with shutdown transition")
+	}
+
+	ordinaryEntered := make(chan struct{})
+	releaseOrdinary := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseOrdinary) }) })
+	admissionDone := make(chan struct{})
+	go func() {
+		terminal, err := admitter.enterTerminalOrOrdinary(func() error {
+			close(ordinaryEntered)
+			<-releaseOrdinary
+			return gate.enter()
+		})
+		if terminal || err != nil {
+			t.Errorf("ordinary admission = (%v, %v), want (false, nil)", terminal, err)
+		}
+		close(admissionDone)
+	}()
+	<-ordinaryEntered
+
+	transitionDone := make(chan struct{})
+	go func() {
+		admitter.beginTerminalCallbacks()
+		close(transitionDone)
+	}()
+	select {
+	case <-transitionDone:
+		t.Fatal("shutdown transition overtook an ordinary admission decision")
+	case <-time.After(100 * time.Millisecond):
+	}
+	releaseOnce.Do(func() { close(releaseOrdinary) })
+	select {
+	case <-admissionDone:
+	case <-time.After(time.Second):
+		t.Fatal("ordinary admission remained blocked")
+	}
+	select {
+	case <-transitionDone:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown transition remained blocked")
+	}
+	gate.deactivate()
+	gate.release() // release the ordinary admission committed before transition
+	terminal, err := admitter.enterTerminalOrOrdinary(gate.enter)
+	if err != nil || !terminal {
+		t.Fatalf("terminal admission after ordinary shutdown = (%v, %v)", terminal, err)
+	}
+	admitter.releaseTerminal()
+	admitter.endTerminalCallbacks()
+	if terminal, err := admitter.enterTerminalOrOrdinary(gate.enter); terminal || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("admission after terminal shutdown = (%v, %v)", terminal, err)
+	}
+}
+
+func TestRuntimeCloseRetainsTerminalObserverAuthorities(t *testing.T) {
+	for _, origin := range []string{"direct", "managed"} {
+		for _, outcome := range []string{"return", "panic"} {
+			t.Run(origin+"/"+outcome, func(t *testing.T) {
+				rt := NewRuntime(WithGuestArguments([]string{"terminal"}))
+				stopped, entered, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+				providerStopped := make(chan struct{})
+				var providerActive atomic.Bool
+				var releaseOnce, endOnce sync.Once
+				var calls atomic.Int32
+				var args *GuestArgumentsAccess
+				var dependency *ContractRef
+				var instantiator *CoreInstanceInstantiator
+				var gate *pluginCallGate
+				var in *Instance
+				spec := ContractSpec{ID: "example.com/terminal/value", Major: 1}
+				providerDef := testDefinition("example.com/terminal/provider")
+				providerDef.Provides = []ContractSpec{spec}
+				observerDef := testDefinition("example.com/terminal/observer")
+				observerDef.Requires = []PluginRequirement{{ID: providerDef.ID, Version: "^1.0.0"}}
+				observerDef.Consumes = []ContractRequirement{{ID: spec.ID, Major: 1, Mode: ContractRequired}}
+				observerDef.Authorities = []AuthorityRequest{
+					{Name: AuthorityInstanceCloseObserve, Mode: AuthorityRequired, Reason: "observe terminal close"},
+					{Name: AuthorityHostArgumentsRead, Mode: AuthorityRequired, Reason: "retain observer authority"},
+				}
+				if origin == "managed" {
+					observerDef.Authorities = append(observerDef.Authorities, AuthorityRequest{
+						Name: AuthorityCoreInstanceInstantiate, Mode: AuthorityRequired, Reason: "own observed instance",
+						Scope: AuthorityScope{MaxInstances: 1, MaxMemoryBytes: 65536},
+					})
+				}
+				checkAuthorities := func() {
+					if got, err := args.Args(); err != nil || !reflect.DeepEqual(got, []string{"terminal"}) {
+						t.Errorf("terminal arguments = %v, %v", got, err)
+					}
+					err := dependency.Call(func(value any) error { return value.(func() error)() })
+					if !errors.Is(err, ErrPermissionDenied) {
+						t.Errorf("terminal contract call = %v", err)
+					}
+				}
+				provider := PluginProvider{Definition: providerDef, New: func() Plugin {
+					return pluginFunc(func(r *Registrar) error {
+						if err := ProvideContract(r, spec, func() error {
+							if !providerActive.Load() {
+								return errors.New("contract entered a stopped provider")
+							}
+							return nil
+						}); err != nil {
+							return err
+						}
+						return r.Lifecycle(PluginLifecycle{
+							Start: func(context.Context) error { providerActive.Store(true); return nil },
+							Stop: func(context.Context) error {
+								providerActive.Store(false)
+								close(providerStopped)
+								return nil
+							},
+						})
+					})
+				}}
+				observer := PluginProvider{Definition: observerDef, New: func() Plugin {
+					return pluginFunc(func(r *Registrar) error {
+						var err error
+						gate = r.callGate
+						args, err = r.GuestArguments()
+						if err != nil {
+							return err
+						}
+						dependency, err = RequireContract(r, spec, ContractRequired, (*func() error)(nil))
+						if err != nil {
+							return err
+						}
+						if origin == "managed" {
+							instantiator, err = r.CoreInstanceInstantiator()
+							if err != nil {
+								return err
+							}
+						}
+						closed, err := r.InstanceCloseObserver()
+						if err != nil {
+							return err
+						}
+						if err := closed.After(
+							func(InstanceCloseEvent) { calls.Add(1) },
+							func(InstanceCloseEvent) {
+								calls.Add(1)
+								checkAuthorities()
+								close(entered)
+								awaitCloseHookRelease(release)
+								checkAuthorities()
+								// Logical close reentry must not wait for this callback.
+								if err := errors.Join(in.Close(), rt.Close()); err != nil {
+									t.Errorf("terminal close reentry = %v", err)
+								}
+								if outcome == "panic" {
+									panic("terminal observer")
+								}
+							}); err != nil {
+							return err
+						}
+						return r.Lifecycle(PluginLifecycle{Stop: func(context.Context) error { close(stopped); return nil }})
+					})
+				}}
+				if err := rt.LoadPlugins(context.Background(), testSet(t, provider, observer)); err != nil {
+					t.Fatal(err)
+				}
+				mod, err := rt.Compile(wasmtest.Module())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if origin == "managed" {
+					owned, err := instantiator.Instantiate(context.Background(), mod)
+					if err != nil {
+						t.Fatal(err)
+					}
+					in = owned.Instance()
+				} else {
+					in, err = rt.Instantiate(context.Background(), mod)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				// Keep terminal delivery pending until ordinary admission is closed.
+				if err := in.beginInvocation(); err != nil {
+					t.Fatal(err)
+				}
+				unwound := make(chan struct{})
+				unwind := func() {
+					endOnce.Do(func() { go func() { in.endInvocation(); close(unwound) }() })
+				}
+				t.Cleanup(func() {
+					releaseOnce.Do(func() { close(release) })
+					unwind()
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := rt.CloseContext(ctx); errors.Is(err, context.DeadlineExceeded) {
+						t.Error("runtime cleanup timed out")
+					}
+					_ = mod.Close()
+				})
+				if err := rt.Close(); err != nil {
+					t.Fatal(err)
+				}
+				awaitCloseSignal(t, stopped)
+				if origin == "direct" {
+					// A provider's Stop may be needed to unblock this invocation.
+					// Its contract must be revoked before terminal delivery follows.
+					awaitCloseSignal(t, providerStopped)
+				}
+				if err := gate.enter(); err == nil {
+					gate.release()
+					t.Fatal("ordinary callback admission remained open after Stop")
+				}
+				unwind()
+				awaitCloseSignal(t, entered)
+				select {
+				case <-rt.Closed():
+					t.Fatal("runtime closed before terminal observer returned")
+				default:
+				}
+				checkAuthorities()
+				releaseOnce.Do(func() { close(release) })
+				awaitCloseSignal(t, unwound)
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := rt.WaitClosed(ctx); errors.Is(err, ErrCallbackPanic) != (outcome == "panic") || err != nil && outcome != "panic" {
+					t.Fatalf("WaitClosed = %v", err)
+				}
+				_ = in.Close()
+				if got := calls.Load(); got != 2 {
+					t.Fatalf("terminal observer calls = %d, want 2", got)
+				}
+				if _, err := args.Args(); !errors.Is(err, ErrPermissionDenied) {
+					t.Fatalf("arguments not revoked after terminal completion: %v", err)
+				}
+				if err := dependency.Call(func(any) error { return nil }); !errors.Is(err, ErrPermissionDenied) {
+					t.Fatalf("contract not revoked after terminal completion: %v", err)
+				}
+			})
+		}
+	}
+}
+
 func TestRuntimeStopCanReleaseBlockedPublicInvoke(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	def := testDefinition("example.com/close/stop-releases-invoke")
@@ -569,6 +889,162 @@ func TestRuntimeStopCanReleaseBlockedPublicInvoke(t *testing.T) {
 	}
 	<-invokeDone // interruption or successful unwind are both valid
 	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRuntimeStopReleasesSelectedProviderBeforeTerminalObserver(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	stopContract, observerContract := make(chan error, 1), make(chan error, 1)
+	providerStopped := make(chan struct{})
+	spec := ContractSpec{ID: "example.com/close/selected-stop/value", Major: 1}
+	providerDef := testDefinition("example.com/close/selected-stop/provider")
+	providerDef.Provides = []ContractSpec{spec}
+	consumerDef := testDefinition("example.com/close/selected-stop/consumer")
+	consumerDef.Requires = []PluginRequirement{{ID: providerDef.ID, Version: "^1.0.0"}}
+	consumerDef.Consumes = []ContractRequirement{{ID: spec.ID, Major: 1, Mode: ContractRequired}}
+	consumerDef.Authorities = []AuthorityRequest{
+		{Name: AuthorityInstanceCloseObserve, Mode: AuthorityRequired, Reason: "observe terminal close"},
+		{Name: AuthorityHostImportDefine, Mode: AuthorityRequired, Reason: "block until provider Stop", Scope: AuthorityScope{Modules: []string{"env"}}},
+	}
+	var dependency *ContractRef
+	provider := PluginProvider{Definition: providerDef, New: func() Plugin {
+		return pluginFunc(func(r *Registrar) error {
+			if err := ProvideContract(r, spec, func() error { return errors.New("entered provider after Stop") }); err != nil {
+				return err
+			}
+			return r.Lifecycle(PluginLifecycle{Stop: func(context.Context) error {
+				// A contract call racing with Stop must be denied before teardown starts.
+				stopContract <- dependency.Call(func(value any) error { return value.(func() error)() })
+				releaseOnce.Do(func() { close(release) })
+				close(providerStopped)
+				return nil
+			}})
+		})
+	}}
+	consumer := PluginProvider{Definition: consumerDef, New: func() Plugin {
+		return pluginFunc(func(r *Registrar) error {
+			hosts, err := r.HostImports()
+			if err != nil {
+				return err
+			}
+			testRegisterHostFunc(hosts, "env", "f", func(HostModule, []uint64, []uint64) {
+				close(entered)
+				<-release
+			})
+			dependency, err = RequireContract(r, spec, ContractRequired, (*func() error)(nil))
+			if err != nil {
+				return err
+			}
+			observer, err := r.InstanceCloseObserver()
+			if err != nil {
+				return err
+			}
+			return observer.After(func(InstanceCloseEvent) {
+				observerContract <- dependency.Call(func(value any) error { return value.(func() error)() })
+			})
+		})
+	}}
+	rt := NewRuntime()
+	if err := rt.LoadPlugins(context.Background(), testSet(t, provider, consumer)); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(voidImportCallModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := rt.CloseContext(ctx); errors.Is(err, context.DeadlineExceeded) {
+			t.Error("runtime cleanup timed out")
+		}
+		_ = mod.Close()
+	})
+	invokeDone := make(chan error, 1)
+	go func() { _, err := in.Invoke("call"); invokeDone <- err }()
+	awaitCloseSignal(t, entered)
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-providerStopped:
+	case <-time.After(time.Second):
+		t.Fatal("selected provider Stop did not release admitted invocation")
+	}
+	if err := <-stopContract; !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("contract call admitted during provider Stop: %v", err)
+	}
+	<-invokeDone // interruption or successful unwind are both valid
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := rt.WaitClosed(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-observerContract:
+		if !errors.Is(err, ErrPermissionDenied) {
+			t.Fatalf("terminal observer entered stopped provider: %v", err)
+		}
+	default:
+		t.Fatal("terminal observer was skipped")
+	}
+}
+
+func TestContractDeactivationClosesAdmissionBeforeLeaseDrain(t *testing.T) {
+	slot := newContractSlot(ContractSpec{ID: "example.com/close/deactivate", Major: 1}, nil)
+	if err := slot.activate([]any{"value"}); err != nil {
+		t.Fatal(err)
+	}
+	ref := &ContractRef{slot: slot}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	callDone := make(chan error, 1)
+	go func() {
+		callDone <- ref.Call(func(any) error {
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+	awaitCloseSignal(t, entered)
+	deactivated := make(chan struct{})
+	go func() { slot.deactivate(); close(deactivated) }()
+	select {
+	case <-deactivated:
+	case <-time.After(time.Second):
+		t.Fatal("contract deactivation waited for an in-flight lease")
+	}
+	var calls sync.WaitGroup
+	for range 16 {
+		calls.Add(1)
+		go func() {
+			defer calls.Done()
+			if err := ref.Call(func(any) error { return nil }); !errors.Is(err, ErrPermissionDenied) {
+				t.Errorf("contract call admitted after deactivation: %v", err)
+			}
+		}()
+	}
+	calls.Wait()
+	revoked := make(chan error, 1)
+	go func() { revoked <- slot.revoke() }()
+	select {
+	case err := <-revoked:
+		t.Fatalf("contract lease was not drained before revoke: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	releaseOnce.Do(func() { close(release) })
+	if err := <-callDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-revoked; err != nil {
 		t.Fatal(err)
 	}
 }

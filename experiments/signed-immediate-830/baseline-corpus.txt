@@ -1,0 +1,161 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sqlite3-query         	       1	 335738012 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCompileFull/sqlite3-query         	       2	 101214240 ns/op	   4148118 code-B	 8404128 B/op	    4934 allocs/op
+BenchmarkCompileFull/nbody                 	    1778	    144444 ns/op	      3615 code-B	   91125 B/op	     168 allocs/op
+BenchmarkCompileFull/matmul                	    1840	    116001 ns/op	      2829 code-B	   79260 B/op	     160 allocs/op
+BenchmarkCompileFull/raytrace              	     732	    324878 ns/op	     12086 code-B	  207721 B/op	     202 allocs/op
+BenchmarkCompileFull/json-as               	     130	   1833569 ns/op	     67398 code-B	  309933 B/op	     399 allocs/op
+BenchmarkCompileFull/blake-as              	     504	    467296 ns/op	     10315 code-B	  221007 B/op	     231 allocs/op
+BenchmarkCompileFull/json-as-simd          	     100	   2064801 ns/op	     80885 code-B	  329598 B/op	     432 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     170	   1399588 ns/op	     37439 code-B	  539127 B/op	     268 allocs/op
+BenchmarkExec/nbody.step                   	     100	    253601 ns/op	         9.000 calls/batch
+BenchmarkExec/matmul.run                   	     100	     57149 ns/op	        38.00 calls/batch
+BenchmarkExec/raytrace.render              	     100	    365669 ns/op	         6.000 calls/batch
+BenchmarkExec/json-as.serializeN           	     100	     22935 ns/op	        95.00 calls/batch
+BenchmarkExec/json-as.deserializeN         	     100	     42149 ns/op	        57.00 calls/batch
+BenchmarkExec/blake-as.hashN               	      99	    466076 ns/op	         5.000 calls/batch
+BenchmarkExec/json-as-simd.serializeN      	     100	     30412 ns/op	        72.00 calls/batch
+BenchmarkExec/json-as-simd.deserializeN    	      96	     56378 ns/op	        42.00 calls/batch
+BenchmarkExec/blake-as-simd.hashN          	     100	    408227 ns/op	         5.000 calls/batch
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sqlite3-query         	       1	 327970551 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCompileFull/sqlite3-query         	       2	 100437398 ns/op	   4148118 code-B	 8404224 B/op	    4935 allocs/op
+BenchmarkCompileFull/nbody                 	    1741	    134746 ns/op	      3615 code-B	   91125 B/op	     168 allocs/op
+BenchmarkCompileFull/matmul                	    2114	    108939 ns/op	      2829 code-B	   79260 B/op	     160 allocs/op
+BenchmarkCompileFull/raytrace              	     763	    308757 ns/op	     12086 code-B	  207720 B/op	     202 allocs/op
+BenchmarkCompileFull/json-as               	     142	   1768574 ns/op	     67398 code-B	  309933 B/op	     399 allocs/op
+BenchmarkCompileFull/blake-as              	     518	    442518 ns/op	     10315 code-B	  221007 B/op	     231 allocs/op
+BenchmarkCompileFull/json-as-simd          	     139	   1669391 ns/op	     80885 code-B	  329601 B/op	     432 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     182	   1322649 ns/op	     37439 code-B	  539127 B/op	     268 allocs/op
+BenchmarkExec/nbody.step                   	     100	    249504 ns/op	         9.000 calls/batch
+BenchmarkExec/matmul.run                   	     100	     54371 ns/op	        41.00 calls/batch
+BenchmarkExec/raytrace.render              	     100	    361182 ns/op	         6.000 calls/batch
+BenchmarkExec/json-as.serializeN           	     121	     22841 ns/op	        93.00 calls/batch
+BenchmarkExec/json-as.deserializeN         	     100	     41576 ns/op	        58.00 calls/batch
+BenchmarkExec/blake-as.hashN               	     100	    468843 ns/op	         5.000 calls/batch
+BenchmarkExec/json-as-simd.serializeN      	     100	     28803 ns/op	        74.00 calls/batch
+BenchmarkExec/json-as-simd.deserializeN    	     100	     53164 ns/op	        44.00 calls/batch
+BenchmarkExec/blake-as-simd.hashN          	     100	    404609 ns/op	         6.000 calls/batch
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sqlite3-query         	       1	 424992066 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCompileFull/sqlite3-query         	       2	 120678730 ns/op	   4148118 code-B	 8404128 B/op	    4934 allocs/op
+BenchmarkCompileFull/nbody                 	    1792	    181722 ns/op	      3615 code-B	   91125 B/op	     168 allocs/op
+BenchmarkCompileFull/matmul                	    2184	    107266 ns/op	      2829 code-B	   79260 B/op	     160 allocs/op
+BenchmarkCompileFull/raytrace              	     691	    309155 ns/op	     12086 code-B	  207721 B/op	     202 allocs/op
+BenchmarkCompileFull/json-as               	     136	   1738139 ns/op	     67398 code-B	  309934 B/op	     399 allocs/op
+BenchmarkCompileFull/blake-as              	     528	    437951 ns/op	     10315 code-B	  221007 B/op	     231 allocs/op
+BenchmarkCompileFull/json-as-simd          	     145	   1692204 ns/op	     80885 code-B	  329601 B/op	     432 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     172	   1352094 ns/op	     37439 code-B	  539126 B/op	     268 allocs/op
+BenchmarkExec/nbody.step                   	     100	    253316 ns/op	         8.000 calls/batch
+BenchmarkExec/matmul.run                   	     100	     53763 ns/op	        40.00 calls/batch
+BenchmarkExec/raytrace.render              	     100	    359553 ns/op	         6.000 calls/batch
+BenchmarkExec/json-as.serializeN           	     100	     22228 ns/op	        93.00 calls/batch
+BenchmarkExec/json-as.deserializeN         	     100	     42317 ns/op	        54.00 calls/batch
+BenchmarkExec/blake-as.hashN               	     100	    459196 ns/op	         5.000 calls/batch
+BenchmarkExec/json-as-simd.serializeN      	     100	     29008 ns/op	        75.00 calls/batch
+BenchmarkExec/json-as-simd.deserializeN    	     100	     54810 ns/op	        38.00 calls/batch
+BenchmarkExec/blake-as-simd.hashN          	     118	    403568 ns/op	         6.000 calls/batch
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sqlite3-query         	       1	 341521916 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCompileFull/sqlite3-query         	       2	 101141488 ns/op	   4148118 code-B	 8404224 B/op	    4935 allocs/op
+BenchmarkCompileFull/nbody                 	    1579	    141348 ns/op	      3615 code-B	   91125 B/op	     168 allocs/op
+BenchmarkCompileFull/matmul                	    1963	    113574 ns/op	      2829 code-B	   79260 B/op	     160 allocs/op
+BenchmarkCompileFull/raytrace              	     699	    333272 ns/op	     12086 code-B	  207720 B/op	     202 allocs/op
+BenchmarkCompileFull/json-as               	     122	   1857588 ns/op	     67398 code-B	  309932 B/op	     399 allocs/op
+BenchmarkCompileFull/blake-as              	     488	    466071 ns/op	     10315 code-B	  221007 B/op	     231 allocs/op
+BenchmarkCompileFull/json-as-simd          	     134	   2014966 ns/op	     80885 code-B	  329599 B/op	     432 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     172	   1346431 ns/op	     37439 code-B	  539127 B/op	     268 allocs/op
+BenchmarkExec/nbody.step                   	     100	    254684 ns/op	         9.000 calls/batch
+BenchmarkExec/matmul.run                   	     100	     55230 ns/op	        40.00 calls/batch
+BenchmarkExec/raytrace.render              	     100	    363765 ns/op	         6.000 calls/batch
+BenchmarkExec/json-as.serializeN           	     100	     22873 ns/op	        90.00 calls/batch
+BenchmarkExec/json-as.deserializeN         	     100	     41733 ns/op	        58.00 calls/batch
+BenchmarkExec/blake-as.hashN               	     100	    451120 ns/op	         5.000 calls/batch
+BenchmarkExec/json-as-simd.serializeN      	     100	     28377 ns/op	        76.00 calls/batch
+BenchmarkExec/json-as-simd.deserializeN    	     100	     53210 ns/op	        39.00 calls/batch
+BenchmarkExec/blake-as-simd.hashN          	     120	    399993 ns/op	         5.000 calls/batch
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sqlite3-query         	       1	 335468300 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCompileFull/sqlite3-query         	       2	 100836666 ns/op	   4148118 code-B	 8404224 B/op	    4935 allocs/op
+BenchmarkCompileFull/nbody                 	    1807	    139597 ns/op	      3615 code-B	   91125 B/op	     168 allocs/op
+BenchmarkCompileFull/matmul                	    2030	    112496 ns/op	      2829 code-B	   79260 B/op	     160 allocs/op
+BenchmarkCompileFull/raytrace              	     757	    302230 ns/op	     12086 code-B	  207720 B/op	     202 allocs/op
+BenchmarkCompileFull/json-as               	     141	   1811332 ns/op	     67398 code-B	  309934 B/op	     399 allocs/op
+BenchmarkCompileFull/blake-as              	     525	    456580 ns/op	     10315 code-B	  221007 B/op	     231 allocs/op
+BenchmarkCompileFull/json-as-simd          	     145	   1644981 ns/op	     80885 code-B	  329601 B/op	     432 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     182	   1337489 ns/op	     37439 code-B	  539127 B/op	     268 allocs/op
+BenchmarkExec/nbody.step                   	     120	    253807 ns/op	         8.000 calls/batch
+BenchmarkExec/matmul.run                   	     100	     53796 ns/op	        41.00 calls/batch
+BenchmarkExec/raytrace.render              	     100	    357950 ns/op	         6.000 calls/batch
+BenchmarkExec/json-as.serializeN           	     100	     22555 ns/op	        89.00 calls/batch
+BenchmarkExec/json-as.deserializeN         	     100	     41152 ns/op	        58.00 calls/batch
+BenchmarkExec/blake-as.hashN               	     100	    463237 ns/op	         5.000 calls/batch
+BenchmarkExec/json-as-simd.serializeN      	     123	     28747 ns/op	        74.00 calls/batch
+BenchmarkExec/json-as-simd.deserializeN    	     100	     53572 ns/op	        39.00 calls/batch
+BenchmarkExec/blake-as-simd.hashN          	     100	    403052 ns/op	         6.000 calls/batch
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sqlite3-query         	       1	 334236108 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCompileFull/sqlite3-query         	       3	  99091343 ns/op	   4148118 code-B	 8404192 B/op	    4935 allocs/op
+BenchmarkCompileFull/nbody                 	    1879	    133463 ns/op	      3615 code-B	   91125 B/op	     168 allocs/op
+BenchmarkCompileFull/matmul                	    2006	    106646 ns/op	      2829 code-B	   79260 B/op	     160 allocs/op
+BenchmarkCompileFull/raytrace              	     724	    304017 ns/op	     12086 code-B	  207721 B/op	     202 allocs/op
+BenchmarkCompileFull/json-as               	     136	   1758178 ns/op	     67398 code-B	  309933 B/op	     399 allocs/op
+BenchmarkCompileFull/blake-as              	     522	    448162 ns/op	     10315 code-B	  221007 B/op	     231 allocs/op
+BenchmarkCompileFull/json-as-simd          	     138	   1988995 ns/op	     80885 code-B	  329598 B/op	     432 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     178	   1318861 ns/op	     37439 code-B	  539127 B/op	     268 allocs/op
+BenchmarkExec/nbody.step                   	     100	    249771 ns/op	         9.000 calls/batch
+BenchmarkExec/matmul.run                   	     100	     54442 ns/op	        39.00 calls/batch
+BenchmarkExec/raytrace.render              	     100	    358391 ns/op	         6.000 calls/batch
+BenchmarkExec/json-as.serializeN           	     100	     22319 ns/op	        96.00 calls/batch
+BenchmarkExec/json-as.deserializeN         	     100	     41047 ns/op	        60.00 calls/batch
+BenchmarkExec/blake-as.hashN               	     100	    453814 ns/op	         5.000 calls/batch
+BenchmarkExec/json-as-simd.serializeN      	     100	     28358 ns/op	        71.00 calls/batch
+BenchmarkExec/json-as-simd.deserializeN    	      99	     53558 ns/op	        39.00 calls/batch
+BenchmarkExec/blake-as-simd.hashN          	     120	    399021 ns/op	         6.000 calls/batch
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCommandExec/sqlite3-query         	       1	 324593907 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCompileFull/sqlite3-query         	       3	  95862006 ns/op	   4148118 code-B	 8404256 B/op	    4936 allocs/op
+BenchmarkCompileFull/nbody                 	    1932	    128319 ns/op	      3615 code-B	   91125 B/op	     168 allocs/op
+BenchmarkCompileFull/matmul                	    2144	    102820 ns/op	      2829 code-B	   79260 B/op	     160 allocs/op
+BenchmarkCompileFull/raytrace              	     799	    298301 ns/op	     12086 code-B	  207719 B/op	     202 allocs/op
+BenchmarkCompileFull/json-as               	     136	   1740605 ns/op	     67398 code-B	  309933 B/op	     399 allocs/op
+BenchmarkCompileFull/blake-as              	     540	    431045 ns/op	     10315 code-B	  221007 B/op	     231 allocs/op
+BenchmarkCompileFull/json-as-simd          	     148	   1579480 ns/op	     80885 code-B	  329601 B/op	     432 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     183	   1326082 ns/op	     37439 code-B	  539128 B/op	     268 allocs/op
+BenchmarkExec/nbody.step                   	     100	    247675 ns/op	         9.000 calls/batch
+BenchmarkExec/matmul.run                   	     100	     53450 ns/op	        42.00 calls/batch
+BenchmarkExec/raytrace.render              	     100	    357590 ns/op	         6.000 calls/batch
+BenchmarkExec/json-as.serializeN           	     100	     21846 ns/op	        99.00 calls/batch
+BenchmarkExec/json-as.deserializeN         	     100	     40730 ns/op	        70.00 calls/batch
+BenchmarkExec/blake-as.hashN               	     100	    448500 ns/op	         5.000 calls/batch
+BenchmarkExec/json-as-simd.serializeN      	     100	     28147 ns/op	        74.00 calls/batch
+BenchmarkExec/json-as-simd.deserializeN    	     100	     53107 ns/op	        40.00 calls/batch
+BenchmarkExec/blake-as-simd.hashN          	     100	    396083 ns/op	         6.000 calls/batch
+PASS

@@ -4,10 +4,22 @@ package wago
 
 import (
 	"fmt"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
+
+// Artifact-only tests may model instructions the real host cannot execute.
+// Keep the compiler's capability cache consistent with the mocked admission
+// flags; callers must never invoke the resulting synthetic native images.
+func mockAMD64ArtifactCPU(t *testing.T, features shared.AMD64Features) {
+	t.Helper()
+	cachedAMD64CPUFeatures()
+	savedFeatures, savedOK := amd64CPUCache.features, amd64CPUCache.ok
+	t.Cleanup(func() { amd64CPUCache.features, amd64CPUCache.ok = savedFeatures, savedOK })
+	amd64CPUCache.features, amd64CPUCache.ok = features, true
+}
 
 func TestAMD64ArtifactCapabilitySubset(t *testing.T) {
 	for bit := shared.AMD64Features(1); bit <= shared.AMD64AVX512; bit <<= 1 {
@@ -60,7 +72,7 @@ func TestAMD64ArtifactCapabilityRoundTrip(t *testing.T) {
 			t.Fatalf("roundtrip=%x want=%x", loaded.requiredAMD64Features, required)
 		}
 		loaded.Close()
-		for _, oldVersion := range []byte{2, 3, 4} {
+		for _, oldVersion := range []byte{2, 3, 4, 5} {
 			data[4] = oldVersion
 			if err := loaded.UnmarshalBinary(data); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("version %d unsupported", oldVersion)) {
 				t.Fatalf("ambiguous version %d artifact admitted: %v", oldVersion, err)

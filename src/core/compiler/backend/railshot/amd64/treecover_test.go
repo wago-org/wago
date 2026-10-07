@@ -8,7 +8,15 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func enableAssociativeAddTree(t *testing.T) {
+	t.Helper()
+	saved := associativeAddTreeEnabled
+	associativeAddTreeEnabled = true
+	t.Cleanup(func() { associativeAddTreeEnabled = saved })
+}
+
 func TestAssociativeTreeCover(t *testing.T) {
+	enableAssociativeAddTree(t)
 	// (a + b) + (c + d): the balanced tree needs three registers normally.
 	body := []byte{
 		0x00,
@@ -48,6 +56,7 @@ func TestAssociativeTreeCover(t *testing.T) {
 }
 
 func TestAssociativeTreeCoverBeyondEightLeaves(t *testing.T) {
+	enableAssociativeAddTree(t)
 	// A balanced sixteen-leaf tree fits under Valent's height bound but exceeded
 	// the old eight-element collection array. The generalized cover should select
 	// the whole root, not split it into smaller independently materialized trees.
@@ -86,6 +95,7 @@ func TestAssociativeTreeCoverBeyondEightLeaves(t *testing.T) {
 }
 
 func TestAssociativeTreeCoverDestination(t *testing.T) {
+	enableAssociativeAddTree(t)
 	tests := []struct {
 		name   string
 		locals []byte
@@ -152,6 +162,7 @@ func TestAssociativeTreeCoverDestination(t *testing.T) {
 }
 
 func TestAssociativeTreeCoverNestedRepeatedDestination(t *testing.T) {
+	enableAssociativeAddTree(t)
 	// Two flattened add leaves read the destination inside shift subtrees. Keep
 	// one old-value copy alive while the accumulator overwrites local 0.
 	body := []byte{0x00}
@@ -206,6 +217,7 @@ func TestAssociativeTreeCoverNestedRepeatedDestination(t *testing.T) {
 }
 
 func TestAssociativeTreeCoverRestoresRepeatedDestinationPin(t *testing.T) {
+	enableAssociativeAddTree(t)
 	// The first local 0 read seeds the destination accumulator. The compare's
 	// rewritten local 0 read temporarily pins and unpins the saved alias copy;
 	// preserve that outer pin across the compare and the following clz allocation

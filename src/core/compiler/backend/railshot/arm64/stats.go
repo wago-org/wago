@@ -86,6 +86,7 @@ var (
 	preparedDirectEntryEnabled  = os.Getenv("WAGO_ARM64_NO_PREPARED_DIRECT_ENTRY") != "1"
 	preparedLightEntryEnabled   = os.Getenv("WAGO_ARM64_NO_PREPARED_LIGHT_ENTRY") != "1"
 	preparedBoundedEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_BOUNDED_ENTRY") != "1"
+	nativeLeafHostEnabled       = os.Getenv("WAGO_ARM64_NO_NATIVE_LEAF_HOST") != "1"
 	loopIntConstEnabled         = os.Getenv("WAGO_ARM64_NO_LOOP_INT_CONST") != "1"
 	indexedBaseReuseEnabled     = os.Getenv("WAGO_ARM64_NO_INDEXED_BASE_REUSE") != "1"
 	convertReadEnabled          = os.Getenv("WAGO_ARM64_NO_CONVERT_READ") != "1"
@@ -155,6 +156,11 @@ func parsePinGlobalK(s string) int {
 // CodegenStats holds one function's codegen counters. All fields are zero when a
 // phenomenon did not occur; maps are nil until first use.
 type CodegenStats struct {
+	SharedScalar                bool
+	ScalarBodyBytes             int
+	ScalarAdmissionNanos        uint64
+	ScalarSpills, ScalarReloads int
+
 	CodeSites            []shared.NativeCodeSite
 	RecordSources        bool
 	SourceInternalOffset int
@@ -262,6 +268,7 @@ func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
 	mergeBytes := uint64(unsafe.Sizeof(ctrlFrameMerge{}))
 	rootBytes := uint64(unsafe.Sizeof(ctrlFrameRoots{}))
 	return shared.WorkerScratchStats{
+		ScalarPeak: sc.scalar.Peak, ScalarRetained: sc.scalar.Memory(), ScalarDiscarded: sc.scalar.Discarded,
 		NodeReserved: sc.nodeScratchReserved, NodePeak: sc.nodeScratchPeak,
 		NodeRetained: retained, NodeDiscarded: sc.nodeScratchDiscarded,
 		ControlReserved:  uint64(sc.controlScratchReserved) * frameBytes,

@@ -5,11 +5,14 @@ package amd64
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"fmt"
 	"math"
+	"os"
+	"strings"
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -51,6 +54,90 @@ func v128TernaryBody(a, b, c [16]byte, sub uint32) []byte {
 	body = append(body, simdOp(sub)...)
 	body = append(body, 0x0b)
 	return body
+}
+
+func v128BooleanChainBody(a, b, c [16]byte, inner, outer uint32) []byte {
+	body := []byte{0x00}
+	body = append(body, v128ConstBytes(a)...)
+	body = append(body, v128ConstBytes(b)...)
+	body = append(body, v128ConstBytes(c)...)
+	body = append(body, simdOp(inner)...)
+	body = append(body, simdOp(outer)...)
+	body = append(body, 0x0b)
+	return body
+}
+
+func linuxHostHasAVX512VL() bool {
+	data, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return false
+	}
+	required := []string{"avx", "avx2", "avx512f", "avx512dq", "avx512bw", "avx512vl"}
+	found := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "flags") {
+			continue
+		}
+		found = true
+		fields := strings.Fields(line)
+		available := make(map[string]bool, len(fields))
+		for _, flag := range fields[1:] {
+			available[flag] = true
+		}
+		for _, flag := range required {
+			if !available[flag] {
+				return false
+			}
+		}
+	}
+	return found
+}
+
+func applyV128BooleanBytes(op uint32, a, b [16]byte) (out [16]byte) {
+	for i := range out {
+		switch op {
+		case 78:
+			out[i] = a[i] & b[i]
+		case 80:
+			out[i] = a[i] | b[i]
+		case 81:
+			out[i] = a[i] ^ b[i]
+		}
+	}
+	return out
+}
+
+func TestV128BooleanTernaryImmediateRegisterOrders(t *testing.T) {
+	ops := []uint32{78, 80, 81}
+	orders := [][3]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}}
+	apply := func(op uint32, a, b bool) bool {
+		switch op {
+		case 78:
+			return a && b
+		case 80:
+			return a || b
+		default:
+			return a != b
+		}
+	}
+	for _, inner := range ops {
+		for _, outer := range ops {
+			for _, order := range orders {
+				imm := v128BooleanTernaryImm(inner, outer, order)
+				for index := 0; index < 8; index++ {
+					var logical [3]bool
+					logical[order[0]] = index&4 != 0
+					logical[order[1]] = index&2 != 0
+					logical[order[2]] = index&1 != 0
+					got := imm&(1<<index) != 0
+					want := apply(outer, logical[0], apply(inner, logical[1], logical[2]))
+					if got != want {
+						t.Fatalf("inner=%d outer=%d order=%v index=%03b: got %v want %v", inner, outer, order, index, got, want)
+					}
+				}
+			}
+		}
+	}
 }
 
 func i8x16Bytes(v ...int8) [16]byte {
@@ -1280,6 +1367,142 @@ func TestSIMDV128LaneMemoryOps(t *testing.T) {
 			t.Fatal("expected v128.store16_lane out-of-bounds trap")
 		}
 	})
+}
+
+func TestSIMDAVX512TernaryBoolean(t *testing.T) {
+	ops := []uint32{78, 80, 81}
+	var a, b, c [16]byte
+	for bit := 0; bit < 128; bit++ {
+		pattern := bit % 8
+		if pattern&4 != 0 {
+			a[bit/8] |= 1 << (bit % 8)
+		}
+		if pattern&2 != 0 {
+			b[bit/8] |= 1 << (bit % 8)
+		}
+		if pattern&1 != 0 {
+			c[bit/8] |= 1 << (bit % 8)
+		}
+	}
+
+	features := shared.AMD64ModernBaseline | shared.AMD64AVX512
+	optimizations := map[string]bool{"avx512-ternary": true}
+	for _, inner := range ops {
+		for _, outer := range ops {
+			t.Run(fmt.Sprintf("%d_%d", inner, outer), func(t *testing.T) {
+				m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BooleanChainBody(a, b, c, inner, outer))
+				intermediate := applyV128BooleanBytes(inner, b, c)
+				want := applyV128BooleanBytes(outer, a, intermediate)
+
+				var stats ModuleStats
+				cm, err := CompileModuleWith(m, CompileOptions{
+					Stats: optionalTestStats(&stats), AMD64FeaturesSet: true, AMD64Features: features,
+					Optimizations: optimizations,
+				})
+				if err != nil {
+					t.Fatalf("AVX-512 compile: %v", err)
+				}
+				if !cm.RequiresAVX512 || !shared.AMD64Features(cm.RequiredAMD64Features).Has(shared.AMD64AVX512) {
+					t.Fatalf("fused module did not record AVX-512 requirement: required=%x bool=%v", cm.RequiredAMD64Features, cm.RequiresAVX512)
+				}
+				if diagnosticsEnabled {
+					if got := stats.Funcs[0].Peephole["simd-ternary-boolean"]; got != 1 {
+						t.Fatalf("ternary fusion count = %d, want 1", got)
+					}
+				}
+
+				var fallbackStats ModuleStats
+				fallback, err := CompileModuleWith(m, CompileOptions{
+					Stats: optionalTestStats(&fallbackStats), AMD64FeaturesSet: true, AMD64Features: 0,
+					Optimizations: optimizations,
+				})
+				if err != nil {
+					t.Fatalf("baseline fallback compile: %v", err)
+				}
+				if fallback.RequiresAVX512 || shared.AMD64Features(fallback.RequiredAMD64Features).Has(shared.AMD64AVX512) {
+					t.Fatalf("baseline fallback unexpectedly requires AVX-512: %x", fallback.RequiredAMD64Features)
+				}
+				if diagnosticsEnabled {
+					if got := fallbackStats.Funcs[0].Peephole["simd-ternary-boolean"]; got != 0 {
+						t.Fatalf("baseline emitted ternary fusion %d times", got)
+					}
+				}
+				if got := runAmd64V128WithOptions(t, m, nil, CompileOptions{
+					AMD64FeaturesSet: true, AMD64Features: 0, Optimizations: optimizations,
+				}); got != want {
+					t.Fatalf("baseline result = % x, want % x", got, want)
+				}
+
+				if linuxHostHasAVX512VL() {
+					if got := runAmd64V128WithOptions(t, m, nil, CompileOptions{
+						AMD64FeaturesSet: true, AMD64Features: features, Optimizations: optimizations,
+					}); got != want {
+						t.Fatalf("AVX-512 result = % x, want % x", got, want)
+					}
+				}
+			})
+		}
+	}
+
+	var bitselectWant [16]byte
+	for i := range bitselectWant {
+		bitselectWant[i] = (a[i] & c[i]) | (b[i] &^ c[i])
+	}
+	bitselectBody := []byte{0x00}
+	bitselectBody = append(bitselectBody, v128ConstBytes(a)...)
+	bitselectBody = append(bitselectBody, v128ConstBytes(b)...)
+	bitselectBody = append(bitselectBody, v128ConstBytes(c)...)
+	bitselectBody = append(bitselectBody, simdOp(82)...)
+	bitselectBody = append(bitselectBody, 0x0b)
+	bitselectModule := mod1(t, nil, []wasm.ValType{wasm.V128}, bitselectBody)
+	var bitselectStats ModuleStats
+	bitselectCompiled, err := CompileModuleWith(bitselectModule, CompileOptions{
+		Stats: optionalTestStats(&bitselectStats), AMD64FeaturesSet: true, AMD64Features: features,
+		Optimizations: optimizations,
+	})
+	if err != nil {
+		t.Fatalf("AVX-512 bitselect compile: %v", err)
+	}
+	if !bitselectCompiled.RequiresAVX512 {
+		t.Fatal("bitselect did not record AVX-512 requirement")
+	}
+	if diagnosticsEnabled {
+		if bitselectStats.Funcs[0].Peephole["simd-bitselect-ternary"] != 1 {
+			t.Fatalf("bitselect ternary not selected: required=%x stats=%v", bitselectCompiled.RequiredAMD64Features, bitselectStats.Funcs[0].Peephole)
+		}
+	}
+	if got := runAmd64V128WithOptions(t, bitselectModule, nil, CompileOptions{
+		AMD64FeaturesSet: true, AMD64Features: 0, Optimizations: optimizations,
+	}); got != bitselectWant {
+		t.Fatalf("baseline bitselect = % x, want % x", got, bitselectWant)
+	}
+	if linuxHostHasAVX512VL() {
+		if got := runAmd64V128WithOptions(t, bitselectModule, nil, CompileOptions{
+			AMD64FeaturesSet: true, AMD64Features: features, Optimizations: optimizations,
+		}); got != bitselectWant {
+			t.Fatalf("AVX-512 bitselect = % x, want % x", got, bitselectWant)
+		}
+	}
+
+	// The independent per-compilation switch must retain the old lowering even
+	// when the selected machine profile supports AVX-512.
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BooleanChainBody(a, b, c, 78, 81))
+	var disabledStats ModuleStats
+	disabled, err := CompileModuleWith(m, CompileOptions{
+		Stats: optionalTestStats(&disabledStats), AMD64FeaturesSet: true, AMD64Features: features,
+		Optimizations: map[string]bool{"avx512-ternary": false},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disabled.RequiresAVX512 {
+		t.Fatal("disabled ternary optimization requires AVX-512")
+	}
+	if diagnosticsEnabled {
+		if disabledStats.Funcs[0].Peephole["simd-ternary-boolean"] != 0 {
+			t.Fatalf("disabled ternary optimization emitted AVX-512: required=%x stats=%v", disabled.RequiredAMD64Features, disabledStats.Funcs[0].Peephole)
+		}
+	}
 }
 
 func TestSIMDV128LoadStoreAndBitwise(t *testing.T) {

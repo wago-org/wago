@@ -1,0 +1,3 @@
+# Preserve whitespace in captured tool output and executable patch fixtures.
+*.txt -whitespace
+*.patch -whitespace

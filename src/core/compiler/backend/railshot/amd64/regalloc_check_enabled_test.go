@@ -91,3 +91,36 @@ func TestRegallocCheckProtectsSuffixAtWindowExit(t *testing.T) {
 	f.a.Load64(RAX, RSP, f.spillOff(0)) // fault: scratch reuses the still-live condition register without restoring it
 	requireAllocationFailure(t, "live suffix", func() { f.checkEndFlush() })
 }
+
+func TestRegallocCheckLoopCacheRetirement(t *testing.T) {
+	t.Run("retired-cache", func(t *testing.T) {
+		f := fn{}
+		f.checkImmutable(0, true, 8)
+		f.checkReleaseImmutable(0, true)
+		f.checkCallClobber()
+		// A later preload into the same physical register starts a new lifetime.
+		f.checkImmutable(0, true, 8)
+		requireAllocationFailure(t, "immutable cache across physical call", f.checkCallClobber)
+	})
+	t.Run("outer-cache-remains-live", func(t *testing.T) {
+		f := fn{}
+		f.checkImmutable(0, true, 8)
+		f.checkImmutable(1, true, 8)
+		outer := f.immutableValues[0]
+		f.checkReleaseImmutable(1, true)
+		if len(f.immutableValues) != 1 || &f.immutableValues[0].value[0] != &outer.value[0] {
+			t.Fatal("retiring an inner cache changed the outer cache identity")
+		}
+		requireAllocationFailure(t, "immutable cache across physical call", f.checkCallClobber)
+	})
+	t.Run("separate-register-banks", func(t *testing.T) {
+		f := fn{}
+		f.checkImmutable(0, false, 8)
+		f.checkImmutable(0, true, 8)
+		f.checkReleaseImmutable(0, true)
+		if len(f.immutableValues) != 1 || f.immutableValues[0].loc != checkReg(0, false) {
+			t.Fatal("retiring an FP cache lost a GP cache")
+		}
+		requireAllocationFailure(t, "immutable cache across physical call", f.checkCallClobber)
+	})
+}

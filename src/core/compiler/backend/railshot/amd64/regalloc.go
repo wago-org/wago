@@ -28,6 +28,13 @@ func (f *fn) preloadLoopIntConsts(h *funcHintView) {
 	for i := 0; i < int(h.loopIntConsts.count) && i < len(f.iconsts); i++ {
 		reg := regNone
 		for _, candidate := range [...]Reg{R12, R13, R14, R15, R9, R10, R11, RDI, RSI} {
+			// Bulk lowerings use fixed pointer registers. Keep the table/call R9
+			// exclusion conservative, including inlined bodies whose scratch
+			// flags are not propagated. Caches cannot share fixed scratch.
+			if (candidate == RDI || candidate == RSI) && h.flags.has(hintUsesBulkMem|hintMutatesTable|hintHasCall) ||
+				candidate == R9 && h.flags.has(hintMutatesTable|hintHasCall) {
+				continue
+			}
 			// Loop interrupt polls use RSI as fixed scratch after the operand stack
 			// is flushed. It cannot simultaneously hold function-persistent state.
 			if f.interruptible && candidate == RSI {
@@ -74,6 +81,7 @@ const regNone Reg = 0xFF
 // node, its storage inherits the node's result type so downstream consumers
 // (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
+	f.s.forgetSpill(e)
 	if regallocCheckEnabled {
 		f.checkOccupy(e, r, false)
 	}
@@ -141,7 +149,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	}
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
 		if e.isValue() && e.st.kind == stReg && !e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spill(e)
@@ -150,7 +158,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	}
 	// Under high pressure, a pending deferred load holds an address register: emit
 	// its load and spill the result to free the register.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
 		if e.isValue() && e.st.kind == stMemRef && !block.has(e.st.reg) {
 			r := e.st.reg
 			if e.st.typ.isFloat() {
@@ -288,16 +296,23 @@ func (f *fn) allocSpillSlots(n int) int {
 // the next free slot index. (Simple bump within the current operand-stack extent;
 // slots are reclaimed as values are consumed.)
 func (f *fn) curSpillSlot() int {
-	used := f.spillFloor
-	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.isValue() && e.st.kind == stSlot {
-			end := e.st.slotIndex() + e.st.typ.stackSlots()
-			if end > used {
-				used = end
+	s := f.s
+	if !s.spillExtentValid {
+		used := 0
+		for e := s.head.next; e != s.head; e = e.next {
+			if e.isValue() && e.st.kind == stSlot {
+				end := e.st.slotIndex() + e.st.typ.stackSlots()
+				if end > used {
+					used = end
+				}
 			}
 		}
+		if uint64(used) > uint64(^uint32(0)) {
+			return max(used, f.spillFloor)
+		}
+		s.spillExtent, s.spillExtentValid = uint32(used), true
 	}
-	return used
+	return max(int(s.spillExtent), f.spillFloor)
 }
 
 // materialize ensures value elem e lives in a register and returns it. A deferred
@@ -451,10 +466,25 @@ func (f *fn) materializePendingTraps() {
 	f.materializePendingEffects(f.guardMode)
 }
 
+func (f *fn) materializePendingLoadsBelow(limit *elem) {
+	f.materializePendingEffectsBelow(true, limit)
+}
+
 func (f *fn) materializePendingEffects(loads bool) {
+	f.materializePendingEffectsBelow(loads, f.s.head)
+}
+
+func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
+	mask := pendingTrap
+	if loads {
+		mask |= pendingLoad
+	}
+	if f.s.pendingEffects&mask == 0 {
+		return
+	}
 	// The physical stack is in postfix/bytecode order. Visit individual trapping
 	// nodes so pure ancestors stay deferred and nested traps cannot be reordered.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.head.next; e != limit; e = e.next {
 		if e.isDeferred() && isDivRem(e.deferredOp()) {
 			f.materialize(e)
 		} else if loads && e.elemKind() == ekValue && e.st.kind == stMemRef {
@@ -462,6 +492,11 @@ func (f *fn) materializePendingEffects(loads bool) {
 			f.materializeByType(e)
 		}
 	}
+	// A partial barrier can leave relevant effects above its limit.
+	if limit == f.s.head {
+		f.s.pendingEffects &^= mask
+	}
+
 }
 
 // loadConst emits an immediate load of st's constant into r.

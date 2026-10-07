@@ -43,12 +43,23 @@ func (c *pluginAMD64Context) requireCPU(features shared.AMD64Features) error {
 	return c.featureError
 }
 
-func (c *pluginAMD64Context) InputI32(index int) (x86.Reg, error) {
+func (c *pluginAMD64Context) scalarInputSlot(index int) (int, error) {
 	if index < 0 || index >= len(c.paramSlots) {
 		return 0, fmt.Errorf("amd64 plugin input %d out of range", index)
 	}
+	if index < len(c.paramCustom) && !c.paramCustom[index].IsZero() {
+		return 0, fmt.Errorf("amd64 plugin input %d is custom", index)
+	}
+	return c.paramSlots[index], nil
+}
+
+func (c *pluginAMD64Context) InputI32(index int) (x86.Reg, error) {
+	slot, err := c.scalarInputSlot(index)
+	if err != nil {
+		return 0, err
+	}
 	r := c.AllocGP()
-	c.f.a.Load64(r, RSP, c.f.spillOff(c.paramSlots[index]))
+	c.f.a.Load64(r, RSP, c.f.spillOff(slot))
 	if width := c.paramWidth[index]; width < 32 {
 		c.f.a.AluRI(4, r, int32((uint64(1)<<uint(width))-1), false)
 	}
@@ -234,13 +245,14 @@ func (c *pluginAMD64Context) ReleaseVector(reg x86.Reg) {
 func (*pluginAMD64Context) MemoryBase() x86.Reg { return RBX }
 
 func (c *pluginAMD64Context) CheckedMemory(input int, offset uint32, size int) (x86.Reg, x86.Reg, int32, error) {
-	if input < 0 || input >= len(c.paramSlots) {
-		return 0, 0, 0, fmt.Errorf("amd64 plugin memory input %d out of range", input)
+	slot, err := c.scalarInputSlot(input)
+	if err != nil {
+		return 0, 0, 0, err
 	}
 	if size <= 0 {
 		return 0, 0, 0, fmt.Errorf("amd64 plugin memory access has invalid size %d", size)
 	}
-	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(c.paramSlots[input])})
+	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(slot)})
 	ea, owned, _, disp := c.f.memAddr(offset, size, true, 0)
 	if owned {
 		c.f.pinned = c.f.pinned.add(ea)
@@ -308,6 +320,7 @@ func (f *fn) materializePluginCustom(e *elem) []Reg {
 		f.fregUser[regs[i]] = e
 	}
 	f.s.canonicalSlots = false
+	f.s.forgetSpill(e)
 	e.st.kind, e.st.typ, e.st.reg = stReg, mtCustom, regs[0]
 	cold.vregs = regs
 	return cold.vregs
@@ -369,7 +382,7 @@ func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
-		if err := lowering.Managed(ctx); err != nil {
+		if err := lowering.Managed((*managedPluginAMD64Context)(ctx)); err != nil {
 			return err
 		}
 	case plugincodegen.CompatibilityFullAccess:
@@ -390,7 +403,7 @@ func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int
 	}
 	f.setDepthTypes(types[:base])
 	ctx.finish(resultWidth)
-	if lowering.Features&(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
+	if lowering.Features&(plugincodegen.FeatureAVX|plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512|plugincodegen.FeatureFMA) != 0 {
 		f.usesWide = true
 	}
 	f.stats.call("custom-machine-code")
@@ -431,7 +444,7 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
-		if err := lowering.Managed(ctx); err != nil {
+		if err := lowering.Managed((*managedPluginAMD64Context)(ctx)); err != nil {
 			return err
 		}
 	case plugincodegen.CompatibilityFullAccess:
@@ -485,7 +498,7 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 			f.fregUser[reg] = e
 		}
 	}
-	if lowering.Features&(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
+	if lowering.Features&(plugincodegen.FeatureAVX|plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512|plugincodegen.FeatureFMA) != 0 {
 		f.usesWide = true
 	}
 	f.stats.call("custom-machine-code-custom")
@@ -493,15 +506,46 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 }
 
 func pluginAMD64Requirements(features plugincodegen.Features) (shared.AMD64Features, error) {
-	if features & ^(plugincodegen.FeatureAVX2|plugincodegen.FeatureAVX512) != 0 {
+	const known = plugincodegen.FeatureAVX2 | plugincodegen.FeatureAVX512 |
+		plugincodegen.FeatureSSSE3 | plugincodegen.FeatureSSE41 | plugincodegen.FeatureSSE42 |
+		plugincodegen.FeatureAVX | plugincodegen.FeatureBMI1 | plugincodegen.FeatureBMI2 |
+		plugincodegen.FeatureLZCNT | plugincodegen.FeaturePOPCNT | plugincodegen.FeatureFMA
+	if features&^known != 0 {
 		return 0, fmt.Errorf("unknown plugin CPU requirements %#x", features)
 	}
 	var required shared.AMD64Features
+	if features&plugincodegen.FeatureSSSE3 != 0 {
+		required |= shared.AMD64SSSE3
+	}
+	if features&plugincodegen.FeatureSSE41 != 0 {
+		required |= shared.AMD64SSE41
+	}
+	if features&plugincodegen.FeatureSSE42 != 0 {
+		required |= shared.AMD64SSE42
+	}
+	if features&plugincodegen.FeatureAVX != 0 {
+		required |= shared.AMD64AVX
+	}
 	if features&plugincodegen.FeatureAVX2 != 0 {
 		required |= shared.AMD64AVX | shared.AMD64AVX2
 	}
 	if features&plugincodegen.FeatureAVX512 != 0 {
 		required |= shared.AMD64AVX | shared.AMD64AVX2 | shared.AMD64AVX512
+	}
+	if features&plugincodegen.FeatureBMI1 != 0 {
+		required |= shared.AMD64BMI1
+	}
+	if features&plugincodegen.FeatureBMI2 != 0 {
+		required |= shared.AMD64BMI2
+	}
+	if features&plugincodegen.FeatureLZCNT != 0 {
+		required |= shared.AMD64LZCNT
+	}
+	if features&plugincodegen.FeaturePOPCNT != 0 {
+		required |= shared.AMD64POPCNT
+	}
+	if features&plugincodegen.FeatureFMA != 0 {
+		required |= shared.AMD64AVX | shared.AMD64FMA
 	}
 	return required, nil
 }

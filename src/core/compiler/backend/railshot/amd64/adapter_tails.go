@@ -79,7 +79,7 @@ func adapterTailIslandInRangeAMD64(codeBytes, sharedBytes int) bool {
 
 func planSharedAdapterTailsAMD64(code []byte, entry []int, infos []adapterTailInfo) ([]adapterTailGroup, []adapterTailInfo, int) {
 	groups := make([]adapterTailGroup, 0, 16)
-	byKey := make(map[adapterTailKey][]int, 16)
+	byKey := make(map[adapterTailKey]int, 16)
 	for infoIndex := range infos {
 		info := &infos[infoIndex]
 		info.group = ^uint32(0)
@@ -97,7 +97,9 @@ func planSharedAdapterTailsAMD64(code []byte, entry []int, infos []adapterTailIn
 		tail := code[start:end]
 		key := adapterTailKey{hash: shared.AdapterShapeHash(tail, -1, 0), len: len(tail)}
 		group := -1
-		for _, candidate := range byKey[key] {
+		// sharedOff temporarily links hash collisions; admission overwrites it.
+		for link := byKey[key]; link != 0; link = groups[link-1].sharedOff {
+			candidate := link - 1
 			g := &groups[candidate]
 			if bytes.Equal(tail, code[g.templateOff:g.templateOff+g.length]) {
 				group = candidate
@@ -106,21 +108,20 @@ func planSharedAdapterTailsAMD64(code []byte, entry []int, infos []adapterTailIn
 		}
 		if group < 0 {
 			group = len(groups)
-			groups = append(groups, adapterTailGroup{templateOff: start, length: len(tail)})
-			byKey[key] = append(byKey[key], group)
+			groups = append(groups, adapterTailGroup{templateOff: start, length: len(tail), sharedOff: byKey[key]})
+			byKey[key] = group + 1
 		}
 		groups[group].count++
 		info.group = uint32(group)
 	}
 
 	sharedBytes := 0
-	admitted := make([]bool, len(groups))
 	for i := range groups {
 		g := &groups[i]
+		g.sharedOff = -1
 		if g.count*g.length <= g.count*sharedAdapterTailJumpBytesAMD64+g.length {
 			continue
 		}
-		admitted[i] = true
 		g.sharedOff = sharedBytes
 		sharedBytes += g.length
 	}
@@ -129,7 +130,7 @@ func planSharedAdapterTailsAMD64(code []byte, entry []int, infos []adapterTailIn
 	}
 	admittedInfos := infos[:0]
 	for _, info := range infos {
-		if int(info.group) < len(admitted) && admitted[info.group] {
+		if int(info.group) < len(groups) && groups[info.group].sharedOff >= 0 {
 			admittedInfos = append(admittedInfos, info)
 		}
 	}

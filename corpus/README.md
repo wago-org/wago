@@ -86,6 +86,17 @@ The [SQLite reproducer](repro/sqlite3/README.md) records a file-backed query
 that still traps in Wago despite passing Wasmtime and wazero; the admitted SQL
 fixture uses a separate in-memory workload.
 
+The Grain standard-library subset adds the upstream Array and String assertion
+suites and a documented JSON Parse/ToString/Lenses subset as separate prebuilt
+WASI commands. The JSON Validation module is excluded because its copied
+JSON_checker data has unverified redistribution permission. The documented no-tail-call build
+option keeps them within Core 2; they require only `fd_write`, and both success
+streams must be empty. Matching guest
+sources, licenses, and rebuild instructions are included in
+[`workloads/applications/grain-stdlib/`](workloads/applications/grain-stdlib/README.md).
+The subset uses the existing all-corpus gates without changing the quick or
+website profiles or building Grain in CI.
+
 ```text
 corpus/
   catalog.json   profiles, checks, benchmark metadata, hashes, and oracles

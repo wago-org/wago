@@ -16,7 +16,7 @@ func callfreeSpilledPin(typ machineType) *fn {
 	if !typ.isXMM() {
 		reg = R12
 	}
-	return &fn{a: &encoderamd64.Asm{}, s: newStack(), nLocals: 1, globalCellReg: regNone,
+	return &fn{a: &encoderamd64.Asm{}, s: newStack(), nLocals: 1, nLocalSlots: 1, globalCellReg: regNone,
 		localType: []machineType{typ}, localSlot: []uint32{0},
 		locals:       []localDef{{typ: typ, reg: reg, isFloat: typ.isXMM(), state: lsMem}},
 		pinnedLocals: []int{0}, pinRelinquished: true,
@@ -234,6 +234,29 @@ func TestCallFreePinConditionSurvivesRelinquishment(t *testing.T) {
 				moveAt, testAt := bytes.Index(f.a.B, move.B), bytes.Index(f.a.B, test.B)
 				if moveAt < 0 || loadAt < moveAt+len(move.B) || testAt < loadAt+len(load.B) {
 					t.Fatalf("index move/restore/compare out of order: %d/%d/%d", moveAt, loadAt, testAt)
+				}
+			} else if edge == "if" || edge == "branch" {
+				// These edges stage the tracked condition before restoring local
+				// homes. Its operand slot must survive that restore and supply the
+				// later test, even when allocation chooses a different register.
+				store := &encoderamd64.Asm{}
+				store.Store64(RSP, f.spillOff(0), R12)
+				storeAt := bytes.Index(f.a.B, store.B)
+				if f.spillOff(0) == f.localAddr(0) || storeAt < 0 || loadAt < storeAt+len(store.B) {
+					t.Fatal("condition was not staged separately before restoring the local")
+				}
+				found := false
+				for _, reg := range gpAlloc {
+					reload, conditionTest := &encoderamd64.Asm{}, &encoderamd64.Asm{}
+					reload.Load64(reg, RSP, f.spillOff(0))
+					conditionTest.TestSelf(reg, false)
+					reloadAt, testAt := bytes.Index(f.a.B, reload.B), bytes.Index(f.a.B, conditionTest.B)
+					if reloadAt >= loadAt+len(load.B) && testAt >= reloadAt+len(reload.B) {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatal("condition slot was not reloaded and tested after restoring the local")
 				}
 			} else {
 				test.TestSelf(R12, false)

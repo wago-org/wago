@@ -15,7 +15,7 @@ func TestFrameElidesRegisterOnlyVoidLeafAMD64(t *testing.T) {
 		var stats ModuleStats
 		cm, err := CompileModuleWith(m, CompileOptions{
 			CompactNative: true,
-			Stats:         &stats,
+			Stats:         optionalTestStats(&stats),
 			Workers:       1,
 			Optimizations: map[string]bool{"frame-elide": enabled},
 		})
@@ -57,14 +57,41 @@ func TestFrameDoesNotElideExceptionHandlingVoidLeafAMD64(t *testing.T) {
 		0x0b, // end function
 	}})
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Workers: 1})
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats), Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cm.CodeImage != nil {
 		defer cm.CodeImage.Close()
 	}
-	if stats.Funcs[0].FrameBytes == 0 || stats.Funcs[0].Peephole["frame-adjust-elide"] != 0 {
-		t.Fatalf("exception-handling void leaf elided its frame: %+v", stats.Funcs[0])
+	if diagnosticsEnabled {
+		if stats.Funcs[0].FrameBytes == 0 || stats.Funcs[0].Peephole["frame-adjust-elide"] != 0 {
+			t.Fatalf("exception-handling void leaf elided its frame: %+v", stats.Funcs[0])
+		}
+	}
+}
+
+func TestFrameDoesNotElideCallsWithEagerLocalSpillsAMD64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{params: []wasm.ValType{wasm.I64}, results: []wasm.ValType{wasm.I64}, body: []byte{0, 0x20, 0, 0x10, 1, 0x1a, 0x20, 0, 0x0b}},
+		funcDef{params: []wasm.ValType{wasm.I64}, results: []wasm.ValType{wasm.I64}, body: []byte{0, 0x20, 0, 0x42, 1, 0x7c, 0x0b}},
+	)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: optionalTestStats(&stats), Workers: 1,
+		Optimizations: map[string]bool{"inline": false, "stack-reg": false, "frame-elide": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	if diagnosticsEnabled {
+		if stats.Funcs[0].FrameBytes == 0 || stats.Funcs[0].Peephole["frame-adjust-elide"] != 0 {
+			t.Fatal("caller's eagerly spilled local lost its frame home")
+		}
+	}
+	if got := runCompiledAmd64u(t, cm, 11); got != 11 {
+		t.Fatalf("caller local after call = %d, want 11", got)
 	}
 }

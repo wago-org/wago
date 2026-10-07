@@ -1,0 +1,119 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/ones 	   34296	      6992 ns/op	       286.0 code-B	         0.4268 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   28906	      8358 ns/op	       314.0 code-B	         0.5101 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   28947	      8415 ns/op	       314.0 code-B	         0.5136 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   28642	      8228 ns/op	       314.0 code-B	         0.5022 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16707	     14263 ns/op	       403.0 code-B	         0.8705 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15664	     15337 ns/op	       437.0 code-B	         0.9361 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/ones             	   42280	      5705 ns/op	       196.0 code-B	         0.3482 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-positive    	   36220	      6660 ns/op	       200.0 code-B	         0.4065 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-negative    	   36081	      6733 ns/op	       220.0 code-B	         0.4110 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/mixed-halves     	   36362	      6698 ns/op	       228.0 code-B	         0.4088 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure         	   19370	     12432 ns/op	       312.0 code-B	         0.7588 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure-near-miss         	   18265	     13154 ns/op	       316.0 code-B	         0.8029 ns/store	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/ones 	   35253	      6965 ns/op	       286.0 code-B	         0.4251 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   29288	      8263 ns/op	       314.0 code-B	         0.5043 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   29702	      9472 ns/op	       314.0 code-B	         0.5781 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   28336	      8556 ns/op	       314.0 code-B	         0.5222 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16521	     14553 ns/op	       403.0 code-B	         0.8882 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15109	     15611 ns/op	       437.0 code-B	         0.9528 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/ones             	   41259	      5877 ns/op	       196.0 code-B	         0.3587 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-positive    	   35354	      6777 ns/op	       200.0 code-B	         0.4136 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-negative    	   36073	      6810 ns/op	       220.0 code-B	         0.4156 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/mixed-halves     	   35640	      6820 ns/op	       228.0 code-B	         0.4163 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure         	   18612	     12781 ns/op	       312.0 code-B	         0.7801 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure-near-miss         	   17848	     13398 ns/op	       316.0 code-B	         0.8177 ns/store	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/ones 	   33322	      7281 ns/op	       286.0 code-B	         0.4444 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   28704	      8582 ns/op	       314.0 code-B	         0.5238 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   27771	      8697 ns/op	       314.0 code-B	         0.5308 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   27882	      8509 ns/op	       314.0 code-B	         0.5194 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16146	     14488 ns/op	       403.0 code-B	         0.8843 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15194	     15602 ns/op	       437.0 code-B	         0.9523 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/ones             	   39282	      6013 ns/op	       196.0 code-B	         0.3670 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-positive    	   35144	      6865 ns/op	       200.0 code-B	         0.4190 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-negative    	   35499	      6988 ns/op	       220.0 code-B	         0.4265 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/mixed-halves     	   35316	      6865 ns/op	       228.0 code-B	         0.4190 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure         	   18772	     12832 ns/op	       312.0 code-B	         0.7832 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure-near-miss         	   17756	     13712 ns/op	       316.0 code-B	         0.8369 ns/store	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/ones 	   32781	      7245 ns/op	       286.0 code-B	         0.4422 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   27702	     12207 ns/op	       314.0 code-B	         0.7451 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   27284	      8647 ns/op	       314.0 code-B	         0.5277 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   27380	      8806 ns/op	       314.0 code-B	         0.5375 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16250	     15006 ns/op	       403.0 code-B	         0.9159 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15054	     16236 ns/op	       437.0 code-B	         0.9910 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/ones             	   36262	      6131 ns/op	       196.0 code-B	         0.3742 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-positive    	   34863	      6914 ns/op	       200.0 code-B	         0.4220 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-negative    	   32782	      6931 ns/op	       220.0 code-B	         0.4230 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/mixed-halves     	   34233	      7006 ns/op	       228.0 code-B	         0.4276 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure         	   18242	     13044 ns/op	       312.0 code-B	         0.7961 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure-near-miss         	   16927	     13849 ns/op	       316.0 code-B	         0.8453 ns/store	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/ones 	   25298	     10537 ns/op	       286.0 code-B	         0.6431 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   18573	     13428 ns/op	       314.0 code-B	         0.8196 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   21759	      9417 ns/op	       314.0 code-B	         0.5748 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   26908	      8977 ns/op	       314.0 code-B	         0.5479 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   14378	     15813 ns/op	       403.0 code-B	         0.9651 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   14829	     16256 ns/op	       437.0 code-B	         0.9922 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/ones             	   38461	      6743 ns/op	       196.0 code-B	         0.4115 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-positive    	   30259	      7002 ns/op	       200.0 code-B	         0.4274 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-negative    	   34108	      6995 ns/op	       220.0 code-B	         0.4269 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/mixed-halves     	   33624	      8589 ns/op	       228.0 code-B	         0.5242 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure         	   14196	     17088 ns/op	       312.0 code-B	         1.043 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure-near-miss         	   13486	     18041 ns/op	       316.0 code-B	         1.101 ns/store	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/ones 	   34360	      7210 ns/op	       286.0 code-B	         0.4401 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   28167	      8474 ns/op	       314.0 code-B	         0.5172 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   28213	      8421 ns/op	       314.0 code-B	         0.5140 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   28323	      8408 ns/op	       314.0 code-B	         0.5132 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16612	     14354 ns/op	       403.0 code-B	         0.8761 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   15595	     15741 ns/op	       437.0 code-B	         0.9607 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/ones             	   41791	      5905 ns/op	       196.0 code-B	         0.3604 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-positive    	   35617	      6840 ns/op	       200.0 code-B	         0.4175 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-negative    	   35924	      6853 ns/op	       220.0 code-B	         0.4183 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/mixed-halves     	   35918	      6845 ns/op	       228.0 code-B	         0.4178 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure         	   19225	     12992 ns/op	       312.0 code-B	         0.7930 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure-near-miss         	   17794	     13585 ns/op	       316.0 code-B	         0.8292 ns/store	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSignedImmediateStore/ones 	   34322	      7088 ns/op	       286.0 code-B	         0.4326 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-positive         	   28932	      9045 ns/op	       314.0 code-B	         0.5521 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/near-negative         	   26778	      8482 ns/op	       314.0 code-B	         0.5177 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/mixed-halves          	   27976	      8480 ns/op	       314.0 code-B	         0.5176 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure              	   16293	     15147 ns/op	       403.0 code-B	         0.9245 ns/store	       0 B/op	       0 allocs/op
+BenchmarkSignedImmediateStore/pressure-near-miss    	   14755	     15969 ns/op	       437.0 code-B	         0.9746 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/ones             	   40726	      5781 ns/op	       196.0 code-B	         0.3529 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-positive    	   35866	      6769 ns/op	       200.0 code-B	         0.4131 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/near-negative    	   32274	      6763 ns/op	       220.0 code-B	         0.4128 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/mixed-halves     	   35544	      6748 ns/op	       228.0 code-B	         0.4119 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure         	   17697	     13714 ns/op	       312.0 code-B	         0.8371 ns/store	       0 B/op	       0 allocs/op
+BenchmarkGuardSignedImmediateStore/pressure-near-miss         	   17371	     13227 ns/op	       316.0 code-B	         0.8073 ns/store	       0 B/op	       0 allocs/op
+PASS

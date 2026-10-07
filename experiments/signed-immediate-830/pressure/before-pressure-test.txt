@@ -1,0 +1,16 @@
+--- FAIL: TestSignedImmediateStoreGuardPressure (0.00s)
+    --- FAIL: TestSignedImmediateStoreGuardPressure/value=80000000/features=0 (0.00s)
+        signed_immediate_store_test.go:134: guarded constant-store loop spilled 1 live values, want 0
+    --- FAIL: TestSignedImmediateStoreGuardPressure/value=80000000/features=7ff (0.00s)
+        signed_immediate_store_test.go:134: guarded constant-store loop spilled 1 live values, want 0
+    --- FAIL: TestSignedImmediateStoreGuardPressure/value=ffffffff7fffffff/features=0 (0.00s)
+        signed_immediate_store_test.go:134: guarded constant-store loop spilled 1 live values, want 0
+    --- FAIL: TestSignedImmediateStoreGuardPressure/value=ffffffff7fffffff/features=7ff (0.00s)
+        signed_immediate_store_test.go:134: guarded constant-store loop spilled 1 live values, want 0
+    --- FAIL: TestSignedImmediateStoreGuardPressure/value=1234567887654321/features=0 (0.00s)
+        signed_immediate_store_test.go:134: guarded constant-store loop spilled 1 live values, want 0
+    --- FAIL: TestSignedImmediateStoreGuardPressure/value=1234567887654321/features=7ff (0.00s)
+        signed_immediate_store_test.go:134: guarded constant-store loop spilled 1 live values, want 0
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.003s
+FAIL

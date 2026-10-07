@@ -363,7 +363,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
-			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
+			return f.emitDynamicHostOrCrossInstance(f.importBindings[idx], ft)
 		}
 		// A module with any returning host import uses the synchronous control
 		// frame for ALL its host calls, so the async log and the control frame
@@ -718,6 +718,9 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	}
 	f.a.Load64(R9, R8, disp+runtime.ImportDispatchCodePtrOffset)
 	f.a.Load64(R8, R8, disp+runtime.ImportDispatchCallerContextOffset)
+	if f.opt(optDirectGoHostImport) {
+		f.a.AluRI(4, R8, -2, true) // strip the Go binding tag before using the context
+	}
 
 	f.emitTailFrameRelease()
 
@@ -997,6 +1000,20 @@ func registerCallArgNeedsCapture(root *elem) bool {
 	return root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef || root.st.kind == stSlot))
 }
 
+// materializeCallExpressions finishes calculations before recording argument
+// locations. Fixed-register instructions may spill RCX/RAX/RDX even when those
+// registers are pinned. Recording a move before a later shift or divide would
+// retain the displaced argument's stale register instead of its new spill slot.
+// Include the operand prefix: flushBelow must not evaluate such an instruction
+// after the call's argument move list has been frozen.
+func (f *fn) materializeCallExpressions(roots []*elem) {
+	for _, root := range roots {
+		if root.isDeferred() || root.isValue() && root.st.kind == stMemRef {
+			f.materializeByType(root)
+		}
+	}
+}
+
 // emitTailRegisterJump stages a register-ABI callee's arguments without
 // preserving any caller locals or operand values: a tail call has no continuation.
 // It then releases the current frame and emits the supplied direct/indirect jump.
@@ -1012,6 +1029,8 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			cur = baseOfValentBlock(cur).prev
 		}
 	}
+
+	f.materializeCallExpressions(roots[:p])
 
 	var gpMoves [8]regMove
 	var fpMoves [8]regMove
@@ -1084,6 +1103,13 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	if regallocCheckEnabled {
 		checkFPMoves()
 	}
+	// Register moves establish the integer ABI homes. Deferred float literals
+	// can still need a GPR when literal-pool loads are disabled; their scratch
+	// allocation must not reuse an already staged argument (including RDI).
+	argumentPins := f.pinned
+	for _, target := range intArgRegs[:gp] {
+		f.pinned = f.pinned.add(target)
+	}
 	for _, arg := range deferred[:deferredN] {
 		if arg.float {
 			switch arg.root.st.kind {
@@ -1092,7 +1118,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			case stSlot:
 				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
+				f.loadFrameFloat(arg.target, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -1106,6 +1132,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		}
 	}
 
+	f.pinned = argumentPins
 	f.emitTailFrameRelease()
 	emitJump()
 }
@@ -1366,6 +1393,39 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	if wide {
 		f.a.LeaDisp(R8, R8, hcWideBase)
 	}
+	// Stream large tuples to canonical slots rather than exhausting the result
+	// registers or overwriting the control-frame base during allocation.
+	if rN > 2 {
+		finalTypes := append([]machineType(nil), belowTypes...)
+		finalRoots := append([]bool(nil), belowGCRoots...)
+		slot := slotsOfTypes(belowTypes)
+		ctrlSlot := 0
+		for _, typ := range ft.Results {
+			mt := mtOf(typ)
+			if mt.isV128() {
+				reg := f.allocFReg(0)
+				f.mov128LoadDisp(reg, R8, resultsOffset+int32(ctrlSlot)*8)
+				f.mov128StoreDisp(RSP, f.spillOff(slot), reg)
+				f.releaseF(reg)
+			} else {
+				f.a.Load64(RAX, R8, resultsOffset+int32(ctrlSlot)*8)
+				if mt.is64() {
+					f.a.Store64(RSP, f.spillOff(slot), RAX)
+				} else {
+					f.a.Store32(RSP, f.spillOff(slot), RAX)
+				}
+			}
+			slot += mt.stackSlots()
+			ctrlSlot += mt.stackSlots()
+			finalTypes = append(finalTypes, mt)
+			finalRoots = append(finalRoots, gcFrameRefType(f.m, typ))
+		}
+		f.setDepthTypesWithGCRoots(finalTypes, finalRoots)
+		f.refreshCachedMemoryBoundAfterExternalCall()
+		return nil
+	}
+	ctrlWasPinned := f.pinned.has(R8)
+	f.pinned = f.pinned.add(R8)
 	res := f.tmpRegs[:0]
 	if cap(res) < rN {
 		res = make([]Reg, 0, rN)
@@ -1400,6 +1460,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			f.pinned = f.pinned.add(res[j]) // keep across the remaining loads
 		}
 		ctrlSlot += rt.stackSlots()
+	}
+	if !ctrlWasPinned {
+		f.pinned = f.pinned.remove(R8)
 	}
 	for j := 0; j < rN; j++ {
 		var value *elem
@@ -1586,6 +1649,61 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 	f.a.Store64(dst, -int32(abi.GCNativeViewPtrOffset), RAX)
 }
 
+// A bound ordinary Go thunk can use its known control-frame ABI directly.
+// The instance's tagged dispatch word proves this is not a same-context Wasm
+// target. Both alternatives join with canonical operands and homed locals.
+func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) error {
+	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
+		return f.emitCrossInstanceCall(b, ft)
+	}
+	for _, typ := range ft.Params {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			return f.emitCrossInstanceCall(b, ft)
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			return f.emitCrossInstanceCall(b, ft)
+		}
+	}
+	roots := f.rootsBottomToTop()
+	types := append([]machineType(nil), f.logicalTypes(roots)...)
+	rootFlags := gcRootFlags(roots)
+	f.flush()
+	locals := append([]localDef(nil), f.locals...)
+	if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
+		return fmt.Errorf("import dispatch index overflows displacement")
+	}
+	disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+	f.a.Load64(RAX, RBX, -offImportDispatchPtr)
+	f.a.Load64(RDX, RAX, disp+runtime.ImportDispatchCallerContextOffset)
+	f.a.TestImm(RDX, uint32(runtime.ImportDispatchCallerGoHostTag), true)
+	slow := f.a.JccPlaceholder(condE)
+	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
+		return err
+	}
+	f.flush()
+	resultTypes := append([]machineType(nil), f.logicalTypes(f.rootsBottomToTop())...)
+	resultFlags := gcRootFlags(f.rootsBottomToTop())
+	fastLocals := append([]localDef(nil), f.locals...)
+	done := f.a.JmpPlaceholder()
+	f.a.PatchRel32(slow, f.a.Len())
+	copy(f.locals, locals)
+	f.setDepthTypesWithGCRoots(types, rootFlags)
+	if err := f.emitCrossInstanceCall(b, ft); err != nil {
+		return err
+	}
+	f.flush()
+	for i := range f.locals {
+		if f.locals[i].state != fastLocals[i].state {
+			return fmt.Errorf("direct Go import local-state join differs at local %d", i)
+		}
+	}
+	f.a.PatchRel32(done, f.a.Len())
+	f.setDepthTypesWithGCRoots(resultTypes, resultFlags)
+	return nil
+}
+
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
 // another instance's function (cross-instance linking). Unlike a host import
 // (which logs and returns void), this is a real native call into the callee
@@ -1673,7 +1791,10 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		f.a.Load64(RSI, RAX, disp+runtime.ImportDispatchHomeLinMemOffset)    // wrapper-ABI arg 1
 		f.a.Load64(R10, RAX, disp+runtime.ImportDispatchTargetContextOffset) // target context
 		f.a.Load64(R9, RAX, disp+runtime.ImportDispatchCallerContextOffset)  // caller context
-		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset)       // wrapper entry
+		if f.opt(optDirectGoHostImport) {
+			f.a.AluRI(4, R9, -2, true) // strip the Go binding tag
+		}
+		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset) // wrapper entry
 		f.a.Push(R9)
 		f.a.Push(R10) // alignment pad + preserves the caller-context pair
 		f.copyInstanceContext(RSI, R10)
@@ -1976,6 +2097,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 
+	f.materializeCallExpressions(allRoots)
+
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
 	if cap(argRoots) < p {
@@ -1983,6 +2106,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	}
 	argRoots = argRoots[:p]
 	f.tmpRoots = argRoots
+	f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
 	cur := f.s.back()
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur
@@ -2119,7 +2243,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		// register — after any eager post-call reload, which would otherwise
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
-		f.a.MovReg64(pr, RAX)
+		f.moveInt(pr, RAX, mtOf(ft.Results[0]))
 		f.markLocalDirty(resHint)
 	}
 
@@ -2184,6 +2308,8 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 
+	f.materializeCallExpressions(allRoots)
+
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
 	if cap(argRoots) < p {
@@ -2191,6 +2317,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	argRoots = argRoots[:p]
 	f.tmpRoots = argRoots
+	f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
 	cur := f.s.back()
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur
@@ -2282,6 +2409,13 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	if regallocCheckEnabled {
 		checkFPMoves()
 	}
+	// Register moves establish the integer ABI homes. Deferred float literals
+	// can still need a GPR when literal-pool loads are disabled; their scratch
+	// allocation must not reuse an already staged argument (including RDI).
+	argumentPins := f.pinned
+	for _, target := range intArgRegs[:gp] {
+		f.pinned = f.pinned.add(target)
+	}
 	for _, da := range deferred {
 		if da.float {
 			switch da.root.st.kind {
@@ -2290,7 +2424,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			case stSlot:
 				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
+				f.loadFrameFloat(da.target, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -2303,6 +2437,8 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.loadCallLocalInt(da.target, da.root.st)
 		}
 	}
+	f.pinned = argumentPins
+
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
 	if regallocCheckEnabled {
@@ -2463,6 +2599,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		return fmt.Errorf("call_ref: type %d exceeds bounded native identity", typeIdx)
 	}
 
+	f.materializePendingTraps()
 	ref := f.materialize(f.popValue())
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.pinned = f.pinned.add(ref)
@@ -3111,6 +3248,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	}
 	table64 := tt.Limits.Addr64
 
+	f.materializePendingTraps()
 	idxReg := f.materialize(f.popValue()) // table32 uses i32; table64 uses full i64
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.canonicalizeTableOperand(idxReg, tableIdx)

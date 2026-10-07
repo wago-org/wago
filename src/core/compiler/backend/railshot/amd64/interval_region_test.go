@@ -76,7 +76,9 @@ func TestIntervalNextUseShrinksBlakeKernel(t *testing.T) {
 	if next.Peephole["interval-dead-store-elide"] == 0 {
 		t.Fatalf("next-use planning found no dead local stores: %v", next.Peephole)
 	}
-	if nextBytes >= baseBytes || next.CodeBytes >= base.CodeBytes {
+	// Function alignment can absorb a small instruction reduction in the
+	// module total. Require the kernel to shrink and the module not to grow.
+	if nextBytes > baseBytes || next.CodeBytes >= base.CodeBytes {
 		t.Fatalf("next-use code size module/function = %d/%d, baseline %d/%d", nextBytes, next.CodeBytes, baseBytes, base.CodeBytes)
 	}
 }
@@ -120,6 +122,9 @@ func intervalRegionModule(t *testing.T) *wasm.Module {
 }
 
 func TestIntervalRegionDynamicReuse(t *testing.T) {
+	savedRSI := intervalRSILeaseEnabled
+	intervalRSILeaseEnabled = false
+	defer func() { intervalRSILeaseEnabled = savedRSI }()
 	savedRegions, savedScratch, savedR8 := intervalRegionPinsEnabled, intervalScratchLeaseEnabled, intervalR8LeaseEnabled
 	defer func() {
 		intervalRegionPinsEnabled, intervalScratchLeaseEnabled, intervalR8LeaseEnabled = savedRegions, savedScratch, savedR8
@@ -165,6 +170,66 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 	intervalRegionPinsEnabled = false
 	if got := runAmd64(t, m); got != 210 {
 		t.Fatalf("disabled result = %d, want 210", got)
+	}
+}
+
+func TestIntervalRegionControlBoundaries(t *testing.T) {
+	savedEnabled := intervalControlEnabled
+	defer func() { intervalControlEnabled = savedEnabled }()
+	intervalControlEnabled = true
+
+	base := intervalRegionBody()
+	// The twenty local initializations end before the reduction. Read a local
+	// on both sides of each boundary so a cached value must be reconciled.
+	const reductionStart = 3 + 20*4
+	for _, tc := range []struct {
+		name     string
+		boundary []byte
+		call     bool
+	}{
+		{"if-else", []byte{0x20, 0x00, 0x04, 0x40, 0x20, 0x01, 0x1a, 0x05, 0x20, 0x02, 0x1a, 0x0b}, false},
+		{"call", []byte{0x41, 0x00, 0x10, 0x01, 0x1a}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append([]byte(nil), base[:reductionStart]...)
+			body = append(body, 0x20, 0x00, 0x1a)
+			body = append(body, tc.boundary...)
+			body = append(body, 0x20, 0x00, 0x1a)
+			body = append(body, base[reductionStart:]...)
+			var m *wasm.Module
+			if tc.call {
+				callee := []byte{
+					0x00, 0x20, 0x00, 0x45, 0x04, 0x7f,
+					0x41, 0x07, 0x05, 0x20, 0x00, 0x41, 0x01, 0x6b,
+					0x10, 0x01, 0x0b, 0x0b,
+				} // recursive callee cannot be inlined into the regional caller
+				m = modFuncs(t,
+					funcDef{results: []wasm.ValType{wasm.I32}, body: body},
+					funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: callee})
+			} else {
+				m = mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+			}
+			stats := compileWithStats(t, m, false).Funcs[0]
+			if stats.Peephole["interval-control"] != 1 || stats.Residency.MaxActive == 0 || stats.Residency.MaxActive > 2 {
+				t.Fatalf("control region not used within two-register cap: %+v", stats.Residency)
+			}
+			var disabled ModuleStats
+			compiled, err := CompileModuleWith(m, CompileOptions{
+				Stats: &disabled, Optimizations: map[string]bool{"interval-control": false},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if compiled.CodeImage != nil {
+				compiled.CodeImage.Close()
+			}
+			if got := disabled.Funcs[0].Peephole["interval-control"]; got != 0 {
+				t.Fatalf("disabled interval-control = %d, want 0", got)
+			}
+			if got := runAmd64(t, m); got != 210 {
+				t.Fatalf("result = %d, want 210", got)
+			}
+		})
 	}
 }
 
@@ -387,7 +452,11 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	if got, want := ineligible.nLocals, 100; got != want {
 		t.Fatalf("ineligible local count = %d, want %d", got, want)
 	}
-	if got, want := len(ineligible.localScore), 64; got != want {
+	wantScores := 64
+	if wideLocalPinsEnabled {
+		wantScores = 100
+	}
+	if got, want := len(ineligible.localScore), wantScores; got != want {
 		t.Fatalf("ineligible retained scores = %d, want %d", got, want)
 	}
 	if got := ineligible.localLastGet; got != nil {
@@ -402,5 +471,54 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	}
 	if got, want := len(eligible.localLastGet), 100; got != want {
 		t.Fatalf("wide candidate last-get storage = %d, want %d", got, want)
+	}
+}
+
+func TestIntervalRSILease(t *testing.T) {
+	saved := intervalRSILeaseEnabled
+	defer func() { intervalRSILeaseEnabled = saved }()
+	m := intervalRegionModule(t)
+	for _, enabled := range []bool{false, true} {
+		intervalRSILeaseEnabled = enabled
+		var stats ModuleStats
+		got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{ElideBoundsChecks: true, Stats: optionalTestStats(&stats)}, nil)
+		if err != nil || got != 210 {
+			t.Fatalf("enabled=%v got=%d err=%v", enabled, got, err)
+		}
+		if diagnosticsEnabled {
+			if (stats.Funcs[0].Peephole["interval-rsi-lease"] != 0) != enabled {
+				t.Fatal("admission", stats.Funcs[0].Peephole)
+			}
+			want := 11
+			if enabled {
+				want++
+			}
+			if got := stats.Funcs[0].Residency.MaxActive; got != want {
+				t.Fatalf("max active=%d want=%d", got, want)
+			}
+		}
+	}
+}
+
+func TestIntervalRSIBodyProof(t *testing.T) {
+	f := fn{classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	for _, tc := range []struct {
+		name string
+		code []byte
+		want bool
+	}{
+		{"integer", []byte{0x20, 0, 0x41, 7, 0x77, 0x0b}, true},
+		{"variable-shift", []byte{0x20, 0, 0x20, 1, 0x74, 0x0b}, true},
+		{"load", []byte{0x20, 0, 0x28, 2, 0, 0x0b}, true},
+		{"divide", []byte{0x20, 0, 0x20, 1, 0x6d, 0x0b}, false},
+		{"float", []byte{0x20, 0, 0x20, 1, 0xa0, 0x0b}, false},
+		{"call", []byte{0x10, 0, 0x0b}, false},
+		{"global", []byte{0x23, 0, 0x0b}, false},
+		{"truncated", []byte{0x41, 0x80}, false},
+		{"nested", []byte{0x02, 0x40, 0x0b, 0x0b}, false},
+	} {
+		if got := f.intervalRSIBody(tc.code); got != tc.want {
+			t.Errorf("%s=%v want=%v", tc.name, got, tc.want)
+		}
 	}
 }

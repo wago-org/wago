@@ -14,6 +14,7 @@ func (*fn) checkUse(*elem)                       {}
 func (*fn) checkOccupy(*elem, Reg, bool)         {}
 func (*fn) checkBeginSlots(int, int, int) func() { return nil }
 func (*fn) checkImmutable(Reg, bool, int)        {}
+func (*fn) checkReleaseImmutable(Reg, bool)      {}
 func (*fn) checkCallClobber()                    {}
 func checkSize(machineType) int                  { return 0 }
 
@@ -21,3 +22,11 @@ func (*fn) checkBeginRegMoves([]regMove, bool) func() { return nil }
 
 func (*fn) checkInputs(*elem)    {}
 func (*fn) checkFoldedUse(*elem) {}
+
+func (*fn) checkEndLifetimes() {}
+
+// Ordinary trap scopes must not capture a diagnostic mask in a defer.
+type regallocGPWriteMask struct{}
+
+func (*fn) checkTerminalGPWrites() regallocGPWriteMask { return regallocGPWriteMask{} }
+func (*fn) checkRestoreGPWrites(regallocGPWriteMask)   {}

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	goruntime "runtime"
+	"unsafe"
 
 	"github.com/wago-org/wago/internal/runtimebridge"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -46,6 +47,7 @@ type WasmFunc struct {
 	directIntLight      bool
 	directIntBounded    bool
 	directIntMode       preparedIntCallMode
+	boundedNumericHost  bool
 	directIntCall       wruntime.PreparedIntCall
 	directGate          *invocationGate
 	hostPrepared        *wruntime.PreparedHostScalarCall
@@ -66,15 +68,23 @@ const (
 // tryDirectGate uses the gate resolved with the function. Resource publication
 // revokes this exact atomic word before sharing native state.
 func (fn *WasmFunc) tryDirectGate() bool {
+	held, valid := fn.tryDirectGateState()
+	if held && !valid {
+		fn.directGate.Unlock()
+	}
+	return valid
+}
+
+// tryDirectGateState separates inlineable acquisition from the uncommon
+// release of an invalid fast state. A held gate always belongs to the caller,
+// including when valid is false. Validate only after acquiring the same word
+// that resource publication revokes.
+func (fn *WasmFunc) tryDirectGateState() (held, valid bool) {
 	gate := fn.directGate
 	if gate == nil || !gate.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
-		return false
+		return false, false
 	}
-	if !fn.in.preparedFastStateValid() {
-		gate.Unlock()
-		return false
-	}
-	return true
+	return true, fn.in.preparedFastStateValid()
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {
@@ -242,6 +252,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		scalarWideMask:      scalarWideMask,
 		scalarFast:          scalarFast,
 		scalarResultWide:    ic.resultSlots == 1 && resultWide[0],
+		boundedNumericHost:  scalarFast && in.preparedBoundedNumericEligible(),
 		paramTypes:          append([]ValType(nil), sig.Params...),
 		resultTypes:         append([]ValType(nil), sig.Results...),
 		paramExact:          append([]ValueTypeDescriptor(nil), params...),
@@ -253,7 +264,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
 		resultWide:          resultWide,
-		boundedWrapper:      in.c.directPreparedBoundedAt(ic.li),
+		boundedWrapper:      in.c.directPreparedBoundedAt(ic.li) || in.isolatedNativeScalarLeaf(),
 	}
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
@@ -345,6 +356,11 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 			return fn.invokeDirectMixed(args)
 		}
 		if fn.scalarFast {
+			if fn.boundedNumericHost {
+				if out, err, ok := fn.tryInvokeBoundedNumeric(args); ok {
+					return out, err
+				}
+			}
 			if len(args) == 1 && fn.resultSlots == 1 && fn.scalarWideMask == 0 && !fn.scalarResultWide && fn.hostPrepared != nil && fn.hostFixed != nil {
 				if out, err, ok := fn.tryInvokeScalarHost1(args); ok {
 					return out, err
@@ -572,6 +588,11 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 		if err != nil {
 			return err
 		}
+		if in.boundedHostSegments() && preparedHostFixedEnabled {
+			if err := fn.hostPrepared.EnableBoundedSegments(runtimebridge.GrantHostScalarCall()); err != nil {
+				return err
+			}
+		}
 		fn.hostMemBase = base
 		fn.hostActivation = hostLoopActivation{
 			root:                        in,
@@ -682,7 +703,17 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	}
 	if in.syncMode {
 		var err error
-		if in.gc == nil && in.usesIndependentExecution() && (in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) {
+		if fn.isolatedFast {
+			// The current fast gate may belong to Invoke or a reserved session.
+			reserved := fn.directGate != nil && fn.directGate.state.Load()&(invocationGateHeld|invocationGateFast) == invocationGateHeld|invocationGateFast
+			err = in.callPreparedIsolated(fn.entry, in.trap, reserved, true)
+		} else if fn.boundedNumericHost && in.usesIndependentExecution() && !in.guestStorageBorrowed() {
+			if in.syncHosts[0].scalarKind == syncHostTypedI32 || in.syncHosts[0].scalarKind == syncHostTypedI32x2 {
+				err = in.callCachedBoundedTypedHost(fn.entry)
+			} else {
+				err = in.callCachedBoundedHostView(fn.entry)
+			}
+		} else if in.gc == nil && in.usesIndependentExecution() && (in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) {
 			err = fn.callScalarHostPrepared()
 		} else {
 			err = in.callNativeSync(fn.entry)
@@ -752,6 +783,263 @@ func (fn *WasmFunc) invokeScalarHostReserved(args []uint64, prepared *wruntime.P
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]
+	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
+	return out, nil
+}
+
+// Resolve bounded numeric metadata with the handle. Invocation rechecks mutable
+// ownership before selecting the private driver or retaining the general path.
+func (in *Instance) preparedBoundedNumericEligible() bool {
+	if codeProfileEnabled || in.rt != nil || !in.boundedHostSegments() || !in.singleTypedScalarHostEligible() ||
+		!in.usesIndependentExecution() || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() ||
+		len(in.hostLog) != 0 || in.guestStorageBorrowed() || in.refStore != nil && !in.refStore.private {
+		return false
+	}
+	b := &in.syncHosts[0]
+	if b.sig == nil || b.gate != nil {
+		return false
+	}
+	if b.scalarKind == syncHostTypedI32 || b.scalarKind == syncHostTypedI32x2 {
+		return true
+	}
+	_, caller := b.fn.(CallerHostCallFunc)
+	return b.scalarKind == syncHostScalar && (b.hostCall || caller) &&
+		len(b.sig.Params) <= wruntime.MaxHostArity && len(b.sig.Results) <= wruntime.MaxHostArity
+}
+
+// Like the public warm cache, resolved private numeric entry takes ordinary
+// lifecycle and invocation ownership. A session or revocation takes fallback.
+func (fn *WasmFunc) tryInvokeBoundedNumeric(args []uint64) (out []uint64, err error, admitted bool) {
+	in := fn.in
+	state := in.pluginState.Load()
+	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
+		return nil, nil, false
+	}
+	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
+		in.endDirectInvocation()
+		return nil, nil, false
+	}
+	privateRefStore := in.refStore == nil || in.refStore.private
+	if !privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
+		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
+		state.invokeMu.Unlock()
+		in.endDirectInvocation()
+		return nil, nil, false
+	}
+	state.invocationID = newInvocationID()
+	admitted = true
+	var locked executionLease
+	nativeOwned := false
+	defer func() {
+		defer func() { state.invocationID = 0; state.invokeMu.Unlock(); in.endDirectInvocation() }()
+		if nativeOwned {
+			defer in.unlockNativeEntry(locked)
+		}
+		if r := recover(); r != nil {
+			setNativeSyncPanicError(r, &err)
+		}
+		if err != nil {
+			err = in.decorateTrap(err)
+		}
+	}()
+	copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
+	var reuse bool
+	locked, reuse, err = in.beginCachedBoundedViewEntry()
+	if err != nil {
+		return nil, err, true
+	}
+	nativeOwned = true
+	if activeHostInvocationBindings.Load() != 0 {
+		restore := bindHostInvocationParent(in, nil)
+		defer restore()
+	}
+	if !reuse {
+		in.jm.SetStackFence(in.eng.StackLimit())
+		in.jm.SetCustomCtx(offHeapSlicePtr(in.ctrl))
+		state.boundedViewVersion = state.nativeContextVersion.Load()
+		state.boundedViewMemBase = in.jm.LinMemBase()
+	}
+	activation := boundedViewHostActivation{
+		boundedTypedHostActivation: boundedTypedHostActivation{
+			root: in, ctrl: offHeapSlicePtr(in.ctrl), state: state, entryNativeMu: locked.local,
+		},
+	}
+	binding := &in.syncHosts[0]
+	rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
+	if binding.scalarKind == syncHostTypedI32 || binding.scalarKind == syncHostTypedI32x2 {
+		if goruntime.GOARCH == "arm64" || in.eng.PreparedScalarHost() != nil {
+			fixed := wruntime.FixedScalarHostContextCall(boundedTypedHostDispatchI32)
+			fallback := wruntime.FixedScalarHostCall(activation.dispatchI32)
+			if binding.scalarKind == syncHostTypedI32x2 {
+				fixed = boundedTypedHostDispatchI32x2
+				fallback = activation.dispatchI32x2
+			}
+			if prepared := in.eng.PreparedScalarHost(); prepared != nil {
+				if locked.privateContext() {
+					fixed = detachedNumericDispatchI32
+					if binding.scalarKind == syncHostTypedI32x2 {
+						fixed = detachedNumericDispatchI32x2
+					}
+				}
+				if prepared.IntegerGuestContext() {
+					if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && directIntegerI32Enabled && locked.privateContext() && binding.scalarKind == syncHostTypedI32 {
+						err = prepared.CallIntegerI32(fn.entry, locked.memoryBase(in), (func(int32) int32)(binding.typedI32))
+					} else {
+						err = prepared.CallInteger(fn.entry, locked.memoryBase(in), unsafe.Pointer(&activation.boundedTypedHostActivation), fixed)
+					}
+				} else {
+					err = prepared.Call(fn.entry, locked.memoryBase(in), unsafe.Pointer(&activation.boundedTypedHostActivation), fixed)
+				}
+			} else {
+				err = in.eng.CallWithHostBaseScalarBoundedContextLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, unsafe.Pointer(&activation.boundedTypedHostActivation), fixed, fallback)
+			}
+		} else {
+			fixed := wruntime.FixedScalarHostCall(activation.dispatchI32)
+			if binding.scalarKind == syncHostTypedI32x2 {
+				fixed = activation.dispatchI32x2
+			}
+			err = in.eng.CallWithHostBaseScalarBoundedLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, fixed)
+		}
+	} else {
+		fixed := wruntime.FixedHostContextCallView(boundedHostDispatchHostCallView)
+		fallback := wruntime.FixedHostCallView(activation.dispatchHostCallView)
+		_, caller := binding.fn.(CallerHostCallFunc)
+		if caller {
+			fixed = boundedHostDispatchCallerView
+			fallback = activation.dispatchCallerView
+		}
+		// Both native architectures retain the method adapter for uncached Caller views.
+		if prepared := in.eng.PreparedScalarHost(); prepared != nil {
+			if locked.privateContext() {
+				fixed = detachedNumericDispatchHostCall
+				if caller {
+					fixed = detachedNumericDispatchCaller
+				}
+			}
+			if prepared.IntegerGuestContext() {
+				err = prepared.CallIntegerView(fn.entry, locked.memoryBase(in), unsafe.Pointer(&activation), fixed)
+			} else {
+				err = prepared.CallView(fn.entry, locked.memoryBase(in), unsafe.Pointer(&activation), fixed)
+			}
+		} else if caller && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") {
+			err = in.eng.CallWithHostBaseFixedViewBoundedLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, fallback)
+		} else {
+			err = in.eng.CallWithHostBaseFixedViewBoundedContextLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, unsafe.Pointer(&activation), fixed, fallback)
+		}
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	if err != nil {
+		return nil, err, true
+	}
+	out = in.resultVals[:fn.resultSlots]
+	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
+	return out, nil, true
+}
+
+// Session entry already owns lifecycle and invocation reservations. Native
+// ownership remains per-call so callbacks may publish resources or reenter.
+func (fn *WasmFunc) invokeBoundedNumericAdmitted(args []uint64) (out []uint64, err error) {
+	in := fn.in
+	copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
+	locked, reuse, err := in.beginCachedBoundedViewEntry()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		defer in.unlockNativeEntry(locked)
+		if r := recover(); r != nil {
+			setNativeSyncPanicError(r, &err)
+		}
+		if err != nil {
+			err = in.decorateTrap(err)
+		}
+	}()
+	state := in.ensurePluginState()
+	if activeHostInvocationBindings.Load() != 0 {
+		restore := bindHostInvocationParent(in, nil)
+		defer restore()
+	}
+	if !reuse {
+		in.jm.SetStackFence(in.eng.StackLimit())
+		in.jm.SetCustomCtx(offHeapSlicePtr(in.ctrl))
+		state.boundedViewVersion = state.nativeContextVersion.Load()
+		state.boundedViewMemBase = in.jm.LinMemBase()
+	}
+	activation := boundedViewHostActivation{
+		boundedTypedHostActivation: boundedTypedHostActivation{
+			root: in, ctrl: offHeapSlicePtr(in.ctrl), state: state, entryNativeMu: locked.local,
+		},
+	}
+	binding := &in.syncHosts[0]
+	rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
+	if binding.scalarKind == syncHostTypedI32 || binding.scalarKind == syncHostTypedI32x2 {
+		if goruntime.GOARCH == "arm64" || in.eng.PreparedScalarHost() != nil {
+			fixed := wruntime.FixedScalarHostContextCall(boundedTypedHostDispatchI32)
+			fallback := wruntime.FixedScalarHostCall(activation.dispatchI32)
+			if binding.scalarKind == syncHostTypedI32x2 {
+				fixed = boundedTypedHostDispatchI32x2
+				fallback = activation.dispatchI32x2
+			}
+			if prepared := in.eng.PreparedScalarHost(); prepared != nil {
+				if locked.privateContext() {
+					fixed = detachedNumericDispatchI32
+					if binding.scalarKind == syncHostTypedI32x2 {
+						fixed = detachedNumericDispatchI32x2
+					}
+				}
+				if prepared.IntegerGuestContext() {
+					if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && directIntegerI32Enabled && locked.privateContext() && binding.scalarKind == syncHostTypedI32 {
+						err = prepared.CallIntegerI32(fn.entry, locked.memoryBase(in), (func(int32) int32)(binding.typedI32))
+					} else {
+						err = prepared.CallInteger(fn.entry, locked.memoryBase(in), unsafe.Pointer(&activation.boundedTypedHostActivation), fixed)
+					}
+				} else {
+					err = prepared.Call(fn.entry, locked.memoryBase(in), unsafe.Pointer(&activation.boundedTypedHostActivation), fixed)
+				}
+			} else {
+				err = in.eng.CallWithHostBaseScalarBoundedContextLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, unsafe.Pointer(&activation.boundedTypedHostActivation), fixed, fallback)
+			}
+		} else {
+			fixed := wruntime.FixedScalarHostCall(activation.dispatchI32)
+			if binding.scalarKind == syncHostTypedI32x2 {
+				fixed = activation.dispatchI32x2
+			}
+			err = in.eng.CallWithHostBaseScalarBoundedLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, fixed)
+		}
+	} else {
+		fixed := wruntime.FixedHostContextCallView(boundedHostDispatchHostCallView)
+		fallback := wruntime.FixedHostCallView(activation.dispatchHostCallView)
+		_, caller := binding.fn.(CallerHostCallFunc)
+		if caller {
+			fixed = boundedHostDispatchCallerView
+			fallback = activation.dispatchCallerView
+		}
+		// Both native architectures retain the method adapter for uncached Caller views.
+		if prepared := in.eng.PreparedScalarHost(); prepared != nil {
+			if locked.privateContext() {
+				fixed = detachedNumericDispatchHostCall
+				if caller {
+					fixed = detachedNumericDispatchCaller
+				}
+			}
+			if prepared.IntegerGuestContext() {
+				err = prepared.CallIntegerView(fn.entry, locked.memoryBase(in), unsafe.Pointer(&activation), fixed)
+			} else {
+				err = prepared.CallView(fn.entry, locked.memoryBase(in), unsafe.Pointer(&activation), fixed)
+			}
+		} else if caller && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") {
+			err = in.eng.CallWithHostBaseFixedViewBoundedLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, fallback)
+		} else {
+			err = in.eng.CallWithHostBaseFixedViewBoundedContextLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, unsafe.Pointer(&activation), fixed, fallback)
+		}
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	if err != nil {
+		return nil, err
+	}
+	out = in.resultVals[:fn.resultSlots]
 	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
 	return out, nil
 }

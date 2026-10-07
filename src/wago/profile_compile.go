@@ -52,6 +52,9 @@ func (c *Compiled) installCodeProfile(cfg *RuntimeConfig, wasm []byte, stats *ra
 		im.SourceCoverage = "opcode-lowering-and-deferred-origins"
 		im.CodeSites = stats.CodeSites
 		im.SiteCoverage = "explicit-operand-spills-reloads-and-memory-bounds-branches"
+		if runtime.GOARCH == "amd64" {
+			im.SiteCoverage += "-and-direct-gp-local-frame-transfers"
+		}
 	}
 	if cfg.codeProfile.IncludeUnwind() {
 		im.UnwindCoverage = "unsupported"

@@ -109,7 +109,7 @@ func BindUninstallWorker(lockPath, operation string, pid int) error {
 		return errors.New("cleanup worker exited before handoff")
 	}
 	record.Phase, record.PID, record.Created = "scheduled", pid, created
-	if err := atomicfile.ReplaceFile(path, atomicfile.Options{Mode: 0600, Sync: true}, func(w io.Writer) error { return json.NewEncoder(w).Encode(record) }); err != nil {
+	if err := atomicfile.ReplaceFileWithMode(path, atomicfile.Options{Mode: 0600, Sync: true}, func(w io.Writer) error { return json.NewEncoder(w).Encode(record) }); err != nil {
 		return err
 	}
 	return syncDirectory(filepath.Dir(path))

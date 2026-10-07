@@ -68,7 +68,7 @@ func deferredResultFacts(op wOp, typ machineType) valueFacts {
 	switch op {
 	case opAdd, opSub, opAnd, opOr, opXor,
 		opShl, opShrU, opShrS, opRotl, opRotr,
-		opMul, opDivU, opDivS, opRemU, opRemS,
+		opMul, opDivU, opDivS, opRemU, opRemS, opSExt8, opSExt16,
 		opClz, opCtz, opPopcnt:
 		return factUpper32Zero
 	}

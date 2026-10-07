@@ -16,7 +16,9 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	if got, want := unsafe.Sizeof(elem{}), uintptr(56); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(stack{}), uintptr(80); got != want {
+	// The spill-prefix cursor adds one pointer per compiler worker; extent
+	// metadata fits the remaining padding without growing per-value storage.
+	if got, want := unsafe.Sizeof(stack{}), uintptr(88); got != want {
 		t.Fatalf("stack size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {
@@ -161,5 +163,16 @@ func TestCompareCarriesBooleanFactAMD64(t *testing.T) {
 	f.pushBinOp(opLtU, mtI32)
 	if got := f.s.back().st.valueFacts(); !got.has(factUpper32Zero | factBoolean) {
 		t.Fatalf("compare facts = %#x, want upper-zero and boolean", got)
+	}
+}
+
+func TestSignedNarrowI32ExtensionsCarryUpperZeroFactAMD64(t *testing.T) {
+	for _, op := range []wOp{opSExt8, opSExt16} {
+		if got := deferredResultFacts(op, mtI32); !got.has(factUpper32Zero) {
+			t.Errorf("deferredResultFacts(%v, i32) = %#x, want upper-zero", op, got)
+		}
+		if got := deferredResultFacts(op, mtI64); got.has(factUpper32Zero) {
+			t.Errorf("deferredResultFacts(%v, i64) = %#x, unexpectedly claims upper-zero", op, got)
+		}
 	}
 }

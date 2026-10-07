@@ -146,7 +146,8 @@ func TestCodeProfileConcurrentInstances(t *testing.T) {
 }
 
 func TestCodeProfileArtifactReloadIsExplicitlyUnknown(t *testing.T) {
-	c, err := Compile(identityI32Module())
+	// Artifact serialization requires explicit bounds regardless of the host default.
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), identityI32Module())
 	if err != nil {
 		t.Fatal(err)
 	}

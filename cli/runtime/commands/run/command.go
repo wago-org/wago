@@ -2,6 +2,7 @@
 package run
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -107,15 +108,41 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		}
 	}
 	runtime := cmd.environment.LoadRuntime(config, positionals)
-	defer runtime.Close()
-	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache(), ctx.Bool("allow-native-artifact"))
+	module, err := loadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache(), ctx.Bool("allow-native-artifact"))
+	if err != nil {
+		_ = runtime.CloseContext(context.Background())
+		ui.Fatal("%v", err)
+	}
+	var instance *wago.Instance
+	// Teardown order is part of the plugin lifecycle contract: instances release
+	// module uses, modules notify close observers, then Runtime.CloseContext waits
+	// for runtime observers and plugin Stop before main can exit.
+	finish := func() error {
+		var instanceErr error
+		if instance != nil {
+			instanceErr = instance.Close()
+		}
+		return errors.Join(instanceErr, module.Close(), runtime.CloseContext(context.Background()))
+	}
+	fatal := func(format string, args ...any) {
+		_ = finish()
+		ui.Fatal(format, args...)
+	}
 	compiled := module.Compiled()
 	exports := ctx.Strings("invoke")
 	if len(exports) == 0 {
-		exports = []string{mustResolveExport(compiled, "")}
+		export, err := wasmcall.ResolveExport(compiled, "")
+		if err != nil {
+			fatal("%v", err)
+		}
+		exports = []string{export}
 	} else {
 		for index, export := range exports {
-			exports[index] = mustResolveExport(compiled, export)
+			resolved, err := wasmcall.ResolveExport(compiled, export)
+			if err != nil {
+				fatal("%v", err)
+			}
+			exports[index] = resolved
 		}
 	}
 	type invocation struct {
@@ -128,43 +155,54 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	for _, export := range exports {
 		params, results, err := compiled.Signature(export)
 		if err != nil {
-			ui.Fatal("run: %v", err)
+			fatal("run: %v", err)
 		}
 		if export == "_start" && (len(params) != 0 || len(results) != 0) {
-			ui.Fatal("run: _start must have signature () -> ()")
+			fatal("run: _start must have signature () -> ()")
 		}
 		if err := wasmcall.ValidateSignature(params, results); err != nil {
-			ui.Fatal("run: %s: %v", export, err)
+			fatal("run: %s: %v", export, err)
 		}
 		count := len(params)
 		if len(arguments) < count {
-			ui.Fatal("run: %s: expected %d arg(s), got %d", export, count, len(arguments))
+			fatal("run: %s: expected %d arg(s), got %d", export, count, len(arguments))
+		}
+		values, err := wasmcall.ParseArgs(arguments[:count], params)
+		if err != nil {
+			fatal("%v", err)
 		}
 		invocations = append(invocations, invocation{
-			export: export, values: mustParseArgs(arguments[:count], params), results: results,
+			export: export, values: values, results: results,
 		})
 		arguments = arguments[count:]
 	}
-	instance, err := instantiate(runtime, module, gc, configuredGC)
+	instance, err = instantiate(runtime, module, gc, configuredGC)
 	if err != nil {
-		ui.Fatal("%v", friendlyInstantiationError(err))
+		fatal("%v", friendlyInstantiationError(err))
 	}
-	defer instance.Close()
 	for _, invocation := range invocations {
 		result, err := instance.Invoke(invocation.export, invocation.values...)
 		if err != nil {
 			if invocation.export == "_start" {
 				var exit *wago.ExitError
 				if errors.As(err, &exit) {
-					instance.Close()
+					teardownErr := finish()
+					// A zero-code guest exit is success only when teardown also
+					// succeeds; otherwise os.Exit(0) would hide plugin Stop errors.
+					if exit.Code == 0 && teardownErr != nil {
+						ui.Fatal("run: teardown: %v", teardownErr)
+					}
 					os.Exit(int(exit.Code))
 				}
 			}
-			ui.Fatal("%s %s", ui.Red("trap:"), trapReason(err))
+			fatal("%s %s", ui.Red("trap:"), trapReason(err))
 		}
 		if output := format(result, invocation.results); output != "" {
 			fmt.Println(output)
 		}
+	}
+	if err := finish(); err != nil {
+		ui.Fatal("run: teardown: %v", err)
 	}
 }
 

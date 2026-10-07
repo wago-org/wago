@@ -252,7 +252,7 @@ var (
 	AnyRef    = RefVal(AbsRef(HeapAny))
 	EqRef     = RefVal(AbsRef(HeapEq))
 	I31Ref    = RefVal(AbsRef(HeapI31))
-	StringRef = RefVal(AbsRef(HeapString))
+	StringRef = RefVal(Ref(true, AbsHeap(HeapString), false))
 )
 
 func RefVal(rt RefType) ValType {

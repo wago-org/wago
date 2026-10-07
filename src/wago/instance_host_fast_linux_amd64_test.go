@@ -118,7 +118,13 @@ func TestInstanceInvokeCachedPreparedHostRevokedByCallbackSharing(t *testing.T) 
 		if ic == nil || state == nil || state.hostInvokeCache == nil || state.hostInvokeCache[ic.slotIndex] == nil {
 			t.Error("name-based call did not cache its prepared host entry")
 		} else if calls <= 2 {
-			identities = append(identities, state.hostInvokeCache[ic.slotIndex].hostActivation.context(in).id)
+			if numericContextDetached(in) && calls > 1 {
+				// A warmed private driver owns its identity in the current invocation,
+				// rather than the unused cached mutable-context activation.
+				identities = append(identities, state.invocationID)
+			} else {
+				identities = append(identities, state.hostInvokeCache[ic.slotIndex].hostActivation.context(in).id)
+			}
 		}
 		if calls == 2 {
 			if _, err := in.ExportedMemory("memory"); err != nil {

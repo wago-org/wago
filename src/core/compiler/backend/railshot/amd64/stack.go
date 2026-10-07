@@ -251,6 +251,10 @@ type stack struct {
 	hasGCRoots       bool
 	nextChunkCap     uint16
 	nextGeometricCap uint16
+	spillExtentValid bool
+	pendingEffects   uint8
+	spillExtent      uint32
+	spilledPrefix    *elem
 }
 
 const (
@@ -262,17 +266,24 @@ const (
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
 
 func newStackWithCap(capHint int) *stack {
+	s := &stack{}
+	s.initWithCap(capHint)
+	return s
+}
+
+// initWithCap initializes an empty stack without replacing its address. The
+// function compiler may already hold an alias when fallback first needs it.
+func (s *stack) initWithCap(capHint int) {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
 	next, geometric := stackArenaGrowthCaps(capHint)
-	s := &stack{
+	*s = stack{
 		chunks:           [][]elem{make([]elem, 0, capHint)},
 		nextChunkCap:     uint16(next),
 		nextGeometricCap: uint16(geometric),
 	}
 	s.initSentinel()
-	return s
 }
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
@@ -318,6 +329,8 @@ func (s *stack) initSentinel() {
 	s.logicalDepth = 0
 	s.canonicalSlots = true
 	s.hasGCRoots = false
+	s.pendingEffects = 0
+	s.spillExtent, s.spillExtentValid, s.spilledPrefix = 0, true, nil
 }
 
 // reset rewinds the stack to empty for reuse by the next function in a module
@@ -462,6 +475,8 @@ func (s *stack) pushValue(st storage) *elem {
 	e := s.alloc()
 	e.setElemKind(ekValue)
 	e.st = st
+	s.noteSpill(st)
+	s.recordStorageEffects(st)
 	s.logicalDepth++
 	return s.push(e)
 }
@@ -484,6 +499,9 @@ func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
 // expression node. The physical operand nodes remain linked as the expression
 // tree, while the logical depth changes only by the arity reduction.
 func (s *stack) pushDeferred(e *elem) *elem {
+	if isDivRem(e.deferredOp()) {
+		s.pendingEffects |= pendingTrap
+	}
 	s.canonicalSlots = false
 	arity := 1
 	if e.arg1 != nil {
@@ -517,6 +535,7 @@ func (s *stack) back() *elem {
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
+	s.forgetSpill(e)
 	s.canonicalSlots = false
 	if e.st.hasLogicalRoot() {
 		e.st.setLogicalRoot(false)
@@ -527,6 +546,9 @@ func (s *stack) erase(e *elem) {
 	}
 	e.prev.next, e.next.prev = e.next, e.prev
 	e.prev, e.next = nil, nil
+	if s.head.next == s.head {
+		s.pendingEffects &^= pendingLocalRef
+	}
 }
 
 // exposeLogicalRoot restores a deferred operand that an optimization peeled
@@ -798,4 +820,59 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	node.arg0 = operand
 	labelDeferredNode(node)
 	f.s.pushDeferred(node)
+}
+
+// Slot extent excludes spillFloor, which belongs to the current flush only.
+func (s *stack) noteSpill(st storage) {
+	if st.kind == stSlot && s.spillExtentValid {
+		end := st.slotIndex() + st.typ.stackSlots()
+		if uint64(end) > uint64(^uint32(0)) {
+			s.spillExtentValid = false
+			return
+		}
+		if uint32(end) > s.spillExtent {
+			s.spillExtent = uint32(end)
+		}
+	}
+}
+
+func (s *stack) forgetSpill(e *elem) {
+	if e.prev == nil || e.next == nil || !e.isValue() || e.st.kind != stSlot {
+		return
+	}
+	if e.st.slotIndex()+e.st.typ.stackSlots() == int(s.spillExtent) {
+		s.spillExtentValid = false
+	}
+	// A previously skipped slot may now become a register-resident value.
+	s.spilledPrefix = nil
+}
+
+// Skip only a contiguous slot prefix, retaining the existing deepest-victim policy.
+func (s *stack) firstUnspilled() *elem {
+	last := s.spilledPrefix
+	if last == nil {
+		last = s.head
+	}
+	e := last.next
+	for e != s.head && e.isValue() && e.st.kind == stSlot {
+		last, e = e, e.next
+	}
+	s.spilledPrefix = last
+	return e
+}
+
+const (
+	pendingTrap uint8 = 1 << iota
+	pendingLoad
+	pendingLocalRef
+)
+
+// Summaries may be stale positives after a discard, never stale negatives.
+func (s *stack) recordStorageEffects(st storage) {
+	if st.kind == stMemRef {
+		s.pendingEffects |= pendingLoad
+	}
+	if st.kind == stLocalRef || st.kind == stLocalReg || st.kind == stMemRef && st.memBorrow() >= 0 {
+		s.pendingEffects |= pendingLocalRef
+	}
 }

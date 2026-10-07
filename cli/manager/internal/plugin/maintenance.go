@@ -120,11 +120,8 @@ func Rebuild(request MaintenanceRequest) {
 		if _, err := syncPluginBuildVersions(buildDir, input, request.Verbose); err != nil {
 			return err
 		}
-		bin, _, err = pluginbuild.EnsureBinary(buildDir, input, true, request.Verbose, selection.config())
+		bin, _, err = pluginbuild.EnsureVerifiedBinaryContext(context.Background(), buildDir, input, true, request.Verbose, selection.config(), verifyStagedRuntimeContext)
 		if err != nil {
-			return err
-		}
-		if err := verifyStagedRuntime(bin); err != nil {
 			return err
 		}
 		pluginCount = len(lock.Plugins)

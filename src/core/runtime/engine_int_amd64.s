@@ -10,6 +10,9 @@ TEXT ·enterNativeIntRaw(SB), NOSPLIT, $0-64
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
 	MOVQ BP, 16(R10)
+	STMXCSR 24(R10)
+	MOVL $0x1f80, 28(R10)
+	LDMXCSR 28(R10)
 
 	MOVQ linMem+8(FP), BX
 	LEAQ -8(R10), SI
@@ -24,6 +27,7 @@ TEXT ·enterNativeIntRaw(SB), NOSPLIT, $0-64
 	CALL R11
 	MOVQ AX, DI
 
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
@@ -40,6 +44,9 @@ TEXT ·enterNativeIntPairRaw(SB), NOSPLIT, $0-72
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
 	MOVQ BP, 16(R10)
+	STMXCSR 24(R10)
+	MOVL $0x1f80, 28(R10)
+	LDMXCSR 28(R10)
 
 	MOVQ linMem+8(FP), BX
 	LEAQ -8(R10), SI
@@ -53,6 +60,7 @@ TEXT ·enterNativeIntPairRaw(SB), NOSPLIT, $0-72
 	XORL BP, BP
 	CALL R11
 
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
@@ -70,6 +78,9 @@ TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-72
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
 	MOVQ BP, 16(R10)
+	STMXCSR 24(R10)
+	MOVL $0x1f80, 28(R10)
+	LDMXCSR 28(R10)
 
 	MOVQ linMem+8(FP), BX
 	LEAQ -8(R10), R9
@@ -87,6 +98,7 @@ TEXT ·enterNativeIntWideRaw(SB), NOSPLIT, $0-72
 	XORL BP, BP
 	CALL SI
 
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
@@ -106,6 +118,9 @@ TEXT ·enterNativeIntOctRaw(SB), NOSPLIT, $0-96
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
 	MOVQ BP, 16(R10)
+	STMXCSR 24(R10)
+	MOVL $0x1f80, 28(R10)
+	LDMXCSR 28(R10)
 
 	MOVQ linMem+8(FP), BX
 	LEAQ -8(R10), R9
@@ -123,6 +138,7 @@ TEXT ·enterNativeIntOctRaw(SB), NOSPLIT, $0-96
 	XORL BP, BP
 	CALL SI
 
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
@@ -146,6 +162,9 @@ TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-64
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
 	MOVQ BP, 16(R10)
+	STMXCSR 24(R10)
+	MOVL $0x1f80, 28(R10)
+	LDMXCSR 28(R10)
 
 	MOVQ linMem+8(FP), BX
 	LEAQ -8(R10), R9
@@ -163,6 +182,7 @@ TEXT ·enterNativeFloatRaw(SB), NOSPLIT, $0-64
 	MOVQ X2, R9
 	MOVQ X3, R10
 
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
@@ -181,6 +201,9 @@ TEXT ·enterNativeFloatOctRaw(SB), NOSPLIT, $0-96
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
 	MOVQ BP, 16(R10)
+	STMXCSR 24(R10)
+	MOVL $0x1f80, 28(R10)
+	LDMXCSR 28(R10)
 	MOVQ linMem+8(FP), BX
 	LEAQ -8(R10), R9
 	MOVQ R9, -24(BX)
@@ -196,6 +219,7 @@ TEXT ·enterNativeFloatOctRaw(SB), NOSPLIT, $0-96
 	MOVQ 56(DI), X7
 	XORL BP, BP
 	CALL SI
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
@@ -219,6 +243,9 @@ TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-64
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
 	MOVQ BP, 16(R10)
+	STMXCSR 24(R10)
+	MOVL $0x1f80, 28(R10)
+	LDMXCSR 28(R10)
 
 	MOVQ linMem+8(FP), BX
 	LEAQ -8(R10), R9
@@ -238,6 +265,7 @@ TEXT ·enterNativeMixedRaw(SB), NOSPLIT, $0-64
 	MOVQ X0, R9
 	MOVQ X1, R10
 
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
@@ -257,6 +285,9 @@ TEXT ·enterNativeIntPreboundContextRaw(SB), NOSPLIT, $0-48
 	MOVQ SP,  8(R10)
 	MOVQ BX, 16(R10)
 	MOVQ BP, 24(R10)
+	STMXCSR 32(R10)
+	MOVL $0x1f80, 36(R10)
+	LDMXCSR 36(R10)
 
 	MOVQ 8(R9), BX
 	MOVQ R10, -24(BX)
@@ -270,6 +301,7 @@ TEXT ·enterNativeIntPreboundContextRaw(SB), NOSPLIT, $0-48
 	CALL R11
 	MOVQ AX, DI
 
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP
@@ -286,6 +318,9 @@ TEXT ·enterNativeIntCallRaw(SB), NOSPLIT, $0-16
 	MOVQ SP,  0(R10)
 	MOVQ BX,  8(R10)
 	MOVQ BP, 16(R10)
+	STMXCSR 24(R10)
+	MOVL $0x1f80, 28(R10)
+	LDMXCSR 28(R10)
 
 	MOVQ  8(R9), BX
 	LEAQ -8(R10), SI
@@ -299,6 +334,7 @@ TEXT ·enterNativeIntCallRaw(SB), NOSPLIT, $0-16
 	XORL BP, BP
 	CALL R11
 
+	LDMXCSR 24(SP)
 	MOVQ 16(SP), BP
 	MOVQ  8(SP), BX
 	MOVQ  0(SP), SP

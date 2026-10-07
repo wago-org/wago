@@ -72,7 +72,7 @@ func TestStagedEHOnlyModuleRetainsFixedNativeContextHeader(t *testing.T) {
 				return
 			}
 
-			// Simulate a version-5 producer which omitted the redundant header bit while
+			// Simulate a current-version producer which omitted the redundant header bit while
 			// retaining the authoritative EH feature. Every public loader must derive the
 			// requirement before footprint validation and instantiation.
 			withoutHeaderBit := *compiled

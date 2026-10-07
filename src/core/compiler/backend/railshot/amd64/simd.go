@@ -8,6 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	"os"
+	"runtime"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -49,7 +50,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.mov128LoadDisp(x, RSP, f.localAddr(e.st.index()))
+		f.loadFrameVector(x, f.localAddr(e.st.index()))
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -58,7 +59,11 @@ func (f *fn) materializeV128(e *elem) Reg {
 		// cannot corrupt the local — mirrors arm64 materializeV128 and the scalar
 		// materializeF stLocalReg copy.
 		x := f.allocFReg(0)
+		before := f.a.Len()
 		f.mov128(x, e.st.reg)
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "vector-borrow-copy")
+		}
 		f.occupyF(e, x)
 		return x
 	}
@@ -496,35 +501,35 @@ func (f *fn) v128Const(lo, hi uint64) {
 
 func (f *fn) v128UnaryNot() {
 	a := f.popValue()
-	x := f.materializeV128(a)
-	m := f.allocFReg(maskOf(x))
+	x, src := f.v128OutputOperand(a)
+	m := f.allocFReg(maskOf(x, src))
 	opVPcmpeqb.emit(f, m, m, m)
-	opVPxor.emit(f, x, x, m)
+	opVPxor.emit(f, x, src, m)
 	f.releaseF(m)
 	f.pushVReg(x)
 }
 
 func (f *fn) v128IntegerNeg(op simdBinaryOp) {
 	a := f.popValue()
-	x := f.materializeV128(a)
-	z := f.allocFReg(maskOf(x))
+	x, src := f.v128OutputOperand(a)
+	z := f.allocFReg(maskOf(x, src))
 	opVPxor.emit(f, z, z, z)
-	op.emit(f, x, z, x)
+	op.emit(f, x, z, src)
 	f.releaseF(z)
 	f.pushVReg(x)
 }
 
 func (f *fn) v128Unary(op simdUnaryOp) {
 	a := f.popValue()
-	x := f.materializeV128(a)
-	op.emit(f, x, x)
+	x, src := f.v128OutputOperand(a)
+	op.emit(f, x, src)
 	f.pushVReg(x)
 }
 
 func (f *fn) v128FloatRound(f64 bool, mode byte) {
 	a := f.popValue()
-	x := f.materializeV128(a)
-	f.emitVFRoundPacked(x, x, f64, mode)
+	x, src := f.v128OutputOperand(a)
+	f.emitVFRoundPacked(x, src, f64, mode)
 	f.pushVReg(x)
 }
 
@@ -599,7 +604,11 @@ func v128LocalAlias(e *elem) (int, bool) {
 // frame slot is still kept coherent by setLocal, but this read can use the
 // register value directly and avoid an L1 load.
 func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
-	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
+	for _, e := range f.fregUser {
+		// Only linked register owners can supply a still-live stack alias.
+		if e == nil || e.prev == nil || e.next == nil {
+			continue
+		}
 		if !e.isValue() || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
 			continue
 		}
@@ -623,7 +632,16 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 // clearV128LocalAliases invalidates stack annotations for the previous version
 // of x before local.set/tee installs a new version. The stack values themselves
 // remain valid expression operands; they simply no longer represent x.
+// Keep the filter on the platform qualified with native correctness and paired
+// compilation measurements. Zero retains the original scan as an oracle.
+var vectorAliasTypeFilterEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_VECTOR_ALIAS_TYPE_FILTER") != "0"
+
 func (f *fn) clearV128LocalAliases(x int) {
+	// Local types are fixed, including the rebased locals of an inline body.
+	// Only vector assignments can invalidate a vector-local alias.
+	if vectorAliasTypeFilterEnabled && f.localType[x] != mtV128 {
+		return
+	}
 	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
 		if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
 			e.st.cval = 0
@@ -721,6 +739,10 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 		}
 	}
 
+	if simdOutputBorrowEnabled {
+		f.v128BorrowedShuffle(aElem, bElem, aMask, bMask)
+		return
+	}
 	xa := f.materializeV128(aElem)
 	f.fpinned = f.fpinned.add(xa)
 	xb := f.materializeV128(bElem)
@@ -889,6 +911,24 @@ func (f *fn) v128Bitselect() {
 	maskElem := f.popValue()
 	bElem := f.popValue()
 	aElem := f.popValue()
+	if f.opt(optAVX512Ternary) && f.cpuHas(shared.AMD64AVX512) {
+		oldPinned := f.fpinned
+		mask := f.materializeV128(maskElem)
+		f.fpinned = f.fpinned.add(mask)
+		xb := f.materializeV128(bElem)
+		f.fpinned = f.fpinned.add(xb)
+		xa := f.materializeV128(aElem)
+		// VPTERNLOGD indexes its immediate as dst:src1:src2. With
+		// dst=a, src1=b, src2=mask, 0xe4 implements
+		// (a & mask) | (b & ~mask).
+		f.a.XPternlogd(xa, xb, mask, 0xe4)
+		f.fpinned = oldPinned
+		f.releaseF(mask)
+		f.releaseF(xb)
+		f.pushVReg(xa)
+		f.stats.peep("simd-bitselect-ternary")
+		return
+	}
 	mask := f.materializeV128(maskElem)
 	f.fpinned = f.fpinned.add(mask)
 	xb := f.materializeV128(bElem)
@@ -1083,7 +1123,16 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 		return
 	}
 	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
+	var src Reg
+	owned := true
+	if simdOutputBorrowEnabled {
+		src, owned = f.operandRegV128(srcElem)
+		if !owned {
+			f.stats.peep("simd-convert-input-borrow")
+		}
+	} else {
+		src = f.materializeV128(srcElem)
+	}
 	f.fpinned = f.fpinned.add(src)
 
 	if f64dst {
@@ -1104,7 +1153,9 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 		f.releaseF(magic)
 		f.fpinned = f.fpinned.remove(zx)
 		f.fpinned = f.fpinned.remove(src)
-		f.releaseF(src)
+		if owned {
+			f.releaseF(src)
+		}
 		f.pushVReg(zx)
 		return
 	}
@@ -1133,7 +1184,9 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 	f.releaseF(hi)
 	f.fpinned = f.fpinned.remove(lo)
 	f.fpinned = f.fpinned.remove(src)
-	f.releaseF(src)
+	if owned {
+		f.releaseF(src)
+	}
 	f.pushVReg(lo)
 }
 
@@ -1144,8 +1197,8 @@ func (f *fn) v128Shift(op simdBinaryOp, opImm simdShiftImmediate, countMask int3
 
 func (f *fn) v128ShiftCount(countElem *elem, op simdBinaryOp, opImm simdShiftImmediate, countMask int32) {
 	if countElem.isValue() && countElem.st.kind == stConst {
-		x := f.materializeV128(f.popValue())
-		opImm.emit(f, x, x, byte(countElem.st.cval&int64(countMask)))
+		x, src := f.v128OutputOperand(f.popValue())
+		opImm.emit(f, x, src, byte(countElem.st.cval&int64(countMask)))
 		f.stats.peep("simd-shift-imm")
 		f.pushVReg(x)
 		return
@@ -1154,12 +1207,12 @@ func (f *fn) v128ShiftCount(countElem *elem, op simdBinaryOp, opImm simdShiftImm
 	f.a.AluRI(4, count, countMask, false) // Wasm shifts use count modulo lane width.
 
 	value := f.popValue()
-	x := f.materializeV128(value)
-	countX := f.allocFReg(maskOf(x))
+	x, src := f.v128OutputOperand(value)
+	countX := f.allocFReg(maskOf(x, src))
 	f.a.MovGprToXmm(countX, count, false)
 	f.release(count)
 
-	op.emit(f, x, x, countX)
+	op.emit(f, x, src, countX)
 	f.releaseF(countX)
 	f.pushVReg(x)
 }
@@ -1194,6 +1247,18 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
 			prefix2 == 0xfd && orOp == 80 {
 			srcElem := f.popValue()
 			src, owned := f.operandRegV128(srcElem)
+			if f.opt(optAVX512VRotate) && f.cpuHas(shared.AMD64AVX512) {
+				out := src
+				if !owned {
+					f.fpinned = f.fpinned.add(src)
+					out = f.allocFReg(maskOf(src))
+					f.fpinned = f.fpinned.remove(src)
+				}
+				f.a.XPrordImm(out, src, byte(rightCount))
+				f.stats.peep("simd-rotr-avx512")
+				f.pushVReg(out)
+				return
+			}
 			f.fpinned = f.fpinned.add(src)
 			out := f.allocFReg(maskOf(src))
 			f.fpinned = f.fpinned.add(out)
@@ -1901,20 +1966,40 @@ func (f *fn) v128FloatSignOp(f64, isAbs bool, op byte) {
 	f.pushVReg(x)
 }
 
+// Keep the default on the platform qualified with native corpus measurements.
+var simdReductionBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SIMD_REDUCTION_BORROW") != "0"
+
+// Boolean reductions only inspect their input. Keep a pinned vector local in
+// place; the general materializer copies it because other consumers overwrite it.
+func (f *fn) reductionOperand(v *elem) (Reg, bool) {
+	if f.opt(optSIMDReductionBorrow) {
+		x, owned := f.operandRegV128(v)
+		if !owned {
+			f.stats.peep("simd-reduction-borrow")
+		}
+		return x, owned
+	}
+	return f.materializeV128(v), true
+}
+
 func (f *fn) v128Movemask() Reg {
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	r := f.allocReg(0)
 	opVPmovmskb.emit(f, r, x)
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	return r
 }
 
 func (f *fn) v128AnyTrue() {
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	f.emitVPtest(x, x)
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	r := f.allocReg(0)
 	f.a.SetccReg(condNE, r)
 	f.pushReg(r, mtI32)
@@ -1936,6 +2021,130 @@ func matchNextSIMDOp(r *wasm.Reader, want uint32) bool {
 		_ = r.JumpTo(save)
 		return false
 	}
+	return true
+}
+
+func matchNextSIMDBooleanOp(r *wasm.Reader) (uint32, bool) {
+	save := r.Offset()
+	prefix, err := r.Byte()
+	if err == nil && prefix == 0xfd {
+		var sub uint32
+		sub, err = r.U32()
+		if err == nil && (sub == 78 || sub == 80 || sub == 81) {
+			return sub, true
+		}
+	}
+	_ = r.JumpTo(save)
+	return 0, false
+}
+
+func v128BooleanOp(op uint32, a, b bool) bool {
+	switch op {
+	case 78:
+		return a && b
+	case 80:
+		return a || b
+	case 81:
+		return a != b
+	default:
+		panic("amd64: non-boolean v128 opcode in ternary selector")
+	}
+}
+
+// v128BooleanTernaryImm builds VPTERNLOGD's truth table for the logical
+// expression outer(a,inner(b,c)). role maps its destructive destination, src1,
+// and src2 registers to the corresponding logical input indexes.
+func v128BooleanTernaryImm(inner, outer uint32, role [3]int) byte {
+	var imm byte
+	for index := 0; index < 8; index++ {
+		var logical [3]bool
+		logical[role[0]] = index&4 != 0
+		logical[role[1]] = index&2 != 0
+		logical[role[2]] = index&1 != 0
+		if v128BooleanOp(outer, logical[0], v128BooleanOp(inner, logical[1], logical[2])) {
+			imm |= 1 << index
+		}
+	}
+	return imm
+}
+
+func (f *fn) topThreeV128Values() bool {
+	top := f.s.back()
+	if top == nil || top == f.s.head || !top.isValue() || top.st.typ != mtV128 {
+		return false
+	}
+	middle := baseOfValentBlock(top).prev
+	if middle == f.s.head || !middle.isValue() || middle.st.typ != mtV128 {
+		return false
+	}
+	bottom := baseOfValentBlock(middle).prev
+	return bottom != f.s.head && bottom.isValue() && bottom.st.typ == mtV128
+}
+
+// tryV128BooleanTernary fuses adjacent eager AND/OR/XOR operations into one
+// destructive 128-bit VPTERNLOGD. Its fixed three-input match and register
+// ownership decisions avoid retaining any additional per-function state.
+func (f *fn) tryV128BooleanTernary(r *wasm.Reader, inner uint32) bool {
+	if !f.topThreeV128Values() {
+		return false
+	}
+	save := r.Offset()
+	outer, ok := matchNextSIMDBooleanOp(r)
+	if !ok {
+		return false
+	}
+	if !f.cpuHas(shared.AMD64AVX512) {
+		_ = r.JumpTo(save)
+		return false
+	}
+
+	c := f.popValue()
+	b := f.popValue()
+	a := f.popValue()
+	oldPinned := f.fpinned
+	var regs [3]Reg
+	var owned [3]bool
+	regs[0], owned[0] = f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(regs[0])
+	regs[1], owned[1] = f.operandRegV128(b)
+	f.fpinned = f.fpinned.add(regs[1])
+	regs[2], owned[2] = f.operandRegV128(c)
+	f.fpinned = f.fpinned.add(regs[2])
+
+	dstIndex := -1
+	for i := range regs {
+		if owned[i] {
+			dstIndex = i
+			break
+		}
+	}
+	dst := regNone
+	if dstIndex >= 0 {
+		dst = regs[dstIndex]
+	} else {
+		dstIndex = 0
+		dst = f.allocFReg(maskOf(regs[0], regs[1], regs[2]))
+		f.mov128(dst, regs[0])
+	}
+
+	role := [3]int{dstIndex, -1, -1}
+	rolePos := 1
+	for i := range regs {
+		if i != dstIndex {
+			role[rolePos] = i
+			rolePos++
+		}
+	}
+	imm := v128BooleanTernaryImm(inner, outer, role)
+	f.a.XPternlogd(dst, regs[role[1]], regs[role[2]], imm)
+	f.fpinned = oldPinned
+	for i, reg := range regs {
+		if owned[i] && reg != dst {
+			f.releaseF(reg)
+		}
+	}
+	f.pushVReg(dst)
+	f.stats.peep("simd-ternary-boolean")
 	return true
 }
 
@@ -2039,19 +2248,23 @@ func (f *fn) i16x8Bitmask() {
 
 func (f *fn) i32x4Bitmask() {
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	r := f.allocReg(0)
 	opVMovmskps.emit(f, r, x) // 4 lane sign bits directly
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	f.pushReg(r, mtI32)
 }
 
 func (f *fn) i64x2Bitmask() {
 	v := f.popValue()
-	x := f.materializeV128(v)
+	x, owned := f.reductionOperand(v)
 	r := f.allocReg(0)
 	opVMovmskpd.emit(f, r, x) // 2 lane sign bits directly
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	f.pushReg(r, mtI32)
 }
 
@@ -2927,6 +3140,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		if f.tryV128AndAnyTrue(r) {
 			break
 		}
+		if f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 78) {
+			break
+		}
 		f.v128BinMem(r, opVPand)
 	case 79: // v128.andnot (a & ~b). VPANDN(dst, s1, s2) = ~s1 & s2, so
 		// VPANDN(dst, b, a) = ~b & a = the Wasm result in one instruction.
@@ -2946,8 +3162,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		}
 		f.pushVReg(dst)
 	case 80: // v128.or
+		if f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 80) {
+			break
+		}
 		f.v128BinMem(r, opVPor)
 	case 81: // v128.xor
+		if f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 81) {
+			break
+		}
 		f.v128BinMem(r, opVPxor)
 	case 82: // v128.bitselect: (a & mask) | (b & ~mask)
 		f.v128Bitselect()

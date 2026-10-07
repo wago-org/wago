@@ -6,7 +6,118 @@ import "github.com/wago-org/wago/internal/regalloccheck"
 
 const regallocCheckEnabled = true
 
-type regallocState struct{ regallocObserver func(regalloccheck.Effect) }
+type regallocState struct {
+	regallocObserver func(regalloccheck.Effect)
+	gpWriteObserver  func(uint32)
+}
+
+// ObserveGPWrites installs a physical GP destination observer independently of
+// transfer windows. Bit n names register n, including RSP and RBP. Partial and
+// conditional writes count; calls conservatively report all sixteen registers.
+// Restore the returned observer when the scope ends, including on panic.
+func (a *Asm) ObserveGPWrites(fn func(uint32)) func(uint32) {
+	old := a.gpWriteObserver
+	a.gpWriteObserver = fn
+	return old
+}
+
+func (a *Asm) regallocGPWrite(mask uint32) {
+	if mask != 0 && a.gpWriteObserver != nil {
+		a.gpWriteObserver(mask)
+	}
+}
+
+// The one-byte register ALU family uses either ModRM destination direction.
+// CMP and TEST only update flags. MOV and XCHG also use this shared seam.
+func (a *Asm) regallocGPRR(op byte, rm, reg Reg, rex bool) {
+	if !rex && op&1 == 0 && (op <= 0x33 || op >= 0x86 && op <= 0x8a) {
+		rm, reg = regallocLegacyByteReg(rm), regallocLegacyByteReg(reg)
+	}
+	switch {
+	case op <= 0x33 && op&7 <= 3:
+		if op&2 == 0 {
+			a.regallocGPWrite(1 << rm)
+		} else {
+			a.regallocGPWrite(1 << reg)
+		}
+	case op == 0x88 || op == 0x89:
+		a.regallocGPWrite(1 << rm)
+	case op == 0x8a || op == 0x8b:
+		a.regallocGPWrite(1 << reg)
+	case op == 0x86 || op == 0x87:
+		a.regallocGPWrite(1<<rm | 1<<reg)
+	}
+}
+
+// Without REX, byte encodings 4..7 name AH/CH/DH/BH, not SPL/BPL/SIL/DIL.
+func regallocLegacyByteReg(r Reg) Reg {
+	if r >= 4 && r < 8 {
+		return r - 4
+	}
+	return r
+}
+
+// Memory destinations and address operands do not write a GP register.
+func (a *Asm) regallocGPMem(op byte, reg Reg, rex bool) {
+	if !rex && op&1 == 0 && (op <= 0x33 || op == 0x8a) {
+		reg = regallocLegacyByteReg(reg)
+	}
+	switch {
+	case op <= 0x33 && op&6 == 2:
+		a.regallocGPWrite(1 << reg)
+	case op == 0x63 || op == 0x8a || op == 0x8b || op == 0x8d:
+		a.regallocGPWrite(1 << reg)
+	case op == 0xff && reg == 2: // CALL r/m64
+		a.regallocGPWrite(0xffff)
+	}
+}
+
+// GP results hidden in the generic SIMD encoders need the actual ModRM
+// destination, not the helper's argument names. Memory extraction writes only
+// memory. Mandatory prefixes distinguish scalar GP conversions from packed FP
+// conversions and MOVD/Q from the FP-only F3 MOVQ form.
+func (a *Asm) regallocGPSSE(prefix, opcodeMap, op byte, reg, rm Reg, memory bool) {
+	if opcodeMap == 0 {
+		switch op {
+		case 0x2c, 0x2d: // CVTTSS/SD2SI, CVTSS/SD2SI
+			if prefix == 0xf2 || prefix == 0xf3 {
+				a.regallocGPWrite(1 << reg)
+			}
+		case 0x50, 0xd7, 0xc5: // MOVMSKPS/PD, PMOVMSKB, PEXTRW
+			if !memory && (prefix == 0 || prefix == 0x66) {
+				a.regallocGPWrite(1 << reg)
+			}
+		case 0x7e: // MOVD/Q r/m, xmm (or mm)
+			if !memory && (prefix == 0 || prefix == 0x66) {
+				a.regallocGPWrite(1 << rm)
+			}
+		}
+	} else if opcodeMap == 0x3a && prefix == 0x66 && !memory {
+		switch op {
+		case 0x14, 0x15, 0x16, 0x17: // PEXTRB/W/D/Q, EXTRACTPS
+			a.regallocGPWrite(1 << rm)
+		}
+	}
+}
+
+func (a *Asm) regallocGPVEX(opcodeMap, pp, op byte, reg, rm Reg, memory bool) {
+	if opcodeMap == vexMap0F3A && pp == 3 && op == 0xf0 { // RORX
+		a.regallocGPWrite(1 << reg)
+		return
+	}
+	var m byte
+	switch opcodeMap {
+	case vexMap0F:
+	case vexMap0F38:
+		m = 0x38
+	case vexMap0F3A:
+		m = 0x3a
+	default:
+		return
+	}
+	prefix := [...]byte{0, 0x66, 0xf3, 0xf2}[pp&3]
+	a.regallocGPSSE(prefix, m, op, reg, rm, memory)
+}
 
 // ObserveRegalloc scopes an observer to an explicitly checked transfer window.
 // The returned observer must be restored, including when codegen panics.

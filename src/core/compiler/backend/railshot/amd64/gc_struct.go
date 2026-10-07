@@ -65,6 +65,16 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if sub == 26 {
 			return f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
 		}
+		if next, ok := r.Peek(); ok && next == 0x1a {
+			// The converted identity cannot escape an immediate drop. Keep the
+			// operand's traps and other effects, but do not create a collector
+			// root for a word that Wasm never observes.
+			f.materializePendingTraps()
+			f.dropValue()
+			_, _ = r.Byte() // validated immediate drop
+			f.stats.peep("gc-dead-extern-convert")
+			return nil
+		}
 		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
 	}
 	if !f.gcStructHelpers {
@@ -317,6 +327,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	sourceLocal, hasSourceLocal := gcLocalProvenance(f.s.back())
 	finalTarget := false
 	if heap >= 0 {
@@ -689,6 +700,9 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) emitGCI31(sub uint32) error {
+	if sub == 29 || sub == 30 {
+		f.materializePendingTraps()
+	}
 	value := f.materialize(f.popValue())
 	switch sub {
 	case 28: // ref.i31
