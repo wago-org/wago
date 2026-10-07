@@ -99,18 +99,18 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	if m.ImportedTableCount() != 0 && (!production || !importedTables) {
 		return false, unsupported("imported table requires the retained public table ABI")
 	}
-	if len(m.Tables)+m.ImportedTableCount() == 0 {
-		if len(m.Elements) != 0 {
-			return false, unsupported("elements without private table")
-		}
+	hasTable := len(m.Tables)+m.ImportedTableCount() != 0
+	if !hasTable && len(m.Elements) == 0 {
 		return false, nil
 	}
-	if !production {
+	if !production || !hasTable && !importedTables {
 		return false, unsupported("isolated private table")
 	}
-	t, _ := m.TableType(0)
-	if t.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) {
-		return false, unsupported("private nullable funcref table32 only")
+	if hasTable {
+		t, _ := m.TableType(0)
+		if t.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) {
+			return false, unsupported("private nullable funcref table32 only")
+		}
 	}
 	if len(m.Tables) != 0 && m.Tables[0].Init != nil {
 		if !importedTables {
@@ -122,6 +122,9 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	imported := m.ImportedFuncCount()
 	for _, e := range m.Elements {
+		if !hasTable && e.Mode.Kind != wasm.ElemDeclarative {
+			return false, unsupported("table-free elements must be declarative")
+		}
 		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 {
 			return false, unsupported("element mode/table")
 		}
@@ -160,7 +163,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 			}
 		}
 	}
-	return true, nil
+	return hasTable, nil
 }
 
 func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int) {

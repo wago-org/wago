@@ -13,14 +13,29 @@ import (
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
 	if c.tableCount() == 0 {
-		if c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.tableExports) != 0 {
+		if c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || len(c.Elems) != 0 || len(c.tableExports) != 0 {
 			return fmt.Errorf("table metadata requires a declared table")
+		}
+		if len(c.passiveElems) > railshot.MaxOwnedElementSegments || len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+			return fmt.Errorf("declarative element directory count/feature")
+		}
+		for _, e := range c.passiveElems {
+			if e.Mode != ElemModeDeclarative || e.TableIndex != 0 || e.RefType != ValFuncRef && e.RefType != 0 || len(e.Values) != 0 || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 {
+				return fmt.Errorf("table-free element state must be dropped declarative funcref")
+			}
+			if e.HasValueType {
+				plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+				exact, err := c.elemExactType(e)
+				if err != nil || exact != plain || e.RefType != ValFuncRef || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+					return fmt.Errorf("declarative element exact type/feature")
+				}
+			}
 		}
 		hasReferenceGlobal := false
 		for _, global := range c.Globals {
 			hasReferenceGlobal = hasReferenceGlobal || global.Type == ValFuncRef
 		}
-		if !hasReferenceGlobal && !c.needsFuncRefDescs() {
+		if !hasReferenceGlobal && !c.needsFuncRefDescs() && len(c.passiveElems) == 0 {
 			return nil
 		}
 		if !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {

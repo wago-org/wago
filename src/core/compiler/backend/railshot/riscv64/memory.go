@@ -79,8 +79,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.importReferences = production && importedTables
 	var tableErr error
 	s.ownedTable, tableErr = admitTableProfile(m, production, importedTables)
+	s.elementCount = len(m.Elements)
 	if s.ownedTable {
-		s.elementCount = len(m.Elements)
 		// The frontend reserves max(1024,2*min) for observable no-max growth.
 		t, _ := m.TableType(0)
 		s.ownedTableGrowth = importedTables && m.ImportedTableCount() != 0 || t.Limits.HasMax || t.Limits.Min <= MaxOwnedTableEntries/2

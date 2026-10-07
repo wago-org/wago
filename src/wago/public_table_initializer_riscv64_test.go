@@ -233,6 +233,18 @@ func TestRV64PublicTableInitializerArtifactAdmission(t *testing.T) {
 			continue
 		}
 		loaded, err := LoadTrustedArtifact(blob)
+		if index == 3 && err == nil {
+			// The absent-table codec tag drops owned table fields. Descriptor-only
+			// modules are now valid; a trusted artifact does not revalidate code
+			// against caller-modified metadata.
+			repaired := loaded.executionView()
+			if repaired.HasTableInitFunc || repaired.tableCount() != 0 || repaired.TableSize != 0 || railshotValidateCompiled(repaired) != nil {
+				loaded.Close()
+				t.Fatal("invalid normalized table-free metadata")
+			}
+			loaded.Close()
+			continue
+		}
 		if index == 4 && err == nil {
 			// The imported-table codec tag has no initializer payload. It drops
 			// the conflicting owned initializer, yielding a valid import.

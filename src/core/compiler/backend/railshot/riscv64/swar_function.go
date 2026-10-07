@@ -73,7 +73,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
 		return swarSummary{}, unsupported("SWAR import prefix bound/defined functions/table")
 	}
-	if elementCount < 0 || elementCount > MaxOwnedElementSegments || elementCount != 0 && table == nil {
+	if elementCount < 0 || elementCount > MaxOwnedElementSegments || elementCount != 0 && table == nil && !foreignTableCalls {
 		return swarSummary{}, unsupported("SWAR owned element directory bound/table")
 	}
 	if typeKeys != nil && (table == nil || len(typeKeys) != len(types) || len(types) == 0 || len(functions) == 0) {
@@ -764,7 +764,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if table == nil || uint64(index) >= uint64(elementCount) {
+				if sub == 12 && table == nil || uint64(index) >= uint64(elementCount) {
 					return swarSummary{}, unsupported("SWAR owned element index/table")
 				}
 				usesTraps = true

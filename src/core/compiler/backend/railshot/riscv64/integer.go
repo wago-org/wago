@@ -691,7 +691,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("bulk instruction without state")
 			}
 			if imm.Kind == wasm.InstrTableInit || imm.Kind == wasm.InstrElemDrop {
-				if !state.ownedTable || !privateRefs || uint64(imm.Index) >= uint64(state.elementCount) || imm.Index2 != 0 {
+				if !privateRefs || imm.Kind == wasm.InstrTableInit && !state.ownedTable || uint64(imm.Index) >= uint64(state.elementCount) || imm.Index2 != 0 {
 					return integerSummary{}, unsupported("private element index/shape")
 				}
 				if imm.Kind == wasm.InstrElemDrop {
