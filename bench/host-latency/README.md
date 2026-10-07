@@ -22,13 +22,7 @@ the Rust reference materializes it from `yield.wat`.
 For paired comparisons, build the identical harness against each source version
 and run `quiet_capture.py --help`. `summarize_guarded.py` verifies CSV digests and
 retains all callback/API/count shapes, paired ratios, spread and reference drift.
-The included ARM64 captures explicitly bypassed the quiet-host gate at the user's
-request; process-load evidence is retained and those are shared-host measurements.
 
-[Published measurement evidence](pr-evidence/README.md) contains both architecture
-tables, original-main comparisons, final incremental comparisons, raw CSVs,
-fixture/source/binary pins, and host-load evidence. Compressed captures retain raw measurements without adding exploratory
-source snapshots to the benchmark module. Local exploration archives are ignored.
-
-The current-main-versus-PR-head tables are in the published evidence page.
-Historical measurements remain separately labeled. Wasmtime parity is unmet.
+Current-main-versus-PR-head tables for AMD64 and ARM64 are in the PR description.
+Raw captures, source and binary pins, and host-load evidence are retained locally.
+Local exploration archives are ignored. Wasmtime parity is unmet.
