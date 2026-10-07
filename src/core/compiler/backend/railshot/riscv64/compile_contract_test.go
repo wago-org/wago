@@ -73,6 +73,9 @@ func TestProductionDecodedCompilerRejectsSemanticDependencies(t *testing.T) {
 		{Codegen: codegen.Options{Module: codegen.ModuleInfo{Features: codegen.Features{GC: true}}}},
 		{Optimizations: map[string]bool{"reg-abi": true}}, {SyncHostSlots: -1}, {SyncHostSlots: 65536},
 	} {
+		if opts.Stats != nil && diagnosticsEnabled {
+			continue // Finalized sizes are qualified independently of profiling.
+		}
 		pressureCalls := 0
 		opts.MemoryPressure = func() { pressureCalls++ }
 		image, err := CompileModuleWith(m, opts)

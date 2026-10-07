@@ -42,18 +42,25 @@ type CompileOptions struct {
 	GCStructHelpers, GCArrayHelpers bool
 	GCFrameRoots                    *shared.GCModuleFrameRootPlan
 	Codegen                         codegen.Options
-	Stats                           *ModuleStats
-	CollectInlineReport             bool
-	CustomInstructions              map[uint32]railcore.CustomInstruction
-	ForceFallback                   bool
-	production                      bool
-	publicStarts                    bool
-	hostImports                     bool
+	// Stats collects CompileModuleWith's finalized local-function sizes with
+	// wago_codegenstats or wago_profile. Success replaces the sink; failure
+	// leaves it unchanged. The isolated private pilot does not collect stats.
+	Stats               *ModuleStats
+	CollectInlineReport bool
+	CustomInstructions  map[uint32]railcore.CustomInstruction
+	ForceFallback       bool
+	production          bool
+	publicStarts        bool
+	hostImports         bool
 }
 
-// The initial public envelope rejects profiling until finalized source/unwind
-// attribution exists. These shared-shaped metadata types keep that contract
-// type-correct without fabricating an empty successful profile.
+// CodegenStats reports finalized local-function CodeBytes and FrameBytes.
+// FuncIdx is the local definition index, excluding imported functions. CodeBytes
+// includes the framed wrapper and cold traps, but not inter-function alignment
+// or separately instantiated import adapters. GCCodeBytes.Total is the same
+// measured size. All other fields are currently unavailable and remain zero/nil;
+// in particular, zero BoundsChecks/Spills/Reloads is not a measured count.
+// Profiling, source maps and unwind attribution remain unsupported.
 type CodegenStats struct {
 	FuncIdx, CodeBytes, FrameBytes int
 	Name                           string
@@ -63,6 +70,8 @@ type CodegenStats struct {
 	GCCodeBytes                    shared.GCNativeCodeBytes
 }
 
+// ModuleStats owns a bounded snapshot of this compile's finalized functions.
+// Optional profiling fields remain empty; reusing a sink drops old attribution.
 type ModuleStats struct {
 	CodeSites      []shared.NativeCodeSite
 	UnwindRanges   []jitprofile.UnwindRange

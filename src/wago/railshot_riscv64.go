@@ -54,8 +54,16 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	return railshot.CompileModuleWith(m, opts)
 }
 
-func railshotGCNativeCodeTelemetry(*railshotModuleStats) GCNativeCodeTelemetry {
-	return GCNativeCodeTelemetry{}
+func railshotGCNativeCodeTelemetry(stats *railshotModuleStats) GCNativeCodeTelemetry {
+	var out GCNativeCodeTelemetry
+	if stats != nil {
+		for _, function := range stats.Funcs {
+			if function != nil {
+				out.TotalBytes += uint64(function.GCCodeBytes.Total)
+			}
+		}
+	}
+	return out
 }
 
 // Deferred events retain pre-publication gates.

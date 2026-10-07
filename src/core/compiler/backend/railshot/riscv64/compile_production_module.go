@@ -129,7 +129,10 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if err := gc.ValidateTypeDescs(opts.Codegen.Module.GCTypeDescs); err != nil {
 		return err
 	}
-	if opts.Profile || opts.SourceMaps || opts.UnwindMaps || opts.Stats != nil || opts.CollectInlineReport {
+	if opts.Stats != nil && !diagnosticsEnabled {
+		return unsupported("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
+	}
+	if opts.Profile || opts.SourceMaps || opts.UnwindMaps || opts.CollectInlineReport {
 		return unsupported("finalized profiling metadata is pending")
 	}
 	if _, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas); err != nil {
@@ -143,16 +146,21 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 		opts.MemoryPressure()
 	}
 	image, err := stageProduction(c, opts.DeferCodeMapping)
-	if err != nil || !opts.DeferCodeMapping || image.CodeImage == nil {
+	if err != nil {
 		return image, err
 	}
 	// The shared compiler contract represents deferred heap ownership as Code
 	// with no CodeImage. A nonnil CodeImage promises Take can transfer an RW
 	// mapping to the public cache; heap staging cannot fulfill that promise.
-	image.Code, err = image.CodeImage.(*coreruntime.CodeBuffer).TakeHeap()
-	if err != nil {
-		return nil, err
+	if opts.DeferCodeMapping && image.CodeImage != nil {
+		image.Code, err = image.CodeImage.(*coreruntime.CodeBuffer).TakeHeap()
+		if err != nil {
+			return nil, err
+		}
+		image.CodeImage = nil
 	}
-	image.CodeImage = nil
+	if diagnosticsEnabled && opts.Stats != nil {
+		collectFinalizedStats(c, opts.Stats)
+	}
 	return image, nil
 }
