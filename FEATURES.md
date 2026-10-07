@@ -26,7 +26,11 @@ funcref globals support local copy chains, exports, and same-Runtime imports
 from explicit Global owners with no table, an owned table, or a host-created
 imported table. Nullable funcref locals and control values, including body-level
 `ref.func` of export-declared local or native-imported numeric/vector functions,
-also work without globals or tables. Function signatures remain numeric/vector;
+also work without globals or tables. Table-free declarative segments and repeated
+`elem.drop` use dropped element state; unused legacy declarations require no
+function descriptors or element directory. Empty and state-only modules have no
+executable mapping. Bounded opaque custom metadata and empty supported sections
+are accepted. Function signatures remain numeric/vector;
 Go callback and HostFuncRef reexports remain rejected. Frozen
 attachments retain the actual descriptor storage through producer retirement,
 parked callbacks, and indirect calls. Imported host tables retain the actual

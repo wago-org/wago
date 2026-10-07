@@ -5,6 +5,7 @@ package wago
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"sort"
@@ -12,13 +13,15 @@ import (
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/simdfixture"
 )
 
 // These opt-in suites qualify execution through the public API and trusted
-// artifacts. Invalid/malformed modules and linking commands are counted as
-// exclusions, never advertised as full release conformance.
+// artifacts. Binary invalid modules must fail in decoding/validation, never
+// merely in RV64 admission. Text syntax assertions remain explicit exclusions:
+// the public API does not implement the WAT frontend.
 func TestRV64PublicPinnedSIMDSpecExecution(t *testing.T) {
 	rv64PublicSpecExecution(t, "WAGO_RV64_SPEC_JSON_DIR", false)
 }
@@ -29,6 +32,7 @@ func TestRV64PublicPinnedRelaxedSIMDSpecExecution(t *testing.T) {
 type rv64PublicSpecInstance struct {
 	compiled *Compiled
 	instance *Instance
+	globals  []*Global
 }
 
 func (in *rv64PublicSpecInstance) close() error {
@@ -43,6 +47,12 @@ func (in *rv64PublicSpecInstance) close() error {
 		}
 		in.instance = nil
 	}
+	for _, global := range in.globals {
+		if err := global.Close(); err != nil {
+			return err
+		}
+	}
+	in.globals = nil
 	if in.compiled != nil {
 		if err := in.compiled.Close(); err != nil {
 			return err
@@ -51,7 +61,7 @@ func (in *rv64PublicSpecInstance) close() error {
 	}
 	return nil
 }
-func rv64PublicSpecInstantiate(t *testing.T, source []byte, artifact bool) (*rv64PublicSpecInstance, error) {
+func rv64PublicSpecInstantiate(t *testing.T, source []byte, artifact bool, registered map[string]*rv64PublicSpecInstance) (*rv64PublicSpecInstance, error) {
 	t.Helper()
 	in := &rv64PublicSpecInstance{}
 	complete := false
@@ -94,24 +104,50 @@ func rv64PublicSpecInstantiate(t *testing.T, source []byte, artifact bool) (*rv6
 		// The streaming codec intentionally retains a readable/writable image.
 		// Callable publication happens only after activation seals it and
 		// synchronizes the Linux process-wide instruction cache.
-		if loaded.codeCache.base == 0 || loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode == 0 || loaded.requiredAMD64Features != 0 {
+		if loaded.requiredAMD64Features != 0 {
+			t.Fatal("artifact selected a foreign ISA")
+		}
+		if loaded.hasNoFunctionCode() {
+			if loaded.codeCache.base != 0 || loaded.codeCache.mem != nil || loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode != 0 {
+				t.Fatal("state-only artifact allocated or published a code mapping")
+			}
+		} else if loaded.codeCache.base == 0 || loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode == 0 {
 			t.Fatal("artifact did not retain its pending RW baseline image")
 		}
 	}
-	if in.compiled.NumImports != 0 || in.compiled.memoryCount() > 1 {
+	if in.compiled.NumImports != 0 || in.compiled.memoryCount() > 1 || in.compiled.memoryImportCount() != 0 || in.compiled.tableImportCount() != 0 || len(in.compiled.GlobalImports) > 16 {
 		t.Fatal("unexpected public fixture resource shape")
 	}
 	if in.compiled.memoryCount() == 1 && in.compiled.memoryDef(0).Min > 16 {
 		t.Fatal("pinned fixture exceeds the 16-page initial backing budget")
 	}
-	// One live module at a time; memory32 reserves virtual space up to the source
-	// ceiling, while only its bounded initial pages are backed.
-	in.instance, err = Instantiate(in.compiled, InstantiateOptions{nativeStackBytes: MinNativeStackBytes})
+	var imports *Imports
+	if len(in.compiled.GlobalImports) != 0 {
+		imports = NewImports()
+		for _, imp := range in.compiled.GlobalImports {
+			owner := registered[imp.Module]
+			if owner == nil || owner.instance == nil {
+				return nil, fmt.Errorf("unregistered public spec module %q", imp.Module)
+			}
+			global, err := owner.instance.ExportedGlobalObject(imp.Name)
+			if err != nil {
+				return nil, err
+			}
+			in.globals = append(in.globals, global)
+			imports.Global(imp.Module, imp.Name, global)
+		}
+	}
+	// Only the current module and explicitly registered owners stay live.
+	// Memory32 backs only the bounded initial pages.
+	in.instance, err = Instantiate(in.compiled, InstantiateOptions{nativeStackBytes: MinNativeStackBytes, Imports: imports})
 	if err != nil {
 		t.Fatal("instantiate pinned module", err)
 	}
 	if in.instance.eng.StackBytes() != MinNativeStackBytes {
 		t.Fatal("public spec native stack budget was not applied")
+	}
+	if in.compiled.hasNoFunctionCode() && (in.compiled.codeCache.base != 0 || in.compiled.codeCache.mem != nil || in.compiled.codeCache.sealed || in.compiled.codeCache.flags&compiledCacheWritableCode != 0) {
+		t.Fatal("state-only activation allocated or published a code mapping")
 	}
 	complete = true
 	return in, nil
@@ -208,20 +244,12 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 		}
 		t.Run(mode, func(t *testing.T) {
 			total := make(map[string]int)
-			// Exactly these three state/linking-only modules are outside this bounded
-			// public execution milestone. Any other rejection or changed reason fails.
-			exclusions := map[string]string{
-				"simd_const.112.wasm": "function count outside 1..1024",
-				"simd_linking.0.wasm": "SWAR module state/features/function bound",
-				// Its imported vectors now select SWAR; it still defines no functions.
-				"simd_linking.1.wasm": "SWAR module state/features/function bound",
-			}
-			want := map[string]int{"modules": 469, "excluded_modules": 3, "assert_return": 24273, "assert_trap": 54, "excluded_assert_invalid": 669, "excluded_assert_malformed": 510, "excluded_register": 1}
+			// All valid pinned modules must compile and instantiate, including
+			// state-only modules and the registered vector-global linking pair.
+			want := map[string]int{"modules": 472, "register": 1, "assert_return": 24273, "assert_trap": 54, "assert_invalid": 669, "assert_invalid_decode": 1, "assert_invalid_validate": 668, "excluded_text_assert_malformed": 510}
 			if relaxed {
-				exclusions = map[string]string{}
 				want = map[string]int{"modules": 8, "assert_return": 69, "assert_return_either": 32}
 			}
-			seenExcluded := make(map[string]bool)
 			for _, file := range files {
 				t.Run(strings.TrimSuffix(file, ".json"), func(t *testing.T) {
 					data, err := manifest.Read(dir, file, 16<<20)
@@ -237,49 +265,80 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 					}
 					counts := make(map[string]int)
 					var current *rv64PublicSpecInstance
-					var excluded error
+					registered := make(map[string]*rv64PublicSpecInstance)
+					var registeredOwners []*rv64PublicSpecInstance
 					defer func() {
 						if err := current.close(); err != nil {
 							t.Error(err)
+							return // Do not close providers under a still-live consumer.
+						}
+						for i := len(registeredOwners) - 1; i >= 0; i-- {
+							if err := registeredOwners[i].close(); err != nil {
+								t.Error(err)
+								return
+							}
 						}
 					}()
 					for _, command := range document.Commands {
 						switch command.Type {
 						case "module":
-							if err := current.close(); err != nil {
-								t.Fatal(err)
+							retained := false
+							for _, owner := range registeredOwners {
+								retained = retained || owner == current
+							}
+							if !retained {
+								if err := current.close(); err != nil {
+									t.Fatal(err)
+								}
 							}
 							current = nil
 							body, err := manifest.Read(dir, command.Filename, railshot.MaxModuleBytes)
 							if err != nil {
 								t.Fatal(err)
 							}
-							current, excluded = rv64PublicSpecInstantiate(t, body, artifact)
-							if excluded != nil {
-								reason, listed := exclusions[command.Filename]
-								if !listed || seenExcluded[command.Filename] || !errors.Is(excluded, railshot.ErrUnsupported) || excluded.Error() != "compile: "+railshot.ErrUnsupported.Error()+": "+reason {
-									t.Fatalf("valid public spec module %s: %v", command.Filename, excluded)
-								}
-								seenExcluded[command.Filename] = true
-								counts["excluded_modules"]++
-								t.Logf("excluded public module %s: %v", command.Filename, excluded)
-							} else {
-								if _, listed := exclusions[command.Filename]; listed {
-									t.Fatal("public policy widened; independently review fixture coverage", command.Filename)
-								}
-								counts["modules"]++
+							current, err = rv64PublicSpecInstantiate(t, body, artifact, registered)
+							if err != nil {
+								t.Fatalf("valid public spec module %s: %v", command.Filename, err)
 							}
+							counts["modules"]++
 						case "assert_return", "assert_trap":
-							if excluded != nil || current == nil {
-								t.Fatal("public action without an admitted current module", command.Line, excluded)
+							if current == nil {
+								t.Fatal("public action without an admitted current module", command.Line)
 							}
 							current.invoke(t, command)
 							counts[command.Type]++
 							if len(command.Either) != 0 {
 								counts["assert_return_either"]++
 							}
-						case "assert_invalid", "assert_malformed", "register":
-							counts["excluded_"+command.Type]++
+						case "assert_invalid":
+							if command.ModuleType != "binary" {
+								t.Fatal("unexpected invalid fixture representation", command.ModuleType)
+							}
+							body, err := manifest.Read(dir, command.Filename, railshot.MaxModuleBytes)
+							if err != nil {
+								t.Fatal(err)
+							}
+							stage := rv64PublicSpecAssertInvalid(t, body, command)
+							counts["assert_invalid_"+stage]++
+							counts[command.Type]++
+						case "assert_malformed":
+							if command.ModuleType != "text" {
+								t.Fatal("unexpected malformed fixture representation", command.ModuleType)
+							}
+							if _, err := manifest.Read(dir, command.Filename, railshot.MaxModuleBytes); err != nil {
+								t.Fatal(err)
+							}
+							counts["excluded_text_assert_malformed"]++
+						case "register":
+							if command.As == "" || registered[command.As] != nil || len(registeredOwners) >= 1 {
+								t.Fatal("unexpected pinned public registration", command.As)
+							}
+							if current == nil {
+								t.Fatal("registration without a current module")
+							}
+							registered[command.As] = current
+							registeredOwners = append(registeredOwners, current)
+							counts[command.Type]++
 						default:
 							t.Fatal("unexpected pinned public spec command", command.Type)
 						}
@@ -291,9 +350,78 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 				})
 			}
 			t.Logf("public %s pinned spec %s, WABT %s; execution/exclusion coverage %v", mode, manifest.SpecCommit, manifest.WabtVersion, total)
-			if !reflect.DeepEqual(total, want) || len(seenExcluded) != len(exclusions) {
-				t.Fatal("pinned public execution coverage changed", total, "want", want, "exclusions", seenExcluded)
+			if !reflect.DeepEqual(total, want) {
+				t.Fatal("pinned public execution coverage changed", total, "want", want)
 			}
 		})
 	}
+}
+
+// A target-profile or resource-limit rejection is not a validation assertion.
+// Match the pinned source diagnostic to a specific frontend error category.
+func rv64PublicSpecAssertInvalid(t *testing.T, source []byte, command simdfixture.Command) string {
+	t.Helper()
+	compiled, err := Compile(NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes), source)
+	if compiled != nil {
+		if cleanup := compiled.Close(); cleanup != nil {
+			t.Error(cleanup)
+		}
+		t.Fatal("invalid pinned module produced compiled code", command.Filename)
+	}
+	if mismatch := rv64PublicSpecInvalidError(command.Text, err); mismatch != nil {
+		t.Fatalf("invalid pinned module %s line %d: %v", command.Filename, command.Line, mismatch)
+	}
+	var decode *wasm.DecodeError
+	decodedRejection := errors.As(err, &decode)
+	// The pinned shuffle with an out-of-range immediate is the sole invalid
+	// binary rejected by decoding. A different decoder failure is a regression.
+	if decodedRejection != (command.Filename == "simd_lane.96.wasm") {
+		t.Fatalf("invalid pinned module %s rejected at unexpected stage: %v", command.Filename, err)
+	}
+	if decodedRejection {
+		// This manifest-pinned binary has one code body starting at byte 23.
+		// Its shuffle starts at byte 60; the final lane is 255 at byte 77.
+		// DecodeError.Offset is relative to that body, not the whole module.
+		if len(source) != 79 || source[19] != 10 || source[20] != 58 ||
+			source[21] != 1 || source[22] != 56 || source[23] != 0 ||
+			source[60] != 0xfd || source[61] != 13 || source[77] != 255 || source[78] != 0x0b {
+			t.Fatal("pinned invalid shuffle instruction/source layout changed")
+		}
+		for lane := 0; lane < 15; lane++ {
+			if source[62+lane] != byte(lane) {
+				t.Fatal("pinned shuffle has an earlier invalid or changed lane", lane)
+			}
+		}
+		return "decode"
+	}
+	return "validate"
+}
+
+func rv64PublicSpecInvalidError(text string, err error) error {
+	want := wasm.ErrTypeMismatch
+	switch text {
+	case "type mismatch":
+	case "invalid lane index":
+		// Shuffle lane bytes are rejected by decoding; other lane bounds are
+		// checked by validation. Both reject the specified invalid immediate.
+		var decode *wasm.DecodeError
+		if errors.As(err, &decode) && decode.Code == wasm.ErrInvalidInstruction &&
+			decode.Offset == 54 && decode.SectionID == 10 && decode.SectionStart == 21 && decode.SectionEnd == 79 {
+			return nil
+		}
+	case "alignment must not be larger than natural":
+		want = wasm.ErrInvalidAlignment
+	case "unknown local 2":
+		want = wasm.ErrUnknownLocal
+	default:
+		return fmt.Errorf("unknown pinned validation diagnostic %q", text)
+	}
+	var validation *wasm.ValidationError
+	if !errors.As(err, &validation) || validation.Code != want {
+		return fmt.Errorf("want validation %s for %q, got %v", want, text, err)
+	}
+	if text == "invalid lane index" && validation.Detail != "simd lane out of range" {
+		return fmt.Errorf("lane assertion failed for unrelated type error: %v", err)
+	}
+	return nil
 }

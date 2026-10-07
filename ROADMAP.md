@@ -10,6 +10,11 @@ nullable funcref globals support local copies, exports, and explicit same-Runtim
 imports into modules with no table, an owned table, or a host-created imported
 table. Nullable funcref locals/control and body-level `ref.func` of export-declared
 local or native-imported numeric/vector functions also work without module state.
+Table-free declarative segments, empty/state-only modules, bounded opaque custom
+metadata and empty supported sections are admitted. State-only modules retain
+resource ownership without allocating executable memory. The public pinned SIMD
+suite includes all 472 valid modules and checks 669 binary invalid cases; its 510
+malformed WAT text cases remain outside the binary-only API harness.
 Remaining work
 includes reference-global imports combined with instance-owned imported tables, mutable reference globals, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
