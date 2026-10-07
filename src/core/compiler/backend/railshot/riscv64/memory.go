@@ -152,7 +152,11 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if !scalarType(g.Type.Type, production) {
 			return s, unsupported("noninteger global")
 		}
-		v, err := admittedPublicScalarConst(g.Init, g.Type.Type, production, publicExports, s.globals[:importedGlobals])
+		available := s.globals[:importedGlobals]
+		if publicExports {
+			available = s.globals
+		}
+		v, err := admittedPublicScalarConst(g.Init, g.Type.Type, production, publicExports, available)
 		if err != nil {
 			return s, err
 		}
@@ -166,7 +170,11 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if s.memory == nil || d.Mode.Kind != wasm.DataActive || d.Mode.Mem != 0 {
 			return s, unsupported("indexed/unsupported active data")
 		}
-		off, err := admittedPublicScalarConst(d.Mode.Offset, wasm.I32, production, publicExports, s.globals[:importedGlobals])
+		available := s.globals[:importedGlobals]
+		if publicExports {
+			available = s.globals
+		}
+		off, err := admittedPublicScalarConst(d.Mode.Offset, wasm.I32, production, publicExports, available)
 		if err != nil {
 			return s, err
 		}

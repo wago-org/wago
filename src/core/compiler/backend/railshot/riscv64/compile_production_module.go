@@ -75,7 +75,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if err := admitProductionOptions(m, &opts, false); err != nil {
 		return nil, err
 	}
-	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{ExtendedConstGlobals: true}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
 		return nil, err
 	}
 	opts.production = true

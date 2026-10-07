@@ -76,12 +76,12 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 			if e.Offset.HasGlobal {
 				return fmt.Errorf("conflicting element initializer")
 			}
-			if err := rv64ValidateIntegerInitializer(c, e.Offset.Expr, ValI32); err != nil {
+			if err := rv64ValidateIntegerInitializer(c, e.Offset.Expr, ValI32, len(c.Globals)); err != nil {
 				return err
 			}
 		}
-		if e.Offset.HasGlobal && (e.Offset.Base != 0 || !rv64ImportedInitializer(c, e.Offset.Global, ValI32)) {
-			return fmt.Errorf("element offset requires exact immutable imported i32")
+		if e.Offset.HasGlobal && (e.Offset.Base != 0 || !rv64InitializerGlobal(c, e.Offset.Global, ValI32, len(c.Globals))) {
+			return fmt.Errorf("element offset requires exact available immutable i32")
 		}
 		remaining -= len(e.Values)
 		if err := validatePayload(e); err != nil {

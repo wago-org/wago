@@ -10,16 +10,16 @@ func admitSWARPublicInitializers(m *wasm.Module, memory *wasm.MemType) error {
 	if m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 {
 		return unsupported("SWAR initializer count bound")
 	}
-	for _, global := range m.Globals {
+	for i, global := range m.Globals {
 		if swarClassOf(global.Type.Type) == swarInvalid {
 			return unsupported("SWAR global initializer carrier")
 		}
 		if scalarType(global.Type.Type, false) {
-			if err := admitModuleIntegerInitializer(global.Init, global.Type.Type, m); err != nil {
+			if err := admitModuleIntegerInitializer(global.Init, global.Type.Type, m, m.ImportedGlobalCount()+i); err != nil {
 				return err
 			}
 		} else if len(global.Init.BodyBytes) > 0 && global.Init.BodyBytes[0] == 0x23 {
-			if err := admitImportedGlobalExpression(global.Init, m, global.Type.Type); err != nil {
+			if err := admitGlobalExpression(global.Init, m, global.Type.Type, m.ImportedGlobalCount()+i); err != nil {
 				return err
 			}
 		} else if _, err := swarLiteralGlobal(global); err != nil {

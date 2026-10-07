@@ -153,12 +153,12 @@ func railshotValidateCompiled(c *Compiled) error {
 			if i < len(c.GlobalImports) || global.HasInitGlobal {
 				return reject("conflicting global initializer")
 			}
-			if err := rv64ValidateIntegerInitializer(c, global.InitExpr, global.Type); err != nil {
+			if err := rv64ValidateIntegerInitializer(c, global.InitExpr, global.Type, i); err != nil {
 				return reject(err.Error())
 			}
 		}
-		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64ImportedInitializer(c, global.InitGlobal, global.Type)) {
-			return reject("global initializer requires an immutable scalar import of the exact type")
+		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i)) {
+			return reject("global initializer requires an available immutable global of the exact type")
 		}
 	}
 	for _, data := range c.Data {
@@ -166,11 +166,11 @@ func railshotValidateCompiled(c *Compiled) error {
 			if data.Offset.HasGlobal {
 				return reject("conflicting data initializer")
 			}
-			if err := rv64ValidateIntegerInitializer(c, data.Offset.Expr, ValI32); err != nil {
+			if err := rv64ValidateIntegerInitializer(c, data.Offset.Expr, ValI32, len(c.Globals)); err != nil {
 				return reject(err.Error())
 			}
 		}
-		if c.memoryCount() != 1 || data.MemoryIndex != 0 || (data.Offset.HasGlobal && !rv64ImportedInitializer(c, data.Offset.Global, ValI32)) {
+		if c.memoryCount() != 1 || data.MemoryIndex != 0 || (data.Offset.HasGlobal && !rv64InitializerGlobal(c, data.Offset.Global, ValI32, len(c.Globals))) {
 			return reject("data initializer lowering is pending")
 		}
 	}
@@ -317,15 +317,28 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 	return nil
 }
 
-func rv64ValidateIntegerInitializer(c *Compiled, body []byte, expected ValType) error {
-	if (expected != ValI32 && expected != ValI64) || !c.requiredFeatures.IsEnabled(CoreFeatureExtendedConst) {
+// Compact local references need their own feature witness; the codec's generic
+// structural feature scan does not infer local scope from these indices.
+func rv64InitializerGlobal(c *Compiled, index int, expected ValType, limit int) bool {
+	if index < 0 || index >= limit || index >= len(c.Globals) {
+		return false
+	}
+	if index < len(c.GlobalImports) {
+		return rv64ImportedInitializer(c, index, expected)
+	}
+	g := c.Globals[index]
+	return c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) && !g.Mutable && g.Type == expected
+}
+
+func rv64ValidateIntegerInitializer(c *Compiled, body []byte, expected ValType, limit int) error {
+	if (expected != ValI32 && expected != ValI64) || (!c.requiredFeatures.IsEnabled(CoreFeatureExtendedConst) && !c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions)) {
 		return fmt.Errorf("integer expression requires its numeric feature metadata")
 	}
 	return railshot.ValidateIntegerInitializer(body, rv64NumericWasmType(expected), func(index uint32) (wasm.ValType, bool) {
-		if uint64(index) >= uint64(len(c.GlobalImports)) {
+		if uint64(index) >= uint64(len(c.Globals)) {
 			return wasm.ValType{}, false
 		}
-		g := c.GlobalImports[index]
-		return rv64NumericWasmType(g.Type), !g.Mutable
+		g := c.Globals[index]
+		return rv64NumericWasmType(g.Type), rv64InitializerGlobal(c, int(index), g.Type, limit)
 	})
 }

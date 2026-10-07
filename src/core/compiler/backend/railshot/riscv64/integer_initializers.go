@@ -9,7 +9,7 @@ const MaxIntegerInitializerValues = 8
 
 // ValidateIntegerInitializer checks the public integer constant-expression
 // profile without evaluating values or allocating an operand stack. resolve
-// supplies only immutable imported global types. Source and artifact admission
+// supplies only immutable global types available in the initializer context. Source and artifact admission
 // share this parser before the generic constant evaluator can fold or execute.
 func ValidateIntegerInitializer(body []byte, expected wasm.ValType, resolve func(uint32) (wasm.ValType, bool)) error {
 	if !scalarType(expected, false) || len(body) == 0 || len(body) > MaxIntegerInitializerBytes {
@@ -38,7 +38,7 @@ func ValidateIntegerInitializer(body []byte, expected wasm.ValType, resolve func
 			typ = wasm.I64
 		case 0x23:
 			if resolve == nil {
-				return unsupported("integer initializer has no imported globals")
+				return unsupported("integer initializer has no available globals")
 			}
 			var index uint32
 			index, err = r.U32()
@@ -46,7 +46,7 @@ func ValidateIntegerInitializer(body []byte, expected wasm.ValType, resolve func
 				var ok bool
 				typ, ok = resolve(index)
 				if !ok || !scalarType(typ, false) {
-					return unsupported("integer initializer requires immutable imported integer")
+					return unsupported("integer initializer requires an available immutable integer")
 				}
 			}
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
@@ -74,12 +74,15 @@ func ValidateIntegerInitializer(body []byte, expected wasm.ValType, resolve func
 	return unsupported("integer initializer missing end")
 }
 
-func admitModuleIntegerInitializer(expr wasm.Expr, expected wasm.ValType, m *wasm.Module) error {
+func admitModuleIntegerInitializer(expr wasm.Expr, expected wasm.ValType, m *wasm.Module, limit int) error {
+	if limit < 0 || limit > m.ImportedGlobalCount()+len(m.Globals) {
+		return unsupported("initializer global scope")
+	}
 	if len(expr.Instrs) != 0 {
 		return unsupported("integer initializer must be byte-backed")
 	}
 	return ValidateIntegerInitializer(expr.BodyBytes, expected, func(index uint32) (wasm.ValType, bool) {
-		if uint64(index) >= uint64(m.ImportedGlobalCount()) {
+		if uint64(index) >= uint64(limit) {
 			return wasm.ValType{}, false
 		}
 		typ, ok := m.GlobalTypeByIndex(index)
@@ -93,23 +96,27 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	if m == nil || len(m.Imports) > MaxProductionImports || m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("public initializer count bound")
 	}
-	for _, global := range m.Globals {
+	for i, global := range m.Globals {
 		if scalarType(global.Type.Type, false) {
-			if err := admitModuleIntegerInitializer(global.Init, global.Type.Type, m); err != nil {
+			if err := admitModuleIntegerInitializer(global.Init, global.Type.Type, m, m.ImportedGlobalCount()+i); err != nil {
+				return err
+			}
+		} else if len(global.Init.BodyBytes) > 0 && global.Init.BodyBytes[0] == 0x23 {
+			if err := admitGlobalExpression(global.Init, m, global.Type.Type, m.ImportedGlobalCount()+i); err != nil {
 				return err
 			}
 		}
 	}
 	for _, data := range m.Data {
 		if data.Mode.Kind == wasm.DataActive {
-			if err := admitModuleIntegerInitializer(data.Mode.Offset, wasm.I32, m); err != nil {
+			if err := admitModuleIntegerInitializer(data.Mode.Offset, wasm.I32, m, m.ImportedGlobalCount()+len(m.Globals)); err != nil {
 				return err
 			}
 		}
 	}
 	for _, element := range m.Elements {
 		if element.Mode.Kind == wasm.ElemActive {
-			if err := admitModuleIntegerInitializer(element.Mode.Offset, wasm.I32, m); err != nil {
+			if err := admitModuleIntegerInitializer(element.Mode.Offset, wasm.I32, m, m.ImportedGlobalCount()+len(m.Globals)); err != nil {
 				return err
 			}
 		}

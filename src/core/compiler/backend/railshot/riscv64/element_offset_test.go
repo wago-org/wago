@@ -36,8 +36,8 @@ func TestPublicImportedElementOffset(t *testing.T) {
 					m.Imports[0].Type = wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.I32, Mutable: true})
 				}},
 				{"missing", func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x23, 1, 0x0b} }},
-				{"defined", func(m *wasm.Module) {
-					m.Globals = append(m.Globals, wasm.Global{Type: wasm.GlobalType{Type: wasm.I32}, Init: wasm.Expr{BodyBytes: []byte{0x41, 0, 0x0b}}})
+				{"mutable-defined", func(m *wasm.Module) {
+					m.Globals = append(m.Globals, wasm.Global{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}, Init: wasm.Expr{BodyBytes: []byte{0x41, 0, 0x0b}}})
 					m.Elements[0].Mode.Offset.BodyBytes = []byte{0x23, 1, 0x0b}
 				}},
 				{"oversized", func(m *wasm.Module) {
