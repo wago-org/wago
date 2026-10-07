@@ -145,7 +145,9 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 			out |= features
 			moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || usesRefFunc
 		}
-		moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || (elem.Kind.Kind == wasm.ElemFuncs && len(elem.Kind.Funcs) != 0)
+		// Legacy declarations have no runtime values. Keep their feature bits
+		// below while avoiding an otherwise unused per-function descriptor arena.
+		moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || (elem.Mode.Kind != wasm.ElemDeclarative && elem.Kind.Kind == wasm.ElemFuncs && len(elem.Kind.Funcs) != 0)
 		if elem.Mode.Kind != wasm.ElemActive {
 			out |= CoreFeatureBulkMemoryOperations
 		}

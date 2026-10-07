@@ -142,7 +142,7 @@ type ModuleFacts struct {
 	TableExported  []bool
 	MemoryGrowUsed []bool
 	MemoryExported []bool
-	UsesRefFunc    bool
+	UsesRefFunc    bool // executable/materialized ref.func demand; excludes legacy declarative payloads
 	UsesCallRef    bool
 }
 
@@ -194,7 +194,8 @@ func StagedTable64Max() uint64 { return stagedTable64Max }
 // RequiresFuncRefDescriptors reports whether instantiation needs the canonical
 // per-function descriptor arena. Funcref tables need it; externref-only tables do
 // not. Table-free modules pay for it only when a global initializer or executable
-// body contains ref.func.
+// body contains ref.func, or an element payload materializes function references.
+// Legacy declarative payloads only declare targets and need no descriptors.
 func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 	facts, err := AnalyzeModuleFacts(m)
 	if err != nil {
@@ -214,11 +215,12 @@ func RequiresFuncRefDescriptorsFromFacts(m *wasm.Module, facts *ModuleFacts) boo
 		}
 	}
 	for i := range m.Elements {
-		// Legacy function-index payloads are intrinsically non-null funcrefs.
+		// Active/passive function-index payloads materialize non-null funcrefs.
+		// Legacy declarative payloads start dropped and never materialize values.
 		// Expression payloads require descriptors only when they actually contain
 		// ref.func, which AnalyzeModuleFacts records below. Null externref/funcref
 		// expressions and copied imported references need no local descriptor arena.
-		if len(m.Elements[i].Kind.Funcs) != 0 {
+		if m.Elements[i].Mode.Kind != wasm.ElemDeclarative && len(m.Elements[i].Kind.Funcs) != 0 {
 			return true
 		}
 	}
@@ -398,7 +400,7 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		facts.UsesRefFunc = facts.UsesRefFunc || (e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0)
+		facts.UsesRefFunc = facts.UsesRefFunc || (e.Mode.Kind != wasm.ElemDeclarative && e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0)
 		for j := range e.Kind.Exprs {
 			facts.UsesRefFunc = facts.UsesRefFunc || exprUsesRefFunc(e.Kind.Exprs[j])
 		}
