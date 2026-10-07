@@ -72,6 +72,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if usesSWAR {
 		return compileSWARProductionModule(m, opts)
 	}
+	if len(m.Customs) > MaxFunctions {
+		return nil, unsupported("decoded custom section count bound")
+	}
+	// Reuse the existing decoded metadata accounting with the instruction/data
+	// budget. Opaque custom payloads must stay bounded for hand-built callers,
+	// and the decoded/raw name views must not duplicate retained byte charges.
+	if err := admitSWARDecodedMetadataBudget(m, &remaining); err != nil {
+		return nil, err
+	}
 	if err := admitProductionOptions(m, &opts, false); err != nil {
 		return nil, err
 	}

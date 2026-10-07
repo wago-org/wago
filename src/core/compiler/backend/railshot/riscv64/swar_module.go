@@ -176,7 +176,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 	}
 	for _, custom := range m.Customs {
-		if custom.Name != "name" && custom.Name != "producers" {
+		// Metadata bytes were bounded before validation. Opaque public custom
+		// sections do not select lowering; parsed branch hints remain gated.
+		if custom.Name == "metadata.code.branch_hint" || !state.publicStarts && custom.Name != "name" && custom.Name != "producers" {
 			return nil, unsupported("SWAR custom section " + custom.Name)
 		}
 	}

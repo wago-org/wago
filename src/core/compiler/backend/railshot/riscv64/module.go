@@ -288,7 +288,10 @@ func admitShapeProfile(m *wasm.Module, floating, publicStarts bool) error {
 		return unsupported("imports, state, initializers or feature metadata")
 	}
 	for _, custom := range m.Customs {
-		if custom.Name != "name" && custom.Name != "producers" {
+		// Public compilation ignores opaque custom payloads. Branch hints have
+		// a decoded semantic representation and retain their existing gate,
+		// including a present empty section. Private pilots keep their allowlist.
+		if custom.Name == "metadata.code.branch_hint" || !publicStarts && custom.Name != "name" && custom.Name != "producers" {
 			return unsupported("custom section " + custom.Name)
 		}
 	}
