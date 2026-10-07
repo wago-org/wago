@@ -37,6 +37,54 @@ func TestPowerShellBootstrapExecutesNativeInstaller(t *testing.T) {
 	}
 }
 
+func TestPowerShellBootstrapRefreshPreservesProcessPath(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("PowerShell is available on native Windows CI")
+	}
+	dir := t.TempDir()
+	installer := filepath.Join(dir, "installer.cmd")
+	installerScript := "@echo off\r\npowershell.exe -NoProfile -NonInteractive -Command \"[IO.File]::WriteAllText($env:WAGO_PATH_REFRESH_FILE, ('C:\\wago-' + [char]0xE4 + '-bin'), [Text.UTF8Encoding]::new($false))\"\r\n"
+	if err := os.WriteFile(installer, []byte(installerScript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wrapper := filepath.Join(dir, "wrapper.ps1")
+	script := "$env:Path = 'C:\\session-only;' + $env:Path\n. $env:WAGO_BOOTSTRAP_SCRIPT\n[IO.File]::WriteAllText($env:WAGO_PATH_RESULT, $env:Path)\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bootstrap, err := filepath.Abs("install.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := filepath.Join(dir, "path.txt")
+	command := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", wrapper)
+	command.Env = append(os.Environ(),
+		"WAGO_INSTALLER="+installer,
+		"WAGO_BOOTSTRAP_SCRIPT="+bootstrap,
+		"WAGO_PATH_RESULT="+result,
+		"WAGO_INSTALLER_DEBUG=1",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("PowerShell bootstrap: %v\n%s", err, output)
+	}
+	path, err := os.ReadFile(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`C:\session-only`, `C:\wago-ä-bin`} {
+		found := false
+		for _, entry := range filepath.SplitList(string(path)) {
+			if strings.EqualFold(entry, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("refreshed PATH %q does not contain %q", path, want)
+		}
+	}
+}
+
 func TestPowerShellBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("PowerShell and Windows executables are available on native Windows CI")
