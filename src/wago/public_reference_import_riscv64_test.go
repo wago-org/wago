@@ -108,7 +108,6 @@ func TestRV64PublicReferenceImportAdmission(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		source := rv64ReferenceImportModule(vector, false)
 		for name, bad := range map[string][]byte{
-			"borrowed":  rv64ReferenceImportModule(vector, true),
 			"no-table":  rv64ReplaceTableStageSection(t, source, 4, nil),
 			"mutable":   rv64ReplaceTableStageSection(t, source, 2, wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, true), wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, true)))),
 			"externref": rv64ReplaceTableStageSection(t, source, 2, wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.ExternRef, false), wasmtest.GlobalImportEntry("env", "ref", wasm.ExternRef, false)))),
@@ -142,7 +141,6 @@ func TestRV64PublicReferenceImportAdmission(t *testing.T) {
 				v.GlobalImports[0].ValueTypeIndex = uint32(len(v.ValueTypes) - 1)
 			},
 			"no-table": func(v *Compiled) { v.HasTable = false },
-			"borrowed": func(v *Compiled) { v.tableImport = "env.table" },
 		} {
 			v := *c.executionView()
 			v.Globals = slices.Clone(v.Globals)
@@ -182,7 +180,6 @@ func TestRV64PublicReferenceImportUnusedSourceGates(t *testing.T) {
 			mutable, owned, borrowed bool
 			count                    int
 		}{
-			{"unused-borrowed", wasm.FuncRef, false, false, true, 1},
 			{"unused-no-table", wasm.FuncRef, false, false, false, 1},
 			{"unused-mutable", wasm.FuncRef, true, true, false, 1},
 			{"unused-nonnullable", wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapFunc), false)), false, true, false, 1},
@@ -436,21 +433,25 @@ func TestRV64PublicImmutableReferenceImports(t *testing.T) {
 						producer := rv64NativeTokenInstantiate(t, rt, c, im)
 						providers = append(providers, producer)
 						images = append(images, c)
-						global, err = producer.ExportedGlobalObject(name)
-						if err != nil {
-							t.Fatal(err)
+						if kind == "store" {
+							canonical, err = producer.GlobalValue(name)
+							if err != nil {
+								t.Fatal(err)
+							}
+							if !producer.usesIndependentExecution() {
+								t.Fatal("store fixture already shared")
+							}
+							global, err = rt.NewFuncRefGlobal(canonical.FuncRef(), false)
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer global.Close()
+						} else {
+							global, err = producer.ExportedGlobalObject(name)
+							if err != nil {
+								t.Fatal(err)
+							}
 						}
-					}
-					if kind == "store" {
-						canonical, err = global.GetValue()
-						if err != nil {
-							t.Fatal(err)
-						}
-						global, err = rt.NewFuncRefGlobal(canonical.FuncRef(), false)
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer global.Close()
 					}
 					tokens := len(rt.refStore.byToken)
 					c := rv64TableStageCompile(t, fmt.Sprintf("ref-import-consumer-vector%t", vector), rv64ReferenceImportModule(vector, false), artifact)
@@ -460,6 +461,9 @@ func TestRV64PublicImmutableReferenceImports(t *testing.T) {
 					}
 					if len(rt.refStore.byToken) != tokens {
 						t.Fatal("construction pre-issued token")
+					}
+					if kind == "store" && !providers[0].nativeControlIsShared() {
+						t.Fatal("imported token owner kept independent native execution")
 					}
 					if kind == "host-alias" && in.importGlobalReferences()[0].owner != providers[len(providers)-1] {
 						t.Fatal("frozen root does not own the raw proxy slot")

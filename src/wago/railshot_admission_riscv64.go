@@ -82,7 +82,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("global import index shape")
 	}
 	for i, global := range c.GlobalImports {
-		reference := global.Type == ValFuncRef && !global.Mutable && c.tableCount() == 1 && c.tableImportCount() == 0
+		reference := global.Type == ValFuncRef && !global.Mutable && c.tableCount() == 1
 		if reference {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
@@ -161,13 +161,13 @@ func railshotValidateCompiled(c *Compiled) error {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
 			if err != nil || exact != plain || global.Mutable || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() != 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
-				return reject("immutable local reference global and retained table required")
+				return reject("immutable reference global and retained table required")
 			}
 			if i < len(c.GlobalImports) && (global.HasInitFunc || global.HasInitGlobal) {
 				return reject("reference import initializer")
 			}
 			if global.HasInitGlobal && (global.HasInitFunc || !rv64InitializerGlobal(c, global.InitGlobal, ValFuncRef, i)) {
-				return reject("reference initializer requires an earlier immutable local global")
+				return reject("reference initializer requires an earlier immutable global")
 			}
 			continue
 		}
@@ -364,6 +364,20 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 	}
 	if err := table.validateImportWithCollector(ValFuncRef, exact, c.Types, store, nil, false); err != nil {
 		return err
+	}
+	// Frozen global roots must not create a backedge into an instance-owned
+	// destination. Host-created destinations have no such instance owner.
+	for _, global := range c.GlobalImports {
+		if global.Type != ValFuncRef {
+			continue
+		}
+		table.owner.mu.Lock()
+		instanceOwned := table.owner.instance != nil
+		table.owner.mu.Unlock()
+		if instanceOwned {
+			return fmt.Errorf("%w: reference global imports require a host-created borrowed table", railshot.ErrUnsupported)
+		}
+		break
 	}
 	// The descriptor itself also needs a lease: host tables have no instance root.
 	if err := table.attachImporterWithCollector(ValFuncRef, exact, c.Types, store, nil, false); err != nil {

@@ -7,8 +7,8 @@ funcref element expressions with immutable imported-i32 offsets. Scalar/SWAR
 initialization supports numeric/vector imported-global copies and imported-i32
 data offsets, with bounded integer constant add/sub/mul expressions. Immutable
 nullable funcref globals support local copies, exports, and explicit same-Runtime
-imports into modules with owned tables. Remaining work includes reference-global
-imports combined with borrowed tables, mutable reference globals, reference
+imports into modules with owned or host-created imported tables. Remaining work
+includes reference-global imports combined with instance-owned imported tables, mutable reference globals, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
 qualification. The
 experimental build tag and unsupported-feature admission remain in place.

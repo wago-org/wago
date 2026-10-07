@@ -47,6 +47,7 @@ func (s *rv64NativeTableTargets) add(owner *Instance) error {
 }
 
 func (s *rv64NativeTableTargets) release() {
+	s.publishImportedReferenceRows()
 	// Remove transient writer promises and scan current rows under serialization;
 	// prune performs physical releases only after its own native lease unlocks.
 	for index, table := range s.writers {

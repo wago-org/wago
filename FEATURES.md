@@ -23,10 +23,11 @@ local globals and imported-i32 active-data offsets. Bounded integer constant
 expressions support add/sub/mul and immutable imported integer reads (128 bytes,
 eight operands), including prior immutable local globals. Immutable nullable
 funcref globals support local copy chains, exports, and same-Runtime imports
-from explicit Global owners when the importing module owns its table. Frozen
+from explicit Global owners with an owned or host-created imported table. Frozen
 attachments retain the actual descriptor storage through producer retirement,
-parked callbacks, and indirect calls. Reference imports combined with borrowed
-tables, mutable reference globals, broader reference signatures/equality, GC/EH,
+parked callbacks, and indirect calls. Imported host tables retain the actual
+descriptor owners after writers return or close. Reference imports combined with
+instance-owned imported tables, mutable reference globals, broader reference signatures/equality, GC/EH,
 threads, memory64 and table64 remain unavailable.
 This is not a supported
 release target; native cache and performance qualification remain outstanding.

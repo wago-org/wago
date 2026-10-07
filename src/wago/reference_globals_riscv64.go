@@ -121,11 +121,19 @@ func railshotFreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport
 		if err != nil {
 			return entries, err
 		}
+		shared := false
 		for _, prior := range entries {
 			if entry.owner != nil && entry.owner == prior.owner {
 				entry.owner.releaseResourceRoot() // Existing entry still pins it.
+				shared = true
 				break
 			}
+		}
+		if entry.owner != nil && !shared {
+			// A token-created host global need not have exported a GlobalObject.
+			// Quiesce its owner before native cross-instance reachability, outside
+			// all store, container and native execution locks.
+			entry.owner.markNativeControlShared()
 		}
 		entries = append(entries, entry)
 	}

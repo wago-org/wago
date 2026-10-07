@@ -107,7 +107,7 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	for _, im := range m.Imports {
 		if im.Type.Kind == wasm.ExternGlobal && wasm.EqualValType(im.Type.GlobalType().Type, wasm.FuncRef) {
 			if !admitImportedFunctionGlobal(m, im.Type.GlobalType()) {
-				return unsupported("reference global import requires immutable funcref and owned table")
+				return unsupported("reference global import requires immutable funcref and retained table")
 			}
 			hasReferenceGlobal = true
 		}

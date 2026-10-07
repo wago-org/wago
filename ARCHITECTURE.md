@@ -144,16 +144,23 @@ integer reads, and matching add/sub/mul, bounded to 128 bytes and eight operands
 Source checks precede folding; artifact checks precede runtime evaluation.
 Bounded immutable prior-local copies and integer expressions are also supported.
 Immutable nullable funcref imports require explicit same-Runtime Global owners
-and a module-owned table. A frozen sidecar records each distinct imported cell,
+and an owned or host-created imported table. A frozen sidecar records each distinct imported cell,
 its raw descriptor, and its actual descriptor-storage owner; one physical root
-per owner lasts until consumer teardown. Native scopes traverse these edges
+per owner lasts until consumer teardown. Attachment quiesces each descriptor
+owner's independent execution before cross-instance use, including token-created
+host globals that never exported a GlobalObject. Native scopes traverse these edges
 within the existing owner/edge bounds, authenticate complete descriptors, and
 keep roots across parked callbacks and cold unwinding. Imported aliases and
 local copies may first issue public tokens after producer retirement without
 reopening direct producer access. Host-token canonical identity may name a
-different importer from the raw slot's storage owner. Reference-global imports
-combined with borrowed tables, mutable reference globals and typed references
-remain gated pending separate ownership qualification.
+different importer from the raw slot's storage owner. Before a scope releases
+writer promises or temporary roots, imported host tables retain the actual owners
+of authenticated rows. This bounded scan publishes no roots from malformed table
+extents and releases no resources under native/container locks. Existing quiescent
+attachment transfer handles a retired producer importing the same host table.
+Reference-global imports combined with instance-owned imported tables, mutable
+reference globals and typed references remain gated pending separate ownership
+qualification.
 
 RV64 host calls retain the framed cooperative park/resume boundary. The
 bounded/live host portals and native scalar leaf optimization are unavailable
