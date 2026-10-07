@@ -106,10 +106,7 @@ func compactDataModule(emptyOutOfBounds bool) []byte {
 }
 
 func TestCompactExecutionDataCodecAndMutationIsolation(t *testing.T) {
-	c, err := Compile(nil, compactDataModule(false))
-	if err != nil {
-		t.Fatal(err)
-	}
+	c := compileExplicitArtifact(t, compactDataModule(false))
 	defer c.Close()
 	if c.boundsMode != BoundsChecksExplicit {
 		t.Fatalf("codec fixture uses %v bounds checks, want explicit", c.boundsMode)
