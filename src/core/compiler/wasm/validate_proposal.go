@@ -437,13 +437,17 @@ func (v *funcValidator) stepGC(in Instruction) error {
 	case InstrBrOnCast, InstrBrOnCastFail:
 		return v.stepBrOnCast(in)
 	case InstrRefGetDesc:
-		_, st, ok := v.structFields(TypeIdx{Index: in.Index})
+		_, st, recGroup, ok := v.structFields(TypeIdx{Index: in.Index})
 		if !ok {
 			return v.verr(ErrUnknownType, "ref.get_desc")
 		}
 		descriptor, present := st.Metadata.Descriptor.Get()
 		if !present {
 			return v.verr(ErrTypeMismatch, "type without descriptor")
+		}
+		descriptorFlat, ok := v.flatTypeIdxInRecGroup(descriptor, recGroup)
+		if !ok {
+			return v.verr(ErrUnknownType, "invalid descriptor type")
 		}
 		x, err := v.pop()
 		if err != nil {
@@ -455,12 +459,12 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !x.unknown && !v.refSubtype(x.t.Ref(), Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)) {
 			return v.verr(ErrTypeMismatch, "ref.get_desc target")
 		}
-		v.push(RefVal(Ref(false, IndexedHeap(descriptor), true)))
+		v.push(RefVal(Ref(false, IndexedHeap(TypeIdx{Index: uint32(descriptorFlat)}), true)))
 		return nil
 	case InstrStructNew, InstrStructNewDefault, InstrStructNewDesc, InstrStructNewDefaultDesc:
 		return v.stepStructNew(in)
 	case InstrStructGet, InstrStructGetS, InstrStructGetU, InstrStructAtomicGet, InstrStructAtomicGetS, InstrStructAtomicGetU:
-		fields, _, ok := v.structFields(TypeIdx{Index: in.Index})
+		fields, _, _, ok := v.structFields(TypeIdx{Index: in.Index})
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.get")
 		}
@@ -478,7 +482,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		v.push(storageValType(f.Storage(), packedGet))
 		return nil
 	case InstrStructSet:
-		fields, _, ok := v.structFields(TypeIdx{Index: in.Index})
+		fields, _, _, ok := v.structFields(TypeIdx{Index: in.Index})
 		if !ok {
 			return v.verr(ErrUnknownType, "struct.set")
 		}
@@ -635,7 +639,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 }
 
 func (v *funcValidator) stepStructNew(in Instruction) error {
-	fields, st, ok := v.structFields(TypeIdx{Index: in.Index})
+	fields, st, recGroup, ok := v.structFields(TypeIdx{Index: in.Index})
 	if !ok {
 		return v.verr(ErrUnknownType, "struct.new")
 	}
@@ -660,7 +664,11 @@ func (v *funcValidator) stepStructNew(in Instruction) error {
 		if !present {
 			return v.verr(ErrTypeMismatch, "type without descriptor")
 		}
-		want := RefVal(Ref(false, IndexedHeap(descriptor), true))
+		descriptorFlat, ok := v.flatTypeIdxInRecGroup(descriptor, recGroup)
+		if !ok {
+			return v.verr(ErrUnknownType, "invalid descriptor type")
+		}
+		want := RefVal(Ref(false, IndexedHeap(TypeIdx{Index: uint32(descriptorFlat)}), true))
 		if err := v.popExpect(want); err != nil {
 			return err
 		}

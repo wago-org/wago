@@ -1052,7 +1052,7 @@ func TestValidatorCoverageInternalHelperBranches(t *testing.T) {
 		Tables:   []Table{{Type: TableType{Ref: AbsRef(HeapExtern), Limits: Limits{Min: 1}}}},
 		Memories: []MemType{{Limits: Limits{Min: 1}}},
 	}}
-	if _, _, ok := mv.structFields(TypeIdx{Index: 2}); ok {
+	if _, _, _, ok := mv.structFields(TypeIdx{Index: 2}); ok {
 		t.Fatal("array type reported as struct")
 	}
 	if _, ok := mv.globalType(1); !ok {
