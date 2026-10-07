@@ -572,7 +572,7 @@ func TestRV64PublicImportReferenceAggregateBoundary(t *testing.T) {
 	rv64TableFunctionImportsAggregateBoundary(t, true)
 }
 
-func rv64TableFunctionImportsAggregateBoundary(t *testing.T, importedReference bool) {
+func rv64TableFunctionImportsAggregateBoundary(t *testing.T, importedReference bool, expressionReference ...bool) {
 	for _, vector := range []bool{false, true} {
 		for _, artifact := range []bool{false, true} {
 			if !artifact && os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
@@ -589,6 +589,10 @@ func rv64TableFunctionImportsAggregateBoundary(t *testing.T, importedReference b
 				source := rv64TableFunctionImportBoundaryModule(types, 256)
 				if importedReference {
 					source = rv64ReplaceTableStageSection(t, source, 9, ownedTableElements(0, 255))
+				}
+				if len(expressionReference) != 0 && expressionReference[0] {
+					key += "-expr"
+					source = rv64ReplaceTableStageSection(t, source, 9, wasmtest.Section(9, wasmtest.Vec(rv64ExpressionSegment(6, 0, []byte{0xd2, 0xff, 1, 0x0b}))))
 				}
 				c := rv64TableStageCompile(t, key+"-caller", source, artifact)
 				n := rv64TableStageCompile(t, key+"-leaf", rv64PublicNativeIdentityModule(types), artifact)

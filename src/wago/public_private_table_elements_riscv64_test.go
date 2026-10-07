@@ -29,7 +29,10 @@ func TestRV64PrivateElementArtifactBoundaries(t *testing.T) {
 		{"missing-bulk", func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations }},
 		{"unknown-mode", func(v *Compiled) { v.passiveElems[2].Mode = ElemMode(255) }},
 		{"table-index", func(v *Compiled) { v.passiveElems[2].TableIndex = 1 }},
-		{"typed", func(v *Compiled) { v.passiveElems[2].HasValueType = true }},
+		{"invalid-exact-type", func(v *Compiled) {
+			v.passiveElems[2].HasValueType = true
+			v.passiveElems[2].ValueTypeIndex = ^uint32(0)
+		}},
 		{"extern", func(v *Compiled) { v.passiveElems[2].RefType = ValExternRef }},
 		{"unused-offset", func(v *Compiled) { v.passiveElems[2].Offset.Base = 1 }},
 		{"global-offset", func(v *Compiled) { v.passiveElems[2].Offset.HasGlobal = true }},

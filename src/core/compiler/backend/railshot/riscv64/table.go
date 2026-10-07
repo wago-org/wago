@@ -16,6 +16,31 @@ const (
 	trapTableBounds         = 10
 )
 
+// This public profile accepts a single byte-backed Release 2 reference literal.
+// The shared parser additionally accepts nofunc/global/structured expressions;
+// keep those outside the qualified RV64 profile, including unused segments.
+func tableElementExpression(expr wasm.Expr) (wasm.FuncrefElementExpr, error) {
+	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 {
+		return wasm.FuncrefElementExpr{}, unsupported("element expression representation/byte bound")
+	}
+	switch expr.BodyBytes[0] {
+	case 0xd0:
+		r := wasm.ReaderFrom(expr.BodyBytes[1:])
+		heap, err := r.S33()
+		if err != nil || heap != -16 {
+			return wasm.FuncrefElementExpr{}, unsupported("element null requires abstract func")
+		}
+	case 0xd2:
+	default:
+		return wasm.FuncrefElementExpr{}, unsupported("element requires ref.null or ref.func")
+	}
+	value, err := wasm.ParseFuncrefElementExpr(expr)
+	if err != nil {
+		return wasm.FuncrefElementExpr{}, unsupported("element reference literal")
+	}
+	return value, nil
+}
+
 // Bound decoded resource metadata before validation or payload copies.
 func ownedTableBounds(m *wasm.Module) error {
 	if len(m.Imports) > MaxProductionImports {
@@ -38,6 +63,11 @@ func ownedTableBounds(m *wasm.Module) error {
 		remaining -= len(e.Kind.Funcs) + len(e.Kind.Exprs)
 		if remaining < 0 {
 			return unsupported("element payload bound")
+		}
+		for _, expr := range e.Kind.Exprs {
+			if _, err := tableElementExpression(expr); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -71,8 +101,30 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	imported := m.ImportedFuncCount()
 	for _, e := range m.Elements {
-		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Exprs) != 0 {
-			return false, unsupported("private legacy function-index element mode")
+		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 {
+			return false, unsupported("element mode/table")
+		}
+		switch e.Kind.Kind {
+		case wasm.ElemFuncs:
+			if len(e.Kind.Exprs) != 0 {
+				return false, unsupported("legacy element expression payload")
+			}
+		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			// Flag4 has an implicit funcref type; its decoder leaves Ref unset.
+			if !importedTables || len(e.Kind.Funcs) != 0 || e.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef) {
+				return false, unsupported("public nullable funcref element expressions required")
+			}
+			for _, expr := range e.Kind.Exprs {
+				value, err := tableElementExpression(expr)
+				if err != nil {
+					return false, err
+				}
+				if !value.Null && uint64(value.FuncIndex) >= uint64(imported+len(m.Code)) {
+					return false, unsupported("element expression function index")
+				}
+			}
+		default:
+			return false, unsupported("element payload kind")
 		}
 		if e.Mode.Kind == wasm.ElemActive {
 			if _, err := plainConst(e.Mode.Offset, false); err != nil {

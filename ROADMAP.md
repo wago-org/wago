@@ -2,7 +2,8 @@
 
 Experimental Linux/RV64 now combines a bounded owned/imported funcref table32
 with numeric function imports, including retained foreign targets and parked
-host callbacks and imported references through owned thunks. Remaining work
+host callbacks, imported references through owned thunks, and bounded nullable
+funcref element expressions. Remaining work
 includes reference signatures/equality, broader
 WebAssembly parity, and native cache/runtime/performance qualification. The
 experimental build tag and unsupported-feature admission remain in place.

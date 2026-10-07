@@ -18,6 +18,7 @@ type swarModuleImage struct {
 	memory       *wasm.MemType
 	table        *wasm.TableType
 	elements     []swarElement
+	publicTables bool // shared runtime owns initializer metadata; private owner must not bind this image
 	functionKeys []uint64
 	hosts        []swarHostSignature
 	hostCode     []byte
@@ -162,9 +163,11 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			if err := swarOwnedTableType(table); err != nil {
 				return nil, err
 			}
-			elements, err = swarModuleElements(m.Elements)
-			if err != nil {
-				return nil, err
+			if !mode.foreignTableCalls {
+				elements, err = swarModuleElements(m.Elements)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -266,7 +269,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	summaries := make([]swarSummary, len(m.Code))
 	bound := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithImportMode(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
+		summaries[i], err = walkSWARPairsWithImportMode(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -290,13 +293,14 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if table != nil {
 		ownedTable := *table
 		image.table = &ownedTable
+		image.publicTables = mode.foreignTableCalls
 	}
 	var calls []directCall
 	for i := range m.Code {
 		functionMode := mode
 		functionMode.functionIndex = uint32(imported + i)
 		functionMode.entryPC = uint32(m.Code[i].LocalDeclBytes)
-		code, info, relocations, err := compileSWARPairsWithImports(&m.Code[i], functions[imported+i], memory, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(elements), imported, functionMode)
+		code, info, relocations, err := compileSWARPairsWithImports(&m.Code[i], functions[imported+i], memory, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(m.Elements), imported, functionMode)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -399,11 +403,30 @@ func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
 		if len(element.Mode.Offset.Instrs) != 0 || !consume(len(element.Mode.Offset.BodyBytes)) {
 			return unsupported("SWAR decoded element offset byte bound")
 		}
-		// The pilot permits bounded legacy function-index payloads only.
-		if element.Kind.Kind != wasm.ElemFuncs || len(element.Kind.Exprs) != 0 || len(element.Kind.Funcs) > MaxOwnedTableEntries-elementEntries || !consume(len(element.Kind.Funcs)*4) {
+		if len(element.Kind.Funcs) > MaxOwnedTableEntries-elementEntries || len(element.Kind.Exprs) > MaxOwnedTableEntries-elementEntries-len(element.Kind.Funcs) || !consume(len(element.Kind.Funcs)*4) {
 			return unsupported("SWAR decoded element payload bound")
 		}
-		elementEntries += len(element.Kind.Funcs)
+		elementEntries += len(element.Kind.Funcs) + len(element.Kind.Exprs)
+		switch element.Kind.Kind {
+		case wasm.ElemFuncs:
+			if len(element.Kind.Exprs) != 0 {
+				return unsupported("SWAR legacy expression payload")
+			}
+		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			if !publicStarts || len(element.Kind.Funcs) != 0 {
+				return unsupported("SWAR public element expressions required")
+			}
+			for _, expr := range element.Kind.Exprs {
+				if _, err := tableElementExpression(expr); err != nil {
+					return err
+				}
+				if !consume(len(expr.BodyBytes)) {
+					return unsupported("SWAR element expression byte budget")
+				}
+			}
+		default:
+			return unsupported("SWAR element payload kind")
+		}
 	}
 	return admitSWARDecodedMetadataBudget(m, &remaining)
 }

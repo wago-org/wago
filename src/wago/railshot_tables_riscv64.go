@@ -47,32 +47,49 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		return fmt.Errorf("element descriptor bound")
 	}
 	remaining := railshot.MaxOwnedTableEntries
-	for _, e := range c.Elems {
-		if e.Mode != ElemModeActive || e.TableIndex != 0 || e.HasValueType || (e.RefType != 0 && e.RefType != ValFuncRef) || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) > remaining {
-			return fmt.Errorf("bounded active legacy function-index elements required")
+	validatePayload := func(e ElemInit) error {
+		if e.HasValueType {
+			exact, err := c.elemExactType(e)
+			if err != nil || exact != plain || e.RefType != ValFuncRef || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+				return fmt.Errorf("expression elements require exact nullable funcref metadata")
+			}
 		}
-		remaining -= len(e.Values)
 		for _, v := range e.Values {
-			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
+			if v.HasGlobal || v.GlobalIndex != 0 || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 {
+				return fmt.Errorf("element requires structural null/ref.func payload")
+			}
+			if v.Null {
+				if !e.HasValueType || v.FuncIndex != 0 {
+					return fmt.Errorf("element null requires expression metadata")
+				}
+			} else if uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
 				return fmt.Errorf("element requires a valid function index")
 			}
+		}
+		return nil
+	}
+	for _, e := range c.Elems {
+		if e.Mode != ElemModeActive || e.TableIndex != 0 || (e.RefType != 0 && e.RefType != ValFuncRef) || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) > remaining {
+			return fmt.Errorf("bounded active funcref elements required")
+		}
+		remaining -= len(e.Values)
+		if err := validatePayload(e); err != nil {
+			return err
 		}
 	}
 	if len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
 		return fmt.Errorf("element state requires bulk feature metadata")
 	}
 	for _, e := range c.passiveElems {
-		if (e.Mode != ElemModeActive && e.Mode != ElemModePassive && e.Mode != ElemModeDeclarative) || e.TableIndex != 0 || e.HasValueType || (e.RefType != 0 && e.RefType != ValFuncRef) || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) > remaining {
+		if (e.Mode != ElemModeActive && e.Mode != ElemModePassive && e.Mode != ElemModeDeclarative) || e.TableIndex != 0 || (e.RefType != 0 && e.RefType != ValFuncRef) || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) > remaining {
 			return fmt.Errorf("bounded private element state required")
 		}
 		if e.Mode != ElemModePassive && len(e.Values) != 0 {
 			return fmt.Errorf("inactive element state must start dropped")
 		}
 		remaining -= len(e.Values)
-		for _, v := range e.Values {
-			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
-				return fmt.Errorf("element state requires a valid function index")
-			}
+		if err := validatePayload(e); err != nil {
+			return err
 		}
 	}
 	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {

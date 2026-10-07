@@ -125,6 +125,16 @@ function imports, 256 globals, one memory and one table share a
 514-import bound. QEMU correctness does not establish native
 instruction-cache or performance qualification.
 
+RV64's public table profile accepts legacy indices and expression-form elements
+containing only `ref.func` and `ref.null func`, with exact nullable funcref types.
+All 256-segment/1,024-entry limits include dropped declarations and null entries;
+each byte-backed expression is bounded before validation and staging. Active
+segments apply in source order: earlier effects survive a later failure, while
+each segment checks its complete range before writes. Public SWAR compilation
+uses shared runtime initializer metadata without duplicating private table-owner
+payloads. Extended expressions, typed references and explicit table initializers
+remain unavailable.
+
 RV64 host calls retain the framed cooperative park/resume boundary. The
 bounded/live host portals and native scalar leaf optimization are unavailable
 on RV64; their shared API returns unavailable without entering native code.

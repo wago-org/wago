@@ -79,7 +79,7 @@ func (image *swarModuleImage) instantiateTables(job *coreruntime.JobMemory, code
 }
 
 func (image *swarModuleImage) instantiateTablesWithArena(job *coreruntime.JobMemory, code *coreruntime.CodeBuffer, allocate func(int) (*coreruntime.Arena, error)) (*swarTableOwner, error) {
-	if image == nil || job == nil {
+	if image == nil || job == nil || image.publicTables {
 		return nil, unsupported("SWAR table owner image/job")
 	}
 	if image.table == nil {
