@@ -19,7 +19,7 @@ fresh AMD64 execution remain outstanding.
 
 Call latency is the full checked round trip for a reserved `PreparedSession.Invoke2`, in ns, with one atomic-count-checked callback and checked guest results. Both versions use the identical harness, fixture, Go toolchain and API; compilation and instantiation are outside timing. Nothing is subtracted. Raw evidence also covers ordinary/prepared APIs and batches.
 
-These tables compare current main **`9196bdff`** directly with the final PR runtime source measured at **`6f8a0605`**. Cleanup removes only diagnostics excluded from the normal build and benchmark/audit files; the measured production build inputs are preserved. Historical and incremental comparisons are excluded.
+These tables compare current main **`9196bdff`** directly with the final PR runtime source measured at **`6f8a0605`**. After cleanup, rebuilding the ARM64 benchmark produced a byte-for-byte identical executable to the measured candidate; both SHA256 values are recorded in current-main-vs-head-pins.json. Historical and incremental comparisons are excluded.
 
 ### AMD64 — Ryzen 7800X3D
 

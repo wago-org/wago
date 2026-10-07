@@ -27,10 +27,8 @@ request; process-load evidence is retained and those are shared-host measurement
 
 [Published measurement evidence](pr-evidence/README.md) contains both architecture
 tables, original-main comparisons, final incremental comparisons, raw CSVs,
-fixture/source/binary pins, and host-load evidence. Compressed captures avoid
-putting exploratory Go source snapshots in the benchmark module. The local
-`measurements/` archive is a separate module to keep `go test ./...` from treating
-source snapshots as standalone packages.
+fixture/source/binary pins, and host-load evidence. Compressed captures retain raw measurements without adding exploratory
+source snapshots to the benchmark module. Local exploration archives are ignored.
 
 The current-main-versus-PR-head tables are in the published evidence page.
 Historical measurements remain separately labeled. Wasmtime parity is unmet.

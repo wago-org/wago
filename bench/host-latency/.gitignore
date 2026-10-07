@@ -6,3 +6,5 @@
 /results/
 /__pycache__/
 /entry-host.wasm
+
+/measurements/
