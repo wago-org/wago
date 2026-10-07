@@ -21,17 +21,21 @@ func (f *integerEmitter) dataDrop(offset int32) {
 // The caller loads canonical slots; X28/X29 and permanently reserved X31 are
 // the only additional temporaries. All complete ranges are checked before the
 // zero-count exit, any byte access, or the first mutation.
-func (f *integerEmitter) memoryBulk(kind wasm.InstrKind, dataOffset int32) {
+func (f *integerEmitter) memoryBulkAt(kind wasm.InstrKind, dataOffset int32, dst, src uint32) {
 	if f.mode.production {
-		f.productionMemorySize(enc.X29)
+		f.productionMemorySizeAt(dst, enc.X29)
 	} else {
 		f.a.Ld(enc.X28, enc.X24, 0)
 		f.a.Ld(enc.X29, enc.X28, 8)
 	}
 	f.bulkRange(enc.X5)
 	if kind == wasm.InstrMemoryCopy {
-		// The same memory and count leave the same length-count residual.
-		f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X6))
+		if f.mode.production {
+			f.productionMemorySizeAt(src, enc.X29)
+			f.bulkRange(enc.X6)
+		} else {
+			f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X6))
+		}
 	} else if kind == wasm.InstrMemoryInit {
 		if f.mode.production {
 			f.productionDataAddress(dataOffset, enc.X28)
@@ -44,7 +48,7 @@ func (f *integerEmitter) memoryBulk(kind wasm.InstrKind, dataOffset int32) {
 	}
 	zero := f.a.BranchLong(enc.EQ, enc.X7, enc.Zero)
 	if f.mode.production {
-		f.a.Addi(enc.X28, enc.X25, 0)
+		f.productionMemoryBaseAt(dst, enc.X28)
 	} else {
 		f.a.Ld(enc.X28, enc.X28, 0)
 	}
@@ -67,6 +71,9 @@ func (f *integerEmitter) memoryBulk(kind wasm.InstrKind, dataOffset int32) {
 		f.bulkLoop(false, false)
 		f.patchBulk(zero)
 		return
+	}
+	if f.mode.production {
+		f.productionMemoryBaseAt(src, enc.X28)
 	}
 	f.a.Add(enc.X6, enc.X28, enc.X6)
 	forward := f.a.BranchLong(enc.GEU, enc.X6, enc.X5)

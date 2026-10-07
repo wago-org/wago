@@ -14,7 +14,12 @@ Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD
 suite includes all 472 valid modules and checks 669 binary invalid cases; its 510
-malformed WAT text cases remain outside the binary-only API harness.
+malformed WAT text cases remain outside the binary-only API harness. Table-free
+passive segments and immutable reference-global element initializers preserve
+canonical owners. Bounded multi-memory lowering covers scalar, FP, SWAR, bulk
+operations and aliased imports. Pinned integer/conversion and float corpora extend
+public source/artifact qualification, and diagnostics expose finalized code/frame
+statistics.
 Remaining work
 includes reference-global imports combined with instance-owned imported tables, mutable reference globals, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance

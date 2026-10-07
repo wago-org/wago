@@ -37,10 +37,21 @@ func admitProductionWireProfile(data []byte, public bool) error {
 		if id == 2 {
 			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
 			count, err := section.U32()
-			if err != nil || count == 0 && !public || count > MaxProductionImports {
+			if err != nil || count == 0 && !public || count > uint32(MaxProductionImports) {
 				return unsupported("production import section count bound")
 			}
 			// Decoded admission checks every import's kind/type and aggregate bounds.
+		}
+		if id == 5 {
+			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
+			count, err := section.U32()
+			limit := uint32(1)
+			if public {
+				limit = uint32(MaxProductionMemories)
+			}
+			if err != nil || count > limit {
+				return unsupported("production memory section count bound")
+			}
 		}
 		if id == 4 || id == 9 {
 			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])

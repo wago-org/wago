@@ -6,7 +6,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 const (
 	MaxHostFunctionImports = 256
-	MaxProductionImports   = MaxHostFunctionImports + 256 + 1 + 1 // functions, globals, memory, table
+	MaxProductionImports   = MaxHostFunctionImports + 256 + MaxProductionMemories + 1 // functions, globals, memories, table
 	trapImportMissing      = 11
 	trapImportContext      = 12
 )

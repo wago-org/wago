@@ -180,13 +180,19 @@ func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.
 			}
 			pressureCalls := 0
 			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressureCalls++ }})
+			if shape.name == "two-memories" {
+				if image == nil || image.CodeImage != nil || err != nil || pressureCalls != 1 {
+					t.Fatal("public indexed memories rejected while private gate remains closed", err, pressureCalls)
+				}
+				return
+			}
 			if image != nil || err == nil || pressureCalls != 0 {
 				t.Fatal("decoded unsupported dependency reached staging", image, err, pressureCalls)
 			}
 		})
 	}
 	// A memory import plus a local memory is valid with MultiMemory enabled,
-	// but remains outside this production slice independently of decoder policy.
+	// but remains outside the private scalar pilot independently of decoder policy.
 	data := modifySection(stateModule([]fixtureFunc{memoryFixture(0x2d, 0)}, true, 0, 1, true, nil, nil), 7, 5, []byte{1, 1, 0, 1}, false)
 	m, err := wasm.DecodeModuleWithFeatures(data, wasm.ValidationFeatures{MultiMemory: true})
 	if err != nil {

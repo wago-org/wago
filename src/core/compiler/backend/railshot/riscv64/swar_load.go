@@ -11,6 +11,9 @@ import (
 // Eight-byte extending loads and four/eight-byte zeroing loads return X6/X7.
 // The actual footprint is checked before the first unaligned-safe byte load.
 func (f *integerEmitter) swarPartialLoad(offset uint64, kind uint32) {
+	f.swarPartialLoadAt(0, offset, kind)
+}
+func (f *integerEmitter) swarPartialLoadAt(index uint32, offset uint64, kind uint32) {
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}
@@ -22,7 +25,7 @@ func (f *integerEmitter) swarPartialLoad(offset uint64, kind uint32) {
 	if kind == 92 {
 		footprint = 4
 	}
-	f.swarMemoryAddress(offset, footprint)
+	f.swarMemoryAddressAt(index, offset, footprint)
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}

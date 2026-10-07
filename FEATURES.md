@@ -30,7 +30,12 @@ also work without globals or tables. Table-free declarative segments and repeate
 `elem.drop` use dropped element state; unused legacy declarations require no
 function descriptors or element directory. Empty and state-only modules have no
 executable mapping. Bounded opaque custom metadata and empty supported sections
-are accepted. Function signatures remain numeric/vector;
+are accepted. Passive segments and immutable funcref `global.get` element
+initializers preserve canonical descriptor ownership, including partial
+initialization failures. Indexed memory32 scalar, FP, SWAR and bulk operations
+support up to 100 owned/imported memories, including aliased imports and growth.
+Compiler diagnostics builds report finalized code/frame sizes; source and unwind
+maps remain pending. Function signatures remain numeric/vector;
 Go callback and HostFuncRef reexports remain rejected. Frozen
 attachments retain the actual descriptor storage through producer retirement,
 parked callbacks, and indirect calls. Imported host tables retain the actual

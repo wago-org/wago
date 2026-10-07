@@ -78,7 +78,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 
-	if c.memoryImportCount() > 1 || c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > 1 {
+	if c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > railshot.MaxProductionMemories {
 		return reject("resource/host/reference lowering is pending")
 	}
 	if len(c.GlobalImports) > len(c.Globals) {
@@ -210,14 +210,25 @@ func railshotValidateCompiled(c *Compiled) error {
 				return reject(err.Error())
 			}
 		}
-		if c.memoryCount() != 1 || data.MemoryIndex != 0 || (data.Offset.HasGlobal && !rv64InitializerGlobal(c, data.Offset.Global, ValI32, len(c.Globals))) {
+		if uint64(data.MemoryIndex) >= uint64(c.memoryCount()) || (data.Offset.HasGlobal && !rv64InitializerGlobal(c, data.Offset.Global, ValI32, len(c.Globals))) {
 			return reject("data initializer lowering is pending")
 		}
 	}
-	if c.memoryCount() == 1 {
-		memory := c.memoryDef(0)
-		if memory.Shared || memory.Addr64 || memory.Min > 65536 || (memory.HasMax && memory.Max > 65536) {
-			return reject("memory lowering is pending")
+	if c.memoryCount() > 1 && !c.requiredFeatures.IsEnabled(CoreFeatureMultiMemory) {
+		return reject("memory directory requires multi-memory feature metadata")
+	}
+	for i := 0; i < c.memoryCount(); i++ {
+		memory := c.memoryDef(i)
+		if memory.Shared || memory.Addr64 || memory.Min > 65536 || (memory.HasMax && (memory.Max > 65536 || memory.Max < memory.Min)) {
+			return reject("bounded unshared memory32 required")
+		}
+	}
+	if len(c.memoryExportMap()) > railshot.MaxFunctions {
+		return reject("memory export count bound")
+	}
+	for _, index := range c.memoryExportMap() {
+		if index < 0 || index >= c.memoryCount() {
+			return reject("memory export index bound")
 		}
 	}
 	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 || len(c.memoryDir.gcArrayGlobals) != 0 || c.memoryDir.gcArrayElement != nil || c.memoryDir.gcI31TableInit != nil) {

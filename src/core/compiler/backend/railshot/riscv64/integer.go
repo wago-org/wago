@@ -669,7 +669,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 		case 0xfc:
 			var imm wasm.InstructionImmediate
-			if err = wasm.ClassifyInstructionImmediateIntoWithFeatures(&r, op, &imm, false, false); err != nil {
+			if err = wasm.ClassifyInstructionImmediateIntoWithFeatures(&r, op, &imm, false, state != nil && state.indexedMemories); err != nil {
 				return integerSummary{}, err
 			}
 			if sub, ok := saturatingFloatKind(imm.Kind); ok && floating {
@@ -772,11 +772,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			switch imm.Kind {
 			case wasm.InstrMemoryInit, wasm.InstrDataDrop:
-				if int(imm.Index) >= len(state.passiveData) || imm.Index2 != 0 {
+				if int(imm.Index) >= len(state.passiveData) || imm.Kind == wasm.InstrMemoryInit && uint64(imm.Index2) >= uint64(state.memoryCount) {
 					return integerSummary{}, unsupported("bulk data/memory index")
 				}
 			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
-				if imm.Index != 0 || imm.Index2 != 0 {
+				if uint64(imm.Index) >= uint64(state.memoryCount) || imm.Kind == wasm.InstrMemoryCopy && uint64(imm.Index2) >= uint64(state.memoryCount) {
 					return integerSummary{}, unsupported("bulk memory index")
 				}
 			default:
@@ -805,7 +805,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
-				emit.memoryBulk(imm.Kind, dataOffset)
+				dst, src := imm.Index, imm.Index2
+				if imm.Kind == wasm.InstrMemoryInit {
+					dst, src = imm.Index2, 0
+				}
+				emit.memoryBulkAt(imm.Kind, dataOffset, dst, src)
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x38, 0x39, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
 			if !floating && (op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39) {
@@ -819,7 +823,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = wasm.ClassifyInstructionImmediateInto(&r, op, &imm); err != nil {
 				return integerSummary{}, err
 			}
-			if imm.MemIndex != 0 || imm.Index != 0 {
+			memoryIndex := imm.MemIndex
+			if op == 0x3f || op == 0x40 {
+				memoryIndex = imm.Index
+			}
+			if uint64(memoryIndex) >= uint64(state.memoryCount) || !state.indexedMemories && (memoryIndex != 0 || imm.HasMemIndex) {
 				return integerSummary{}, unsupported("nonzero memory index")
 			}
 			if op == 0x3f || op == 0x40 {
@@ -832,7 +840,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if op == 0x40 {
 						emit.Load(5, emit.SpillOffset(h), false)
 					}
-					emit.memorySizeGrow(op == 0x40)
+					emit.memorySizeGrowAt(memoryIndex, op == 0x40)
 					emit.Store(emit.SpillOffset(h), 5, false)
 				}
 				if err = push(false); err != nil {
@@ -856,7 +864,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), false)
-					emit.memoryAccess(imm.MemOffset, size, w, signed, store)
+					emit.memoryAccessAt(memoryIndex, imm.MemOffset, size, w, signed, store)
 					if !store {
 						emit.Store(emit.SpillOffset(h), 5, w)
 					}

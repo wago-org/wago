@@ -371,7 +371,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend},
 		{CoreFeatureGC, "gc", completeCore3Backend},
 		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
-		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
+		{CoreFeatureMultiMemory, "multi-memory", supportsMultiMemoryBackend(runtime.GOOS, runtime.GOARCH)},
 		{CoreFeatureMemory64, "memory64", completeCore3Backend},
 		{CoreFeatureTable64, "table64", completeCore3Backend},
 		{CoreFeatureThreads, "threads", supportsThreadsBackend(runtime.GOOS, runtime.GOARCH)},
@@ -592,6 +592,9 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 			CoreFeatureTable64
 		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
 			unsupported &^= CoreFeatureTailCall | CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
+		}
+		if supportsMultiMemoryBackend(runtime.GOOS, runtime.GOARCH) {
+			unsupported &^= CoreFeatureMultiMemory
 		}
 		wantFeatures &^= unsupported
 	}

@@ -37,7 +37,7 @@ const (
 // This lowering image owns a bounded source snapshot and admits every
 // function before allocating code. The production adapter additionally applies
 // shared compiler options; public admission and instance setup are separate. Only defined functions, their exports, inert metadata
-// one optional nonshared memory32, numeric globals and active/passive data are supported.
+// bounded ordinary wasm32 memories, numeric globals and active/passive data are supported.
 // Private images retain literal state for the idle execution owners; the public
 // runtime owns its initializer metadata and resolves imported-global reads.
 // The execution owner must provide matching call arenas and JobMemory layout.
@@ -86,6 +86,7 @@ type swarStateProfile struct {
 	publicStarts         bool
 	exports              bool
 	importedMemory       bool
+	indexedMemories      bool
 	importedGlobals      bool
 	importedTable        bool
 	functionTableImports bool // public retained controls only; private pilots stay separate
@@ -109,10 +110,10 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	hosts = hosts || tables && state.functionTableImports && state.publicStarts && state.exports && mode.interruptible && mode.foreignTableCalls
 	mode.borrowedTable = state.importedTable && mode.foreignTableCalls && mode.interruptible && m.ImportedTableCount() != 0
 	var err error
-	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{ExtendedConstGlobals: state.publicInitializers}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{ExtendedConstGlobals: state.publicInitializers, MultiMemory: state.indexedMemories}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
 		return nil, err
 	}
-	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || m.UsesCompactImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || len(m.BranchHints) != 0 || len(m.Memories) > 1 {
+	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || m.UsesCompactImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || len(m.BranchHints) != 0 || len(m.Memories) > MaxProductionMemories {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
 	imported, memoryImports, globalImports := 0, 0, 0
@@ -144,7 +145,11 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	}
 	// Only the public retained profile combines function imports and tables.
 	// Function indices count only function imports, never state imports.
-	if memoryImports > 1 || memoryImports+len(m.Memories) > 1 {
+	maxMemories := 1
+	if state.indexedMemories {
+		maxMemories = MaxProductionMemories
+	}
+	if memoryImports+len(m.Memories) > maxMemories {
 		return nil, unsupported("SWAR imported memory profile")
 	}
 	if imported+len(m.Code) == 0 && !state.publicStarts || imported > MaxHostFunctionImports || imported+len(m.Code) > MaxFunctions || imported != 0 && !mode.interruptible {
@@ -210,29 +215,33 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			}
 			continue
 		}
-		if state.exports && ex.Index.Kind == wasm.ExternMem && ex.Index.Index == 0 && memoryImports+len(m.Memories) == 1 {
+		if state.exports && ex.Index.Kind == wasm.ExternMem && uint64(ex.Index.Index) < uint64(memoryImports+len(m.Memories)) {
 			continue
 		}
 		if ex.Index.Kind != wasm.ExternFunc || (uint64(ex.Index.Index) < uint64(imported) && !state.exports) || uint64(ex.Index.Index) >= uint64(imported+len(m.Code)) {
 			return nil, unsupported("SWAR module export shape")
 		}
 	}
-	var memory *wasm.MemType
-	if memoryImports+len(m.Memories) != 0 {
-		resolved, ok := m.MemoryType(0)
+	memories := make([]wasm.MemType, memoryImports+len(m.Memories))
+	for i := range memories {
+		resolved, ok := m.MemoryType(uint32(i))
 		if !ok {
 			return nil, unsupported("SWAR memory index")
 		}
-		memory = &resolved
-		if memory.Shared || memory.Limits.Addr64 || memory.Limits.Min > 65536 || (memory.Limits.HasMax && (memory.Limits.Max < memory.Limits.Min || memory.Limits.Max > 65536)) {
-			return nil, unsupported("SWAR module memory32 resource")
+		if err := admitMemory32(resolved, true); err != nil {
+			return nil, err
 		}
+		memories[i] = resolved
+	}
+	var memory *wasm.MemType
+	if len(memories) != 0 {
+		memory = &memories[0]
 	}
 	var dataSegments [][]byte
 	var activeData []swarActiveData
 	var globals []swarGlobalInitializer
 	if state.publicInitializers {
-		if err := admitSWARPublicInitializers(m, memory); err != nil {
+		if err := admitSWARPublicInitializersWithMemories(m, memories); err != nil {
 			return nil, err
 		}
 	} else {
@@ -291,7 +300,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	summaries := make([]swarSummary, len(m.Code))
 	bound := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithImportMode(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
+		summaries[i], err = walkSWARPairsWithMemoryMode(&m.Code[i], functions[imported+i], len(memories), state.indexedMemories, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -322,7 +331,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		functionMode := mode
 		functionMode.functionIndex = uint32(imported + i)
 		functionMode.entryPC = uint32(m.Code[i].LocalDeclBytes)
-		code, info, relocations, err := compileSWARPairsWithImports(&m.Code[i], functions[imported+i], memory, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, functionMode)
+		code, info, relocations, err := compileSWARPairsWithMemories(&m.Code[i], functions[imported+i], memories, state.indexedMemories, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, functionMode)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -355,18 +364,24 @@ func admitSWARDecodedBudget(m *wasm.Module) error {
 }
 
 func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
+	maxMemories := 1
+	if publicStarts {
+		maxMemories = MaxProductionMemories
+	}
 	// Count and byte budgets precede validation, metadata expansion and payload
 	// copies. Decoded callers do not necessarily retain a bounded source blob.
-	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Memories) > maxMemories || len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return unsupported("SWAR module state/features/function bound")
 	}
-	globalCount, functionCount := len(m.Globals), 0
+	globalCount, functionCount, memoryCount := len(m.Globals), 0, len(m.Memories)
 	for _, im := range m.Imports {
 		switch im.Type.Kind {
 		case wasm.ExternGlobal:
 			globalCount++
 		case wasm.ExternFunc:
 			functionCount++
+		case wasm.ExternMem:
+			memoryCount++
 		}
 	}
 	if functionCount+len(m.Code) == 0 && !publicStarts {
@@ -374,6 +389,9 @@ func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
 	}
 	if functionCount > MaxHostFunctionImports {
 		return unsupported("SWAR function import bound")
+	}
+	if memoryCount > maxMemories {
+		return unsupported("SWAR aggregate memory bound")
 	}
 	if globalCount > 256 {
 		return unsupported("SWAR aggregate global bound")

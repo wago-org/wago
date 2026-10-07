@@ -6,7 +6,11 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // Public instantiation owns the authoritative initializer metadata. Admission
 // checks shapes without retaining private copies or placeholder values.
-func admitSWARPublicInitializers(m *wasm.Module, memory *wasm.MemType) error {
+func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.MemType) error {
+	if len(memories) > MaxProductionMemories {
+		return unsupported("SWAR initializer memory count")
+	}
+
 	if m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 {
 		return unsupported("SWAR initializer count bound")
 	}
@@ -44,8 +48,11 @@ func admitSWARPublicInitializers(m *wasm.Module, memory *wasm.MemType) error {
 				return unsupported("SWAR passive data shape")
 			}
 		case wasm.DataActive:
-			if memory == nil || memory.Shared || memory.Limits.Addr64 || data.Mode.Mem != 0 {
+			if uint64(data.Mode.Mem) >= uint64(len(memories)) {
 				return unsupported("SWAR active data memory32")
+			}
+			if err := admitMemory32(memories[data.Mode.Mem], true); err != nil {
+				return err
 			}
 			if err := admitI32Offset(data.Mode.Offset, m, true); err != nil {
 				return err

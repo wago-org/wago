@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	MaxModuleBytes = 1 << 20
-	MaxFunctions   = 1024
-	MaxCodeBytes   = 16 << 20
-	MaxFrameBytes  = 128 << 10
+	MaxProductionMemories = int(wasm.DefaultMaxMemoriesPerModule)
+	MaxModuleBytes        = 1 << 20
+	MaxFunctions          = 1024
+	MaxCodeBytes          = 16 << 20
+	MaxFrameBytes         = 128 << 10
 )
 
 var ErrUnsupported = errors.New("rv64: unsupported experimental integer shape")

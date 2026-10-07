@@ -120,6 +120,9 @@ func (f *target) swarBits(kind wasm.InstrKind, dst, left, right, mask swarPair) 
 // Preflight the entire actual access footprint before any guest memory touch.
 // X5 is a raw I32 address on entry and the resolved byte pointer on success.
 func (f *integerEmitter) swarMemoryAddress(offset uint64, footprint uint8) {
+	f.swarMemoryAddressAt(0, offset, footprint)
+}
+func (f *integerEmitter) swarMemoryAddressAt(index uint32, offset uint64, footprint uint8) {
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}
@@ -131,7 +134,7 @@ func (f *integerEmitter) swarMemoryAddress(offset uint64, footprint uint8) {
 	f.a.Constant64(enc.X28, int64(offset))
 	f.a.Add(enc.X5, enc.X5, enc.X28)
 	if f.mode.production {
-		f.productionMemorySize(enc.X29)
+		f.productionMemorySizeAt(index, enc.X29)
 	} else {
 		f.a.Ld(enc.X28, enc.X24, 0)
 		f.a.Ld(enc.X29, enc.X28, 8)
@@ -141,7 +144,7 @@ func (f *integerEmitter) swarMemoryAddress(offset uint64, footprint uint8) {
 	f.a.Sub(enc.X29, enc.X29, enc.X28)
 	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X5))
 	if f.mode.production {
-		f.a.Addi(enc.X28, enc.X25, 0)
+		f.productionMemoryBaseAt(index, enc.X28)
 	} else {
 		f.a.Ld(enc.X28, enc.X24, 0)
 		f.a.Ld(enc.X28, enc.X28, 0)
@@ -154,7 +157,10 @@ func (f *integerEmitter) swarMemoryAddress(offset uint64, footprint uint8) {
 // instructions support every alignment; there is no poll between the halves.
 // Stores consume X6/X7; the caller owns all operand spill homes.
 func (f *integerEmitter) swarMemory(offset uint64, store bool) {
-	f.swarMemoryAddress(offset, 16)
+	f.swarMemoryAt(0, offset, store)
+}
+func (f *integerEmitter) swarMemoryAt(index uint32, offset uint64, store bool) {
+	f.swarMemoryAddressAt(index, offset, 16)
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}

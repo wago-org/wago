@@ -1260,7 +1260,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.MultiMemory && m.MemCount() > 1 {
-		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+		if !supportsMultiMemoryBackend(goruntime.GOOS, goruntime.GOARCH) {
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 	}

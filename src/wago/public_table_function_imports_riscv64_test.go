@@ -661,9 +661,22 @@ func rv64TableFunctionImportsAggregateBoundary(t *testing.T, importedReference b
 		if vector {
 			types = append(types, wasm.V128)
 		}
-		source := rv64TableFunctionImportBoundaryModule(types, 257)
+		// The total budget now includes up to 100 memories. A wire count
+		// below that aggregate ceiling cannot identify an excessive global
+		// count; decoded admission separately enforces the 256-global cap.
+		tooManyGlobals := railshot.MaxProductionImports - 256 - 1 - 1 + 1
+		source := rv64TableFunctionImportBoundaryModule(types, tooManyGlobals)
 		if err := railshot.AdmitProductionSource(source); !errors.Is(err, railshot.ErrUnsupported) {
-			t.Fatal("515 imports admitted", err)
+			t.Fatal("aggregate import count admitted", err)
+		}
+		if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
+			c, err := Compile(nil, rv64TableFunctionImportBoundaryModule(types, 257))
+			if c != nil {
+				c.Close()
+			}
+			if c != nil || !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("independent global import count admitted", err)
+			}
 		}
 	}
 }

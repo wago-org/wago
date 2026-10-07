@@ -34,6 +34,8 @@ type moduleState struct {
 	ownedTableGrowth  bool
 	elementCount      int
 	memory            *memorySpec
+	memoryCount       int
+	indexedMemories   bool
 	globals           []globalSpec
 	data              []native.MemoryInitializer
 	passiveData       [][]byte // all Wasm data indices; active entries are dropped/nil
@@ -77,6 +79,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	s.importReferences = production && importedTables
+	s.indexedMemories = production && publicExports
 	var tableErr error
 	s.ownedTable, tableErr = admitTableProfile(m, production, importedTables)
 	s.elementCount = len(m.Elements)
@@ -92,13 +95,12 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	if production {
 		maxImports = MaxProductionImports
 	} // 256 globals and one memory
-	if len(m.Imports) > maxImports || len(m.Memories) > 1 {
-		return s, unsupported("import/memory count bound")
+	maxMemories := 1
+	if s.indexedMemories {
+		maxMemories = MaxProductionMemories
 	}
-	var mt *wasm.MemType
-	if len(m.Memories) == 1 {
-		mt = &m.Memories[0]
-		s.memory = &memorySpec{}
+	if len(m.Imports) > maxImports || len(m.Memories) > maxMemories {
+		return s, unsupported("import/memory count bound")
 	}
 	for _, im := range m.Imports {
 		switch im.Type.Kind {
@@ -112,12 +114,17 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("imported table requires the retained public table ABI")
 			}
 		case wasm.ExternMem:
-			if mt != nil {
+			s.memoryCount++
+			if s.memoryCount > maxMemories {
 				return s, unsupported("multiple memories")
 			}
 			t := im.Type.MemType()
-			mt = &t
-			s.memory = &memorySpec{imported: true, module: im.Module, name: im.Name}
+			if err := admitMemory32(t, production); err != nil {
+				return s, err
+			}
+			if s.memory == nil {
+				s.memory = &memorySpec{min: uint32(t.Limits.Min), max: t.Limits.Max, hasMax: t.Limits.HasMax, imported: true, module: im.Module, name: im.Name}
+			}
 		case wasm.ExternGlobal:
 			if !production {
 				return s, unsupported("isolated global import")
@@ -132,17 +139,17 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			return s, unsupported("nonmemory/nonglobal import")
 		}
 	}
-	if mt != nil {
-		maxPages := uint64(native.MaxMemoryPages)
-		if production {
-			maxPages = 65536
+	for _, t := range m.Memories {
+		s.memoryCount++
+		if s.memoryCount > maxMemories {
+			return s, unsupported("multiple memories")
 		}
-		if mt.Shared || mt.Limits.Addr64 || mt.Limits.Min > maxPages {
-			return s, unsupported("shared/memory64/initial memory bound")
+		if err := admitMemory32(t, production); err != nil {
+			return s, err
 		}
-		s.memory.min = uint32(mt.Limits.Min)
-		s.memory.max = mt.Limits.Max
-		s.memory.hasMax = mt.Limits.HasMax
+		if s.memory == nil {
+			s.memory = &memorySpec{min: uint32(t.Limits.Min), max: t.Limits.Max, hasMax: t.Limits.HasMax}
+		}
 	}
 	if len(s.globals)+len(m.Globals) > 256 || len(m.Data) > native.MaxDataSegments {
 		return s, unsupported("state count bound")
@@ -178,7 +185,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			s.passiveData = append(s.passiveData, append([]byte(nil), d.Init...))
 			continue
 		}
-		if s.memory == nil || d.Mode.Kind != wasm.DataActive || d.Mode.Mem != 0 {
+		if s.memory == nil || d.Mode.Kind != wasm.DataActive || uint64(d.Mode.Mem) >= uint64(s.memoryCount) || !s.indexedMemories && d.Mode.Mem != 0 {
 			return s, unsupported("indexed/unsupported active data")
 		}
 		available := s.globals[:importedGlobals]
@@ -189,7 +196,9 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.data = append(s.data, native.MemoryInitializer{Offset: uint32(off), Bytes: append([]byte(nil), d.Init...)})
+		if d.Mode.Mem == 0 {
+			s.data = append(s.data, native.MemoryInitializer{Offset: uint32(off), Bytes: append([]byte(nil), d.Init...)})
+		}
 		s.passiveData = append(s.passiveData, nil)
 	}
 	tableExports := 0
@@ -410,10 +419,13 @@ func (f *integerEmitter) global(index uint32, wide, store bool) {
 // Before the first byte access, use unsigned 64-bit EA and subtraction guards.
 // The unaligned path uses only byte instructions and little-endian assembly.
 func (f *integerEmitter) memoryAccess(offset uint64, size int, wide, signed, store bool) {
+	f.memoryAccessAt(0, offset, size, wide, signed, store)
+}
+func (f *integerEmitter) memoryAccessAt(index uint32, offset uint64, size int, wide, signed, store bool) {
 	f.a.Constant64(enc.X7, int64(offset))
 	f.a.Add(enc.X5, enc.X5, enc.X7)
 	if f.mode.production {
-		f.productionMemorySize(enc.X29)
+		f.productionMemorySizeAt(index, enc.X29)
 	} else {
 		f.a.Ld(enc.X28, enc.X24, 0)
 		f.a.Ld(enc.X29, enc.X28, 8)
@@ -423,7 +435,7 @@ func (f *integerEmitter) memoryAccess(offset uint64, size int, wide, signed, sto
 	f.a.Sub(enc.X29, enc.X29, enc.X7)
 	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X5))
 	if f.mode.production {
-		f.a.Addi(enc.X28, enc.X25, 0)
+		f.productionMemoryBaseAt(index, enc.X28)
 	} else {
 		f.a.Ld(enc.X28, enc.X28, 0)
 	}
@@ -455,9 +467,9 @@ func (f *integerEmitter) memoryAccess(offset uint64, size int, wide, signed, sto
 		f.NormalizeI32(5)
 	}
 }
-func (f *integerEmitter) memorySizeGrow(grow bool) {
+func (f *integerEmitter) memorySizeGrowAt(index uint32, grow bool) {
 	if f.mode.production {
-		f.productionMemorySizeGrow(grow)
+		f.productionMemorySizeGrowAt(index, grow)
 		return
 	}
 	f.a.Ld(enc.X28, enc.X24, 0)
