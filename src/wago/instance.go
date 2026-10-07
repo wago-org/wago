@@ -145,7 +145,6 @@ type invokeCache struct {
 	paramWidthClass    scalarSlotWidthClass
 	resultWidthClass   scalarSlotWidthClass
 	slotIndex          uint8
-	cachedHostEntry    bool // directEntry holds the public host entry, not an internal numeric entry
 }
 
 // invokeCacheOverflow exists only when an instance requests more than four

@@ -5,10 +5,6 @@ import (
 	goruntime "runtime"
 )
 
-var lazyTypedInvocationIDEnabled = os.Getenv("WAGO_LAZY_TYPED_ID") == "1"
-
-var cachedHostEntryEnabled = os.Getenv("WAGO_CACHED_HOST_ENTRY") == "1"
-
 var smallTypedEntryEnabled = os.Getenv("WAGO_SMALL_TYPED_ENTRY") != "0"
 
 // The caller selects the immutable single-import integer certificate. This
@@ -39,10 +35,7 @@ func (in *Instance) tryInvokePrivateTypedI32(export string, args []uint64) (out 
 	}
 	// No Caller or collector authority is exposed by this scalar-only private
 	// owner. Inherited host contexts still need a distinct identity.
-	state.invocationID = 0
-	if !lazyTypedInvocationIDEnabled || activeHostInvocationBindings.Load() != 0 {
-		state.invocationID = newInvocationID()
-	}
+	state.invocationID = newInvocationID()
 	admitted = true
 	nativeOwned := false
 	defer func() {
@@ -63,10 +56,7 @@ func (in *Instance) tryInvokePrivateTypedI32(export string, args []uint64) (out 
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
 	}
-	entry := ic.directEntry
-	if !ic.cachedHostEntry {
-		entry = in.base + uintptr(in.c.Entry[ic.li])
-	}
+	entry := in.base + uintptr(in.c.Entry[ic.li])
 	err = p.CallIntegerI32(entry, 1, (func(int32) int32)(in.syncHosts[0].typedI32))
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)

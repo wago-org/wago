@@ -99,12 +99,7 @@ func (in *Instance) isolatedNativeScalarLeaf() bool {
 	return true
 }
 
-// Integer-only guest execution cannot observe or modify FP control/status. The
-// whole-module host-segment proof already excludes resources and helper calls.
-func boundedIntegerModuleHostSegments(m *wasm.Module) bool {
-	return boundedIntegerModuleHostSegmentsFor(m, false)
-}
-
+// Integer-only guest execution cannot observe or modify FP control/status.
 // ARM64 integer popcount lowers through the SIMD allocator. A register-free
 // guest certificate must exclude it even though it does not affect FP control.
 func boundedIntegerModuleHostSegmentsFor(m *wasm.Module, noSIMD bool) bool {

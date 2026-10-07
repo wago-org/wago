@@ -5098,9 +5098,6 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	}
 	if slot.directIntFast || slot.directFloatFast {
 		slot.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[slot.li]))
-	} else if cachedHostEntryEnabled && slot.boundedNumericHost {
-		slot.directEntry = in.base + uintptr(in.c.Entry[slot.li])
-		slot.cachedHostEntry = true
 	}
 	return slot, nil
 }
