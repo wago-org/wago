@@ -498,7 +498,7 @@ type fn struct {
 	moduleGlobalRegionalLeaseSlot uint32
 
 	// Control-flow state (Phase 3).
-	nonzeroCtrlHeights int         // active frames retaining an operand prefix
+	nonzeroCtrlHeights int         // active frames retaining an operand prefix or deferred if recipe
 	ctrl               []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
 	unreachable        bool        // in dead code after an unconditional branch/trap
 	ehTryDepth         int         // live reachable try_table records; bounded by ehTryCap
