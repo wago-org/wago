@@ -1057,7 +1057,11 @@ type Compiled struct {
 	extraTables         []tableDef // table indexes 1..N; imported positions carry indexed import metadata
 	FuncTypeID          []uint64   // collision-resistant native signature key; legacy field name
 	NeedsFuncRefDescs   bool       // true when instantiation requires the canonical per-function descriptor arena
-	Elems               []ElemInit // active element segments
+	// RV64 flags share the descriptor flag's alignment padding.
+	nativeContextTrapABI    bool       // active-context identity and fresh cold-trap provenance
+	nativeTableContextABI   bool       // retained canonical table calls with framed context switching
+	nativeTableReferenceABI bool       // full-width foreign table carriers and active writer/storage scopes
+	Elems                   []ElemInit // active element segments
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 
@@ -1102,9 +1106,6 @@ type Compiled struct {
 	dynamicImports            bool
 	dynamicFuncrefEscape      bool
 	needsFuncRefContextHeader bool
-	nativeContextTrapABI      bool // RV64 active-context identity and fresh cold-trap provenance
-	nativeTableContextABI     bool // RV64 retained canonical table calls with framed context switching
-	nativeTableReferenceABI   bool // RV64 full-width foreign table carriers and active writer/storage scopes
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
 	registerABIDisabled bool

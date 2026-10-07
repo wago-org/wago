@@ -24,11 +24,12 @@ func railshotValidateCompiled(c *Compiled) error {
 	if len(c.code) > railshot.MaxCodeBytes || len(c.Funcs) == 0 && c.NumImports == 0 || len(c.Funcs) > railshot.MaxFunctions || len(c.Types) > railshot.MaxFunctions || len(c.GCTypeDescs) > railshot.MaxFunctions || len(c.Globals) > 256 {
 		return reject("bounded artifact shape")
 	}
-	if len(c.Data) > rv64runtime.MaxDataSegments || len(c.PassiveData) > rv64runtime.MaxDataSegments {
+	if c.activeDataCount() > rv64runtime.MaxDataSegments || len(c.PassiveData) > rv64runtime.MaxDataSegments {
 		return reject("data descriptor count bound")
 	}
 	remaining := railshot.MaxModuleBytes
-	for _, data := range c.Data {
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
 		if len(data.Bytes) > remaining {
 			return reject("data payload size bound")
 		}
@@ -185,7 +186,8 @@ func railshotValidateCompiled(c *Compiled) error {
 
 		}
 	}
-	for _, data := range c.Data {
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
 		if len(data.Offset.Expr) != 0 {
 			if data.Offset.HasGlobal {
 				return reject("conflicting data initializer")
