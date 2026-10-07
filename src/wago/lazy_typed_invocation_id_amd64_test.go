@@ -41,7 +41,7 @@ func TestLazyTypedInvocationIdentityAndInheritedContext(t *testing.T) {
 		t.Skip("private integer bridge unavailable")
 	}
 	state := in.ensurePluginState()
-	stale = state.hostScope.beginReservedWithID(in, newInvocationID(), nil)
+	stale = state.hostScope.beginReservedWithID(in, newInvocationID(), nil, nil)
 	state.hostScope.end(stale.generation, stale.parentGeneration)
 	invoke := func() {
 		t.Helper()
