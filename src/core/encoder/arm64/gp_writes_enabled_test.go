@@ -222,7 +222,11 @@ func TestGPWritesImplicitAndPairDestinations(t *testing.T) {
 		{"LdpPostBothZR", func(a *Asm) { a.LdpPost(XZR, XZR, SP, 16) }, []uint32{1 << 31}},
 		{"LoadPairIdx32", func(a *Asm) { a.LoadPairIdx(X6, X7, X8, X9, 16, 4) }, []uint32{1 << 16, 1<<6 | 1<<7}},
 		{"LoadPairIdx64", func(a *Asm) { a.LoadPairIdx(X6, X7, X8, X9, 16, 8) }, []uint32{1 << 16, 1<<6 | 1<<7}},
-		{"NeonMovemaskB", func(a *Asm) { a.NeonMovemaskB(X6, 31) }, []uint32{1 << 6, 1 << 6, 1 << 6}},
+		{"NeonMovemaskB", func(a *Asm) { a.NeonMovemaskB(X6, 31) }, []uint32{
+			1 << 6, 1 << 16, 1 << 6, 1 << 16,
+			1 << 17, 1 << 17, 1 << 17, 1 << 17,
+			1 << 6, 1 << 16, 1 << 6, 1 << 16, 1 << 16, 1 << 6,
+		}},
 		{"LeaSPImmediate", func(a *Asm) { a.LeaSP(X6, 16) }, []uint32{1 << 6}},
 		{"LeaSPShifted", func(a *Asm) { a.LeaSP(X6, -4096) }, []uint32{1 << 6}},
 		{"LeaSPExtended", func(a *Asm) { a.LeaSP(X6, 0x12345) }, []uint32{1 << 16, 1 << 16, 1 << 6}},
