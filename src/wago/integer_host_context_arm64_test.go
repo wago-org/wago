@@ -10,6 +10,8 @@ import (
 )
 
 func TestARMIntegerHostRegisterAdmission(t *testing.T) {
+	// Artifact round-trips require explicit bounds checks, including guard-page builds.
+	cfg := goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit)
 	for _, tc := range []struct {
 		name, body, locals string
 		want               bool
@@ -22,7 +24,7 @@ func TestARMIntegerHostRegisterAdmission(t *testing.T) {
 		{"float", "f32.const 1 f32.const 2 f32.add drop local.get 0 call $step", "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := Compile(goHostSegmentConfig(), watToWasm(t, fmt.Sprintf(`(module (import "env" "step" (func $step (param i32)(result i32))) (func (export "run") (param i32)(result i32) %s %s))`, tc.locals, tc.body)))
+			c, err := Compile(cfg, watToWasm(t, fmt.Sprintf(`(module (import "env" "step" (func $step (param i32)(result i32))) (func (export "run") (param i32)(result i32) %s %s))`, tc.locals, tc.body)))
 			if err != nil {
 				t.Fatal(err)
 			}

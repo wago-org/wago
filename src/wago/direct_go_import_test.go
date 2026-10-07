@@ -15,10 +15,12 @@ import (
 // One compiled import must support both Go and cross-instance Wasm bindings.
 // Serialized artifacts deliberately lose the compile-only tagged-ABI marker.
 func TestDirectGoImportBindingAndArtifactFallback(t *testing.T) {
+	// Artifact round-trips require explicit bounds checks, including guard-page builds.
+	cfg := goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit)
 	module := watToWasm(t, `(module
  (import "env" "step" (func $step (param i32) (result i32)))
  (func (export "run") (param i32) (result i32) local.get 0 call $step))`)
-	producerCode, err := Compile(goHostSegmentConfig(), watToWasm(t, `(module
+	producerCode, err := Compile(cfg, watToWasm(t, `(module
  (func (export "step") (param i32) (result i32)
   local.get 0 i32.const 7 i32.add))`))
 	if err != nil {
@@ -40,7 +42,7 @@ func TestDirectGoImportBindingAndArtifactFallback(t *testing.T) {
 			name = "rollback"
 		}
 		t.Run(name, func(t *testing.T) {
-			fresh, err := Compile(goHostSegmentConfig().WithOptimization("direct-go-host-import", enabled), module)
+			fresh, err := Compile(cfg.WithOptimization("direct-go-host-import", enabled), module)
 			if err != nil {
 				t.Fatal(err)
 			}

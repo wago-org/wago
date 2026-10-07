@@ -21,6 +21,7 @@ func inlineHostEnter(fn FixedScalarHostCall, code, args, linMem, trap, results, 
 
 func inlineHostBridgeAddr() uintptr
 
+//lint:ignore U1000 Used by the inline host assembly bridges via go_asm.h.
 const inlineHostTrapCellOffset = abi.TrapCellPtrOffset
 
 var inlineHostEnabled = scalarGoABI(goruntime.Version()) && os.Getenv("WAGO_"+strings.ToUpper(goruntime.GOARCH)+"_NO_INLINE_HOST") != "1"

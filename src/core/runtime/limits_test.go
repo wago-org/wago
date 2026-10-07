@@ -8,13 +8,13 @@ import (
 )
 
 type inlineOnlyEngineLayout struct {
-	stack        []byte
-	stackTop     uintptr
-	preparedHost *PreparedScalarHost
-	preparedInt  tinygoPreparedIntState
-	inUse        bool
-	args         [maxHostArity]uint64
-	results      [maxHostArity]uint64
+	stack       []byte
+	stackTop    uintptr
+	_           *PreparedScalarHost // Account for the prepared scalar bridge pointer.
+	preparedInt tinygoPreparedIntState
+	inUse       bool
+	args        [maxHostArity]uint64
+	results     [maxHostArity]uint64
 }
 
 func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {
