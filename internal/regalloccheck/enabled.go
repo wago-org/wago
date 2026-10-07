@@ -82,6 +82,14 @@ func (s *State) Apply(e Effect) {
 		a, b := s.Read(e.Dst, e.Size), s.Read(e.Src, e.Size)
 		s.Put(e.Dst, b)
 		s.Put(e.Src, a)
+		if e.Size == 4 {
+			if e.Dst.Bank == GP {
+				s.Put(e.Dst.next(4), make(Value, 4))
+			}
+			if e.Src.Bank == GP {
+				s.Put(e.Src.next(4), make(Value, 4))
+			}
+		}
 	case Kill:
 		s.Put(e.Dst, make(Value, e.Size))
 	case Call:

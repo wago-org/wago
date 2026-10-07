@@ -9,6 +9,7 @@ const regallocCheckEnabled = true
 type regallocState struct {
 	regallocObserver func(regalloccheck.Effect)
 	gpWriteObserver  func(uint32)
+	fpWriteObserver  func(uint32)
 }
 
 // ObserveGPWrites installs a physical GP destination observer independently of
@@ -27,6 +28,9 @@ func (a *Asm) regallocGPWrite(mask uint32) {
 	}
 }
 
+// GP and FP ModRM destinations use the same physical extension-bit rules.
+func regallocGPRegMask(reg Reg) uint32 { return regallocFPRegMask(reg) }
+
 // The one-byte register ALU family uses either ModRM destination direction.
 // CMP and TEST only update flags. MOV and XCHG also use this shared seam.
 func (a *Asm) regallocGPRR(op byte, rm, reg Reg, rex bool) {
@@ -36,16 +40,34 @@ func (a *Asm) regallocGPRR(op byte, rm, reg Reg, rex bool) {
 	switch {
 	case op <= 0x33 && op&7 <= 3:
 		if op&2 == 0 {
-			a.regallocGPWrite(1 << rm)
+			a.regallocGPWrite(regallocGPRegMask(rm))
 		} else {
-			a.regallocGPWrite(1 << reg)
+			a.regallocGPWrite(regallocGPRegMask(reg))
 		}
 	case op == 0x88 || op == 0x89:
-		a.regallocGPWrite(1 << rm)
+		a.regallocGPWrite(regallocGPRegMask(rm))
 	case op == 0x8a || op == 0x8b:
-		a.regallocGPWrite(1 << reg)
+		a.regallocGPWrite(regallocGPRegMask(reg))
 	case op == 0x86 || op == 0x87:
-		a.regallocGPWrite(1<<rm | 1<<reg)
+		a.regallocGPWrite(regallocGPRegMask(rm) | regallocGPRegMask(reg))
+	case op >= 0x38 && op <= 0x3b || op == 0x84 || op == 0x85: // CMP, TEST
+	case op == 0xff:
+		switch reg & 7 {
+		case 0, 1: // INC/DEC r/m
+			a.regallocGPWrite(regallocGPRegMask(rm))
+		case 2, 3: // CALL r/m
+			a.regallocGPWrite(0xffff)
+			regallocCall(a)
+		case 4, 5: // JMP
+		case 6: // PUSH r/m
+			a.regallocGPWrite(1 << RSP)
+		default:
+			a.regallocGPWrite(0xffff)
+			a.regallocFPWrite(0xffff)
+		}
+	default:
+		a.regallocGPWrite(0xffff)
+		a.regallocFPWrite(0xffff)
 	}
 }
 
@@ -57,19 +79,134 @@ func regallocLegacyByteReg(r Reg) Reg {
 	return r
 }
 
-// Memory destinations and address operands do not write a GP register.
+// Classify GP effects of generic one-byte memory forms, including XCHG and
+// group-5 implicit writes. Unknown forms cannot establish GP preservation.
 func (a *Asm) regallocGPMem(op byte, reg Reg, rex bool) {
-	if !rex && op&1 == 0 && (op <= 0x33 || op == 0x8a) {
+	if !rex && op&1 == 0 && (op <= 0x33 || op == 0x86 || op == 0x8a) {
 		reg = regallocLegacyByteReg(reg)
 	}
 	switch {
 	case op <= 0x33 && op&6 == 2:
-		a.regallocGPWrite(1 << reg)
+		a.regallocGPWrite(regallocGPRegMask(reg))
 	case op == 0x63 || op == 0x8a || op == 0x8b || op == 0x8d:
-		a.regallocGPWrite(1 << reg)
-	case op == 0xff && reg == 2: // CALL r/m64
+		a.regallocGPWrite(regallocGPRegMask(reg))
+	case op == 0x86 || op == 0x87: // XCHG also writes its register operand
+		a.regallocGPWrite(regallocGPRegMask(reg))
+	case op <= 0x33 && op&7 <= 1: // ALU memory destination
+	case op >= 0x38 && op <= 0x3b || op == 0x84 || op == 0x85 || op == 0x88 || op == 0x89:
+		// CMP, TEST, MOV to memory
+	case op == 0xff:
+		switch reg & 7 {
+		case 0, 1, 4, 5: // INC/DEC memory or JMP
+		case 2, 3: // CALL r/m
+			a.regallocGPWrite(0xffff)
+			regallocCall(a)
+		case 6: // PUSH r/m
+			a.regallocGPWrite(1 << RSP)
+		default:
+			a.regallocGPWrite(0xffff)
+			a.regallocFPWrite(0xffff)
+		}
+	default:
 		a.regallocGPWrite(0xffff)
+		a.regallocFPWrite(0xffff)
 	}
+}
+
+// Observe the emitted call independently of backend ABI/call-presence hints.
+// Call invalidates both register banks; caller-frame effects require separate
+// contracts for argument/result slots and changes to the frame origin.
+func regallocCall(a *Asm) {
+	a.regallocFPWrite(0xffff)
+	if a.regallocObserver != nil {
+		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Call})
+	}
+}
+
+// Known scalar/packed arithmetic destroys its result bytes independently of the backend's
+// semantic definition. Legacy SSE preserves the destination's upper lanes;
+// VEX scalar instructions copy those lanes from their first source. This seam
+// deliberately admits only the arithmetic/round/conversion opcodes below.
+// Moves retain their dedicated transfer effects and must not be killed twice.
+func regallocScalarFP(a *Asm, prefix, opcodeMap, op byte, dst, left Reg, vex bool) {
+	if a.regallocObserver == nil {
+		return
+	}
+	if prefix != 0 && prefix != 0x66 && prefix != 0xf2 && prefix != 0xf3 {
+		return
+	}
+	size := 16
+	if prefix == 0xf2 {
+		size = 8
+	} else if prefix == 0xf3 {
+		size = 4
+	}
+	switch opcodeMap {
+	case 0:
+		switch op {
+		case 0x51, 0x58, 0x59, 0x5c, 0x5d, 0x5e, 0x5f, 0xc2:
+		case 0x2a: // scalar integer-to-float
+			if size == 16 {
+				return // packed/MMX forms are outside this seam
+			}
+		case 0x5a: // precision conversion: prefix names the input precision
+			if prefix == 0xf2 {
+				size = 4
+			} else if prefix == 0xf3 {
+				size = 8
+			}
+		default:
+			return
+		}
+	case 0x3a:
+		if prefix != 0x66 {
+			return
+		}
+		switch op {
+		case 0x08, 0x09: // ROUNDPS/PD
+			size = 16
+		case 0x0a: // ROUNDSS
+			size = 4
+		case 0x0b: // ROUNDSD
+			size = 8
+		default:
+			return
+		}
+	default:
+		return
+	}
+	// Match the actual ModRM.reg field and REX/VEX.R selection. The raw
+	// encoder treats every Reg >= 8 as an extension-bit request, even if the
+	// caller supplied an out-of-range Reg rather than a canonical physical ID.
+	encodedDst := uint8(dst & 7)
+	if dst >= 8 {
+		encodedDst |= 8
+	}
+	d := regalloccheck.Register(regalloccheck.FP, encodedDst)
+	if vex && size < 16 {
+		upperDst, upperSrc := d, regalloccheck.Register(regalloccheck.FP, uint8(left&15))
+		upperDst.Byte, upperSrc.Byte = uint8(size), uint8(size)
+		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Copy, Dst: upperDst, Src: upperSrc, Size: 16 - size})
+	}
+	a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Kill, Dst: d, Size: size})
+}
+
+func regallocVexScalarFP(a *Asm, opcodeMap, pp, op byte, dst, left Reg, l byte) {
+	var m byte
+	switch opcodeMap {
+	case vexMap0F:
+	case vexMap0F3A:
+		m = 0x3a
+	default:
+		return
+	}
+	// Scalar L=1 forms are outside this known-form contract. Their absence
+	// must remain unsupported in a whole-body journal; it is not evidence of
+	// preserved bytes. Packed L=1 writes kill all tracked (low 16) bytes.
+	if l != 0 && (m == 0 && pp&3 >= 2 || m == 0x3a && (op == 0x0a || op == 0x0b)) {
+		return
+	}
+	regallocScalarFP(a, [...]byte{0, 0x66, 0xf3, 0xf2}[pp&3], m, op, dst, left, true)
 }
 
 // GP results hidden in the generic SIMD encoders need the actual ModRM
@@ -77,32 +214,40 @@ func (a *Asm) regallocGPMem(op byte, reg Reg, rex bool) {
 // memory. Mandatory prefixes distinguish scalar GP conversions from packed FP
 // conversions and MOVD/Q from the FP-only F3 MOVQ form.
 func (a *Asm) regallocGPSSE(prefix, opcodeMap, op byte, reg, rm Reg, memory bool) {
+	if regallocFPSSEMask(prefix, opcodeMap, op, reg, rm, memory) == 0xffff {
+		a.regallocGPWrite(0xffff)
+		return
+	}
 	if opcodeMap == 0 {
 		switch op {
 		case 0x2c, 0x2d: // CVTTSS/SD2SI, CVTSS/SD2SI
 			if prefix == 0xf2 || prefix == 0xf3 {
-				a.regallocGPWrite(1 << reg)
+				a.regallocGPWrite(regallocGPRegMask(reg))
 			}
 		case 0x50, 0xd7, 0xc5: // MOVMSKPS/PD, PMOVMSKB, PEXTRW
 			if !memory && (prefix == 0 || prefix == 0x66) {
-				a.regallocGPWrite(1 << reg)
+				a.regallocGPWrite(regallocGPRegMask(reg))
 			}
 		case 0x7e: // MOVD/Q r/m, xmm (or mm)
 			if !memory && (prefix == 0 || prefix == 0x66) {
-				a.regallocGPWrite(1 << rm)
+				a.regallocGPWrite(regallocGPRegMask(rm))
 			}
 		}
 	} else if opcodeMap == 0x3a && prefix == 0x66 && !memory {
 		switch op {
 		case 0x14, 0x15, 0x16, 0x17: // PEXTRB/W/D/Q, EXTRACTPS
-			a.regallocGPWrite(1 << rm)
+			a.regallocGPWrite(regallocGPRegMask(rm))
 		}
 	}
 }
 
 func (a *Asm) regallocGPVEX(opcodeMap, pp, op byte, reg, rm Reg, memory bool) {
+	if pp&^3 != 0 {
+		a.regallocGPWrite(0xffff)
+		return
+	}
 	if opcodeMap == vexMap0F3A && pp == 3 && op == 0xf0 { // RORX
-		a.regallocGPWrite(1 << reg)
+		a.regallocGPWrite(regallocGPRegMask(reg))
 		return
 	}
 	var m byte
@@ -113,6 +258,7 @@ func (a *Asm) regallocGPVEX(opcodeMap, pp, op byte, reg, rm Reg, memory bool) {
 	case vexMap0F3A:
 		m = 0x3a
 	default:
+		a.regallocGPWrite(0xffff)
 		return
 	}
 	prefix := [...]byte{0, 0x66, 0xf3, 0xf2}[pp&3]

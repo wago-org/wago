@@ -316,9 +316,11 @@ type scalarControl struct {
 	falseSite, endSite int
 }
 
-// ScalarState contains the sole semantic state for an admitted function. Its
+// scalarState holds the common semantic fields. Build-tagged ScalarState
+// definitions keep ordinary type metadata free of checked-only fields. The
+// alias shares the field declaration without adding a public type. Its
 // pointer-free backing is reused only across functions of one module worker.
-type ScalarState struct {
+type scalarState = struct {
 	nodes                       []scalarNode
 	stack, locals               []scalarID
 	widths                      []bool
@@ -353,6 +355,9 @@ func (s *ScalarState) add(n scalarNode) scalarID {
 			}
 			s.nodes[0].left = s.node(id).left
 			s.nodes[id] = n
+			if scalarGraphChecks {
+				checkGraphAdd(s, id)
+			}
 			return id
 		}
 	}
@@ -364,7 +369,11 @@ func (s *ScalarState) add(n scalarNode) scalarID {
 		s.nodes = nodes
 	}
 	s.nodes = append(s.nodes, n)
-	return scalarID(len(s.nodes) - 1)
+	id := scalarID(len(s.nodes) - 1)
+	if scalarGraphChecks {
+		checkGraphAdd(s, id)
+	}
+	return id
 }
 
 // Admission bounds all references by two deferred edges per node plus at most
@@ -509,6 +518,9 @@ func (s *ScalarState) materialize(id scalarID, avoid uint64) uint8 {
 	switch n.kind {
 	case ScalarConstant:
 		s.target.Constant(r, n.constant, n.wide)
+		if scalarGraphChecks {
+			checkGraphDefine(s, id, r)
+		}
 	case ScalarRegister:
 		s.target.Move(r, n.reg, n.wide)
 		s.owners[n.reg] = 0
@@ -524,6 +536,9 @@ func (s *ScalarState) materialize(id scalarID, avoid uint64) uint8 {
 	s.node(id).depth = 0
 	s.node(id).constant = 0 // moves and loads normalize i32 into the new register
 	s.owners[r] = id
+	if scalarGraphChecks {
+		checkGraphUse(s, id)
+	}
 	return r
 }
 
@@ -557,6 +572,9 @@ func (s *ScalarState) returnValue(id scalarID) {
 		// i32 return has no such instruction, so normalize only that carrier.
 		s.target.NormalizeI32(reg)
 		n.constant = 0
+	}
+	if scalarGraphChecks {
+		checkGraphResult(s, id)
 	}
 	s.target.Return(reg, s.node(id).wide, s.maxSlot)
 	s.release(id)
@@ -592,7 +610,14 @@ func (s *ScalarState) expression(id scalarID, avoid uint64) uint8 {
 					left = s.materialize(n.left, avoid|1<<index)
 				}
 				dst := s.alloc(avoid | 1<<left | 1<<index)
+				if scalarGraphChecks {
+					checkGraphUse(s, n.left)
+					checkGraphUse(s, child.left)
+				}
 				if s.target.ScaledAdd(n.operandWide, dst, left, index, uint8(count.constant)) {
+					if scalarGraphChecks {
+						checkGraphDefine(s, id, dst)
+					}
 					s.release(n.left)
 					s.release(n.right)
 					v := s.node(id)
@@ -629,7 +654,13 @@ func (s *ScalarState) expression(id scalarID, avoid uint64) uint8 {
 		}
 		dst = s.alloc(mask)
 	}
+	if scalarGraphChecks {
+		checkGraphInputs(s, n.left, n.right)
+	}
 	s.target.Binary(n.op, n.operandWide, dst, left, right)
+	if scalarGraphChecks {
+		checkGraphDefine(s, id, dst)
+	}
 	s.release(n.left)
 	s.release(n.right)
 	value := s.node(id)
@@ -726,6 +757,9 @@ func (s *ScalarState) canonicalize(registerResult bool) {
 			s.maxSlot = i + 2
 		}
 	}
+	if scalarGraphChecks {
+		checkGraphRestoreCarrier(s, registerResult, resultReg)
+	}
 	s.restore(len(s.stack))
 	if registerResult {
 		id := s.stack[len(s.stack)-1]
@@ -757,6 +791,10 @@ func (s *ScalarState) restoreResultLocal(local uint16) {
 }
 
 func (s *ScalarState) restore(depth int) {
+	var graphSnapshot scalarGraphSnapshot
+	if scalarGraphChecks {
+		graphSnapshot = checkGraphRestore(s, depth)
+	}
 	// Stack types are retained through the agreement. Each else restores only the
 	// pre-split prefix, whose types cannot change in a validated scalar body.
 	for _, id := range s.locals {
@@ -773,16 +811,25 @@ func (s *ScalarState) restore(depth int) {
 	for i, wide := range s.widths {
 		s.locals[i] = s.add(scalarNode{kind: scalarBorrow, slot: int32(i), home: uint16(i + 1), wide: wide, refs: 1})
 	}
+	if scalarGraphChecks {
+		checkGraphRestored(s, graphSnapshot)
+	}
 }
 func (s *ScalarState) condition(id scalarID) int {
 	n := *s.node(id)
 	if n.kind == scalarDeferred && scalarCompare(n.op) {
 		left, right := s.operands(n, 0)
+		if scalarGraphChecks {
+			checkGraphInputs(s, n.left, n.right)
+		}
 		site := s.target.BranchCompare(n.op, n.operandWide, left, right)
 		s.release(id)
 		return site
 	}
 	reg := s.materialize(id, 0)
+	if scalarGraphChecks {
+		checkGraphUse(s, id)
+	}
 	site := s.target.BranchZero(reg)
 	s.release(id)
 	return site
@@ -793,6 +840,10 @@ func (s *ScalarState) condition(id scalarID) int {
 func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWide []bool, nParams int, target ScalarTarget) (int, error) {
 	if !summary.Eligible {
 		return 0, fmt.Errorf("shared scalar: unadmitted function")
+	}
+	if scalarGraphChecks {
+		target = checkGraphBegin(s, target)
+		defer checkGraphEnd(s)
 	}
 	old := s.Memory()
 	if cap(s.nodes) > 4096 && summary.Nodes < cap(s.nodes)/4 {
@@ -854,6 +905,9 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			}
 			id := s.add(n)
 			s.locals = append(s.locals, id)
+			if scalarGraphChecks {
+				checkGraphSeed(s, id)
+			}
 			if incoming {
 				s.owners[reg] = id
 			}
@@ -960,6 +1014,9 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 			}
 			s.canonicalize(fr.result == 1)
 			fr.endSite = s.target.Jump()
+			if scalarGraphChecks {
+				checkGraphElse(s)
+			}
 			if e := s.target.Patch(fr.falseSite, s.target.Position()); e != nil {
 				return 0, e
 			}
@@ -975,6 +1032,9 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 				s.regs = nil
 				if m := s.Memory(); m > s.Peak {
 					s.Peak = m
+				}
+				if scalarGraphChecks {
+					checkGraphComplete(s)
 				}
 				return s.maxSlot, nil
 			}
@@ -1014,6 +1074,9 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 
 // FinishWorker releases shared scratch after the worker's last function.
 func (s *ScalarState) FinishWorker() {
+	if scalarGraphChecks {
+		finishSourceWorker(s)
+	}
 	s.Discarded += s.Memory()
 	s.nodes = nil
 	s.stack = nil

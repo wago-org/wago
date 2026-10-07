@@ -10,6 +10,8 @@ const regallocCheckEnabled = false
 // Keep this first in Asm: an empty trailing field can grow a Go struct.
 type regallocState struct{}
 
+func regallocCall(*Asm) {}
+
 func (*Asm) ObserveRegalloc(func(regalloccheck.Effect)) func(regalloccheck.Effect) { return nil }
 func (*Asm) regallocCopy(Reg, Reg, bool, int)                                      {}
 func (*Asm) regallocLoad(Reg, Reg, int32, bool, int)                               {}
@@ -25,3 +27,6 @@ func (*Asm) regallocKillFP(Reg)                    {}
 func (*Asm) ObserveGPWrites(func(uint32)) func(uint32) { return nil }
 func (*Asm) regallocGPWrites(uint32)                   {}
 func regallocGPMask(Reg, bool) uint32                  { return 0 }
+
+func (*Asm) ObserveFPWrites(func(uint32)) func(uint32) { return nil }
+func (*Asm) regallocFPWrites(uint32)                   {}

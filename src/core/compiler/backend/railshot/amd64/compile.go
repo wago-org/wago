@@ -1734,7 +1734,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.Profile && opts.Stats == nil {
 		return nil, fmt.Errorf("amd64: profiling requires a ModuleStats destination")
 	}
-	compiled, err := compileModuleWith(m, opts)
+	var compiled *amd64.CompiledModule
+	var err error
+	if codegen.SourceChecks {
+		compiled, err = compileSourceModuleWith(m, opts)
+	} else {
+		compiled, err = compileModuleWith(m, opts)
+	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
 	return compiled, err
@@ -1954,6 +1960,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				_ = codeBuffer.Close()
 			}
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
+		}
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		var directPrepared, directPreparedBounded []uint64
@@ -2180,6 +2189,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
+		if regallocCheckEnabled {
+			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
+		}
 		states[i].scratch.amd64Features = opts.AMD64Features
 		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
@@ -2208,6 +2220,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			ws.scratchStats = workerScratchStats(ws.scratch)
 			ws.scratch = nil
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceContext(&ws.scratch.scalar, codegen.SourceContextFor(opts.Codegen, m))
+		}
 		for {
 			i := int(work.next.Add(1) - 1)
 			if i >= n {
@@ -3901,6 +3916,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.RecordUnwind = !moduleEH && len(custom) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil && len(inlinedCallees) == 0 && !hints.flags.has(hintHasTailCall|hintUsesBulkMem|hintMutatesTable|hintHasJumpTableData|hintGCSharedResolver|hintGCDeferredResolver)
 	}
 
+	if regallocCheckEnabled {
+		checkSourceBegin(f, hostAdapter || !regABI)
+	}
+
 	if regABI {
 		// The prepared trampoline establishes RBX, and every admitted function was
 		// compiled without the unsaved R12-R15 set. The module finalizer below
@@ -3915,9 +3934,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			return nil, nil, 0, err
 		}
 		f.emitV128ConstPool()
+		if regallocCheckEnabled {
+			checkSourceFinishEmission(f)
+		}
 		internalOff, err = f.finalizeNativeCode(internalOff)
 		if err != nil {
 			return nil, nil, 0, err
+		}
+		if regallocCheckEnabled {
+			checkSourceVerify(f)
 		}
 		f.finalizeStats(len(f.a.B))
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
@@ -4863,9 +4888,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	}
 	// Results are canonical now; this terminal return cannot use body caches.
 	// Attempt cleanup owns observer restoration if epilogue emission panics.
-	var returnGPWrites regallocGPWriteMask
+	var returnGPWrites regallocWriteMask
 	if regallocCheckEnabled {
-		returnGPWrites = f.checkTerminalGPWrites()
+		returnGPWrites = f.checkTerminalWrites()
 	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
@@ -4921,7 +4946,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 	if regallocCheckEnabled {
-		f.checkRestoreGPWrites(returnGPWrites)
+		f.checkRestoreWrites(returnGPWrites)
 	}
 	f.emitNativeGCStubs()
 	if profileEnabled {
@@ -5007,9 +5032,9 @@ func (f *fn) patchFrameSize() error {
 // the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
 	// On panic, compileFuncAttempt retires the abandoned function's observer.
-	var returnGPWrites regallocGPWriteMask
+	var returnGPWrites regallocWriteMask
 	if regallocCheckEnabled {
-		returnGPWrites = f.checkTerminalGPWrites()
+		returnGPWrites = f.checkTerminalWrites()
 	}
 	a := f.a
 	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
@@ -5032,7 +5057,7 @@ func (f *fn) epilogue() {
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 	if regallocCheckEnabled {
-		f.checkRestoreGPWrites(returnGPWrites)
+		f.checkRestoreWrites(returnGPWrites)
 	}
 }
 

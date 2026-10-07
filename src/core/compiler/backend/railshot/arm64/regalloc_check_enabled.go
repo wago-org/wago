@@ -6,18 +6,25 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/internal/regalloccheck"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
 const regallocCheckEnabled = true
 
 // Transfer regions trust incoming locations and observe only covered transfers.
-// Immutable GP reservations observe all typed encoder writes; FP cache
-// admission is checked at calls. Neither state is whole-function dataflow.
+// Immutable GP and low-128 FP reservations observe typed encoder writes.
+// Neither state is whole-function dataflow; raw emission is outside this channel.
 type regallocFnState struct {
+	sourceLeaf         *shared.SourceLeaf
+	sourceBranch       *shared.SourceBranch
+	sourceRestore      func()
 	allocationCheck    *allocationRegion
 	immutableCheck     regalloccheck.State
 	immutableValues    []allocationGoal
 	immutableGPMask    uint32
+	immutableFPMask    uint32
+	fpObserverActive   bool
+	fpObserverPrevious func(uint32)
 	gpObserverActive   bool
 	gpObserverPrevious func(uint32)
 }
@@ -122,8 +129,16 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
 	for e := first; e != f.s.head; e = f.s.next(e) {
 		c.protected[e] = true
 	}
-	c.previous = f.a.ObserveRegalloc(c.state.Apply)
+	c.previous = f.a.ObserveRegalloc(c.observe)
 	return true
+}
+
+// Nested transfer windows compose with a function-wide emission observer.
+func (c *allocationRegion) observe(effect regalloccheck.Effect) {
+	c.state.Apply(effect)
+	if c.previous != nil {
+		c.previous(effect)
+	}
 }
 
 // Restore the enclosing observer on every exit. Preserve an existing panic
@@ -204,7 +219,7 @@ func (f *fn) checkBeginSlots(from, to, n int) func() {
 	owned := c == nil
 	if owned {
 		c = &allocationRegion{}
-		c.previous = f.a.ObserveRegalloc(c.state.Apply)
+		c.previous = f.a.ObserveRegalloc(c.observe)
 	}
 	goals := make([]allocationGoal, n)
 	for i := range goals {
@@ -232,6 +247,9 @@ func (f *fn) checkBeginSlots(from, to, n int) func() {
 // Immutable caches are defined at their actual preload, not seeded at a call.
 // They have no spill/reload protocol and must survive until function exit.
 func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
+	if fp && (size > 16 || uint8(reg) >= 32) {
+		panic("regalloccheck: unsupported immutable FP reservation")
+	}
 	loc := checkReg(reg, fp)
 	value := f.immutableCheck.Fresh(size)
 	f.immutableCheck.Put(loc, value)
@@ -246,6 +264,19 @@ func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
 				}
 				if f.gpObserverPrevious != nil {
 					f.gpObserverPrevious(mask)
+				}
+			})
+		}
+	} else {
+		f.immutableFPMask |= uint32(1) << uint8(reg)
+		if !f.fpObserverActive && f.a != nil {
+			f.fpObserverActive = true
+			f.fpObserverPrevious = f.a.ObserveFPWrites(func(mask uint32) {
+				if mask&f.immutableFPMask != 0 {
+					panic(fmt.Sprintf("regalloccheck: function %d pc %d: immutable FP reservation may be overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, mask&f.immutableFPMask))
+				}
+				if f.fpObserverPrevious != nil {
+					f.fpObserverPrevious(mask)
 				}
 			})
 		}
@@ -328,16 +359,26 @@ func (f *fn) checkEndLifetimes() {
 		f.gpObserverPrevious = nil
 		f.gpObserverActive = false
 	}
+	if f.fpObserverActive {
+		f.a.ObserveFPWrites(f.fpObserverPrevious)
+		f.fpObserverPrevious = nil
+		f.fpObserverActive = false
+	}
 	f.immutableGPMask = 0
+	f.immutableFPMask = 0
+	checkSourceClose(f)
 }
 
-// Trap stubs are terminal edges: they unwind directly to Go and cannot return
-// to a cache use. Restore the body reservation for other emitted paths.
-type regallocGPWriteMask = uint32
+// Returns and trap stubs are terminal edges and cannot reach a body-cache use.
+// Restore body reservations before emitting other control-flow arms.
+type regallocWriteMask struct{ gp, fp uint32 }
 
-func (f *fn) checkTerminalGPWrites() regallocGPWriteMask {
-	saved := f.immutableGPMask
+func (f *fn) checkTerminalWrites() regallocWriteMask {
+	saved := regallocWriteMask{f.immutableGPMask, f.immutableFPMask}
 	f.immutableGPMask = 0
+	f.immutableFPMask = 0
 	return saved
 }
-func (f *fn) checkRestoreGPWrites(saved regallocGPWriteMask) { f.immutableGPMask = saved }
+func (f *fn) checkRestoreWrites(saved regallocWriteMask) {
+	f.immutableGPMask, f.immutableFPMask = saved.gp, saved.fp
+}

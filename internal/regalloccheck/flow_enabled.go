@@ -2,7 +2,14 @@
 
 package regalloccheck
 
-import "fmt"
+import (
+	"fmt"
+	"math/bits"
+)
+
+// MaxCarrierBytes bounds the target-neutral checked graph vocabulary. Target
+// adapters must still authenticate each actual register width and encoding.
+const MaxCarrierBytes = 64
 
 // ValueID names an independent semantic definition, not an allocator owner.
 // IDs are one-based indices into Graph.Widths and remain stable during analysis.
@@ -15,6 +22,7 @@ const (
 	Define
 	Use
 	Unsupported
+	DefineConstant // admitted immutable literal materialization; preserves other aliases
 )
 
 // Operation separates emitted effects from the semantic contract. Define is
@@ -51,9 +59,14 @@ type Block struct {
 // are its only entry assumptions. Clients must also bound graph construction.
 type Graph struct {
 	Widths []uint8
-	Blocks []Block
-	Entry  int
-	Inputs []Binding
+	// ConstValues classifies independently canonical type/bits identities.
+	// Classification does not prove literal bits or the emitted materialization.
+	// Those remain trusted source/recipe admission contracts. Immutable IDs may
+	// be used or copied, but never dynamically defined or renamed by an edge.
+	ConstValues []ValueID
+	Blocks      []Block
+	Entry       int
+	Inputs      []Binding
 }
 
 type Verdict uint8
@@ -144,7 +157,7 @@ func (c flowCell) each(b *flowBudget, fn func(symbol)) {
 }
 
 type flowIndex struct {
-	locations map[Location]uint16
+	locations map[Location]uint64
 	history   int // retained per-value map capacity survives deletions
 }
 
@@ -196,9 +209,9 @@ func (s *flowImage) add(loc Location, v symbol) {
 	}
 	index := s.ids[v.id]
 	if index.locations == nil {
-		index.locations = make(map[Location]uint16)
+		index.locations = make(map[Location]uint64)
 	}
-	index.locations[loc] |= 1 << v.part
+	index.locations[loc] |= uint64(1) << v.part
 	index.history++
 	s.ids[v.id] = index
 	s.count++
@@ -220,7 +233,7 @@ func (s *flowImage) remove(loc Location, v symbol) {
 		s.cells[loc] = c
 	}
 	index := s.ids[v.id]
-	index.locations[loc] &^= 1 << v.part
+	index.locations[loc] &^= uint64(1) << v.part
 	if index.locations[loc] == 0 {
 		delete(index.locations, loc)
 	}
@@ -247,7 +260,7 @@ func (s *flowImage) forget(id ValueID) {
 	}
 	s.b.charge(index.history)
 	for loc, parts := range index.locations {
-		for part := uint8(0); part < 16; part++ {
+		for part := uint8(0); part < uint8(max(16, bits.Len64(parts))); part++ {
 			s.b.charge(1)
 			if parts&(1<<part) != 0 {
 				s.remove(loc, symbol{id, part})
@@ -353,6 +366,13 @@ func (s *flowImage) effect(e Effect) {
 func (s *flowImage) define(loc Location, id ValueID, width int) {
 	// Repeated loop definitions must not leave the previous iteration's aliases.
 	s.forget(id)
+	s.defineConstant(loc, id, width)
+}
+
+// A canonical constant's meaning cannot change on another materialization.
+// Clear the overwritten destination, retaining independently valid aliases.
+// Physical effects must precede this trusted semantic definition as usual.
+func (s *flowImage) defineConstant(loc Location, id ValueID, width int) {
 	s.clear(loc, width)
 	for i := 0; i < width; i++ {
 		s.add(loc.next(i), symbol{id, uint8(i)})
@@ -369,7 +389,7 @@ func (s *flowImage) parameters(params []Parameter) {
 		}
 		s.b.charge(index.history)
 		for loc, parts := range index.locations {
-			for part := uint8(0); part < 16; part++ {
+			for part := uint8(0); part < uint8(max(16, bits.Len64(parts))); part++ {
 				s.b.charge(1)
 				if parts&(1<<part) != 0 {
 					s.b.addFact()
@@ -399,20 +419,39 @@ func resolveLimits(l Limits) (Limits, bool) {
 }
 
 func flowLocation(loc Location, size int, unknown bool) bool {
-	if size < 1 || size > 16 {
+	if size < 1 || size > MaxCarrierBytes {
 		return false
 	}
 	switch loc.Bank {
 	case GP:
 		return loc.Index >= 0 && loc.Index < 32 && int(loc.Byte)+size <= 8
 	case FP:
-		return loc.Index >= 0 && loc.Index < 32 && int(loc.Byte)+size <= 16
+		return loc.Index >= 0 && loc.Index < 32 && int(loc.Byte)+size <= MaxCarrierBytes
 	case Frame:
 		return loc.Byte == 0 && int64(loc.Index)+int64(size)-1 <= 2147483647
 	case Unknown:
 		return unknown
 	}
 	return false
+}
+
+func machineEffectValid(e Effect) bool {
+	if e.Kind == Call {
+		return e.Size == 0 && e.ClearTo == 0
+	}
+	if e.Kind > Read || e.Size < 1 || e.Size > MaxCarrierBytes || e.ClearTo < 0 || e.ClearTo != 0 && e.ClearTo < e.Size || e.Kind == Read && e.ClearTo != 0 {
+		return false
+	}
+	if e.Kind != Read && !flowLocation(e.Dst, max(e.Size, e.ClearTo), false) {
+		return false
+	}
+	if (e.Kind == Copy || e.Kind == Swap || e.Kind == Read) && !flowLocation(e.Src, e.Size, e.Kind != Swap) {
+		return false
+	}
+	if (e.Kind == Copy || e.Kind == Swap) && e.Size == 4 && (e.Dst.Bank == GP && e.Dst.Byte != 0 || e.Kind == Swap && e.Src.Bank == GP && e.Src.Byte != 0) {
+		return false
+	}
+	return e.Kind != Swap || e.ClearTo == 0 && !partialOverlap(e.Dst, e.Src, e.Size)
 }
 
 func partialOverlap(a, b Location, size int) bool {
@@ -444,9 +483,29 @@ func (g *Graph) validate(b *flowBudget) string {
 	}
 	for _, width := range g.Widths {
 		b.charge(1)
-		if width == 0 || width > 16 {
+		if width == 0 || width > MaxCarrierBytes {
 			return "invalid semantic width"
 		}
+	}
+	if len(g.ConstValues) > len(g.Widths) {
+		return "invalid constant classification count"
+	}
+	var constants []bool
+	if len(g.ConstValues) != 0 {
+		// Values bounds the table before allocation, and Work accounts for its
+		// initialization as well as every classification inspected below.
+		b.charge(len(g.Widths) + 1)
+		constants = make([]bool, len(g.Widths)+1)
+		for _, id := range g.ConstValues {
+			b.charge(1)
+			if g.width(id) == 0 || constants[id] {
+				return "invalid or duplicate constant classification"
+			}
+			constants[id] = true
+		}
+	}
+	isConstant := func(id ValueID) bool {
+		return len(constants) != 0 && uint64(id) < uint64(len(constants)) && constants[id]
 	}
 	remaining := b.limits.Operations
 	consume := func(n int) bool {
@@ -472,32 +531,17 @@ func (g *Graph) validate(b *flowBudget) string {
 		}
 		for _, op := range block.Operations {
 			switch op.Kind {
-			case Define, Use:
+			case Define, DefineConstant, Use:
 				if !flowLocation(op.Location, g.width(op.Value), false) {
 					return "invalid semantic operation"
 				}
+				if op.Kind == DefineConstant && !isConstant(op.Value) || op.Kind == Define && isConstant(op.Value) {
+					return "definition violates constant classification"
+				}
 			case Machine:
 				e := op.Effect
-				if e.Kind == Call {
-					if e.Size != 0 || e.ClearTo != 0 {
-						return "invalid call effect"
-					}
-					continue
-				}
-				if e.Size < 1 || e.Size > 16 || e.Kind > Read || (e.Kind == Read && e.ClearTo != 0) || e.ClearTo < 0 || (e.ClearTo != 0 && e.ClearTo < e.Size) {
+				if !machineEffectValid(e) {
 					return "invalid machine effect"
-				}
-				if e.Kind != Read && !flowLocation(e.Dst, max(e.Size, e.ClearTo), false) {
-					return "invalid machine destination"
-				}
-				if (e.Kind == Copy || e.Kind == Swap || e.Kind == Read) && !flowLocation(e.Src, e.Size, e.Kind != Swap) {
-					return "invalid machine source"
-				}
-				if (e.Kind == Copy || e.Kind == Swap) && e.Size == 4 && ((e.Dst.Bank == GP && e.Dst.Byte != 0) || (e.Kind == Swap && e.Src.Bank == GP && e.Src.Byte != 0)) {
-					return "invalid GP32 register slice"
-				}
-				if e.Kind == Swap && (e.ClearTo != 0 || partialOverlap(e.Dst, e.Src, e.Size)) {
-					return "invalid swap clear width or overlap"
 				}
 			case Unsupported:
 			default:
@@ -513,7 +557,7 @@ func (g *Graph) validate(b *flowBudget) string {
 			}
 			seen := make(map[ValueID]bool)
 			for _, p := range edge.Parameters {
-				if g.width(p.From) == 0 || g.width(p.From) != g.width(p.To) || seen[p.To] || !flowLocation(p.Location, g.width(p.From), false) {
+				if g.width(p.From) == 0 || g.width(p.From) != g.width(p.To) || seen[p.To] || isConstant(p.To) || !flowLocation(p.Location, g.width(p.From), false) {
 					return "invalid or duplicate edge parameter"
 				}
 				seen[p.To] = true
@@ -531,6 +575,8 @@ func (g *Graph) run(s *flowImage, block int, check bool) *Result {
 			s.effect(op.Effect)
 		case Define:
 			s.define(op.Location, op.Value, g.width(op.Value))
+		case DefineConstant:
+			s.defineConstant(op.Location, op.Value, g.width(op.Value))
 		case Use:
 			if check {
 				if failure := g.check(s, op.Location, op.Value, op.Where, block, i); failure != nil {

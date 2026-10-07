@@ -61,6 +61,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		if regallocCheckEnabled {
+			checkNativeSourceBefore(f, r.Offset()-1, op)
+		}
 		var previous profileOrigin
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
 			previous = f.enterProfileInstruction()
@@ -127,6 +130,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 
 		if err != nil {
 			return err
+		}
+		if regallocCheckEnabled {
+			checkNativeSourceAfter(f, r.Offset())
 		}
 	}
 	if f.representationLimit != functionRepresentationOK {
@@ -227,6 +233,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		if regallocCheckEnabled {
+			checkNativeSourceGet(f, x)
+		}
 		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
@@ -1161,6 +1170,9 @@ func (f *fn) v128TeeOverwritten(r *wasm.Reader, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+	if regallocCheckEnabled {
+		checkNativeSourceSet(f, x, tee, f.s.back())
+	}
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()

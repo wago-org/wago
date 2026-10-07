@@ -81,10 +81,7 @@ func (f *fn) extractSIMDLane(dst, src Reg, lane byte, width int) {
 		f.a.MovXmmToGpr(dst, src, width == 8)
 		return
 	}
-	tmp := Reg(0)
-	if tmp == src {
-		tmp++
-	}
+	tmp := f.borrowSIMDReg(maskOf(src))
 	slot := f.allocSpillSlots(2)
 	f.mov128StoreDisp(RSP, f.spillOff(slot), tmp)
 	control := lane
@@ -99,11 +96,12 @@ func (f *fn) extractSIMDLane(dst, src Reg, lane byte, width int) {
 }
 func (f *fn) insertSIMDLane(dst, src Reg, lane byte, width int) {
 	tmp, other := RAX, RDX
+	// RCX is excluded from immutable integer-cache allocation; R11 is not.
 	if src == tmp {
-		tmp = R11
+		tmp = RCX
 	}
 	if src == other {
-		other = R11
+		other = RCX
 	}
 	slot := f.allocSpillSlots(2)
 	off := f.spillOff(slot)

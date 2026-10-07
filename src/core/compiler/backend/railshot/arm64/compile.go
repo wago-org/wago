@@ -1584,7 +1584,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if opts.Profile && opts.Stats == nil {
 		return nil, fmt.Errorf("arm64: profiling requires a ModuleStats destination")
 	}
-	compiled, err := compileModuleWith(m, opts)
+	var compiled *a64.CompiledModule
+	var err error
+	if codegen.SourceChecks {
+		compiled, err = compileSourceModuleWith(m, opts)
+	} else {
+		compiled, err = compileModuleWith(m, opts)
+	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
 	return compiled, err
@@ -1761,6 +1767,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				_ = codeBuffer.Close()
 			}
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
+		}
 		pressureDone := false
 		var directPrepared, directPreparedLight, directPreparedBounded []uint64
 		var adapterTails []adapterTailInfo
@@ -1936,6 +1945,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
+		if regallocCheckEnabled {
+			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
+		}
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
 		states[i].scratch.reserveLocalScratch(localCap)
@@ -1961,6 +1973,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			ws.scratchStats = workerScratchStats(ws.scratch)
 			ws.scratch = nil
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceContext(&ws.scratch.scalar, codegen.SourceContextFor(opts.Codegen, m))
+		}
 		for {
 			i := int(work.next.Add(1) - 1)
 			if i >= n {
@@ -3402,6 +3417,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		return nil, nil, 0, err
 	}
 
+	if regallocCheckEnabled {
+		checkSourceBegin(f, hostAdapter || !regABI)
+	}
+
 	if regABI {
 		internalOff, err := f.emitRegABI(c, hostAdapter, hints.localScore, hints.flags.has(hintHasFloatConst), hints)
 		if err != nil {
@@ -3417,9 +3436,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		if err := f.emitFloatConstPool(); err != nil {
 			return nil, nil, 0, err
 		}
+		if regallocCheckEnabled {
+			checkSourceFinishEmission(f)
+		}
 		internalOff, err = f.finalizeNativeCode(internalOff)
 		if err != nil {
 			return nil, nil, 0, err
+		}
+		if regallocCheckEnabled {
+			checkSourceVerify(f)
 		}
 		f.finalizeStats(len(f.a.B))
 		return f.a.B, f.relocs, internalOff, nil
@@ -4466,6 +4491,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
+	// Body results are canonical; terminal reloads may reuse cache registers.
+	// Attempt cleanup owns observer restoration if return emission panics.
+	var returnWrites regallocWriteMask
+	if regallocCheckEnabled {
+		returnWrites = f.checkTerminalWrites()
+	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
@@ -4517,6 +4548,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		a.LdpPost(FP, LR, SP, 16) // restore FP/LR
 	}
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreWrites(returnWrites)
+	}
 	if profileEnabled {
 		f.collectProfileSources(internalOff)
 	}
@@ -4555,6 +4589,11 @@ func (f *fn) emitPhasePadding() {
 // return, br to the function label) has already placed the results in slots
 // [0, resultN).
 func (f *fn) epilogue() {
+	// Every reaching path has already placed results in canonical slots.
+	var returnWrites regallocWriteMask
+	if regallocCheckEnabled {
+		returnWrites = f.checkTerminalWrites()
+	}
 	a := f.a
 	f.storeModuleGlobals(X2)     // Go exit: module-pinned registers → cells
 	f.ld64(X1, SP, frResultsOff) // results ptr (X1 is free at the epilogue)
@@ -4580,6 +4619,9 @@ func (f *fn) epilogue() {
 		a.LdpPost(FP, LR, SP, 16) // restore FP/LR
 	}
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreWrites(returnWrites)
+	}
 }
 
 func abiValOff(ts []wasm.ValType, idx int) int32 {

@@ -2,16 +2,26 @@
 
 package amd64
 
+// borrowSIMDReg excludes immutable caches even when the caller saves and
+// restores the borrowed value. Other live values still require that save:
+// plugin temporaries need not have allocator ownership.
+func (f *fn) borrowSIMDReg(avoid regMask) Reg {
+	blocked := avoid.union(f.fconstMask()).union(f.v128ConstMask())
+	for r := Reg(0); r < 16; r++ {
+		if !blocked.has(r) {
+			return r
+		}
+	}
+	panic(regExhausted{class: "FP/vector scratch"})
+}
+
 // legacySIMDBinary preserves the three-operand contract of vector lowering
 // while selecting the destructive legacy SSE encoding at compile time.
 func (f *fn) legacySIMDBinary(op simdBinaryOp, dst, left, right Reg) {
 	tmp := regNone
 	slot := 0
 	if dst == right && dst != left {
-		tmp = 0
-		for tmp == dst || tmp == left {
-			tmp++
-		}
+		tmp = f.borrowSIMDReg(maskOf(dst, left))
 		slot = f.allocSpillSlots(2)
 		f.mov128StoreDisp(RSP, f.spillOff(slot), tmp)
 		f.mov128(tmp, right)
@@ -45,7 +55,8 @@ func (f *fn) legacySIMDBinary(op simdBinaryOp, dst, left, right Reg) {
 func (f *fn) simdFallback(op byte, dst, left, right Reg) {
 	// Preserve fixed scratch registers because callers may have live
 	// unowned temporaries that the operand allocator cannot see.
-	x, y, z := RAX, RDX, R11
+	// RCX, unlike R11, is never an immutable integer-cache candidate.
+	x, y, z := RAX, RDX, RCX
 	slot := f.allocSpillSlots(10)
 	off := f.spillOff(slot)
 	f.a.Store64(RSP, off+56, x)
