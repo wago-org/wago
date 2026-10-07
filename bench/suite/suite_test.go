@@ -633,8 +633,9 @@ func BenchmarkExec(b *testing.B) {
 
 // benchmarkExecCalls batches fast calls so every timed outer operation carries
 // at least a millisecond of Wasm work. The reported ns/op is normalized back to
-// one invocation, preserving the chart's per-call latency while avoiding timer
-// noise dominating very small exports.
+// one invoke operation, as are B/op and allocs/op. A semantic vector operation
+// runs its complete case-set. Setup and calibration are excluded.
+// B.N still counts outer batches; calls/batch records their size.
 func benchmarkExecCalls(b *testing.B, invoke func() error) {
 	const calibrationTarget = 2 * time.Millisecond
 	batch := 1
@@ -660,7 +661,19 @@ func benchmarkExecCalls(b *testing.B, invoke func() error) {
 		batch = scaled
 	}
 
+	benchmarkExecBatch(b, invoke, batch)
+}
+
+func benchmarkExecBatch(b *testing.B, invoke func() error, batch int) {
+	// Reset before the snapshot to exclude the benchmark's metric-map setup.
+	// ReadMemStats and timer bookkeeping stay outside the timed call loop.
+	b.StopTimer()
 	b.ResetTimer()
+	b.ReportAllocs()
+	var memory runtime.MemStats
+	runtime.ReadMemStats(&memory)
+	startAllocs, startBytes := memory.Mallocs, memory.TotalAlloc
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < batch; j++ {
 			if err := invoke(); err != nil {
@@ -669,7 +682,11 @@ func benchmarkExecCalls(b *testing.B, invoke func() error) {
 		}
 	}
 	b.StopTimer()
-	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*batch), "ns/op")
+	runtime.ReadMemStats(&memory)
+	calls := float64(b.N) * float64(batch)
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/calls, "ns/op")
+	b.ReportMetric(float64(memory.Mallocs-startAllocs)/calls, "allocs/op")
+	b.ReportMetric(float64(memory.TotalAlloc-startBytes)/calls, "B/op")
 	b.ReportMetric(float64(batch), "calls/batch")
 }
 

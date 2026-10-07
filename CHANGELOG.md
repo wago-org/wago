@@ -6,6 +6,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Fixed
+
+- Report batched Wago and wazero execution benchmark allocations per operation,
+  matching their timing units instead of reporting allocations per batch.
+
 ## [v0.1.0-beta.12] - 2026-10-07
 
 ### Changed
