@@ -1,0 +1,162 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCompileFull/sqlite3-query         	       1	 160559283 ns/op	   4152911 code-B	 8407160 B/op	    4942 allocs/op
+BenchmarkCompileFull/quickjs-script        	       3	  64888954 ns/op	   1977800 code-B	 4612677 B/op	    3714 allocs/op
+BenchmarkCompileFull/esbuild-minify        	       1	1573681281 ns/op	  45070365 code-B	161220976 B/op	   33348 allocs/op
+BenchmarkCompileFull/tiny                  	    7886	     21313 ns/op	        96.00 code-B	   18416 B/op	     100 allocs/op
+BenchmarkCompileFull/fib_rec               	    6960	     26349 ns/op	       294.0 code-B	   35480 B/op	     116 allocs/op
+BenchmarkCompileFull/many_funcs            	     308	    605086 ns/op	      7771 code-B	  179329 B/op	      94 allocs/op
+BenchmarkCompileFull/fannkuch              	    1119	    184389 ns/op	      4667 code-B	   91936 B/op	     178 allocs/op
+BenchmarkCompileFull/matmul                	    2107	    101737 ns/op	      2145 code-B	   78512 B/op	     162 allocs/op
+BenchmarkCompileFull/sha256                	    1332	    155880 ns/op	      3187 code-B	   86952 B/op	     171 allocs/op
+BenchmarkCompileFull/raytrace              	     451	    382512 ns/op	     13241 code-B	  209433 B/op	     210 allocs/op
+BenchmarkCompileFull/json-as               	      84	   2243050 ns/op	     68598 code-B	  309659 B/op	     408 allocs/op
+BenchmarkCompileFull/json-as-simd          	      67	   2403029 ns/op	     82005 code-B	  329066 B/op	     441 allocs/op
+BenchmarkCompileFull/blake-as-simd         	      88	   1736216 ns/op	     39672 code-B	  539028 B/op	     275 allocs/op
+BenchmarkCompileFull/utf-as-simd           	     168	   1048630 ns/op	     22447 code-B	  351394 B/op	     273 allocs/op
+BenchmarkCompileFull/coremark              	     180	    956765 ns/op	     24410 code-B	  367298 B/op	     231 allocs/op
+BenchmarkCompileFull/blake3                	      99	   1598527 ns/op	     30726 code-B	  338906 B/op	     288 allocs/op
+BenchmarkCompileFull/yyjson                	      15	  11817370 ns/op	    306973 code-B	 3967443 B/op	     672 allocs/op
+BenchmarkCompileFull/pcre2                 	       9	  19074078 ns/op	    501038 code-B	 5688286 B/op	     956 allocs/op
+BenchmarkCompileFull/lodepng               	      19	   9869038 ns/op	    282174 code-B	 1430150 B/op	     606 allocs/op
+BenchmarkCompileFull/polybench-cholesky    	     680	    261398 ns/op	      6055 code-B	  114984 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-correlation 	     748	    231529 ns/op	      5502 code-B	  112616 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-gemm        	     853	    207578 ns/op	      4813 code-B	  106400 B/op	     194 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCompileFull/sqlite3-query         	       2	 140525320 ns/op	   4152911 code-B	 8400004 B/op	    4930 allocs/op
+BenchmarkCompileFull/quickjs-script        	       3	  63940133 ns/op	   1977800 code-B	 4612677 B/op	    3714 allocs/op
+BenchmarkCompileFull/esbuild-minify        	       1	1463593096 ns/op	  45070365 code-B	161220976 B/op	   33348 allocs/op
+BenchmarkCompileFull/tiny                  	    7764	     20761 ns/op	        96.00 code-B	   18416 B/op	     100 allocs/op
+BenchmarkCompileFull/fib_rec               	    7995	     26659 ns/op	       294.0 code-B	   35480 B/op	     116 allocs/op
+BenchmarkCompileFull/many_funcs            	     319	    592562 ns/op	      7771 code-B	  179329 B/op	      94 allocs/op
+BenchmarkCompileFull/fannkuch              	    1110	    174510 ns/op	      4667 code-B	   91936 B/op	     178 allocs/op
+BenchmarkCompileFull/matmul                	    2064	    102311 ns/op	      2145 code-B	   78512 B/op	     162 allocs/op
+BenchmarkCompileFull/sha256                	    1408	    148959 ns/op	      3187 code-B	   86952 B/op	     171 allocs/op
+BenchmarkCompileFull/raytrace              	     460	    396225 ns/op	     13241 code-B	  209433 B/op	     210 allocs/op
+BenchmarkCompileFull/json-as               	      81	   2125131 ns/op	     68598 code-B	  309659 B/op	     408 allocs/op
+BenchmarkCompileFull/json-as-simd          	      70	   2389813 ns/op	     82005 code-B	  329068 B/op	     441 allocs/op
+BenchmarkCompileFull/blake-as-simd         	      98	   1704611 ns/op	     39672 code-B	  539028 B/op	     275 allocs/op
+BenchmarkCompileFull/utf-as-simd           	     170	   1015180 ns/op	     22447 code-B	  351394 B/op	     273 allocs/op
+BenchmarkCompileFull/coremark              	     186	    951714 ns/op	     24410 code-B	  367298 B/op	     231 allocs/op
+BenchmarkCompileFull/blake3                	     100	   1604198 ns/op	     30726 code-B	  338906 B/op	     288 allocs/op
+BenchmarkCompileFull/yyjson                	      15	  11779606 ns/op	    306973 code-B	 3967443 B/op	     672 allocs/op
+BenchmarkCompileFull/pcre2                 	       9	  18832683 ns/op	    501038 code-B	 5688286 B/op	     956 allocs/op
+BenchmarkCompileFull/lodepng               	      19	   9548055 ns/op	    282174 code-B	 1430150 B/op	     606 allocs/op
+BenchmarkCompileFull/polybench-cholesky    	     681	    266295 ns/op	      6055 code-B	  114984 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-correlation 	     722	    242816 ns/op	      5502 code-B	  112616 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-gemm        	     820	    205998 ns/op	      4813 code-B	  106400 B/op	     194 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCompileFull/sqlite3-query         	       2	 134232842 ns/op	   4152911 code-B	 8400004 B/op	    4930 allocs/op
+BenchmarkCompileFull/quickjs-script        	       3	  64003697 ns/op	   1977800 code-B	 4612693 B/op	    3715 allocs/op
+BenchmarkCompileFull/esbuild-minify        	       1	1284475338 ns/op	  45070365 code-B	161220976 B/op	   33348 allocs/op
+BenchmarkCompileFull/tiny                  	    7852	     20373 ns/op	        96.00 code-B	   18416 B/op	     100 allocs/op
+BenchmarkCompileFull/fib_rec               	    7999	     25758 ns/op	       294.0 code-B	   35480 B/op	     116 allocs/op
+BenchmarkCompileFull/many_funcs            	     295	    610093 ns/op	      7771 code-B	  179329 B/op	      94 allocs/op
+BenchmarkCompileFull/fannkuch              	    1040	    179127 ns/op	      4667 code-B	   91936 B/op	     178 allocs/op
+BenchmarkCompileFull/matmul                	    2016	    101714 ns/op	      2145 code-B	   78512 B/op	     162 allocs/op
+BenchmarkCompileFull/sha256                	    1365	    147277 ns/op	      3187 code-B	   86952 B/op	     171 allocs/op
+BenchmarkCompileFull/raytrace              	     457	    374710 ns/op	     13241 code-B	  209433 B/op	     210 allocs/op
+BenchmarkCompileFull/json-as               	      80	   2133123 ns/op	     68598 code-B	  309659 B/op	     408 allocs/op
+BenchmarkCompileFull/json-as-simd          	      73	   2469561 ns/op	     82005 code-B	  329067 B/op	     441 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     100	   1701789 ns/op	     39672 code-B	  539028 B/op	     275 allocs/op
+BenchmarkCompileFull/utf-as-simd           	     174	   1006566 ns/op	     22447 code-B	  351394 B/op	     273 allocs/op
+BenchmarkCompileFull/coremark              	     181	    961308 ns/op	     24410 code-B	  367298 B/op	     231 allocs/op
+BenchmarkCompileFull/blake3                	     100	   1593933 ns/op	     30726 code-B	  338906 B/op	     288 allocs/op
+BenchmarkCompileFull/yyjson                	      15	  11975456 ns/op	    306973 code-B	 3967443 B/op	     672 allocs/op
+BenchmarkCompileFull/pcre2                 	       8	  19161162 ns/op	    501038 code-B	 5688290 B/op	     956 allocs/op
+BenchmarkCompileFull/lodepng               	      19	   9602898 ns/op	    282174 code-B	 1430150 B/op	     606 allocs/op
+BenchmarkCompileFull/polybench-cholesky    	     678	    266025 ns/op	      6055 code-B	  114984 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-correlation 	     771	    239806 ns/op	      5502 code-B	  112616 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-gemm        	     865	    205176 ns/op	      4813 code-B	  106400 B/op	     194 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCompileFull/sqlite3-query         	       2	 137427304 ns/op	   4152911 code-B	 8400004 B/op	    4930 allocs/op
+BenchmarkCompileFull/quickjs-script        	       3	  64575457 ns/op	   1977800 code-B	 4612677 B/op	    3714 allocs/op
+BenchmarkCompileFull/esbuild-minify        	       1	1383838584 ns/op	  45070365 code-B	161220992 B/op	   33348 allocs/op
+BenchmarkCompileFull/tiny                  	    7660	     21279 ns/op	        96.00 code-B	   18416 B/op	     100 allocs/op
+BenchmarkCompileFull/fib_rec               	    7947	     27249 ns/op	       294.0 code-B	   35480 B/op	     116 allocs/op
+BenchmarkCompileFull/many_funcs            	     308	    599196 ns/op	      7771 code-B	  179329 B/op	      94 allocs/op
+BenchmarkCompileFull/fannkuch              	    1081	    183061 ns/op	      4667 code-B	   91936 B/op	     178 allocs/op
+BenchmarkCompileFull/matmul                	    1939	    100063 ns/op	      2145 code-B	   78512 B/op	     162 allocs/op
+BenchmarkCompileFull/sha256                	    1362	    149551 ns/op	      3187 code-B	   86952 B/op	     171 allocs/op
+BenchmarkCompileFull/raytrace              	     459	    380657 ns/op	     13241 code-B	  209434 B/op	     210 allocs/op
+BenchmarkCompileFull/json-as               	      80	   2281539 ns/op	     68598 code-B	  309659 B/op	     408 allocs/op
+BenchmarkCompileFull/json-as-simd          	      66	   2418480 ns/op	     82005 code-B	  329066 B/op	     441 allocs/op
+BenchmarkCompileFull/blake-as-simd         	      94	   1730112 ns/op	     39672 code-B	  539028 B/op	     275 allocs/op
+BenchmarkCompileFull/utf-as-simd           	     175	   1037107 ns/op	     22447 code-B	  351394 B/op	     273 allocs/op
+BenchmarkCompileFull/coremark              	     176	   1003690 ns/op	     24410 code-B	  367298 B/op	     231 allocs/op
+BenchmarkCompileFull/blake3                	     100	   1629810 ns/op	     30726 code-B	  338906 B/op	     288 allocs/op
+BenchmarkCompileFull/yyjson                	      14	  13961534 ns/op	    306973 code-B	 3967445 B/op	     672 allocs/op
+BenchmarkCompileFull/pcre2                 	       9	  21324700 ns/op	    501038 code-B	 5688286 B/op	     956 allocs/op
+BenchmarkCompileFull/lodepng               	      19	   9661686 ns/op	    282174 code-B	 1430150 B/op	     606 allocs/op
+BenchmarkCompileFull/polybench-cholesky    	     661	    273336 ns/op	      6055 code-B	  114984 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-correlation 	     709	    244665 ns/op	      5502 code-B	  112616 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-gemm        	     830	    212417 ns/op	      4813 code-B	  106400 B/op	     194 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCompileFull/sqlite3-query         	       2	 132413476 ns/op	   4152911 code-B	 8400004 B/op	    4930 allocs/op
+BenchmarkCompileFull/quickjs-script        	       3	  63488881 ns/op	   1977800 code-B	 4612677 B/op	    3714 allocs/op
+BenchmarkCompileFull/esbuild-minify        	       1	1275511058 ns/op	  45070365 code-B	161220976 B/op	   33348 allocs/op
+BenchmarkCompileFull/tiny                  	    8484	     20858 ns/op	        96.00 code-B	   18416 B/op	     100 allocs/op
+BenchmarkCompileFull/fib_rec               	    7918	     25684 ns/op	       294.0 code-B	   35480 B/op	     116 allocs/op
+BenchmarkCompileFull/many_funcs            	     300	    605944 ns/op	      7771 code-B	  179329 B/op	      94 allocs/op
+BenchmarkCompileFull/fannkuch              	    1012	    182593 ns/op	      4667 code-B	   91936 B/op	     178 allocs/op
+BenchmarkCompileFull/matmul                	    2041	    101588 ns/op	      2145 code-B	   78512 B/op	     162 allocs/op
+BenchmarkCompileFull/sha256                	    1392	    148312 ns/op	      3187 code-B	   86952 B/op	     171 allocs/op
+BenchmarkCompileFull/raytrace              	     441	    376450 ns/op	     13241 code-B	  209434 B/op	     210 allocs/op
+BenchmarkCompileFull/json-as               	      79	   2152980 ns/op	     68598 code-B	  309659 B/op	     408 allocs/op
+BenchmarkCompileFull/json-as-simd          	      75	   2437811 ns/op	     82005 code-B	  329067 B/op	     441 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     100	   1695702 ns/op	     39672 code-B	  539028 B/op	     275 allocs/op
+BenchmarkCompileFull/utf-as-simd           	     176	   1000745 ns/op	     22447 code-B	  351394 B/op	     273 allocs/op
+BenchmarkCompileFull/coremark              	     186	    945413 ns/op	     24410 code-B	  367298 B/op	     231 allocs/op
+BenchmarkCompileFull/blake3                	     100	   1571543 ns/op	     30726 code-B	  338906 B/op	     288 allocs/op
+BenchmarkCompileFull/yyjson                	      14	  11768023 ns/op	    306973 code-B	 3967445 B/op	     672 allocs/op
+BenchmarkCompileFull/pcre2                 	       9	  18491277 ns/op	    501038 code-B	 5688286 B/op	     956 allocs/op
+BenchmarkCompileFull/lodepng               	      19	   9467168 ns/op	    282174 code-B	 1430150 B/op	     606 allocs/op
+BenchmarkCompileFull/polybench-cholesky    	     679	    259403 ns/op	      6055 code-B	  114984 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-correlation 	     756	    239834 ns/op	      5502 code-B	  112616 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-gemm        	     813	    206352 ns/op	      4813 code-B	  106400 B/op	     194 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCompileFull/sqlite3-query         	       2	 132192714 ns/op	   4152911 code-B	 8400004 B/op	    4930 allocs/op
+BenchmarkCompileFull/quickjs-script        	       3	  64879827 ns/op	   1977800 code-B	 4612677 B/op	    3714 allocs/op
+BenchmarkCompileFull/esbuild-minify        	       1	1281939279 ns/op	  45070365 code-B	161220976 B/op	   33348 allocs/op
+BenchmarkCompileFull/tiny                  	    8296	     20417 ns/op	        96.00 code-B	   18416 B/op	     100 allocs/op
+BenchmarkCompileFull/fib_rec               	    7881	     25402 ns/op	       294.0 code-B	   35480 B/op	     116 allocs/op
+BenchmarkCompileFull/many_funcs            	     308	    593440 ns/op	      7771 code-B	  179329 B/op	      94 allocs/op
+BenchmarkCompileFull/fannkuch              	    1130	    173566 ns/op	      4667 code-B	   91936 B/op	     178 allocs/op
+BenchmarkCompileFull/matmul                	    2083	    100824 ns/op	      2145 code-B	   78512 B/op	     162 allocs/op
+BenchmarkCompileFull/sha256                	    1399	    144586 ns/op	      3187 code-B	   86952 B/op	     171 allocs/op
+BenchmarkCompileFull/raytrace              	     469	    370336 ns/op	     13241 code-B	  209433 B/op	     210 allocs/op
+BenchmarkCompileFull/json-as               	      85	   2182431 ns/op	     68598 code-B	  309659 B/op	     408 allocs/op
+BenchmarkCompileFull/json-as-simd          	      74	   2477003 ns/op	     82005 code-B	  329067 B/op	     441 allocs/op
+BenchmarkCompileFull/blake-as-simd         	     100	   1725102 ns/op	     39672 code-B	  539028 B/op	     275 allocs/op
+BenchmarkCompileFull/utf-as-simd           	     172	   1014520 ns/op	     22447 code-B	  351394 B/op	     273 allocs/op
+BenchmarkCompileFull/coremark              	     182	    954270 ns/op	     24410 code-B	  367298 B/op	     231 allocs/op
+BenchmarkCompileFull/blake3                	     100	   1587212 ns/op	     30726 code-B	  338906 B/op	     288 allocs/op
+BenchmarkCompileFull/yyjson                	      15	  11825796 ns/op	    306973 code-B	 3967443 B/op	     672 allocs/op
+BenchmarkCompileFull/pcre2                 	       9	  18513816 ns/op	    501038 code-B	 5688286 B/op	     956 allocs/op
+BenchmarkCompileFull/lodepng               	      19	   9623406 ns/op	    282174 code-B	 1430150 B/op	     606 allocs/op
+BenchmarkCompileFull/polybench-cholesky    	     650	    257029 ns/op	      6055 code-B	  114984 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-correlation 	     712	    232918 ns/op	      5502 code-B	  112616 B/op	     199 allocs/op
+BenchmarkCompileFull/polybench-gemm        	     883	    206469 ns/op	      4813 code-B	  106400 B/op	     194 allocs/op
+PASS

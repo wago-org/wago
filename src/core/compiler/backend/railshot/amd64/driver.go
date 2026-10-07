@@ -52,6 +52,10 @@ func (f *fn) representationError() error {
 // and returns control to the caller's body.
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	for len(f.ctrl) > minCtrl {
+		if !profileEnabled && minCtrl == 0 && !f.unreachable && f.s.logicalDepth == 0 &&
+			(f.s.cur != 0 || len(f.s.chunks[0]) >= defaultStackArenaCap) {
+			f.recycleEmptyOperandArena()
+		}
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
 		op, err := r.Byte()
 		if err != nil {
@@ -129,6 +133,38 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		return f.representationError()
 	}
 	return nil
+}
+
+// At a top-level reader instruction boundary, an empty operand stack and
+// zero-height control frames have no live expression nodes or control prefixes.
+// Nested blocks and loops are safe, but recursively spliced inline readers are
+// excluded: their caller can still own temporary node handles. Profiling keeps
+// stable node identities for its source-origin map and does not take this path.
+func (f *fn) recycleEmptyOperandArena() {
+	if f.nonzeroCtrlHeights != 0 {
+		return
+	}
+	for _, user := range f.regUser {
+		if user != nil {
+			return
+		}
+	}
+	for _, user := range f.fregUser {
+		if user != nil {
+			return
+		}
+	}
+	if _, reserved := f.s.nodeMemory(); reserved > f.sc.nodeScratchPeak {
+		f.sc.nodeScratchPeak = reserved
+	}
+	// Slots beyond these high-water marks have already been cleared. Capacity
+	// retained from a wider function therefore costs nothing at later checkpoints.
+	clear(f.tmpRoots[:f.tmpRootsWritten])
+	clear(f.tmpBelow[:f.tmpBelowWritten])
+	clear(f.tmpDeferred[:f.tmpDeferredWritten])
+	f.tmpRootsWritten, f.tmpBelowWritten, f.tmpDeferredWritten = 0, 0, 0
+	f.stats.peep("operand-arena-recycle")
+	f.s.reset()
 }
 
 // emitPlain lowers a single non-control opcode (leaves, arithmetic, memory,

@@ -1483,8 +1483,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		passiveDataDesc = desc
 	}
 
-	if initErr == nil && len(c.Data) > 0 {
-		for seg, d := range c.Data {
+	if initErr == nil && c.activeDataCount() > 0 {
+		for seg := 0; seg < c.activeDataCount(); seg++ {
+			d := c.activeDataAt(seg)
 			dataJM := jm
 			if d.MemoryIndex != 0 {
 				if int(d.MemoryIndex) >= len(memoryObjs) || memoryObjs[d.MemoryIndex] == nil {

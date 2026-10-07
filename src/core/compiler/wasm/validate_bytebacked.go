@@ -32,7 +32,6 @@ type directValidationEnv struct {
 	tableInits   []directConstExpr
 	globalInits  []directConstExpr
 	elements     []directElem
-	dataOffsets  []directConstExpr
 }
 
 type directModule struct {
@@ -47,7 +46,8 @@ type directModule struct {
 // DecodedByteBackedModule is a WebAssembly module decoded without materializing
 // structured function-body Expr/Instruction trees. Module contains compact
 // section metadata plus raw function BodyBytes; the unexported validation state
-// keeps const-expression summaries for ValidateDecodedByteBackedModule.
+// keeps remaining const-expression summaries for ValidateDecodedByteBackedModule.
+// Active data offsets live directly in Module.Data as byte-backed expressions.
 type DecodedByteBackedModule struct {
 	Module *Module
 	direct directValidationEnv
@@ -175,14 +175,6 @@ func (dm *directModule) populateCodeBodies() {
 			for j := range de.exprs {
 				dm.m.Elements[i].Kind.Exprs[j] = directExpr(de.exprs[j])
 			}
-		}
-	}
-	for i := range dm.m.Data {
-		if i >= len(dm.direct.dataOffsets) {
-			break
-		}
-		if dm.m.Data[i].Mode.Kind == DataActive {
-			dm.m.Data[i].Mode.Offset = directExpr(dm.direct.dataOffsets[i])
 		}
 	}
 }
@@ -419,16 +411,23 @@ func decodeDirectDataSection(dm *directModule, r *reader) error {
 	if err := reserveDecodedSlice[Data](r, n); err != nil {
 		return err
 	}
-	capHint := boundedVecCap(n, r.left())
-	dm.m.Data = make([]Data, 0, capHint)
-	dm.direct.dataOffsets = make([]directConstExpr, 0, capHint)
-	for i := uint32(0); i < n; i++ {
+	// Every data segment needs at least a flags byte and a payload-length
+	// byte. Retain the conservative admission budget above, but allocate the
+	// checked vector once instead of accumulating pointer-rich growth
+	// buffers for modules with many segments.
+	if uint64(n) > uint64(r.left()/2) {
+		return &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
+	}
+	dm.m.Data = make([]Data, n)
+	for i := range dm.m.Data {
 		d, off, err := decodeDirectData(r)
 		if err != nil {
 			return err
 		}
-		dm.m.Data = append(dm.m.Data, d)
-		dm.direct.dataOffsets = append(dm.direct.dataOffsets, off)
+		if d.Mode.Kind == DataActive {
+			d.Mode.Offset = directExpr(off)
+		}
+		dm.m.Data[i] = d
 	}
 	return nil
 }

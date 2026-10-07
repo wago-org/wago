@@ -479,7 +479,7 @@ func (v *moduleValidator) validateModule() error {
 		}
 	}
 	activeData := 0
-	for i, d := range v.m.Data {
+	for _, d := range v.m.Data {
 		if d.Mode.Kind == DataActive {
 			activeData++
 			flags, ok := v.memoryProperties(uint32(d.Mode.Mem))
@@ -491,10 +491,10 @@ func (v *moduleValidator) validateModule() error {
 				want = I64
 			}
 			if v.direct != nil {
-				if i >= len(v.direct.dataOffsets) {
+				if len(d.Mode.Offset.BodyBytes) == 0 {
 					return v.err(ErrTypeMismatch, "data offset")
 				}
-				if err := v.validateConstExprDirect(v.direct.dataOffsets[i], want); err != nil {
+				if err := v.validateConstExprDirect(directConstExpr{body: d.Mode.Offset.BodyBytes}, want); err != nil {
 					return err
 				}
 			} else if err := v.validateConstExpr(d.Mode.Offset, want); err != nil {

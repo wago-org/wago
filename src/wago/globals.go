@@ -1061,8 +1061,9 @@ type Compiled struct {
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 
-	Data        []DataInit        // active data segments (copied into linear memory at instantiate)
-	PassiveData []PassiveDataInit // data-state descriptors keyed by original index; active slots start dropped
+	compactData *compactActiveData // immutable execution-only data directory
+	Data        []DataInit         // active data segments (copied into linear memory at instantiate)
+	PassiveData []PassiveDataInit  // data-state descriptors keyed by original index; active slots start dropped
 
 	HasMemory   bool   // module declares memory 0; direct execution cache
 	MemMinPages uint32 // memory-0 initial size (pages); allocated at instantiate
@@ -1104,13 +1105,13 @@ type Compiled struct {
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
 	registerABIDisabled bool
+	hasGCCodeTelemetry  bool // occupies existing flag padding
 	requiredFeatures    CoreFeatures
 	importFuncSigs      []FuncSig
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 
-	gcCodeTelemetry    gc.NativeCodeTelemetry
-	hasGCCodeTelemetry bool
+	gcCodeTelemetry gc.NativeCodeTelemetry
 
 	// Cached during validateArenaFootprint.
 	maxParamSlots        int

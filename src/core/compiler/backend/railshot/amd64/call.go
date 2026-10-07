@@ -2106,6 +2106,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	}
 	argRoots = argRoots[:p]
 	f.tmpRoots = argRoots
+	f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
 	cur := f.s.back()
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur
@@ -2169,6 +2170,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		}
 	}
 	f.tmpDeferred = deferred[:0]
+	f.tmpDeferredWritten = max(f.tmpDeferredWritten, len(deferred))
 
 	// Consume the args while preserving collector identity for every value below
 	// the arguments. Those canonical slots remain live across the native call.
@@ -2315,6 +2317,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	argRoots = argRoots[:p]
 	f.tmpRoots = argRoots
+	f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
 	cur := f.s.back()
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur

@@ -1188,7 +1188,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if features.GCStructProducts && gcProductAnalysisNeeded(requiredByModule) {
 		product, ok := stagedGCStructExecutionProduct(wasmBytes)
-		if !ok && moduleUsesGenericGCStructHelpers(m) {
+		// Validation and initializer requirements already prove whether a GC
+		// instruction can occur; avoid rescanning ordinary function bodies.
+		if !ok && requiredByModule.IsEnabled(CoreFeatureGC) && moduleUsesGenericGCStructHelpers(m) {
 			product, ok = stagedGCStructGeneric, true
 		}
 		if ok {
@@ -2733,7 +2735,8 @@ func (c *Compiled) validate() error {
 			return err
 		}
 	}
-	for seg, d := range c.Data {
+	for seg := 0; seg < c.activeDataCount(); seg++ {
+		d := c.activeDataAt(seg)
 		if count := c.memoryCount(); d.MemoryIndex != 0 || count != 0 {
 			if uint64(d.MemoryIndex) >= uint64(count) {
 				return fmt.Errorf("compiled metadata invalid: active data %d memory index %d out of range", seg, d.MemoryIndex)
@@ -3001,7 +3004,8 @@ func (c *Compiled) validateCodecMetadata() error {
 	if err := checkElems("element-state", c.passiveElems, false); err != nil {
 		return err
 	}
-	for i, data := range c.Data {
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
 		want := ValI32
 		if c.memoryCount() != 0 && c.memoryDef(int(data.MemoryIndex)).Addr64 {
 			want = ValI64
