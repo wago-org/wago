@@ -254,18 +254,36 @@ func (s *rv64NativeTableTargets) authenticatedRow(row []byte) bool {
 		}
 		function := int(offset/coreruntime.FuncRefDescBytes) - 1
 		local := function - owner.c.NumImports
-		if local < 0 || local >= len(owner.c.Entry) || local >= len(owner.c.Funcs) || function >= len(owner.c.FuncTypeID) {
+		if function >= len(owner.c.FuncTypeID) {
 			return false
 		}
-		code := owner.c.Entry[local]
-		if code < 0 || code&15 != 0 || uint64(code) >= uint64(len(owner.c.code)) {
-			return false
+		var entry uint64
+		if local < 0 {
+			// This directory is frozen at publication, not read back from the
+			// writable dispatch/descriptor arena. Retaining owner keeps its shared
+			// code cache, private thunk mapping and import attachments alive.
+			if function >= len(owner.importReferenceEntries()) {
+				return false
+			}
+			entry = owner.importReferenceEntries()[function]
+			if entry == 0 || entry&15 != 0 {
+				return false
+			}
+		} else {
+			if local >= len(owner.c.Entry) || local >= len(owner.c.Funcs) {
+				return false
+			}
+			code := owner.c.Entry[local]
+			if code < 0 || code&15 != 0 || uint64(code) >= uint64(len(owner.c.code)) {
+				return false
+			}
+			entry = uint64(owner.base) + uint64(code)
 		}
 		canonical := owner.funcRefDescs[int(offset) : int(offset)+coreruntime.FuncRefDescBytes]
 		if !bytes.Equal(row, canonical[:coreruntime.TableEntryBytes]) {
 			return false
 		}
-		return binary.LittleEndian.Uint64(canonical) == uint64(owner.base)+uint64(code) &&
+		return binary.LittleEndian.Uint64(canonical) == entry &&
 			binary.LittleEndian.Uint64(canonical[coreruntime.TableEntrySigKeyOffset:]) == owner.c.FuncTypeID[function] &&
 			binary.LittleEndian.Uint64(canonical[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(owner.jm.LinMemBase())|abi.FuncRefLocalWrapperHomeTag &&
 			binary.LittleEndian.Uint64(canonical[coreruntime.TableEntryRefSlotOffset:]) == descriptor &&

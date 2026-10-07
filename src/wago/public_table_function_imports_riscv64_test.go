@@ -26,6 +26,10 @@ import (
 // reference descriptors and element entries retain the full Wasm ordinal.
 func rv64TableFunctionImportModule(types []wasm.ValType, borrowed, shared bool, tail []byte, scalarCallback ...bool) []byte {
 	scalarHost := len(scalarCallback) != 0 && scalarCallback[0]
+	referenceIndex := byte(1)
+	if len(scalarCallback) > 1 && scalarCallback[1] {
+		referenceIndex = 0
+	}
 	importType := byte(1)
 	if scalarHost {
 		importType = 3
@@ -44,7 +48,7 @@ func rv64TableFunctionImportModule(types []wasm.ValType, borrowed, shared bool, 
 	if !borrowed {
 		sections = append(sections, wasmtest.Section(4, []byte{1, 0x70, 1, 2, 2}))
 	}
-	sections = append(sections, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 9, 0x0b}))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("target", 0, 1), wasmtest.ExportEntry("call", 0, 2), wasmtest.ExportEntry("safe", 0, 3), wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("install", 0, 5), wasmtest.ExportEntry("table", 1, 0))), ownedTableElements(0, 1))
+	sections = append(sections, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 9, 0x0b}))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("target", 0, 1), wasmtest.ExportEntry("call", 0, 2), wasmtest.ExportEntry("safe", 0, 3), wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("install", 0, 5), wasmtest.ExportEntry("table", 1, 0))), ownedTableElements(0, uint32(referenceIndex)))
 	var target, caller []byte
 	for i := range types {
 		target = append(target, 0x20, byte(i))
@@ -61,7 +65,7 @@ func rv64TableFunctionImportModule(types []wasm.ValType, borrowed, shared bool, 
 	target = append(target, tail...)
 	target = append(target, 0x0b)
 	caller = append(caller, 0x20, byte(len(types)), 0x11, 1, 0, 0x23, 0, 0x0b)
-	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(target), wasmtest.Code(caller), wasmtest.Code([]byte{0x23, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0xfc, 16, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xd2, 1, 0x26, 0, 0xfc, 16, 0, 0x0b}))))
+	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(target), wasmtest.Code(caller), wasmtest.Code([]byte{0x23, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0xfc, 16, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xd2, referenceIndex, 0x26, 0, 0xfc, 16, 0, 0x0b}))))
 	return wasmtest.Module(sections...)
 }
 
@@ -224,13 +228,13 @@ func TestRV64PublicTableFunctionImportsArtifactKeys(t *testing.T) {
 				t.Fatal("corrupt key artifact admitted", index)
 			}
 		}
-		for _, index := range []uint32{0, uint32(c.NumImports + len(c.Funcs))} {
+		for _, index := range []uint32{uint32(c.NumImports + len(c.Funcs))} {
 			v := *c.executionView()
 			v.Elems = slices.Clone(v.Elems)
 			v.Elems[0].Values = slices.Clone(v.Elems[0].Values)
 			v.Elems[0].Values[0].FuncIndex = index
 			if err := railshotValidateCompiled(&v); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("proxy element admitted", index, err)
+				t.Fatal("out-of-bounds element admitted", index, err)
 			}
 		}
 	}
@@ -291,7 +295,19 @@ func TestRV64PublicTableFunctionImportsColdAttribution(t *testing.T) {
 }
 
 func TestRV64PublicTableFunctionImportsParkedCancellation(t *testing.T) {
-	for _, vector := range []bool{false, true} {
+	rv64TableFunctionImportsParkedCancellation(t, false)
+}
+
+func TestRV64PublicImportReferenceParkedCancellation(t *testing.T) {
+	rv64TableFunctionImportsParkedCancellation(t, true)
+}
+
+func rv64TableFunctionImportsParkedCancellation(t *testing.T, importedReference bool) {
+	vectors := []bool{false, true}
+	if importedReference {
+		vectors = []bool{false}
+	}
+	for _, vector := range vectors {
 		for _, artifact := range []bool{false, true} {
 			if !artifact && os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 				continue
@@ -302,10 +318,41 @@ func TestRV64PublicTableFunctionImportsParkedCancellation(t *testing.T) {
 					if vector {
 						types = append(types, wasm.V128)
 					}
-					key := fmt.Sprintf("combined-park-types%d", len(types))
+					if importedReference {
+						types = []wasm.ValType{wasm.I32}
+					}
+					key := fmt.Sprintf("combined-park-types%d-ref%t", len(types), importedReference)
 					// This post-callback write must not execute after the public root cancels.
-					p := rv64TableStageCompile(t, key+"-producer", rv64TableFunctionImportModule(types, true, false, []byte{0x41, 1, 0xd2, 1, 0x26, 0}, true), artifact)
-					c := rv64TableStageCompile(t, key+"-consumer", rv64ImportedTableModule(types, 7, false, false, true, 2), artifact)
+					p := rv64TableStageCompile(t, key+"-producer", rv64TableFunctionImportModule(types, true, false, []byte{0x41, 1, 0xd2, 1, 0x26, 0}, true, importedReference), artifact)
+					c := rv64TableStageCompile(t, key+"-consumer", rv64ImportedTableModule(types, 7, false, false, true, 2, false, importedReference), artifact)
+					if importedReference {
+						// Establish that this consumer really executes the post-call
+						// sentinel when the identical proxy path returns normally.
+						func() {
+							probeTable, err := NewTable(2, 2)
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer probeTable.Close()
+							probeProducer, err := Instantiate(p, NewImports().Table("env", "table", probeTable).Function("env", "host", func(v int32) int32 { return v + 1 }))
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer probeProducer.Close()
+							probeConsumer, err := Instantiate(c, NewImports().Table("env", "table", probeTable))
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer probeConsumer.Close()
+							if got, err := probeConsumer.Invoke("call", 5, 0); err != nil || !slices.Equal(got, []uint64{6, 7}) {
+								t.Fatal("uncancelled proxy control", got, err)
+							}
+							if bytes.Equal(probeTable.desc[8+coreruntime.TableEntryBytes:8+2*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) {
+								t.Fatal("uncancelled proxy did not write sentinel")
+							}
+						}()
+					}
+
 					table, err := NewTable(2, 2)
 					if err != nil {
 						t.Fatal(err)
@@ -389,7 +436,19 @@ func TestRV64PublicTableFunctionImportsParkedCancellation(t *testing.T) {
 }
 
 func TestRV64PublicTableFunctionImportsCallbackReplacement(t *testing.T) {
-	for _, vector := range []bool{false, true} {
+	rv64TableFunctionImportsCallbackReplacement(t, false)
+}
+
+func TestRV64PublicImportReferenceCallbackReplacement(t *testing.T) {
+	rv64TableFunctionImportsCallbackReplacement(t, true)
+}
+
+func rv64TableFunctionImportsCallbackReplacement(t *testing.T, importedReference bool) {
+	vectors := []bool{false, true}
+	if importedReference {
+		vectors = []bool{false}
+	}
+	for _, vector := range vectors {
 		for _, artifact := range []bool{false, true} {
 			if !artifact && os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 				continue
@@ -400,8 +459,11 @@ func TestRV64PublicTableFunctionImportsCallbackReplacement(t *testing.T) {
 					if vector {
 						types = append(types, wasm.V128)
 					}
-					key := fmt.Sprintf("combined-replace-types%d", len(types))
-					p := rv64TableStageCompile(t, key+"-producer", rv64TableFunctionImportModule(types, true, false, nil, true), artifact)
+					if importedReference {
+						types = []wasm.ValType{wasm.I32}
+					}
+					key := fmt.Sprintf("combined-replace-types%d-ref%t", len(types), importedReference)
+					p := rv64TableStageCompile(t, key+"-producer", rv64TableFunctionImportModule(types, true, false, nil, true, importedReference), artifact)
 					c := rv64TableStageCompile(t, key+"-consumer", rv64ImportedTableModule(types, 7, false, false, true, 2), artifact)
 					replacement := rv64TableStageCompile(t, key+"-replacement", rv64ImportedTableModule(types, 19, false, true, true, 2), artifact)
 					table, err := NewTable(2, 2)
@@ -449,7 +511,11 @@ func TestRV64PublicTableFunctionImportsCallbackReplacement(t *testing.T) {
 					}
 					defer consumer.Close()
 					input, want := rv64NativeVectorInputs(types)
-					want[0] = uint64(uint32(want[0] + 9))
+					increment := uint64(9)
+					if importedReference {
+						increment = 1
+					}
+					want[0] = uint64(uint32(want[0] + increment))
 					want = append(want, 7)
 					var caught any
 					func() {
@@ -499,6 +565,14 @@ func rv64TableFunctionImportBoundaryModule(types []wasm.ValType, globals int) []
 }
 
 func TestRV64PublicTableFunctionImportsAggregateBoundary(t *testing.T) {
+	rv64TableFunctionImportsAggregateBoundary(t, false)
+}
+
+func TestRV64PublicImportReferenceAggregateBoundary(t *testing.T) {
+	rv64TableFunctionImportsAggregateBoundary(t, true)
+}
+
+func rv64TableFunctionImportsAggregateBoundary(t *testing.T, importedReference bool) {
 	for _, vector := range []bool{false, true} {
 		for _, artifact := range []bool{false, true} {
 			if !artifact && os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
@@ -511,8 +585,12 @@ func TestRV64PublicTableFunctionImportsAggregateBoundary(t *testing.T) {
 						types = append(types, wasm.V128)
 					}
 				}
-				key := fmt.Sprintf("combined-bound-types%d", len(types))
-				c := rv64TableStageCompile(t, key+"-caller", rv64TableFunctionImportBoundaryModule(types, 256), artifact)
+				key := fmt.Sprintf("combined-bound-types%d-ref%t", len(types), importedReference)
+				source := rv64TableFunctionImportBoundaryModule(types, 256)
+				if importedReference {
+					source = rv64ReplaceTableStageSection(t, source, 9, ownedTableElements(0, 255))
+				}
+				c := rv64TableStageCompile(t, key+"-caller", source, artifact)
 				n := rv64TableStageCompile(t, key+"-leaf", rv64PublicNativeIdentityModule(types), artifact)
 				if c.NumImports != 256 || len(c.GlobalImports) != 256 || c.memoryImportCount() != 1 || c.tableImportCount() != 1 || c.FuncTypeID[0] == c.FuncTypeID[255] || c.FuncTypeID[255] != c.FuncTypeID[256] {
 					t.Fatal("514-import namespace/keys")
@@ -573,6 +651,14 @@ func TestRV64PublicTableFunctionImportsAggregateBoundary(t *testing.T) {
 }
 
 func TestRV64PublicTableFunctionImportsDeepestCold(t *testing.T) {
+	rv64TableFunctionImportsDeepestCold(t, false)
+}
+
+func TestRV64PublicImportReferenceDeepestCold(t *testing.T) {
+	rv64TableFunctionImportsDeepestCold(t, true)
+}
+
+func rv64TableFunctionImportsDeepestCold(t *testing.T, importedReference bool) {
 	for _, vector := range []bool{false, true} {
 		for _, artifact := range []bool{false, true} {
 			if !artifact && os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
@@ -582,9 +668,9 @@ func TestRV64PublicTableFunctionImportsDeepestCold(t *testing.T) {
 			if vector {
 				types = append(types, wasm.V128)
 			}
-			key := fmt.Sprintf("combined-deep-cold-types%d", len(types))
+			key := fmt.Sprintf("combined-deep-cold-types%d-ref%t", len(types), importedReference)
 			leafSource := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("deepest", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}))))
-			p := rv64TableStageCompile(t, key+"-producer", rv64TableFunctionImportModule(types, true, false, nil), artifact)
+			p := rv64TableStageCompile(t, key+"-producer", rv64TableFunctionImportModule(types, true, false, nil, false, importedReference), artifact)
 			c := rv64TableStageCompile(t, key+"-consumer", rv64ImportedTableModule(types, 7, false, false, true, 2), artifact)
 			n := rv64TableStageCompile(t, key+"-leaf", leafSource, artifact)
 			leaf, err := Instantiate(n, NewImports())
@@ -635,6 +721,14 @@ func TestRV64PublicTableFunctionImportsDeepestCold(t *testing.T) {
 }
 
 func TestRV64PublicTableFunctionImportsFailedConstruction(t *testing.T) {
+	rv64TableFunctionImportsFailedConstruction(t, false)
+}
+
+func TestRV64PublicImportReferenceFailedConstruction(t *testing.T) {
+	rv64TableFunctionImportsFailedConstruction(t, true)
+}
+
+func rv64TableFunctionImportsFailedConstruction(t *testing.T, importedReference bool) {
 	for _, vector := range []bool{false, true} {
 		for _, artifact := range []bool{false, true} {
 			if !artifact && os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
@@ -644,8 +738,12 @@ func TestRV64PublicTableFunctionImportsFailedConstruction(t *testing.T) {
 			if vector {
 				types = append(types, wasm.V128)
 			}
-			key := fmt.Sprintf("combined-construction-types%d", len(types))
-			source := rv64ReplaceTableStageSection(t, rv64TableFunctionImportModule(types, true, false, nil), 9, ownedTableElements(2, 1))
+			key := fmt.Sprintf("combined-construction-types%d-ref%t", len(types), importedReference)
+			index := uint32(1)
+			if importedReference {
+				index = 0
+			}
+			source := rv64ReplaceTableStageSection(t, rv64TableFunctionImportModule(types, true, false, nil), 9, ownedTableElements(2, index))
 			p := rv64TableStageCompile(t, key+"-invalid-elements", source, artifact)
 			n := rv64TableStageCompile(t, key+"-leaf", rv64PublicNativeIdentityModule(types), artifact)
 			leaf, err := Instantiate(n, NewImports())

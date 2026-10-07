@@ -60,6 +60,7 @@ func rv64TableStageCompile(t *testing.T, name string, source []byte, artifact bo
 // Imported tables contain canonical producer descriptors from genuine public
 // construction. No fixture writes raw rows or calls a private runtime helper.
 func rv64ImportedTableModule(types []wasm.ValType, seed byte, shared, initialize, hasMax bool, minimum uint32, installLocal ...bool) []byte {
+	postCallWrite := len(installLocal) > 1 && installLocal[1]
 	callerTypes := append(slices.Clone(types), wasm.I32)
 	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(
 		wasmtest.FuncType(callerTypes, callerTypes), wasmtest.FuncType(types, types),
@@ -93,7 +94,11 @@ func rv64ImportedTableModule(types []wasm.ValType, seed byte, shared, initialize
 	}
 	caller = append(caller, 0x20)
 	caller = append(caller, wasmtest.ULEB(uint32(len(types)))...)
-	caller = append(caller, 0x11, 1, 0, 0x23, 0, 0x0b)
+	caller = append(caller, 0x11, 1, 0)
+	if postCallWrite {
+		caller = append(caller, 0x41, 1, 0xd2, 1, 0x26, 0)
+	}
+	caller = append(caller, 0x23, 0, 0x0b)
 	target = append(target, 0x0b)
 	sections = append(sections,
 		wasmtest.Section(3, []byte{6, 0, 1, 2, 3, 3, 2}),
@@ -103,7 +108,7 @@ func rv64ImportedTableModule(types []wasm.ValType, seed byte, shared, initialize
 			wasmtest.ExportEntry("table", 1, 0), wasmtest.ExportEntry("alias", 1, 0))))
 	if initialize {
 		sections = append(sections, ownedTableElements(0, 1))
-	} else if len(installLocal) != 0 && installLocal[0] {
+	} else if postCallWrite || len(installLocal) != 0 && installLocal[0] {
 		sections = append(sections, wasmtest.Section(9, []byte{1, 3, 0, 1, 1}))
 	}
 	clearBody := []byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0xfc, 16, 0, 0x0b}

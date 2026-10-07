@@ -517,7 +517,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if uint64(idx) < uint64(state.importedFunctions) || uint64(idx) >= uint64(len(state.functions)) {
+				if uint64(idx) < uint64(state.importedFunctions) && !state.importReferences || uint64(idx) >= uint64(len(state.functions)) {
 					return integerSummary{}, unsupported("private ref.func index")
 				}
 				if live && emit != nil {

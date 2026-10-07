@@ -53,8 +53,8 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		}
 		remaining -= len(e.Values)
 		for _, v := range e.Values {
-			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) < uint64(c.NumImports) || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
-				return fmt.Errorf("element requires a defined local function")
+			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
+				return fmt.Errorf("element requires a valid function index")
 			}
 		}
 	}
@@ -70,8 +70,8 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		}
 		remaining -= len(e.Values)
 		for _, v := range e.Values {
-			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) < uint64(c.NumImports) || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
-				return fmt.Errorf("element state requires a defined local function")
+			if v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
+				return fmt.Errorf("element state requires a valid function index")
 			}
 		}
 	}

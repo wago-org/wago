@@ -42,8 +42,7 @@ func (f *integerEmitter) nativeTableCall(key uint64, argumentSlots, resultSlots 
 	}
 }
 
-// Public owned-table calls and private bridge witnesses share this lowering.
-// Public imported-table admission remains closed until attachment qualification.
+// Public owned/imported-table calls and private bridge witnesses share this lowering.
 // X14 carries an immutable, physically retained canonical40-byte descriptor;
 // its target must be a qualified framed RV64 local wrapper. The activation owner
 // serializes both homes and retains all descriptor/context/code storage through

@@ -83,8 +83,16 @@ type Instance struct {
 // instanceImportState shares the existing Instance import-state pointer
 // between Runtime plugin policy and cold funcref-owner indexes.
 type instanceImportState struct {
-	pluginGCImports map[uint32]struct{}
-	funcrefImports  atomic.Pointer[funcrefImportContainers]
+	pluginGCImports  map[uint32]struct{}
+	funcrefImports   atomic.Pointer[funcrefImportContainers]
+	importRefEntries []uint64 // RV64 immutable published wrappers; independent of mutable dispatch/descriptors
+}
+
+func (in *Instance) importReferenceEntries() []uint64 {
+	if state := in.importState.Load(); state != nil {
+		return state.importRefEntries
+	}
+	return nil
 }
 
 func (in *Instance) ensureImportState() *instanceImportState {

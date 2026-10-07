@@ -115,9 +115,13 @@ unwinding; storage accepts different signatures and indirect calls check exact
 keys. Older table artifacts without bit 52 reject before publication; table-free
 artifacts retain their existing contract. The cooperative public profile combines
 that table with numeric Go/native function imports, with structural signature
-keys covering the full imported and defined function namespace. Element and
-ref.func targets must be defined local wrappers; imported reference proxies stay
-gated. Up to 256 function imports, 256 globals, one memory and one table share a
+keys covering the full imported and defined function namespace. Imported element
+and ref.func targets use importer-owned canonical descriptors for published
+Go, HostFuncRef or native import thunks. Authentication checks an independent
+frozen entry directory; retaining the importer preserves thunk mappings and
+attached owners. Equality, reference signatures and external reference-token APIs
+remain gated; cross-binding canonical identity is not yet qualified. Up to 256
+function imports, 256 globals, one memory and one table share a
 514-import bound. QEMU correctness does not establish native
 instruction-cache or performance qualification.
 

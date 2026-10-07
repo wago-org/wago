@@ -698,8 +698,8 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if uint64(index) < uint64(importedFunctions) || uint64(index) >= uint64(len(functions)) {
-					return swarSummary{}, unsupported("SWAR defined ref.func index")
+				if uint64(index) < uint64(importedFunctions) && !foreignTableCalls || uint64(index) >= uint64(len(functions)) {
+					return swarSummary{}, unsupported("SWAR ref.func index/profile")
 				}
 				usesTraps = true
 				if err := push(swarFuncRef); err != nil {

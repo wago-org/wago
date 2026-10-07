@@ -93,7 +93,7 @@ func TestProductionTableFunctionImportsNamespace(t *testing.T) {
 	}
 }
 
-func TestProductionTableFunctionImportsRejectProxyReferences(t *testing.T) {
+func TestProductionTableFunctionImportsReferences(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, mode := range []byte{0, 1, 3} {
 			m, err := wasm.DecodeModule(combinedTableImportSource(2, vector, false, mode))
@@ -103,15 +103,27 @@ func TestProductionTableFunctionImportsRejectProxyReferences(t *testing.T) {
 			opts := CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, ImportBindings: hostImportBindings(2)}
 			pressure := 0
 			opts.MemoryPressure = func() { pressure++ }
-			for _, index := range []wasm.FuncIdx{0, 1, 3} {
+			for _, index := range []wasm.FuncIdx{0, 1} {
+				m.Elements[0].Kind.Funcs[0] = index
+				if image, err := CompileModuleWith(m, opts); image == nil || err != nil {
+					t.Fatal("imported element rejected", vector, mode, index, err)
+				}
+				private := opts
+				private.ForeignTableCalls = false
+				if image, err := CompileModuleWith(m, private); image != nil || !errors.Is(err, ErrUnsupported) {
+					t.Fatal("private imported element admitted", vector, mode, index, err)
+				}
+			}
+			pressure = 0
+			for _, index := range []wasm.FuncIdx{3} {
 				m.Elements[0].Kind.Funcs[0] = index
 				image, err := CompileModuleWith(m, opts)
 				if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-					t.Fatal("proxy/out-of-bounds element staged", vector, mode, index, err)
+					t.Fatal("out-of-bounds element staged", vector, mode, index, err)
 				}
 			}
 			// A function export declares imported ref.func to the Wasm validator;
-			// the complete backend walk must reject it even after unreachable.
+			// the complete public backend walk accepts it even after unreachable.
 			m.Elements[0].Kind.Funcs[0] = 2
 			ex := m.Exports[0]
 			ex.Name, ex.Index.Index = "imported", 0
@@ -121,8 +133,8 @@ func TestProductionTableFunctionImportsRejectProxyReferences(t *testing.T) {
 				t.Fatal("invalid negative fixture", err)
 			}
 			image, err := CompileModuleWith(m, opts)
-			if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-				t.Fatal("dead imported ref.func staged", vector, err)
+			if image == nil || err != nil {
+				t.Fatal("dead imported ref.func rejected", vector, err)
 			}
 		}
 	}

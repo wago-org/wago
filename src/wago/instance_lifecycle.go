@@ -563,6 +563,9 @@ func (in *Instance) releaseResources() {
 	in.globalCells = nil
 	in.globals = nil
 	in.funcRefDescs = nil
+	if state := in.importState.Load(); state != nil {
+		state.importRefEntries = nil
+	}
 	in.passiveDataDesc = nil
 	in.serArgs = nil
 	in.results = nil

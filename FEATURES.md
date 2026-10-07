@@ -14,8 +14,10 @@ supports Linux, macOS, and Windows on amd64 and arm64. For planned work, see
 
 Experimental Linux/RV64 requires `wago_rv64_experimental`. Its bounded numeric
 profile includes scalar/SWAR SIMD execution and one nullable funcref table32
-combined with numeric function imports. Imported reference proxies, GC/EH,
-threads, memory64 and table64 remain unavailable. This is not a supported
+combined with numeric function imports. Imported function references use retained
+importer-owned thunks for Go callbacks, HostFuncRef and native targets. Reference
+signatures/equality, GC/EH, threads, memory64 and table64 remain unavailable.
+This is not a supported
 release target; native cache and performance qualification remain outstanding.
 See [the runtime contract](ARCHITECTURE.md).
 

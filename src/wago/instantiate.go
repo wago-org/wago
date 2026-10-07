@@ -867,8 +867,12 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	var initErr error
 	var tableDesc []byte
 	var funcRefDescs []byte
+	var importRefEntries []uint64
 	var writeTableEntry func([]byte, uint32)
 	if c.needsFuncRefDescs() {
+		if railshotNativeContextTrapABI() {
+			importRefEntries = make([]uint64, c.NumImports)
+		}
 		selfLinMem := uint64(jm.LinMemBase())
 		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes * (len(c.FuncTypeID) + 1))
 		// Descriptor zero is the stable home/context anchor saved by EH records.
@@ -1010,7 +1014,17 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 					kind = abi.FuncRefEntryInternal
 				}
 			} else if fidx < c.NumImports {
-				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
+				if railshotNativeContextTrapABI() {
+					// RV64's retained table bridge enters an importer-owned framed
+					// wrapper. Its existing thunk performs the host/native transition;
+					// a naked foreign entry cannot use the importer's activation.
+					addr, ok := hostThunkAddr(fidx, sharedThunkBase, sharedThunkOffsets, ownedThunkAddr)
+					if !ok || addr == 0 || addr&15 != 0 {
+						return nil, fmt.Errorf("instantiate: RV64 import %d lacks an aligned published wrapper", fidx)
+					}
+					importRefEntries[fidx] = addr
+					code, home, kind = addr, selfLinMem, abi.FuncRefEntryLocalWrapper
+				} else if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					code = uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
 					home = uint64(ex.inst.jm.LinMemBase())
 					targetContext = uint64(ex.inst.nativeContext)
@@ -1034,7 +1048,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntrySigKeyOffset:], c.funcTypeKey(fidx))
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.FuncRefContextOffset:], targetContext)
-			if fidx < c.NumImports {
+			if fidx < c.NumImports && !railshotNativeContextTrapABI() {
 				// Cross-instance imports reuse the producer's canonical identity when
 				// that producer already owns a descriptor arena.
 				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
@@ -1704,6 +1718,9 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		threadedMemoryZero: c.threadedMemory0(),
 		moduleIdentity:     opts.moduleIdentity,
 	}
+	if len(importRefEntries) != 0 {
+		in.ensureImportState().importRefEntries = importRefEntries
+	}
 	if codeProfileEnabled {
 		b.bindProfileInstance(in)
 	}
@@ -1723,7 +1740,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		}
 	}
 	if opts.pluginGCImports != nil {
-		in.importState.Store(&instanceImportState{pluginGCImports: opts.pluginGCImports})
+		in.ensureImportState().pluginGCImports = opts.pluginGCImports
 	}
 	if c.maxResultSlots <= len(in.resultInline) {
 		in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]
@@ -2283,6 +2300,7 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 			if err != nil {
 				return 0, nil, fmt.Errorf("import %q wrapper results: %w", c.Imports[fidx], err)
 			}
+			blob = railshotAlignNativeImportBlob(blob)
 			offsets[fidx] = len(blob)
 			blob = append(blob, railshotHostIndirectSyncThunk(uint32(fidx), paramSlots, resultSlots)...)
 			continue

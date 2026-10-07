@@ -29,6 +29,7 @@ type memorySpec struct {
 }
 type moduleState struct {
 	production        bool
+	importReferences  bool
 	ownedTable        bool
 	ownedTableGrowth  bool
 	elementCount      int
@@ -75,6 +76,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 }
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
+	s.importReferences = production && importedTables
 	var tableErr error
 	s.ownedTable, tableErr = admitTableProfile(m, production, importedTables)
 	if s.ownedTable {

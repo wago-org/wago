@@ -82,8 +82,8 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 			return false, unsupported("inactive element offset")
 		}
 		for _, f := range e.Kind.Funcs {
-			if uint64(f) < uint64(imported) || uint64(f) >= uint64(imported+len(m.Code)) {
-				return false, unsupported("element requires a defined function")
+			if uint64(f) < uint64(imported) && !importedTables || uint64(f) >= uint64(imported+len(m.Code)) {
+				return false, unsupported("element function index/profile")
 			}
 		}
 	}
