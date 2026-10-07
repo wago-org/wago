@@ -145,7 +145,17 @@ func railshotValidateCompiled(c *Compiled) error {
 	if err := rv64ValidateOwnedTable(c); err != nil {
 		return reject(err.Error())
 	}
+	hasReferenceGlobal := false
 	for i, global := range c.Globals {
+		if global.Type == ValFuncRef {
+			hasReferenceGlobal = true
+			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+			exact, err := c.globalExactType(i)
+			if err != nil || exact != plain || i < len(c.GlobalImports) || global.Mutable || global.HasInitGlobal || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() != 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+				return reject("immutable local reference global literal and retained table required")
+			}
+			continue
+		}
 		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.HasInitFunc {
 			return reject("global initializer lowering is pending")
 		}
@@ -159,6 +169,16 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i)) {
 			return reject("global initializer requires an available immutable global of the exact type")
+		}
+	}
+	if hasReferenceGlobal {
+		if len(c.GlobalExports) > railshot.MaxFunctions {
+			return reject("reference-global export count bound")
+		}
+		for _, index := range c.GlobalExports {
+			if index >= 0 && index < len(c.Globals) && c.Globals[index].Type == ValFuncRef {
+				return reject("reference global export")
+			}
 		}
 	}
 	for _, data := range c.Data {

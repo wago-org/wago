@@ -90,7 +90,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 		return swarSummary{}, unsupported("SWAR global directory bound")
 	}
 	for _, global := range globals {
-		if !swarCarrierType(global.Type) {
+		if !swarCarrierType(global.Type) && !(table != nil && foreignTableCalls && !global.Mutable && wasm.EqualValType(global.Type, wasm.FuncRef)) {
 			return swarSummary{}, unsupported("SWAR global carrier")
 		}
 	}
@@ -401,7 +401,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 				return swarSummary{}, unsupported("SWAR global directory/index")
 			}
 			global := globals[index]
-			class := swarClassOf(global.Type)
+			class := swarGlobalClass(global.Type)
 			if op == 0x24 {
 				if !global.Mutable {
 					return swarSummary{}, unsupported("SWAR immutable global write")

@@ -199,6 +199,10 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			continue
 		}
 		if state.exports && ex.Index.Kind == wasm.ExternGlobal && uint64(ex.Index.Index) < uint64(globalImports+len(m.Globals)) {
+			typ, _ := m.GlobalTypeByIndex(ex.Index.Index)
+			if wasm.EqualValType(typ.Type, wasm.FuncRef) {
+				return nil, unsupported("reference global export")
+			}
 			continue
 		}
 		if state.exports && ex.Index.Kind == wasm.ExternMem && ex.Index.Index == 0 && memoryImports+len(m.Memories) == 1 {

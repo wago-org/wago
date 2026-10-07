@@ -148,6 +148,16 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	}
 	importedGlobals := len(s.globals)
 	for _, g := range m.Globals {
+		if wasm.EqualValType(g.Type.Type, wasm.FuncRef) {
+			if !publicExports || !importedTables {
+				return s, unsupported("reference global requires retained public table")
+			}
+			if err := admitImmutableFunctionGlobal(g, m); err != nil {
+				return s, err
+			}
+			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
+			continue
+		}
 		w := scalarWide(g.Type.Type)
 		if !scalarType(g.Type.Type, production) {
 			return s, unsupported("noninteger global")
@@ -191,6 +201,9 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		case wasm.ExternMem:
 			s.memoryExports[ex.Name] = true
 		case wasm.ExternGlobal:
+			if uint64(ex.Index.Index) < uint64(len(s.globals)) && wasm.EqualValType(s.globals[ex.Index.Index].typ, wasm.FuncRef) {
+				return s, unsupported("reference global export")
+			}
 			s.globalExports[ex.Name] = int(ex.Index.Index)
 		case wasm.ExternTable:
 			if !production || !publicExports || !s.ownedTable || ex.Index.Index != 0 {

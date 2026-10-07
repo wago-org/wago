@@ -52,3 +52,12 @@ func swarByteClass(typ byte) swarClass {
 }
 
 func (class swarClass) narrow() bool { return class == swarI32 || class == swarF32 }
+
+// Reference classification is confined to immutable globals under the retained
+// table profile. Numeric signatures and private global owners stay unchanged.
+func swarGlobalClass(typ wasm.ValType) swarClass {
+	if wasm.EqualValType(typ, wasm.FuncRef) {
+		return swarFuncRef
+	}
+	return swarClassOf(typ)
+}

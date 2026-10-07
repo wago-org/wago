@@ -103,7 +103,15 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 			}
 		}
 	}
+	hasReferenceGlobal := false
 	for i, global := range m.Globals {
+		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
+			hasReferenceGlobal = true
+			if err := admitImmutableFunctionGlobal(global, m); err != nil {
+				return err
+			}
+			continue
+		}
 		if scalarType(global.Type.Type, false) {
 			if err := admitModuleIntegerInitializer(global.Init, global.Type.Type, m, m.ImportedGlobalCount()+i); err != nil {
 				return err
@@ -111,6 +119,18 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 		} else if len(global.Init.BodyBytes) > 0 && global.Init.BodyBytes[0] == 0x23 {
 			if err := admitGlobalExpression(global.Init, m, global.Type.Type, m.ImportedGlobalCount()+i); err != nil {
 				return err
+			}
+		}
+	}
+	if hasReferenceGlobal {
+		if len(m.Exports) > MaxFunctions {
+			return unsupported("reference-global export count bound")
+		}
+		for _, ex := range m.Exports {
+			if ex.Index.Kind == wasm.ExternGlobal {
+				if typ, ok := m.GlobalTypeByIndex(ex.Index.Index); ok && wasm.EqualValType(typ.Type, wasm.FuncRef) {
+					return unsupported("reference global export")
+				}
 			}
 		}
 	}

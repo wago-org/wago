@@ -11,6 +11,12 @@ func admitSWARPublicInitializers(m *wasm.Module, memory *wasm.MemType) error {
 		return unsupported("SWAR initializer count bound")
 	}
 	for i, global := range m.Globals {
+		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
+			if err := admitImmutableFunctionGlobal(global, m); err != nil {
+				return err
+			}
+			continue
+		}
 		if swarClassOf(global.Type.Type) == swarInvalid {
 			return unsupported("SWAR global initializer carrier")
 		}

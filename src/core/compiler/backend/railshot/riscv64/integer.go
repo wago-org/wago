@@ -634,6 +634,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("global index")
 			}
 			g := state.globals[idx]
+			reference := wasm.EqualValType(g.typ, wasm.FuncRef)
+			if reference && (!privateRefs || !state.importReferences || g.mutable) {
+				return integerSummary{}, unsupported("immutable retained reference global required")
+			}
 			contextUsed = true
 			if op == 0x24 {
 				if !g.mutable {
@@ -651,7 +655,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.global(idx, g.wide, false)
 					emit.Store(emit.SpillOffset(h), 5, g.wide)
 				}
-				if err = push(g.wide); err != nil {
+				if reference {
+					err = pushReference()
+				} else {
+					err = push(g.wide)
+				}
+				if err != nil {
 					return integerSummary{}, err
 				}
 			}
