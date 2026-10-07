@@ -12,6 +12,18 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   bridges, private prepared owners, and specialized numeric marshalling. This
   adds 32 bytes to the instance plugin sidecar and about 192 KiB to stripped
   Go runtime binaries (63.3 KiB for the minimal TinyGo runtime).
+  
+## [v0.1.0-beta.12] - 2026-10-07
+
+### Changed
+
+- Reduce AMD64 compilation allocations and repeated work in immutable-table
+  analysis, adapter grouping, spill tracking, local realization, and barriers.
+- Avoid callback-context allocations and cancellation watchers for synchronous
+  re-entry from invocations with no cancellation or deadline signal.
+- Keep native profiling and compiler diagnostics out of ordinary builds;
+  enable them with `wago_profile` and `wago_codegenstats` build tags.
+- Raise release size limits to 12 MB for Go builds and 3 MB for TinyGo.
 - Reuse both AMD64 hardware divide results for adjacent division/remainder
   pairs on the same local operands, reducing dependent-pair latency.
 
@@ -23,8 +35,16 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   modules and synchronizing only the globals assigned to physical registers.
 - Reuse owned integer shift operands and an additional revocable local register
   in admitted straight-line AMD64 functions.
+
 ### Added
 
+- Add opt-in native profiling commands to record workloads, inspect hot
+  functions and instructions, compare captures, and view invocation timelines.
+- Add compile-time register-transfer and immutable-register lifetime checks
+  for AMD64 and ARM64 through the `wago_regalloccheck` build tag, plus a bounded
+  control-flow verification core.
+- Add an experimental shared scalar compiler path for AMD64 and ARM64.
+- Add Wazy to the cross-runtime benchmark corpus and publish its results.
 - Add AMD64 bounds-proof invalidation tests and compile/execution benchmarks.
 
 - Add rejection controls for omitted native padding and artifact metadata.
@@ -55,6 +75,35 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Publish `wago build` output atomically, preserving existing artifacts when
+  publication fails and respecting platform access controls and file metadata.
+- Bound CLI module reads and artifact-cache admission, rejecting oversized
+  inputs before cache lookup or allocation.
+- Serialize plugin builds and configuration mutations, keep rejected staged
+  rebuilds out of the active runtime, and cancel active Go commands during
+  staged plugin changes. Bound verification and retry runners after publication.
+- Read plugin metadata as one snapshot and isolate mutable plugin-set metadata.
+- Make `wago add --allow-all` noninteractive, route plugin inspection aliases
+  to the runtime, and group canonical plugin repository paths consistently.
+- Keep version-cache cleanup within its intended tree, select stable semantic
+  versions for official releases, and resolve annotated rolling-release tags.
+- Reconnect refreshed installer shells to terminal input, await CLI runtime
+  teardown, and preserve terminal close observers during shutdown.
+- Reject stale local configuration saves instead of overwriting newer changes.
+- Preserve guest roots and foreign-clone tokens during GC graph reconstruction;
+  avoid retaining roots for immediately dropped extern-reference conversions.
+- Preserve AMD64 pinned registers across `table.copy`, exclude fixed bulk
+  scratch registers from immutable caches, and reload canonical ARM64
+  `externref` destinations for `table.fill`.
+- Correct deferred spill preservation, fixed-register conversion and comparison
+  operands, `i16x8.bitmask` under register pressure, and memory32 wraparound in
+  unrolled linear sums. Restore pinned locals across control and exception edges.
+- Honor configured Core features in standalone compilation, reject invalid
+  bounds-check modes and nil modules, decode block type indexes as signed
+  33-bit values, and validate descriptor metadata and equality casts.
+- Use structural identities for indirect-call types and sort provided imports
+  by exact identity. Correct large ARM64 host-thunk transfers and wide
+  synchronous host exchange areas.
 - Correct worker scratch-growth coverage, bounds-test mode isolation, semantic
   mismatch counts, optional Node feature checks, and prepared-call benchmark setup.
 
@@ -156,6 +205,43 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   instead of failing as invalid compiled metadata.
 - Custom plugin inputs can no longer be read through scalar or checked-memory
   accessors, which previously aliased them with spill slot zero.
+
+## [v0.1.0-beta.11] - 2026-09-29
+
+### Added
+
+- Restore `WasmFunc.OpenSession` and `PreparedSession` for repeated calls under
+  one instance reservation; `Close` releases the reservation.
+- Add configurable export caching through `InvokeCacheSlots` and
+  `WithInvokeCacheSlots`, with four inline slots by default and 1–255 entries.
+- Add required WebAssembly 1.0 conformance checks and forced-SSE2 coverage.
+
+### Changed
+
+- Make SSE2 the AMD64 baseline with fallback lowering for core SIMD and
+  supported relaxed SIMD; use newer CPU extensions when available.
+- Speed ordinary and prepared invocations without requiring caller-owned
+  sessions, and reduce ordinary Go host-callback overhead.
+- Reduce quadratic work in recursive type analysis, compiler metadata,
+  operand stacks, GC type mappings, and runtime lookups.
+- **Breaking:** compiled artifacts use format v4. Recompile persisted artifacts
+  from earlier releases before loading them.
+- Make CI qualification profile-aware and remove duplicate corpus runs.
+
+### Fixed
+
+- Correct ARM64 overlapping call arguments, bulk-helper register clobbers,
+  stale indexed addresses after signed loads, and wide fixed-array GC roots.
+- Correct GC transient-root enumeration, reference-array initialization,
+  promotion views, collection accounting, failed-restart recovery, and
+  zero-value collector shutdown.
+- Reject invalid GC headers, overlapping fields, invalid alignment, and
+  incompatible inherited storage layouts.
+- Validate malformed programmatic Wasm types, function bodies, instruction
+  kinds, immutable-global writes, Memory64 offsets, and wrapped 32-bit indexes.
+- Track CPU requirements for emitted plugin lowerings, so unused plugin imports
+  no longer require AVX. Gate scalar bit-count instructions on CPU support.
+- Correct canary artifact discovery and Windows publishing-cache setup.
 
 ## [v0.1.0-beta.10] - 2026-09-23
 
@@ -271,7 +357,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   incomplete typed-select immediate decoding.
 - Fixed Beta discovery and retracted legacy tagged Canary module versions.
 
-[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.10...HEAD
+[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.12...HEAD
+[v0.1.0-beta.12]: https://github.com/wago-org/wago/compare/v0.1.0-beta.11...v0.1.0-beta.12
+[v0.1.0-beta.11]: https://github.com/wago-org/wago/compare/v0.1.0-beta.10...v0.1.0-beta.11
 [v0.1.0-beta.10]: https://github.com/wago-org/wago/compare/v0.1.0-beta.9...v0.1.0-beta.10
 [v0.1.0-beta.9]: https://github.com/wago-org/wago/compare/v0.1.0-beta.8...v0.1.0-beta.9
 [v0.1.0-beta.8]: https://github.com/wago-org/wago/releases/tag/v0.1.0-beta.8
