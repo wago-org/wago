@@ -82,7 +82,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("global import index shape")
 	}
 	for i, global := range c.GlobalImports {
-		reference := global.Type == ValFuncRef && !global.Mutable && c.tableCount() == 1
+		reference := global.Type == ValFuncRef && !global.Mutable && c.tableCount() <= 1
 		if reference {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
@@ -160,8 +160,8 @@ func railshotValidateCompiled(c *Compiled) error {
 			hasReferenceGlobal = true
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
-			if err != nil || exact != plain || global.Mutable || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() != 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
-				return reject("immutable reference global and retained table required")
+			if err != nil || exact != plain || global.Mutable || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+				return reject("immutable reference global and retained references required")
 			}
 			if i < len(c.GlobalImports) && (global.HasInitFunc || global.HasInitGlobal) {
 				return reject("reference import initializer")

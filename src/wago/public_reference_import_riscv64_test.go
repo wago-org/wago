@@ -180,7 +180,6 @@ func TestRV64PublicReferenceImportUnusedSourceGates(t *testing.T) {
 			mutable, owned, borrowed bool
 			count                    int
 		}{
-			{"unused-no-table", wasm.FuncRef, false, false, false, 1},
 			{"unused-mutable", wasm.FuncRef, true, true, false, 1},
 			{"unused-nonnullable", wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapFunc), false)), false, true, false, 1},
 			{"unused-typed", wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)), false, true, false, 1},

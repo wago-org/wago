@@ -22,18 +22,24 @@ func referenceGlobalFixture(t *testing.T, vector bool) *wasm.Module {
 
 func TestPublicImmutableReferenceGlobals(t *testing.T) {
 	for _, vector := range []bool{false, true} {
-		m := referenceGlobalFixture(t, vector)
-		opts := CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, ImportBindings: hostImportBindings(1)}
-		image, err := CompileModuleWith(m, opts)
-		if image == nil || err != nil {
-			t.Fatal(vector, err)
-		}
-		if image.CodeImage != nil {
-			image.CodeImage.Close()
-		}
-		opts.ForeignTableCalls = false
-		if image, err := CompileModuleWith(m, opts); image != nil || err == nil {
-			t.Fatal("private reference global admitted", vector, err)
+		for _, table := range []bool{false, true} {
+			m := referenceGlobalFixture(t, vector)
+			if !table {
+				m.Tables = nil
+				m.Elements = nil
+			}
+			opts := CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, ImportBindings: hostImportBindings(1)}
+			image, err := CompileModuleWith(m, opts)
+			if image == nil || err != nil {
+				t.Fatal(vector, err)
+			}
+			if image.CodeImage != nil {
+				image.CodeImage.Close()
+			}
+			opts.ForeignTableCalls = false
+			if image, err := CompileModuleWith(m, opts); image != nil || err == nil {
+				t.Fatal("private reference global admitted", vector, err)
+			}
 		}
 	}
 }
@@ -54,8 +60,6 @@ func TestPublicImmutableReferenceGlobalRejectBeforeStaging(t *testing.T) {
 			func(m *wasm.Module) { m.Globals[0].Init.BodyBytes = []byte{0xd0, 0x73, 0x0b} },
 			func(m *wasm.Module) { m.Globals[0].Init.BodyBytes = make([]byte, 8) },
 			func(m *wasm.Module) { m.Globals[0].Init.Instrs = []wasm.Instruction{{Kind: wasm.InstrRefFunc}} },
-			func(m *wasm.Module) { m.Tables = nil; m.Elements = nil },
-
 			func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0, 0x23, 1, 0x50, 0x1a, 0x20, 0, 0x0b} },
 		} {
 			m := referenceGlobalFixture(t, vector)

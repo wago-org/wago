@@ -13,8 +13,24 @@ import (
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
 	if c.tableCount() == 0 {
-		if c.HasTableInitFunc || c.needsFuncRefDescs() || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.tableExports) != 0 {
-			return fmt.Errorf("reference descriptors require the private table")
+		if c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.tableExports) != 0 {
+			return fmt.Errorf("table metadata requires a declared table")
+		}
+		hasReferenceGlobal := false
+		for _, global := range c.Globals {
+			hasReferenceGlobal = hasReferenceGlobal || global.Type == ValFuncRef
+		}
+		if !hasReferenceGlobal {
+			if c.needsFuncRefDescs() {
+				return fmt.Errorf("reference descriptors require retained reference state")
+			}
+			return nil
+		}
+		if !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled {
+			return fmt.Errorf("immutable references require the framed retained reference ABI")
+		}
+		if c.needsFuncRefDescs() {
+			return rv64ValidateReferenceFunctionKeys(c)
 		}
 		return nil
 	}
@@ -108,6 +124,10 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 			return err
 		}
 	}
+	return rv64ValidateReferenceFunctionKeys(c)
+}
+
+func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return fmt.Errorf("private table signature-key count")
 	}

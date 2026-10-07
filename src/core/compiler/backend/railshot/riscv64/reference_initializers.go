@@ -5,10 +5,10 @@ package riscv64
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // Public immutable cells use retained canonical descriptors. Imported cells
-// require the retained-table profile and frozen Runtime descriptor-owner roots.
+// require the retained-reference profile and frozen Runtime descriptor-owner roots.
 func admitImmutableFunctionGlobal(global wasm.Global, m *wasm.Module, limit int) error {
-	if global.Type.Mutable || !wasm.EqualValType(global.Type.Type, wasm.FuncRef) || len(m.Tables)+m.ImportedTableCount() != 1 {
-		return unsupported("reference global requires immutable local funcref and retained table")
+	if global.Type.Mutable || !wasm.EqualValType(global.Type.Type, wasm.FuncRef) || len(m.Tables)+m.ImportedTableCount() > 1 {
+		return unsupported("reference global requires immutable local funcref and retained references")
 	}
 	if len(global.Init.BodyBytes) > 0 && global.Init.BodyBytes[0] == 0x23 {
 		if err := admitGlobalExpression(global.Init, m, wasm.FuncRef, limit); err != nil {
@@ -36,7 +36,7 @@ func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 		if uint64(index) < uint64(imported) {
 			typ, ok := m.GlobalTypeByIndex(index)
 			if !ok || !admitImportedFunctionGlobal(m, typ) {
-				return unsupported("reference global import requires immutable funcref and retained table")
+				return unsupported("reference global import requires immutable funcref and retained references")
 			}
 			return nil
 		}
@@ -58,5 +58,5 @@ func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 }
 
 func admitImportedFunctionGlobal(m *wasm.Module, typ wasm.GlobalType) bool {
-	return !typ.Mutable && wasm.EqualValType(typ.Type, wasm.FuncRef) && len(m.Tables)+m.ImportedTableCount() == 1
+	return !typ.Mutable && wasm.EqualValType(typ.Type, wasm.FuncRef) && len(m.Tables)+m.ImportedTableCount() <= 1
 }

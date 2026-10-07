@@ -52,6 +52,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	var locals [256]bool
 	var localRefs [256]bool
 	privateRefs := floating && state.ownedTable
+	if floating && state.importReferences {
+		for _, global := range state.globals {
+			privateRefs = privateRefs || !global.mutable && wasm.EqualValType(global.typ, wasm.FuncRef)
+		}
+	}
 	nlocals := len(ft.Params)
 	for i, t := range ft.Params {
 		locals[i] = scalarWide(t)
@@ -482,7 +487,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 		case 0xd0, 0xd1, 0xd2, 0x25, 0x26:
 			if !privateRefs {
-				return integerSummary{}, unsupported("private reference instruction without owned table")
+				return integerSummary{}, unsupported("reference instruction without retained reference state")
 			}
 			switch op {
 			case 0xd0:
@@ -532,7 +537,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if idx != 0 {
+				if !state.ownedTable || idx != 0 {
 					return integerSummary{}, unsupported("private table index")
 				}
 				if op == 0x26 {
@@ -688,7 +693,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("bulk instruction without state")
 			}
 			if imm.Kind == wasm.InstrTableInit || imm.Kind == wasm.InstrElemDrop {
-				if !privateRefs || uint64(imm.Index) >= uint64(state.elementCount) || imm.Index2 != 0 {
+				if !state.ownedTable || !privateRefs || uint64(imm.Index) >= uint64(state.elementCount) || imm.Index2 != 0 {
 					return integerSummary{}, unsupported("private element index/shape")
 				}
 				if imm.Kind == wasm.InstrElemDrop {
@@ -711,7 +716,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				continue
 			}
 			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
-				if !privateRefs || imm.Index != 0 || imm.Index2 != 0 || (imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth) {
+				if !state.ownedTable || !privateRefs || imm.Index != 0 || imm.Index2 != 0 || (imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth) {
 					return integerSummary{}, unsupported("bounded private table mutation shape")
 				}
 				if _, err = pop(); err != nil {
@@ -754,7 +759,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				continue
 			}
 			if imm.Kind == wasm.InstrTableSize {
-				if !privateRefs || imm.Index != 0 {
+				if !state.ownedTable || !privateRefs || imm.Index != 0 {
 					return integerSummary{}, unsupported("private table.size index")
 				}
 				if live && emit != nil {
