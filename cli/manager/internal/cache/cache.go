@@ -76,6 +76,11 @@ func Size(paths []string) (int64, error) {
 }
 
 func Clean(dirs wagopaths.Dirs, selection Selection) (Result, error) {
+	if selection.Builds {
+		if err := checkLocalBuildRoot(); err != nil {
+			return Result{}, err
+		}
+	}
 	var paths []string
 	if selection.Downloads {
 		paths = append(paths, DownloadDir(dirs))
@@ -129,6 +134,9 @@ func Clean(dirs wagopaths.Dirs, selection Selection) (Result, error) {
 }
 
 func Prune(dirs wagopaths.Dirs, olderThan time.Duration) (Result, error) {
+	if err := checkLocalBuildRoot(); err != nil {
+		return Result{}, err
+	}
 	cutoff := time.Now().Add(-olderThan)
 	installed := installedNames(dirs.Versions)
 	var candidates []string
@@ -190,6 +198,24 @@ func Prune(dirs wagopaths.Dirs, olderThan time.Duration) (Result, error) {
 		result.Removed++
 	}
 	return result, nil
+}
+
+func checkLocalBuildRoot() error {
+	// Reject existing links. The later path-based cleanup still needs a
+	// handle-bound traversal to resist concurrent replacement.
+	for _, path := range [...]string{".wago", ".wago/builds"} {
+		info, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("local build cache root %s is not a directory", path)
+		}
+	}
+	return nil
 }
 
 func oldEntry(root string, entry fs.DirEntry, cutoff time.Time) bool {
