@@ -21,6 +21,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Add bounded first/second prepared-call lifecycle diagnostics with guest state
+  controls, explicit setup boundaries and consistent per-batch metrics.
 - Add mixed-scalar host-call checks across nested memory, global, and table
   changes, including nested traps and repeated resolved calls.
 - Bind corpus child completion to loaded input identity and exact invocation
