@@ -152,7 +152,7 @@ func rv64PublicSpecInstantiate(t *testing.T, source []byte, artifact bool, regis
 	complete = true
 	return in, nil
 }
-func (in *rv64PublicSpecInstance) invoke(t *testing.T, command simdfixture.Command) {
+func (in *rv64PublicSpecInstance) invoke(t *testing.T, command simdfixture.Command, overflowTrap coreruntime.TrapCode) {
 	t.Helper()
 	if command.Action.Type != "invoke" {
 		t.Fatal("unsupported public spec action", command.Action.Type)
@@ -203,7 +203,8 @@ func (in *rv64PublicSpecInstance) invoke(t *testing.T, command simdfixture.Comma
 	got, err := in.instance.Invoke(command.Action.Field, args...)
 	if command.Type == "assert_trap" {
 		var trap *coreruntime.TrapError
-		if command.Text != "out of bounds memory access" || !errors.As(err, &trap) || trap.Code != coreruntime.TrapLinMemOutOfBounds || got != nil {
+		want, known := rv64PublicSpecTrapCode(command.Text, overflowTrap)
+		if !known || !errors.As(err, &trap) || trap.Code != want || got != nil {
 			t.Fatalf("public spec trap line %d %s: want %q and no result, got %v / %v", command.Line, command.Action.Field, command.Text, err, got)
 		}
 		return
@@ -229,6 +230,15 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := map[string]int{"modules": 472, "register": 1, "assert_return": 24273, "assert_trap": 54, "assert_invalid": 669, "assert_invalid_decode": 1, "assert_invalid_validate": 668, "excluded_text_assert_malformed": 510}
+	if relaxed {
+		want = map[string]int{"modules": 8, "assert_return": 69, "assert_return_either": 32}
+	}
+	rv64PublicSpecRun(t, dir, manifest, want)
+}
+
+func rv64PublicSpecRun(t *testing.T, dir string, manifest *simdfixture.Manifest, want map[string]int) {
+	t.Helper()
 	files := make([]string, 0, len(manifest.Sources))
 	for name := range manifest.Sources {
 		if !strings.HasSuffix(name, ".wast") {
@@ -244,12 +254,7 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 		}
 		t.Run(mode, func(t *testing.T) {
 			total := make(map[string]int)
-			// All valid pinned modules must compile and instantiate, including
-			// state-only modules and the registered vector-global linking pair.
-			want := map[string]int{"modules": 472, "register": 1, "assert_return": 24273, "assert_trap": 54, "assert_invalid": 669, "assert_invalid_decode": 1, "assert_invalid_validate": 668, "excluded_text_assert_malformed": 510}
-			if relaxed {
-				want = map[string]int{"modules": 8, "assert_return": 69, "assert_return_either": 32}
-			}
+			// Every valid pinned module must compile and instantiate.
 			for _, file := range files {
 				t.Run(strings.TrimSuffix(file, ".json"), func(t *testing.T) {
 					data, err := manifest.Read(dir, file, 16<<20)
@@ -262,6 +267,12 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 					}
 					if document.SourceFilename != strings.TrimSuffix(file, ".json")+".wast" {
 						t.Fatal("incorrect public source filename", document.SourceFilename)
+					}
+					// The conversion corpus uses the float-to-int overflow trap;
+					// integer arithmetic files use signed division overflow.
+					overflowTrap := coreruntime.TrapDivOverflow
+					if file == "conversions.json" {
+						overflowTrap = coreruntime.TrapTruncOverflow
 					}
 					counts := make(map[string]int)
 					var current *rv64PublicSpecInstance
@@ -305,7 +316,7 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 							if current == nil {
 								t.Fatal("public action without an admitted current module", command.Line)
 							}
-							current.invoke(t, command)
+							current.invoke(t, command, overflowTrap)
 							counts[command.Type]++
 							if len(command.Either) != 0 {
 								counts["assert_return_either"]++
@@ -424,4 +435,19 @@ func rv64PublicSpecInvalidError(text string, err error) error {
 		return fmt.Errorf("lane assertion failed for unrelated type error: %v", err)
 	}
 	return nil
+}
+
+func rv64PublicSpecTrapCode(text string, overflowTrap coreruntime.TrapCode) (coreruntime.TrapCode, bool) {
+	switch text {
+	case "out of bounds memory access":
+		return coreruntime.TrapLinMemOutOfBounds, true
+	case "integer divide by zero":
+		return coreruntime.TrapDivZero, true
+	case "integer overflow":
+		return overflowTrap, overflowTrap == coreruntime.TrapDivOverflow || overflowTrap == coreruntime.TrapTruncOverflow
+	case "invalid conversion to integer":
+		return coreruntime.TrapTruncOverflow, true
+	default:
+		return 0, false
+	}
 }
