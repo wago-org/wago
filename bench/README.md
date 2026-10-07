@@ -5,9 +5,6 @@ and artifacts live in the repository-level `corpus` directory. The benchmark
 module is deliberately separate from the runtime module so comparison-engine
 dependencies do not become runtime dependencies.
 
-For a matched Wago/Wasmtime Wasm → host callback microbenchmark, see
-[`host-latency`](host-latency/README.md).
-
 Run benchmarks from the repository root through `just`:
 
 ```sh

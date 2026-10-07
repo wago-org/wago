@@ -172,35 +172,6 @@ func testBoundedHostYieldGCAndCancellation(t *testing.T, kind string) {
 	}
 }
 
-func BenchmarkBoundedHostYield(b *testing.B) {
-	for _, bounded := range []bool{false, true} {
-		name := "unbounded"
-		if bounded {
-			name = "bounded"
-		}
-		b.Run(name, func(b *testing.B) {
-			c, err := Compile(goHostSegmentConfig().WithOptimization("prepared-bounded-entry", bounded), hostYieldLoopModule())
-			if err != nil {
-				b.Fatal(err)
-			}
-			defer c.Close()
-			in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.step", func(v int32) int32 { return v + 1 })})
-			if err != nil {
-				b.Fatal(err)
-			}
-			defer in.Close()
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				got, err := in.Invoke("run", 1024, 0)
-				if err != nil || len(got) != 1 || got[0] != 1024 {
-					b.Fatalf("run = %v, %v", got, err)
-				}
-			}
-		})
-	}
-}
-
 func TestBoundedHostYieldArtifactDropsCompilerProof(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), hostYieldLoopModule())
 	if err != nil {

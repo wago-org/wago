@@ -5,13 +5,8 @@ package wago
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 )
-
-func BenchmarkCachedBoundedNumericSingle(b *testing.B) {
-	benchmarkCachedBoundedNumeric(b, 1)
-}
 
 func TestCachedBoundedHostFailureRecovery(t *testing.T) {
 	c, err := Compile(goHostSegmentConfig(), hostYieldLoopModule())
@@ -127,53 +122,6 @@ func TestCachedBoundedTypedTwoParameterMarshalling(t *testing.T) {
 	}
 	if calls != 3 {
 		t.Fatalf("callbacks=%d; want 3", calls)
-	}
-}
-
-func BenchmarkCachedBoundedNumericBatch(b *testing.B) {
-	benchmarkCachedBoundedNumeric(b, 65536)
-}
-
-func benchmarkCachedBoundedNumeric(b *testing.B, count uint64) {
-	c, err := Compile(goHostSegmentConfig(), hostYieldLoopModule())
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer c.Close()
-	for _, kind := range []string{"typed", "HostCall", "Caller"} {
-		b.Run(kind, func(b *testing.B) {
-			var counter atomic.Uint64
-			step := func(v int32) int32 { counter.Add(1); return v + 1 }
-			var fn any = step
-			if kind == "HostCall" {
-				fn = func(call HostCall) { call.SetI32(0, step(call.I32(0))) }
-			} else if kind == "Caller" {
-				fn = func(_ Caller, call HostCall) { call.SetI32(0, step(call.I32(0))) }
-			}
-			imports := NewImports()
-			imports.HostFunc("env", "step", fn).Params(ValI32).Results(ValI32)
-			in, err := Instantiate(c, InstantiateOptions{Imports: imports})
-			if err != nil {
-				b.Fatal(err)
-			}
-			defer in.Close()
-			if _, err := in.Invoke("run", count, 0); err != nil {
-				b.Fatal(err)
-			}
-			counter.Store(0)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				got, err := in.Invoke("run", count, 0)
-				if err != nil || len(got) != 1 || got[0] != count {
-					b.Fatalf("invoke: %v, %v", got, err)
-				}
-			}
-			b.StopTimer()
-			if counter.Load() != uint64(b.N)*count {
-				b.Fatal("callback count")
-			}
-		})
 	}
 }
 
