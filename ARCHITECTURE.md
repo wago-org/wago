@@ -134,7 +134,11 @@ expressions; runtime reads normalize the low 32 bits. Segments apply in source
 order: earlier effects survive a later failure, while
 each segment checks its complete range before writes. Public SWAR compilation
 uses shared runtime initializer metadata without duplicating private table-owner
-payloads. Extended expressions, typed references and explicit table initializers
+payloads. Public scalar/SWAR global initializers also copy exact immutable
+imported numeric values, including both V128 halves, into distinct local cells;
+active data offsets accept immutable imported i32 globals. The shared runtime
+owns these global/data payloads without duplicate private SWAR state. Extended
+expressions, typed references and explicit table initializers
 remain unavailable.
 
 RV64 host calls retain the framed cooperative park/resume boundary. The

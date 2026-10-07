@@ -29,3 +29,38 @@ func admittedScalarConst(expr wasm.Expr, typ wasm.ValType, production bool, impo
 	}
 	return 0, nil
 }
+
+func admitI32Offset(expr wasm.Expr, m *wasm.Module, public bool) error {
+	if len(expr.Instrs) != 0 {
+		return unsupported("i32 offset must be byte-backed")
+	}
+	if len(expr.BodyBytes) == 0 || expr.BodyBytes[0] != 0x23 {
+		_, err := plainConst(expr, false)
+		return err
+	}
+	if !public {
+		return unsupported("i32 offset requires public imported i32 global")
+	}
+	return admitImportedGlobalExpression(expr, m, wasm.I32)
+}
+
+// An exact immutable imported global read is resolved after runtime attachment.
+func admitImportedGlobalExpression(expr wasm.Expr, m *wasm.Module, expected wasm.ValType) error {
+	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || expr.BodyBytes[0] != 0x23 {
+		return unsupported("bounded byte-backed imported global expression required")
+	}
+	r := wasm.ReaderFrom(expr.BodyBytes[1:])
+	index, err := r.U32()
+	if err != nil || uint64(index) >= uint64(m.ImportedGlobalCount()) {
+		return unsupported("initializer imported global index")
+	}
+	end, err := r.Byte()
+	if err != nil || end != 0x0b || r.HasNext() {
+		return unsupported("initializer global expression")
+	}
+	typ, ok := m.GlobalTypeByIndex(index)
+	if !ok || typ.Mutable || !wasm.EqualValType(typ.Type, expected) {
+		return unsupported("initializer requires exact immutable imported global")
+	}
+	return nil
+}

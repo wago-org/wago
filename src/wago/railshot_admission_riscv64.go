@@ -150,14 +150,8 @@ func railshotValidateCompiled(c *Compiled) error {
 		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64ImportedInitializer(c, global.InitGlobal, global.Type)) {
 			return reject("global initializer requires an immutable scalar import of the exact type")
 		}
-		if vectorProfile && global.HasInitGlobal {
-			return reject("SIMD global initializer must be a literal")
-		}
 	}
 	for _, data := range c.Data {
-		if vectorProfile && data.Offset.HasGlobal {
-			return reject("SIMD data offset must be a literal")
-		}
 		if c.memoryCount() != 1 || data.MemoryIndex != 0 || len(data.Offset.Expr) != 0 || (data.Offset.HasGlobal && !rv64ImportedInitializer(c, data.Offset.Global, ValI32)) {
 			return reject("data initializer lowering is pending")
 		}

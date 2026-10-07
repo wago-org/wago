@@ -18,6 +18,8 @@ combined with numeric function imports. Imported function references use retaine
 importer-owned thunks for Go callbacks, HostFuncRef and native targets. Reference
 element expressions support bounded `ref.func` and `ref.null func` literals,
 with active offsets from i32 constants or immutable imported-i32 globals.
+Scalar/SWAR modules also support immutable numeric/vector import copies into
+local globals and imported-i32 active-data offsets.
 Broader reference
 signatures/equality, GC/EH, threads, memory64 and table64 remain unavailable.
 This is not a supported

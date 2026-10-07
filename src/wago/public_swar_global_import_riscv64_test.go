@@ -460,22 +460,23 @@ func TestRV64PublicSWARGlobalImportLastDirectoryCell(t *testing.T) {
 	}
 }
 
-func TestRV64PublicSWARImportedGlobalDataOffsetRemainsLiteral(t *testing.T) {
+func TestRV64PublicSWARImportedGlobalDataOffsetRequiresImmutableI32(t *testing.T) {
 	c := rv64PublicSWARGlobalImportCompile(t, false, true)
 	view := *c.executionView()
 	view.GlobalImports = slices.Clone(view.GlobalImports)
 	view.Globals = slices.Clone(view.Globals)
-	view.GlobalImports[0].Mutable = false
-	view.Globals[0].Mutable = false
-	if !rv64ImportedInitializer(&view, 0, ValI32) {
-		t.Fatal("fixture must have an admissible immutable imported I32")
-	}
-	if err := railshotValidateCompiled(&view); err != nil {
-		t.Fatal("base vector metadata rejected", err)
-	}
 	view.Data = []DataInit{{Bytes: []byte{1}, Offset: OffsetInit{HasGlobal: true, Global: 0}}}
 	if err := railshotValidateCompiled(&view); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("SIMD imported-global data offset admitted", err)
+		t.Fatal("mutable SIMD data offset admitted", err)
+	}
+	view.GlobalImports[0].Mutable = false
+	view.Globals[0].Mutable = false
+	if err := railshotValidateCompiled(&view); err != nil {
+		t.Fatal("immutable I32 data offset rejected", err)
+	}
+	view.Data[0].Offset.Global = 2
+	if err := railshotValidateCompiled(&view); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("same-width F32 data offset admitted", err)
 	}
 	view.Data[0].Offset = OffsetInit{}
 	if err := railshotValidateCompiled(&view); err != nil {

@@ -3,7 +3,9 @@
 Experimental Linux/RV64 now combines a bounded owned/imported funcref table32
 with numeric function imports, including retained foreign targets and parked
 host callbacks, imported references through owned thunks, and bounded nullable
-funcref element expressions with immutable imported-i32 offsets. Remaining work
+funcref element expressions with immutable imported-i32 offsets. Scalar/SWAR
+initialization supports numeric/vector imported-global copies and imported-i32
+data offsets. Remaining work
 includes reference signatures/equality, broader
 WebAssembly parity, and native cache/runtime/performance qualification. The
 experimental build tag and unsupported-feature admission remain in place.

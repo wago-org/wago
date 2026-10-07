@@ -46,7 +46,7 @@ func (image *swarModuleImage) instantiateData(job *coreruntime.JobMemory) (*swar
 // Production uses NewArena; a local allocator allows prepublication failure
 // ordering to be tested without changing process-wide runtime hooks.
 func (image *swarModuleImage) instantiateDataWithArena(job *coreruntime.JobMemory, allocate func(int) (*coreruntime.Arena, error)) (*swarDataOwner, error) {
-	if image == nil || job == nil || len(image.data) > 256 {
+	if image == nil || image.publicInitializers || job == nil || len(image.data) > 256 {
 		return nil, unsupported("SWAR passive data owner image/job/bound")
 	}
 	if job.CaptureInstanceContext().PassiveDataPtr != 0 {

@@ -10,19 +10,20 @@ import (
 )
 
 type swarModuleImage struct {
-	code         []byte
-	functions    []FunctionInfo
-	globals      []swarGlobalInitializer
-	data         [][]byte
-	activeData   []swarActiveData
-	memory       *wasm.MemType
-	table        *wasm.TableType
-	elements     []swarElement
-	publicTables bool // shared runtime owns initializer metadata; private owner must not bind this image
-	functionKeys []uint64
-	hosts        []swarHostSignature
-	hostCode     []byte
-	hostEntries  []int
+	code               []byte
+	functions          []FunctionInfo
+	globals            []swarGlobalInitializer
+	data               [][]byte
+	activeData         []swarActiveData
+	memory             *wasm.MemType
+	table              *wasm.TableType
+	elements           []swarElement
+	publicInitializers bool // shared runtime owns global and data initialization
+	publicTables       bool // shared runtime owns initializer metadata; private owner must not bind this image
+	functionKeys       []uint64
+	hosts              []swarHostSignature
+	hostCode           []byte
+	hostEntries        []int
 }
 
 type swarModulePolicy uint8
@@ -36,8 +37,9 @@ const (
 // This lowering image owns a bounded source snapshot and admits every
 // function before allocating code. The production adapter additionally applies
 // shared compiler options; public admission and instance setup are separate. Only defined functions, their exports, inert metadata
-// one optional nonshared memory32 bounded literal globals and active/passive data are supported.
-// Global cells are initialized separately by the private idle execution owner.
+// one optional nonshared memory32, numeric globals and active/passive data are supported.
+// Private images retain literal state for the idle execution owners; the public
+// runtime owns its initializer metadata and resolves imported-global reads.
 // The execution owner must provide matching call arenas and JobMemory layout.
 func compileSWARModule(data []byte, mode emissionMode) (*swarModuleImage, error) {
 	return compileSWARModulePolicy(data, mode, swarModulePlain)
@@ -80,6 +82,7 @@ func compileSWARDecodedModule(m *wasm.Module, mode emissionMode, policy swarModu
 }
 
 type swarStateProfile struct {
+	publicInitializers   bool
 	publicStarts         bool
 	exports              bool
 	importedMemory       bool
@@ -216,15 +219,25 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, unsupported("SWAR module memory32 resource")
 		}
 	}
-	dataSegments, activeData, err := swarModuleData(m.Data, memory)
-	if err != nil {
-		return nil, err
+	var dataSegments [][]byte
+	var activeData []swarActiveData
+	var globals []swarGlobalInitializer
+	if state.publicInitializers {
+		if err := admitSWARPublicInitializers(m, memory); err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		dataSegments, activeData, err = swarModuleData(m.Data, memory)
+		if err != nil {
+			return nil, err
+		}
+		globals, err = swarLiteralGlobals(m.Globals)
+		if err != nil {
+			return nil, err
+		}
 	}
-	globals, err := swarLiteralGlobals(m.Globals)
-	if err != nil {
-		return nil, err
-	}
-	globalTypes := make([]wasm.GlobalType, globalImports+len(globals))
+	globalTypes := make([]wasm.GlobalType, globalImports+len(m.Globals))
 	for i := range globalTypes {
 		globalTypes[i], _ = m.GlobalTypeByIndex(uint32(i))
 	}
@@ -269,7 +282,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	summaries := make([]swarSummary, len(m.Code))
 	bound := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithImportMode(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
+		summaries[i], err = walkSWARPairsWithImportMode(&m.Code[i], functions[imported+i], memory != nil, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -285,7 +298,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if err != nil {
 		return nil, err
 	}
-	image := &swarModuleImage{functions: make([]FunctionInfo, len(m.Code)), globals: globals, data: dataSegments, activeData: activeData, elements: elements, functionKeys: functionKeys, hosts: hostSignatures, hostCode: hostCode, hostEntries: hostEntries}
+	image := &swarModuleImage{publicInitializers: state.publicInitializers, functions: make([]FunctionInfo, len(m.Code)), globals: globals, data: dataSegments, activeData: activeData, elements: elements, functionKeys: functionKeys, hosts: hostSignatures, hostCode: hostCode, hostEntries: hostEntries}
 	if memory != nil {
 		ownedMemory := *memory
 		image.memory = &ownedMemory
@@ -300,7 +313,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		functionMode := mode
 		functionMode.functionIndex = uint32(imported + i)
 		functionMode.entryPC = uint32(m.Code[i].LocalDeclBytes)
-		code, info, relocations, err := compileSWARPairsWithImports(&m.Code[i], functions[imported+i], memory, types, functions, globalTypes, len(dataSegments), table, typeKeys, len(m.Elements), imported, functionMode)
+		code, info, relocations, err := compileSWARPairsWithImports(&m.Code[i], functions[imported+i], memory, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, functionMode)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}

@@ -24,40 +24,55 @@ func swarLiteralGlobals(globals []wasm.Global) ([]swarGlobalInitializer, error) 
 	}
 	initializers := make([]swarGlobalInitializer, len(globals))
 	for i, global := range globals {
-		class := swarClassOf(global.Type.Type)
-		if class == swarInvalid {
-			return nil, unsupported("SWAR literal global carrier")
+		value, err := swarLiteralGlobal(global)
+		if err != nil {
+			return nil, err
 		}
-		initializers[i].typ = global.Type
-		if class != swarV128 {
-			value, err := plainScalarConst(global.Init, global.Type.Type, true)
-			if err != nil {
-				return nil, err
-			}
-			initializers[i].value[0] = value
-			continue
-		}
-		r := wasm.ReaderFrom(global.Init.BodyBytes)
-		op, err := r.Byte()
-		if err != nil || op != 0xfd {
-			return nil, unsupported("SWAR vector global literal")
-		}
-		sub, err := r.U32()
-		if err != nil || sub != 12 {
-			return nil, unsupported("SWAR vector global literal")
-		}
-		for half := range 2 {
-			initializers[i].value[half], err = r.LEU64()
-			if err != nil {
-				return nil, err
-			}
-		}
-		end, err := r.Byte()
-		if err != nil || end != 0x0b || r.HasNext() {
-			return nil, unsupported("SWAR extended vector initializer")
-		}
+		initializers[i] = value
 	}
 	return initializers, nil
+}
+
+// The public runtime retains initializer metadata itself; validate one literal
+// without allocating a duplicate global directory.
+func swarLiteralGlobal(global wasm.Global) (value swarGlobalInitializer, err error) {
+	if len(global.Init.Instrs) != 0 {
+		return value, unsupported("SWAR global initializer must be byte-backed")
+	}
+
+	class := swarClassOf(global.Type.Type)
+	if class == swarInvalid {
+		return value, unsupported("SWAR literal global carrier")
+	}
+	value.typ = global.Type
+	if class != swarV128 {
+		bits, err := plainScalarConst(global.Init, global.Type.Type, true)
+		if err != nil {
+			return value, err
+		}
+		value.value[0] = bits
+		return value, nil
+	}
+	r := wasm.ReaderFrom(global.Init.BodyBytes)
+	op, err := r.Byte()
+	if err != nil || op != 0xfd {
+		return value, unsupported("SWAR vector global literal")
+	}
+	sub, err := r.U32()
+	if err != nil || sub != 12 {
+		return value, unsupported("SWAR vector global literal")
+	}
+	for half := range 2 {
+		value.value[half], err = r.LEU64()
+		if err != nil {
+			return value, err
+		}
+	}
+	end, err := r.Byte()
+	if err != nil || end != 0x0b || r.HasNext() {
+		return value, unsupported("SWAR extended vector initializer")
+	}
+	return value, nil
 }
 
 // This private owner requires exclusive, idle access to its JobMemory, with no
@@ -72,7 +87,7 @@ type swarGlobalsOwner struct {
 }
 
 func (image *swarModuleImage) instantiateGlobals(job *coreruntime.JobMemory) (*swarGlobalsOwner, error) {
-	if image == nil || job == nil || len(image.globals) > 256 {
+	if image == nil || image.publicInitializers || job == nil || len(image.globals) > 256 {
 		return nil, unsupported("SWAR global owner image/job/bound")
 	}
 	if job.CaptureInstanceContext().GlobalsPtr != 0 {
