@@ -111,6 +111,12 @@ releases the native lease. Foreign-reference mutation and function imports
 combined with tables remain gated. QEMU correctness does not establish native
 instruction-cache or performance qualification.
 
+RV64 host calls retain the framed cooperative park/resume boundary. The
+bounded/live host portals and native scalar leaf optimization are unavailable
+on RV64; their shared API returns unavailable without entering native code.
+Fresh compilation cannot mint those optimization proofs, and artifact loading
+rejects their internal-entry markers.
+
 The immutable `shared.AMD64Features` uint32 assigns bits 0–10 to SSSE3, SSE4.1,
 SSE4.2, AVX, AVX2, BMI1, BMI2, LZCNT, POPCNT, FMA and the AVX-512 plugin tier,
 respectively. SSE2 needs no optional bit. Public compilation supplies the cached
