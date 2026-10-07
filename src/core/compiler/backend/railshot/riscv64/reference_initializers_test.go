@@ -44,7 +44,7 @@ func TestPublicImmutableReferenceGlobalRejectBeforeStaging(t *testing.T) {
 			func(m *wasm.Module) { m.Globals[0].Type.Mutable = true },
 			func(m *wasm.Module) {
 				g := m.Globals[0]
-				g.Init = wasm.Expr{BodyBytes: []byte{0x23, 1, 0x0b}}
+				g.Init = wasm.Expr{BodyBytes: []byte{0x23, 2, 0x0b}}
 				m.Globals = append(m.Globals, g)
 			},
 			func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results = []wasm.ValType{wasm.FuncRef} },
@@ -117,6 +117,53 @@ func TestPublicLocalReferenceGlobalExports(t *testing.T) {
 				t.Fatal("local reference global export", vector, null, err)
 			}
 			if image.CodeImage != nil {
+				image.CodeImage.Close()
+			}
+		}
+	}
+}
+
+func TestPublicReferenceGlobalCopies(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		m := referenceGlobalFixture(t, vector)
+		m.Globals[0].Init.BodyBytes = []byte{0xd2, 1, 0x0b}
+		m.Globals = append(m.Globals, wasm.Global{Type: wasm.GlobalType{Type: wasm.FuncRef}, Init: wasm.Expr{BodyBytes: []byte{0x23, 1, 0x0b}}})
+		ex := m.Exports[0]
+		ex.Name = "copied"
+		ex.Index.Kind = wasm.ExternGlobal
+		ex.Index.Index = 2
+		m.Exports = append(m.Exports, ex)
+		for _, mutate := range []func(*wasm.Module){
+			nil,
+			func(m *wasm.Module) { m.Globals[1].Init.BodyBytes = []byte{0x23, 0, 0x0b} },
+			func(m *wasm.Module) { m.Globals[1].Init.BodyBytes = []byte{0x23, 2, 0x0b} },
+			func(m *wasm.Module) { m.Globals[1].Init.BodyBytes = []byte{0x23, 3, 0x0b} },
+			func(m *wasm.Module) { m.Globals[1].Init.BodyBytes = []byte{0x23, 1, 0x0b, 0x0b} },
+			func(m *wasm.Module) {
+				m.Globals[1].Init.BodyBytes = []byte{0x23, 0x81, 0x80, 0x80, 0x80, 0x80, 0, 0x0b}
+			},
+			func(m *wasm.Module) { m.Globals[0].Type.Mutable = true },
+			func(m *wasm.Module) {
+				m.Globals[0].Type.Type = wasm.I32
+				m.Globals[0].Init.BodyBytes = []byte{0x41, 0, 0x0b}
+			},
+			func(m *wasm.Module) { m.Globals[0].Init.BodyBytes = []byte{0xd2, 0, 0x0b} },
+		} {
+			copy := *m
+			copy.Globals = append([]wasm.Global(nil), m.Globals...)
+			if mutate != nil {
+				mutate(&copy)
+			}
+			pressure := 0
+			image, err := CompileModuleWith(&copy, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, ImportBindings: hostImportBindings(1), MemoryPressure: func() { pressure++ }})
+			if mutate == nil {
+				if image == nil || err != nil {
+					t.Fatal("valid prior-local reference copy", vector, err)
+				}
+			} else if image != nil || err == nil || pressure != 0 {
+				t.Fatal("invalid copy reached staging", vector, err, pressure)
+			}
+			if image != nil && image.CodeImage != nil {
 				image.CodeImage.Close()
 			}
 		}

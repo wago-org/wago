@@ -151,8 +151,11 @@ func railshotValidateCompiled(c *Compiled) error {
 			hasReferenceGlobal = true
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
-			if err != nil || exact != plain || i < len(c.GlobalImports) || global.Mutable || global.HasInitGlobal || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() != 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
-				return reject("immutable local reference global literal and retained table required")
+			if err != nil || exact != plain || i < len(c.GlobalImports) || global.Mutable || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() != 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+				return reject("immutable local reference global and retained table required")
+			}
+			if global.HasInitGlobal && (global.HasInitFunc || global.InitGlobal < len(c.GlobalImports) || !rv64InitializerGlobal(c, global.InitGlobal, ValFuncRef, i)) {
+				return reject("reference initializer requires an earlier immutable local global")
 			}
 			continue
 		}
@@ -180,6 +183,13 @@ func railshotValidateCompiled(c *Compiled) error {
 				return reject("reference global export index")
 			}
 			global := c.Globals[index]
+			if global.Type == ValFuncRef {
+				// All links were checked above and strictly decrease within the
+				// bounded global directory, so at most 255 copies can be followed.
+				for global.HasInitGlobal {
+					global = c.Globals[global.InitGlobal]
+				}
+			}
 			if global.Type == ValFuncRef && global.HasInitFunc && uint64(global.InitFunc) < uint64(c.NumImports) {
 				return reject("reference global export requires a local function target")
 			}

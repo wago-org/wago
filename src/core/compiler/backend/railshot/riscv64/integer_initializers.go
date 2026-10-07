@@ -107,7 +107,7 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	for i, global := range m.Globals {
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
 			hasReferenceGlobal = true
-			if err := admitImmutableFunctionGlobal(global, m); err != nil {
+			if err := admitImmutableFunctionGlobal(global, m, m.ImportedGlobalCount()+i); err != nil {
 				return err
 			}
 			continue

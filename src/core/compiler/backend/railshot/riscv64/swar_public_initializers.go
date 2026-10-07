@@ -12,7 +12,7 @@ func admitSWARPublicInitializers(m *wasm.Module, memory *wasm.MemType) error {
 	}
 	for i, global := range m.Globals {
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
-			if err := admitImmutableFunctionGlobal(global, m); err != nil {
+			if err := admitImmutableFunctionGlobal(global, m, m.ImportedGlobalCount()+i); err != nil {
 				return err
 			}
 			continue

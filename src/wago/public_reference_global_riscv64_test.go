@@ -114,11 +114,21 @@ func TestRV64PublicReferenceGlobals(t *testing.T) {
 }
 
 func TestRV64PublicReferenceGlobalRetiredWriter(t *testing.T) {
+	testRV64PublicReferenceGlobalRetiredWriter(t, false)
+}
+
+func testRV64PublicReferenceGlobalRetiredWriter(t *testing.T, copies bool) {
 	for _, kind := range []string{"local", "go", "native", "vector"} {
 		for _, artifact := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s-artifact%t", kind, artifact), func(t *testing.T) {
 				vector, imported := kind == "vector", kind != "local"
-				c := rv64TableStageCompile(t, fmt.Sprintf("ref-global-writer-vector%t-imported%t", vector, imported), rv64ReferenceGlobalModule(vector, true, imported, false, 1), artifact)
+				source := rv64ReferenceGlobalModule(vector, true, imported, false, 1)
+				key := fmt.Sprintf("ref-global-writer-vector%t-imported%t", vector, imported)
+				if copies {
+					source = rv64ReferenceCopyModule(t, vector, true, imported, false, 8, false)
+					key += "-copies"
+				}
+				c := rv64TableStageCompile(t, key, source, artifact)
 				reader := rv64TableStageCompile(t, fmt.Sprintf("ref-global-reader-vector%t", vector), rv64ReferenceGlobalModule(vector, true, false, true, 1), artifact)
 				table, err := NewTable(2, 5)
 				if err != nil {

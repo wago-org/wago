@@ -152,7 +152,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			if !publicExports || !importedTables {
 				return s, unsupported("reference global requires retained public table")
 			}
-			if err := admitImmutableFunctionGlobal(g, m); err != nil {
+			if err := admitImmutableFunctionGlobal(g, m, len(s.globals)); err != nil {
 				return s, err
 			}
 			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
