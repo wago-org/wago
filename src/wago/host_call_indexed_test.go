@@ -16,7 +16,7 @@ func TestHostCallIndexedSlots(t *testing.T) {
 			}
 			sig := FuncSig{Params: types, Results: types}
 			results := make([]uint64, len(params))
-			call := HostCall{params: params, results: results, sig: &sig}
+			call := HostCall{params: compactHostSlots(params), results: compactHostSlots(results), sig: &sig}
 			for i := range types {
 				lo, hi := call.RawParam(i)
 				call.SetRawResult(i, lo+1, hi+1)
@@ -49,7 +49,7 @@ func TestHostCallIndexedSlots(t *testing.T) {
 				}
 			}()
 			sig := FuncSig{Params: []ValType{ValI64, ValI64}, Results: []ValType{ValI64, ValI64}}
-			test.fn(HostCall{params: []uint64{1, 2}, results: make([]uint64, 2), sig: &sig})
+			test.fn(HostCall{params: compactHostSlots([]uint64{1, 2}), results: compactHostSlots(make([]uint64, 2)), sig: &sig})
 		})
 	}
 }
@@ -97,14 +97,14 @@ func BenchmarkHostCallIndexed(b *testing.B) {
 
 func TestHostCallIndexedUsesCurrentScalarTypes(t *testing.T) {
 	sig := FuncSig{Params: []ValType{ValI64, ValI64}, Results: []ValType{ValI64, ValI64}}
-	call := HostCall{params: []uint64{1, 2}, results: make([]uint64, 2), sig: &sig}
+	call := HostCall{params: compactHostSlots([]uint64{1, 2}), results: compactHostSlots(make([]uint64, 2)), sig: &sig}
 	if call.I64(1) != 2 {
 		t.Fatal("initial scalar value")
 	}
 	sig.Params[1] = ValI32
 	sig.Results[1] = ValI32
 	call.SetI32(1, call.I32(1)+1)
-	if call.results[1] != 3 {
+	if call.ResultSlots()[1] != 3 {
 		t.Fatal("current scalar type was not used")
 	}
 	defer func() {
@@ -135,7 +135,7 @@ func BenchmarkHostCallIndexedMixed(b *testing.B) {
 				args[i] = uint64(i)
 			}
 			sig := FuncSig{Params: types, Results: types}
-			call := HostCall{params: args, results: results, sig: &sig}
+			call := HostCall{params: compactHostSlots(args), results: compactHostSlots(results), sig: &sig}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -201,7 +201,7 @@ func checkHostCallLayout(t *testing.T, params, results []ValType) {
 		want[i] = got[i]
 	}
 	sig := FuncSig{Params: params, Results: results}
-	c := HostCall{params: args, results: got, sig: &sig}
+	c := HostCall{params: compactHostSlots(args), results: compactHostSlots(got), sig: &sig}
 	for i, typ := range params {
 		lo, hi := c.RawParam(i)
 		expectedHi := uint64(0)

@@ -68,7 +68,7 @@ type Snapshot struct {
 // lifetime.
 type Selection struct {
 	bindings *Bindings
-	bits     uint64
+	bits     [2]uint64
 }
 
 // Option is a pre-resolved flag owned by one architecture's Bindings. Backends
@@ -77,6 +77,7 @@ type Selection struct {
 type Option struct {
 	bindings *Bindings
 	mask     uint64
+	word     uint8
 }
 
 // Enabled reports whether name is enabled in this selection. Unknown names and
@@ -86,20 +87,20 @@ func (s Selection) Enabled(name string) bool {
 		return false
 	}
 	index, ok := s.bindings.indexOf(name)
-	return ok && s.bits&(uint64(1)<<index) != 0
+	return ok && s.bits[index/64]&(uint64(1)<<uint(index%64)) != 0
 }
 
 // EnabledOption reports whether a pre-resolved option is enabled. An option
 // from another architecture is rejected just like an unknown string name.
 func (s Selection) EnabledOption(option Option) bool {
-	return s.bindings != nil && s.bindings == option.bindings && s.bits&option.mask != 0
+	return s.bindings != nil && s.bindings == option.bindings && s.bits[option.word]&option.mask != 0
 }
 
 // EnabledResolvedOption is the hot-path form for an Option resolved by the
 // same Bindings that produced this Selection. Backend initialization validates
 // that ownership once, so per-instruction lowering need only test the bit.
 func (s Selection) EnabledResolvedOption(option Option) bool {
-	return s.bits&option.mask != 0
+	return s.bits[option.word]&option.mask != 0
 }
 
 // Valid reports whether the selection was resolved by a Bindings owner.
@@ -113,7 +114,7 @@ func (b *Bindings) Option(name string) Option {
 	if !ok {
 		panic(fmt.Sprintf("unknown %s optimization %q", b.arch, name))
 	}
-	return Option{bindings: b, mask: uint64(1) << index}
+	return Option{bindings: b, mask: uint64(1) << uint(index%64), word: uint8(index / 64)}
 }
 
 // Bindings owns the complete, ordered set of bindings for one architecture.
@@ -212,17 +213,17 @@ func (b *Bindings) CurrentSnapshot() Snapshot {
 func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[string]bool) (Selection, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if len(b.entries) > 64 {
-		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 64", b.arch, len(b.entries))
+	if len(b.entries) > 128 {
+		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 128", b.arch, len(b.entries))
 	}
-	var bits uint64
+	var bits [2]uint64
 	for index, entry := range b.entries {
 		on := *entry.value
 		if entry.inverted {
 			on = !on
 		}
 		if on {
-			bits |= uint64(1) << index
+			bits[index/64] |= uint64(1) << uint(index%64)
 		}
 	}
 	for name, on := range overrides {
@@ -230,11 +231,11 @@ func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[
 		if !ok {
 			return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
 		}
-		mask := uint64(1) << index
+		mask := uint64(1) << uint(index%64)
 		if on {
-			bits |= mask
+			bits[index/64] |= mask
 		} else {
-			bits &^= mask
+			bits[index/64] &^= mask
 		}
 	}
 	return Selection{bindings: b, bits: bits}, nil
@@ -433,6 +434,8 @@ var catalog = []Definition{
 	both("prepared-direct-entry", "Direct prepared entry", "enter compiler-proved integer functions through the register ABI"),
 	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
 	both("prepared-bounded-entry", "Bounded prepared entry", "keep compiler-bounded native leaves on the Go scheduler"),
+	arm64("native-leaf-host", "Native scalar host leaves", "lower proven pure Go scalar callbacks into native import trampolines"),
+	both("direct-go-host-import", "Direct Go host imports", "bypass cross-instance marshaling for bound Go imports in bounded numeric functions"),
 	amd64("wide-loop-int-const", "Wide loop integer constants", "keep repeatedly materialized non-imm32 i64 loop constants in otherwise-idle registers"),
 	amd64("compact-loop-align32", "Compact loop alignment", "place small loop functions at 32-byte fetch-block boundaries"),
 	amd64("interval-scratch-lease", "Regional scratch leasing", "lend idle RDX to proved straight-line integer local regions"),

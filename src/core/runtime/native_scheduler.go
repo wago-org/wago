@@ -36,6 +36,11 @@ func resumeNative(ctrl, stack uintptr) {
 }
 
 //go:nosplit
+func resumeNativeBounded(ctrl, stack uintptr) {
+	resumeNativeRaw(ctrl, stack)
+}
+
+//go:nosplit
 func enterNativeInt(code, linMem, a0, a1, a2, a3, stack uintptr) uintptr {
 	nativeEnterSyscall()
 	result := enterNativeIntRaw(code, linMem, a0, a1, a2, a3, stack)

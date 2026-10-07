@@ -22,9 +22,10 @@ import (
 
 // Engine owns a dedicated, off-heap execution stack for native wasm code.
 type Engine struct {
-	stack       []byte
-	stackTop    uintptr
-	preparedInt tinygoPreparedIntState
+	stack              []byte
+	stackTop           uintptr
+	preparedScalarHost *PreparedScalarHost
+	preparedInt        tinygoPreparedIntState
 
 	// Scratch for the common non-reentrant synchronous host-call path. Passing
 	// slices to HostCall makes stack-local arrays escape; keeping one bounded pair
@@ -117,6 +118,7 @@ func ReleaseEngine(e *Engine) error {
 	if e == nil {
 		return nil
 	}
+	e.preparedScalarHost = nil
 	engineCache.Lock()
 	if engineCache.e == nil {
 		if !e.prepareIdleStackForCache() {
@@ -319,15 +321,16 @@ func (e *Engine) CallWithHostBaseScalar(code uintptr, serArgs []byte, linMemBase
 // Keeping them behind this opaque handle prevents the hot path from accepting
 // unchecked pointers or short control/trap buffers on every invocation.
 type PreparedHostScalarCall struct {
-	engine     *Engine
-	code       uintptr
-	serArgs    []byte
-	linMemBase uintptr
-	trap       []byte
-	results    []byte
-	ctrl       []byte
-	fixedSlots uint32
-	fixed      bool
+	engine          *Engine
+	code            uintptr
+	serArgs         []byte
+	linMemBase      uintptr
+	trap            []byte
+	results         []byte
+	ctrl            []byte
+	fixedSlots      uint32
+	fixed           bool
+	boundedSegments bool
 }
 
 // PrepareHostScalarCall validates and binds a reservation-held scalar host
@@ -427,7 +430,12 @@ func (p *PreparedHostScalarCall) CallFixed(host HostCall, scalar ScalarHostCall,
 	}
 	clearTrapUnlessInterrupted(p.trap)
 	ctrlPtr := slicePtr(p.ctrl)
-	callErr := p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, nil, nil)
+	var callErr error
+	if p.boundedSegments {
+		callErr = p.engine.callWithBoundedHostLoop(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, p.fixedSlots, fixed)
+	} else {
+		callErr = p.engine.callWithHostLoopFixed(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, ctrlPtr, p.fixedSlots, host, scalar, fixed, nil, nil)
+	}
 	goruntime.KeepAlive(p)
 	return callErr
 }
@@ -509,6 +517,9 @@ func InitHostCtrlFrame(ctrl []byte) error {
 	}
 	if _, err := initHostCtrlExtension(ctrl); err != nil {
 		return err
+	}
+	if leaf := nativeScalarLeafPtr(ctrl); leaf != 0 {
+		stub = leaf
 	}
 	binary.LittleEndian.PutUint64(ctrl[hcTrampoline:], uint64(stub))
 	return nil
@@ -697,6 +708,7 @@ func (e *Engine) callWithHostLoopExpanded(code uintptr, serArgs []byte, linMemBa
 }
 
 func (e *Engine) Close() error {
+	e.preparedScalarHost = nil
 	return errors.Join(e.preparedInt.close(), munmap(e.stack))
 }
 

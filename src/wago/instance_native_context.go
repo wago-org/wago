@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -28,6 +29,7 @@ const (
 	executionFlagDynamicGCDomain
 	executionFlagStoreOwnedGCCollector
 	executionFlagPreparedActive
+	executionFlagNativeScalarLeaf
 )
 
 type invocationID uint64
@@ -46,6 +48,11 @@ func newInvocationID() invocationID {
 // entry covers repeated and recursive callbacks in one chain. Overflow entries
 // live only as long as overlapping distinct chains; empty maps are released.
 type instanceActivations struct {
+	// A bounded private Caller dispatcher has one invocation-gate owner. Nested
+	// entries restore the previous ID; generic shared activations retain counts
+	// below. Atomic publication lets cross-instance reentry observe the owner
+	// after a callback publishes its native context to another instance.
+	boundedID     atomic.Uint64
 	mu            sync.Mutex
 	id            invocationID
 	count         uint64
@@ -111,6 +118,9 @@ func isNativeActive(in *Instance, id invocationID) bool {
 		return false
 	}
 	a := &state.activations
+	if invocationID(a.boundedID.Load()) == id && state.hostScope.active.Load() != 0 {
+		return true
+	}
 	a.mu.Lock()
 	active := (a.id == id && a.count != 0) || a.other[id] != 0
 	a.mu.Unlock()
@@ -171,7 +181,12 @@ func currentInvocationReservation(in *Instance) *pluginOperationReservation {
 	return reservation
 }
 
-type executionLease struct{ local *sync.Mutex }
+func (l executionLease) memoryBase(in *Instance) uintptr {
+	if l.privateContext() {
+		return 1
+	} // PreparedScalarHost substitutes its private anchor.
+	return in.jm.LinMemBase()
+}
 
 // beginNativeEntry acquires the serialized execution lease and rebinds this
 // instance's pointer context before native code can observe basedata. Memory
@@ -206,6 +221,40 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 		return executionLease{}, err
 	}
 	return executionLease{}, nil
+}
+
+// beginCachedBoundedViewEntry shares the private pointer-context observation
+// across eligible numeric exports. Callback access and other native entries
+// advance the epoch, and publication still transfers ownership to general entry.
+func (in *Instance) beginCachedBoundedViewEntry() (executionLease, bool, error) {
+	// Invocation admission already serializes the engine and its buffers. The
+	// detached proof excludes every guest access to mutable resource basedata.
+	if goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" && armDetachedNumericEnabled {
+		if p := in.eng.PreparedScalarHost(); p != nil && p.DetachedNumericContext() {
+			return privateNumericExecutionLease(), true, nil
+		}
+	}
+	if in.memoryDir == nil && in.gc == nil && !in.threadedMemoryZero && in.usesIndependentExecution() {
+		state := in.ensurePluginState()
+		mu := &state.nativeExecutionMu
+		mu.Lock()
+		flags := in.executionFlags.Load()
+		if flags&executionFlagIndependent != 0 && flags&preparedFastBlocked == 0 {
+			version := state.nativeContextVersion.Load()
+			reuse := version != 0 && version != ^uint64(0) &&
+				state.boundedViewVersion == version && state.boundedViewMemBase == in.jm.LinMemBase()
+			if !reuse {
+				if err := in.bindAndValidateNativeContext(); err != nil {
+					mu.Unlock()
+					return executionLease{}, false, err
+				}
+			}
+			return executionLease{local: mu}, reuse, nil
+		}
+		mu.Unlock()
+	}
+	entry, err := in.beginNativeEntry()
+	return entry, false, err
 }
 
 // beginNativeEntry keeps ordinary prepared host calls on the same admission
@@ -316,6 +365,9 @@ func (in *Instance) refreshMemoryDirectory() error {
 }
 
 func (l executionLease) unlockExecution() {
+	if l.privateContext() {
+		return
+	}
 	if l.local != nil {
 		l.local.Unlock()
 		return
@@ -327,6 +379,9 @@ func (l executionLease) unlockExecution() {
 // resource published while an independent activation is parked revokes local
 // execution and makes the callback migrate to the process-wide mutex.
 func (in *Instance) unlockNativeEntry(l executionLease) {
+	if l.privateContext() {
+		return
+	}
 	if l.local != nil && !in.threadedMemoryZero && !in.usesIndependentExecution() {
 		nativeExecutionMu.Unlock()
 		return
@@ -484,6 +539,9 @@ func (in *Instance) preparedMemoryFreeEntryMode() preparedEntryMode {
 }
 
 func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
+	if in.isolatedNativeScalarLeaf() {
+		return preparedEntryIsolated
+	}
 	if in == nil || in.c == nil || (!memoryFree && in.c.boundsMode == BoundsChecksSignalsBased) ||
 		in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode {
 		return preparedEntryGeneral
@@ -589,6 +647,9 @@ func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error 
 func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte, reserved, bounded bool) error {
 	if !reserved {
 		if !in.lockPreparedFastState() {
+			if in.syncMode {
+				return in.callNativeSyncWithTrapContext(entry, activeTrap, nil)
+			}
 			return in.callNativeAsyncWithTrap(entry, true, activeTrap)
 		}
 		defer in.unlockPreparedFastState()

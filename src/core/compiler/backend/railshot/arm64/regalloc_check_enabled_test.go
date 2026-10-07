@@ -91,3 +91,26 @@ func TestRegallocCheckProtectsSuffixAtWindowExit(t *testing.T) {
 	f.ld64(X0, SP, f.spillOff(0)) // fault: scratch reuses the still-live condition register without restoring it
 	requireAllocationFailure(t, "live suffix", func() { f.checkEndFlush() })
 }
+
+func TestHostSyncHomesRejectsRegisterOperand(t *testing.T) {
+	f := fn{a: &encoder.Asm{}, s: newStack()}
+	f.pushReg(X19, mtI64)
+	requireAllocationFailure(t, "host sync operand", f.checkHostSyncHomes)
+}
+
+func TestHostSyncHomesRejectsDirtyPin(t *testing.T) {
+	f := fn{a: &encoder.Asm{}, s: newStack(), usesCalls: true, locals: []localDef{{reg: X19, state: lsReg}}}
+	requireAllocationFailure(t, "host sync dirty pinned local", f.checkHostSyncHomes)
+}
+
+func TestHostSyncHomesRejectsPersistentConstant(t *testing.T) {
+	f := fn{a: &encoder.Asm{}, s: newStack(), fconsts: []floatConstReg{{reg: 8, typ: mtF64}}}
+	requireAllocationFailure(t, "host sync persistent constant cache", f.checkHostSyncHomes)
+}
+
+func TestHostSyncHomesAcceptsHomedWideOperands(t *testing.T) {
+	f := fn{a: &encoder.Asm{}, s: newStack(), usesCalls: true, locals: []localDef{{reg: X19, state: lsMem}, {reg: 9, isFloat: true, state: lsConstZero}}}
+	f.pushValue(storage{kind: stSlot, typ: mtV128, slot: 0})
+	f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 2})
+	f.checkHostSyncHomes()
+}
