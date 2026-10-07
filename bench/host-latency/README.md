@@ -34,10 +34,3 @@ source snapshots as standalone packages.
 
 The current-main-versus-PR-head tables are in the published evidence page.
 Historical measurements remain separately labeled. Wasmtime parity is unmet.
-
-## Design notes
-
-- [Wasmtime and transition audit](transition-audit.md)
-- [V8 host calls](v8-host-calls.md)
-- [ARM64 register contract](arm64-bridge-register-contract.md)
-- [Go stack workspace investigation](go-stack-workspace-design.md)

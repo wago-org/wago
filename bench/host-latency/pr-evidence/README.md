@@ -4,23 +4,22 @@ Current comparison tables use current main9196bdff and the final PR runtime
 source, identical harness/fixture/Go1.27.1/API, checked atomic callback counts
 and checked output. Call latency means full reserved-session round trip.
 
-The historical named tar.gz captures remain for audit. They are not current
-main-versus-PR-head measurements and are not reused in the tables below.
-Each has raw CSVs, stderr, commands/pins, fixtures and host-load metadata;
-adjacent summaries include every API/callback/count shape and unfavorable
-samples. manifest.json pins originals and published archives. Unrelated
-process arguments were removed from public snapshots; process names,
-PID/PPID/CPU, affinity/ticks remain. Full snapshots remain local.
+The current ARM64 capture contains raw CSVs, stderr, fixture hashes,
+commands and host-load metadata; the summary includes every API/callback/count
+shape and unfavorable samples. manifest.json pins the raw local files and
+published archive. Unrelated process arguments are removed from public load
+snapshots; process names, PID/PPID/CPU and available affinity/ticks remain.
+Full snapshots and historical experiments are preserved locally.
 
-Validation logs include native merged ARM64 units/race, register checks and
-Caller cancellation-signal regression tests. Full external TestStaged
-conformance and fresh AMD64 execution remain outstanding.
+Native merged ARM64 units, focused race3, register checks and Caller
+cancellation-signal tests passed. Full external TestStaged conformance and
+fresh AMD64 execution remain outstanding.
 
 **Deltas**
 
 Call latency is the full checked round trip for a reserved `PreparedSession.Invoke2`, in ns, with one atomic-count-checked callback and checked guest results. Both versions use the identical harness, fixture, Go toolchain and API; compilation and instantiation are outside timing. Nothing is subtracted. Raw evidence also covers ordinary/prepared APIs and batches.
 
-These tables compare current main **`9196bdff`** directly with the final PR runtime source measured at **`6f8a0605`**. The following evidence-only commit leaves the runtime source tree unchanged (`fb51a5679d43806b0e27f777350ff10fefe751a7`). Historical and incremental comparisons are excluded.
+These tables compare current main **`9196bdff`** directly with the final PR runtime source measured at **`6f8a0605`**. Cleanup removes only diagnostics excluded from the normal build and benchmark/audit files; the measured production build inputs are preserved. Historical and incremental comparisons are excluded.
 
 ### AMD64 — Ryzen 7800X3D
 

@@ -14,6 +14,18 @@ import (
 
 func inlineHostProbeClobberFP()
 
+func inlineProbeGrow(depth int) uint64 {
+	var buffer [2048]byte
+	buffer[0] = byte(depth)
+	if depth == 0 {
+		goruntime.GC()
+		return 0
+	}
+	value := inlineProbeGrow(depth-1) + uint64(buffer[0])
+	goruntime.KeepAlive(&buffer)
+	return value
+}
+
 // A bounded native segment can have callee-saved FP values that are not Wasm
 // local pins. Bounded-work admission alone must never omit their preservation.
 func TestInlineBoundedBridgePreservesNativeFP(t *testing.T) {
