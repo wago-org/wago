@@ -23,7 +23,8 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top eleven bits avoids growing artifacts.
+	// low range; reserving the top twelve bits avoids growing artifacts.
+	compiledRV64TableReferenceABI         uint64 = 1 << 52
 	compiledRV64TableContextABI           uint64 = 1 << 53
 	compiledRV64ContextTrapABI            uint64 = 1 << 54
 	compiledGCExecutionI31Product         uint64 = 1 << 55
@@ -370,6 +371,9 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
+	if c.nativeTableReferenceABI {
+		required |= compiledRV64TableReferenceABI
+	}
 	if c.nativeTableContextABI {
 		required |= compiledRV64TableContextABI
 	}
@@ -1102,6 +1106,10 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	gcExecution := required & compiledGCExecutionMask
 	c.nativeContextTrapABI = required&compiledRV64ContextTrapABI != 0
 	c.nativeTableContextABI = required&compiledRV64TableContextABI != 0
+	c.nativeTableReferenceABI = required&compiledRV64TableReferenceABI != 0
+	if c.nativeTableReferenceABI && (compiledArchitecture != 3 || !c.nativeTableContextABI || !c.nativeContextTrapABI) {
+		return fmt.Errorf("RV64 table reference ABI requires retained native table contexts")
+	}
 	if c.nativeTableContextABI && (compiledArchitecture != 3 || !c.nativeContextTrapABI) {
 		return fmt.Errorf("RV64 native table context ABI requires RV64 native-context traps")
 	}
@@ -1114,7 +1122,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
 	c.HasStart, c.StartIsImport, c.StartLocalFunc, c.StartImportIdx = false, false, 0, 0
 	if required&compiledStartFunction != 0 {
 		index, err := r.u32()

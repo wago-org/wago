@@ -211,12 +211,18 @@ func TestProductionPrivateReferenceAdmissionAndCarrierClasses(t *testing.T) {
 		{0x00, 0xd0, 0x6f, 0x1a, 0x0b},    // unsupported dead externref
 		{0x00, 0xfc, 17, 1, 0x0b},         // unsupported dead indexed table.fill
 		{0x00, 0x25, 1, 0x1a, 0x0b},       // unsupported dead table index
-		{0x00, 0x02, 0x70, 0x0b, 0x0b},    // reference control results remain gated
+		{0x00, 0x02, 0x6f, 0x0b, 0x0b},    // externref control results remain gated
 	} {
 		m.Code[0].BodyBytes = body
 		if _, err := walkInteger(&m.Code[0], ft, &state, nil); !errors.Is(err, ErrUnsupported) {
 			t.Fatal("carrier/shape escaped admission", body, err)
 		}
+	}
+	// Inline nullable funcref control results preserve their reference class
+	// when a branch joins, while the function's public signature stays numeric.
+	m.Code[0].BodyBytes = []byte{0x02, 0x70, 0xd2, 1, 0x0c, 0, 0x0b, 0x21, 1, 0x41, 0, 0x0b}
+	if _, err := walkInteger(&m.Code[0], ft, &state, nil); err != nil {
+		t.Fatal("inline reference control result lost its class", err)
 	}
 }
 

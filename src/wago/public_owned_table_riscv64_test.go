@@ -75,7 +75,8 @@ func TestRV64OwnedTableArtifactBoundaries(t *testing.T) {
 		name   string
 		mutate func(*Compiled)
 	}{
-		{"legacy-native-table-ABI", func(v *Compiled) { v.nativeTableContextABI = false }},
+		{"legacy-native-table-ABI", func(v *Compiled) { v.nativeTableContextABI = false; v.nativeTableReferenceABI = false }},
+		{"legacy-native-reference-ABI", func(v *Compiled) { v.nativeTableReferenceABI = false }},
 		{"legacy-export-fallback", func(v *Compiled) { v.hasTableExportMetadata = false }},
 		{"table-export-index", func(v *Compiled) { v.tableExports = map[string]int{"escape": 1} }},
 		{"negative-table-export-index", func(v *Compiled) { v.tableExports = map[string]int{"escape": -1} }},

@@ -47,7 +47,15 @@ func TestCompiledCodecRejectsForeignNativeOriginCapability(t *testing.T) {
 			t.Fatal("foreign RV64 table capability accepted", origin)
 		}
 	}
-	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeContextTrapABI || decoded.nativeTableContextABI {
+	base.nativeContextTrapABI, base.nativeTableContextABI, base.nativeTableReferenceABI = true, true, true
+	foreignReference, err := marshalCompiledMetadata(&base)
+	if err != nil || len(foreignReference) != len(plain) {
+		t.Fatal("reference capability metadata size", err)
+	}
+	if err := unmarshalCompiledMetadata(&decoded, foreignReference); err == nil {
+		t.Fatal("foreign RV64 reference capability accepted")
+	}
+	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeContextTrapABI || decoded.nativeTableContextABI || decoded.nativeTableReferenceABI {
 		t.Fatal("reused decoder retained native origin capability", err)
 	}
 }

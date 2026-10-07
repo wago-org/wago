@@ -28,6 +28,7 @@ type integerControl struct {
 	base                           int
 	kind                           byte
 	params, results                []bool
+	resultRefs                     []bool
 	entry, then, incoming, hasElse bool
 	start, falseSite               int
 	sites                          []int
@@ -79,6 +80,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		rootResults[j] = scalarWide(t)
 	}
 	var inlineResults = [2][1]bool{{false}, {true}}
+	var inlineReference = [1]bool{true}
 	ctrl[0] = integerControl{kind: 0xff, results: rootResults[:len(ft.Results)], entry: true}
 	depth, h, peak, budget := 1, 0, 0, nlocals
 	live := true
@@ -200,13 +202,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if e != nil {
 				return integerSummary{}, e
 			}
-			var params, results []bool
+			var params, results, resultRefs []bool
 			switch bt {
 			case -64: // empty
 			case -1:
 				results = inlineResults[0][:]
 			case -2:
 				results = inlineResults[1][:]
+			case -16: // nullable abstract funcref, an internal full-width carrier
+				if !privateRefs {
+					return integerSummary{}, unsupported("reference block without table profile")
+				}
+				results, resultRefs = inlineResults[1][:], inlineReference[:]
 			case -3, -4:
 				if !floating {
 					return integerSummary{}, unsupported("FP block outside production")
@@ -242,7 +249,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, e
 				}
 			}
-			fr := integerControl{base: h, kind: op, params: params, results: results, entry: live, start: position(), falseSite: -1}
+			fr := integerControl{base: h, kind: op, params: params, results: results, resultRefs: resultRefs, entry: live, start: position(), falseSite: -1}
 			if op == 0x03 && live && emit != nil {
 				emit.emitProductionInterruptPoll()
 			}
@@ -294,10 +301,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			live = live || fr.incoming || fr.then || fr.kind == 0x04 && !fr.hasElse && fr.entry
 			h = fr.base
-			for _, wide := range fr.results {
+			for index, wide := range fr.results {
 				if err = push(wide); err != nil {
 					return integerSummary{}, err
 				}
+				stackRefs[h-1] = len(fr.resultRefs) != 0 && fr.resultRefs[index]
 			}
 			depth--
 			if depth == 0 && live && emit != nil {

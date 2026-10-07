@@ -71,6 +71,29 @@ func TestSWAROwnedBulkTableAdmissionAndLayouts(t *testing.T) {
 	}
 }
 
+func TestSWARForeignReferenceMutationLargeHomesBound(t *testing.T) {
+	for _, sub := range []byte{15, 17} {
+		f := swarBulkTableFixture(sub)
+		// A long preceding body exercises larger source-PC constants together
+		// with the fixture's out-of-immediate-range vector local/spill homes.
+		body := make([]byte, 12000)
+		for index := range body {
+			body[index] = 0x01
+		}
+		f.body = append(body, f.body...)
+		fn, ft, functions, table := swarValidatedBulkTableFunction(t, f)
+		mode := emissionMode{production: true, interruptible: true, foreignTableCalls: true, functionIndex: MaxFunctions - 1, entryPC: 0xfffffffe}
+		summary, err := walkSWARPairsWithImportMode(fn, ft, false, nil, functions, nil, 0, table, nil, 0, 0, true, false, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		code, info, _, err := compileSWARPairsWithImports(fn, ft, nil, nil, functions, nil, 0, table, nil, 0, 0, mode)
+		if err != nil || len(code) == 0 || len(code) > summary.codeBound || info.FrameBytes <= 2048 {
+			t.Fatal("foreign mutation bound/homes", sub, len(code), summary, info, err)
+		}
+	}
+}
+
 func TestSWAROwnedBulkTableDeadClassesIndicesAndReserve(t *testing.T) {
 	for _, sub := range []byte{14, 15, 16, 17} {
 		f := swarBulkTableFixture(sub)

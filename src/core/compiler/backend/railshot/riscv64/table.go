@@ -164,7 +164,7 @@ func (f *integerEmitter) ownedIndirectTarget(key uint64) {
 }
 
 // Private references are immutable canonical descriptor handles, never numeric
-// carriers. Only the current instance's owned descriptors can reach table.set.
+// carriers. Public scopes also admit retained foreign local-wrapper descriptors.
 func (f *integerEmitter) functionReference(index uint32) {
 	f.a.Ld(enc.X5, enc.X25, -abi.FuncRefDescPtrOffset)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
@@ -185,17 +185,21 @@ func (f *integerEmitter) privateTableEntry() {
 
 func (f *integerEmitter) storePrivateReference() {
 	null := f.a.BranchLong(enc.EQ, enc.X28, enc.Zero)
-	// The table can only hold the current instance's local wrapper descriptors.
-	// Validate the complete tag/context before the first write.
-	f.a.Ld(enc.X7, enc.X28, 16)
-	f.a.Constant64(enc.X5, int64(abi.FuncRefLocalWrapperHomeTag))
-	f.a.Or(enc.X5, enc.X5, enc.X25)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
-	f.a.Ld(enc.X7, enc.X28, 32)
-	f.a.Ld(enc.X5, enc.X25, -abi.FuncRefDescPtrOffset)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
-	f.a.Ld(enc.X5, enc.X5, 32)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	if f.mode.foreignTableCalls {
+		f.canonicalReferenceGuard(enc.X28, enc.X5, enc.X7)
+	} else {
+		// The table can only hold the current instance's local wrapper descriptors.
+		// Validate the complete tag/context before the first write.
+		f.a.Ld(enc.X7, enc.X28, 16)
+		f.a.Constant64(enc.X5, int64(abi.FuncRefLocalWrapperHomeTag))
+		f.a.Or(enc.X5, enc.X5, enc.X25)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+		f.a.Ld(enc.X7, enc.X28, 32)
+		f.a.Ld(enc.X5, enc.X25, -abi.FuncRefDescPtrOffset)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
+		f.a.Ld(enc.X5, enc.X5, 32)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	}
 	// No interrupt poll splits an entry: reuse never observes a partial copy.
 	for offset := int32(0); offset < 32; offset += 8 {
 		f.a.Ld(enc.X7, enc.X28, offset)
@@ -211,4 +215,25 @@ func (f *integerEmitter) storePrivateReference() {
 	if err := f.Patch(done, f.Position()); err != nil {
 		f.err = err
 	}
+}
+
+// Public reference carriers can only originate from ref.func, authenticated
+// table.get, null and their full-width local/control copies. Runtime scopes
+// retain every possible descriptor owner through entry/resume/cold unwinding.
+// A copied carrier must still be the exact immutable local-wrapper descriptor.
+// No signature equality is required for table storage; call_indirect checks it.
+func (f *integerEmitter) canonicalReferenceGuard(reference, first, second enc.Reg) {
+	f.a.Constant64(first, 7)
+	f.a.And(first, reference, first)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, first, enc.Zero))
+	f.a.Ld(first, reference, 24)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, first, reference))
+	f.a.Ld(first, reference, 16)
+	f.a.Srli(first, first, abi.FuncRefEntryTagShift)
+	f.a.Constant64(second, int64(abi.FuncRefLocalWrapperTagValue))
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, first, second))
+	f.a.Ld(first, reference, 32)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, first, enc.Zero))
+	f.a.Ld(first, reference, 0)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, first, enc.Zero))
 }

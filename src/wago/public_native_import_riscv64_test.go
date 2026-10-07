@@ -409,6 +409,7 @@ func TestRV64PublicNativeImportAdmissionABIAndArenaBeforePublication(t *testing.
 		view := *c.executionView()
 		view.nativeContextTrapABI = false
 		view.nativeTableContextABI = false
+		view.nativeTableReferenceABI = false
 		if err := railshotValidateCompiled(&view); !errors.Is(err, railshot.ErrUnsupported) {
 			t.Fatal("legacy origin ABI admitted", err)
 		}

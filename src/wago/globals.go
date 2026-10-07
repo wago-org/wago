@@ -1104,6 +1104,7 @@ type Compiled struct {
 	needsFuncRefContextHeader bool
 	nativeContextTrapABI      bool // RV64 active-context identity and fresh cold-trap provenance
 	nativeTableContextABI     bool // RV64 retained canonical table calls with framed context switching
+	nativeTableReferenceABI   bool // RV64 full-width foreign table carriers and active writer/storage scopes
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
 	registerABIDisabled bool

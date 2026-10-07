@@ -101,14 +101,20 @@ Core and relaxed SIMD do not require FMA, AVX2, AVX-512 or VNNI.
 
 Experimental Linux/RV64 artifacts use architecture ID 3. The retained table-call
 requirement in bit 53 depends on the native-context trap requirement in bit 54.
-Callable table code requires both, synchronous framed controls, full
+The full-width retained table-reference requirement in bit 52 depends on both.
+Callable table code requires all three, synchronous framed controls, full
 signature transport, and authenticated canonical entries whose physical target
 owners survive entry, host resume, and cold-trap decoration. The qualified call
 path can switch to a foreign canonical target in one bounded owned or imported
 nullable funcref table32. Imported storage is authenticated and physically leased
 before mapping; active writers publish their ownership before construction
-releases the native lease. Foreign-reference mutation and function imports
-combined with tables remain gated. QEMU correctness does not establish native
+releases the native lease. Foreign local-wrapper references preserve their full
+width through table.get, locals, typed select and inline block joins. Set, fill,
+grow and copy retain physical descriptor owners through interruption and cold
+unwinding; storage accepts different signatures and indirect calls check exact
+keys. Older table artifacts without bit 52 reject before publication; table-free
+artifacts retain their existing contract. Function imports combined with tables
+remain gated. QEMU correctness does not establish native
 instruction-cache or performance qualification.
 
 RV64 host calls retain the framed cooperative park/resume boundary. The

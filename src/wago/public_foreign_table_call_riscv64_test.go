@@ -80,8 +80,52 @@ func rv64ForeignTableCompile(t *testing.T, types []wasm.ValType, seed byte, shar
 
 func TestRV64PublicForeignTableArtifactCapabilities(t *testing.T) {
 	c := rv64PublicStartCompile(t, rv64ForeignTableCallModule([]wasm.ValType{wasm.I32}, 7, false, false), false)
+	for _, flags := range []struct {
+		name                    string
+		reference, table, traps bool
+	}{
+		{"legacy-reference", false, true, true},
+		{"reference-without-table", true, false, true},
+		{"reference-without-traps", true, true, false},
+	} {
+		t.Run(flags.name, func(t *testing.T) {
+			view := *c.executionView()
+			view.nativeTableReferenceABI, view.nativeTableContextABI, view.nativeContextTrapABI = flags.reference, flags.table, flags.traps
+			blob, err := marshalCompiled(&view)
+			if err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				defer loaded.Close()
+			}
+			if err == nil || loaded != nil && loaded.loadCodeCache() != nil && (loaded.codeCache.base != 0 || loaded.codeCache.sealed) {
+				t.Fatal("unqualified reference artifact reached publication", err)
+			}
+			if !flags.reference && !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("legacy reference ABI error", err)
+			}
+		})
+	}
+	// The execution view owns frozen capabilities even if a public mirror changes.
+	c.nativeTableReferenceABI = false
+	if !c.executionView().nativeTableReferenceABI {
+		t.Fatal("reference ABI was not frozen")
+	}
+	blobFrozen, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	frozen, err := LoadTrustedArtifact(blobFrozen)
+	if frozen != nil {
+		defer frozen.Close()
+	}
+	if err != nil || !frozen.executionView().nativeTableReferenceABI || uint64(frozen.executionView().requiredFeatures)&compiledRV64TableReferenceABI != 0 {
+		t.Fatal("frozen reference capability or feature stripping", err)
+	}
 	view := *c.executionView()
 	view.nativeTableContextABI = false
+	view.nativeTableReferenceABI = false
 	blob, err := marshalCompiled(&view)
 	if err != nil {
 		t.Fatal(err)
@@ -110,6 +154,7 @@ func TestRV64PublicForeignTableArtifactCapabilities(t *testing.T) {
 	plain := rv64PublicStartCompile(t, rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
 	view = *plain.executionView()
 	view.nativeTableContextABI = false
+	view.nativeTableReferenceABI = false
 	blob, err = marshalCompiled(&view)
 	if err != nil {
 		t.Fatal(err)
@@ -119,8 +164,20 @@ func TestRV64PublicForeignTableArtifactCapabilities(t *testing.T) {
 		t.Fatal("table-free artifact compatibility", err)
 	}
 	defer loaded.Close()
-	if loaded.executionView().nativeTableContextABI || uint64(loaded.executionView().requiredFeatures)&compiledRV64TableContextABI != 0 {
+	if loaded.executionView().nativeTableContextABI || loaded.executionView().nativeTableReferenceABI || uint64(loaded.executionView().requiredFeatures)&(compiledRV64TableContextABI|compiledRV64TableReferenceABI) != 0 {
 		t.Fatal("internal table capability leaked into core features")
+	}
+	view.nativeTableContextABI = true
+	blob, err = marshalCompiled(&view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyReference, err := LoadTrustedArtifact(blob)
+	if legacyReference != nil {
+		defer legacyReference.Close()
+	}
+	if err != nil || legacyReference.executionView().nativeTableReferenceABI {
+		t.Fatal("table-free bit53-only artifact compatibility", err)
 	}
 }
 
@@ -168,9 +225,9 @@ func rv64ForeignTableCallModule(types []wasm.ValType, seed byte, shared, trappin
 	return wasmtest.Module(sections...)
 }
 
-// Imported-table admission is still closed. These fixtures install a canonical
-// row under the real table's lock and physical root, then use normal public
-// entry; they never bypass entry authentication or invoke a private bridge.
+// These earlier owned-table bridge fixtures install a canonical row under the
+// real table's lock and physical root, then use normal public entry. Genuine
+// public imported-table construction and mutation have separate witnesses.
 func rv64InstallForeignTableTarget(t *testing.T, root, producer *Instance) {
 	t.Helper()
 	table, err := root.ExportedTable("table")

@@ -33,16 +33,20 @@ func (f *integerEmitter) privateTableRange(copySource bool) {
 
 func (f *integerEmitter) privateReferenceGuard() {
 	null := f.a.BranchLong(enc.EQ, enc.X7, enc.Zero)
-	f.a.Ld(enc.X28, enc.X7, 16)
-	f.a.Constant64(enc.X29, int64(abi.FuncRefLocalWrapperHomeTag))
-	f.a.Or(enc.X29, enc.X29, enc.X25)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X28, enc.X29))
-	f.a.Ld(enc.X28, enc.X7, 32)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
-	f.a.Ld(enc.X29, enc.X25, -88)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X29, enc.Zero))
-	f.a.Ld(enc.X29, enc.X29, 32)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X28, enc.X29))
+	if f.mode.foreignTableCalls {
+		f.canonicalReferenceGuard(enc.X7, enc.X28, enc.X29)
+	} else {
+		f.a.Ld(enc.X28, enc.X7, 16)
+		f.a.Constant64(enc.X29, int64(abi.FuncRefLocalWrapperHomeTag))
+		f.a.Or(enc.X29, enc.X29, enc.X25)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X28, enc.X29))
+		f.a.Ld(enc.X28, enc.X7, 32)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
+		f.a.Ld(enc.X29, enc.X25, -88)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X29, enc.Zero))
+		f.a.Ld(enc.X29, enc.X29, 32)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X28, enc.X29))
+	}
 	if err := f.Patch(null, f.Position()); err != nil {
 		f.err = err
 	}
