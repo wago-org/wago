@@ -16,6 +16,7 @@ func TestFPWriteDestinations(t *testing.T) {
 		{"gp-to-fp", 1 << 3, func(a *Asm) { a.FmovFromGpr(3, X0, true) }},
 		{"convert", 1 << 3, func(a *Asm) { a.Scvtf(3, X0, true, true) }},
 		{"lane", 1 << 3, func(a *Asm) { a.NeonInsD(3, X0, 1) }},
+		{"lane-source", 1 << 3, func(a *Asm) { a.NeonInsLaneSFrom(3, 1, 4, 2) }},
 		{"packed", 1 << 3, func(a *Asm) { a.NeonAddB(3, 4, 5) }},
 		{"reduction", 1 << 3, func(a *Asm) { a.NeonAddvB(3, 4) }},
 		{"shuffle", 1 << 3, func(a *Asm) { a.NeonTbl(3, 4, 5) }},

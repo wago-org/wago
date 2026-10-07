@@ -1920,6 +1920,12 @@ func (a *Asm) NeonInsLaneS(dst Reg, lane byte, src Reg) {
 	}
 
 }
+func (a *Asm) NeonInsLaneSFrom(dst Reg, lane byte, src Reg, srcLane byte) {
+	a.word(0x6E000400 | neonImm5(4, lane)<<16 | uint32(srcLane&3)<<13 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) NeonInsLaneD(dst Reg, lane byte, src Reg) {
 	a.word(0x6E000400 | neonImm5(8, lane)<<16 | r(src)<<5 | r(dst))
 	if regallocCheckEnabled {
@@ -1942,15 +1948,59 @@ func (a *Asm) NeonExt16b(dst, lo, hi Reg, offset byte) {
 
 }
 func (a *Asm) NeonPshufS(dst, src Reg, imm byte) {
-	_ = imm
-	if dst != src {
-		a.NeonMov16b(dst, src)
+	if imm == 0xe4 {
+		if dst != src {
+			a.NeonMov16b(dst, src)
+		}
+		return
+	}
+	first := imm & 3
+	if dst == src {
+		if imm != first*0x55 {
+			panic("NeonPshufS needs a separate source; use NeonPshufSWithScratch")
+		}
+		a.NeonDupLaneS(dst, src, first)
+		return
+	}
+	a.NeonDupLaneS(dst, src, first)
+	for lane := byte(1); lane < 4; lane++ {
+		selected := (imm >> (2 * lane)) & 3
+		if selected != first {
+			a.NeonInsLaneSFrom(dst, lane, src, selected)
+		}
 	}
 }
+
+// NeonPshufSWithScratch permits an in-place shuffle without clobbering source lanes.
+// The caller owns scratch, which must differ from dst and src.
+func (a *Asm) NeonPshufSWithScratch(dst, src, scratch Reg, imm byte) {
+	if scratch == dst || scratch == src {
+		panic("NeonPshufS scratch overlaps an operand")
+	}
+	if dst == src {
+		a.NeonMov16b(scratch, src)
+		src = scratch
+	}
+	a.NeonPshufS(dst, src, imm)
+}
+
+// NeonMovemaskB extracts the high bit of each byte into a 16-bit mask.
+// X16 and X17 are the encoder's reserved scratch registers.
 func (a *Asm) NeonMovemaskB(dst, src Reg) {
+	if dst == X16 || dst == X17 {
+		panic("NeonMovemaskB destination overlaps scratch")
+	}
 	a.FmovToGpr(dst, src, true)
-	a.LsrImm(dst, dst, 7, true)
-	a.AndImm32(dst, dst, 1)
+	a.NeonUmovD(X16, src, 1)
+	a.AndImm64(dst, dst, 0x8080808080808080)
+	a.AndImm64(X16, X16, 0x8080808080808080)
+	a.MovImm64(X17, 0x0002040810204081)
+	a.Mul64(dst, dst, X17)
+	a.Mul64(X16, X16, X17)
+	a.LsrImm(dst, dst, 56, false)
+	a.LsrImm(X16, X16, 56, false)
+	a.LslImm(X16, X16, 8, true)
+	a.Orr32(dst, dst, X16)
 }
 
 func (a *Asm) NeonFadd(dst, n, m Reg, f64 bool) {
