@@ -13,7 +13,7 @@ import (
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
 	if c.tableCount() == 0 {
-		if c.needsFuncRefDescs() || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.tableExports) != 0 {
+		if c.HasTableInitFunc || c.needsFuncRefDescs() || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.tableExports) != 0 {
 			return fmt.Errorf("reference descriptors require the private table")
 		}
 		return nil
@@ -21,8 +21,13 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if !c.nativeTableContextABI || !c.nativeTableReferenceABI {
 		return fmt.Errorf("retained native table context and reference ABI are required")
 	}
-	if c.tableCount() != 1 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 || c.HasTableInitFunc || (c.TableType != 0 && c.TableType != ValFuncRef) {
-		return fmt.Errorf("one framed default-null funcref table32 required")
+	if c.tableCount() != 1 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 || (c.TableType != 0 && c.TableType != ValFuncRef) {
+		return fmt.Errorf("one framed nullable funcref table32 required")
+	}
+	if c.HasTableInitFunc {
+		if c.tableImportCount() != 0 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || uint64(c.TableInitFunc) >= uint64(c.NumImports+len(c.Funcs)) {
+			return fmt.Errorf("table initializer requires owned storage, reference metadata and a valid function")
+		}
 	}
 	for _, index := range c.tableExports {
 		if index != 0 {

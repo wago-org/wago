@@ -395,10 +395,14 @@ func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
 		}
 	}
 	for _, table := range m.Tables {
-		// Normal validation collects declared functions by scanning every
-		// initializer. This pilot never implements table initializers.
+		// Bound expressions before normal validation scans declared functions.
 		if table.Init != nil {
-			return unsupported("SWAR decoded table initializer")
+			if !publicStarts || !consume(len(table.Init.BodyBytes)) {
+				return unsupported("SWAR decoded table initializer")
+			}
+			if err := admitTableInitializer(*table.Init, m); err != nil {
+				return err
+			}
 		}
 	}
 	for _, global := range m.Globals {

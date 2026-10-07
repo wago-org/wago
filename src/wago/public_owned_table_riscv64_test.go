@@ -90,7 +90,7 @@ func TestRV64OwnedTableArtifactBoundaries(t *testing.T) {
 		{"table-import", func(v *Compiled) { v.tableImport = "env.table" }},
 		{"second-table", func(v *Compiled) { v.extraTables = []tableDef{{Size: 1, Type: ValFuncRef}} }},
 		{"table64", func(v *Compiled) { v.TableAddr64 = true }},
-		{"nondefault-init", func(v *Compiled) { v.HasTableInitFunc = true; v.TableInitFunc = 1 }},
+		{"out-of-range-init", func(v *Compiled) { v.HasTableInitFunc = true; v.TableInitFunc = uint32(v.NumImports + len(v.Funcs)) }},
 		{"unknown-type", func(v *Compiled) { v.TableType = 255 }},
 		{"externref-type", func(v *Compiled) { v.TableType = ValExternRef }},
 		{"nonnull-type", func(v *Compiled) { v.ValueTypes[v.TableValueTypeIndex].Ref.Nullable = false }},

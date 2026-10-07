@@ -16,7 +16,7 @@ const (
 	trapTableBounds         = 10
 )
 
-// This public profile accepts a single byte-backed Release 2 reference literal.
+// This public profile accepts a single byte-backed abstract funcref literal.
 // The shared parser additionally accepts nofunc/global/structured expressions;
 // keep those outside the qualified RV64 profile, including unused segments.
 func tableElementExpression(expr wasm.Expr) (wasm.FuncrefElementExpr, error) {
@@ -39,6 +39,19 @@ func tableElementExpression(expr wasm.Expr) (wasm.FuncrefElementExpr, error) {
 		return wasm.FuncrefElementExpr{}, unsupported("element reference literal")
 	}
 	return value, nil
+}
+
+// Table initialization shares the literal element profile and canonical public
+// descriptors. Validate the index even when the initial table size is zero.
+func admitTableInitializer(expr wasm.Expr, m *wasm.Module) error {
+	value, err := tableElementExpression(expr)
+	if err != nil {
+		return err
+	}
+	if !value.Null && uint64(value.FuncIndex) >= uint64(m.ImportedFuncCount()+len(m.Code)) {
+		return unsupported("table initializer function index")
+	}
+	return nil
 }
 
 // Bound decoded resource metadata before validation or payload copies.
@@ -96,8 +109,16 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 		return false, unsupported("isolated private table")
 	}
 	t, _ := m.TableType(0)
-	if len(m.Tables) != 0 && m.Tables[0].Init != nil || t.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) {
+	if t.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) {
 		return false, unsupported("private nullable funcref table32 only")
+	}
+	if len(m.Tables) != 0 && m.Tables[0].Init != nil {
+		if !importedTables {
+			return false, unsupported("table initializer requires retained public table ABI")
+		}
+		if err := admitTableInitializer(*m.Tables[0].Init, m); err != nil {
+			return false, err
+		}
 	}
 	imported := m.ImportedFuncCount()
 	for _, e := range m.Elements {

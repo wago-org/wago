@@ -93,8 +93,15 @@ func admitModuleIntegerInitializer(expr wasm.Expr, expected wasm.ValType, m *was
 // AdmitPublicInitializers runs on the original decoded expressions before
 // frontend folding. Literal folding must not erase source resource limits.
 func AdmitPublicInitializers(m *wasm.Module) error {
-	if m == nil || len(m.Imports) > MaxProductionImports || m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments {
+	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Tables)+m.ImportedTableCount() > 1 || m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("public initializer count bound")
+	}
+	for _, table := range m.Tables {
+		if table.Init != nil {
+			if err := admitTableInitializer(*table.Init, m); err != nil {
+				return err
+			}
+		}
 	}
 	for i, global := range m.Globals {
 		if scalarType(global.Type.Type, false) {
