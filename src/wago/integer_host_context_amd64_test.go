@@ -11,6 +11,8 @@ import (
 )
 
 func TestIntegerHostContextAdmission(t *testing.T) {
+	// Artifact round-trips require explicit bounds checks, including guard-page builds.
+	cfg := goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit)
 	for _, tc := range []struct {
 		name, body, locals string
 		want               bool
@@ -24,7 +26,7 @@ func TestIntegerHostContextAdmission(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			module := fmt.Sprintf(`(module (import "env" "step" (func $step (param i32)(result i32))) (func (export "run") (param i32)(result i32) %s %s))`, tc.locals, tc.body)
-			c, err := Compile(goHostSegmentConfig(), watToWasm(t, module))
+			c, err := Compile(cfg, watToWasm(t, module))
 			if err != nil {
 				t.Fatal(err)
 			}
