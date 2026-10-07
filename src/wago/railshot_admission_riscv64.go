@@ -247,7 +247,14 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 			if !global.HasInitFunc || int(global.InitFunc) >= c.NumImports {
 				continue
 			}
-			ex, ok := imports[c.functionImportBindingKey(int(global.InitFunc))].(*InstanceExport)
+			binding := imports[c.functionImportBindingKey(int(global.InitFunc))]
+			if host, ok := binding.(*HostFuncRef); ok {
+				if err := host.validateImport(store, c.importFuncSigs[global.InitFunc]); err != nil {
+					return err
+				}
+				continue // The scalar signature gate below also applies.
+			}
+			ex, ok := binding.(*InstanceExport)
 			if !ok || ex == nil || ex.inst == nil || store == nil {
 				return fmt.Errorf("%w: RV64 reference export requires a same-Runtime native function", railshot.ErrUnsupported)
 			}

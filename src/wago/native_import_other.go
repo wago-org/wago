@@ -50,3 +50,7 @@ func railshotCanonicalImportedFuncref(*referenceStore, *Instance, *InstanceExpor
 	return false
 }
 func railshotFuncRefMatchesFunction(*Instance, FuncRef, uint32) bool { return false }
+
+func railshotCanonicalHostFuncref(*referenceStore, *Instance, *HostFuncRef, int, uint64) (*Instance, uint64, bool) {
+	return nil, 0, false
+}

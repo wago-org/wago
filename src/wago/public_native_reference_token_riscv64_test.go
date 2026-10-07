@@ -269,7 +269,7 @@ func TestRV64PublicNativeReferenceTokenBindingGate(t *testing.T) {
 				t.Fatal(err)
 			}
 			plain := slotHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })
-			host, err := rt.NewHostFuncRef(plain, FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}})
+			host, err := rt.NewHostFuncRef(plain, FuncSig{Params: []ValType{ValI64}, Results: []ValType{ValI64}})
 			if err != nil {
 				t.Fatal(err)
 			}

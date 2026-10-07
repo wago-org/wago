@@ -91,6 +91,7 @@ type instanceImportState struct {
 type importReferenceEntry struct {
 	address uint64
 	native  *InstanceExport
+	host    *HostFuncRef
 }
 
 func (in *Instance) importReferenceNative(index int) *InstanceExport {
@@ -99,6 +100,14 @@ func (in *Instance) importReferenceNative(index int) *InstanceExport {
 		return nil
 	}
 	return entries[index].native
+}
+
+func (in *Instance) importReferenceHost(index int) *HostFuncRef {
+	entries := in.importReferenceEntries()
+	if index < 0 || index >= len(entries) {
+		return nil
+	}
+	return entries[index].host
 }
 
 func (in *Instance) importReferenceEntries() []importReferenceEntry {

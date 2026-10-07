@@ -1023,7 +1023,8 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 						return nil, fmt.Errorf("instantiate: RV64 import %d lacks an aligned published wrapper", fidx)
 					}
 					native, _ := imports[c.functionImportBindingKey(fidx)].(*InstanceExport)
-					importRefEntries[fidx] = importReferenceEntry{address: addr, native: native}
+					host, _ := imports[c.functionImportBindingKey(fidx)].(*HostFuncRef)
+					importRefEntries[fidx] = importReferenceEntry{address: addr, native: native, host: host}
 					code, home, kind = addr, selfLinMem, abi.FuncRefEntryLocalWrapper
 				} else if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					code = uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])

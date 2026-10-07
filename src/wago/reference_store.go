@@ -3212,6 +3212,8 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		if railshotNativeContextTrapABI() {
 			if native := source.importReferenceNative(fidx); native != nil {
 				binding = native
+			} else if host := source.importReferenceHost(fidx); host != nil {
+				binding = host
 			}
 		}
 		if binding == nil {
@@ -3260,6 +3262,9 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		hostOwner, ok := binding.(*HostFuncRef)
 		if !ok || hostOwner == nil || hostOwner.store != s || refSlot != descriptor {
 			return nil, 0, false
+		}
+		if railshotNativeContextTrapABI() {
+			return railshotCanonicalHostFuncref(s, source, hostOwner, fidx, descriptor)
 		}
 		entry := source.funcRefDescs[off : off+coreruntime.TableEntryBytes]
 		home := binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:])
@@ -3348,6 +3353,9 @@ func (in *Instance) hostFuncRefForDescriptor(descriptor uint64) *HostFuncRef {
 	funcIndex, ok := in.funcrefDescriptorIndex(descriptor)
 	if !ok || funcIndex < 0 || funcIndex >= in.c.NumImports || funcIndex >= len(in.c.Imports) {
 		return nil
+	}
+	if railshotNativeContextTrapABI() {
+		return in.importReferenceHost(funcIndex)
 	}
 	owner, _ := in.imports[in.c.functionImportBindingKey(funcIndex)].(*HostFuncRef)
 	return owner

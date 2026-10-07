@@ -1274,7 +1274,13 @@ func (h *HostFuncRef) canonicalDescriptor(source *Instance, descriptor uint64, s
 	if h.closed || h.store == nil || source == nil || source.refStore != h.store || h.importers == 0 || !funcSigEqual(h.sig, sig) {
 		return nil, 0, false
 	}
-	if h.source == nil {
+	// Type inspection can select a candidate without issuing a token/root.
+	// A retired unissued candidate must not poison a later live importer.
+	retiredCandidate := h.source != nil && !h.tokenLive && (h.source.isLogicallyClosed() || !h.source.hasPhysicalResources())
+	if h.source == nil || retiredCandidate {
+		if !source.hasPhysicalResources() {
+			return nil, 0, false
+		}
 		h.source = source
 		h.descriptor = descriptor
 		return source, descriptor, true

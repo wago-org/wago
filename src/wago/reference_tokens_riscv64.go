@@ -16,6 +16,14 @@ func railshotCanonicalImportedFuncref(store *referenceStore, source *Instance, e
 	if source.refStore != store || ex.inst.refStore != store || !store.hasInstanceResourcesLocked(source) || !store.hasInstanceResourcesLocked(ex.inst) {
 		return false
 	}
+	return railshotPublishedFuncref(store, source, index, descriptor)
+}
+
+// All fields come from retained arenas and frozen publication metadata.
+func railshotPublishedFuncref(store *referenceStore, source *Instance, index int, descriptor uint64) bool {
+	if source.refStore != store || !store.hasInstanceResourcesLocked(source) {
+		return false
+	}
 	entries := source.importReferenceEntries()
 	if index < 0 || index >= len(entries) || entries[index].address == 0 || entries[index].address&15 != 0 || source.nativeContext == 0 || source.jm == nil {
 		return false
@@ -30,6 +38,23 @@ func railshotCanonicalImportedFuncref(store *referenceStore, source *Instance, e
 		binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(source.jm.LinMemBase())|abi.FuncRefLocalWrapperHomeTag &&
 		binary.LittleEndian.Uint64(entry[coreruntime.TableEntryRefSlotOffset:]) == descriptor &&
 		binary.LittleEndian.Uint64(entry[coreruntime.FuncRefContextOffset:]) == uint64(source.nativeContext)
+}
+
+// Store lock precedes the host lock. Canonicalization may choose an already
+// token-rooted importer; authenticate that retained slot as well as the input.
+func railshotCanonicalHostFuncref(store *referenceStore, source *Instance, host *HostFuncRef, index int, descriptor uint64) (*Instance, uint64, bool) {
+	if host.store != store || !railshotPublishedFuncref(store, source, index, descriptor) {
+		return nil, 0, false
+	}
+	owner, canonical, valid := host.canonicalDescriptor(source, descriptor, source.c.importFuncSigs[index])
+	if !valid || owner == nil {
+		return nil, 0, false
+	}
+	canonicalIndex, valid := owner.funcrefDescriptorIndex(canonical)
+	if !valid || owner.importReferenceHost(canonicalIndex) != host || !railshotPublishedFuncref(store, owner, canonicalIndex, canonical) {
+		return nil, 0, false
+	}
+	return owner, canonical, true
 }
 
 // Pin the caller before taking store.mu, without holding lifeMu across it.
@@ -55,10 +80,8 @@ func railshotFuncRefMatchesFunction(in *Instance, ref FuncRef, index uint32) boo
 	if _, _, valid := store.canonicalFuncrefOwnerLocked(entry.owner, entry.descriptor); !valid {
 		return false
 	}
-	actual, valid := entry.owner.funcrefFunctionIdentity(entry.descriptor)
-	if !valid {
-		return false
-	}
+	actualHost := entry.owner.hostFuncRefForDescriptor(entry.descriptor)
+	var expectedHost *HostFuncRef
 	expected := funcrefIdentity{instance: in, localIdx: int(index) - in.c.NumImports}
 	if int(index) < in.c.NumImports {
 		off := (int(index) + 1) * coreruntime.FuncRefDescBytes
@@ -69,10 +92,19 @@ func railshotFuncRefMatchesFunction(in *Instance, ref FuncRef, index uint32) boo
 		if _, _, valid := store.canonicalFuncrefOwnerLocked(in, descriptor); !valid {
 			return false
 		}
+		expectedHost = in.importReferenceHost(int(index))
+		if actualHost != nil || expectedHost != nil {
+			return actualHost != nil && actualHost == expectedHost
+		}
+		var valid bool
 		expected, valid = in.funcrefFunctionIdentity(descriptor)
 		if !valid {
 			return false
 		}
 	}
-	return actual == expected
+	if actualHost != nil {
+		return false
+	}
+	actual, valid := entry.owner.funcrefFunctionIdentity(entry.descriptor)
+	return valid && actual == expected
 }
