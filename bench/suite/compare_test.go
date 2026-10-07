@@ -189,6 +189,7 @@ func BenchmarkWazeroExec(b *testing.B) {
 					_, err := fn.Call(ctx, args...)
 					return err
 				})
+				b.ReportMetric(1, "guest-calls/op")
 			})
 		}
 		for _, semantic := range semanticExecCases(b, m) {
@@ -199,6 +200,7 @@ func BenchmarkWazeroExec(b *testing.B) {
 			}
 			b.Run(m.name()+"."+semantic.Invoke.Export, func(b *testing.B) {
 				benchmarkExecCalls(b, func() error { return prepared.invoke(ctx) })
+				b.ReportMetric(float64(len(prepared.calls)), "guest-calls/op")
 			})
 		}
 		r.Close(ctx)
