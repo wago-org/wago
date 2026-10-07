@@ -594,6 +594,11 @@ func rv64TableFunctionImportsAggregateBoundary(t *testing.T, importedReference b
 					key += "-expr"
 					source = rv64ReplaceTableStageSection(t, source, 9, wasmtest.Section(9, wasmtest.Vec(rv64ExpressionSegment(6, 0, []byte{0xd2, 0xff, 1, 0x0b}))))
 				}
+				globalOffset := len(expressionReference) > 1 && expressionReference[1]
+				if globalOffset {
+					key += "-global-offset"
+					source = rv64ReplaceTableStageSection(t, source, 9, wasmtest.Section(9, wasmtest.Vec([]byte{6, 0, 0x23, 0xff, 1, 0x0b, 0x70, 1, 0xd2, 0xff, 1, 0x0b})))
+				}
 				c := rv64TableStageCompile(t, key+"-caller", source, artifact)
 				n := rv64TableStageCompile(t, key+"-leaf", rv64PublicNativeIdentityModule(types), artifact)
 				if c.NumImports != 256 || len(c.GlobalImports) != 256 || c.memoryImportCount() != 1 || c.tableImportCount() != 1 || c.FuncTypeID[0] == c.FuncTypeID[255] || c.FuncTypeID[255] != c.FuncTypeID[256] {
@@ -620,9 +625,18 @@ func rv64TableFunctionImportsAggregateBoundary(t *testing.T, importedReference b
 				defer memory.Close()
 				g := NewGlobalI32(9, false)
 				defer g.Close()
+				lastGlobal := g
+				if globalOffset {
+					lastGlobal = NewGlobalI32(0, false)
+					defer lastGlobal.Close()
+				}
 				imports := NewImports().Table("env", "table", table).Memory("env", "memory", memory)
 				for i := 0; i < 256; i++ {
-					imports.Global("env", fmt.Sprintf("g%d", i), g)
+					boundGlobal := g
+					if i == 255 {
+						boundGlobal = lastGlobal
+					}
+					imports.Global("env", fmt.Sprintf("g%d", i), boundGlobal)
 					if i == 255 {
 						imports.Function("env", "f255", ex)
 					} else {

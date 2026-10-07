@@ -41,6 +41,33 @@ func tableElementExpression(expr wasm.Expr) (wasm.FuncrefElementExpr, error) {
 	return value, nil
 }
 
+func admitElementOffset(expr wasm.Expr, m *wasm.Module, public bool) error {
+	if len(expr.Instrs) != 0 {
+		return unsupported("element offset must be byte-backed")
+	}
+	if len(expr.BodyBytes) == 0 || expr.BodyBytes[0] != 0x23 {
+		_, err := plainConst(expr, false)
+		return err
+	}
+	if !public || len(expr.BodyBytes) > 7 {
+		return unsupported("element offset requires public imported i32 global")
+	}
+	r := wasm.ReaderFrom(expr.BodyBytes[1:])
+	index, err := r.U32()
+	if err != nil || uint64(index) >= uint64(m.ImportedGlobalCount()) {
+		return unsupported("element offset imported global index")
+	}
+	end, err := r.Byte()
+	if err != nil || end != 0x0b || r.HasNext() {
+		return unsupported("element offset global expression")
+	}
+	typ, ok := m.GlobalTypeByIndex(index)
+	if !ok || typ.Mutable || !wasm.EqualValType(typ.Type, wasm.I32) {
+		return unsupported("element offset requires immutable imported i32")
+	}
+	return nil
+}
+
 // Bound decoded resource metadata before validation or payload copies.
 func ownedTableBounds(m *wasm.Module) error {
 	if len(m.Imports) > MaxProductionImports {
@@ -127,7 +154,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 			return false, unsupported("element payload kind")
 		}
 		if e.Mode.Kind == wasm.ElemActive {
-			if _, err := plainConst(e.Mode.Offset, false); err != nil {
+			if err := admitElementOffset(e.Mode.Offset, m, importedTables); err != nil {
 				return false, err
 			}
 		} else if len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 {

@@ -16,7 +16,8 @@ Experimental Linux/RV64 requires `wago_rv64_experimental`. Its bounded numeric
 profile includes scalar/SWAR SIMD execution and one nullable funcref table32
 combined with numeric function imports. Imported function references use retained
 importer-owned thunks for Go callbacks, HostFuncRef and native targets. Reference
-element expressions support bounded `ref.func` and `ref.null func` literals.
+element expressions support bounded `ref.func` and `ref.null func` literals,
+with active offsets from i32 constants or immutable imported-i32 globals.
 Broader reference
 signatures/equality, GC/EH, threads, memory64 and table64 remain unavailable.
 This is not a supported

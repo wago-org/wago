@@ -129,7 +129,9 @@ RV64's public table profile accepts legacy indices and expression-form elements
 containing only `ref.func` and `ref.null func`, with exact nullable funcref types.
 All 256-segment/1,024-entry limits include dropped declarations and null entries;
 each byte-backed expression is bounded before validation and staging. Active
-segments apply in source order: earlier effects survive a later failure, while
+segment offsets accept i32 constants or exact immutable imported-i32 `global.get`
+expressions; runtime reads normalize the low 32 bits. Segments apply in source
+order: earlier effects survive a later failure, while
 each segment checks its complete range before writes. Public SWAR compilation
 uses shared runtime initializer metadata without duplicating private table-owner
 payloads. Extended expressions, typed references and explicit table initializers

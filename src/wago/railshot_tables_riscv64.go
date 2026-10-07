@@ -69,8 +69,11 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		return nil
 	}
 	for _, e := range c.Elems {
-		if e.Mode != ElemModeActive || e.TableIndex != 0 || (e.RefType != 0 && e.RefType != ValFuncRef) || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) > remaining {
+		if e.Mode != ElemModeActive || e.TableIndex != 0 || (e.RefType != 0 && e.RefType != ValFuncRef) || len(e.Offset.Expr) != 0 || len(e.Values) > remaining {
 			return fmt.Errorf("bounded active funcref elements required")
+		}
+		if e.Offset.HasGlobal && (e.Offset.Base != 0 || !rv64ImportedInitializer(c, e.Offset.Global, ValI32)) {
+			return fmt.Errorf("element offset requires exact immutable imported i32")
 		}
 		remaining -= len(e.Values)
 		if err := validatePayload(e); err != nil {
