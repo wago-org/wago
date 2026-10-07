@@ -218,6 +218,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add signed/unsigned SIMD floor-average source checks, baseline benchmarks, and a
   bounded decoded corpus census. ([#875](https://github.com/wago-org/wago/pull/875))
 
+- Add bounded AMD64 integer loop-state regressions with independent state/work checks,
+  native layout controls, and paired compile/execution benchmarks.
+  ([#882](https://github.com/wago-org/wago/pull/882))
+
 - Add full-vector widening-multiply source-pair tests, prepared-call benchmarks, and a
   bounded decoded corpus census. ([#874](https://github.com/wago-org/wago/pull/874))
 

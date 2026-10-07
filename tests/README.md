@@ -1,5 +1,8 @@
 # Tests
 
+The [integer loop pressure profile](integer-loop-pressure.md) checks independent
+state values and bounded repeated execution on AMD64.
+
 Package-local Go tests stay beside the implementation they exercise. This
 directory contains repository-level conformance, integration, fuzz, corpus,
 fixture, and support code:
