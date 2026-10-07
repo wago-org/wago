@@ -51,10 +51,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	floating := state != nil && state.production
 	var locals [256]bool
 	var localRefs [256]bool
-	privateRefs := floating && state.ownedTable
+	privateRefs := floating && (state.ownedTable || state.importReferences)
+	descriptorRefs := floating && state.ownedTable
 	if floating && state.importReferences {
 		for _, global := range state.globals {
-			privateRefs = privateRefs || !global.mutable && wasm.EqualValType(global.typ, wasm.FuncRef)
+			descriptorRefs = descriptorRefs || !global.mutable && wasm.EqualValType(global.typ, wasm.FuncRef)
 		}
 	}
 	nlocals := len(ft.Params)
@@ -522,7 +523,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if uint64(idx) < uint64(state.importedFunctions) && !state.importReferences || uint64(idx) >= uint64(len(state.functions)) {
+				if !descriptorRefs || uint64(idx) < uint64(state.importedFunctions) && !state.importReferences || uint64(idx) >= uint64(len(state.functions)) {
 					return integerSummary{}, unsupported("private ref.func index")
 				}
 				if live && emit != nil {

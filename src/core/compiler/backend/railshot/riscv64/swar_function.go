@@ -82,7 +82,8 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 	if err := swarOwnedTableType(table); err != nil {
 		return swarSummary{}, err
 	}
-	privateRefs := table != nil
+	privateRefs := table != nil || foreignTableCalls
+	descriptorRefs := table != nil
 	if dataCount < 0 || dataCount > 256 {
 		return swarSummary{}, unsupported("SWAR passive data directory bound")
 	}
@@ -91,7 +92,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 	}
 	for _, global := range globals {
 		reference := foreignTableCalls && !global.Mutable && wasm.EqualValType(global.Type, wasm.FuncRef)
-		privateRefs = privateRefs || reference
+		descriptorRefs = descriptorRefs || reference
 		if !swarCarrierType(global.Type) && !reference {
 			return swarSummary{}, unsupported("SWAR global carrier")
 		}
@@ -660,7 +661,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 			h -= 2
 		case 0xd0, 0xd1, 0xd2, 0x25, 0x26:
 			if !privateRefs {
-				return swarSummary{}, unsupported("SWAR reference instruction without owned table")
+				return swarSummary{}, unsupported("SWAR reference instruction without public reference profile")
 			}
 			if err := reserve(1024); err != nil {
 				return swarSummary{}, err
@@ -700,7 +701,7 @@ func walkSWARPairsWithImportMode(fn *wasm.Func, ft *wasm.CompType, memory32 bool
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if uint64(index) < uint64(importedFunctions) && !foreignTableCalls || uint64(index) >= uint64(len(functions)) {
+				if !descriptorRefs || uint64(index) < uint64(importedFunctions) && !foreignTableCalls || uint64(index) >= uint64(len(functions)) {
 					return swarSummary{}, unsupported("SWAR ref.func index/profile")
 				}
 				usesTraps = true
