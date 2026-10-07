@@ -21,6 +21,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Add bounded AMD64 integer conditional-join regression profiles with independent
+  result checks, native placement controls, and compile/execution benchmarks.
 - Add mixed-scalar host-call checks across nested memory, global, and table
   changes, including nested traps and repeated resolved calls.
 - Bind corpus child completion to loaded input identity and exact invocation
