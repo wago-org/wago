@@ -576,6 +576,10 @@ typed-register contract.
 Separate bounded original-source and final-byte proofs cover selected recipes;
 unsupported shapes remain inconclusive. These checks do not establish general
 whole-function or whole-CFG equivalence.
+A checked-only serialized return cell accepts observed full-width GP stores and
+scalar result uses; it cannot be seeded, semantically defined, or read back into
+registers. This vocabulary does not activate RV64 graph verification, which still
+requires complete body-byte and final framing/relocation authentication.
 
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's

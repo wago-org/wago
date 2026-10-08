@@ -59,6 +59,9 @@ func (s *State) Read(loc Location, size int) Value {
 // Seed establishes a region's input assumption, retaining existing aliases.
 // It must only be used at entry, never to repair an unknown/mismatched reload.
 func (s *State) Seed(loc Location, size int) Value {
+	if loc.Bank == ReturnArea {
+		panic("regalloccheck: return area cannot be an input assumption")
+	}
 	v := s.Read(loc, size)
 	fresh := s.Fresh(size)
 	for i := range v {
