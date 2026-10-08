@@ -152,10 +152,16 @@ func rv64ValidateNativeTail(c *Compiled) error {
 
 // Shared by frozen source/artifact admission and entry generation construction.
 func rv64ValidateNativeTailPlans(c *Compiled, plans []encoder.NativeTailPlan) error {
+	return rv64ValidateNativeTailPlansWithCodeBytes(c, plans, len(c.code))
+}
+
+// Runtime callers supply an authenticated retained image extent. Closing an
+// execution snapshot may clear c.code without retiring that physical mapping.
+func rv64ValidateNativeTailPlansWithCodeBytes(c *Compiled, plans []encoder.NativeTailPlan, codeBytes int) error {
 	if !c.nativeContextTrapABI || len(plans) > 4096 {
 		return fmt.Errorf("RV64 native tail context/count contract")
 	}
-	if _, _, err := railshot.NativeTailInstanceBudget(len(plans), len(c.code)); err != nil {
+	if _, _, err := railshot.NativeTailInstanceBudget(len(plans), codeBytes); err != nil {
 		return err
 	}
 	values := 0
@@ -316,8 +322,20 @@ func railshotReadNativeTail(r *compiledReader, c *Compiled) error {
 	rv64StoreNativeTailModule(c, m)
 	return rv64ValidateNativeTail(c)
 }
+func rv64HasDynamicTail(m *encoder.NativeTailModule) bool {
+	if m != nil {
+		for _, p := range m.Plans {
+			if p.Kind != encoder.NativeTailDirectImport {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Mixed sites share one entry-owned generation and one capability slot.
 func rv64StaticTailPlanCount(m *encoder.NativeTailModule) int {
-	if m == nil {
+	if m == nil || rv64HasDynamicTail(m) {
 		return 0
 	}
 	n := 0

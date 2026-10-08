@@ -312,7 +312,8 @@ func rv64PublishedDescriptor(owner *Instance, descriptor uint64) ([]byte, bool) 
 			return nil, false
 		}
 		code := owner.c.Entry[local]
-		if owner.base == 0 || code < 0 || code&15 != 0 || uint64(code) >= uint64(len(owner.c.code)) {
+		indexes := owner.c.loadCompileIndexes()
+		if owner.base == 0 || code < 0 || code&15 != 0 || indexes == nil || code >= indexes.railshotTail.mappedCodeBytes {
 			return nil, false
 		}
 		entry = uint64(owner.base) + uint64(code)

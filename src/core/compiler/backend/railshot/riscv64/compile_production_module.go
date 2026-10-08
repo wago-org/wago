@@ -48,9 +48,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		opts.tailModule = m
 		opts.localTailCalls = true
 		opts.importTailCalls = true
-		// Defined-owner generations authenticate indirect targets under the exact
-		// entry lease. Imported/host owners need a separate adapter.
-		opts.dynamicTailCalls = m != nil && m.ImportedFuncCount() == 0
+		// Generations authenticate defined and certified native-import owners under
+		// the exact entry lease. Runtime admission rejects host/relay bindings.
+		opts.dynamicTailCalls = m != nil && opts.ForeignTableCalls
 		var plans []tailImportPlan
 		opts.tailPlans = &plans
 	}
@@ -195,8 +195,8 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 			case enc.NativeTailDirectImport:
 				sig, ok = opts.tailModule.FuncSignature(p.importIndex)
 			case enc.NativeTailIndirect:
-				if !opts.dynamicTailCalls || opts.tailModule.ImportedFuncCount() != 0 {
-					return nil, unsupported("indirect tail requires defined owners")
+				if !opts.dynamicTailCalls {
+					return nil, unsupported("indirect tail requires native owner generations")
 				}
 				sig, ok = opts.tailModule.TypeFunc(p.typeIndex)
 			default:

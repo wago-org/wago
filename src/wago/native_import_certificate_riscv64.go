@@ -18,6 +18,7 @@ type railshotNativeImportConstruction struct {
 	base         uintptr
 	mappingBytes int
 	published    bool
+	capture      bool
 }
 type rv64NativeImportRecord struct {
 	producer                 *Instance
@@ -27,9 +28,6 @@ type rv64NativeImportRecord struct {
 }
 
 func railshotNativeImportMetadataBytes(c *Compiled, imports resolvedImports) int {
-	if !c.needsFuncRefDescs() {
-		return 0
-	}
 	n := 0
 	for i := range c.Imports {
 		if _, native := imports[c.functionImportBindingKey(i)].(*InstanceExport); native {
@@ -39,10 +37,17 @@ func railshotNativeImportMetadataBytes(c *Compiled, imports resolvedImports) int
 	if n == 0 {
 		return 0
 	}
-	return int(unsafe.Sizeof(railshotNativeImportConstruction{})) + c.NumImports*int(unsafe.Sizeof(rv64NativeImportRecord{})) + n*railshot.NativeImportCertificateBytes()
+	size := int(unsafe.Sizeof(railshotNativeImportConstruction{}))
+	// A table-free importer still owns return PCs used by a dynamic callee.
+	// It needs only publication identity; canonical proxy proofs need records.
+	if c.needsFuncRefDescs() {
+		size += c.NumImports*int(unsafe.Sizeof(rv64NativeImportRecord{})) + n*railshot.NativeImportCertificateBytes()
+	}
+	return size
 }
 func railshotInitNativeImportConstruction(s *railshotNativeImportConstruction, c *Compiled, imports resolvedImports) {
-	if railshotNativeImportMetadataBytes(c, imports) != 0 {
+	s.capture = railshotNativeImportMetadataBytes(c, imports) != 0
+	if s.capture && c.needsFuncRefDescs() {
 		s.records = make([]rv64NativeImportRecord, c.NumImports)
 	}
 }
@@ -52,12 +57,12 @@ func railshotRecordNativeImportSpan(s *railshotNativeImportConstruction, index, 
 	}
 }
 func railshotFinishNativeImportConstruction(s *railshotNativeImportConstruction, mem []byte, base uintptr, size int) {
-	if len(s.records) != 0 {
+	if s.capture {
 		s.codeBytes, s.base, s.mappingBytes, s.published = size, base, len(mem), true
 	}
 }
 func railshotInstallNativeImportConstruction(in *Instance, s *railshotNativeImportConstruction) {
-	if len(s.records) != 0 {
+	if s.capture {
 		in.ensurePluginState().railshotInvocation.nativeImports = s
 	}
 }

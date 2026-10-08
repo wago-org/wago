@@ -32,6 +32,15 @@ func (o rv64TailCodeOwner) NativeTailCodeView() ([]byte, error) {
 	defer cc.mu.Unlock()
 	b := in.c.code
 	indexes := in.c.loadCompileIndexes()
+	// Closing the execution snapshot itself clears its readable code slice,
+	// while the particular instance's cache reference keeps the RX mapping live.
+	// Recover only that mapping's recorded logical span, never page padding.
+	if cc.closed && b == nil && indexes != nil {
+		n := indexes.railshotTail.mappedCodeBytes
+		if n > 0 && n <= len(cc.mem) {
+			b = cc.mem[:n:n]
+		}
+	}
 	// Logical Close is allowed: this particular instance still owns its job,
 	// arena/context and code reference. A shared cache's refs alone cannot prove
 	// that those resources survive for this instance.

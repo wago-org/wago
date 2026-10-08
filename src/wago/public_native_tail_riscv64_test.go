@@ -274,7 +274,7 @@ func TestRV64PublicNativeTailAdmissionAndCodec(t *testing.T) {
 	if err := view.validateCached(); err != nil {
 		t.Fatal(err)
 	}
-	need := view.arenaNeedForImports(bindings.bindings, true)
+	need := view.arenaNeedForImports(bindings.bindings, true) + railshotNativeImportMetadataBytes(view, bindings.bindings)
 	roots := producer.referenceLifetime().snapshot().ResourceRoots
 	if err := c.prepareCodeMapping(); err != nil {
 		t.Fatal(err)
@@ -516,6 +516,10 @@ func rv64HeaderOnlyContext(in *Instance) bool {
 }
 
 func TestRV64PublicNativeTailCancellationAndCloseWhileProducerParked(t *testing.T) {
+	rv64TailCancellationAndCloseWhileProducerParked(t, false)
+}
+
+func rv64TailCancellationAndCloseWhileProducerParked(t *testing.T, dynamic bool) {
 	for _, closeRoot := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifacttrue-close%t", closeRoot), func(t *testing.T) {
 			// An independently retained cell witnesses every incorrect guest resume,
@@ -543,7 +547,13 @@ func TestRV64PublicNativeTailCancellationAndCloseWhileProducerParked(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			consumer, err := Instantiate(rv64NativeTailCompile(t, "native-tail-close-caller", rv64PublicTailModule([]wasm.ValType{wasm.I32}, false), true), testImports("env.tail", export))
+			callerSource, callerImports, args := rv64PublicTailModule([]wasm.ValType{wasm.I32}, false), testImports("env.tail", export), []uint64{7}
+			if dynamic {
+				callerSource = rv64DynamicNativeImportModule([]wasm.ValType{wasm.I32}, false)
+				callerImports = NewImports().Function("env", "target", export)
+				args = append(args, 0)
+			}
+			consumer, err := Instantiate(rv64NativeTailCompile(t, fmt.Sprintf("native-tail-close-caller-dynamic%t", dynamic), callerSource, true), callerImports)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -552,7 +562,7 @@ func TestRV64PublicNativeTailCancellationAndCloseWhileProducerParked(t *testing.
 			defer cancel()
 			done := make(chan error, 1)
 			finished := make(chan struct{})
-			go func() { defer close(finished); _, err := consumer.InvokeContext(ctx, "call", 7); done <- err }()
+			go func() { defer close(finished); _, err := consumer.InvokeContext(ctx, "call", args...); done <- err }()
 			defer func() {
 				cancel()
 				unblock()
@@ -574,7 +584,7 @@ func TestRV64PublicNativeTailCancellationAndCloseWhileProducerParked(t *testing.
 			if err := producerCode.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if producer.jm == nil || len(producer.ctrl) == 0 || consumer.pluginState.Load().railshotInvocation.tailDispatcher == nil {
+			if producer.jm == nil || len(producer.ctrl) == 0 || rv64EntryCapability(consumer) == 0 {
 				t.Fatal("parked retained producer released")
 			}
 			if closeRoot {

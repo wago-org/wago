@@ -58,56 +58,97 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		return nil, rv64TailGenerationError("count/limit")
 	}
 	callerIndex, ownerMetadata, guestCode := -1, 0, 0
-	functions, ownerValues, rangeCount := 0, 0, 0
+	var callerCode []byte
+	var counts railshot.NativeTailOwnerCounts
+	var ownerCounts [128]railshot.NativeTailOwnerCounts
+	var rangeStorage [128]railshot.NativeTailCodeRange
+	ranges := rangeStorage[:0]
+	addRange := func(view []byte) error {
+		base := offHeapSlicePtr(view)
+		for _, prior := range ranges {
+			if prior.Base == base {
+				if prior.Bytes != uintptr(len(view)) {
+					return rv64TailGenerationError("shared image extent changed")
+				}
+				return nil
+			}
+		}
+		if len(ranges) == len(rangeStorage) || len(view) > railshot.MaxCodeBytes-guestCode {
+			return rv64TailGenerationError("aggregate guest image count/bytes")
+		}
+		guestCode += len(view)
+		ranges = append(ranges, railshot.NativeTailCodeRange{Base: base, Bytes: uintptr(len(view))})
+		return nil
+	}
 	for i, owner := range scope.owners[:scope.count] {
 		if owner == caller {
 			callerIndex = i
 		}
-		n, values, err := rv64NativeDefinedTailOwnerCounts(owner)
-		if err != nil {
-			return nil, err
-		}
-		charge, err := railshot.NativeTailDefinedOwnerBytes(n, values)
-		charge += int(unsafe.Sizeof(rv64TailCodeOwner{})) // conservatively cover interface ownership storage
-		if err != nil || charge > railshot.MaxModuleBytes-ownerMetadata {
-			return nil, rv64TailGenerationError("aggregate owner metadata")
-		}
-		ownerMetadata += charge
-		functions += n
-		ownerValues += values
-		view, err := (rv64TailCodeOwner{owner}).NativeTailCodeView()
-		if err != nil {
-			return nil, err
-		}
-		seen := false
 		for _, prior := range scope.owners[:i] {
 			if prior == owner {
 				return nil, rv64TailGenerationError("duplicate owner")
 			}
-			if prior.base == owner.base {
-				seen = true
-			}
 		}
-		if !seen {
-			if len(view) > railshot.MaxCodeBytes-guestCode {
-				return nil, rv64TailGenerationError("aggregate guest code")
+		actual, charge, err := rv64NativeTailOwnerCounts(owner)
+		if err != nil {
+			return nil, err
+		}
+		if charge > railshot.MaxModuleBytes-ownerMetadata {
+			return nil, rv64TailGenerationError("aggregate owner metadata")
+		}
+		ownerMetadata += charge
+		ownerCounts[i] = actual
+		counts.Owners += actual.Owners
+		counts.Functions += actual.Functions
+		counts.Values += actual.Values
+		counts.Targets += actual.Targets
+		counts.TargetValues += actual.TargetValues
+		counts.ProxySlots += actual.ProxySlots
+		counts.Proxies += actual.Proxies
+		view, err := (rv64TailCodeOwner{owner}).NativeTailCodeView()
+		if err != nil {
+			return nil, err
+		}
+		if err := addRange(view); err != nil {
+			return nil, err
+		}
+		// Static factories belong to their particular instances, even when guest
+		// images are shared. Include their existing publication charge when a
+		// static native caller reaches a dynamic callee's generation.
+		if owner == caller {
+			callerCode = view
+		}
+		static, _, err := railshot.NativeTailInstanceBudget(rv64StaticTailPlanCount(rv64NativeTailModule(owner.c)), len(view))
+		if err != nil {
+			return nil, err
+		}
+		if static > railshot.MaxCodeBytes-guestCode {
+			return nil, rv64TailGenerationError("retained static factory code bound")
+		}
+		guestCode += static
+		if state := owner.pluginState.Load(); state != nil && state.railshotInvocation.nativeImports != nil {
+			view, err := (rv64TailThunkCodeOwner{owner}).NativeTailCodeView()
+			if err != nil {
+				return nil, err
 			}
-			guestCode += len(view)
-			rangeCount++
+			if err := addRange(view); err != nil {
+				return nil, err
+			}
 		}
 	}
-	if callerIndex < 0 {
+	if callerIndex < 0 || ownerCounts[callerIndex].Owners == 0 {
 		return nil, rv64TailGenerationError("caller absent from physical scope")
 	}
-	if err := rv64ValidateNativeTailPlans(caller.c, plans); err != nil {
+	if err := rv64ValidateNativeTailPlansWithCodeBytes(caller.c, plans, len(callerCode)); err != nil {
 		return nil, err
 	}
 	values := 0
 	for _, p := range plans {
-		if p.Kind != encoder.NativeTailIndirect && p.Kind != encoder.NativeTailReference || int(p.FunctionIndex) >= len(caller.c.Entry) {
-			return nil, rv64TailGenerationError("definition-only dynamic plan")
+		local := int(p.FunctionIndex) - caller.c.NumImports
+		if p.Kind > encoder.NativeTailReference || local < 0 || local >= len(caller.c.Entry) {
+			return nil, rv64TailGenerationError("native dynamic plan")
 		}
-		frame, err := railshot.NativeFrameBytes(caller.c.code, caller.c.Entry[p.FunctionIndex])
+		frame, err := railshot.NativeFrameBytes(callerCode, caller.c.Entry[int(p.FunctionIndex)-caller.c.NumImports])
 		if err != nil || frame != p.FrameBytes {
 			return nil, rv64TailGenerationError("actual source frame")
 		}
@@ -117,7 +158,7 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		}
 		values += sig.paramCount() + sig.resultCount()
 	}
-	metadata, code, err := railshot.NativeTailDefinedFactoryCountsBudget(len(plans), values, rangeCount, scope.count, functions, ownerValues, guestCode)
+	metadata, code, err := railshot.NativeTailFactoryCountsBudget(len(plans), values, len(ranges), counts, guestCode)
 	if err != nil {
 		return nil, err
 	}
@@ -157,27 +198,17 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 	}
 	// Snapshot construction is cold and bounded across all owners before any
 	// signature conversion. Its owned metadata ends with this generation.
-	var snapshotStorage [128]*railshot.NativeTailDefinedOwner
-	var rangeStorage [128]railshot.NativeTailCodeRange
-	snapshots, ranges := snapshotStorage[:scope.count], rangeStorage[:0]
+	var snapshotStorage [128]*railshot.NativeTailOwner
+	var indexedStorage [128]*railshot.NativeTailOwner
+	snapshots, indexed := snapshotStorage[:scope.count], indexedStorage[:0]
 	for i, owner := range scope.owners[:scope.count] {
-		n, values, err := rv64NativeDefinedTailOwnerCounts(owner)
-		if err != nil {
-			return g, err
-		}
-		snapshot, err := rv64NewNativeDefinedTailOwner(owner, n, values)
+		snapshot, err := rv64NewNativeTailOwner(owner, ownerCounts[i])
 		if err != nil {
 			return g, err
 		}
 		snapshots[i] = snapshot
-		seen := false
-		for _, r := range ranges {
-			if r.Base == owner.base {
-				seen = true
-			}
-		}
-		if !seen {
-			ranges = append(ranges, railshot.NativeTailCodeRange{Base: owner.base, Bytes: uintptr(len(owner.c.code))})
+		if snapshot != nil {
+			indexed = append(indexed, snapshot)
 		}
 	}
 	g.callerOwner = snapshots[callerIndex]
@@ -206,8 +237,22 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 			return g, err
 		}
 		context := rv64NativeInvocationContext(caller)
-		site := railshot.NativeTailSite{CallerHome: caller.jm.LinMemBase(), CallerContext: context, TargetContext: context, Target: railshot.NativeImportTarget{Entry: caller.base + uintptr(caller.c.Entry[p.FunctionIndex]), Home: caller.jm.LinMemBase(), Context: caller.nativeContext, HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}, FrameBytes: p.FrameBytes, SourceBase: p.SourceBase, SourceStride: p.SourceStride, FunctionIndex: p.FunctionIndex, SourcePC: p.SourcePC, Parameters: pt, Results: rt, Continuations: ranges}
-		sites[i], err = railshot.NativeTailDefinedSite(site, p.ReferenceBase, snapshots)
+		site := railshot.NativeTailSite{CallerHome: caller.jm.LinMemBase(), CallerContext: context, TargetContext: context, Target: railshot.NativeImportTarget{Entry: caller.base + uintptr(caller.c.Entry[int(p.FunctionIndex)-caller.c.NumImports]), Home: caller.jm.LinMemBase(), Context: caller.nativeContext, HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}, FrameBytes: p.FrameBytes, SourceBase: p.SourceBase, SourceStride: p.SourceStride, FunctionIndex: p.FunctionIndex, SourcePC: p.SourcePC, Parameters: pt, Results: rt, Continuations: ranges}
+		if p.Kind == encoder.NativeTailDirectImport {
+			target, native := rv64NativeFunctionAttachment(caller, int(p.ImportIndex))
+			if !native || target == nil {
+				return g, rv64TailGenerationError("mixed dynamic/direct target must be native")
+			}
+			entry, home, ctx, valid := rv64QualifiedNativeTailTarget(target)
+			if !valid {
+				return g, rv64TailGenerationError("mixed direct target frame")
+			}
+			site.TargetContext = rv64NativeInvocationContext(target.inst)
+			site.Target = railshot.NativeImportTarget{Entry: uintptr(entry), Home: uintptr(home), Context: uintptr(ctx), HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}
+			sites[i] = site
+		} else {
+			sites[i], err = railshot.NativeTailDefinedSite(site, p.ReferenceBase, indexed)
+		}
 		if err != nil {
 			return g, err
 		}
@@ -231,8 +276,17 @@ func (g *rv64NativeTailGeneration) validate() error {
 		found := false
 		for i, retained := range g.owners {
 			if retained == owner {
-				if err := g.snapshots[i].Validate(); err != nil {
+				if snapshot := g.snapshots[i]; snapshot != nil {
+					if err := snapshot.Validate(); err != nil {
+						return err
+					}
+				} else if _, err := (rv64TailCodeOwner{owner}).NativeTailCodeView(); err != nil {
 					return err
+				}
+				if state := owner.pluginState.Load(); state != nil && state.railshotInvocation.nativeImports != nil {
+					if _, err := (rv64TailThunkCodeOwner{owner}).NativeTailCodeView(); err != nil {
+						return err
+					}
 				}
 				found = true
 				break

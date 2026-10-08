@@ -10,12 +10,17 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// NativeTailDefinedOwner is a runtime-only snapshot of a canonical function
-// arena whose indexed rows all name genuine defined framed functions. Imported
-// proxies and host rows need their own authenticated ownership adapter. The
-// caller retains this exact instance's code/job/arena through the execution
-// lease, including parks, refreshed factories and cold decoration.
-type NativeTailDefinedOwner struct{ owner tailRADynamicOwner }
+// NativeTailOwner is an immutable runtime snapshot of a canonical indexed
+// function arena. Its exact physical owners remain leased through execution,
+// parks, refreshed factories and cold decoration. Imported rows retain both
+// their ordinary bridge identity and their genuine framed native target.
+type NativeTailOwner struct {
+	owner      tailRADynamicOwner
+	trampoline uintptr
+}
+
+// NativeTailDefinedOwner preserves the definition-only constructor contract.
+type NativeTailDefinedOwner = NativeTailOwner
 
 // NativeTailDefinedOwnerBudget bounds both staging signatures and retained
 // owner metadata before the runtime converts any per-function type slices.
@@ -96,7 +101,7 @@ func NewNativeTailDefinedOwner(image *NativeTailCodeImage, job *coreruntime.JobM
 
 // Validate authenticates canonical rows against retained code and signature
 // metadata. It must run under the reacquired particular owner lease on resume.
-func (o *NativeTailDefinedOwner) Validate() error {
+func (o *NativeTailOwner) Validate() error {
 	if o == nil {
 		return unsupported("native defined tail owner is nil")
 	}
@@ -105,10 +110,10 @@ func (o *NativeTailDefinedOwner) Validate() error {
 	if _, _, err := d.budget(); err != nil {
 		return err
 	}
-	return o.owner.validate(0) // Defined rows use no host or ordinary proxy transport.
+	return o.owner.validate(o.trampoline)
 }
 
-// NativeTailDefinedSite attaches a bounded set of retained defined-owner
+// NativeTailDefinedSite attaches a bounded set of retained native-owner
 // snapshots to one actual source plan. Factory construction still performs the
 // complete aggregate budget/publication check before allocating native storage.
 // This internal runtime contract does not change public feature admission.

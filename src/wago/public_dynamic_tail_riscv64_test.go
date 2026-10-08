@@ -15,7 +15,6 @@ import (
 	"time"
 	"unsafe"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -137,8 +136,8 @@ func TestRV64PublicDynamicTailDefaultGate(t *testing.T) {
 	if c, err := compatibilityDefaultConfig().Compile(source); c != nil || err == nil {
 		t.Fatal("public feature default opened", err)
 	}
-	// A dynamic producer cannot be attached through the ordinary function-import
-	// protocol until that graph has its own defined/imported owner adapter.
+	// An ordinary native import now retains the dynamic producer graph and its
+	// entry generation, even when this caller uses only a direct tail site.
 	c := rv64NativeTailCompile(t, "dynamic-tail-export", source, false)
 	in, err := Instantiate(c)
 	if err != nil {
@@ -150,8 +149,13 @@ func TestRV64PublicDynamicTailDefaultGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	caller := rv64NativeTailCompile(t, "dynamic-tail-export-caller", rv64PublicTailModule([]wasm.ValType{wasm.I32}, false), false)
-	if got, err := Instantiate(caller, testImports("env.tail", export)); got != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("dynamic import attached", err)
+	got, err := Instantiate(caller, testImports("env.tail", export))
+	if err != nil {
+		t.Fatal("dynamic import attachment", err)
+	}
+	defer got.Close()
+	if values, err := got.Invoke("call", 0xcafe123480000001); err != nil || len(values) != 1 || values[0] != 0x80000001 {
+		t.Fatal("dynamic producer through static native tail", values, err)
 	}
 }
 
@@ -218,8 +222,12 @@ func TestRV64PublicDynamicTailDeepPrepared(t *testing.T) {
 	}
 }
 
+func rv64InfiniteDynamicTailModule() []byte {
+	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "flag", wasm.I32, true))), wasmtest.Section(3, []byte{2, 0, 0}), wasmtest.Section(4, []byte{1, 0x70, 1, 1, 1}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("ok", 0, 1))), wasmtest.Section(9, []byte{1, 0, 0x41, 0, 0x0b, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x41, 1, 0x6a, 0x24, 0, 0x41, 0, 0x13, 0, 0, 0x0b}), wasmtest.Code([]byte{0x41, 42, 0x0b}))))
+}
+
 func TestRV64PublicDynamicTailCancellationAndClose(t *testing.T) {
-	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "flag", wasm.I32, true))), wasmtest.Section(3, []byte{2, 0, 0}), wasmtest.Section(4, []byte{1, 0x70, 1, 1, 1}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("ok", 0, 1))), wasmtest.Section(9, []byte{1, 0, 0x41, 0, 0x0b, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x41, 1, 0x6a, 0x24, 0, 0x41, 0, 0x13, 0, 0, 0x0b}), wasmtest.Code([]byte{0x41, 42, 0x0b}))))
+	source := rv64InfiniteDynamicTailModule()
 	for _, artifact := range []bool{false, true} {
 		for _, closeRoot := range []bool{false, true} {
 			t.Run(fmt.Sprintf("artifact%t-close%t", artifact, closeRoot), func(t *testing.T) {

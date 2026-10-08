@@ -28,6 +28,53 @@ func rv64DynamicTailCharge(t *testing.T, in *Instance) (code, metadata int, base
 	return scope.tailBudget.code, scope.tailBudget.metadata, in.pluginState.Load().railshotInvocation.tailPolicy.metadataBase
 }
 
+func TestRV64DynamicTailStaticImporterAggregatePolicy(t *testing.T) {
+	pc := rv64NativeTailCompile(t, "dynamic-static-policy-producer", rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, false), false)
+	producer, err := Instantiate(pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	export, err := producer.ExportedFunc("identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := rv64NativeTailCompile(t, "dynamic-static-policy-root", rv64PublicTailModule([]wasm.ValType{wasm.I32}, false), false)
+	imports := testImports("env.tail", export)
+	root, err := Instantiate(c, imports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	code, metadata, base := rv64DynamicTailCharge(t, root)
+	static := railshotNativeCodeBytes(c) - uint64(len(c.code))
+	if static == 0 || uint64(code) <= static || root.pluginState.Load().railshotInvocation.nativeImports == nil {
+		t.Fatal("fixture lacks retained static dispatcher/wrapper")
+	}
+	for _, limits := range []struct{ code, metadata uint64 }{{uint64(code), base + uint64(metadata)}, {uint64(code) - static, base + uint64(metadata)}, {uint64(code), base + uint64(metadata) - 1}} {
+		rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithMaxNativeCodeBytes(limits.code).WithMaxInstanceMetadataBytes(limits.metadata)))
+		defer rt.Close()
+		in := rv64HostTailInstantiate(t, rt, c, imports)
+		got, err := in.Invoke("call", 0xcafe123480000001)
+		if limits.code == uint64(code) && limits.metadata == base+uint64(metadata) {
+			if err != nil || len(got) != 1 || got[0] != 0x80000001 {
+				t.Fatal("exact aggregate static/dynamic quota", got, err)
+			}
+		} else {
+			var quota *coreruntime.ResourceLimitError
+			if !errors.As(err, &quota) {
+				t.Fatal("undercharged static publication or metadata", err)
+			}
+			if limits.code < uint64(code) && (quota.Resource != "native code bytes" || quota.Requested != uint64(code) || quota.Limit != limits.code) {
+				t.Fatal("static dispatcher omitted from exact aggregate", quota)
+			}
+		}
+		if producer.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 {
+			t.Fatal("failed/completed scope retained caller reservation")
+		}
+	}
+}
+
 func TestRV64DynamicTailConfiguredPolicy(t *testing.T) {
 	source := rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, false)
 	c := rv64NativeTailCompile(t, "dynamic-tail-policy", source, false)

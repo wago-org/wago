@@ -25,14 +25,18 @@ func rv64QualifiedNativeTailTarget(target *InstanceExport) (entry, home, context
 		return
 	}
 	producer := target.inst
+	code, err := (rv64TailCodeOwner{producer}).NativeTailCodeView()
+	if err != nil {
+		return
+	}
 	if !producer.c.nativeContextTrapABI || !producer.c.registerABIDisabled || len(producer.funcRefDescs) < coreruntime.FuncRefDescBytes || producer.nativeContext == 0 || producer.nativeContext&7 != 0 || binary.LittleEndian.Uint64(producer.funcRefDescs[coreruntime.FuncRefContextOffset:]) != uint64(producer.nativeContext) || binary.LittleEndian.Uint64(producer.funcRefDescs[coreruntime.TableEntryHomeLinMemOffset:]) != uint64(producer.jm.LinMemBase()) || binary.LittleEndian.Uint64(rv64NativeInvocationContext(producer)[16:]) != uint64(offHeapSlicePtr(producer.funcRefDescs)) {
 		return
 	}
 	offset := producer.c.Entry[target.localIdx]
-	if producer.base == 0 || offset < 0 || offset&15 != 0 || offset >= len(producer.c.code) {
+	if producer.base == 0 || offset < 0 || offset&15 != 0 || offset >= len(code) {
 		return
 	}
-	if _, err := railshot.NativeFrameBytes(producer.c.code, offset); err != nil {
+	if _, err := railshot.NativeFrameBytes(code, offset); err != nil {
 		return
 	}
 	return uint64(producer.base) + uint64(offset), uint64(producer.jm.LinMemBase()), uint64(producer.nativeContext), true

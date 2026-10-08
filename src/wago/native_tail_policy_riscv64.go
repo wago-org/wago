@@ -26,7 +26,8 @@ type rv64TailAllocationPolicy struct {
 }
 
 func railshotCaptureNativeTailPolicy(in *Instance, opts InstantiateOptions, metadataNeed int) {
-	if !in.c.needsFuncRefDescs() {
+	// A table-free native importer can be the root of a dynamic callee graph.
+	if !in.c.needsFuncRefDescs() && in.c.NumImports == 0 {
 		return
 	}
 	policy := rv64TailAllocationPolicy{limits: rv64NativeTailGenerationLimits{railshot.MaxCodeBytes, railshot.MaxModuleBytes}, metadataBase: uint64(metadataNeed), ready: true}

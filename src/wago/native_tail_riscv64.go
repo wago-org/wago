@@ -20,9 +20,30 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 	if m == nil {
 		return nil
 	}
+	if rv64HasDynamicTail(m) {
+		// Every canonical imported row can be selected by an indirect reference.
+		// Reject host callbacks and import-only relays before caller publication.
+		for i := 0; i < c.NumImports; i++ {
+			target, native := imports[c.functionImportBindingKey(i)].(*InstanceExport)
+			if !native {
+				return rv64TailGenerationError("dynamic module requires native function imports")
+			}
+			if err := railshotValidateNativeExport(c, i, target); err != nil {
+				return err
+			}
+			if err := target.inst.beginInvocation(); err != nil {
+				return err
+			}
+			_, _, _, valid := rv64QualifiedNativeTailTarget(target)
+			target.inst.endInvocation()
+			if !valid {
+				return rv64TailGenerationError("dynamic module import has no genuine framed anchor")
+			}
+		}
+	}
 	for _, p := range m.Plans {
-		if p.Kind != 0 && (p.Kind != 1 || c.NumImports != 0) {
-			return fmt.Errorf("%w: RV64 dynamic tail requires indirect defined owners", railshot.ErrUnsupported)
+		if p.Kind != 0 && p.Kind != 1 {
+			return fmt.Errorf("%w: RV64 dynamic tail requires indirect native owners", railshot.ErrUnsupported)
 		}
 		local := int(p.FunctionIndex) - c.NumImports
 		if local < 0 || local >= len(c.Entry) {
@@ -88,8 +109,8 @@ func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase
 	m := rv64NativeTailModule(in.c)
 	if m != nil {
 		for _, p := range m.Plans {
-			if p.Kind != 0 && (p.Kind != 1 || in.c.NumImports != 0) {
-				return fmt.Errorf("%w: RV64 dynamic tail requires indirect defined owners", railshot.ErrUnsupported)
+			if p.Kind != 0 && p.Kind != 1 {
+				return fmt.Errorf("%w: RV64 dynamic tail requires indirect native owners", railshot.ErrUnsupported)
 			}
 		}
 	}

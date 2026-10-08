@@ -40,102 +40,114 @@ func rv64EntryCapability(in *Instance) uint64 {
 }
 
 func TestRV64TailEntryGenerationLeaseResumeAndGrowth(t *testing.T) {
-	for _, vector := range []bool{false, true} {
-		t.Run(fmt.Sprint(vector), func(t *testing.T) {
-			root, producer, table, replacement := rv64EntryGenerationFixture(t, vector)
-			gate := root.lockInvocation(0)
-			defer gate.unlockInvocation()
-			entry, err := root.beginNativeEntry()
-			if err != nil {
-				t.Fatal(err)
-			}
-			locked := true
-			defer func() {
-				if locked {
-					root.unlockNativeEntry(entry)
+	for _, closed := range []bool{false, true} {
+		for _, vector := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%t-closed%t", vector, closed), func(t *testing.T) {
+				root, producer, table, replacement := rv64EntryGenerationFixture(t, vector)
+				gate := root.lockInvocation(0)
+				defer gate.unlockInvocation()
+				entry, err := root.beginNativeEntry()
+				if err != nil {
+					t.Fatal(err)
 				}
-			}()
-			scope := entry.tables.targets
-			if len(scope.tailActive) != 2 || scope.tailBudget.count != 2 || rv64EntryCapability(root) == 0 || rv64EntryCapability(producer) == 0 {
-				t.Fatal("entry omitted complete owner generation set")
-			}
-			outer := railshotCurrentNativeTableTargets(root)
-			outerCap := rv64EntryCapability(producer)
-			inner, err := railshotAcquireNativeTableTargets(root)
-			if err != nil {
-				t.Fatal(err)
-			}
-			innerCap := rv64EntryCapability(producer)
-			if innerCap == outerCap || railshotCurrentNativeTableTargets(root).targets != inner.targets {
-				t.Fatal("nested entry reused parked capability")
-			}
-			// The explicit saved lease must select its own generations even when
-			// another slot is current. Root-only lookup at resume would select inner.
-			railshotRefreshNativeTableTargets(outer)
-			if rv64EntryCapability(producer) != outerCap {
-				t.Fatal("wrong resumed lease")
-			}
-			railshotRefreshNativeTableTargets(inner)
-			if rv64EntryCapability(producer) != innerCap {
-				t.Fatal("wrong nested resume")
-			}
-			if allocations := testing.AllocsPerRun(4, func() {
+				locked := true
+				defer func() {
+					if locked {
+						root.unlockNativeEntry(entry)
+					}
+				}()
+				scope := entry.tables.targets
+				if len(scope.tailActive) != 2 || scope.tailBudget.count != 2 || rv64EntryCapability(root) == 0 || rv64EntryCapability(producer) == 0 {
+					t.Fatal("entry omitted complete owner generation set")
+				}
+				outer := railshotCurrentNativeTableTargets(root)
+				outerCap := rv64EntryCapability(producer)
+				inner, err := railshotAcquireNativeTableTargets(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				innerCap := rv64EntryCapability(producer)
+				if innerCap == outerCap || railshotCurrentNativeTableTargets(root).targets != inner.targets {
+					t.Fatal("nested entry reused parked capability")
+				}
+				// The explicit saved lease must select its own generations even when
+				// another slot is current. Root-only lookup at resume would select inner.
 				railshotRefreshNativeTableTargets(outer)
+				if rv64EntryCapability(producer) != outerCap {
+					t.Fatal("wrong resumed lease")
+				}
 				railshotRefreshNativeTableTargets(inner)
-			}); allocations != 0 {
-				t.Fatal("warm resume allocated", allocations)
-			}
-			if err := railshotRetireNativeTableTargets(inner); err != nil {
-				t.Fatal(err)
-			}
-			// Root release runs outside native locking, as in real entry cleanup.
-			if entry.local != nil {
-				entry.local.Unlock()
-			} else {
-				nativeExecutionMu.Unlock()
-			}
-			railshotReleaseNativeTableTargets(inner)
-			if entry.local != nil {
-				entry.local.Lock()
-			} else {
-				nativeExecutionMu.Lock()
-			}
-			railshotRefreshNativeTableTargets(outer)
-			if rv64EntryCapability(producer) != outerCap || gate.railshotInvocation.tableDepth != 1 {
-				t.Fatal("nested exit lost outer factory")
-			}
-			// Same-owner row changes reuse the generation; ownership growth stages
-			// a fresh complete set and retains both versions until cold exit.
-			copy(table.desc[8:40], replacement.funcRefDescs[80:112])
-			if entry.local != nil {
-				entry.local.Unlock()
-			} else {
-				nativeExecutionMu.Unlock()
-			}
-			retained := table.retainProducerInstance(replacement)
-			if entry.local != nil {
-				entry.local.Lock()
-			} else {
-				nativeExecutionMu.Lock()
-			}
-			if !retained {
-				t.Fatal("new producer root")
-			}
-			// The replaced producer remains leased even after table pruning.
-			railshotRefreshNativeTableTargets(outer)
-			if len(scope.tailActive) != 3 || len(scope.tailGenerations) != 5 || scope.tailBudget.count != 5 || rv64EntryCapability(producer) == outerCap {
-				t.Fatal("growth did not preserve old and bind new complete generations")
-			}
-			old := scope.tailGenerations[0]
-			if !old.reserved || !old.ready || old.factory == nil {
-				t.Fatal("parked code retired early")
-			}
-			locked = false
-			root.unlockNativeEntry(entry)
-			if scope.count != 0 || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || cap(scope.tailActive) != 0 || cap(scope.tailGenerations) != 0 || rv64EntryCapability(root) != 0 || rv64EntryCapability(producer) != 0 || rv64EntryCapability(replacement) != 0 {
-				t.Fatal("cold exit retained generation or binding")
-			}
-		})
+				if rv64EntryCapability(producer) != innerCap {
+					t.Fatal("wrong nested resume")
+				}
+				if allocations := testing.AllocsPerRun(4, func() {
+					railshotRefreshNativeTableTargets(outer)
+					railshotRefreshNativeTableTargets(inner)
+				}); allocations != 0 {
+					t.Fatal("warm resume allocated", allocations)
+				}
+				if err := railshotRetireNativeTableTargets(inner); err != nil {
+					t.Fatal(err)
+				}
+				// Root release runs outside native locking, as in real entry cleanup.
+				if entry.local != nil {
+					entry.local.Unlock()
+				} else {
+					nativeExecutionMu.Unlock()
+				}
+				railshotReleaseNativeTableTargets(inner)
+				if entry.local != nil {
+					entry.local.Lock()
+				} else {
+					nativeExecutionMu.Lock()
+				}
+				railshotRefreshNativeTableTargets(outer)
+				if rv64EntryCapability(producer) != outerCap || gate.railshotInvocation.tableDepth != 1 {
+					t.Fatal("nested exit lost outer factory")
+				}
+				// Closing readable execution snapshots must not revoke the leased
+				// mapped images needed for a NEW generation after ownership growth.
+				if closed {
+					if err := root.c.Close(); err != nil {
+						t.Fatal(err)
+					}
+					if err := producer.c.Close(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				// Same-owner row changes reuse the generation; ownership growth stages
+				// a fresh complete set and retains both versions until cold exit.
+				copy(table.desc[8:40], replacement.funcRefDescs[80:112])
+				if entry.local != nil {
+					entry.local.Unlock()
+				} else {
+					nativeExecutionMu.Unlock()
+				}
+				retained := table.retainProducerInstance(replacement)
+				if entry.local != nil {
+					entry.local.Lock()
+				} else {
+					nativeExecutionMu.Lock()
+				}
+				if !retained {
+					t.Fatal("new producer root")
+				}
+				// The replaced producer remains leased even after table pruning.
+				railshotRefreshNativeTableTargets(outer)
+				if len(scope.tailActive) != 3 || len(scope.tailGenerations) != 5 || scope.tailBudget.count != 5 || rv64EntryCapability(producer) == outerCap {
+					t.Fatal("growth did not preserve old and bind new complete generations")
+				}
+				old := scope.tailGenerations[0]
+				if !old.reserved || !old.ready || old.factory == nil {
+					t.Fatal("parked code retired early")
+				}
+				locked = false
+				root.unlockNativeEntry(entry)
+				if scope.count != 0 || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || cap(scope.tailActive) != 0 || cap(scope.tailGenerations) != 0 || rv64EntryCapability(root) != 0 || rv64EntryCapability(producer) != 0 || rv64EntryCapability(replacement) != 0 {
+					t.Fatal("cold exit retained generation or binding")
+				}
+			})
+		}
 	}
 }
 

@@ -15,12 +15,12 @@ type nativeTailDynamicLease struct {
 
 // Bind restores a sealed factory under a reacquired physical owner graph lease.
 // The opaque caller snapshot proves the exact context's lifetime independently
-// of dynamic targets (which need not include the caller). Imported/host callers
-// require a separately qualified ownership adapter. The caller serializes all
+// of dynamic targets (which need not include the caller). Certified native import rows preserve their importer ownership;
+// host descriptor rows remain closed. The caller serializes all
 // native use and binding changes. The original caller instance must never have
 // physically retired; matching reused addresses cannot establish that identity.
 // No allocation, publication or lease acquisition
-// is needed for an unchanged definition-only graph. All checks precede writes.
+// is needed for an unchanged qualified native graph. All checks precede writes.
 func (o *NativeTailDispatcher) Bind(caller *NativeTailDefinedOwner) error {
 	if o == nil || !o.ready || o.code == nil || o.code.Base() == 0 || len(o.capability) < tailRACapHeader || len(o.contexts) != 1 {
 		return unsupported("native tail factory is not ready to bind")

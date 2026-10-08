@@ -55,8 +55,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if m := rv64NativeTailModule(c); m != nil {
 		for _, p := range m.Plans {
-			if p.Kind != 0 && (p.Kind != 1 || c.NumImports != 0) {
-				return reject("dynamic tail requires an indirect defined-owner plan")
+			if p.Kind != 0 && p.Kind != 1 {
+				return reject("dynamic tail requires an indirect native-owner plan")
 			}
 		}
 	}

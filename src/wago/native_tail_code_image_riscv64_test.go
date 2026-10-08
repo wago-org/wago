@@ -51,6 +51,11 @@ func rv64PublishedCodeImageLeaseForTest(t *testing.T, artifact bool) {
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
+	// Closing the retained execution snapshot clears its convenience code view.
+	// It must not revoke the instance's particular physical mapping lease.
+	if err := in.c.Close(); err != nil || in.c.code != nil || image.Validate() != nil {
+		t.Fatal("execution snapshot close broke retained RX view", err)
+	}
 	if err := in.Close(); err != nil || in.resourcesClosed || image.Validate() != nil {
 		t.Fatal("logical close broke physically retained image", err)
 	}
