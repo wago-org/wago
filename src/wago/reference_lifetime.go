@@ -92,8 +92,10 @@ func (lifetime referenceLifetime) afterPhysicalRelease(fn func()) {
 	} else {
 		previous := in.finalizers.physical
 		in.finalizers.physical = func() {
-			previous()
-			fn()
+			var cleanup resourceCleanup
+			cleanup.run(previous)
+			cleanup.run(fn)
+			cleanup.finish()
 		}
 	}
 	in.lifeMu.Unlock()

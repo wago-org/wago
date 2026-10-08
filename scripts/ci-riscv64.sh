@@ -38,7 +38,7 @@ case "$mode" in
         tags+=,wago_regalloccheck
       fi
       go test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^Test(ResourceCleanup|ImportDedup|FunctionImportDrain|BuilderRollbackContinues|Dependency|RV64.*(Reference|Global|NativeImport|Start|Table|Rollback))'
+        -run '^Test(PhysicalFinalizerChain|ResourceCleanup|ImportDedup|FunctionImportDrain|BuilderRollbackContinues|Dependency|RV64.*(Reference|Global|NativeImport|Start|Table|Rollback))'
       WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=prepare \
         go test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
