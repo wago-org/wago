@@ -62,6 +62,30 @@ programs that only proved they compiled or did not trap. Those artifacts add
 maintenance and CI cost without providing a stable correctness or performance
 signal.
 
+## Wasm-R3 admission review (2026-10-06)
+
+A bounded review for #825 checked two published replay candidates and one small
+fallback fixture. No candidate was admitted. The review used
+[`wasm-benchmarks` at `576f499476060026f6c18cf6edd255ffcbeb5e4f`](https://github.com/doehyunbaek/wasm-benchmarks/tree/576f499476060026f6c18cf6edd255ffcbeb5e4f/wasm-r3-bench)
+and the recording scripts in
+[`wasm-r3` at `526cbd368427e4a55199db5dbb781356cfab6f92`](https://github.com/sola-st/wasm-r3/tree/526cbd368427e4a55199db5dbb781356cfab6f92).
+
+| candidate | published identity | result |
+| --- | --- | --- |
+| `sqlgui.wasm` | 712,714 bytes; Git blob `57f68c7221958dcf94f5d244ec7121287a344aca` | The replay directory supplies no per-workload redistribution license, original input/module hash, or independently checked expected query output. The recording script waits for a visible `designation` table element; it does not establish an exact replay result or a work count. |
+| `ffmpeg.wasm` | 5,883,252 bytes; Git blob `e0578159d9cdd1912c72b7cb4d3fdee9f7c48850` | The same provenance and oracle fields are absent. The recording script selects help and version commands and waits for completion text. This does not qualify a substantial media-processing workload. |
+| `tests/core/mem-exp-host-mod-pingpong` | original module: 258 bytes; Git blob `79a85f06d54d5a207f23f8720696bec81d4dac25`; reference trace: 202 bytes | The JavaScript and trace expose a small memory/re-entry test. It is a tool unit fixture, not an additional application workload. Existing Wago host-state tests cover this class; corpus policy excludes redundant microbenchmarks. |
+
+The recording tool's MIT license is not evidence of redistribution rights for
+all third-party application bytes captured by the separate replay repository.
+The identities above are Git blob IDs, not SHA-256 artifact digests. No binary
+was admitted, downloaded for execution, or timed. Original/replay SHA-256 pairs,
+feature/resource contracts, independent outputs, and phase/memory measurements
+remain unqualified. The candidate gate stopped before runtime benchmarking.
+Only repository trees, README/license metadata, and the named scripts/trace were
+read; no website recording or large asset fetch was started. This result applies
+to these candidates at these revisions, not every possible Wasm-R3 workload.
+
 The yyjson, utf8proc, xxHash, LibTomMath, NanoSVG, KissFFT, TinyXML-2, Lua,
 cJSON, miniz, Monocypher, dr_wav, LodePNG, fast_float, PCRE2, and Wren expected
 return values were captured independently with Wasmtime 46.0.1. Node 26/V8
