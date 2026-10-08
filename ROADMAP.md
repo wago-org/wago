@@ -57,12 +57,15 @@ feature and retained-carrier witness even in unreachable bodies. Abstract
 transport. Public TailCall and
 TypedFunctionReferences remain
 gated: these bounded cases do not establish complete feature support.
-Private lowering also admits internal indexed function-reference locals, inline
-block results and typed selects within the existing numeric/vector type
-directory. Matching signatures, nullability and initialization are proved by the
-frontend before carrier erasure. Their production source/artifact gates remain
-closed pending separate qualification; reference-valued function and indexed
-control signatures remain unsupported.
+Internal indexed function-reference locals, inline block results and typed
+selects within the existing numeric/vector type directory are also qualified
+through source and compiler-free artifacts. Both nullable and non-null indexed
+annotations carry the typed witness, including unused locals and unreachable
+bodies. Matching signatures, nullability and initialization are proved by the
+frontend before carrier erasure. Real descriptor selection, large-frame local
+reloads and foreign imported-function owners through joined teardown are
+covered. Reference-valued function and indexed control signatures remain
+unsupported.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains
 unconnected to production; collection and feature admission are unchanged.

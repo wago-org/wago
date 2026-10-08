@@ -89,17 +89,17 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	referenceTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls)
+	usesSWAR, err := moduleUsesSWAR(m)
+	if err != nil {
+		return nil, err
+	}
+	referenceTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, usesSWAR)
 	if err != nil {
 		return nil, err
 	}
 	opts.referenceTailInstructions = referenceTails
 	opts.referenceCallInstructions = referenceCalls
 	opts.referenceControlInstructions = referenceControl
-	usesSWAR, err := moduleUsesSWAR(m)
-	if err != nil {
-		return nil, err
-	}
 	if usesSWAR {
 		return compileSWARProductionModule(m, opts)
 	}
@@ -265,19 +265,17 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 // Ordinary references require their distinct retained normal-return protocol.
 // Reference control retains carriers without requiring declared-call transport.
 // Instruction bytes were bounded before this pass.
-func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails bool) (bool, bool, bool, error) {
+func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector bool) (bool, bool, bool, error) {
 	referenceTails, hasReferenceCall, hasReferenceControl := false, false, false
+	types := internalReferenceTypes{decoded: m.Types, decodedSWAR: vector}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		for _, run := range fn.Locals.Runs {
-			if run.Type.Kind() == wasm.ValRef && run.Type.Ref().Heap().Kind() == wasm.HeapTypeIndex {
-				return false, false, false, unsupported("indexed reference locals await retained source/artifact qualification")
-			}
-			if run.Type.Kind() == wasm.ValRef && !run.Type.Ref().Nullable() {
-				if !referenceCalls || !internalFunctionReference(run.Type, true) {
-					return false, false, false, unsupported("non-null local requires retained abstract function-reference protocol")
+			if run.Type.Kind() == wasm.ValRef {
+				if !internalFunctionReferenceWithTypes(run.Type, referenceCalls, types) {
+					return false, false, false, unsupported("reference local requires an admitted retained function-reference type")
 				}
-				hasReferenceControl = true
+				hasReferenceControl = hasReferenceControl || !run.Type.Ref().Nullable() || run.Type.Ref().Heap().Kind() == wasm.HeapTypeIndex
 			}
 		}
 		r := wasm.ReaderFrom(fn.BodyBytes)
@@ -289,12 +287,11 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails bo
 			if op == 0x02 || op == 0x03 || op == 0x04 {
 				if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
 					probe := r
-					// No type directory: indexed annotations stay private until
-					// their retained source/artifact requirements are qualified.
-					if _, err := internalReferenceBlockType(&probe, referenceCalls, internalReferenceTypes{}); err != nil {
+					witness, err := internalExplicitReferenceType(&probe, referenceCalls, types)
+					if err != nil {
 						return false, false, false, err
 					}
-					hasReferenceControl = hasReferenceControl || lead == 0x64
+					hasReferenceControl = hasReferenceControl || witness
 				}
 			}
 			if op == 0x1c {
@@ -307,10 +304,11 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails bo
 					return false, false, false, unsupported("typed select requires one value type")
 				}
 				if lead, ok := probe.Peek(); ok && (lead == 0x63 || lead == 0x64) {
-					if _, err := internalSelectType(&probe, referenceCalls, internalReferenceTypes{}); err != nil {
+					witness, err := internalExplicitReferenceType(&probe, referenceCalls, types)
+					if err != nil {
 						return false, false, false, err
 					}
-					hasReferenceControl = hasReferenceControl || lead == 0x64
+					hasReferenceControl = hasReferenceControl || witness
 				}
 			}
 			if op == 0x14 {

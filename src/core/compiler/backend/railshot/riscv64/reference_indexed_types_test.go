@@ -44,7 +44,7 @@ func referenceIndexedTypesModule(t *testing.T, vector bool, form byte, shape str
 	return m
 }
 
-func TestReferenceIndexedTypesPrivateAndProductionGates(t *testing.T) {
+func TestReferenceIndexedTypesPrivateAndProductionContract(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, form := range []byte{0x63, 0x64} {
 			for _, shape := range []string{"local", "block", "select"} {
@@ -72,16 +72,22 @@ func TestReferenceIndexedTypesPrivateAndProductionGates(t *testing.T) {
 								t.Fatal("private indexed annotation permission", permission, a, b)
 							}
 						}
-						// Even another existing typed witness must not open production
-						// before indexed annotations receive their own qualification.
+						// The annotation itself supplies a witness, including nullable
+						// and dead forms, independently of other typed instructions.
 						for _, otherWitness := range []bool{false, true} {
 							if otherWitness {
 								m.Code[3].BodyBytes = append([]byte{0xd0, 0, 0x1a}, m.Code[3].BodyBytes...)
 							}
-							pressure := 0
-							image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-							if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-								t.Fatal("indexed annotations bypassed production gate", image, err, pressure)
+							for _, permission := range []bool{false, true} {
+								pressure := 0
+								image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: permission, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
+								if !permission {
+									if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+										t.Fatal("indexed annotation permission bypassed", image, err, pressure)
+									}
+								} else if err != nil || image == nil || !image.NativeReferenceControl || image.NativeReferenceCalls || image.NativeTail != nil || image.CodeImage != nil || pressure != 1 {
+									t.Fatal("indexed annotation witness/staging", image, err, pressure)
+								}
 							}
 						}
 					})
@@ -140,10 +146,7 @@ func TestReferenceIndexedTypesFrontendProofs(t *testing.T) {
 		for _, shape := range []string{"local", "block", "select"} {
 			t.Run(fmt.Sprintf("wrong-signature-form%x-%s", form, shape), func(t *testing.T) {
 				m := referenceIndexedTypesModule(t, false, form, shape, 2)
-				var v *wasm.ValidationError
-				if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); !errors.As(err, &v) || v.Code != wasm.ErrTypeMismatch {
-					t.Fatal("wrong function signature", err)
-				}
+				referenceIndexedFrontendRejected(t, m, wasm.ErrTypeMismatch)
 			})
 		}
 	}
@@ -159,11 +162,26 @@ func TestReferenceIndexedTypesFrontendProofs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := referenceIndexedTypesModule(t, false, 0x64, "local", 0)
 			m.Code[3].BodyBytes = tc.body
-			var v *wasm.ValidationError
-			if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); !errors.As(err, &v) || v.Code != tc.code {
-				t.Fatal("indexed nullability/initialization", err)
-			}
+			referenceIndexedFrontendRejected(t, m, tc.code)
 		})
+	}
+}
+
+func referenceIndexedFrontendRejected(t *testing.T, m *wasm.Module, code wasm.ValidationErrorCode) {
+	t.Helper()
+	for _, vector := range []bool{false, true} {
+		if vector {
+			m.Types[3].SubTypes[0].Comp.Params = []wasm.ValType{wasm.V128}
+		}
+		var v *wasm.ValidationError
+		if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); !errors.As(err, &v) || v.Code != code {
+			t.Fatal("indexed frontend proof", vector, err)
+		}
+		pressure := 0
+		image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
+		if image != nil || !errors.As(err, &v) || v.Code != code || pressure != 0 {
+			t.Fatal("frontend proof before carrier erasure/staging", vector, image, err, pressure)
+		}
 	}
 }
 
@@ -196,6 +214,11 @@ func TestReferenceIndexedTypesBoundsAndImmediateForms(t *testing.T) {
 					}
 					if got := dir.function(uint32(count - 1)); got != (arity == limit && count == MaxFunctions) {
 						t.Fatal("directory/profile boundary", vector, arity, count, result, got)
+					}
+					decoded := make([]wasm.RecType, count)
+					decoded[count-1].SubTypes = []wasm.SubType{{Final: true, Comp: *sig}}
+					if got := (internalReferenceTypes{decoded: decoded, decodedSWAR: vector}).function(uint32(count - 1)); got != (arity == limit && count == MaxFunctions) {
+						t.Fatal("decoded directory/profile boundary", vector, arity, count, result, got)
 					}
 				}
 			}
@@ -236,6 +259,66 @@ func TestReferenceIndexedTypesBoundsAndImmediateForms(t *testing.T) {
 		image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
 		if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
 			t.Fatal("reference-valued indexed signature opened", image, err, pressure)
+		}
+	}
+}
+
+func TestReferenceIndexedTypesDecodedMetadata(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, tc := range []struct {
+			name   string
+			mutate func(*wasm.RecType)
+		}{
+			{"empty-group", func(r *wasm.RecType) { r.SubTypes = nil }},
+			{"recursive-group", func(r *wasm.RecType) { r.SubTypes = append(r.SubTypes, r.SubTypes[0]) }},
+			{"nonfinal", func(r *wasm.RecType) { r.SubTypes[0].Final = false }},
+			{"prefix", func(r *wasm.RecType) { r.SubTypes[0].HasPrefix = true }},
+			{"super", func(r *wasm.RecType) { r.SubTypes[0].Supers = []wasm.TypeIdx{{Index: 0}} }},
+			{"describes", func(r *wasm.RecType) { r.SubTypes[0].Metadata.Describes = wasm.SomeTypeIdx(wasm.TypeIdx{}) }},
+			{"descriptor", func(r *wasm.RecType) { r.SubTypes[0].Metadata.Descriptor = wasm.SomeTypeIdx(wasm.TypeIdx{}) }},
+			{"struct", func(r *wasm.RecType) { r.SubTypes[0].Comp.Kind = wasm.CompStruct }},
+			{"reference-param", func(r *wasm.RecType) { r.SubTypes[0].Comp.Params = []wasm.ValType{wasm.FuncRef} }},
+			{"reference-result", func(r *wasm.RecType) { r.SubTypes[0].Comp.Results = []wasm.ValType{wasm.FuncRef} }},
+		} {
+			t.Run(fmt.Sprintf("vector%t-%s", vector, tc.name), func(t *testing.T) {
+				m := referenceIndexedTypesModule(t, vector, 0x63, "local", 0)
+				tc.mutate(&m.Types[64])
+				if (internalReferenceTypes{decoded: m.Types, decodedSWAR: vector}).function(64) {
+					t.Fatal("unsupported decoded reference type", tc.name)
+				}
+				pressure := 0
+				image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
+				if image != nil || err == nil || pressure != 0 {
+					t.Fatal("invalid decoded annotation type staged", image, err, pressure)
+				}
+			})
+		}
+	}
+	ft := &wasm.CompType{Kind: wasm.CompFunc}
+	decoded := []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: *ft}}}}
+	for _, dir := range []internalReferenceTypes{
+		{decoded: []wasm.RecType{}},
+		{scalar: []functionSpec{{signature: ft}}, decoded: decoded},
+		{swar: []*wasm.CompType{ft}, decoded: decoded},
+		{scalar: []functionSpec{{signature: ft}}, decodedSWAR: true},
+		{swar: []*wasm.CompType{ft}, decodedSWAR: true},
+	} {
+		if dir.function(0) {
+			t.Fatal("mixed decoded view")
+		}
+	}
+	dir := internalReferenceTypes{decoded: decoded}
+	if a := testing.AllocsPerRun(10, func() {
+		if !dir.function(0) {
+			panic("decoded function directory")
+		}
+	}); a != 0 {
+		t.Fatal("decoded directory allocation", a)
+	}
+	for _, prefix := range []byte{0, 0x70, 0x62} {
+		r := wasm.ReaderFrom([]byte{prefix, 0})
+		if _, err := internalExplicitReferenceType(&r, true, dir); err == nil {
+			t.Fatal("explicit parser accepted another form", prefix)
 		}
 	}
 }

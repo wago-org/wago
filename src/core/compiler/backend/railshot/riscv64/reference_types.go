@@ -8,41 +8,54 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // Exactly one view is used; resolving an annotation never allocates or converts
 // the scalar width directory into a second type representation.
 type internalReferenceTypes struct {
-	scalar []functionSpec
-	swar   []*wasm.CompType
+	scalar      []functionSpec
+	swar        []*wasm.CompType
+	decoded     []wasm.RecType
+	decodedSWAR bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
 	var signature *wasm.CompType
-	limit := 256
+	vector := types.swar != nil || types.decodedSWAR
 	if types.scalar != nil {
-		if types.swar != nil || len(types.scalar) > MaxFunctions || uint64(index) >= uint64(len(types.scalar)) {
+		if types.swar != nil || types.decoded != nil || types.decodedSWAR || len(types.scalar) > MaxFunctions || uint64(index) >= uint64(len(types.scalar)) {
 			return false
 		}
 		signature = types.scalar[index].signature
-	} else {
-		if len(types.swar) > MaxFunctions || uint64(index) >= uint64(len(types.swar)) {
+	} else if types.swar != nil {
+		if types.decoded != nil || types.decodedSWAR || len(types.swar) > MaxFunctions || uint64(index) >= uint64(len(types.swar)) {
 			return false
 		}
-		signature, limit = types.swar[index], maxSWARLocals
+		signature = types.swar[index]
+	} else {
+		if len(types.decoded) > MaxFunctions || uint64(index) >= uint64(len(types.decoded)) {
+			return false
+		}
+		group := &types.decoded[index]
+		if len(group.SubTypes) != 1 {
+			return false
+		}
+		sub := &group.SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
+			return false
+		}
+		signature = &sub.Comp
+	}
+	limit := 256
+	if vector {
+		limit = maxSWARLocals
 	}
 	if signature == nil || signature.Kind != wasm.CompFunc || len(signature.Params) > limit || len(signature.Results) > limit {
 		return false
 	}
 	for _, list := range [][]wasm.ValType{signature.Params, signature.Results} {
 		for _, typ := range list {
-			if types.scalar != nil && !scalarType(typ, true) || types.scalar == nil && !swarCarrierType(typ) {
+			if !vector && !scalarType(typ, true) || vector && !swarCarrierType(typ) {
 				return false
 			}
 		}
 	}
 	return true
-}
-
-// Production keeps indexed annotations closed until their source/artifact
-// witness is separately qualified. This wrapper admits only abstract func.
-func internalFunctionReference(typ wasm.ValType, nonNull bool) bool {
-	return internalFunctionReferenceWithTypes(typ, nonNull, internalReferenceTypes{})
 }
 
 // The frontend proves initialization, nullability and matching function types
@@ -71,20 +84,33 @@ func internalReferenceBlockType(r *wasm.Reader, typed bool, types internalRefere
 	if !ok || lead != 0x63 && lead != 0x64 {
 		return r.S33()
 	}
-	if lead == 0x64 && !typed {
-		return 0, unsupported("non-null block requires private typed references")
+	_, err := internalExplicitReferenceType(r, typed, types)
+	return -16, err
+}
+
+// The same explicit annotation parser is used for private carrier admission and
+// persisted source requirements. Nullable indexed heaps also need the typed
+// witness; nullable abstract func retains ordinary ReferenceTypes semantics.
+func internalExplicitReferenceType(r *wasm.Reader, typed bool, types internalReferenceTypes) (bool, error) {
+	lead, err := r.Byte()
+	if err != nil {
+		return false, err
 	}
-	if _, err := r.Byte(); err != nil {
-		return 0, err
+	if lead != 0x63 && lead != 0x64 {
+		return false, unsupported("expected explicit reference type")
 	}
 	heap, err := r.S33()
 	if err != nil {
-		return 0, err
+		return false, err
+	}
+	requiresTyped := lead == 0x64 || heap >= 0
+	if requiresTyped && !typed {
+		return false, unsupported("reference annotation requires retained typed-reference protocol")
 	}
 	if heap != -16 && !(typed && heap >= 0 && types.function(uint32(heap))) {
-		return 0, unsupported("explicit reference block requires abstract func or an admitted function-type index")
+		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}
-	return -16, nil
+	return requiresTyped, nil
 }
 
 // A select immediate is one value type, not a block type: preserve the caller's
