@@ -121,3 +121,27 @@ func (f *integerEmitter) localTailJump(index uint32) {
 	f.a.Add(enc.SP, enc.SP, enc.Scratch0)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(false), callee: index})
 }
+
+// Private owned-table tails select a same-instance framed wrapper. Dynamic
+// bounds/type/context guards finish before compact arenas are overwritten.
+// The target survives marshalling in X28; no reserved Go register is used.
+func (f *integerEmitter) localIndirectTailCall(sig *wasm.CompType, key uint64, base, indexSlot int, spill func(int) int32) {
+	if !f.admitLocalTailFrame() {
+		return
+	}
+	if f.mode.foreignTableCalls || spill == nil || sig == nil {
+		f.err = unsupported("owned indirect tail requires local framed target")
+		return
+	}
+	f.Load(5, spill(indexSlot), false)
+	f.ownedIndirectTarget(key)
+	f.a.Constant64(enc.X5, 15)
+	f.a.And(enc.X5, enc.X28, enc.X5)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X5, enc.Zero))
+	f.swarCallArguments(sig, base, spill)
+	f.restoreCallTransport()
+	f.a.Ld(enc.RA, enc.SP, 0)
+	f.a.Constant64(enc.Scratch0, int64(f.frameBytes))
+	f.a.Add(enc.SP, enc.SP, enc.Scratch0)
+	f.a.Jalr(enc.Zero, enc.X28, 0)
+}

@@ -155,13 +155,14 @@ func railshotReadNativeTail(r *compiledReader, c *Compiled) error {
 	return rv64ValidateNativeTail(c)
 }
 func railshotNativeTailArenaBytes(c *Compiled) int {
+	bytes := rv64TailTargetsArenaBytes(c)
 	if m := rv64NativeTailModule(c); m != nil && len(m.Plans) != 0 {
 		_, arena, err := railshot.NativeTailInstanceBudget(len(m.Plans), len(c.code))
 		if err == nil {
-			return arena
+			return bytes + arena
 		}
 	}
-	return 0
+	return bytes
 }
 func railshotNativeCodeBytes(c *Compiled) uint64 {
 	size := len(c.code)

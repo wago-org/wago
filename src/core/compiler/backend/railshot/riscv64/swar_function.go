@@ -425,7 +425,7 @@ func walkSWARPairsWithImportTailMode(fn *wasm.Func, ft *wasm.CompType, profile m
 			flow.live = false
 			flow.frames[flow.depth-1].unreachable = true
 			h = flow.floor()
-		case 0x11:
+		case 0x11, 0x13:
 			typeIndex, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -438,6 +438,15 @@ func walkSWARPairsWithImportTailMode(fn *wasm.Func, ft *wasm.CompType, profile m
 				return swarSummary{}, unsupported("SWAR indirect signature/table identity")
 			}
 			sig := types[typeIndex]
+			tail := op == 0x13
+			if tail {
+				if !localTailCalls || foreignTableCalls || importedFunctions != 0 {
+					return swarSummary{}, unsupported("SWAR owned defined indirect tail profile required")
+				}
+				if err := admitSWARLocalTailSignature(ft, sig); err != nil {
+					return swarSummary{}, err
+				}
+			}
 			calls++
 			budget += len(sig.Params) + len(sig.Results) + 1
 			if calls > maxDirectCalls || budget > integerBudget {
@@ -470,7 +479,18 @@ func walkSWARPairsWithImportTailMode(fn *wasm.Func, ft *wasm.CompType, profile m
 			}
 			usesTraps = true
 			if emit != nil {
-				emit.swarIndirectCall(sig, typeKeys[typeIndex], base, h-1, spill)
+				if tail {
+					emit.localIndirectTailCall(sig, typeKeys[typeIndex], base, h-1, spill)
+				} else {
+					emit.swarIndirectCall(sig, typeKeys[typeIndex], base, h-1, spill)
+				}
+			}
+			if tail {
+				flow.usesLoops = true
+				flow.live = false
+				flow.frames[flow.depth-1].unreachable = true
+				h = flow.floor()
+				continue
 			}
 			h = base
 			for _, typ := range sig.Results {

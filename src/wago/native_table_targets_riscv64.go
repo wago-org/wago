@@ -222,6 +222,9 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 	// Only after acquiring every reachable physical root do we examine rows.
 	// Raw refSlot/context fields never authorize dereferencing unknown storage.
 	for _, owner := range s.owners[:s.count] {
+		if err := rv64ValidateTailTargets(owner); err != nil {
+			return err
+		}
 		if owner.c.tableCount() == 0 {
 			continue
 		}

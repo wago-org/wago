@@ -642,7 +642,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			live = false
 			h = ctrl[depth-1].base
-		case 0x11:
+		case 0x11, 0x13:
 			typeIndex, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -655,23 +655,54 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("private table call_indirect shape")
 			}
 			sig := state.types[typeIndex]
-			tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
+			tail := op == 0x13
+			if tail {
+				// The private table profile owns every descriptor and excludes
+				// imported function proxies and foreign table/context transitions.
+				if !state.localTailCalls || state.foreignTableCalls || state.importedFunctions != 0 {
+					return integerSummary{}, unsupported("owned defined indirect tail profile required")
+				}
+				if e := admitLocalTailSignature(ft, sig.signature); e != nil {
+					return integerSummary{}, e
+				}
+			} else {
+				tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
+			}
 			callCount++
 			budget += len(sig.params) + len(sig.results)
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("indirect call count/slot budget")
 			}
-			if _, err = pop(); err != nil {
+			if tail {
+				err = popWidth(false)
+			} else {
+				_, err = pop()
+			}
+			if err != nil {
 				return integerSummary{}, err
 			}
 			indexSlot := h
-			for range sig.params {
-				if _, err = pop(); err != nil {
+			for j := len(sig.params) - 1; j >= 0; j-- {
+				if tail {
+					err = popWidth(sig.params[j])
+				} else {
+					_, err = pop()
+				}
+				if err != nil {
 					return integerSummary{}, err
 				}
 			}
 			if live && emit != nil {
-				emit.indirectCall(sig, h, indexSlot)
+				if tail {
+					emit.localIndirectTailCall(sig.signature, sig.key, h, indexSlot, emit.SpillOffset)
+				} else {
+					emit.indirectCall(sig, h, indexSlot)
+				}
+			}
+			if tail {
+				live = false
+				h = ctrl[depth-1].base
+				continue
 			}
 			for _, wide := range sig.results {
 				if err = push(wide); err != nil {

@@ -71,6 +71,9 @@ func rv64TailTypes(values []ValType) ([]wasm.ValType, error) {
 	return out, nil
 }
 func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64) error {
+	if err := rv64PrepareTailTargets(in, imports, sharedBase, sharedOffsets, ownedAddr); err != nil {
+		return err
+	}
 	m := rv64NativeTailModule(in.c)
 	if m == nil || len(m.Plans) == 0 {
 		return nil
@@ -138,6 +141,9 @@ func railshotReleaseNativeTail(in *Instance) {
 	if state == nil {
 		return
 	}
+	// These borrowed bytes share the descriptor arena's physical lifetime,
+	// including reference-only instances without a tail code dispatcher.
+	state.railshotInvocation.tailTargets = nil
 	owner := state.railshotInvocation.tailDispatcher
 	if owner == nil {
 		return

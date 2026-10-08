@@ -124,6 +124,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		return nil, err
 	}
 	state.localTailCalls = opts.localTailCalls
+	state.foreignTableCalls = opts.ForeignTableCalls
 	state.importTailCalls = opts.importTailCalls
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	importTailCount := 0
