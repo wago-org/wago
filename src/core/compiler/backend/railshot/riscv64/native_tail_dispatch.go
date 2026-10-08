@@ -40,13 +40,17 @@ type NativeTailSite struct {
 // NativeTailDispatcher owns published factory code and capability storage.
 // The owning instance binds it only after successful publication and closes it
 // only on final physical retirement, after all native/parked entry leases have
-// drained. It does not acquire an independent per-call lease or native Go root.
+// drained. Runtime graph leases may detach and later rebind a ready factory,
+// retaining its code across suspended records. External native serialization
+// and physical caller/target leases are required; no lease is acquired here.
 type NativeTailDispatcher struct {
 	code       *coreruntime.CodeBuffer
 	arena      *coreruntime.Arena
 	capability []byte
 	contexts   [][]byte
-	dynamic    []*tailRADynamicSite
+	dynamic    []nativeTailDynamicLease
+	callerHome uintptr
+	ready      bool
 	bound      bool
 }
 
@@ -171,7 +175,7 @@ func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, 
 	if err != nil {
 		return nil, err
 	}
-	o := new(NativeTailDispatcher)
+	o := &NativeTailDispatcher{callerHome: sites[0].CallerHome}
 	o.code, err = coreruntime.NewCodeBuffer(bound)
 	if err != nil {
 		return o, err
@@ -193,7 +197,7 @@ func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, 
 		p := nativeTailProofSite(s)
 		p.dynamic = s.dynamic.freeze()
 		if p.dynamic != nil {
-			o.dynamic = append(o.dynamic, p.dynamic)
+			o.dynamic = append(o.dynamic, nativeTailDynamicLease{p.dynamic, s.Target.HostTrampoline})
 		}
 		p.params = append([]wasm.ValType(nil), s.Parameters...)
 		p.results = append([]wasm.ValType(nil), s.Results...)
@@ -250,26 +254,22 @@ func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, 
 	for _, ctx := range o.contexts {
 		binary.LittleEndian.PutUint64(ctx[abi.RV64TailCapabilityOffset:], uint64(tailRAPointer(o.capability)))
 	}
-	o.bound = true
+	o.ready, o.bound = true, true
 	return o, nil
 }
 
 // Close detaches before releasing either mapping, and retains failed cleanup
 // owners for a retry. Final instance retirement must exclude live guest entries.
+// Failed Detach still borrows the caller context; keep its arena alive through
+// retry. After successful Detach, failed mapping cleanup may outlive that arena.
 func (o *NativeTailDispatcher) Close() error {
 	if o == nil {
 		return nil
 	}
-	if o.bound {
-		for _, ctx := range o.contexts {
-			if binary.LittleEndian.Uint64(ctx[abi.RV64TailCapabilityOffset:]) != uint64(tailRAPointer(o.capability)) {
-				return unsupported("native tail capability binding replaced")
-			}
-		}
-		for _, ctx := range o.contexts {
-			binary.LittleEndian.PutUint64(ctx[abi.RV64TailCapabilityOffset:], 0)
-		}
-		o.bound = false
+	// Cleanup failure must never make a partially retired factory callable again.
+	o.ready = false
+	if err := o.Detach(); err != nil {
+		return err
 	}
 	// Detached owners retry only mappings; they must not retain borrowed context
 	// or capability slices after the instance releases its arena.

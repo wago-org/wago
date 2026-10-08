@@ -121,6 +121,7 @@ func TestTailDynamicRV64ForeignCycleOneRecord(t *testing.T) {
 					}
 					owners = append(owners, derived)
 				}
+				var dispatchers []*NativeTailDispatcher
 				for _, fn := range []tailRAFunction{a, b} {
 					s := tailDynamicSiteForTest(t, fn, nil, fn.info.FrameBytes-8)
 					s.dynamic = nil
@@ -129,7 +130,7 @@ func TestTailDynamicRV64ForeignCycleOneRecord(t *testing.T) {
 					if err != nil {
 						t.Fatal("derived actual defined site", err)
 					}
-					tailDynamicBindForTest(t, s, len(a.snapshot)+len(b.snapshot)+len(root.Bytes()))
+					dispatchers = append(dispatchers, tailDynamicBindForTest(t, s, len(a.snapshot)+len(b.snapshot)+len(root.Bytes())))
 				}
 				var want []uint64
 				cell := 1
@@ -151,6 +152,14 @@ func TestTailDynamicRV64ForeignCycleOneRecord(t *testing.T) {
 				}
 				input := bytes.Clone(f.args)
 				invoke := func() error {
+					for i, dispatcher := range dispatchers {
+						if err := dispatcher.Detach(); err != nil {
+							return err
+						}
+						if err := dispatcher.Bind(owners[i]); err != nil {
+							return err
+						}
+					}
 					copy(f.args, input)
 					clear(f.witness[:16])
 					f.bind(t, f.e.StackLimit())
