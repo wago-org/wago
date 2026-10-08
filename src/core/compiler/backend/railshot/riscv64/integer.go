@@ -67,14 +67,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		locals[i] = scalarWide(t)
 	}
 	for _, run := range fn.Locals.Runs {
-		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && wasm.EqualValType(run.Type, wasm.FuncRef)) {
+		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && internalFunctionReference(run.Type, state.referenceCalls)) {
 			return integerSummary{}, unsupported("noninteger local")
 		}
 		if int(run.Count) > 256-nlocals {
 			return integerSummary{}, unsupported("local bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
-			localRefs[nlocals] = wasm.EqualValType(run.Type, wasm.FuncRef)
+			localRefs[nlocals] = internalFunctionReference(run.Type, true)
 			locals[nlocals] = scalarWide(run.Type) || localRefs[nlocals]
 			nlocals++
 		}
@@ -218,7 +218,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			h = ctrl[depth-1].base
 		case 0x01:
 		case 0x02, 0x03, 0x04:
-			bt, e := r.S33()
+			bt, e := internalReferenceBlockType(&r, privateRefs && state.referenceCalls)
 			if e != nil {
 				return integerSummary{}, e
 			}
@@ -1428,7 +1428,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	}
 	for _, run := range fn.Locals.Runs {
 		for i := uint32(0); i < run.Count; i++ {
-			widths[n] = scalarWide(run.Type) || wasm.EqualValType(run.Type, wasm.FuncRef)
+			widths[n] = scalarWide(run.Type) || internalFunctionReference(run.Type, true)
 			n++
 		}
 	}

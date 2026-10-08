@@ -269,11 +269,21 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 	referenceTails, hasReferenceCall, hasReferenceControl := false, false, false
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
+		for _, run := range fn.Locals.Runs {
+			if run.Type.Kind() == wasm.ValRef && !run.Type.Ref().Nullable() {
+				return false, false, false, unsupported("non-null local artifact contract is pending")
+			}
+		}
 		r := wasm.ReaderFrom(fn.BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
 				return false, false, false, err
+			}
+			if op == 0x02 || op == 0x03 || op == 0x04 {
+				if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
+					return false, false, false, unsupported("explicit reference block artifact contract is pending")
+				}
 			}
 			if op == 0x14 {
 				if !referenceCalls {

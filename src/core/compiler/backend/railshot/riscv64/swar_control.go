@@ -35,6 +35,7 @@ type swarFlow struct {
 	types           []*wasm.CompType
 	usesLoops       bool
 	privateRefs     bool
+	typedRefs       bool
 }
 
 func (flow *swarFlow) floor() int { return flow.frames[flow.depth-1].base }
@@ -247,7 +248,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		flow.frames[flow.depth-1].unreachable = true
 		*flow.h = flow.floor()
 	case 0x02, 0x03, 0x04:
-		bt, e := r.S33()
+		bt, e := internalReferenceBlockType(r, flow.privateRefs && flow.typedRefs)
 		if e != nil {
 			return false, false, e
 		}

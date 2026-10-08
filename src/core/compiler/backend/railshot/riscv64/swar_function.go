@@ -185,12 +185,12 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 	}
 	nlocals := len(ft.Params)
 	for _, run := range fn.Locals.Runs {
-		if (!swarCarrierType(run.Type) && !(privateRefs && wasm.EqualValType(run.Type, wasm.FuncRef))) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
+		if (!swarCarrierType(run.Type) && !(privateRefs && internalFunctionReference(run.Type, referenceCalls))) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
 			return swarSummary{}, unsupported("SWAR local type/bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
 			localClasses[nlocals] = swarClassOf(run.Type)
-			if privateRefs && wasm.EqualValType(run.Type, wasm.FuncRef) {
+			if privateRefs && internalFunctionReference(run.Type, referenceCalls) {
 				localClasses[nlocals] = swarFuncRef
 			}
 			nlocals++
@@ -235,7 +235,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 		}
 		return nil
 	}
-	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types, privateRefs: privateRefs}
+	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types, privateRefs: privateRefs, typedRefs: referenceCalls}
 	flow.frames[0] = swarControl{kind: 0xff, entry: true}
 	for _, typ := range ft.Results {
 		flow.frames[0].results = append(flow.frames[0].results, swarClassOf(typ))
