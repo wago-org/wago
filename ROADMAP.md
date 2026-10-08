@@ -21,7 +21,8 @@ operations and aliased imports. Memory64 adds per-memory address typing,
 carry-checked scalar/SWAR accesses and growth, mixed-width bulk operations and
 I64 initialization while retaining finite physical reservations. Fallback
 control nesting supports 128 constructs. Pinned integer/conversion, float,
-memory and control corpora extend public source/artifact qualification, and
+memory, control and complete factorial/call corpora extend public source/artifact
+qualification, including exact stack-exhaustion assertions, and
 diagnostics expose finalized code/frame statistics. Profiling builds now retain
 bounded finalized regions and optional sparse source maps, including deferred
 scalar origins and cold traps; wrapper/helper bytes remain unattributed.

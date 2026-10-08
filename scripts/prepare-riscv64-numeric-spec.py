@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prepare pinned Release 2/3 fixtures without fetching tools or source.
 
-Usage: scripts/prepare-riscv64-numeric-spec.py [--profile numeric|float|memory|control|multimemory|memory64] SPEC_CHECKOUT OUTPUT_DIRECTORY WAST2JSON
+Usage: scripts/prepare-riscv64-numeric-spec.py [--profile numeric|float|memory|control|multimemory|memory64|fac|call] SPEC_CHECKOUT OUTPUT_DIRECTORY WAST2JSON
 The default numeric profile preserves the original four-file corpus.
 Use the existing WABT 1.0.41 binary bootstrapped by scripts/bootstrap-wabt.sh.
 The output directory must not exist. Generation has a 30-second limit per
@@ -16,6 +16,8 @@ import subprocess
 import tempfile
 
 PROFILES = {
+    "fac": ("fac.wast",),
+    "call": ("call.wast",),
     "numeric": ("conversions.wast", "i32.wast", "i64.wast", "int_exprs.wast"),
     "float": ("f32.wast", "f64.wast", "f32_bitwise.wast", "f64_bitwise.wast", "f32_cmp.wast", "f64_cmp.wast"),
     "memory": ("load.wast", "store.wast", "address.wast", "memory_trap.wast", "endianness.wast"),

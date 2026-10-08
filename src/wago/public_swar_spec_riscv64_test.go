@@ -73,6 +73,7 @@ type rv64PublicSpecPolicy struct {
 	maxMemories                           int
 	maxInitialPages, maxTotalInitialPages uint64
 	memory64                              bool
+	maxLivePages                          uint32
 }
 
 func rv64PublicSpecDefaultPolicy() rv64PublicSpecPolicy {
@@ -83,6 +84,9 @@ func (p rv64PublicSpecPolicy) config() *RuntimeConfig {
 	cfg := NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes)
 	if p.features != 0 {
 		cfg = cfg.WithCoreFeatures(p.features)
+	}
+	if p.maxLivePages != 0 {
+		cfg = cfg.WithMemoryLimitPages(p.maxLivePages)
 	}
 	return cfg
 }
@@ -142,20 +146,37 @@ func rv64PublicSpecInstantiatePolicy(t *testing.T, source []byte, artifact bool,
 			t.Fatal(err)
 		}
 		in.compiled = loaded
-		// The streaming codec intentionally retains a readable/writable image.
-		// Callable publication happens only after activation seals it and
-		// synchronizes the Linux process-wide instruction cache.
-		if loaded.requiredAMD64Features != 0 {
-			t.Fatal("artifact selected a foreign ISA")
-		}
-		if loaded.hasNoFunctionCode() {
-			if loaded.codeCache.base != 0 || loaded.codeCache.mem != nil || loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode != 0 {
-				t.Fatal("state-only artifact allocated or published a code mapping")
-			}
-		} else if loaded.codeCache.base == 0 || loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode == 0 {
-			t.Fatal("artifact did not retain its pending RW baseline image")
-		}
+		rv64PublicSpecPendingArtifact(t, loaded)
 	}
+	if err := in.activate(t, registered, policy); err != nil {
+		return nil, err
+	}
+	complete = true
+	return in, nil
+}
+
+func rv64PublicSpecPendingArtifact(t *testing.T, loaded *Compiled) {
+	t.Helper()
+	// The streaming codec intentionally retains a readable/writable image.
+	// Callable publication happens only after activation seals it and
+	// synchronizes the Linux process-wide instruction cache.
+	if loaded.requiredAMD64Features != 0 {
+		t.Fatal("artifact selected a foreign ISA")
+	}
+	if loaded.hasNoFunctionCode() {
+		if loaded.codeCache.base != 0 || loaded.codeCache.mem != nil || loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode != 0 {
+			t.Fatal("state-only artifact allocated or published a code mapping")
+		}
+	} else if loaded.codeCache.base == 0 || loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode == 0 {
+		t.Fatal("artifact did not retain its pending RW baseline image")
+	}
+
+}
+
+// activate applies execution quotas to both freshly compiled modules and
+// externally prepared artifacts. The caller retains ownership on failure.
+func (in *rv64PublicSpecInstance) activate(t *testing.T, registered map[string]*rv64PublicSpecInstance, policy rv64PublicSpecPolicy) error {
+	t.Helper()
 	if in.compiled.NumImports != 0 || in.compiled.memoryImportCount() != 0 || in.compiled.tableImportCount() != 0 || len(in.compiled.GlobalImports) > 16 {
 		t.Fatal("unexpected public fixture resource shape")
 	}
@@ -168,11 +189,11 @@ func rv64PublicSpecInstantiatePolicy(t *testing.T, source []byte, artifact bool,
 		for _, imp := range in.compiled.GlobalImports {
 			owner := registered[imp.Module]
 			if owner == nil || owner.instance == nil {
-				return nil, fmt.Errorf("unregistered public spec module %q", imp.Module)
+				return fmt.Errorf("unregistered public spec module %q", imp.Module)
 			}
 			global, err := owner.instance.ExportedGlobalObject(imp.Name)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			in.globals = append(in.globals, global)
 			imports.Global(imp.Module, imp.Name, global)
@@ -180,7 +201,8 @@ func rv64PublicSpecInstantiatePolicy(t *testing.T, source []byte, artifact bool,
 	}
 	// Only the current module and explicitly registered owners stay live.
 	// Memory32 backs only the bounded initial pages.
-	in.instance, err = Instantiate(in.compiled, InstantiateOptions{nativeStackBytes: MinNativeStackBytes, Imports: imports})
+	var err error
+	in.instance, err = Instantiate(in.compiled, InstantiateOptions{nativeStackBytes: MinNativeStackBytes, memoryLimitPages: policy.maxLivePages, Imports: imports})
 	if err != nil {
 		t.Fatal("instantiate pinned module", err)
 	}
@@ -190,8 +212,10 @@ func rv64PublicSpecInstantiatePolicy(t *testing.T, source []byte, artifact bool,
 	if in.compiled.hasNoFunctionCode() && (in.compiled.codeCache.base != 0 || in.compiled.codeCache.mem != nil || in.compiled.codeCache.sealed || in.compiled.codeCache.flags&compiledCacheWritableCode != 0) {
 		t.Fatal("state-only activation allocated or published a code mapping")
 	}
-	complete = true
-	return in, nil
+	if policy.maxLivePages != 0 && in.compiled.memoryCount() != 0 && in.instance.jm.MemoryDirPtr() == 0 {
+		t.Fatal("public spec live memory quota directory missing")
+	}
+	return nil
 }
 func (in *rv64PublicSpecInstance) invoke(t *testing.T, command simdfixture.Command, overflowTrap coreruntime.TrapCode) {
 	t.Helper()
@@ -242,6 +266,12 @@ func (in *rv64PublicSpecInstance) invoke(t *testing.T, command simdfixture.Comma
 		t.Fatal("public spec compact result bound")
 	}
 	got, err := in.instance.Invoke(command.Action.Field, args...)
+	if command.Type == "assert_exhaustion" {
+		if matchErr := rv64PublicSpecExhaustionError(command.Text, got, err); matchErr != nil {
+			t.Fatalf("public spec exhaustion line %d %s: %v", command.Line, command.Action.Field, matchErr)
+		}
+		return
+	}
 	if command.Type == "assert_trap" {
 		var trap *coreruntime.TrapError
 		want, known := rv64PublicSpecTrapCode(command.Text, overflowTrap)
@@ -358,7 +388,7 @@ func rv64PublicSpecRunPolicy(t *testing.T, dir string, manifest *simdfixture.Man
 								t.Fatalf("valid public spec module %s: %v", command.Filename, err)
 							}
 							counts["modules"]++
-						case "assert_return", "assert_trap":
+						case "assert_return", "assert_trap", "assert_exhaustion":
 							if current == nil {
 								t.Fatal("public action without an admitted current module", command.Line)
 							}
@@ -472,6 +502,8 @@ func rv64PublicSpecInvalidError(text string, err error) error {
 		want = wasm.ErrUnknownLocal
 	case "unknown label":
 		want = wasm.ErrUnknownLabel
+	case "unknown function":
+		want = wasm.ErrUnknownFunc
 	default:
 		return fmt.Errorf("unknown pinned validation diagnostic %q", text)
 	}

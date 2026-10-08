@@ -32,7 +32,7 @@ func TestRV64PublicPinnedNumericSpecExecution(t *testing.T) {
 }
 
 func rv64PublicNumericManifest(dir, profile string) (*simdfixture.Manifest, error) {
-	if profile != "numeric" && profile != "float" && profile != "memory" && profile != "control" && profile != "multimemory" && profile != "memory64" {
+	if profile != "numeric" && profile != "float" && profile != "memory" && profile != "control" && profile != "multimemory" && profile != "memory64" && profile != "fac" && profile != "call" {
 		return nil, fmt.Errorf("unknown pinned numeric profile %q", profile)
 	}
 	data, err := simdfixture.Read(dir, "rv64-"+profile+"-manifest.json", 256<<10)
@@ -54,6 +54,10 @@ func rv64PublicNumericProvenance(manifest *simdfixture.Manifest, profile string)
 	commit := "05ca4182176763112561ae20153975c12bd689e4"
 	switch profile {
 	case "numeric":
+	case "fac":
+		sourceHash, fileHash, sourceCount, fileCount = rv64FacSpecSourcesSHA256, rv64FacSpecFilesSHA256, 1, 2
+	case "call":
+		sourceHash, fileHash, sourceCount, fileCount = rv64CallSpecSourcesSHA256, rv64CallSpecFilesSHA256, 1, 20
 	case "float":
 		sourceHash, fileHash, sourceCount, fileCount = rv64FloatSpecSourcesSHA256, rv64FloatSpecFilesSHA256, 6, 56
 	case "memory":

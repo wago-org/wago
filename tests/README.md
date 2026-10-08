@@ -547,6 +547,36 @@ The Linux ARM64 execution tests also exercise aliased in-place shuffles and
 movemask operands, checking lane results and preservation of the source vector.
 Portable byte checks alone do not qualify native execution.
 
+### Experimental RV64 factorial and call conformance
+
+`scripts/prepare-riscv64-numeric-spec.py --profile fac` and `--profile call`
+prepare complete files from the pinned Release 2 checkout using WABT 1.0.41.
+Pass the existing spec checkout, a new output directory and the pinned
+`wast2json` executable as positional arguments. Preparation verifies source and
+tool provenance without downloading either. Set `WAGO_RV64_FAC_SPEC_JSON_DIR`
+and `WAGO_RV64_CALL_SPEC_JSON_DIR` to the resulting directories.
+
+Run `TestRV64PublicPinnedFacSpecExecution` and
+`TestRV64PublicPinnedCallSpecExecution` in Linux/RV64 test binaries built with
+`wago_rv64_experimental`, both with and without `wago_regalloccheck`.
+The source and trusted-artifact paths each account for all 99 commands:
+two modules, 75 returns, one ordinary trap, three stack-exhaustion assertions,
+and 18 invalid binaries. Exhaustion requires the exact typed stack-fence trap
+and no results; interruption and timeout cannot pass. Each activation uses a
+512 KiB native stack. The call corpus has a 307-page live-memory quota, reapplied
+on artifact instantiation; factorial admits no memory.
+
+For actual compiler-free execution, run
+`TestRV64PublicPinnedCallSpecPreparedArtifacts` with
+`WAGO_RV64_CALL_STAGE_ARTIFACT_MODE=prepare` in the compiler-enabled binary and
+`WAGO_RV64_CALL_STAGE_ARTIFACT_DIR` naming a fresh directory. Run the same test
+with mode `load` in a binary additionally built with `wago_precompiled`.
+Keep both fixture variables set. Artifacts are digest-bound to their source and
+fixture manifests; load mode rejects a compiler-enabled binary. These execution
+runs report the 18 source-invalid commands as requiring separate source
+validation, never as compiler-free validation passes. QEMU qualification proves
+correctness only, not native cache behavior or performance.
+
 ## Indexed vector loads in the AMD64 allocation checker
 
 `src/core/encoder/amd64/indexed_vector_enabled_test.go` verifies that indexed

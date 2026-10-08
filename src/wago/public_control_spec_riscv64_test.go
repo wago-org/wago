@@ -12,7 +12,7 @@ const rv64ControlSpecFilesSHA256 = "023c706b0c1fbbc5b14da9a3e004c57619b9527e84bc
 
 // TestRV64PublicPinnedControlSpecExecution qualifies ten complete locals and
 // structured-control files. The separate br_table file needs reference-value
-// transport; the call file additionally needs stack-exhaustion assertions.
+// transport; call and factorial have separate bounded recursion profiles.
 func TestRV64PublicPinnedControlSpecExecution(t *testing.T) {
 	dir := os.Getenv("WAGO_RV64_CONTROL_SPEC_JSON_DIR")
 	if dir == "" {
