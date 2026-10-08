@@ -399,6 +399,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		} else {
 			restore = nativeExecutionEpoch != epoch
 		}
+		restore = restore || railshotParkedNativeContextChanged(active, ctrl, parkedNativeInvocation)
 		if restore {
 			// Foreign producer reentry can replace its custom-context word while
 			// preparing its own engine. Read that Go snapshot under its life lock.

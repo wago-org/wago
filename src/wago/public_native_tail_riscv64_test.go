@@ -180,8 +180,9 @@ func TestRV64PublicNativeTailAdmissionAndCodec(t *testing.T) {
 		t.Fatal("public default tail gate opened", err)
 	}
 	c := rv64NativeTailCompile(t, "native-tail-admission", source, false)
-	if in, err := Instantiate(c, testImports("env.tail", func(v int32) int32 { return v })); in != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("Go target published", err)
+	vector := rv64NativeTailCompile(t, "native-tail-vector-host-reject", rv64PublicTailModule([]wasm.ValType{wasm.V128}, false), false)
+	if in, err := Instantiate(vector, testImports("env.tail", HostCallFunc(func(HostCall) {}))); in != nil || !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("vector host target published", err)
 	}
 	// The isolated appendix permits exact negative controls without publishing
 	// any executable bytes or relying on a corrupt-artifact checksum failure.

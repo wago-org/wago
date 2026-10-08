@@ -13,7 +13,8 @@ import (
 )
 
 // Reject every unsupported target before caller code publication. Normal Go
-// callbacks and reexport bridges have a different return/ownership protocol.
+// callbacks use retained synchronous RV64 wrappers in the caller's context.
+// Reexport bridges still have a different return/ownership protocol.
 func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 	m := rv64NativeTailModule(c)
 	if m == nil {
@@ -22,7 +23,12 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 	for _, p := range m.Plans {
 		target, ok := imports[c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
 		if !ok {
-			return fmt.Errorf("%w: RV64 staged imported tail requires a defined native target", railshot.ErrUnsupported)
+			if err := rv64ScalarHostSignature(c.importFuncSigs[p.ImportIndex]); err != nil {
+				return err
+			}
+			// The ordinary import admission below authenticates callback/owned
+			// handle bindings before mapping or retaining their owners.
+			continue
 		}
 		if err := railshotValidateNativeExport(c, int(p.ImportIndex), target); err != nil {
 			return err
@@ -64,7 +70,7 @@ func rv64TailTypes(values []ValType) ([]wasm.ValType, error) {
 	}
 	return out, nil
 }
-func railshotPrepareNativeTail(in *Instance, imports resolvedImports) error {
+func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64) error {
 	m := rv64NativeTailModule(in.c)
 	if m == nil || len(m.Plans) == 0 {
 		return nil
@@ -83,14 +89,6 @@ func railshotPrepareNativeTail(in *Instance, imports resolvedImports) error {
 	}
 	sites := make([]railshot.NativeTailSite, len(m.Plans))
 	for i, p := range m.Plans {
-		target, ok := imports[in.c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
-		if !ok || target.inst == nil {
-			return fmt.Errorf("RV64 staged tail lost attached native target")
-		}
-		producer := target.inst
-		if producer.jm == nil || target.localIdx < 0 || target.localIdx >= len(producer.c.Entry) {
-			return fmt.Errorf("RV64 staged tail invalid attached target")
-		}
 		sig := in.c.importFuncSigs[p.ImportIndex]
 		params, err := rv64TailTypes(sig.Params)
 		if err != nil {
@@ -101,11 +99,34 @@ func railshotPrepareNativeTail(in *Instance, imports resolvedImports) error {
 			return err
 		}
 		sites[i] = railshot.NativeTailSite{
-			CallerHome: in.jm.LinMemBase(), CallerContext: rv64NativeInvocationContext(in), TargetContext: rv64NativeInvocationContext(producer),
-			Target:     railshot.NativeImportTarget{Entry: producer.base + uintptr(producer.c.Entry[target.localIdx]), Home: producer.jm.LinMemBase(), Context: producer.nativeContext, HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true},
+			CallerHome: in.jm.LinMemBase(), CallerContext: rv64NativeInvocationContext(in),
 			FrameBytes: p.FrameBytes, SourceBase: p.SourceBase, SourceStride: p.SourceStride, FunctionIndex: p.FunctionIndex, SourcePC: p.SourcePC, Parameters: params, Results: results,
 			Continuations: []railshot.NativeTailCodeRange{{Base: in.base, Bytes: uintptr(len(in.c.code))}},
 		}
+		if target, native := imports[in.c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport); native {
+			if target == nil || target.inst == nil || target.inst.jm == nil || target.localIdx < 0 || target.localIdx >= len(target.inst.c.Entry) {
+				return fmt.Errorf("RV64 staged tail invalid attached native target")
+			}
+			producer := target.inst
+			sites[i].TargetContext = rv64NativeInvocationContext(producer)
+			sites[i].Target = railshot.NativeImportTarget{Entry: producer.base + uintptr(producer.c.Entry[target.localIdx]), Home: producer.jm.LinMemBase(), Context: producer.nativeContext, HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}
+			continue
+		}
+		if !in.syncMode {
+			return fmt.Errorf("RV64 staged tail requires synchronous host protocol")
+		}
+		// Use only addresses returned by this construction's trusted thunk
+		// owners; never dereference a caller-supplied native dispatch pointer.
+		entry := uintptr(ownedAddr[p.ImportIndex])
+		if entry == 0 && int(p.ImportIndex) < len(sharedOffsets) && sharedOffsets[p.ImportIndex] != noHostThunkOffset {
+			entry = sharedBase + uintptr(sharedOffsets[p.ImportIndex])
+		}
+		if entry == 0 {
+			return fmt.Errorf("RV64 staged tail lost retained host wrapper")
+		}
+		sites[i].HostEntry = true
+		sites[i].TargetContext = rv64NativeInvocationContext(in)
+		sites[i].Target = railshot.NativeImportTarget{Entry: entry, Home: in.jm.LinMemBase(), Context: in.nativeContext, HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}
 	}
 	owner, err := railshot.NewNativeTailDispatcherInArena(sites, len(in.c.code), in.ar)
 	// Install cleanup ownership even if publication failed partway through.

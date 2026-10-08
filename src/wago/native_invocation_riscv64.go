@@ -48,3 +48,10 @@ func railshotRestoreSavedNativeInvocation(in *Instance, pointer uintptr) {
 func railshotParkedNativeInvocation(active *Instance) uintptr {
 	return active.jm.RV64InvocationView()
 }
+
+// A native foreign hop can replace this shared home without changing the Go
+// prototype/version. Resume compares the exact parked control and live view
+// under the reacquired native lease before trusting a reusable context.
+func railshotParkedNativeContextChanged(in *Instance, ctrl, view uintptr) bool {
+	return in.jm.CaptureInstanceContext().CustomCtx != ctrl || in.jm.RV64InvocationView() != view
+}

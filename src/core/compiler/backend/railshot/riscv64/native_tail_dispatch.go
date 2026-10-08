@@ -19,12 +19,15 @@ type NativeTailCodeRange struct{ Base, Bytes uintptr }
 // exact source signature and authentic defined target attachment checks. Both
 // contexts, homes, target/caller images and their physical owners must remain
 // retained by the instance/entry lease through native execution, host parks and
-// cold decoration. A host or reexport bridge is not a proper-tail target.
+// cold decoration. HostEntry selects a retained synchronous RV64 host wrapper
+// in the caller's own home/context. It never accepts a raw Go function address.
+// A reexport bridge is not a proper-tail target.
 // No process addresses from this descriptor may enter a persisted artifact.
 type NativeTailSite struct {
 	CallerHome                           uintptr
 	CallerContext, TargetContext         []byte
 	Target                               NativeImportTarget
+	HostEntry                            bool
 	FrameBytes, SourceBase, SourceStride int
 	FunctionIndex, SourcePC              uint32
 	Parameters, Results                  []wasm.ValType
@@ -77,7 +80,7 @@ func nativeTailProofSite(s NativeTailSite) tailRAProofSite {
 	for n, r := range s.Continuations {
 		ranges[n] = tailRARange{r.Base, r.Bytes}
 	}
-	return tailRAProofSite{invocationContext: true, frameBytes: s.FrameBytes, functionIndex: s.FunctionIndex, sourcePC: s.SourcePC, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: tailRAPointer(s.TargetContext), hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: ranges}
+	return tailRAProofSite{invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, functionIndex: s.FunctionIndex, sourcePC: s.SourcePC, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: tailRAPointer(s.TargetContext), hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: ranges}
 }
 
 // Validate all aggregate bounds and source homes before allocating native data,
@@ -99,7 +102,7 @@ func nativeTailDispatcherBound(sites []NativeTailSite, guestCodeBytes int) (int,
 		}
 		metadata += cost
 		// Validate ranges and source homes without copying their payloads first.
-		p := tailRAProofSite{invocationContext: true, frameBytes: s.FrameBytes, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: s.Target.Context, hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: []tailRARange{{s.Continuations[0].Base, s.Continuations[0].Bytes}}}
+		p := tailRAProofSite{invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: s.Target.Context, hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: []tailRARange{{s.Continuations[0].Base, s.Continuations[0].Bytes}}}
 		if err := p.validate(); err != nil {
 			return 0, err
 		}

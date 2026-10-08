@@ -42,6 +42,7 @@ func (r tailRARange) valid(alignment uintptr) bool {
 // of their cleanup obligations.
 type tailRAProofSite struct {
 	invocationContext                                bool
+	hostEntry                                        bool
 	frameBytes                                       int
 	functionIndex, sourcePC                          uint32
 	callerHome, callerContext                        uintptr
@@ -98,6 +99,18 @@ func (s *tailRAProofSite) validate() error {
 	}
 	if err := tailRASignature(&wasm.CompType{Kind: wasm.CompFunc, Params: s.params, Results: s.results}); err != nil {
 		return err
+	}
+	if s.hostEntry {
+		if !s.invocationContext || s.target.home != s.callerHome || s.target.context != s.callerContext || len(s.params) > 64 || len(s.results) > 64 {
+			return unsupported("native tail host wrapper context/capacity")
+		}
+		for _, values := range [][]wasm.ValType{s.params, s.results} {
+			for _, typ := range values {
+				if wasm.EqualValType(typ, wasm.V128) {
+					return unsupported("native tail host wrapper scalar transport")
+				}
+			}
+		}
 	}
 	if s.target.entry == 0 || s.target.entry&15 != 0 || s.target.home == 0 || s.target.home&7 != 0 || s.target.context == 0 || s.target.context&7 != 0 || s.target.hostTrampoline == 0 || s.target.hostTrampoline&3 != 0 {
 		return unsupported("private tail target identities")
@@ -512,6 +525,13 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 		// record's own view so nested ordinary calls keep full transport.
 		a.Ld(enc.X15, enc.X25, -abi.RV64InvocationViewOffset)
 		nativeInvocationActivation(a, enc.X15, tailRARecordBytes, tailRAArgsOffset, tailRAResultsOffset)
+		if s.hostEntry {
+			// A qualified host wrapper saves/restores RA, but has no guest
+			// prologue to initialize the authenticated view's first return.
+			// Freeze the common exit before the wrapper can park or reenter.
+			a.Constant64(enc.Scratch0, int64(exit))
+			a.Sd(enc.Scratch0, enc.X9, abi.RV64InvocationFirstRAOffset)
+		}
 		a.Sd(enc.X9, enc.X11, -abi.RV64InvocationViewOffset)
 	}
 	for _, field := range nativeImportContextFields {

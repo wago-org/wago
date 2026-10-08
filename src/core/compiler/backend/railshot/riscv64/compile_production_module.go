@@ -175,7 +175,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 		tail = &enc.NativeTailModule{}
 		values := 0
 		for _, p := range *opts.tailPlans {
-			sig, ok := opts.tailModule.ImportFuncType(int(p.importIndex))
+			sig, ok := opts.tailModule.FuncSignature(p.importIndex)
 			if !ok {
 				return nil, unsupported("staged tail import signature metadata")
 			}

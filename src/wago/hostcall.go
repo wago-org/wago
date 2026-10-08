@@ -2222,7 +2222,7 @@ func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, boo
 	return binding, true
 }
 
-func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
+func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, ctrl uintptr, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
 	enteredGate := false
 	if binding.gate != nil && (invocation.reservation == nil || !invocation.reservation.allows(binding.gate)) {
 		if err := binding.gate.enter(); err != nil {
@@ -2269,6 +2269,7 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHos
 		})
 		return
 	}
+	scope = railshotCallbackHostScope(in, ctrl, scope)
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
@@ -2294,6 +2295,7 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 	defer gcTemps.release(in)
+	scope = railshotCallbackHostScope(in, ctrl, scope)
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = exact
 	var gcResultTemps gcHostTempTokens
@@ -2339,7 +2341,7 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 }
 
 func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
-	scope := railshotCallbackHostScope(in, ctrl, &in.ensurePluginState().hostScope)
+	scope := &in.ensurePluginState().hostScope
 	if importIdx&shared.AtomicWaitDispatchBit != 0 {
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
@@ -2383,7 +2385,7 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 	}
 	binding := &in.syncHosts[importIdx]
 	if binding.scalarKind != syncHostNonScalar {
-		dispatchSyncHostScalar(in, scope, binding, args, results, invocation)
+		dispatchSyncHostScalar(in, scope, ctrl, binding, args, results, invocation)
 	} else {
 		dispatchSyncHostReference(in, scope, ctrl, importIdx, binding, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
 	}

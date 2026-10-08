@@ -12,3 +12,5 @@ func railshotSaveNativeInvocation(*Instance) uintptr                { return 0 }
 func railshotRestoreSavedNativeInvocation(*Instance, uintptr)       {}
 
 func railshotParkedNativeInvocation(*Instance) uintptr { return 0 }
+
+func railshotParkedNativeContextChanged(*Instance, uintptr, uintptr) bool { return false }

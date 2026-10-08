@@ -1745,7 +1745,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		moduleIdentity:     opts.moduleIdentity,
 	}
 	tailInstance = in
-	if err := railshotPrepareNativeTail(in, imports); err != nil {
+	if err := railshotPrepareNativeTail(in, imports, sharedThunkBase, sharedThunkOffsets, ownedThunkAddr); err != nil {
 		return nil, err
 	}
 	if len(importRefEntries) != 0 {
