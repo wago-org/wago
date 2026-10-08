@@ -86,7 +86,7 @@ type NativeTailImport struct {
 // converting runtime types. Producer functions/images are charged separately;
 // certificates belong to the already charged importer lifetime.
 func NativeTailImportedOwnerBytes(count, imports, values int) (int, error) {
-	if count <= 1 || count > MaxFunctions || imports <= 0 || imports >= count || imports > MaxHostFunctionImports || values < 0 || values > 512*count {
+	if count <= 0 || count > MaxFunctions || imports <= 0 || imports > count || imports > MaxHostFunctionImports || values < 0 || values > 512*count {
 		return 0, unsupported("native imported tail owner metadata count")
 	}
 	size := int(unsafe.Sizeof(NativeTailOwner{})) + 2*int(unsafe.Sizeof(NativeTailCodeImage{})) + count*(2*int(unsafe.Sizeof(tailRAFunction{}))+3*int(unsafe.Sizeof(wasm.CompType{}))+8+int(unsafe.Sizeof((*tailRADynamicProxy)(nil)))) + imports*(int(unsafe.Sizeof(NativeTailImport{}))+int(unsafe.Sizeof(tailRADynamicProxy{}))) + 3*values*int(unsafe.Sizeof(wasm.ValType{}))
@@ -113,16 +113,24 @@ func NativeTailHostOwnerBytes(count, imports, values int) (int, error) {
 // NewNativeTailImportedOwner preserves canonical wrapper rows while selecting
 // certified native definitions or host wrappers. Entries contain only definitions;
 // signatures include imports first, in the full Wasm function namespace.
+// An import-only owner has no guest image or entries. Its certified import images
+// authenticate the physical owner before any borrowed context is inspected.
 func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, descriptors, directory []byte, entries []int, signatures []wasm.CompType, imports []NativeTailImport, trampoline uintptr) (*NativeTailOwner, error) {
 	n, ni := len(signatures), len(imports)
 	if _, err := NativeTailImportedOwnerBytes(n, ni, 0); err != nil {
 		return nil, err
 	}
-	if len(entries) < n-ni || len(entries) > 2*MaxFunctions || len(context) != abi.RV64InstanceContextBytes || len(descriptors) != 40*(n+1) || len(directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*n || image == nil || job == nil || trampoline == 0 || trampoline&3 != 0 {
+	if len(entries) < n-ni || len(entries) > 2*MaxFunctions || len(context) != abi.RV64InstanceContextBytes || len(descriptors) != 40*(n+1) || len(directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*n || job == nil || trampoline == 0 || trampoline&3 != 0 {
 		return nil, unsupported("native imported tail owner extent")
 	}
-	if err := image.Validate(); err != nil {
-		return nil, err
+	if n == ni {
+		if image != nil || len(entries) != 0 {
+			return nil, unsupported("import-only tail owner has a guest image")
+		}
+	} else {
+		if err := image.Validate(); err != nil {
+			return nil, err
+		}
 	}
 	// No retained allocation or native publication precedes all count, image,
 	// signature and exact bridge provenance checks.

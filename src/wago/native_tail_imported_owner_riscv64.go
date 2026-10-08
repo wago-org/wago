@@ -14,7 +14,7 @@ import (
 // canonical descriptor snapshots; a bare producer keeps its existing anchor.
 // Counts are checked without allocating any converted signatures or images.
 func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCounts, metadata int, err error) {
-	if _, err = (rv64TailCodeOwner{in}).NativeTailCodeView(); err != nil {
+	if _, err = (rv64TailCodeOwner{in}).nativeOwnerCodeView(true); err != nil {
 		return counts, 0, err
 	}
 	c := in.c
@@ -25,7 +25,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		return counts, 0, nil
 	}
 	n := len(c.FuncTypeID)
-	if n <= c.NumImports || n > railshot.MaxFunctions || n-c.NumImports > len(c.Funcs) || n-c.NumImports > len(c.Entry) {
+	if n == 0 || n < c.NumImports || n > railshot.MaxFunctions || n-c.NumImports > len(c.Funcs) || n-c.NumImports > len(c.Entry) || n == c.NumImports && (len(c.Funcs) != 0 || len(c.Entry) != 0) {
 		return counts, 0, rv64TailGenerationError("indexed owner function arena")
 	}
 	counts.Owners, counts.Functions = 1, n
@@ -132,9 +132,13 @@ func rv64NewNativeTailOwner(in *Instance, counts railshot.NativeTailOwnerCounts)
 	if in.c.NumImports == 0 {
 		return rv64NewNativeDefinedTailOwner(in, counts.Functions, counts.Values)
 	}
-	image, err := railshot.NewNativeTailCodeImage(rv64TailCodeOwner{in})
-	if err != nil {
-		return nil, err
+	var image *railshot.NativeTailCodeImage
+	var err error
+	if counts.Functions != in.c.NumImports {
+		image, err = railshot.NewNativeTailCodeImage(rv64TailCodeOwner{in})
+		if err != nil {
+			return nil, err
+		}
 	}
 	state := &in.ensurePluginState().railshotInvocation
 	var wrappers *railshot.NativeTailCodeImage

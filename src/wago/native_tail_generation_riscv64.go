@@ -106,12 +106,14 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		counts.ProxySlots += actual.ProxySlots
 		counts.Proxies += actual.Proxies
 		counts.HostSlots += actual.HostSlots
-		view, err := (rv64TailCodeOwner{owner}).NativeTailCodeView()
+		view, err := (rv64TailCodeOwner{owner}).nativeOwnerCodeView(true)
 		if err != nil {
 			return nil, err
 		}
-		if err := addRange(view); err != nil {
-			return nil, err
+		if len(view) != 0 {
+			if err := addRange(view); err != nil {
+				return nil, err
+			}
 		}
 		// Static factories belong to their particular instances, even when guest
 		// images are shared. Include their existing publication charge when a
@@ -310,7 +312,7 @@ func (g *rv64NativeTailGeneration) validate() error {
 					if err := snapshot.Validate(); err != nil {
 						return err
 					}
-				} else if _, err := (rv64TailCodeOwner{owner}).NativeTailCodeView(); err != nil {
+				} else if _, err := (rv64TailCodeOwner{owner}).nativeOwnerCodeView(true); err != nil {
 					return err
 				}
 				if state := owner.pluginState.Load(); state != nil && state.railshotInvocation.nativeImports != nil {

@@ -204,7 +204,7 @@ func TestNativeTailHostOwnerRejectsUnboundedCounts(t *testing.T) {
 			t.Fatal("invalid host pointer count", slots, err)
 		}
 	}
-	for _, counts := range [][3]int{{0, 0, 0}, {1, 1, 0}, {MaxFunctions + 1, 1, 0}, {2, 1, 1025}} {
+	for _, counts := range [][3]int{{0, 0, 0}, {1, 2, 0}, {MaxFunctions + 1, 1, 0}, {2, 1, 1025}} {
 		if _, err := NativeTailHostOwnerBytes(counts[0], counts[1], counts[2]); !errors.Is(err, ErrUnsupported) {
 			t.Fatal("invalid host owner count", counts, err)
 		}

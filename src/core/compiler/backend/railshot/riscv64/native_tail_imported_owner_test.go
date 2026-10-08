@@ -137,7 +137,7 @@ func TestNativeTailImportedOwnerCertifiedIdentityAndBudgets(t *testing.T) {
 }
 
 func TestNativeTailImportedOwnerRejectsUnboundedCounts(t *testing.T) {
-	for _, counts := range [][3]int{{0, 0, 0}, {1, 1, 0}, {2, 0, 0}, {MaxFunctions + 1, 1, 0}, {2, 1, 1025}, {2, 1, -1}} {
+	for _, counts := range [][3]int{{0, 0, 0}, {1, 2, 0}, {2, 0, 0}, {MaxFunctions + 1, 1, 0}, {2, 1, 1025}, {2, 1, -1}} {
 		if _, err := NativeTailImportedOwnerBytes(counts[0], counts[1], counts[2]); !errors.Is(err, ErrUnsupported) {
 			t.Fatal("invalid owner counts", counts, err)
 		}
