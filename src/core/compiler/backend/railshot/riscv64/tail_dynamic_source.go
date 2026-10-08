@@ -50,6 +50,30 @@ func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.Com
 	f.tailRAProofCall(p.site, sig, base, spill)
 }
 
+// A typed reference is already a full-width stack carrier. Its declared type
+// remains separate from the source/target function namespace. Only the retained
+// factory may authenticate or dereference the selected canonical descriptor.
+func (f *integerEmitter) dynamicReferenceTailCall(typeIndex uint32, sig *wasm.CompType, base, referenceSlot int, spill func(int) int32, stride int) {
+	if !f.mode.dynamicTailCalls || !f.mode.importTailCalls || !f.mode.invocationContext || !f.mode.foreignTableCalls || f.mode.tailPlans == nil || !f.admitLocalTailFrame() || sig == nil || spill == nil || typeIndex >= MaxFunctions {
+		f.err = unsupported("private dynamic reference source contract")
+		return
+	}
+	n := len(*f.mode.tailPlans)
+	if f.mode.tailSiteBase > tailRAMaxSites || n >= tailRAMaxSites-int(f.mode.tailSiteBase) {
+		f.err = unsupported("private dynamic reference site bound")
+		return
+	}
+	p := tailImportPlan{kind: 2, typeIndex: typeIndex, referenceBase: int(spill(referenceSlot)), site: f.mode.tailSiteBase + uint32(n), functionIndex: f.mode.functionIndex, sourcePC: f.sourcePC, sourceBase: int(spill(base)), sourceStride: stride}
+	if (stride != 8 && stride != 16) || p.sourceBase < callFrameHeader || p.sourceBase > f.frameBytes || len(sig.Params) > (f.frameBytes-p.sourceBase)/stride || p.referenceBase < callFrameHeader || p.referenceBase > f.frameBytes-8 || p.referenceBase&7 != 0 || p.referenceBase < p.sourceBase+len(sig.Params)*stride {
+		f.err = unsupported("private dynamic typed reference/argument homes")
+		return
+	}
+	f.a.Ld(enc.X14, enc.SP, int32(p.referenceBase))
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
+	*f.mode.tailPlans = append(*f.mode.tailPlans, p)
+	f.tailRAProofCall(p.site, sig, base, spill)
+}
+
 func compileDynamicTailSource(source []byte, siteBase uint32, forceSWAR bool) (*tailImportImage, error) {
 	if len(source) < 8 || len(source) > MaxModuleBytes || siteBase > tailRAMaxSites {
 		return nil, unsupported("private dynamic source/base bound")

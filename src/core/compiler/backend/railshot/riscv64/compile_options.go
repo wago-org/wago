@@ -64,7 +64,7 @@ type CompileOptions struct {
 	localTailCalls bool
 	// Source production and private decoded adapters collect symbolic import sites.
 	importTailCalls  bool
-	dynamicTailCalls bool // private declared-type indirect-source qualification
+	dynamicTailCalls bool // private declared-type indirect/reference source qualification
 	tailPlans        *[]tailImportPlan
 	tailSiteBase     uint32
 }

@@ -28,6 +28,10 @@ type dynamicTailSourceFixture struct {
 }
 
 func dynamicTailSourceFixtureForTest(t *testing.T, force, vector, shared bool) *dynamicTailSourceFixture {
+	return dynamicTailSourceFixtureWithKind(t, force, vector, shared, 1, false)
+}
+
+func dynamicTailSourceFixtureWithKind(t *testing.T, force, vector, shared bool, kind uint32, null bool) *dynamicTailSourceFixture {
 	t.Helper()
 	payload := []wasm.ValType{wasm.I32, wasm.F32, wasm.I64, wasm.F64}
 	if vector {
@@ -39,7 +43,16 @@ func dynamicTailSourceFixtureForTest(t *testing.T, force, vector, shared bool) *
 	// A real guest table.set is observable before either native producer tails.
 	// The last raw i32 parameter supplies the indirect index on every hop.
 	body = append([]byte{0x41, 1, 0xd2, 1, 0x26, 0}, body...)
-	body = append(body[:len(body)-7], 0x20, byte(len(params)-1), 0x13, 2, 0, 0x0b, 0x0b)
+	if kind == 1 {
+		body = append(body[:len(body)-7], 0x20, byte(len(params)-1), 0x13, 2, 0, 0x0b, 0x0b)
+	} else {
+		referenceOp := byte(0xd2)
+		referenceIndex := byte(0) // ordinary imported canonical proxy
+		if null {
+			referenceOp, referenceIndex = 0xd0, 2 // typed nullable reference
+		}
+		body = append(body[:len(body)-7], referenceOp, referenceIndex, 0x15, 2, 0x0b, 0x0b)
+	}
 	source := dynamicTailTestSource(params, payload, body)
 	a, err := compileDynamicTailSource(source, 0, force)
 	if err != nil {
@@ -87,7 +100,7 @@ func dynamicTailSourceFixtureForTest(t *testing.T, force, vector, shared bool) *
 	guest := len(a.code) + len(b.code) + len(p.snapshot) + len(q.snapshot) + len(x.root.Bytes())
 	for n, image := range []*tailImportImage{a, b} {
 		for _, plan := range image.plans {
-			if plan.kind != 1 || plan.typeIndex != 2 || plan.functionIndex != 1 {
+			if plan.kind != kind || plan.typeIndex != 2 || plan.functionIndex != 1 {
 				t.Fatal("exact source plan", plan)
 			}
 			caller := x.owners[n].functions[plan.functionIndex]
@@ -216,9 +229,14 @@ func TestTailDynamicSourceRV64PrewriteTableAndTokenGuards(t *testing.T) {
 }
 
 func TestTailDynamicSourceRV64ActiveMutationCycleInterrupt(t *testing.T) {
+	tailSourceActiveCycleInterrupt(t, 1)
+}
+
+func tailSourceActiveCycleInterrupt(t *testing.T, kind uint32) {
+	t.Helper()
 	previous := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(previous)
-	x := dynamicTailSourceFixtureForTest(t, true, true, false)
+	x := dynamicTailSourceFixtureWithKind(t, true, true, false, kind, false)
 	f := x.f
 	for _, table := range x.tables {
 		clear(table[40:])

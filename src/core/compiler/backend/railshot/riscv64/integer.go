@@ -508,7 +508,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 {
+				if heap != -16 && (!state.dynamicTailCalls || heap < 0 || uint64(heap) >= uint64(len(state.types))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -639,6 +639,38 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				} else {
 					emit.localTailCall(idx, sig, h, state.importedFunctions)
 				}
+			}
+			live = false
+			h = ctrl[depth-1].base
+		case 0x15:
+			typeIndex, e := r.U32()
+			if e != nil {
+				return integerSummary{}, e
+			}
+			if state == nil || !state.production || !state.dynamicTailCalls || !state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls || !privateRefs || uint64(typeIndex) >= uint64(len(state.types)) {
+				return integerSummary{}, unsupported("private dynamic typed tail profile required")
+			}
+			sig := state.types[typeIndex]
+			if e := admitLocalTailSignature(ft, sig.signature); e != nil {
+				return integerSummary{}, e
+			}
+			importTails++
+			callCount++
+			budget += len(sig.params) + len(sig.results) + 1
+			if callCount > maxDirectCalls || budget > integerBudget {
+				return integerSummary{}, unsupported("typed reference tail count/slot budget")
+			}
+			if _, err = popClass(true); err != nil {
+				return integerSummary{}, err
+			}
+			referenceSlot := h
+			for j := len(sig.params) - 1; j >= 0; j-- {
+				if err = popWidth(sig.params[j]); err != nil {
+					return integerSummary{}, err
+				}
+			}
+			if live && emit != nil {
+				emit.dynamicReferenceTailCall(typeIndex, sig.signature, h, referenceSlot, emit.SpillOffset, 8)
 			}
 			live = false
 			h = ctrl[depth-1].base

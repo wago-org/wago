@@ -146,7 +146,7 @@ func TestTailDynamicSourceWholeDeadBudgetAndClosedShapes(t *testing.T) {
 		t.Fatal("flat site bound", err)
 	}
 	// A hidden unsupported instruction prevents every visible function image.
-	if i, err := compileDynamicTailSource(dynamicTailTestSource(nil, nil, []byte{0x0b}, []byte{0, 0x15, 2, 0x0b}), 0, false); i != nil || err == nil {
+	if i, err := compileDynamicTailSource(dynamicTailTestSource(nil, nil, []byte{0x0b}, []byte{0, 0x14, 2, 0x0b}), 0, false); i != nil || err == nil {
 		t.Fatal("hidden unsupported reference tail staged", err)
 	}
 }

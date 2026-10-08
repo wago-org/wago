@@ -432,6 +432,52 @@ func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile 
 			flow.live = false
 			flow.frames[flow.depth-1].unreachable = true
 			h = flow.floor()
+		case 0x15:
+			typeIndex, err := r.U32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			if !dynamicTailCalls || !privateRefs || typeKeys == nil || uint64(typeIndex) >= uint64(len(types)) {
+				return swarSummary{}, unsupported("SWAR private dynamic typed tail profile required")
+			}
+			sig := types[typeIndex]
+			if err := admitSWARLocalTailSignature(ft, sig); err != nil {
+				return swarSummary{}, err
+			}
+			importTails++
+			calls++
+			budget += swarSignatureSlots(sig.Params) + swarSignatureSlots(sig.Results) + 1
+			if calls > maxDirectCalls || budget > integerBudget {
+				return swarSummary{}, unsupported("SWAR typed tail count/transfer budget")
+			}
+			if err := reserve(128*len(sig.Params) + 1024); err != nil {
+				return swarSummary{}, err
+			}
+			var operands [maxSWARLocals + 1]swarClass
+			for n, typ := range sig.Params {
+				operands[n] = swarClassOf(typ)
+			}
+			operands[len(sig.Params)] = swarFuncRef
+			if err := flow.prepareDead(operands[:len(sig.Params)+1]...); err != nil {
+				return swarSummary{}, err
+			}
+			base := h - len(sig.Params) - 1
+			if base < flow.floor() {
+				return swarSummary{}, unsupported("SWAR typed tail operand underflow")
+			}
+			for n, class := range operands[:len(sig.Params)+1] {
+				if stackClasses[base+n] != class {
+					return swarSummary{}, unsupported("SWAR typed tail carrier class")
+				}
+			}
+			usesTraps = true
+			if emit != nil && flow.live {
+				emit.dynamicReferenceTailCall(typeIndex, sig, base, h-1, spill, 16)
+			}
+			flow.usesLoops = true
+			flow.live = false
+			flow.frames[flow.depth-1].unreachable = true
+			h = flow.floor()
 		case 0x11, 0x13:
 			typeIndex, err := r.U32()
 			if err != nil {
@@ -798,7 +844,7 @@ func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile 
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if heap != -16 {
+				if heap != -16 && (!dynamicTailCalls || heap < 0 || uint64(heap) >= uint64(len(types))) {
 					return swarSummary{}, unsupported("SWAR private nullable abstract funcref only")
 				}
 				if err := push(swarFuncRef); err != nil {

@@ -13,7 +13,7 @@ import (
 // not enable public TailCall. Each separately compiled image receives an
 // explicit base in the enclosing owner's flat capability table.
 type tailImportPlan struct {
-	kind                                       uint32 // zero is the existing direct imported site; one is indirect
+	kind                                       uint32 // zero is direct imported; one indirect; two typed reference
 	typeIndex                                  uint32
 	referenceBase                              int
 	site, functionIndex, importIndex, sourcePC uint32
