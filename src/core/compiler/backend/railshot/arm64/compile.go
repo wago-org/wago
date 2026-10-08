@@ -708,37 +708,43 @@ const maxCachedAdapterBytes = 256
 
 // adapterTemplateCache retains one repeated host-adapter shape per worker.
 // Function types alias immutable module storage, so pointer identity is an exact
-// signature key within the scratch's single-module lifetime. The first sighting
-// only records a candidate; the second emits normally and promotes the complete
+// signature key within the scratch's single-module lifetime. The memory-size
+// register is also part of the shape: bounded leaves can use X17 instead of X27.
+// The first sighting only records a candidate; the second emits normally and
+// promotes the complete
 // patched adapter. This avoids copying unique shapes while turning longer runs
 // into one bounded byte copy per function.
 type adapterTemplateCache struct {
-	candidate *wasm.CompType
-	typ       *wasm.CompType
-	n         uint16
-	returnOff uint16
-	endOff    uint16
-	code      [maxCachedAdapterBytes]byte
+	candidate        *wasm.CompType
+	typ              *wasm.CompType
+	n                uint16
+	returnOff        uint16
+	endOff           uint16
+	candidateMemSize Reg
+	memSize          Reg
+	code             [maxCachedAdapterBytes]byte
 }
 
-func (c *adapterTemplateCache) lookup(ft *wasm.CompType) (code []byte, returnOff, endOff int, ok bool) {
-	if c.typ != ft || c.n == 0 {
+func (c *adapterTemplateCache) lookup(ft *wasm.CompType, memSize Reg) (code []byte, returnOff, endOff int, ok bool) {
+	if c.typ != ft || c.memSize != memSize || c.n == 0 {
 		return nil, 0, 0, false
 	}
 	return c.code[:c.n], int(c.returnOff), int(c.endOff), true
 }
 
-func (c *adapterTemplateCache) observe(ft *wasm.CompType, code []byte, returnOff, endOff int) {
+func (c *adapterTemplateCache) observe(ft *wasm.CompType, memSize Reg, code []byte, returnOff, endOff int) {
 	if len(code) > len(c.code) || returnOff <= 4 || returnOff > len(code) || endOff > len(code) {
 		c.candidate = nil
 		return
 	}
-	if c.candidate != ft {
+	if c.candidate != ft || c.candidateMemSize != memSize {
 		c.candidate = ft
+		c.candidateMemSize = memSize
 		return
 	}
 	copy(c.code[:], code)
 	c.typ = ft
+	c.memSize = memSize
 	c.n = uint16(len(code))
 	c.returnOff = uint16(returnOff)
 	c.endOff = uint16(endOff)
@@ -4343,7 +4349,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	cachedAdapter := false
 	if hostAdapter {
 		if f.sc != nil {
-			if template, returnOff, endOff, ok := f.sc.adapterTemplate.lookup(f.ft); ok {
+			if template, returnOff, endOff, ok := f.sc.adapterTemplate.lookup(f.ft, f.memSizeReg); ok {
 				a.B = append(a.B, template...)
 				f.adapterReturnOff = returnOff
 				f.adapterEndOff = endOff
@@ -4565,7 +4571,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		if !cachedAdapter {
 			f.patchBranch26(adapterCall, internalOff)
 			if f.sc != nil {
-				f.sc.adapterTemplate.observe(f.ft, f.a.B[:internalOff], f.adapterReturnOff, f.adapterEndOff)
+				f.sc.adapterTemplate.observe(f.ft, f.memSizeReg, f.a.B[:internalOff], f.adapterReturnOff, f.adapterEndOff)
 			}
 		}
 		if diagnosticsEnabled && f.stats != nil {
