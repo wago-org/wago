@@ -2053,10 +2053,7 @@ func (s *referenceStore) abortRegisteredInstance(in *Instance) {
 	if topology != nil {
 		topology.Unlock()
 	}
-	if collector != nil {
-		collector.Close()
-	}
-	releaseReferenceEntries(release)
+	releaseLifetimeEntries(collector, release)
 }
 
 func (s *referenceStore) advanceInstanceLifetime(in *Instance, event referenceLifetimeEvent) {
@@ -2091,10 +2088,7 @@ func (s *referenceStore) advanceInstanceLifetime(in *Instance, event referenceLi
 	if topology != nil {
 		topology.Unlock()
 	}
-	if collector != nil {
-		collector.Close()
-	}
-	releaseReferenceEntries(release)
+	releaseLifetimeEntries(collector, release)
 }
 
 func (s *referenceStore) allClosedInstancesQuiescedLocked() bool {
@@ -3136,33 +3130,84 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 	return entries
 }
 
+// releaseLifetimeEntries receives already-claimed cleanup units after the
+// store and topology locks have been dropped. A collector callback panic must
+// not strand the separate token batch removed from the store maps.
+func releaseLifetimeEntries(collector *gc.Collector, entries referenceTokenEntries) {
+	releaseLifetimeEntriesWith(collector, entries, (*gc.Collector).Close)
+}
+
+func releaseLifetimeEntriesWith(collector *gc.Collector, entries referenceTokenEntries, closeCollector func(*gc.Collector)) {
+	var cleanup resourceCleanup
+	if collector != nil {
+		cleanup.run(func() { closeCollector(collector) })
+	}
+	cleanup.run(func() {
+		releaseReferenceEntriesWith(entries, releaseFuncrefTokenMetadata, releaseGCRefTokenMetadata, closeCollector)
+	})
+	cleanup.finish()
+}
+
 func releaseReferenceEntries(entries referenceTokenEntries) {
-	for _, entry := range entries.funcrefs {
-		if hostOwner := entry.owner.hostFuncRefForDescriptor(entry.descriptor); hostOwner != nil {
-			hostOwner.tokenReleased(entry.owner, entry.descriptor)
-		}
-		entry.owner.releaseResourceRoot()
+	releaseReferenceEntriesWith(entries, releaseFuncrefTokenMetadata, releaseGCRefTokenMetadata, (*gc.Collector).Close)
+}
+
+// The caller has removed these exact token units from its maps. Distinct tokens
+// may own separate roots on the same Instance: never deduplicate by owner. The
+// per-call operations expose only metadata/collector phases for failure-ordering
+// tests; the actual root decrement remains mandatory and noninjectable.
+func releaseReferenceEntriesWith(entries referenceTokenEntries, notifyFuncref func(*funcrefTokenEntry), clearGC func(gcRefTokenEntry), closeCollector func(*gc.Collector)) {
+	var cleanup resourceCleanup
+	for i, entry := range entries.funcrefs {
+		entries.funcrefs[i] = nil
+		owner := entry.owner
+		cleanup.run(func() { notifyFuncref(entry) })
+		cleanup.run(owner.releaseResourceRoot)
 	}
-	for _, entry := range entries.gcRefs {
-		state := entry.owner.existingPublicGCState()
-		if state != nil {
-			state.mu.Lock()
-			ownerIndex := entry.ownerIndex
-			if ownerIndex < state.resultRootsMade && state.resultToken(ownerIndex) == entry.token && state.resultRootSlot(ownerIndex) == entry.slot {
-				if entry.owner.gc != nil {
-					_ = entry.owner.gc.SetGlobalSlot(entry.slot, gc.Null())
-				}
-				state.setResultToken(ownerIndex, 0)
-				if state.resultTokenCount != 0 {
-					state.resultTokenCount--
-				}
-			}
-			state.mu.Unlock()
-		}
-		entry.owner.releaseResourceRoot()
+	for i, entry := range entries.gcRefs {
+		entries.gcRefs[i] = gcRefTokenEntry{}
+		owner := entry.owner
+		cleanup.run(func() { clearGC(entry) })
+		cleanup.run(owner.releaseResourceRoot)
 	}
-	for _, collector := range entries.collectors {
-		collector.Close()
+	for i, collector := range entries.collectors {
+		entries.collectors[i] = nil
+		cleanup.run(func() { closeCollector(collector) })
+	}
+	cleanup.finish()
+}
+
+func releaseFuncrefTokenMetadata(entry *funcrefTokenEntry) {
+	if hostOwner := entry.owner.hostFuncRefForDescriptor(entry.descriptor); hostOwner != nil {
+		hostOwner.tokenReleased(entry.owner, entry.descriptor)
+	}
+}
+
+func releaseGCRefTokenMetadata(entry gcRefTokenEntry) {
+	releaseGCRefTokenMetadataWith(entry, clearGCRefTokenSlot)
+}
+
+func clearGCRefTokenSlot(owner *Instance, slot uint32) error {
+	if owner.gc != nil {
+		return owner.gc.SetGlobalSlot(slot, gc.Null())
+	}
+	return nil
+}
+
+func releaseGCRefTokenMetadataWith(entry gcRefTokenEntry, clearSlot func(*Instance, uint32) error) {
+	state := entry.owner.existingPublicGCState()
+	if state == nil {
+		return
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	ownerIndex := entry.ownerIndex
+	if ownerIndex < state.resultRootsMade && state.resultToken(ownerIndex) == entry.token && state.resultRootSlot(ownerIndex) == entry.slot {
+		_ = clearSlot(entry.owner, entry.slot)
+		state.setResultToken(ownerIndex, 0)
+		if state.resultTokenCount != 0 {
+			state.resultTokenCount--
+		}
 	}
 }
 
