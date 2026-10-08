@@ -12,10 +12,10 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// Private native-only dynamic proof. All mappings are exclusively retained by
+// Private dynamic proof. All mappings are exclusively retained by
 // the invocation owner through execution and parks. Canonical imported proxies
 // preserve ordinary bridge identity while selecting true defined framed targets.
-// Host rows remain closed at this private boundary.
+// Scalar host rows require a separate immutable host construction certificate.
 type tailRADynamicOwner struct {
 	descriptors, context, directory []byte
 	functions                       []tailRAFunction
@@ -26,6 +26,7 @@ type tailRADynamicOwner struct {
 	// defined functions. A nonnil proxy authenticates the exact ordinary bridge.
 	targets []tailRAFunction
 	proxies []*tailRADynamicProxy
+	hosts   []*NativeTailHostFunction
 }
 
 type tailRADynamicProxy struct {
@@ -55,6 +56,20 @@ func (o tailRADynamicOwner) proxy(i int) *tailRADynamicProxy {
 	return o.proxies[i]
 }
 
+func (o tailRADynamicOwner) host(i int) *NativeTailHostFunction {
+	if o.hosts == nil {
+		return nil
+	}
+	return o.hosts[i]
+}
+
+func (o tailRADynamicOwner) targetFlags(i int) uint64 {
+	if o.host(i) != nil {
+		return abi.RV64TailTargetsHost
+	}
+	return 0
+}
+
 type tailRADynamicSite struct {
 	referenceBase int
 	key           uint64
@@ -75,11 +90,11 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 	code = 2048 + 1024*len(d.owners)
 	count := 0
 	for _, o := range d.owners {
-		if len(o.functions) == 0 || len(o.functions) > MaxFunctions-count || o.signatureKeys != nil && len(o.signatureKeys) != len(o.functions) || o.targets != nil && len(o.targets) != len(o.functions) || o.proxies != nil && (len(o.proxies) != len(o.functions) || o.targets == nil) || len(o.descriptors) != 40*(len(o.functions)+1) || len(o.context) != abi.RV64InstanceContextBytes || len(o.directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*len(o.functions) {
+		if len(o.functions) == 0 || len(o.functions) > MaxFunctions-count || o.signatureKeys != nil && len(o.signatureKeys) != len(o.functions) || o.targets != nil && len(o.targets) != len(o.functions) || o.proxies != nil && (len(o.proxies) != len(o.functions) || o.targets == nil) || o.hosts != nil && len(o.hosts) != len(o.functions) || len(o.descriptors) != 40*(len(o.functions)+1) || len(o.context) != abi.RV64InstanceContextBytes || len(o.directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*len(o.functions) {
 			return 0, 0, unsupported("dynamic tail retained owner extent")
 		}
 		count += len(o.functions)
-		metadata += (len(o.functions)+len(o.targets))*int(unsafe.Sizeof(tailRAFunction{})) + len(o.proxies)*int(unsafe.Sizeof((*tailRADynamicProxy)(nil))) + len(o.signatureKeys)*8
+		metadata += (len(o.functions)+len(o.targets))*int(unsafe.Sizeof(tailRAFunction{})) + len(o.proxies)*int(unsafe.Sizeof((*tailRADynamicProxy)(nil))) + len(o.signatureKeys)*8 + len(o.hosts)*int(unsafe.Sizeof((*NativeTailHostFunction)(nil)))
 		for _, p := range o.proxies {
 			if p != nil {
 				metadata += int(unsafe.Sizeof(*p))
@@ -148,7 +163,17 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 		if len(t.context) != abi.RV64InstanceContextBytes {
 			return unsupported("dynamic tail true producer context extent")
 		}
-		if err := t.validate(true); err != nil {
+		if h := o.host(i); h != nil {
+			if o.proxy(i) != nil {
+				return unsupported("host target cannot use a native proxy")
+			}
+			if err := h.Validate(); err != nil {
+				return err
+			}
+			if !wasm.FuncTypeEqual(t.signature, h.signature) || t.published != h.image || t.info.Entry != h.offset || t.info.CodeBytes != h.certificate.CodeBytes() || t.job != h.job || tailRAPointer(t.context) != tailRAPointer(h.context) || tailRAPointer(t.directory) != tailRAPointer(h.anchor) || f.published != h.image || f.info.Entry != h.offset || f.info.CodeBytes != h.certificate.CodeBytes() {
+				return unsupported("dynamic host target differs from certified owner")
+			}
+		} else if err := t.validate(true); err != nil {
 			return err
 		}
 		if !t.info.mode.invocationContext || !wasm.FuncTypeEqual(f.signature, t.signature) || binary.LittleEndian.Uint64(t.directory[16:]) != uint64(t.job.LinMemBase()) {
@@ -159,8 +184,10 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 				return err
 			}
 		} else {
-			if err := f.validate(true); err != nil {
-				return err
+			if o.host(i) == nil {
+				if err := f.validate(true); err != nil {
+					return err
+				}
 			}
 			if f.codeBase()+uintptr(f.info.Entry) != t.codeBase()+uintptr(t.info.Entry) || f.job.LinMemBase() != t.job.LinMemBase() || tailRAPointer(f.context) != tailRAPointer(t.context) || tailRAPointer(f.directory) != tailRAPointer(t.directory) {
 				return unsupported("dynamic tail defined descriptor retargeted")
@@ -175,7 +202,7 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 		}
 		desc := o.descriptors[40*(i+1):]
 		row := o.directory[abi.RV64TailTargetsHeaderBytes+i*abi.RV64TailTargetsRowBytes:]
-		if o.proxy(i) == nil && !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(home) || binary.LittleEndian.Uint64(desc) != uint64(entry) || binary.LittleEndian.Uint64(desc[8:]) != key || binary.LittleEndian.Uint64(desc[16:]) != uint64(home)|abi.FuncRefLocalWrapperHomeTag || binary.LittleEndian.Uint64(desc[24:]) != uint64(anchor+uintptr(40*(i+1))) || binary.LittleEndian.Uint64(desc[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(row) != uint64(t.codeBase()+uintptr(t.info.Entry)) || binary.LittleEndian.Uint64(row[8:]) != uint64(t.job.LinMemBase()) || binary.LittleEndian.Uint64(row[16:]) != uint64(tailRAPointer(t.context)) || binary.LittleEndian.Uint64(row[24:]) != 0 {
+		if o.proxy(i) == nil && !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(home) || binary.LittleEndian.Uint64(desc) != uint64(entry) || binary.LittleEndian.Uint64(desc[8:]) != key || binary.LittleEndian.Uint64(desc[16:]) != uint64(home)|abi.FuncRefLocalWrapperHomeTag || binary.LittleEndian.Uint64(desc[24:]) != uint64(anchor+uintptr(40*(i+1))) || binary.LittleEndian.Uint64(desc[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(row) != uint64(t.codeBase()+uintptr(t.info.Entry)) || binary.LittleEndian.Uint64(row[8:]) != uint64(t.job.LinMemBase()) || binary.LittleEndian.Uint64(row[16:]) != uint64(tailRAPointer(t.context)) || binary.LittleEndian.Uint64(row[24:]) != o.targetFlags(i) {
 			return unsupported("dynamic tail genuine defined target")
 		}
 	}
@@ -227,6 +254,7 @@ func (d *tailRADynamicSite) freeze() *tailRADynamicSite {
 		f.owners[i].signatureKeys = append([]uint64(nil), d.owners[i].signatureKeys...)
 		f.owners[i].functions = tailRADynamicFreezeFunctions(d.owners[i].functions)
 		f.owners[i].targets = tailRADynamicFreezeFunctions(d.owners[i].targets)
+		f.owners[i].hosts = append([]*NativeTailHostFunction(nil), d.owners[i].hosts...)
 		if d.owners[i].proxies != nil {
 			f.owners[i].proxies = append([]*tailRADynamicProxy(nil), d.owners[i].proxies...)
 			for n, p := range f.owners[i].proxies {
@@ -346,8 +374,6 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 	a.Ld(enc.X16, enc.X15, 0)
 	a.Ld(enc.X17, enc.X15, 8)
 	a.Ld(enc.X18, enc.X15, 16)
-	a.Ld(enc.X29, enc.X15, 24)
-	e.fail(enc.NE, enc.X29, enc.Zero) // Host rows remain closed.
 	a.Ld(enc.X29, enc.X19, 16)
 	a.Constant64(enc.Scratch0, int64(abi.FuncRefLocalWrapperHomeTag))
 	a.Or(enc.X29, enc.X29, enc.Scratch0)
@@ -377,6 +403,9 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 			e.fail(enc.NE, enc.X17, enc.X29)
 			a.Constant64(enc.X29, int64(tailRAPointer(t.context)))
 			e.fail(enc.NE, enc.X18, enc.X29)
+			a.Ld(enc.Scratch0, enc.X15, 24)
+			a.Constant64(enc.X29, int64(o.targetFlags(i)))
+			e.fail(enc.NE, enc.Scratch0, enc.X29)
 			// The actual producer tuple has now matched frozen physical owners.
 			// Authenticate its anchor using constants before reading anchor data.
 			a.Ld(enc.Scratch0, enc.X18, 16)

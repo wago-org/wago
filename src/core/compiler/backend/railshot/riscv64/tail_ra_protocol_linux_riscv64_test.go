@@ -196,7 +196,7 @@ func tailRANativeRoot(t *testing.T, callee tailRAFunction, witness []byte) *core
 		a.Sd(enc.X5, enc.X28, int32(192+i*8))
 	}
 	a.Constant64(enc.X24, 0x123456789abcdef)
-	a.Constant64(enc.X28, int64(callee.code.Base()+uintptr(callee.info.Entry)))
+	a.Constant64(enc.X28, int64(callee.codeBase()+uintptr(callee.info.Entry)))
 	a.Jalr(enc.RA, enc.X28, 0)
 	a.Constant64(enc.X28, int64(tailRAPointer(witness)))
 	for i, r := range []enc.Reg{enc.X10, enc.X11, enc.X12, enc.X13, enc.X24, enc.X25} {

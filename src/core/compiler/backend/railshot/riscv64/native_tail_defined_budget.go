@@ -45,14 +45,15 @@ type NativeTailOwnerCounts struct {
 	Owners, Functions, Values int
 	Targets, TargetValues     int
 	ProxySlots, Proxies       int
+	HostSlots                 int
 }
 
 func NativeTailFactoryCountsBudget(sites, values, continuations int, counts NativeTailOwnerCounts, guestCodeBytes int) (metadata, code int, err error) {
 	c := counts
-	if c.Owners <= 0 || c.Owners > tailRAMaxRanges || c.Functions < c.Owners || c.Functions > MaxFunctions || c.Values < 0 || c.Values > 512*c.Functions || c.Targets < 0 || c.Targets > c.Functions || c.TargetValues < 0 || c.TargetValues > 512*c.Targets || c.ProxySlots < 0 || c.ProxySlots > c.Targets || c.Proxies < 0 || c.Proxies > c.ProxySlots {
+	if c.Owners <= 0 || c.Owners > tailRAMaxRanges || c.Functions < c.Owners || c.Functions > MaxFunctions || c.Values < 0 || c.Values > 512*c.Functions || c.Targets < 0 || c.Targets > c.Functions || c.TargetValues < 0 || c.TargetValues > 512*c.Targets || c.ProxySlots < 0 || c.ProxySlots > c.Targets || c.Proxies < 0 || c.Proxies > c.ProxySlots || c.HostSlots < 0 || c.HostSlots > c.Functions {
 		return 0, 0, unsupported("native factory aggregate owner counts")
 	}
-	dynamicMetadata := int(unsafe.Sizeof(tailRADynamicSite{})) + c.Owners*int(unsafe.Sizeof(tailRADynamicOwner{})) + (c.Functions+c.Targets)*(int(unsafe.Sizeof(tailRAFunction{}))+int(unsafe.Sizeof(wasm.CompType{}))) + c.Functions*8 + (c.Values+c.TargetValues)*int(unsafe.Sizeof(wasm.ValType{})) + c.ProxySlots*int(unsafe.Sizeof((*tailRADynamicProxy)(nil))) + c.Proxies*int(unsafe.Sizeof(tailRADynamicProxy{}))
+	dynamicMetadata := int(unsafe.Sizeof(tailRADynamicSite{})) + c.Owners*int(unsafe.Sizeof(tailRADynamicOwner{})) + (c.Functions+c.Targets)*(int(unsafe.Sizeof(tailRAFunction{}))+int(unsafe.Sizeof(wasm.CompType{}))) + c.Functions*8 + (c.Values+c.TargetValues)*int(unsafe.Sizeof(wasm.ValType{})) + c.ProxySlots*int(unsafe.Sizeof((*tailRADynamicProxy)(nil))) + c.Proxies*int(unsafe.Sizeof(tailRADynamicProxy{})) + c.HostSlots*int(unsafe.Sizeof((*NativeTailHostFunction)(nil)))
 	dynamicCode := 2048 + 1024*(c.Owners+c.Functions)
 	if dynamicMetadata > MaxModuleBytes || dynamicCode > MaxCodeBytes {
 		return 0, 0, unsupported("native factory aggregate owner bytes")

@@ -64,7 +64,7 @@ func (c *NativeTailHostCertificate) Validate(image *NativeTailCodeImage, offset 
 
 // NativeTailHostFunction is a frozen scalar host target, separate from a
 // genuine framed guest definition. It cannot authorize a native guest frame.
-// Dynamic owner/factory attachment is a subsequent integration boundary.
+// Dynamic owner snapshots validate this certificate without granting a guest frame.
 type NativeTailHostFunction struct {
 	image           *NativeTailCodeImage
 	certificate     *NativeTailHostCertificate
@@ -118,4 +118,11 @@ func (f *NativeTailHostFunction) Validate() error {
 		return unsupported("native tail host physical owner identity")
 	}
 	return nil
+}
+
+// The descriptor view carries no guest-frame claim. Only the separate host
+// certificate may validate this entry in an explicitly marked dynamic row.
+func (f *NativeTailHostFunction) function(signature *wasm.CompType) tailRAFunction {
+	return tailRAFunction{published: f.image, snapshot: f.image.Bytes(), signature: signature, job: f.job, context: f.context, directory: f.anchor,
+		info: FunctionInfo{Entry: f.offset, CodeBytes: f.certificate.CodeBytes(), Params: len(signature.Params), Results: len(signature.Results), mode: emissionMode{production: true, interruptible: true, invocationContext: true}}}
 }

@@ -71,13 +71,15 @@ func nativeTailCloneSignature(sig wasm.CompType) *wasm.CompType {
 
 // NativeTailImport describes an importer-owned ordinary bridge issued by the
 // certified builder. Its position is its exact function import index. The
-// target must be a genuine definition, never a reexported import bridge.
+// A native target must be a genuine definition, never a reexported import
+// bridge. A scalar host import instead carries only its Host certificate.
 type NativeTailImport struct {
 	Image              *NativeTailCodeImage
 	Offset, CodeBytes  int
 	Target             NativeTailFunction
 	Arguments, Results []byte
 	Certificate        *NativeImportCertificate
+	Host               *NativeTailHostFunction
 }
 
 // Charge construction inputs, source/target arrays and frozen signatures before
@@ -94,8 +96,22 @@ func NativeTailImportedOwnerBytes(count, imports, values int) (int, error) {
 	return size, nil
 }
 
+// NativeTailHostOwnerBytes adds the optional immutable host-target directory.
+// Individual host targets, images and certificates are charged separately.
+func NativeTailHostOwnerBytes(count, imports, values int) (int, error) {
+	size, err := NativeTailImportedOwnerBytes(count, imports, values)
+	if err != nil {
+		return 0, err
+	}
+	size += count * int(unsafe.Sizeof((*NativeTailHostFunction)(nil)))
+	if size > MaxModuleBytes {
+		return 0, unsupported("native host owner metadata bound")
+	}
+	return size, nil
+}
+
 // NewNativeTailImportedOwner preserves canonical wrapper rows while selecting
-// their certified native definitions. Entries contain only actual definitions;
+// certified native definitions or host wrappers. Entries contain only definitions;
 // signatures include imports first, in the full Wasm function namespace.
 func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, descriptors, directory []byte, entries []int, signatures []wasm.CompType, imports []NativeTailImport, trampoline uintptr) (*NativeTailOwner, error) {
 	n, ni := len(signatures), len(imports)
@@ -110,6 +126,14 @@ func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 	}
 	// No retained allocation or native publication precedes all count, image,
 	// signature and exact bridge provenance checks.
+	hasHosts := false
+	for i := range imports {
+		hasHosts = hasHosts || imports[i].Host != nil
+	}
+	budget := NativeTailImportedOwnerBytes
+	if hasHosts {
+		budget = NativeTailHostOwnerBytes
+	}
 	values := 0
 	for i := range signatures {
 		sig := &signatures[i]
@@ -117,11 +141,24 @@ func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 			return nil, err
 		}
 		values += len(sig.Params) + len(sig.Results)
-		if _, err := NativeTailImportedOwnerBytes(n, ni, values); err != nil {
+		if _, err := budget(n, ni, values); err != nil {
 			return nil, err
 		}
 		if i < ni {
 			p := &imports[i]
+			if p.Host != nil {
+				h := p.Host
+				if p.Certificate != nil || p.Target.function.signature != nil || p.Arguments != nil || p.Results != nil || p.Image != h.image || p.Offset != h.offset || p.CodeBytes != h.certificate.CodeBytes() {
+					return nil, unsupported("native host import certificate shape")
+				}
+				if err := h.Validate(); err != nil {
+					return nil, err
+				}
+				if h.job != job || tailRAPointer(h.context) != tailRAPointer(context) || tailRAPointer(h.anchor) != tailRAPointer(descriptors) || !wasm.FuncTypeEqual(sig, h.signature) {
+					return nil, unsupported("native host import owner/signature")
+				}
+				continue
+			}
 			if p.Image == nil || p.Certificate == nil || p.CodeBytes != p.Certificate.CodeBytes() {
 				return nil, unsupported("native imported tail owner certificate")
 			}
@@ -147,11 +184,19 @@ func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 		}
 	}
 	o := &NativeTailOwner{trampoline: trampoline, owner: tailRADynamicOwner{descriptors: descriptors, context: context, directory: directory, functions: make([]tailRAFunction, n), targets: make([]tailRAFunction, n), proxies: make([]*tailRADynamicProxy, n), signatureKeys: make([]uint64, n)}}
+	if hasHosts {
+		o.owner.hosts = make([]*NativeTailHostFunction, n)
+	}
 	for i, sig := range signatures {
 		frozen := nativeTailCloneSignature(sig)
 		o.owner.signatureKeys[i] = wasm.StructuralFuncTypeKey(frozen)
 		if i < ni {
 			p := &imports[i]
+			if p.Host != nil {
+				f := p.Host.function(frozen)
+				o.owner.functions[i], o.owner.targets[i], o.owner.hosts[i] = f, f, p.Host
+				continue
+			}
 			o.owner.functions[i] = tailRAFunction{published: p.Image, snapshot: p.Image.Bytes(), job: job, context: context, directory: descriptors, signature: frozen, info: FunctionInfo{Entry: p.Offset, CodeBytes: p.CodeBytes}}
 			o.owner.targets[i] = p.Target.function
 			o.owner.proxies[i] = &tailRADynamicProxy{certificate: p.Certificate, importIndex: uint32(i), arguments: p.Arguments, results: p.Results}
