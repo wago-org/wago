@@ -38,7 +38,7 @@ func railshotRecordMappedCodeBytes(c *Compiled, n int) {
 
 func railshotStagedTailFeatures(c *RuntimeConfig) CoreFeatures {
 	if c != nil && c.railshotState.tailProducts {
-		return CoreFeatureTailCall
+		return CoreFeatureTailCall | CoreFeatureTypedFunctionReferences
 	}
 	return 0
 }
@@ -58,6 +58,17 @@ func rv64StoreNativeTailModule(c *Compiled, m *encoder.NativeTailModule) {
 	c.ensureCompileIndexes().railshotTail.module = m
 	c.ensureCodeCache()
 	c.codeCache.stagedFeatures |= CoreFeatureTailCall
+}
+
+func rv64HasReferenceTail(c *Compiled) bool {
+	if m := rv64NativeTailModule(c); m != nil {
+		for _, p := range m.Plans {
+			if p.Kind == encoder.NativeTailReference {
+				return true
+			}
+		}
+	}
+	return false
 }
 func railshotStoreNativeTail(c *Compiled, image *railshotCompiledModule, cfg *RuntimeConfig) error {
 	if cfg != nil {
@@ -146,6 +157,9 @@ func rv64ValidateNativeTail(c *Compiled) error {
 	}
 	if m == nil {
 		return nil
+	}
+	if rv64HasReferenceTail(c) && !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
+		return fmt.Errorf("RV64 reference tail requires typed function references")
 	}
 	return rv64ValidateNativeTailPlans(c, m.Plans)
 }
@@ -320,7 +334,15 @@ func railshotReadNativeTail(r *compiledReader, c *Compiled) error {
 		m.Plans[i] = encoder.NativeTailPlan{Kind: kind, TypeIndex: typeIndex, ReferenceBase: int(referenceBase), FunctionIndex: fields[0], ImportIndex: fields[1], SourcePC: fields[2], FrameBytes: int(fields[3]), SourceBase: int(fields[4]), SourceStride: int(fields[5])}
 	}
 	rv64StoreNativeTailModule(c, m)
-	return rv64ValidateNativeTail(c)
+	if err := rv64ValidateNativeTail(c); err != nil {
+		return err
+	}
+	// Decoder-owned, unpublished state. Source compilation derives this marker
+	// from validated Wasm requirements; warm validation never mutates it.
+	if rv64HasReferenceTail(c) {
+		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	return nil
 }
 func rv64HasDynamicTail(m *encoder.NativeTailModule) bool {
 	if m != nil {

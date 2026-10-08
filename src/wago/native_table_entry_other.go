@@ -4,6 +4,8 @@ package wago
 
 type railshotTableEntryLease struct{}
 
+func railshotRequiresNativeOwnerScope(*Compiled) bool { return false }
+
 func railshotAcquireNativeTableTargets(*Instance) (railshotTableEntryLease, error) {
 	return railshotTableEntryLease{}, nil
 }

@@ -86,11 +86,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	if opts.dynamicTailCalls {
-		if err := admitProductionDynamicTails(m); err != nil {
-			return nil, err
-		}
+	referenceTails, err := admitProductionDynamicTails(m)
+	if err != nil {
+		return nil, err
 	}
+	opts.referenceTailInstructions = referenceTails
 	usesSWAR, err := moduleUsesSWAR(m)
 	if err != nil {
 		return nil, err
@@ -194,13 +194,13 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 			switch p.kind {
 			case enc.NativeTailDirectImport:
 				sig, ok = opts.tailModule.FuncSignature(p.importIndex)
-			case enc.NativeTailIndirect:
+			case enc.NativeTailIndirect, enc.NativeTailReference:
 				if !opts.dynamicTailCalls {
 					return nil, unsupported("indirect tail requires native owner generations")
 				}
 				sig, ok = opts.tailModule.TypeFunc(p.typeIndex)
 			default:
-				return nil, unsupported("reference tail runtime attachment is pending")
+				return nil, unsupported("unknown native tail runtime attachment")
 			}
 			if !ok {
 				return nil, unsupported("staged tail signature metadata")
@@ -214,6 +214,17 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 				return nil, unsupported("staged tail finalized frame metadata")
 			}
 			tail.Plans = append(tail.Plans, enc.NativeTailPlan{Kind: p.kind, TypeIndex: p.typeIndex, ReferenceBase: p.referenceBase, FunctionIndex: p.functionIndex, ImportIndex: p.importIndex, SourcePC: p.sourcePC, FrameBytes: c.functions[local].FrameBytes, SourceBase: p.sourceBase, SourceStride: p.sourceStride})
+		}
+	}
+	if opts.referenceTailInstructions {
+		qualified := false
+		if tail != nil {
+			for _, p := range tail.Plans {
+				qualified = qualified || p.Kind == enc.NativeTailReference
+			}
+		}
+		if !qualified {
+			return nil, unsupported("typed tails require a qualified reference plan")
 		}
 	}
 	if err := c.prepareProfile(len(c.code)); err != nil {
@@ -243,26 +254,28 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 	return image, nil
 }
 
-// Even unreachable reference tails stay outside the whole-module profile. The
-// private dynamic walker supports them, but their runtime owner contract has
-// not yet been promoted. Instruction bytes were bounded before this pass.
-func admitProductionDynamicTails(m *wasm.Module) error {
+// Even unreachable ordinary call_ref instructions stay outside this bounded
+// tail profile until their normal-return transport is qualified. Instruction
+// bytes were bounded before this pass.
+func admitProductionDynamicTails(m *wasm.Module) (bool, error) {
+	referenceTails := false
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		r := wasm.ReaderFrom(fn.BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
-				return err
+				return false, err
 			}
-			if op == 0x15 {
-				return unsupported("reference tail runtime attachment is pending")
+			if op == 0x14 {
+				return false, unsupported("ordinary call_ref runtime attachment is pending")
 			}
+			referenceTails = referenceTails || op == 0x15
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
-	return nil
+	return referenceTails, nil
 }

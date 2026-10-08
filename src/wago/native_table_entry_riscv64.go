@@ -50,6 +50,10 @@ type railshotTableEntryLease struct {
 	slot    int
 }
 
+func railshotRequiresNativeOwnerScope(c *Compiled) bool {
+	return c.tableCount() != 0 || rv64HasDynamicTail(rv64NativeTailModule(c))
+}
+
 func rv64NeedsTableEntry(root *Instance) (bool, error) {
 	var owners [257]*Instance
 	owners[0] = root
@@ -59,7 +63,9 @@ func rv64NeedsTableEntry(root *Instance) (bool, error) {
 		if owner == nil || owner.c == nil {
 			return false, fmt.Errorf("RV64 native attachment has no owner")
 		}
-		if owner.c.tableCount() != 0 {
+		// Typed tails can select canonical descriptors without owning a table.
+		// They still need the exact physical owner scope and entry generation.
+		if railshotRequiresNativeOwnerScope(owner.c) {
 			return true, nil
 		}
 		for index := range owner.c.Imports {

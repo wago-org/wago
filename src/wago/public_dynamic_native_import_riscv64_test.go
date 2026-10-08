@@ -21,7 +21,7 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func rv64DynamicNativeImportModule(types []wasm.ValType, mixed bool) []byte {
+func rv64DynamicNativeImportModule(types []wasm.ValType, mixed bool, typed ...bool) []byte {
 	callerTypes := append(slices.Clone(types), wasm.I32)
 	im := append(append(wasmtest.Name("env"), wasmtest.Name("target")...), 0, 0)
 	var identity, args []byte
@@ -36,8 +36,17 @@ func rv64DynamicNativeImportModule(types []wasm.ValType, mixed bool) []byte {
 		call = append(call, args...)
 		call = append(call, 0x12, 0, 0x05)
 	}
+
+	if len(typed) != 0 && typed[0] {
+		call = append(call, 0x20, byte(len(types)), 0x41, 2, 0x46, 0x04, 3)
+		call = append(call, args...)
+		call = append(call, 0xd2, 0, 0x15, 2, 0x05)
+	}
 	call = append(call, args...)
 	call = append(call, 0x20, byte(len(types)), 0x13, 2, 0)
+	if len(typed) != 0 && typed[0] {
+		call = append(call, 0x0b)
+	}
 	if mixed {
 		call = append(call, 0x0b)
 	}
@@ -52,6 +61,12 @@ func rv64DynamicNativeImportModule(types []wasm.ValType, mixed bool) []byte {
 }
 
 func TestRV64PublicDynamicNativeImportSourceArtifact(t *testing.T) {
+	rv64PublicDynamicNativeImportSourceArtifact(t, false)
+}
+func TestRV64PublicReferenceTailMixedNativeImportSourceArtifact(t *testing.T) {
+	rv64PublicDynamicNativeImportSourceArtifact(t, true)
+}
+func rv64PublicDynamicNativeImportSourceArtifact(t *testing.T, reference bool) {
 	for _, artifact := range []bool{false, true} {
 		for _, shape := range []string{"zero", "mixed", "vector"} {
 			for _, mixed := range []bool{false, true} {
@@ -68,7 +83,7 @@ func TestRV64PublicDynamicNativeImportSourceArtifact(t *testing.T) {
 						input = append(input, 0xaabbccddeeff0011, 0xfedcba9876543210)
 						want = append(want, input[4:]...)
 					}
-					key := fmt.Sprintf("dynamic-native-%s-mixed%t", shape, mixed)
+					key := fmt.Sprintf("dynamic-native-%s-mixed%t-reference%t", shape, mixed, reference)
 					pc := rv64NativeTailCompile(t, key+"-producer", rv64PublicNativeIdentityModule(types), artifact)
 					producer, err := Instantiate(pc)
 					if err != nil {
@@ -79,7 +94,7 @@ func TestRV64PublicDynamicNativeImportSourceArtifact(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					c := rv64NativeTailCompile(t, key+"-caller", rv64DynamicNativeImportModule(types, mixed), artifact)
+					c := rv64NativeTailCompile(t, key+"-caller", rv64DynamicNativeImportModule(types, mixed, reference), artifact)
 					in, err := Instantiate(c, NewImports().Function("env", "target", export))
 					if err != nil {
 						t.Fatal(err)
@@ -94,7 +109,11 @@ func TestRV64PublicDynamicNativeImportSourceArtifact(t *testing.T) {
 					if err := producer.Close(); err != nil {
 						t.Fatal(err)
 					}
-					for _, row := range []uint64{0, 1, 0} {
+					rows := []uint64{0, 1, 0}
+					if reference {
+						rows = append(rows, 2)
+					}
+					for _, row := range rows {
 						got, err := in.Invoke("call", append(slices.Clone(input), 0xcafe123400000000|row)...)
 						if err != nil || !slices.Equal(got, want) {
 							t.Fatal("native imported tail transport", row, got, want, err)
@@ -103,7 +122,11 @@ func TestRV64PublicDynamicNativeImportSourceArtifact(t *testing.T) {
 							t.Fatal("cold exit retained generation")
 						}
 					}
-					for _, row := range []uint64{2, 3, 0xffffffff} {
+					invalid := []uint64{3, 0xffffffff}
+					if !reference {
+						invalid = append(invalid, 2)
+					}
+					for _, row := range invalid {
 						if _, err := in.Invoke("call", append(slices.Clone(input), row)...); err == nil {
 							t.Fatal("invalid table reference accepted", row)
 						}
@@ -176,6 +199,12 @@ func TestRV64PublicDynamicNativeImportResolvedAliasAndRelayGate(t *testing.T) {
 }
 
 func TestRV64PublicDynamicNativeImportHostParkReentry(t *testing.T) {
+	rv64PublicDynamicNativeImportHostParkReentry(t, false)
+}
+func TestRV64PublicReferenceTailHostParkReentry(t *testing.T) {
+	rv64PublicDynamicNativeImportHostParkReentry(t, true)
+}
+func rv64PublicDynamicNativeImportHostParkReentry(t *testing.T, reference bool) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			var producer, in *Instance
@@ -216,7 +245,11 @@ func TestRV64PublicDynamicNativeImportHostParkReentry(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			c := rv64NativeTailCompile(t, "dynamic-native-host-caller", rv64DynamicNativeImportModule([]wasm.ValType{wasm.I32}, false), artifact)
+			source := rv64DynamicNativeImportModule([]wasm.ValType{wasm.I32}, false)
+			if reference {
+				source = rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, true)
+			}
+			c := rv64NativeTailCompile(t, fmt.Sprintf("dynamic-native-host-caller-reference%t", reference), source, artifact)
 			in, err = Instantiate(c, NewImports().Function("env", "target", export))
 			if err != nil {
 				t.Fatal(err)
@@ -260,6 +293,12 @@ func rv64OrdinaryNativeCallerModule(params, results []wasm.ValType, tail ...bool
 }
 
 func TestRV64PublicDynamicNativeImportOrdinaryBridgeDeepPrepared(t *testing.T) {
+	rv64PublicNativeImportDeepPrepared(t, false)
+}
+func TestRV64PublicReferenceTailOrdinaryBridgeDeepPrepared(t *testing.T) {
+	rv64PublicNativeImportDeepPrepared(t, true)
+}
+func rv64PublicNativeImportDeepPrepared(t *testing.T, reference bool) {
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
 			t.Run(fmt.Sprintf("artifact%t-vector%t", artifact, vector), func(t *testing.T) {
@@ -268,8 +307,8 @@ func TestRV64PublicDynamicNativeImportOrdinaryBridgeDeepPrepared(t *testing.T) {
 					payload = append(payload, wasm.V128)
 				}
 				params := append([]wasm.ValType{wasm.I64}, payload...)
-				key := fmt.Sprintf("dynamic-native-ordinary-%t", vector)
-				pc := rv64NativeTailCompile(t, key+"-producer", rv64PublicDynamicTailCountdown(vector), artifact)
+				key := fmt.Sprintf("dynamic-native-ordinary-%t-reference%t", vector, reference)
+				pc := rv64NativeTailCompile(t, key+"-producer", rv64PublicTailCountdown(vector, reference), artifact)
 				producer, err := Instantiate(pc)
 				if err != nil {
 					t.Fatal(err)
@@ -412,5 +451,9 @@ func TestRV64PublicDynamicNativeImportCancellationAndClose(t *testing.T) {
 }
 
 func TestRV64PublicDynamicNativeImportCancellationAndCloseWhileProducerParked(t *testing.T) {
-	rv64TailCancellationAndCloseWhileProducerParked(t, true)
+	rv64TailCancellationAndCloseWhileProducerParked(t, true, false)
+}
+
+func TestRV64PublicReferenceTailCancellationAndCloseWhileProducerParked(t *testing.T) {
+	rv64TailCancellationAndCloseWhileProducerParked(t, false, true)
 }

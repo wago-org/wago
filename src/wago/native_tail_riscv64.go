@@ -42,8 +42,8 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		}
 	}
 	for _, p := range m.Plans {
-		if p.Kind != 0 && p.Kind != 1 {
-			return fmt.Errorf("%w: RV64 dynamic tail requires indirect native owners", railshot.ErrUnsupported)
+		if p.Kind > 2 {
+			return fmt.Errorf("%w: RV64 dynamic tail requires qualified native owners", railshot.ErrUnsupported)
 		}
 		local := int(p.FunctionIndex) - c.NumImports
 		if local < 0 || local >= len(c.Entry) {
@@ -53,7 +53,7 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		if err != nil || frame != p.FrameBytes {
 			return fmt.Errorf("%w: RV64 tail source frame differs from native entry", railshot.ErrUnsupported)
 		}
-		if p.Kind == 1 {
+		if p.Kind != 0 {
 			continue // Exact dynamic owners are acquired at entry, before binding.
 		}
 		target, ok := imports[c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
@@ -109,8 +109,8 @@ func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase
 	m := rv64NativeTailModule(in.c)
 	if m != nil {
 		for _, p := range m.Plans {
-			if p.Kind != 0 && p.Kind != 1 {
-				return fmt.Errorf("%w: RV64 dynamic tail requires indirect native owners", railshot.ErrUnsupported)
+			if p.Kind > 2 {
+				return fmt.Errorf("%w: RV64 dynamic tail requires qualified native owners", railshot.ErrUnsupported)
 			}
 		}
 	}

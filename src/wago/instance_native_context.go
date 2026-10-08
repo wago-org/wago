@@ -251,7 +251,7 @@ func (in *Instance) beginCachedBoundedViewEntry() (executionLease, bool, error) 
 			return privateNumericExecutionLease(), true, nil
 		}
 	}
-	if in.memoryDir == nil && in.gc == nil && !in.threadedMemoryZero && in.usesIndependentExecution() {
+	if in.memoryDir == nil && in.gc == nil && !in.threadedMemoryZero && !railshotRequiresNativeOwnerScope(in.c) && in.usesIndependentExecution() {
 		state := in.ensurePluginState()
 		mu := &state.nativeExecutionMu
 		mu.Lock()
@@ -584,7 +584,7 @@ func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
 	}
 	if in == nil || in.c == nil || (!memoryFree && in.c.boundsMode == BoundsChecksSignalsBased) ||
 		in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode ||
-		(railshotNativeContextTrapABI() && in.c.tableCount() != 0) {
+		railshotRequiresNativeOwnerScope(in.c) {
 		return preparedEntryGeneral
 	}
 	if in.memory != nil {
@@ -668,7 +668,7 @@ func (in *Instance) unlockPreparedFastState() {
 }
 
 func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error {
-	if railshotNativeContextTrapABI() && in.c.tableCount() != 0 {
+	if railshotRequiresNativeOwnerScope(in.c) {
 		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
 	}
 	nativeExecutionMu.Lock()
@@ -690,7 +690,7 @@ func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error 
 }
 
 func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte, reserved, bounded bool) error {
-	if railshotNativeContextTrapABI() && in.c.tableCount() != 0 {
+	if railshotRequiresNativeOwnerScope(in.c) {
 		return in.callNativeAsyncWithTrap(entry, true, activeTrap)
 	}
 	if !reserved {

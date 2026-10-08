@@ -437,7 +437,9 @@ func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile 
 			if err != nil {
 				return swarSummary{}, err
 			}
-			if !dynamicTailCalls || !privateRefs || typeKeys == nil || uint64(typeIndex) >= uint64(len(types)) {
+			// A typed descriptor is authenticated by the entry-owned factory;
+			// table-free reference tails need no table type-key directory.
+			if !dynamicTailCalls || !privateRefs || uint64(typeIndex) >= uint64(len(types)) {
 				return swarSummary{}, unsupported("SWAR private dynamic typed tail profile required")
 			}
 			sig := types[typeIndex]

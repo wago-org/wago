@@ -64,9 +64,12 @@ type CompileOptions struct {
 	localTailCalls bool
 	// Source production and private decoded adapters collect symbolic import sites.
 	importTailCalls  bool
-	dynamicTailCalls bool // declared-type source qualification; production admits indirect only
-	tailPlans        *[]tailImportPlan
-	tailSiteBase     uint32
+	dynamicTailCalls bool // declared-type indirect/reference source qualification
+	// A source typed-tail requirement must have a qualified emitted plan, even
+	// when all typed-tail instructions occur in unreachable code.
+	referenceTailInstructions bool
+	tailPlans                 *[]tailImportPlan
+	tailSiteBase              uint32
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.

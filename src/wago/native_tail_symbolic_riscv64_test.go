@@ -15,9 +15,9 @@ import (
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
-// Symbolic metadata proof only: these imported-owner dynamic fixtures remain
-// rejected before mapping. Genuine definition-only indirect source/artifact
-// execution is covered separately in public_dynamic_tail_riscv64_test.go.
+// Symbolic metadata proof only: these fixtures fabricate frame metadata on
+// unrelated code and remain rejected before mapping. Genuine dynamic source
+// and artifact execution is covered by the public dynamic/reference tests.
 func rv64TailSymbolicFixture(t *testing.T, kind uint32, vector bool) *Compiled {
 	t.Helper()
 	values := []wasm.ValType{wasm.I32, wasm.F32, wasm.I64, wasm.F64}
@@ -57,6 +57,9 @@ func rv64TailSymbolicFixture(t *testing.T, kind uint32, vector bool) *Compiled {
 	c.NeedsFuncRefDescs = true
 	if kind == encoder.NativeTailIndirect {
 		c.HasTable, c.TableType, c.TableSize = true, ValFuncRef, 1
+	}
+	if kind == encoder.NativeTailReference {
+		c.requiredFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	rv64StoreNativeTailModule(c, &encoder.NativeTailModule{Plans: []encoder.NativeTailPlan{p}})
 	if err := rv64ValidateNativeTail(c); err != nil {

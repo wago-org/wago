@@ -55,8 +55,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if m := rv64NativeTailModule(c); m != nil {
 		for _, p := range m.Plans {
-			if p.Kind != 0 && p.Kind != 1 {
-				return reject("dynamic tail requires an indirect native-owner plan")
+			if p.Kind > 2 {
+				return reject("dynamic tail requires a qualified native-owner plan")
 			}
 		}
 	}
@@ -88,7 +88,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 
-	if c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.memoryCount() > railshot.MaxProductionMemories {
+	if c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.usesDynamicFuncRefTest() || c.memoryCount() > railshot.MaxProductionMemories {
 		return reject("resource/host/reference lowering is pending")
 	}
 	if len(c.GlobalImports) > len(c.Globals) {
@@ -112,7 +112,11 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
-	if c.requiredFeatures & ^(platformCoreFeatures()|CoreFeatureTailCall) != 0 || c.requiredAMD64Features != 0 || c.preparedIsolatedTables {
+	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
+	if rv64HasReferenceTail(c) {
+		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	if c.requiredFeatures & ^qualifiedFeatures != 0 || c.requiredAMD64Features != 0 || c.preparedIsolatedTables {
 		return reject("feature or ISA contract")
 	}
 	for i, entry := range c.Entry {

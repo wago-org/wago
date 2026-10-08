@@ -160,6 +160,9 @@ func TestRV64PublicDynamicTailDefaultGate(t *testing.T) {
 }
 
 func rv64PublicDynamicTailCountdown(vector bool) []byte {
+	return rv64PublicTailCountdown(vector, false)
+}
+func rv64PublicTailCountdown(vector, reference bool) []byte {
 	payload := []wasm.ValType{wasm.I32, wasm.F32, wasm.I64, wasm.F64}
 	if vector {
 		payload = append(payload, wasm.V128)
@@ -173,20 +176,29 @@ func rv64PublicDynamicTailCountdown(vector bool) []byte {
 	for i := range payload {
 		body = append(body, 0x20, byte(i+1))
 	}
-	body = append(body, 0x41, 0, 0x13, 2, 0, 0x0b, 0x0b)
+	if reference {
+		body = append(body, 0xd2, 0, 0x15, 2, 0x0b, 0x0b)
+	} else {
+		body = append(body, 0x41, 0, 0x13, 2, 0, 0x0b, 0x0b)
+	}
 	var continuation []byte
 	for i := range params {
 		continuation = append(continuation, 0x20, byte(i))
 	}
 	continuation = append(continuation, 0x10, 0, 0x0b)
+	if reference {
+		return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, payload), wasmtest.FuncType(nil, payload), wasmtest.FuncType(params, payload))), wasmtest.Section(3, []byte{2, 0, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("ordinary", 0, 1))), wasmtest.Section(9, []byte{1, 3, 0, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(continuation))))
+	}
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, payload), wasmtest.FuncType(nil, payload), wasmtest.FuncType(params, payload))), wasmtest.Section(3, []byte{2, 0, 0}), wasmtest.Section(4, []byte{1, 0x70, 1, 1, 1}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("ordinary", 0, 1), wasmtest.ExportEntry("table", 1, 0))), wasmtest.Section(9, []byte{1, 0, 0x41, 0, 0x0b, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(continuation))))
 }
 
-func TestRV64PublicDynamicTailDeepPrepared(t *testing.T) {
+func TestRV64PublicDynamicTailDeepPrepared(t *testing.T)   { rv64PublicTailDeepPrepared(t, false) }
+func TestRV64PublicReferenceTailDeepPrepared(t *testing.T) { rv64PublicTailDeepPrepared(t, true) }
+func rv64PublicTailDeepPrepared(t *testing.T, reference bool) {
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
 			t.Run(fmt.Sprintf("artifact%t-vector%t", artifact, vector), func(t *testing.T) {
-				c := rv64NativeTailCompile(t, fmt.Sprintf("dynamic-tail-countdown-%t", vector), rv64PublicDynamicTailCountdown(vector), artifact)
+				c := rv64NativeTailCompile(t, fmt.Sprintf("tail-countdown-%t-reference%t", vector, reference), rv64PublicTailCountdown(vector, reference), artifact)
 				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithNativeStackBytes(MinNativeStackBytes)))
 				defer rt.Close()
 				in := rv64HostTailInstantiate(t, rt, c, nil)
@@ -222,16 +234,27 @@ func TestRV64PublicDynamicTailDeepPrepared(t *testing.T) {
 	}
 }
 
-func rv64InfiniteDynamicTailModule() []byte {
+func rv64InfiniteDynamicTailModule() []byte { return rv64InfiniteTailModule(false) }
+func rv64InfiniteTailModule(reference bool) []byte {
+	if reference {
+		return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "flag", wasm.I32, true))), wasmtest.Section(3, []byte{2, 0, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("ok", 0, 1))), wasmtest.Section(9, []byte{1, 3, 0, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x41, 1, 0x6a, 0x24, 0, 0xd2, 0, 0x15, 0, 0x0b}), wasmtest.Code([]byte{0x41, 42, 0x0b}))))
+	}
+
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "flag", wasm.I32, true))), wasmtest.Section(3, []byte{2, 0, 0}), wasmtest.Section(4, []byte{1, 0x70, 1, 1, 1}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("ok", 0, 1))), wasmtest.Section(9, []byte{1, 0, 0x41, 0, 0x0b, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x41, 1, 0x6a, 0x24, 0, 0x41, 0, 0x13, 0, 0, 0x0b}), wasmtest.Code([]byte{0x41, 42, 0x0b}))))
 }
 
 func TestRV64PublicDynamicTailCancellationAndClose(t *testing.T) {
-	source := rv64InfiniteDynamicTailModule()
+	rv64PublicTailCancellationAndClose(t, false)
+}
+func TestRV64PublicReferenceTailCancellationAndClose(t *testing.T) {
+	rv64PublicTailCancellationAndClose(t, true)
+}
+func rv64PublicTailCancellationAndClose(t *testing.T, reference bool) {
+	source := rv64InfiniteTailModule(reference)
 	for _, artifact := range []bool{false, true} {
 		for _, closeRoot := range []bool{false, true} {
 			t.Run(fmt.Sprintf("artifact%t-close%t", artifact, closeRoot), func(t *testing.T) {
-				c := rv64NativeTailCompile(t, "dynamic-tail-cancel", source, artifact)
+				c := rv64NativeTailCompile(t, fmt.Sprintf("dynamic-tail-cancel-reference%t", reference), source, artifact)
 				flag := NewGlobalI32(0, true)
 				defer flag.Close()
 				in, err := Instantiate(c, NewImports().Global("env", "flag", flag))

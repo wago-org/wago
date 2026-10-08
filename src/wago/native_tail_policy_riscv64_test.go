@@ -75,8 +75,15 @@ func TestRV64DynamicTailStaticImporterAggregatePolicy(t *testing.T) {
 	}
 }
 
-func TestRV64DynamicTailConfiguredPolicy(t *testing.T) {
+func TestRV64DynamicTailConfiguredPolicy(t *testing.T) { rv64DynamicTailConfiguredPolicy(t, false) }
+func TestRV64PublicReferenceTailConfiguredPolicy(t *testing.T) {
+	rv64DynamicTailConfiguredPolicy(t, true)
+}
+func rv64DynamicTailConfiguredPolicy(t *testing.T, reference bool) {
 	source := rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, false)
+	if reference {
+		source = rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, false)
+	}
 	c := rv64NativeTailCompile(t, "dynamic-tail-policy", source, false)
 	in, err := Instantiate(c)
 	if err != nil {
