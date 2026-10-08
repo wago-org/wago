@@ -31,8 +31,9 @@ An internal proper local-tail prerequisite now discards caller frames for exact
 numeric same-image calls, with bounded transport, stack-fence and interruption
 coverage. Public TailCall remains gated pending vector/imported/indirect/reference
 paths and their ownership/continuation protocol.
-Conservative resource-root accounting prepares later
-reference ownership work without changing collection or feature admission.
+Conservative resource-root accounting and an independently tested bounded receipt
+primitive prepare later reference ownership work. The receipt primitive remains
+unconnected to production; collection and feature admission are unchanged.
 Remaining work
 includes reference-global imports combined with instance-owned imported tables, mutable reference globals, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
