@@ -53,8 +53,10 @@ type integerEmitter struct {
 func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *integerEmitter) (integerSummary, error) {
 	floating := state != nil && state.production
 	profile := memoryProfile{}
+	referenceTypes := internalReferenceTypes{}
 	if state != nil {
 		profile = makeMemoryProfile(state.memories, state.indexedMemories)
+		referenceTypes.scalar = state.types
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -67,14 +69,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		locals[i] = scalarWide(t)
 	}
 	for _, run := range fn.Locals.Runs {
-		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && internalFunctionReference(run.Type, state.referenceCalls)) {
+		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, state.referenceCalls, referenceTypes)) {
 			return integerSummary{}, unsupported("noninteger local")
 		}
 		if int(run.Count) > 256-nlocals {
 			return integerSummary{}, unsupported("local bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
-			localRefs[nlocals] = internalFunctionReference(run.Type, true)
+			localRefs[nlocals] = internalFunctionReferenceWithTypes(run.Type, true, referenceTypes)
 			locals[nlocals] = scalarWide(run.Type) || localRefs[nlocals]
 			nlocals++
 		}
@@ -218,7 +220,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			h = ctrl[depth-1].base
 		case 0x01:
 		case 0x02, 0x03, 0x04:
-			bt, e := internalReferenceBlockType(&r, privateRefs && state.referenceCalls)
+			bt, e := internalReferenceBlockType(&r, privateRefs && state.referenceCalls, referenceTypes)
 			if e != nil {
 				return integerSummary{}, e
 			}
@@ -508,7 +510,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				bt, e := internalSelectType(&r, privateRefs && state.referenceCalls)
+				bt, e := internalSelectType(&r, privateRefs && state.referenceCalls, referenceTypes)
 				if e != nil {
 					return integerSummary{}, e
 				}
@@ -1446,13 +1448,17 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		return nil, FunctionInfo{}, nil, unsupported("foreign table bridge admission bound")
 	}
 	var widths [256]bool
+	referenceTypes := internalReferenceTypes{}
+	if state != nil {
+		referenceTypes.scalar = state.types
+	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {
 		widths[i] = scalarWide(t)
 	}
 	for _, run := range fn.Locals.Runs {
 		for i := uint32(0); i < run.Count; i++ {
-			widths[n] = scalarWide(run.Type) || internalFunctionReference(run.Type, true)
+			widths[n] = scalarWide(run.Type) || internalFunctionReferenceWithTypes(run.Type, true, referenceTypes)
 			n++
 		}
 	}

@@ -270,6 +270,9 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails bo
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		for _, run := range fn.Locals.Runs {
+			if run.Type.Kind() == wasm.ValRef && run.Type.Ref().Heap().Kind() == wasm.HeapTypeIndex {
+				return false, false, false, unsupported("indexed reference locals await retained source/artifact qualification")
+			}
 			if run.Type.Kind() == wasm.ValRef && !run.Type.Ref().Nullable() {
 				if !referenceCalls || !internalFunctionReference(run.Type, true) {
 					return false, false, false, unsupported("non-null local requires retained abstract function-reference protocol")
@@ -284,11 +287,14 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails bo
 				return false, false, false, err
 			}
 			if op == 0x02 || op == 0x03 || op == 0x04 {
-				if lead, ok := r.Peek(); ok && lead == 0x64 {
-					if !referenceCalls {
-						return false, false, false, unsupported("non-null block requires retained typed-reference protocol")
+				if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
+					probe := r
+					// No type directory: indexed annotations stay private until
+					// their retained source/artifact requirements are qualified.
+					if _, err := internalReferenceBlockType(&probe, referenceCalls, internalReferenceTypes{}); err != nil {
+						return false, false, false, err
 					}
-					hasReferenceControl = true
+					hasReferenceControl = hasReferenceControl || lead == 0x64
 				}
 			}
 			if op == 0x1c {
@@ -300,11 +306,11 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails bo
 				if count != 1 {
 					return false, false, false, unsupported("typed select requires one value type")
 				}
-				if lead, ok := probe.Peek(); ok && lead == 0x64 {
-					if !referenceCalls {
-						return false, false, false, unsupported("non-null select requires retained typed-reference protocol")
+				if lead, ok := probe.Peek(); ok && (lead == 0x63 || lead == 0x64) {
+					if _, err := internalSelectType(&probe, referenceCalls, internalReferenceTypes{}); err != nil {
+						return false, false, false, err
 					}
-					hasReferenceControl = true
+					hasReferenceControl = hasReferenceControl || lead == 0x64
 				}
 			}
 			if op == 0x14 {

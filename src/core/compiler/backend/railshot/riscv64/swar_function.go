@@ -184,13 +184,14 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 		}
 	}
 	nlocals := len(ft.Params)
+	referenceTypes := internalReferenceTypes{swar: types}
 	for _, run := range fn.Locals.Runs {
-		if (!swarCarrierType(run.Type) && !(privateRefs && internalFunctionReference(run.Type, referenceCalls))) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
+		if (!swarCarrierType(run.Type) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, referenceCalls, referenceTypes))) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
 			return swarSummary{}, unsupported("SWAR local type/bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
 			localClasses[nlocals] = swarClassOf(run.Type)
-			if privateRefs && internalFunctionReference(run.Type, referenceCalls) {
+			if privateRefs && internalFunctionReferenceWithTypes(run.Type, referenceCalls, referenceTypes) {
 				localClasses[nlocals] = swarFuncRef
 			}
 			nlocals++
@@ -826,7 +827,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 				if count != 1 {
 					return swarSummary{}, unsupported("SWAR select type count")
 				}
-				typ, err := internalSelectType(&r, privateRefs && referenceCalls)
+				typ, err := internalSelectType(&r, privateRefs && referenceCalls, referenceTypes)
 				if err != nil {
 					return swarSummary{}, err
 				}
