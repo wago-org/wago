@@ -402,21 +402,27 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 }
 
 func (b *instanceBuilder) rollbackPreparedState() {
-	b.functionAttachments.detachAll()
-	b.hostAttachments.detachAll()
-	b.globalAttachments.detachAll()
-	b.tableAttachments.detachAll()
-	b.tagAttachments.detachAll()
+	var cleanup resourceCleanup
+	cleanup.run(b.functionAttachments.detachAll)
+	cleanup.run(b.hostAttachments.detachAll)
+	cleanup.run(b.globalAttachments.detachAll)
+	cleanup.run(b.tableAttachments.detachAll)
+	cleanup.run(b.tagAttachments.detachAll)
 	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
-		b.registeredInstance.referenceLifetime().notifyStore(b.registeredInstance.refStore, referenceLifetimeClosed)
+		cleanup.run(func() {
+			b.registeredInstance.referenceLifetime().notifyStore(b.registeredInstance.refStore, referenceLifetimeClosed)
+		})
 	}
 	if b.collector != nil {
-		if b.collectorShared && b.opts.store != nil && (b.registeredInstance == nil || b.registeredInstance.refStore == nil) {
-			b.opts.store.releaseUnclaimedGCCollector(b.collector)
-		} else if !b.collectorShared {
-			b.collector.Close()
-		}
+		cleanup.run(func() {
+			if b.collectorShared && b.opts.store != nil && (b.registeredInstance == nil || b.registeredInstance.refStore == nil) {
+				b.opts.store.releaseUnclaimedGCCollector(b.collector)
+			} else if !b.collectorShared {
+				b.collector.Close()
+			}
+		})
 	}
+	cleanup.finish()
 }
 
 func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance, err error) {

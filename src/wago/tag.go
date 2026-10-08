@@ -100,8 +100,7 @@ func (a *tagImportAttachments) attach(tag *Tag, requiredType uint32, requiredTyp
 }
 
 func (a *tagImportAttachments) detachAll() {
-	a.set.each((*Tag).detachImporter)
-	a.set.reset()
+	a.set.drain((*Tag).detachImporter)
 }
 
 func (c *Compiled) tagImportCount() int {

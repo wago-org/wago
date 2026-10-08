@@ -82,6 +82,34 @@ func (d *importDedup[T]) each(fn func(T)) {
 	}
 }
 
+// drain consumes this batch before invoking its release actions, so reentry
+// cannot release the same unit again. Each action must consume its ownership
+// unit before any callback that can panic (as releaseResourceRoot and importer
+// detach do). Callers own serialization; this is not a concurrent journal.
+// Entries added by reentry form a separate batch and are left for its owner.
+func (d *importDedup[T]) drain(fn func(T)) {
+	pending := *d
+	*d = importDedup[T]{}
+	pending.index = nil
+	var cleanup resourceCleanup
+	var zero T
+	inlineCount := pending.n
+	if inlineCount > len(pending.inline) {
+		inlineCount = len(pending.inline)
+	}
+	for i := 0; i < inlineCount; i++ {
+		item := pending.inline[i]
+		pending.inline[i] = zero
+		cleanup.run(func() { fn(item) })
+	}
+	for i := range pending.extra {
+		item := pending.extra[i]
+		pending.extra[i] = zero
+		cleanup.run(func() { fn(item) })
+	}
+	cleanup.finish()
+}
+
 // reset empties the set, clearing the inline array so it retains no references.
 func (d *importDedup[T]) reset() {
 	inlineCount := d.n
@@ -117,8 +145,7 @@ func (a *functionImportAttachments) attach(export *InstanceExport) error {
 }
 
 func (a *functionImportAttachments) detachAll() {
-	a.set.each((*Instance).releaseResourceRoot)
-	a.set.reset()
+	a.set.drain((*Instance).releaseResourceRoot)
 }
 
 func detachImportedFunctions(in *Instance) {
@@ -171,10 +198,12 @@ func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStor
 }
 
 func (a *hostFuncRefAttachments) detachAll() {
-	a.bindings.each(func(key hostFuncRefBindingKey) { key.owner.releaseDispatchBinding(key.compiled, key.importIndex) })
-	a.bindings.reset()
-	a.set.each((*HostFuncRef).detachImporter)
-	a.set.reset()
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		a.bindings.drain(func(key hostFuncRefBindingKey) { key.owner.releaseDispatchBinding(key.compiled, key.importIndex) })
+	})
+	cleanup.run(func() { a.set.drain((*HostFuncRef).detachImporter) })
+	cleanup.finish()
 }
 
 func detachImportedHostFuncRefs(in *Instance) {
@@ -219,8 +248,7 @@ func (a *globalImportAttachments) attach(global *Global, store *referenceStore, 
 }
 
 func (a *globalImportAttachments) detachAll() {
-	a.set.each((*Global).detachReferenceImporter)
-	a.set.reset()
+	a.set.drain((*Global).detachReferenceImporter)
 }
 
 func detachImportedGlobals(in *Instance) {
@@ -334,9 +362,9 @@ func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact
 }
 
 func (a *tableImportAttachments) detachAll() {
-	a.set.each(func(table *Table) { table.detachImporter(a.store) })
-	a.set.reset()
+	store := a.store
 	a.store = nil
+	a.set.drain(func(table *Table) { table.detachImporter(store) })
 }
 
 func (c *Compiled) preflightImportBindings(imports resolvedImports) error {
