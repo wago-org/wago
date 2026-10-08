@@ -56,6 +56,7 @@ type dependencyMember struct {
 	// Written before active publishes registration, never reused thereafter.
 	identity uint64
 	active   atomic.Bool
+	// Outstanding ownership, including Releasing, prevents source retirement.
 	// Cross-graph external adoption updates this under the owner's lifeMu.
 	outgoing atomic.Uint32
 	// The authoritative graph's mutex protects receipt accounting below.
@@ -348,13 +349,10 @@ func (r dependencyReceipt) release() bool {
 		g.mu.Unlock()
 		return false
 	}
-	target := record.target
+	target, consumer := record.target, record.consumer
 	if record.state == dependencyTyped {
 		target.incoming--
 		target.external++
-	}
-	if record.consumer != nil {
-		record.consumer.outgoing.Add(^uint32(0))
 	}
 	record.state = dependencyReleasing
 	g.mu.Unlock()
@@ -369,6 +367,11 @@ func (r dependencyReceipt) release() bool {
 		g.records[slot].state = dependencyReleased
 		if g.records[slot].generation < maxDependencyReceiptGeneration {
 			g.free = append(g.free, slot)
+		}
+		// A foreign graph cannot inspect this record. Clear its source links and
+		// publish Released before allowing that graph to retire the consumer.
+		if consumer != nil {
+			consumer.outgoing.Add(^uint32(0))
 		}
 	}()
 	target.owner.releaseResourceRoot()
