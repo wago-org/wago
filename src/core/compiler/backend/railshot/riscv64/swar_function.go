@@ -826,7 +826,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 				if count != 1 {
 					return swarSummary{}, unsupported("SWAR select type count")
 				}
-				typ, err := r.Byte()
+				typ, err := internalSelectType(&r, privateRefs && referenceCalls)
 				if err != nil {
 					return swarSummary{}, err
 				}

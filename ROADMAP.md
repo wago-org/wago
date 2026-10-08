@@ -44,12 +44,13 @@ artifact requirement. Source and compiler-free tests cover null traps, unreachab
 uses, deep typed label transfers, numeric loop parameters, combined `call_ref`,
 and retained foreign immutable globals. Existing non-null artifacts retain the
 same format and load without recompilation. Explicit abstract function-reference
-block results and initialized non-null locals are qualified through the same
+block results, typed selects and initialized non-null locals are qualified through the same
 retained-carrier contract. Nullable spellings retain ordinary ReferenceTypes
 admission; non-null type-only bodies carry the typed feature and artifact witness
 even without typed opcodes. Frontend initialization checks reject invalid locals
 before image staging. Non-calling reference control does not reserve declared-call
-transport. Public TailCall and
+transport. Selects preserve both full-width reference arms while zero-normalizing
+i32 conditions, including raw incoming upper bits. Public TailCall and
 TypedFunctionReferences remain
 gated: these bounded cases do not establish complete feature support.
 Conservative resource-root accounting and an independently tested bounded receipt

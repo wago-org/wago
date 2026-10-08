@@ -291,6 +291,22 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 					hasReferenceControl = true
 				}
 			}
+			if op == 0x1c {
+				probe := r
+				count, err := probe.U32()
+				if err != nil {
+					return false, false, false, err
+				}
+				if count != 1 {
+					return false, false, false, unsupported("typed select requires one value type")
+				}
+				if lead, ok := probe.Peek(); ok && lead == 0x64 {
+					if !referenceCalls {
+						return false, false, false, unsupported("non-null select requires retained typed-reference protocol")
+					}
+					hasReferenceControl = true
+				}
+			}
 			if op == 0x14 {
 				if !referenceCalls {
 					return false, false, false, unsupported("call_ref requires retained native reference protocol")

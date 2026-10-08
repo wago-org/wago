@@ -38,3 +38,14 @@ func internalReferenceBlockType(r *wasm.Reader, nonNull bool) (int64, error) {
 	}
 	return -16, nil
 }
+
+// A select immediate is one value type, not a block type: preserve the caller's
+// existing numeric/reference byte allowlist, and canonicalize only explicit
+// abstract function references. Void and indexed block signatures stay invalid.
+func internalSelectType(r *wasm.Reader, nonNull bool) (byte, error) {
+	if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
+		_, err := internalReferenceBlockType(r, nonNull)
+		return 0x70, err
+	}
+	return r.Byte()
+}

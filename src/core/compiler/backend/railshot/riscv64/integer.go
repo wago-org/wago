@@ -508,7 +508,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				bt, e := r.Byte()
+				bt, e := internalSelectType(&r, privateRefs && state.referenceCalls)
 				if e != nil {
 					return integerSummary{}, e
 				}
@@ -517,6 +517,30 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				typedRef = bt == 0x70
 				typedWide = bt == 0x7e || bt == 0x7c || typedRef
+			}
+			if typedRef {
+				// Missing operands are polymorphic only at this frame's explicit
+				// unreachable floor. Known arms and the condition keep their classes.
+				floor := ctrl[depth-1].base
+				missing := max(0, 3-(h-floor))
+				if missing != 0 && !ctrl[depth-1].unreachable {
+					return integerSummary{}, unsupported("reference select operand underflow")
+				}
+				if h+missing > len(stack) {
+					return integerSummary{}, unsupported("reference select operand bound")
+				}
+				for i := 0; i < 3; i++ {
+					at := h - 3 + i
+					if at >= floor && (stackRefs[at] != (i < 2) || stack[at] != (i < 2)) {
+						return integerSummary{}, unsupported("reference select operand class/width")
+					}
+				}
+				copy(stack[floor+missing:h+missing], stack[floor:h])
+				copy(stackRefs[floor+missing:h+missing], stackRefs[floor:h])
+				for i := 0; i < missing; i++ {
+					stack[floor+i], stackRefs[floor+i] = i < 2, i < 2
+				}
+				h += missing
 			}
 			if _, err = pop(); err != nil {
 				return integerSummary{}, err
