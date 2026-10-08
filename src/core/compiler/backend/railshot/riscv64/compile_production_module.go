@@ -48,6 +48,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		opts.tailModule = m
 		opts.localTailCalls = true
 		opts.importTailCalls = true
+		// Defined-owner generations authenticate indirect targets under the exact
+		// entry lease. Imported/host owners need a separate adapter.
+		opts.dynamicTailCalls = m != nil && m.ImportedFuncCount() == 0
 		var plans []tailImportPlan
 		opts.tailPlans = &plans
 	}
@@ -81,6 +84,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	for _, data := range m.Data {
 		if !consume(len(data.Init)) {
 			return nil, unsupported("decoded instruction/data size bound")
+		}
+	}
+	if opts.dynamicTailCalls {
+		if err := admitProductionDynamicTails(m); err != nil {
+			return nil, err
 		}
 	}
 	usesSWAR, err := moduleUsesSWAR(m)
@@ -178,12 +186,24 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 		tail = &enc.NativeTailModule{}
 		values := 0
 		for _, p := range *opts.tailPlans {
-			if p.kind != 0 {
-				return nil, unsupported("dynamic tail address-free artifact/runtime contract is not enabled")
+			if opts.tailModule == nil {
+				return nil, unsupported("staged tail module metadata")
 			}
-			sig, ok := opts.tailModule.FuncSignature(p.importIndex)
+			var sig *wasm.CompType
+			var ok bool
+			switch p.kind {
+			case enc.NativeTailDirectImport:
+				sig, ok = opts.tailModule.FuncSignature(p.importIndex)
+			case enc.NativeTailIndirect:
+				if !opts.dynamicTailCalls || opts.tailModule.ImportedFuncCount() != 0 {
+					return nil, unsupported("indirect tail requires defined owners")
+				}
+				sig, ok = opts.tailModule.TypeFunc(p.typeIndex)
+			default:
+				return nil, unsupported("reference tail runtime attachment is pending")
+			}
 			if !ok {
-				return nil, unsupported("staged tail import signature metadata")
+				return nil, unsupported("staged tail signature metadata")
 			}
 			values += len(sig.Params) + len(sig.Results)
 			if err := NativeTailMetadataBudget(len(*opts.tailPlans), values); err != nil {
@@ -193,7 +213,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 			if local < 0 || local >= len(c.functions) || c.functions[local].FrameHeaderBytes != callFrameHeader {
 				return nil, unsupported("staged tail finalized frame metadata")
 			}
-			tail.Plans = append(tail.Plans, enc.NativeTailPlan{FunctionIndex: p.functionIndex, ImportIndex: p.importIndex, SourcePC: p.sourcePC, FrameBytes: c.functions[local].FrameBytes, SourceBase: p.sourceBase, SourceStride: p.sourceStride})
+			tail.Plans = append(tail.Plans, enc.NativeTailPlan{Kind: p.kind, TypeIndex: p.typeIndex, ReferenceBase: p.referenceBase, FunctionIndex: p.functionIndex, ImportIndex: p.importIndex, SourcePC: p.sourcePC, FrameBytes: c.functions[local].FrameBytes, SourceBase: p.sourceBase, SourceStride: p.sourceStride})
 		}
 	}
 	if err := c.prepareProfile(len(c.code)); err != nil {
@@ -221,4 +241,28 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 		collectFinalizedStats(c, opts.Stats)
 	}
 	return image, nil
+}
+
+// Even unreachable reference tails stay outside the whole-module profile. The
+// private dynamic walker supports them, but their runtime owner contract has
+// not yet been promoted. Instruction bytes were bounded before this pass.
+func admitProductionDynamicTails(m *wasm.Module) error {
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for _, fn := range m.Code {
+		r := wasm.ReaderFrom(fn.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return err
+			}
+			if op == 0x15 {
+				return unsupported("reference tail runtime attachment is pending")
+			}
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

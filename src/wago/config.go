@@ -469,7 +469,9 @@ func (c *RuntimeConfig) WithMemoryLimitPages(pages uint32) *RuntimeConfig {
 }
 
 // WithMaxInstanceMetadataBytes caps the validated off-heap metadata allocated
-// for one instance. Zero leaves this resource unbounded.
+// for one instance. The experimental RV64 tail profile also charges bounded
+// entry snapshots and dispatcher metadata against this limit. Zero leaves this
+// resource unbounded, subject to backend admission bounds.
 func (c *RuntimeConfig) WithMaxInstanceMetadataBytes(bytes uint64) *RuntimeConfig {
 	n := *c
 	n.maxInstanceMetadataBytes = bytes
@@ -503,6 +505,9 @@ func (c *RuntimeConfig) WithMaxModuleBytes(bytes uint64) *RuntimeConfig {
 // bound peak compiler memory, temporary code, or compilation work. Function
 // workers share this one final module limit; it is not a per-worker allowance. Zero
 // is unbounded. Runtime.Module rechecks decoded artifacts against this quota.
+// The experimental RV64 tail profile additionally checks each instance and
+// entry against this limit before allocating dispatchers, conservatively
+// charging retained guest images again for each overlapping generation.
 func (c *RuntimeConfig) WithMaxNativeCodeBytes(bytes uint64) *RuntimeConfig {
 	n := *c
 	n.maxNativeCodeBytes = bytes

@@ -1439,7 +1439,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.validateMemo.maxInstanceMetadataBytes = cfg.maxInstanceMetadataBytes
 		c.validateMemo.snapshotLimit = cfg.maxCompiledMetadataBytes
 	}
-	if err := railshotStoreNativeTail(c, cm); err != nil {
+	if err := railshotStoreNativeTail(c, cm, cfg); err != nil {
 		return nil, err
 	}
 	if cfg.maxNativeCodeBytes != 0 && railshotNativeCodeBytes(c) > cfg.maxNativeCodeBytes {

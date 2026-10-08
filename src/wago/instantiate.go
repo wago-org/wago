@@ -17,6 +17,7 @@ import (
 
 // InstantiateOptions configures instance creation from a *Compiled.
 type InstantiateOptions struct {
+	railshotTailPolicy railshotInstantiateTailPolicy
 	// MaxCompiledMetadataBytes bounds the frozen Go metadata snapshot. Zero
 	// uses the source policy or the 256 MiB default; native instance storage
 	// has a separate quota. A stricter limit also applies to an existing snapshot.
@@ -1745,6 +1746,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		moduleIdentity:     opts.moduleIdentity,
 	}
 	tailInstance = in
+	railshotCaptureNativeTailPolicy(in, opts, arenaNeed)
 	if err := railshotPrepareNativeTail(in, imports, sharedThunkBase, sharedThunkOffsets, ownedThunkAddr); err != nil {
 		return nil, err
 	}

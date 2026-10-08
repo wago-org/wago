@@ -9,8 +9,9 @@ import (
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
-// Private declared-type source stage. Public source/codec/runtime admission
-// remains closed until address-free plans and entry/resume leases are connected.
+// Declared-type indirect source lowering. The production qualification profile
+// binds address-free plans through the exact entry owner lease. Reference tails
+// and imported-owner graphs remain private until their adapters are qualified.
 func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.CompType, key uint64, base, indexSlot int, spill func(int) int32, stride int) {
 	if !f.mode.dynamicTailCalls || !f.mode.importTailCalls || !f.mode.invocationContext || !f.mode.foreignTableCalls || f.mode.tailPlans == nil || !f.admitLocalTailFrame() || sig == nil || spill == nil || typeIndex >= MaxFunctions {
 		f.err = unsupported("private dynamic indirect source contract")

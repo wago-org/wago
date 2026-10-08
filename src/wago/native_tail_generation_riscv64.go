@@ -43,14 +43,18 @@ func rv64TailGenerationError(detail string) error {
 	return fmt.Errorf("%w: RV64 tail generation %s", railshot.ErrUnsupported, detail)
 }
 
-// Plans are trusted compiler-side symbolic input. This private attachment proof
+// Plans are trusted compiler-side symbolic input. This runtime attachment check
 // checks signatures, exact actual frames and all owner identities; it does not
 // establish that an arbitrary supplied SourcePC contains a decoded tail opcode.
 // Public integration must take plans only from frozen validated compiler/loader
 // metadata, and pass its charged resource limits. No plan contains an address.
 // A nonnil generation returned with an error owns cleanup and budget charges.
 func rv64NewDefinedTailGeneration(caller *Instance, scope *rv64NativeTableTargets, plans []encoder.NativeTailPlan, limits rv64NativeTailGenerationLimits) (*rv64NativeTailGeneration, error) {
-	if caller == nil || scope == nil || scope.count <= 0 || scope.count > 128 || len(plans) == 0 || len(plans) > 4096 || limits.code <= 0 || limits.code > railshot.MaxCodeBytes || limits.metadata <= 0 || limits.metadata > railshot.MaxModuleBytes {
+	return rv64NewDefinedTailGenerationWithBudgets(caller, scope, plans, limits, limits)
+}
+
+func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64NativeTableTargets, plans []encoder.NativeTailPlan, scopeLimits, callerLimits rv64NativeTailGenerationLimits) (*rv64NativeTailGeneration, error) {
+	if caller == nil || scope == nil || scope.count <= 0 || scope.count > 128 || len(plans) == 0 || len(plans) > 4096 || scopeLimits.code < 0 || scopeLimits.code > railshot.MaxCodeBytes || scopeLimits.metadata < 0 || scopeLimits.metadata > railshot.MaxModuleBytes || callerLimits.code < 0 || callerLimits.code > railshot.MaxCodeBytes || callerLimits.metadata < 0 || callerLimits.metadata > railshot.MaxModuleBytes {
 		return nil, rv64TailGenerationError("count/limit")
 	}
 	callerIndex, ownerMetadata, guestCode := -1, 0, 0
@@ -64,6 +68,7 @@ func rv64NewDefinedTailGeneration(caller *Instance, scope *rv64NativeTableTarget
 			return nil, err
 		}
 		charge, err := railshot.NativeTailDefinedOwnerBytes(n, values)
+		charge += int(unsafe.Sizeof(rv64TailCodeOwner{})) // conservatively cover interface ownership storage
 		if err != nil || charge > railshot.MaxModuleBytes-ownerMetadata {
 			return nil, rv64TailGenerationError("aggregate owner metadata")
 		}
@@ -123,26 +128,44 @@ func rv64NewDefinedTailGeneration(caller *Instance, scope *rv64NativeTableTarget
 	code += guestCode
 	state := &caller.ensurePluginState().railshotInvocation
 	pool := &state.tailGenerationBudget
-	if scope.tailBudget.count != 0 && scope.tailBudget.limits != limits || pool.count != 0 && pool.limits != limits {
-		return nil, rv64TailGenerationError("overlapping configured limit identity")
-	}
-	if metadata > limits.metadata-scope.tailBudget.metadata || code > limits.code-scope.tailBudget.code || metadata > limits.metadata-pool.metadata || code > limits.code-pool.code || scope.tailBudget.count == rv64MaxTailGenerations || pool.count == rv64MaxTailGenerations {
-		return nil, rv64TailGenerationError("aggregate generation reservation")
+	budgets := [2]struct {
+		budget *rv64NativeTailGenerationBudget
+		limits rv64NativeTailGenerationLimits
+	}{{&scope.tailBudget, scopeLimits}, {pool, callerLimits}}
+	for i, reservation := range budgets {
+		budget, limits := reservation.budget, reservation.limits
+		if budget.count != 0 && budget.limits != limits {
+			return nil, rv64TailGenerationError("overlapping configured limit identity")
+		}
+		if metadata > limits.metadata-budget.metadata {
+			return nil, &rv64TailReservationError{scope: i == 0, requested: budget.metadata + metadata, limit: limits.metadata}
+		}
+		if code > limits.code-budget.code {
+			return nil, &rv64TailReservationError{scope: i == 0, code: true, requested: budget.code + code, limit: limits.code}
+		}
+		if budget.count == rv64MaxTailGenerations {
+			return nil, rv64TailGenerationError("aggregate generation count")
+		}
 	}
 	g := &rv64NativeTailGeneration{caller: caller, scope: scope, state: state, codeBytes: code, metadataBytes: metadata, reserved: true}
-	for _, budget := range []*rv64NativeTailGenerationBudget{&scope.tailBudget, pool} {
-		budget.limits = limits
+	for _, reservation := range budgets {
+		budget := reservation.budget
+		budget.limits = reservation.limits
 		budget.code += code
 		budget.metadata += metadata
 		budget.count++
 	}
 	// Snapshot construction is cold and bounded across all owners before any
-	// signature conversion. Cached snapshots still authenticate every live row.
+	// signature conversion. Its owned metadata ends with this generation.
 	var snapshotStorage [128]*railshot.NativeTailDefinedOwner
 	var rangeStorage [128]railshot.NativeTailCodeRange
 	snapshots, ranges := snapshotStorage[:scope.count], rangeStorage[:0]
 	for i, owner := range scope.owners[:scope.count] {
-		snapshot, err := rv64NativeDefinedTailOwner(owner)
+		n, values, err := rv64NativeDefinedTailOwnerCounts(owner)
+		if err != nil {
+			return g, err
+		}
+		snapshot, err := rv64NewNativeDefinedTailOwner(owner, n, values)
 		if err != nil {
 			return g, err
 		}

@@ -94,6 +94,13 @@ func railshotValidateNativeExport(c *Compiled, index int, export *InstanceExport
 	if err := railshotValidateCompiled(producer.c); err != nil {
 		return err
 	}
+	if m := rv64NativeTailModule(producer.c); m != nil {
+		for _, p := range m.Plans {
+			if p.Kind != 0 {
+				return fmt.Errorf("%w: RV64 dynamic tail function import owner adapter is pending", railshot.ErrUnsupported)
+			}
+		}
+	}
 	if producer.hostEvents != nil {
 		return deferredHostEventCalleeError()
 	}
@@ -404,6 +411,7 @@ func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 // foreign activation. Only its actual gate owner may swap parked public scratch.
 type railshotInvocationState struct {
 	tailDispatcher       *railshot.NativeTailDispatcher
+	tailPolicy           rv64TailAllocationPolicy
 	tailGenerationBudget rv64NativeTailGenerationBudget
 	activeTailGeneration *rv64NativeTailGeneration
 	definedTailOwner     *railshot.NativeTailDefinedOwner

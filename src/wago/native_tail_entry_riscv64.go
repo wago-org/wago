@@ -53,15 +53,19 @@ func (s *rv64NativeTableTargets) refreshTailGenerations() error {
 		if err != nil {
 			return err
 		}
-		limits := rv64NativeTailGenerationLimits{railshot.MaxCodeBytes, railshot.MaxModuleBytes}
-		g, err := rv64NewDefinedTailGeneration(caller, s, m.Plans, limits)
+		scopePolicy := s.owners[0].ensurePluginState().railshotInvocation.tailPolicy
+		callerPolicy := caller.ensurePluginState().railshotInvocation.tailPolicy
+		if !scopePolicy.ready || !callerPolicy.ready {
+			return rv64TailGenerationError("missing captured allocation policy")
+		}
+		g, err := rv64NewDefinedTailGenerationWithBudgets(caller, s, m.Plans, scopePolicy.limits, callerPolicy.limits)
 		if g != nil {
 			// This owns partial construction too. It is intentionally retained
 			// on error until the entry's ordinary retirement path runs.
 			s.tailGenerations = append(s.tailGenerations, g)
 		}
 		if err != nil {
-			return err
+			return rv64TailPolicyError(err, scopePolicy, callerPolicy)
 		}
 		candidates[n] = g
 		n++
@@ -99,7 +103,8 @@ func railshotRetireNativeTableTargets(lease railshotTableEntryLease) error {
 	}
 	clear(s.tailGenerations)
 	clear(s.tailActive)
-	s.tailGenerations, s.tailActive = s.tailGenerations[:0], s.tailActive[:0]
+	// Their backing arrays were charged to the retired generations.
+	s.tailGenerations, s.tailActive = nil, nil
 	s.tailOwnerCount = 0
 	return nil
 }

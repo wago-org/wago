@@ -31,7 +31,7 @@ func NativeTailDefinedOwnerBytes(count, values int) (int, error) {
 	if count <= 0 || count > MaxFunctions || values < 0 || values > 512*count {
 		return 0, unsupported("native defined tail owner metadata count")
 	}
-	size := int(unsafe.Sizeof(NativeTailDefinedOwner{})) + count*(int(unsafe.Sizeof(tailRAFunction{}))+2*int(unsafe.Sizeof(wasm.CompType{}))+8) + 2*values*int(unsafe.Sizeof(wasm.ValType{}))
+	size := int(unsafe.Sizeof(NativeTailDefinedOwner{})) + int(unsafe.Sizeof(NativeTailCodeImage{})) + count*(int(unsafe.Sizeof(tailRAFunction{}))+2*int(unsafe.Sizeof(wasm.CompType{}))+8) + 2*values*int(unsafe.Sizeof(wasm.ValType{}))
 	if size > MaxModuleBytes {
 		return 0, unsupported("native defined tail owner metadata bound")
 	}

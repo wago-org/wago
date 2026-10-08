@@ -9,9 +9,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// Called under nativeExecutionMu after the particular owner's physical root is
-// acquired. Cached immutable metadata survives parks, but every use checks the
-// current canonical rows and RX image under the reacquired owner graph lease.
+// Private cache qualification helper, called under nativeExecutionMu and the
+// exact physical root. Production generations use the uncached constructor so
+// refunding a reservation cannot leave uncharged snapshots on an instance.
 func rv64NativeDefinedTailOwner(in *Instance) (*railshot.NativeTailDefinedOwner, error) {
 	n, values, err := rv64NativeDefinedTailOwnerCounts(in)
 	if err != nil {
@@ -21,6 +21,16 @@ func rv64NativeDefinedTailOwner(in *Instance) (*railshot.NativeTailDefinedOwner,
 	if owner := state.railshotInvocation.definedTailOwner; owner != nil {
 		return owner, owner.Validate()
 	}
+	owner, err := rv64NewNativeDefinedTailOwner(in, n, values)
+	if err == nil {
+		state.railshotInvocation.definedTailOwner = owner
+	}
+	return owner, err
+}
+
+// Generations own these snapshots directly. They must not leave a persistent
+// instance cache after refunding their metadata reservation at retirement.
+func rv64NewNativeDefinedTailOwner(in *Instance, n, values int) (*railshot.NativeTailDefinedOwner, error) {
 	if err := railshot.NativeTailDefinedOwnerBudget(n, values); err != nil {
 		return nil, err
 	}
@@ -40,11 +50,10 @@ func rv64NativeDefinedTailOwner(in *Instance) (*railshot.NativeTailDefinedOwner,
 		}
 		signatures[i] = wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
 	}
-	owner, err := railshot.NewNativeTailDefinedOwner(image, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, state.railshotInvocation.tailTargets, in.c.Entry, signatures)
+	owner, err := railshot.NewNativeTailDefinedOwner(image, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, in.ensurePluginState().railshotInvocation.tailTargets, in.c.Entry, signatures)
 	if err != nil {
 		return nil, err
 	}
-	state.railshotInvocation.definedTailOwner = owner
 	return owner, nil
 }
 

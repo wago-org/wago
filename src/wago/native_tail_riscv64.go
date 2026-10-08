@@ -21,8 +21,8 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		return nil
 	}
 	for _, p := range m.Plans {
-		if p.Kind != 0 {
-			return fmt.Errorf("%w: RV64 dynamic tail owner attachment is pending", railshot.ErrUnsupported)
+		if p.Kind != 0 && (p.Kind != 1 || c.NumImports != 0) {
+			return fmt.Errorf("%w: RV64 dynamic tail requires indirect defined owners", railshot.ErrUnsupported)
 		}
 		local := int(p.FunctionIndex) - c.NumImports
 		if local < 0 || local >= len(c.Entry) {
@@ -31,6 +31,9 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		frame, err := railshot.NativeFrameBytes(c.code, c.Entry[local])
 		if err != nil || frame != p.FrameBytes {
 			return fmt.Errorf("%w: RV64 tail source frame differs from native entry", railshot.ErrUnsupported)
+		}
+		if p.Kind == 1 {
+			continue // Exact dynamic owners are acquired at entry, before binding.
 		}
 		target, ok := imports[c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
 		if !ok {
@@ -85,15 +88,15 @@ func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase
 	m := rv64NativeTailModule(in.c)
 	if m != nil {
 		for _, p := range m.Plans {
-			if p.Kind != 0 {
-				return fmt.Errorf("%w: RV64 dynamic tail runtime attachment is pending", railshot.ErrUnsupported)
+			if p.Kind != 0 && (p.Kind != 1 || in.c.NumImports != 0) {
+				return fmt.Errorf("%w: RV64 dynamic tail requires indirect defined owners", railshot.ErrUnsupported)
 			}
 		}
 	}
 	if err := rv64PrepareTailTargets(in, imports, sharedBase, sharedOffsets, ownedAddr); err != nil {
 		return err
 	}
-	if m == nil || len(m.Plans) == 0 {
+	if m == nil || len(m.Plans) == 0 || rv64StaticTailPlanCount(m) == 0 {
 		return nil
 	}
 	// Pending failed cleanup blocks further factory allocations for this module.

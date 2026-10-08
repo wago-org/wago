@@ -132,7 +132,7 @@ func TestRV64TailEntryGenerationLeaseResumeAndGrowth(t *testing.T) {
 			}
 			locked = false
 			root.unlockNativeEntry(entry)
-			if scope.count != 0 || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || len(scope.tailActive) != 0 || len(scope.tailGenerations) != 0 || rv64EntryCapability(root) != 0 || rv64EntryCapability(producer) != 0 || rv64EntryCapability(replacement) != 0 {
+			if scope.count != 0 || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || cap(scope.tailActive) != 0 || cap(scope.tailGenerations) != 0 || rv64EntryCapability(root) != 0 || rv64EntryCapability(producer) != 0 || rv64EntryCapability(replacement) != 0 {
 				t.Fatal("cold exit retained generation or binding")
 			}
 		})
@@ -454,14 +454,17 @@ func TestRV64TailEntryGenerationPartialGrowthFailurePreservesBindings(t *testing
 	if err := scope.refresh(root); err != nil {
 		t.Fatal(err)
 	}
-	// Corrupt only the second caller's source-entry metadata after its ordinary
-	// validation. Frozen target snapshots still authenticate genuine native rows,
+	// Corrupt only the second caller's source-plan metadata after its ordinary
+	// validation. Target snapshots still authenticate genuine native rows,
 	// so the first replacement factory finishes before the second caller fails
 	// actual-frame validation. This exercises partial construction ownership.
 	original := producer.c
 	bad := *original
-	bad.Entry = append([]int(nil), original.Entry...)
-	bad.Entry[0] += 16
+	indexes := &compiledCacheIndexes{}
+	indexes.railshotTail.mappedCodeBytes = original.loadCompileIndexes().railshotTail.mappedCodeBytes
+	indexes.railshotTail.module = &encoder.NativeTailModule{Plans: append([]encoder.NativeTailPlan(nil), rv64NativeTailModule(original).Plans...)}
+	indexes.railshotTail.module.Plans[0].FrameBytes += 16
+	bad.validateMemo = &validateMemo{compileIndexes: indexes}
 	producer.c = &bad
 	err = scope.refreshTailGenerations()
 	producer.c = original

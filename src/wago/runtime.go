@@ -1136,6 +1136,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, 
 		}
 	}()
 	iopts := InstantiateOptions{
+		railshotTailPolicy:       railshotInstanceTailPolicy(rt.cfg),
 		InvokeCacheSlots:         invokeCacheSlots,
 		startContext:             ctx,
 		MaxCompiledMetadataBytes: rt.cfg.maxCompiledMetadataBytes,

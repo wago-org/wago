@@ -15,9 +15,9 @@ import (
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
-// Symbolic metadata proof only: dynamic products are deliberately rejected
-// before executable mapping. Existing direct products remain genuine runnable
-// source/artifact fixtures in the surrounding compatibility suite.
+// Symbolic metadata proof only: these imported-owner dynamic fixtures remain
+// rejected before mapping. Genuine definition-only indirect source/artifact
+// execution is covered separately in public_dynamic_tail_riscv64_test.go.
 func rv64TailSymbolicFixture(t *testing.T, kind uint32, vector bool) *Compiled {
 	t.Helper()
 	values := []wasm.ValType{wasm.I32, wasm.F32, wasm.I64, wasm.F64}
@@ -99,7 +99,7 @@ func TestRV64PrivateTailSymbolicVersion2AndClosedPublication(t *testing.T) {
 				t.Fatal("metadata validation copied declared signatures", a)
 			}
 			if err := railshotValidateCompiled(v); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("dynamic executable admission opened", err)
+				t.Fatal("unsupported dynamic shape admission opened", err)
 			}
 			cache := v.loadCodeCache()
 			base, sealed, refs := cache.base, cache.sealed, cache.refs

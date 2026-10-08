@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestProductionTailAddressFreeFinalizedPlans(t *testing.T) {
@@ -43,6 +44,46 @@ func TestProductionTailAddressFreeFinalizedPlans(t *testing.T) {
 		opts.MemoryPressure = func() { pressured = true }
 		if image, err := CompileModuleWith(localTailDecode(t, source), opts); image != nil || !errors.Is(err, ErrUnsupported) || pressured {
 			t.Fatal("unqualified runtime reached publication", err)
+		}
+	}
+}
+
+func TestProductionIndirectTailDeclaredTypeAndGates(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		types := []wasm.ValType{wasm.I32}
+		if vector {
+			types = append(types, wasm.V128)
+		}
+		var body []byte
+		for i := range types {
+			body = append(body, 0x20, byte(i))
+		}
+		body = append(body, 0x41, 0, 0x13, 2, 0, 0x0b)
+		source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil), wasmtest.FuncType(types, types))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(4, []byte{1, 0x70, 1, 1, 1}), wasmtest.Section(9, []byte{1, 0, 0x41, 0, 0x0b, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
+		opts := CompileOptions{NativeTailCalls: true, InvocationContext: true, Interruptible: true, ForeignTableCalls: true, DeferCodeMapping: true}
+		m := localTailDecode(t, source)
+		a, err := CompileModuleWith(m, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := CompileModuleWith(m, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a.CodeImage != nil || a.NativeTail == nil || len(a.NativeTail.Plans) != 1 || !bytes.Equal(a.Code, b.Code) || !slices.Equal(a.NativeTail.Plans, b.NativeTail.Plans) {
+			t.Fatal("indirect staging is not address-free and deterministic")
+		}
+		p := a.NativeTail.Plans[0]
+		if p.Kind != 1 || p.TypeIndex != 2 || p.FunctionIndex != 0 || p.ImportIndex != 0 || p.ReferenceBase < p.SourceBase+len(types)*p.SourceStride || p.ReferenceBase > p.FrameBytes-8 {
+			t.Fatal("declared type/full-width reference", p)
+		}
+		// The shared private dynamic walker accepts reference tails. Production
+		// rejects even an unreachable one before mapped-image staging in both paths.
+		m.Code[0].BodyBytes = []byte{0x00, 0xd0, 0, 0x15, 0, 0x0b}
+		pressured := false
+		opts.MemoryPressure = func() { pressured = true }
+		if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) || pressured {
+			t.Fatal("reference tail reached production staging", image, err)
 		}
 	}
 }

@@ -59,12 +59,12 @@ type CompileOptions struct {
 	production          bool
 	publicStarts        bool
 	hostImports         bool
-	// Internal C2a only; public TailCall remains gated until the whole family.
+	// Public TailCall remains gated until the whole instruction/target family.
 	tailModule     *wasm.Module
 	localTailCalls bool
 	// Source production and private decoded adapters collect symbolic import sites.
 	importTailCalls  bool
-	dynamicTailCalls bool // private declared-type indirect/reference source qualification
+	dynamicTailCalls bool // declared-type source qualification; production admits indirect only
 	tailPlans        *[]tailImportPlan
 	tailSiteBase     uint32
 }

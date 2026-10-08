@@ -16,6 +16,7 @@ import (
 // closed until all tail instruction/target families have been qualified.
 type railshotRuntimeConfigState struct{ tailProducts bool }
 type railshotTailCompiledState struct {
+	sourceCodeLimit                                  uint64 // immutable compile-origin policy; never serialized
 	module                                           *encoder.NativeTailModule
 	retired                                          []*railshot.NativeTailDispatcher // codeCache.mu protects failed cleanup
 	retiredGenerations                               []rv64RetiredTailGeneration
@@ -58,7 +59,10 @@ func rv64StoreNativeTailModule(c *Compiled, m *encoder.NativeTailModule) {
 	c.ensureCodeCache()
 	c.codeCache.stagedFeatures |= CoreFeatureTailCall
 }
-func railshotStoreNativeTail(c *Compiled, image *railshotCompiledModule) error {
+func railshotStoreNativeTail(c *Compiled, image *railshotCompiledModule, cfg *RuntimeConfig) error {
+	if cfg != nil {
+		c.ensureCompileIndexes().railshotTail.sourceCodeLimit = cfg.maxNativeCodeBytes
+	}
 	if image.NativeTail == nil {
 		return nil
 	}
@@ -146,8 +150,7 @@ func rv64ValidateNativeTail(c *Compiled) error {
 	return rv64ValidateNativeTailPlans(c, m.Plans)
 }
 
-// Kept separate for private runtime generation qualification. Public admission
-// still rejects dynamic products until entry/resume integration is complete.
+// Shared by frozen source/artifact admission and entry generation construction.
 func rv64ValidateNativeTailPlans(c *Compiled, plans []encoder.NativeTailPlan) error {
 	if !c.nativeContextTrapABI || len(plans) > 4096 {
 		return fmt.Errorf("RV64 native tail context/count contract")
@@ -313,10 +316,23 @@ func railshotReadNativeTail(r *compiledReader, c *Compiled) error {
 	rv64StoreNativeTailModule(c, m)
 	return rv64ValidateNativeTail(c)
 }
+func rv64StaticTailPlanCount(m *encoder.NativeTailModule) int {
+	if m == nil {
+		return 0
+	}
+	n := 0
+	for _, p := range m.Plans {
+		if p.Kind == encoder.NativeTailDirectImport {
+			n++
+		}
+	}
+	return n
+}
+
 func railshotNativeTailArenaBytes(c *Compiled) int {
 	bytes := rv64TailTargetsArenaBytes(c)
-	if m := rv64NativeTailModule(c); m != nil && len(m.Plans) != 0 {
-		_, arena, err := railshot.NativeTailInstanceBudget(len(m.Plans), len(c.code))
+	if n := rv64StaticTailPlanCount(rv64NativeTailModule(c)); n != 0 {
+		_, arena, err := railshot.NativeTailInstanceBudget(n, len(c.code))
 		if err == nil {
 			return bytes + arena
 		}
@@ -325,8 +341,8 @@ func railshotNativeTailArenaBytes(c *Compiled) int {
 }
 func railshotNativeCodeBytes(c *Compiled) uint64 {
 	size := len(c.code)
-	if m := rv64NativeTailModule(c); m != nil {
-		code, _, err := railshot.NativeTailInstanceBudget(len(m.Plans), size)
+	if n := rv64StaticTailPlanCount(rv64NativeTailModule(c)); n != 0 {
+		code, _, err := railshot.NativeTailInstanceBudget(n, size)
 		if err != nil {
 			return ^uint64(0)
 		}
