@@ -71,6 +71,14 @@ func TestRV64RebasedTableBulkFeatureRequirements(t *testing.T) {
 func TestRV64OwnedTableArtifactBoundaries(t *testing.T) {
 	c := ownedTableCompile(t, publicOwnedTableModule(7, false, 3, 0, 1, 2))
 	base := c.executionView()
+	// Bounded i32 constant expressions are supported table32 offsets. Keep
+	// the accepted case separate from malformed and wrong-width metadata.
+	valid := *base
+	valid.Elems = slices.Clone(base.Elems)
+	valid.Elems[0].Offset.Expr = []byte{0x41, 0, 0x0b}
+	if err := railshotValidateCompiled(&valid); err != nil {
+		t.Fatal("supported i32 table offset expression", err)
+	}
 	for _, tc := range []struct {
 		name   string
 		mutate func(*Compiled)
@@ -114,7 +122,8 @@ func TestRV64OwnedTableArtifactBoundaries(t *testing.T) {
 		{"indexed-elements", func(v *Compiled) { v.Elems[0].TableIndex = 1 }},
 		{"typed-elements", func(v *Compiled) { v.Elems[0].HasValueType = true }},
 		{"global-offset", func(v *Compiled) { v.Elems[0].Offset.HasGlobal = true }},
-		{"extended-offset", func(v *Compiled) { v.Elems[0].Offset.Expr = []byte{0x41, 0, 0x0b} }},
+		{"i64-offset", func(v *Compiled) { v.Elems[0].Offset.Expr = []byte{0x42, 0, 0x0b} }},
+		{"unterminated-offset", func(v *Compiled) { v.Elems[0].Offset.Expr = []byte{0x41, 0} }},
 		{"null-element", func(v *Compiled) { v.Elems[0].Values[0].Null = true }},
 		{"global-element", func(v *Compiled) { v.Elems[0].Values[0].HasGlobal = true }},
 		{"i31-element", func(v *Compiled) { v.Elems[0].Values[0].I31Wrap = true }},
