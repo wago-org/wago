@@ -39,7 +39,9 @@ func (a *Asm) regallocWrite(dst Reg, call bool) {
 // ObserveRegalloc is an independent transfer-window channel. Current RV64
 // compilation does not establish symbolic encoder windows; consumers must supply
 // trusted input facts and restore this observer, including on panic. GP lifetime
-// observation remains active while this channel is replaced or nested.
+// observation remains active while this channel is replaced or nested. A Copy
+// is reported before its matching GP write; other definitions keep their
+// conservative invalidation order. All observations precede byte emission.
 func (a *Asm) ObserveRegalloc(fn func(regalloccheck.Effect)) func(regalloccheck.Effect) {
 	old := a.regallocObserver
 	a.regallocObserver = fn
@@ -69,15 +71,37 @@ func (a *Asm) regallocFloatDefinition(dst FReg) {
 
 func (a *Asm) regallocImmediate(op, f3 uint32, dst, src Reg, imm int32) {
 	call := op == 0x67 && dst != Zero
-	a.regallocWrite(dst, call)
 	if a.regallocObserver == nil {
+		a.regallocWrite(dst, call)
 		return
 	}
 	if call {
+		a.regallocWrite(dst, true)
 		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Call})
 		return
 	}
 	if dst == Zero {
+		return
+	}
+	if op == 0x13 && (f3 == 1 || f3 == 5) && imm == 32 && src != Zero {
+		// The actual SLLI32/SRLI32 instructions move bytes between halves.
+		// Four one-byte copies avoid the vocabulary's GP32-copy high-half
+		// invalidation rule, and remain valid when source and destination alias.
+		from, to, cleared := uint8(0), uint8(4), uint8(0)
+		if f3 == 5 {
+			from, to, cleared = 4, 0, 4
+		}
+		for i := uint8(0); i < 4; i++ {
+			d, s := gp(dst), gp(src)
+			d.Byte, s.Byte = to+i, from+i
+			a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Copy, Dst: d, Src: s, Size: 1})
+		}
+		d := gp(dst)
+		d.Byte = cleared
+		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Kill, Dst: d, Size: 4})
+		// Keep the physical notification for each of the two instructions in
+		// ZeroExtend32. It must not erase a transfer's source before Copy.
+		a.regallocWrite(dst, false)
 		return
 	}
 	e := regalloccheck.Effect{Kind: regalloccheck.Kill, Dst: gp(dst), Size: 8}
@@ -94,8 +118,16 @@ func (a *Asm) regallocImmediate(op, f3 uint32, dst, src Reg, imm int32) {
 			e.Kind, e.Src = regalloccheck.Copy, regalloccheck.Slot(imm)
 		}
 	}
+	if e.Kind == regalloccheck.Copy {
+		// Transfer facts precede their matching write notification, so graph
+		// observers can preserve self-copies while still seeing every GP write.
+		a.regallocObserver(e)
+		a.regallocWrite(dst, false)
+		return
+	}
 	// Sign-extending W arithmetic is a semantic definition, never a transfer or
 	// proof that high bytes are zero. Kill all eight bytes of its old identity.
+	a.regallocWrite(dst, false)
 	a.regallocObserver(e)
 }
 
