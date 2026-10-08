@@ -12,6 +12,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 func tailRAProofBuffer(t *testing.T, code []byte) *coreruntime.CodeBuffer {
@@ -62,7 +63,7 @@ func tailRAProofFunctionFixture(t *testing.T, sig *wasm.CompType, contextBytes i
 	for i := range widths {
 		widths[i] = true
 	}
-	mode := emissionMode{production: true, interruptible: true, entryPC: 1}
+	mode := emissionMode{production: true, interruptible: true, invocationContext: contextBytes == abi.RV64InstanceContextBytes, entryPC: 1}
 	info := FunctionInfo{FrameHeaderBytes: callFrameHeader, Params: swarSignatureSlots(sig.Params), Results: swarSignatureSlots(sig.Results), mode: mode}
 	code, info, err := frameFunctionCalls(a.B, widths, swarSignatureSlots(sig.Params), 0, true, -1, info, nil)
 	if err != nil {

@@ -119,13 +119,21 @@ func tailRANativeExpand(f *integerEmitter, sig *wasm.CompType) {
 	}
 }
 func tailRANativeFrame(t *testing.T, sig *wasm.CompType, job *coreruntime.JobMemory, ctx, dir []byte, index uint32, body func(*integerEmitter)) tailRAFunction {
+	return tailRANativeFrameInvocation(t, sig, job, ctx, dir, index, false, body)
+}
+
+func tailRANativeFrameInvocation(t *testing.T, sig *wasm.CompType, job *coreruntime.JobMemory, ctx, dir []byte, index uint32, invocation bool, body func(*integerEmitter)) tailRAFunction {
+	return tailRANativeFrameInvocationLocals(t, sig, job, ctx, dir, index, invocation, 0, body)
+}
+
+func tailRANativeFrameInvocationLocals(t *testing.T, sig *wasm.CompType, job *coreruntime.JobMemory, ctx, dir []byte, index uint32, invocation bool, extra int, body func(*integerEmitter)) tailRAFunction {
 	t.Helper()
-	widths := make([]bool, 2*len(sig.Params)+2)
+	widths := make([]bool, 2*len(sig.Params)+2+extra)
 	for i := range widths {
 		widths[i] = true
 	}
 	frame := (callFrameHeader + 8*len(widths) + 15) &^ 15
-	mode := emissionMode{production: true, interruptible: true, functionIndex: index, entryPC: 3}
+	mode := emissionMode{production: true, interruptible: true, invocationContext: invocation, functionIndex: index, entryPC: 3}
 	f := integerEmitter{target: target{header: callFrameHeader, mode: mode, nlocals: len(widths)}, frameBytes: frame}
 	f.sourcePC = 37
 	tailRANativeExpand(&f, sig)

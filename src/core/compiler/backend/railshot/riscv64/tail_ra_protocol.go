@@ -41,6 +41,7 @@ func (r tailRARange) valid(alignment uintptr) bool {
 // not an arbitrary public native-pointer lookup and the stack record owns none
 // of their cleanup obligations.
 type tailRAProofSite struct {
+	dynamic                                          *tailRADynamicSite
 	invocationContext                                bool
 	hostEntry                                        bool
 	frameBytes                                       int
@@ -149,6 +150,9 @@ func (s *tailRAProofSite) validate() error {
 	}
 	if !s.invocationContext && (swarSignatureSlots(s.params) != 0 && len(s.argumentRanges) == 0 || swarSignatureSlots(s.results) != 0 && len(s.resultRanges) == 0) {
 		return unsupported("private tail missing original capacity")
+	}
+	if s.dynamic != nil {
+		return s.dynamic.validate(s)
 	}
 	return nil
 }
@@ -375,6 +379,11 @@ func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) 
 		a.Ld(enc.X28, enc.X25, -abi.RV64InvocationViewOffset)
 		e.bad = append(e.bad, nativeInvocationViewGuards(a, enc.X28, s.frameBytes)...)
 	}
+	if s.dynamic != nil {
+		e.dynamicNativeTarget(s.dynamic)
+		// Selection uses X14/15; restore the original incoming stack cursor.
+		tailRAAddress(a, enc.X14, enc.SP, s.frameBytes)
+	}
 	a.Ld(enc.X9, enc.SP, 0)
 	a.Constant64(enc.X15, int64(exit))
 	reuse := a.BranchLong(enc.EQ, enc.X9, enc.X15)
@@ -437,6 +446,11 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	}
 	e := tailRAEmitter{functionIndex: s.functionIndex, pc: s.sourcePC, invocationContext: s.invocationContext}
 	a := &e.a
+	if s.dynamic != nil {
+		// Reload the full-width reference while its framed spill still exists.
+		// Repeat authentication before the first record/stack/basedata write.
+		e.dynamicNativeTarget(s.dynamic)
+	}
 	// No park/callback is permitted between preflight and this frozen finalizer.
 	// Reload original header0, never the linked preflight's live RA.
 	a.Ld(enc.X9, enc.SP, 0)
@@ -513,9 +527,17 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	}
 	a.Constant64(enc.Scratch0, int64(s.target.hostTrampoline))
 	a.Sd(enc.Scratch0, enc.SP, tailRACtrlOffset+HostTrampolineOffset)
-	a.Constant64(enc.X11, int64(s.target.home))
+	if s.dynamic != nil {
+		a.Addi(enc.X11, enc.X17, 0)
+	} else {
+		a.Constant64(enc.X11, int64(s.target.home))
+	}
 	a.Sd(enc.X11, enc.SP, 96)
-	a.Constant64(enc.Scratch1, int64(s.target.context))
+	if s.dynamic != nil {
+		a.Addi(enc.Scratch1, enc.X18, 0)
+	} else {
+		a.Constant64(enc.Scratch1, int64(s.target.context))
+	}
 	a.Sd(enc.Scratch1, enc.SP, 144)
 	if !s.invocationContext {
 		a.Sd(enc.Zero, enc.SP, 152)
@@ -525,7 +547,7 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 		// record's own view so nested ordinary calls keep full transport.
 		a.Ld(enc.X15, enc.X25, -abi.RV64InvocationViewOffset)
 		nativeInvocationActivation(a, enc.X15, tailRARecordBytes, tailRAArgsOffset, tailRAResultsOffset)
-		if s.hostEntry {
+		if s.hostEntry || s.dynamic != nil {
 			// A qualified host wrapper saves/restores RA, but has no guest
 			// prologue to initialize the authenticated view's first return.
 			// Freeze the common exit before the wrapper can park or reenter.
@@ -552,8 +574,15 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	tailRAAddress(a, enc.X10, enc.SP, tailRAArgsOffset)
 	tailRAAddress(a, enc.X13, enc.SP, tailRAResultsOffset)
 	a.Constant64(enc.RA, int64(exit))
-	a.Constant64(enc.X28, int64(s.target.entry))
+	if s.dynamic != nil {
+		a.Addi(enc.X28, enc.X16, 0)
+	} else {
+		a.Constant64(enc.X28, int64(s.target.entry))
+	}
 	a.Jalr(enc.Zero, enc.X28, 0)
+	if s.dynamic != nil {
+		return e.finish()
+	}
 	if err := a.Err(); err != nil {
 		return nil, err
 	}

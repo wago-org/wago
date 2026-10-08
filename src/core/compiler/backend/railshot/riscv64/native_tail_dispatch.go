@@ -24,6 +24,9 @@ type NativeTailCodeRange struct{ Base, Bytes uintptr }
 // A reexport bridge is not a proper-tail target.
 // No process addresses from this descriptor may enter a persisted artifact.
 type NativeTailSite struct {
+	// dynamic is restricted to the package-private native-only proof. No public
+	// source/product/artifact option admits dynamic tails at this boundary.
+	dynamic                              *tailRADynamicSite
 	CallerHome                           uintptr
 	CallerContext, TargetContext         []byte
 	Target                               NativeImportTarget
@@ -43,6 +46,7 @@ type NativeTailDispatcher struct {
 	arena      *coreruntime.Arena
 	capability []byte
 	contexts   [][]byte
+	dynamic    []*tailRADynamicSite
 	bound      bool
 }
 
@@ -80,7 +84,7 @@ func nativeTailProofSite(s NativeTailSite) tailRAProofSite {
 	for n, r := range s.Continuations {
 		ranges[n] = tailRARange{r.Base, r.Bytes}
 	}
-	return tailRAProofSite{invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, functionIndex: s.FunctionIndex, sourcePC: s.SourcePC, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: tailRAPointer(s.TargetContext), hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: ranges}
+	return tailRAProofSite{dynamic: s.dynamic, invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, functionIndex: s.FunctionIndex, sourcePC: s.SourcePC, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: tailRAPointer(s.TargetContext), hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: ranges}
 }
 
 // Validate all aggregate bounds and source homes before allocating native data,
@@ -97,12 +101,17 @@ func nativeTailDispatcherBound(sites []NativeTailSite, guestCodeBytes int) (int,
 		}
 		// Account copied signatures and continuation records, not just native rows.
 		cost := 128 + 16*(len(s.Parameters)+len(s.Results)+len(s.Continuations))
+		dynamicMetadata, dynamicCode, err := s.dynamic.budget()
+		if err != nil {
+			return 0, err
+		}
+		cost += dynamicMetadata
 		if cost > MaxModuleBytes-metadata {
 			return 0, unsupported("native tail factory metadata bound")
 		}
 		metadata += cost
 		// Validate ranges and source homes without copying their payloads first.
-		p := tailRAProofSite{invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: s.Target.Context, hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: []tailRARange{{s.Continuations[0].Base, s.Continuations[0].Bytes}}}
+		p := tailRAProofSite{dynamic: s.dynamic, invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: s.Target.Context, hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: []tailRARange{{s.Continuations[0].Base, s.Continuations[0].Bytes}}}
 		if err := p.validate(); err != nil {
 			return 0, err
 		}
@@ -111,11 +120,18 @@ func nativeTailDispatcherBound(sites []NativeTailSite, guestCodeBytes int) (int,
 				return 0, unsupported("native tail retained continuation image")
 			}
 		}
-		bound := tailRADispatchBound + 128*len(s.Continuations)
+		bound := tailRADispatchBound + 128*len(s.Continuations) + dynamicCode
 		if bound > MaxCodeBytes-guestCodeBytes-code {
 			return 0, unsupported("native tail combined guest/factory code bound")
 		}
 		code += bound
+	}
+	retainedCode, err := nativeTailDynamicCodeBytes(sites)
+	if err != nil {
+		return 0, err
+	}
+	if retainedCode > guestCodeBytes {
+		return 0, unsupported("dynamic tail understated retained guest budget")
 	}
 	return code, nil
 }
@@ -135,6 +151,20 @@ func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, 
 	bound, err := nativeTailDispatcherBound(sites, guestCodeBytes)
 	if err != nil {
 		return nil, err
+	}
+	// Private dynamic targets are borrowed physical owners. Publish every actual
+	// framed target before a capability can expose it; their owners retain failed
+	// Seal mappings for cleanup. All aggregate checks above precede these calls.
+	for _, s := range sites {
+		if s.dynamic != nil {
+			for _, owner := range s.dynamic.owners {
+				for _, f := range owner.functions {
+					if err := f.code.Seal(); err != nil {
+						return nil, err
+					}
+				}
+			}
+		}
 	}
 	exit, err := nativeTailExitPointer()
 	if err != nil {
@@ -160,6 +190,10 @@ func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, 
 	binary.LittleEndian.PutUint32(o.capability[12:], uint32(len(sites)))
 	for n, s := range sites {
 		p := nativeTailProofSite(s)
+		p.dynamic = s.dynamic.freeze()
+		if p.dynamic != nil {
+			o.dynamic = append(o.dynamic, p.dynamic)
+		}
 		p.params = append([]wasm.ValType(nil), s.Parameters...)
 		p.results = append([]wasm.ValType(nil), s.Results...)
 		final, err := tailRAFinalize(p, exit)
@@ -180,7 +214,8 @@ func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, 
 		if err != nil {
 			return o, err
 		}
-		if len(final)+len(pre)+32 > tailRADispatchBound+128*len(s.Continuations) {
+		_, dynamicCode, _ := p.dynamic.budget()
+		if len(final)+len(pre)+32 > tailRADispatchBound+128*len(s.Continuations)+dynamicCode {
 			return o, unsupported("native tail actual dispatcher bound")
 		}
 		if err = o.code.Append(pre); err != nil {
@@ -238,6 +273,7 @@ func (o *NativeTailDispatcher) Close() error {
 	// Detached owners retry only mappings; they must not retain borrowed context
 	// or capability slices after the instance releases its arena.
 	o.contexts = nil
+	o.dynamic = nil
 	if o.arena == nil {
 		o.capability = nil
 	}
