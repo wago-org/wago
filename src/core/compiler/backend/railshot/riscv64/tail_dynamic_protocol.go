@@ -29,6 +29,7 @@ type tailRADynamicOwner struct {
 }
 
 type tailRADynamicProxy struct {
+	certificate        *NativeImportCertificate
 	importIndex        uint32
 	arguments, results []byte
 }
@@ -188,7 +189,14 @@ func (p *tailRADynamicProxy) validate(source, target tailRAFunction, trampoline 
 	if source.codeBase() == 0 || source.codeBase()&15 != 0 || source.job == nil || source.job.LinMemBase() == 0 || len(source.snapshot) == 0 || len(source.snapshot) > MaxCodeBytes || !bytes.Equal(source.codeBytes(), source.snapshot) || len(source.context) != abi.RV64InstanceContextBytes || tailRAPointer(source.context)&7 != 0 || len(source.directory) < 40 || tailRAPointer(source.directory)&7 != 0 || source.info.Entry < 0 || source.info.Entry&15 != 0 || source.info.Entry > len(source.snapshot) || source.info.CodeBytes <= 0 || source.info.CodeBytes > len(source.snapshot)-source.info.Entry {
 		return unsupported("dynamic tail retained import proxy image")
 	}
-	expected, err := NativeImportThunk(NativeImportTarget{Entry: target.codeBase() + uintptr(target.info.Entry), Home: target.job.LinMemBase(), Context: tailRAPointer(target.context), Arguments: p.arguments, Results: p.results, ArgumentSlots: swarSignatureSlots(source.signature.Params), ResultSlots: swarSignatureSlots(source.signature.Results), StackOwnedActivation: true, InvocationContext: true, HostTrampoline: trampoline}, source.job.LinMemBase(), tailRAPointer(source.context), p.importIndex)
+	callee := NativeImportTarget{Entry: target.codeBase() + uintptr(target.info.Entry), Home: target.job.LinMemBase(), Context: tailRAPointer(target.context), Arguments: p.arguments, Results: p.results, ArgumentSlots: swarSignatureSlots(source.signature.Params), ResultSlots: swarSignatureSlots(source.signature.Results), StackOwnedActivation: true, InvocationContext: true, HostTrampoline: trampoline}
+	if p.certificate != nil {
+		if source.published == nil || source.info.CodeBytes != p.certificate.CodeBytes() {
+			return unsupported("dynamic tail certified proxy extent")
+		}
+		return p.certificate.Validate(source.published, source.info.Entry, callee, source.job.LinMemBase(), tailRAPointer(source.context), p.importIndex)
+	}
+	expected, err := NativeImportThunk(callee, source.job.LinMemBase(), tailRAPointer(source.context), p.importIndex)
 	if err != nil || !bytes.Equal(source.snapshot[source.info.Entry:source.info.Entry+source.info.CodeBytes], expected) {
 		return unsupported("dynamic tail exact native import proxy builder")
 	}

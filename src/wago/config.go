@@ -470,7 +470,8 @@ func (c *RuntimeConfig) WithMemoryLimitPages(pages uint32) *RuntimeConfig {
 
 // WithMaxInstanceMetadataBytes caps the validated off-heap metadata allocated
 // for one instance. The experimental RV64 tail profile also charges bounded
-// entry snapshots and dispatcher metadata against this limit. Zero leaves this
+// entry snapshots, import certificates and dispatcher metadata against this
+// limit. Zero leaves this
 // resource unbounded, subject to backend admission bounds.
 func (c *RuntimeConfig) WithMaxInstanceMetadataBytes(bytes uint64) *RuntimeConfig {
 	n := *c

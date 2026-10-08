@@ -455,11 +455,15 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		}
 		arenaNeed += abi.MemoryDirEntryBytes
 	}
-	if opts.maxInstanceMetadataBytes != 0 && uint64(arenaNeed) > opts.maxInstanceMetadataBytes {
+	metadataNeed := arenaNeed + railshotNativeImportMetadataBytes(c, imports)
+	if metadataNeed < arenaNeed {
+		return nil, errors.New("instance metadata footprint overflows native import certificates")
+	}
+	if opts.maxInstanceMetadataBytes != 0 && uint64(metadataNeed) > opts.maxInstanceMetadataBytes {
 		return nil, &runtime.ResourceLimitError{
 			Resource:  "instance metadata bytes",
 			Scope:     "instance",
-			Requested: uint64(arenaNeed),
+			Requested: uint64(metadataNeed),
 			Limit:     opts.maxInstanceMetadataBytes,
 		}
 	}
@@ -833,7 +837,8 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
-	sharedThunkBase, sharedThunkOffsets, ownedThunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode, ar, jm.LinMemBase(), nativeContextPtr)
+	var nativeImportConstruction railshotNativeImportConstruction
+	sharedThunkBase, sharedThunkOffsets, ownedThunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode, ar, jm.LinMemBase(), nativeContextPtr, &nativeImportConstruction)
 	if err != nil {
 		return nil, err
 	}
@@ -1746,7 +1751,8 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		moduleIdentity:     opts.moduleIdentity,
 	}
 	tailInstance = in
-	railshotCaptureNativeTailPolicy(in, opts, arenaNeed)
+	railshotInstallNativeImportConstruction(in, &nativeImportConstruction)
+	railshotCaptureNativeTailPolicy(in, opts, metadataNeed)
 	if err := railshotPrepareNativeTail(in, imports, sharedThunkBase, sharedThunkOffsets, ownedThunkAddr); err != nil {
 		return nil, err
 	}
@@ -2221,7 +2227,8 @@ func hostThunkAddr(fidx int, sharedBase uintptr, sharedOffsets []int, ownedAddr 
 	return 0, false
 }
 
-func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool, arena *runtime.Arena, callerHome, callerContext uintptr) (sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64, ownedMem []byte, err error) {
+func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool, arena *runtime.Arena, callerHome, callerContext uintptr, construction *railshotNativeImportConstruction) (sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64, ownedMem []byte, err error) {
+	railshotInitNativeImportConstruction(construction, c, imports)
 	var blob []byte
 	offs := map[uint32]int{}
 	needsShared := false
@@ -2229,13 +2236,14 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool, ar
 		displayKey := c.Imports[fidx]
 		key := c.functionImportBindingKey(fidx)
 		if export, isCross := imports[key].(*InstanceExport); isCross {
-			code, handled, nativeErr := railshotNativeImportCode(c, export, arena, callerHome, callerContext, fidx)
+			code, handled, nativeErr := railshotNativeImportCode(c, export, arena, callerHome, callerContext, fidx, construction)
 			if nativeErr != nil {
 				return 0, nil, nil, nil, nativeErr
 			}
 			if handled {
 				blob = railshotAlignNativeImportBlob(blob)
 				offs[uint32(fidx)] = len(blob)
+				railshotRecordNativeImportSpan(construction, fidx, len(blob), len(code))
 				blob = append(blob, code...)
 			}
 			continue // cross-instance funcref, not a host function
@@ -2288,6 +2296,7 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool, ar
 	if err != nil {
 		return 0, nil, nil, nil, wrapContextError("host import wrapper thunk", err)
 	}
+	railshotFinishNativeImportConstruction(construction, mem, base, len(blob))
 	c.registerProfileThunks(base, mem[:len(blob)], offs)
 	addr := make(map[uint32]uint64, len(offs))
 	for fidx, o := range offs {

@@ -164,6 +164,7 @@ func railshotReleaseNativeTail(in *Instance) {
 	}
 	// These borrowed bytes share the descriptor arena's physical lifetime,
 	// including reference-only instances without a tail code dispatcher.
+	state.railshotInvocation.nativeImports = nil
 	state.railshotInvocation.tailTargets = nil
 	state.railshotInvocation.definedTailOwner = nil
 	owner := state.railshotInvocation.tailDispatcher

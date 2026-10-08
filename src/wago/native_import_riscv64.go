@@ -116,7 +116,7 @@ func railshotValidateNativeExport(c *Compiled, index int, export *InstanceExport
 // Called only after function attachment, which retains the producer through
 // failure cleanup and through the importing instance's final physical release.
 // A producer logically closed after attachment remains callable by that owner.
-func railshotNativeImportCode(c *Compiled, export *InstanceExport, arena *coreruntime.Arena, callerHome, callerContext uintptr, index int) ([]byte, bool, error) {
+func railshotNativeImportCode(c *Compiled, export *InstanceExport, arena *coreruntime.Arena, callerHome, callerContext uintptr, index int, construction *railshotNativeImportConstruction) ([]byte, bool, error) {
 	if export == nil || export.inst == nil || index < 0 || index >= len(c.importFuncSigs) {
 		return nil, true, fmt.Errorf("invalid retained native import")
 	}
@@ -137,12 +137,20 @@ func railshotNativeImportCode(c *Compiled, export *InstanceExport, arena *coreru
 	if err != nil {
 		return nil, true, err
 	}
-	code, err := railshot.NativeImportThunk(railshot.NativeImportTarget{
+	target := railshot.NativeImportTarget{
 		Entry: producer.base + uintptr(producer.c.Entry[export.localIdx]),
 		Home:  producer.jm.LinMemBase(), Context: producer.nativeContext,
 		Arguments: arena.Alloc(rv64NativeImportTransportBytes), Results: arena.Alloc(rv64NativeImportTransportBytes),
 		ArgumentSlots: args, ResultSlots: results, StackOwnedActivation: true, InvocationContext: true, HostTrampoline: trampoline,
-	}, callerHome, callerContext, uint32(index))
+	}
+	if len(construction.records) != 0 {
+		code, certificate, err := railshot.NativeImportThunkWithCertificate(target, callerHome, callerContext, uint32(index))
+		if err == nil {
+			construction.records[index] = rv64NativeImportRecord{producer: producer, local: export.localIdx, target: target, certificate: certificate}
+		}
+		return code, true, err
+	}
+	code, err := railshot.NativeImportThunk(target, callerHome, callerContext, uint32(index))
 	return code, true, err
 }
 
@@ -410,6 +418,7 @@ func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 // Callback authority and ownership of the producer's public gate differ for a
 // foreign activation. Only its actual gate owner may swap parked public scratch.
 type railshotInvocationState struct {
+	nativeImports        *railshotNativeImportConstruction
 	tailDispatcher       *railshot.NativeTailDispatcher
 	tailPolicy           rv64TailAllocationPolicy
 	tailGenerationBudget rv64NativeTailGenerationBudget

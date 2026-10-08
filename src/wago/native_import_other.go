@@ -19,7 +19,7 @@ func railshotNativeImportArenaBytes(*Compiled, resolvedImports) int    { return 
 func railshotNativeContextIdentity(*coreruntime.JobMemory) uintptr     { return 0 }
 func railshotSetNativeContextIdentity(*coreruntime.JobMemory, uintptr) {}
 func railshotAlignNativeImportBlob(blob []byte) []byte                 { return blob }
-func railshotNativeImportCode(*Compiled, *InstanceExport, *coreruntime.Arena, uintptr, uintptr, int) ([]byte, bool, error) {
+func railshotNativeImportCode(*Compiled, *InstanceExport, *coreruntime.Arena, uintptr, uintptr, int, *railshotNativeImportConstruction) ([]byte, bool, error) {
 	return nil, false, nil
 }
 func railshotTrapOwner(root *Instance, _ *coreruntime.TrapError) (*Instance, bool) { return root, true }
@@ -67,3 +67,13 @@ func railshotImportedGlobalValue(*Instance, *Global) (Value, bool, error) {
 func railshotCanonicalGlobalFuncref(*referenceStore, *Instance, uint64) (*Instance, uint64, bool) {
 	return nil, 0, false
 }
+
+type railshotNativeImportConstruction struct{}
+
+func railshotNativeImportMetadataBytes(*Compiled, resolvedImports) int { return 0 }
+func railshotInitNativeImportConstruction(*railshotNativeImportConstruction, *Compiled, resolvedImports) {
+}
+func railshotRecordNativeImportSpan(*railshotNativeImportConstruction, int, int, int) {}
+func railshotFinishNativeImportConstruction(*railshotNativeImportConstruction, []byte, uintptr, int) {
+}
+func railshotInstallNativeImportConstruction(*Instance, *railshotNativeImportConstruction) {}

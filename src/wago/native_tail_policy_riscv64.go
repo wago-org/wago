@@ -25,11 +25,11 @@ type rv64TailAllocationPolicy struct {
 	ready                              bool
 }
 
-func railshotCaptureNativeTailPolicy(in *Instance, opts InstantiateOptions, arenaNeed int) {
+func railshotCaptureNativeTailPolicy(in *Instance, opts InstantiateOptions, metadataNeed int) {
 	if !in.c.needsFuncRefDescs() {
 		return
 	}
-	policy := rv64TailAllocationPolicy{limits: rv64NativeTailGenerationLimits{railshot.MaxCodeBytes, railshot.MaxModuleBytes}, metadataBase: uint64(arenaNeed), ready: true}
+	policy := rv64TailAllocationPolicy{limits: rv64NativeTailGenerationLimits{railshot.MaxCodeBytes, railshot.MaxModuleBytes}, metadataBase: uint64(metadataNeed), ready: true}
 	codeLimit := opts.railshotTailPolicy.codeLimit
 	if !opts.hasExecutionPolicy {
 		if indexes := in.c.loadCompileIndexes(); indexes != nil {
@@ -40,9 +40,9 @@ func railshotCaptureNativeTailPolicy(in *Instance, opts InstantiateOptions, aren
 		policy.limits.code, policy.codeConfigured = int(codeLimit), true
 	}
 	if opts.maxInstanceMetadataBytes != 0 {
-		// Instantiation already checked final arenaNeed, including policy
-		// directories. Do not interpret a zero remainder as unbounded.
-		remaining := opts.maxInstanceMetadataBytes - uint64(arenaNeed)
+		// Instantiation already checked final metadataNeed, including policy
+		// directories and retained native import certificates. Do not interpret a zero remainder as unbounded.
+		remaining := opts.maxInstanceMetadataBytes - uint64(metadataNeed)
 		if remaining <= uint64(policy.limits.metadata) {
 			policy.limits.metadata, policy.metadataConfigured = int(remaining), true
 		}
