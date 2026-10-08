@@ -14,20 +14,21 @@ import (
 // runtime's120-byte context. Instance-owned dispatcher addresses are never part
 // of a persisted guest image.
 const (
-	tailRAContextBytes  = 128
-	tailRACapOffset     = 120
-	tailRACapMagic      = uint64(0x5741474f54524331)
-	tailRARecordMagic   = uint64(0x5741474f54525231)
-	tailRAVersion       = 1
-	tailRACapHeader     = 32
-	tailRASiteRow       = 16
-	tailRAMaxSites      = 4096
-	tailRAMaxRanges     = 1024
-	tailRARecordBytes   = 5504
-	tailRACtrlOffset    = 160
-	tailRAArgsOffset    = 1408
-	tailRAResultsOffset = 3456
-	tailRADispatchBound = 8192
+	tailRAContextBytes          = 128
+	tailRACapOffset             = 120
+	tailRACapMagic              = uint64(0x5741474f54524331)
+	tailRARecordMagic           = uint64(0x5741474f54525231)
+	tailRAVersion               = 1
+	tailRACapHeader             = 32
+	tailRASiteRow               = 16
+	tailRAMaxSites              = 4096
+	tailRAMaxRanges             = 1024
+	tailRARecordBytes           = 5504
+	tailRAInvocationRecordBytes = tailRARecordBytes + abi.RV64InvocationViewBytes
+	tailRACtrlOffset            = 160
+	tailRAArgsOffset            = 1408
+	tailRAResultsOffset         = 3456
+	tailRADispatchBound         = 8192
 )
 
 type tailRARange struct{ base, bytes uintptr }
@@ -40,6 +41,7 @@ func (r tailRARange) valid(alignment uintptr) bool {
 // not an arbitrary public native-pointer lookup and the stack record owns none
 // of their cleanup obligations.
 type tailRAProofSite struct {
+	invocationContext                                bool
 	frameBytes                                       int
 	functionIndex, sourcePC                          uint32
 	callerHome, callerContext                        uintptr
@@ -91,7 +93,7 @@ func tailRASignature(sig *wasm.CompType) error {
 }
 
 func (s *tailRAProofSite) validate() error {
-	if s == nil || s.frameBytes < callFrameHeader || s.frameBytes > MaxFrameBytes || s.frameBytes&15 != 0 || s.callerHome == 0 || s.callerHome&7 != 0 || s.callerContext == 0 || s.callerContext&7 != 0 || s.stackLimit == 0 || s.stackLimit&15 != 0 || s.stackTop&15 != 0 || s.stackTop <= s.stackLimit || s.stackTop-s.stackLimit < tailRARecordBytes+16 {
+	if s == nil || s.frameBytes < callFrameHeader || s.frameBytes > MaxFrameBytes || s.frameBytes&15 != 0 || s.callerHome == 0 || s.callerHome&7 != 0 || s.callerContext == 0 || s.callerContext&7 != 0 || (!s.invocationContext && (s.stackLimit == 0 || s.stackLimit&15 != 0 || s.stackTop&15 != 0 || s.stackTop <= s.stackLimit || s.stackTop-s.stackLimit < tailRARecordBytes+16)) {
 		return unsupported("private tail site framed identities/stack")
 	}
 	if err := tailRASignature(&wasm.CompType{Kind: wasm.CompFunc, Params: s.params, Results: s.results}); err != nil {
@@ -132,7 +134,7 @@ func (s *tailRAProofSite) validate() error {
 			return unsupported("private tail retained continuation")
 		}
 	}
-	if swarSignatureSlots(s.params) != 0 && len(s.argumentRanges) == 0 || swarSignatureSlots(s.results) != 0 && len(s.resultRanges) == 0 {
+	if !s.invocationContext && (swarSignatureSlots(s.params) != 0 && len(s.argumentRanges) == 0 || swarSignatureSlots(s.results) != 0 && len(s.resultRanges) == 0) {
 		return unsupported("private tail missing original capacity")
 	}
 	return nil
@@ -140,6 +142,7 @@ func (s *tailRAProofSite) validate() error {
 
 // All veneers use X31. Persistent cursors/results use other fixed temporaries.
 type tailRAEmitter struct {
+	invocationContext bool
 	a                 enc.Asm
 	bad, stack        []int
 	functionIndex, pc uint32
@@ -242,15 +245,15 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 	a.Ld(enc.X29, enc.X25, -abi.RV64TrapReentrySPOffset)
 	e.fence(enc.LTU, enc.X29, record)
 	a.Sub(enc.X29, enc.X29, record)
-	a.Constant64(enc.Scratch0, tailRARecordBytes)
+	a.Constant64(enc.Scratch0, int64(e.recordBytes()))
 	e.fence(enc.LTU, enc.X29, enc.Scratch0)
 	a.Ld(enc.X29, record, 80)
 	a.Constant64(enc.Scratch0, int64(tailRARecordMagic))
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
 	a.Ld(enc.X29, record, 104)
-	a.Constant64(enc.Scratch0, tailRARecordBytes)
+	a.Constant64(enc.Scratch0, int64(e.recordBytes()))
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
-	tailRAAddress(a, enc.Scratch0, record, tailRARecordBytes)
+	tailRAAddress(a, enc.Scratch0, record, e.recordBytes())
 	a.Ld(enc.X29, record, 64)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
 	a.Ld(enc.X29, record, 72)
@@ -260,6 +263,25 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 	a.Ld(enc.X29, enc.X25, -abi.RV64NativeContextOffset)
 	a.Ld(enc.Scratch0, record, 144)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
+	if e.invocationContext {
+		tailRAAddress(a, enc.X28, record, tailRARecordBytes)
+		a.Ld(enc.X29, enc.X25, -abi.RV64InvocationViewOffset)
+		e.fail(enc.NE, enc.X28, enc.X29)
+		e.bad = append(e.bad, nativeInvocationViewGuards(a, enc.X28, 0)...)
+		a.Ld(enc.X29, enc.X28, abi.RV64InvocationFirstRAOffset)
+		e.fail(enc.NE, enc.X29, exit)
+		for _, direction := range []struct {
+			pointer, capacity int32
+			offset            int
+		}{{abi.RV64InvocationArgumentsOffset, abi.RV64InvocationArgumentBytesOffset, tailRAArgsOffset}, {abi.RV64InvocationResultsOffset, abi.RV64InvocationResultBytesOffset, tailRAResultsOffset}} {
+			tailRAAddress(a, enc.X29, record, direction.offset)
+			a.Ld(enc.Scratch0, enc.X28, direction.pointer)
+			e.fail(enc.NE, enc.X29, enc.Scratch0)
+			a.Ld(enc.X29, enc.X28, direction.capacity)
+			a.Constant64(enc.Scratch0, nativeImportTransportBytes)
+			e.fail(enc.NE, enc.X29, enc.Scratch0)
+		}
+	}
 	a.Ld(enc.X5, record, 88)
 	a.Constant64(enc.Scratch0, 256)
 	e.fail(enc.LTU, enc.Scratch0, enc.X5)
@@ -299,7 +321,7 @@ func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) 
 	if exit == 0 || exit&15 != 0 || finalize == 0 || finalize&15 != 0 {
 		return nil, unsupported("private tail dispatcher addresses")
 	}
-	e := tailRAEmitter{functionIndex: s.functionIndex, pc: s.sourcePC}
+	e := tailRAEmitter{functionIndex: s.functionIndex, pc: s.sourcePC, invocationContext: s.invocationContext}
 	a := &e.a
 	// Validate current frame before reading saved RA/transport. Caller and target
 	// authentication happens before any exchange, stack or basedata write.
@@ -321,35 +343,56 @@ func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) 
 	a.Ld(enc.X29, enc.X29, coreruntime.FuncRefContextOffset)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
 	a.Ld(enc.X29, enc.X25, -abi.StackFenceOffset)
-	a.Constant64(enc.Scratch0, int64(s.stackLimit))
-	e.fail(enc.NE, enc.X29, enc.Scratch0)
+	if !s.invocationContext {
+		a.Constant64(enc.Scratch0, int64(s.stackLimit))
+		e.fail(enc.NE, enc.X29, enc.Scratch0)
+	}
 	e.fence(enc.LTU, enc.SP, enc.X29)
 	tailRAMask(a, enc.X29, enc.SP, 15)
 	e.fail(enc.NE, enc.X29, enc.Zero)
 	tailRAAddress(a, enc.X14, enc.SP, s.frameBytes)
 	e.fence(enc.LTU, enc.X14, enc.SP)
 	a.Ld(enc.X29, enc.X25, -abi.RV64TrapReentrySPOffset)
-	a.Constant64(enc.Scratch0, int64(s.stackTop))
-	e.fence(enc.LTU, enc.Scratch0, enc.X29)
+	if !s.invocationContext {
+		a.Constant64(enc.Scratch0, int64(s.stackTop))
+		e.fence(enc.LTU, enc.Scratch0, enc.X29)
+	}
 	e.fence(enc.LTU, enc.X29, enc.X14)
+	if s.invocationContext {
+		a.Ld(enc.X28, enc.X25, -abi.RV64InvocationViewOffset)
+		e.bad = append(e.bad, nativeInvocationViewGuards(a, enc.X28, s.frameBytes)...)
+	}
 	a.Ld(enc.X9, enc.SP, 0)
 	a.Constant64(enc.X15, int64(exit))
 	reuse := a.BranchLong(enc.EQ, enc.X9, enc.X15)
 	// First hop: validate original return and actual arena capacities. These
 	// ranges include the leased root/bridge continuation, not just target code.
-	e.contains(enc.X9, 4, s.continuationRanges)
+	if s.invocationContext {
+		a.Ld(enc.X29, enc.X28, abi.RV64InvocationFirstRAOffset)
+		e.fail(enc.EQ, enc.X29, enc.Zero)
+		first := a.BranchLong(enc.EQ, enc.X9, enc.X29)
+		e.contains(enc.X9, 4, s.continuationRanges)
+		e.patch(first)
+	} else {
+		e.contains(enc.X9, 4, s.continuationRanges)
+	}
 	a.Ld(enc.X6, enc.SP, 16)
 	a.Ld(enc.X7, enc.SP, 8)
 	argBytes, resBytes := 8*swarSignatureSlots(s.params), 8*swarSignatureSlots(s.results)
-	e.contains(enc.X6, argBytes, s.argumentRanges)
-	e.contains(enc.X7, resBytes, s.resultRanges)
+	if s.invocationContext {
+		e.invocationTransport(enc.X6, argBytes, enc.X28, abi.RV64InvocationArgumentsOffset, abi.RV64InvocationArgumentBytesOffset)
+		e.invocationTransport(enc.X7, resBytes, enc.X28, abi.RV64InvocationResultsOffset, abi.RV64InvocationResultBytesOffset)
+	} else {
+		e.contains(enc.X6, argBytes, s.argumentRanges)
+		e.contains(enc.X7, resBytes, s.resultRanges)
+	}
 	a.Ld(enc.X29, enc.X25, -abi.StackFenceOffset)
 	a.Sub(enc.X29, enc.X14, enc.X29)
-	a.Constant64(enc.Scratch0, tailRARecordBytes)
+	a.Constant64(enc.Scratch0, int64(e.recordBytes()))
 	e.fence(enc.LTU, enc.X29, enc.Scratch0)
 	a.Sub(enc.X15, enc.X14, enc.Scratch0)
-	e.disjoint(enc.X6, argBytes, enc.X15, tailRARecordBytes)
-	e.disjoint(enc.X7, resBytes, enc.X15, tailRARecordBytes)
+	e.disjoint(enc.X6, argBytes, enc.X15, e.recordBytes())
+	e.disjoint(enc.X7, resBytes, enc.X15, e.recordBytes())
 	e.disjoint(enc.X6, argBytes, enc.SP, s.frameBytes)
 	e.disjoint(enc.X7, resBytes, enc.SP, s.frameBytes)
 	if argBytes != 0 && resBytes != 0 {
@@ -379,7 +422,7 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	if exit == 0 || exit&15 != 0 {
 		return nil, unsupported("private tail exit address")
 	}
-	e := tailRAEmitter{functionIndex: s.functionIndex, pc: s.sourcePC}
+	e := tailRAEmitter{functionIndex: s.functionIndex, pc: s.sourcePC, invocationContext: s.invocationContext}
 	a := &e.a
 	// No park/callback is permitted between preflight and this frozen finalizer.
 	// Reload original header0, never the linked preflight's live RA.
@@ -391,7 +434,10 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	a.Constant64(enc.Scratch0, int64(exit))
 	reuse := a.BranchLong(enc.EQ, enc.X9, enc.Scratch0)
 	a.Ld(enc.X28, enc.X25, -40)
-	a.Constant64(enc.Scratch1, tailRARecordBytes)
+	if s.invocationContext {
+		a.Ld(enc.X15, enc.X25, -abi.RV64InvocationViewOffset)
+	}
+	a.Constant64(enc.Scratch1, int64(e.recordBytes()))
 	a.Sub(enc.SP, enc.X14, enc.Scratch1)
 	a.Sd(enc.X9, enc.SP, 0)
 	a.Sd(enc.X25, enc.SP, 8)
@@ -409,8 +455,11 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	mask, count, _ := tailRAResultMask(s.results)
 	a.Constant64(enc.Scratch0, int64(count))
 	a.Sd(enc.Scratch0, enc.SP, 88)
-	a.Constant64(enc.Scratch0, tailRARecordBytes)
+	a.Constant64(enc.Scratch0, int64(e.recordBytes()))
 	a.Sd(enc.Scratch0, enc.SP, 104)
+	if s.invocationContext {
+		a.Sd(enc.X15, enc.SP, 152)
+	}
 	for i, m := range mask {
 		a.Constant64(enc.Scratch0, int64(m))
 		a.Sd(enc.Scratch0, enc.SP, int32(112+i*8))
@@ -455,7 +504,16 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	a.Sd(enc.X11, enc.SP, 96)
 	a.Constant64(enc.Scratch1, int64(s.target.context))
 	a.Sd(enc.Scratch1, enc.SP, 144)
-	a.Sd(enc.Zero, enc.SP, 152)
+	if !s.invocationContext {
+		a.Sd(enc.Zero, enc.SP, 152)
+	}
+	if s.invocationContext {
+		// First hop retains its exact original view; reuse inherits this
+		// record's own view so nested ordinary calls keep full transport.
+		a.Ld(enc.X15, enc.X25, -abi.RV64InvocationViewOffset)
+		nativeInvocationActivation(a, enc.X15, tailRARecordBytes, tailRAArgsOffset, tailRAResultsOffset)
+		a.Sd(enc.X9, enc.X11, -abi.RV64InvocationViewOffset)
+	}
 	for _, field := range nativeImportContextFields {
 		if field.source == 0 {
 			continue
@@ -484,8 +542,10 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 
 // The exit itself contains no absolute process or instance pointers. Its own
 // first AUIPC supplies exact entry identity; publication owner retains its map.
-func tailRAExitCode() ([]byte, error) {
-	e := tailRAEmitter{pc: ^uint32(0)}
+func tailRAExitCode() ([]byte, error) { return tailRAExitCodeInvocation(false) }
+
+func tailRAExitCodeInvocation(invocation bool) ([]byte, error) {
+	e := tailRAEmitter{pc: ^uint32(0), invocationContext: invocation}
 	a := &e.a
 	a.Auipc(enc.X9, 0)
 	a.Addi(enc.X14, enc.SP, 0)
@@ -540,13 +600,17 @@ func tailRAExitCode() ([]byte, error) {
 	a.Sd(enc.Scratch1, enc.X11, -abi.RV64NativeContextOffset)
 	a.Ld(enc.Scratch0, enc.SP, 56)
 	a.Sd(enc.Scratch0, enc.X11, -40)
+	if invocation {
+		a.Ld(enc.Scratch0, enc.SP, 152)
+		a.Sd(enc.Scratch0, enc.X11, -abi.RV64InvocationViewOffset)
+	}
 	a.Addi(enc.X25, enc.X11, 0)
 	a.Ld(enc.X10, enc.SP, 24)
 	a.Ld(enc.X12, enc.SP, 32)
 	a.Ld(enc.X13, enc.SP, 40)
 	a.Ld(enc.X24, enc.SP, 48)
 	a.Ld(enc.RA, enc.SP, 0)
-	a.Constant64(enc.Scratch0, tailRARecordBytes)
+	a.Constant64(enc.Scratch0, int64(e.recordBytes()))
 	a.Add(enc.SP, enc.SP, enc.Scratch0)
 	a.Ret()
 	return e.finish()

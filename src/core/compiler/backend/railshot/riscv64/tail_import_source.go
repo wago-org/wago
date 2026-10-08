@@ -50,6 +50,10 @@ func (f *integerEmitter) importTailCall(index uint32, sig *wasm.CompType, base i
 // followed by existing scalar/SWAR prewalks before guest code generation. The
 // caller cannot obtain an image from a partially admitted hidden function.
 func compileTailImportSource(source []byte, siteBase uint32, forceSWAR bool) (*tailImportImage, error) {
+	return compileTailImportSourceInvocation(source, siteBase, forceSWAR, false)
+}
+
+func compileTailImportSourceInvocation(source []byte, siteBase uint32, forceSWAR, invocation bool) (*tailImportImage, error) {
 	if len(source) < 8 || len(source) > MaxModuleBytes || siteBase > tailRAMaxSites {
 		return nil, unsupported("private imported-tail source/base bound")
 	}
@@ -106,14 +110,14 @@ func compileTailImportSource(source []byte, siteBase uint32, forceSWAR bool) (*t
 		return nil, err
 	}
 	if vector || forceSWAR {
-		mode := emissionMode{production: true, interruptible: true, localTailCalls: true, importTailCalls: true, tailPlans: &i.plans, tailSiteBase: siteBase}
+		mode := emissionMode{production: true, interruptible: true, invocationContext: invocation, localTailCalls: true, importTailCalls: true, tailPlans: &i.plans, tailSiteBase: siteBase}
 		c, err := compileSWARDecodedModule(m, mode, swarModuleHosts)
 		if err != nil {
 			return nil, err
 		}
 		i.code, i.functions = c.code, c.functions
 	} else {
-		opts := CompileOptions{production: true, hostImports: true, Interruptible: true, localTailCalls: true, importTailCalls: true, tailPlans: &i.plans, tailSiteBase: siteBase}
+		opts := CompileOptions{production: true, hostImports: true, Interruptible: true, InvocationContext: invocation, localTailCalls: true, importTailCalls: true, tailPlans: &i.plans, tailSiteBase: siteBase}
 		c, err := compileDecodedModule(m, scalarRegisters[:], opts)
 		if err != nil {
 			return nil, err
