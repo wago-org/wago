@@ -20,6 +20,7 @@ type globalSpec struct {
 type functionSpec struct {
 	params, results []bool
 	key             uint64
+	signature       *wasm.CompType
 }
 type memorySpec struct {
 	min              uint32
@@ -29,6 +30,7 @@ type memorySpec struct {
 }
 type moduleState struct {
 	production        bool
+	localTailCalls    bool
 	importReferences  bool
 	ownedTable        bool
 	ownedTableGrowth  bool
@@ -234,7 +236,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	}
 	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
-		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results))}
+		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
 		if s.ownedTable {
 			var ok bool
 			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))

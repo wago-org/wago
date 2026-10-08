@@ -68,6 +68,9 @@ func compile(data []byte, regs []uint8) (*Compiled, error) {
 	return compileOptions(data, regs, CompileOptions{})
 }
 func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.localTailCalls && (!opts.production || !opts.Interruptible) {
+		return nil, unsupported("local tails require the production cooperative runtime ABI")
+	}
 	if opts.ForeignTableCalls && (!opts.production || !opts.Interruptible) {
 		return nil, unsupported("foreign table calls require the production cooperative runtime ABI")
 	}
@@ -100,6 +103,9 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 // The public frontend has already validated its configured limits and retains
 // the decoded source. Lowering still enforces the bounded RV64 module policy.
 func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.localTailCalls && (!opts.production || !opts.Interruptible || opts.Profile || opts.SourceMaps || opts.UnwindMaps) {
+		return nil, unsupported("local tails require cooperative production without profiling metadata")
+	}
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
@@ -111,6 +117,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	if err != nil {
 		return nil, err
 	}
+	state.localTailCalls = opts.localTailCalls
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	integerSummaries := make([]integerSummary, len(m.Code))
 	fallback := make([]bool, len(m.Code))
@@ -134,7 +141,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls}
+		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, localTailCalls: opts.localTailCalls}
 		if opts.production {
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
@@ -373,9 +380,9 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 	if info.FrameHeaderBytes == 0 {
 		info.FrameHeaderBytes = 16
 	}
-	frame := (info.FrameHeaderBytes + 8*nlocals + 8*slots + 15) &^ 15
-	if frame > MaxFrameBytes {
-		return nil, FunctionInfo{}, fmt.Errorf("frame exceeds %d bytes", MaxFrameBytes)
+	frame, err := checkedFrameBytes(info.FrameHeaderBytes, nlocals, slots)
+	if err != nil {
+		return nil, FunctionInfo{}, err
 	}
 	entry := target{header: info.FrameHeaderBytes, mode: info.mode}
 	fence := enc.X13

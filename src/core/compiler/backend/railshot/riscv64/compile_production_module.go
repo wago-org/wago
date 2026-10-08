@@ -101,6 +101,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 // admitProductionOptions keeps semantic option admission identical across the
 // scalar compiler and the private SWAR production staging prerequisite.
 func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool) error {
+	if opts.localTailCalls && (!opts.Interruptible || opts.Profile || opts.SourceMaps || opts.UnwindMaps) {
+		return unsupported("local tails require cooperative production without profiling metadata")
+	}
 	if opts.ForeignTableCalls && !opts.Interruptible {
 		return unsupported("foreign table calls require the cooperative framed runtime ABI")
 	}

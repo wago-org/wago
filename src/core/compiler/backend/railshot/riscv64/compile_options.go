@@ -52,6 +52,8 @@ type CompileOptions struct {
 	production          bool
 	publicStarts        bool
 	hostImports         bool
+	// Internal C2a only; public TailCall remains gated until the whole family.
+	localTailCalls bool
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.

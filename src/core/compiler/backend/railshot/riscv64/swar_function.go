@@ -84,6 +84,9 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 	return walkSWARPairsWithMemoryProfile(fn, ft, makeMemoryProfile(memories[:memoryCount], indexedMemories), types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, emit)
 }
 func walkSWARPairsWithMemoryProfile(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable bool, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, false, emit)
+}
+func walkSWARPairsWithTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls bool, emit *integerEmitter) (swarSummary, error) {
 	memoryCount, indexedMemories := profile.count, profile.indexed
 
 	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
@@ -358,6 +361,49 @@ func walkSWARPairsWithMemoryProfile(fn *wasm.Func, ft *wasm.CompType, profile me
 					return swarSummary{}, err
 				}
 			}
+		case 0x12:
+			index, err := r.U32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			if !localTailCalls || uint64(index) >= uint64(len(functions)) || index < uint32(importedFunctions) {
+				return swarSummary{}, unsupported("SWAR defined local tail target required")
+			}
+			sig := functions[index]
+			if err := admitLocalTailSignature(ft, sig); err != nil {
+				return swarSummary{}, err
+			}
+			calls++
+			budget += len(sig.Params) + len(sig.Results)
+			if calls > maxDirectCalls || budget > integerBudget {
+				return swarSummary{}, unsupported("SWAR local tail count/transfer budget")
+			}
+			if err := reserve(128*len(sig.Params) + 128); err != nil {
+				return swarSummary{}, err
+			}
+			var params [maxSWARLocals]swarClass
+			for i, typ := range sig.Params {
+				params[i] = swarClassOf(typ)
+			}
+			if err := flow.prepareDead(params[:len(sig.Params)]...); err != nil {
+				return swarSummary{}, err
+			}
+			base := h - len(sig.Params)
+			if base < flow.floor() {
+				return swarSummary{}, unsupported("SWAR local tail operand underflow")
+			}
+			for i, class := range params[:len(sig.Params)] {
+				if stackClasses[base+i] != class {
+					return swarSummary{}, unsupported("SWAR local tail carrier class")
+				}
+			}
+			if emit != nil {
+				emit.swarLocalTailCall(index-uint32(importedFunctions), sig, base, spill)
+			}
+			flow.usesLoops = true // A pure tail cycle needs the cooperative entry poll.
+			flow.live = false
+			flow.frames[flow.depth-1].unreachable = true
+			h = flow.floor()
 		case 0x11:
 			typeIndex, err := r.U32()
 			if err != nil {
@@ -1774,6 +1820,9 @@ func compileSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory *wasm.
 	return compileSWARPairsWithMemories(fn, ft, memories, false, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode)
 }
 func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []wasm.MemType, indexedMemories bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if mode.localTailCalls && (!mode.production || !mode.interruptible) {
+		return nil, FunctionInfo{}, nil, unsupported("SWAR local tails require cooperative production")
+	}
 	if len(memories) > MaxProductionMemories || !indexedMemories && len(memories) > 1 || indexedMemories && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR indexed memory profile")
 	}
@@ -1802,7 +1851,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	summary, err := walkSWARPairsWithMemoryProfile(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, nil)
+	summary, err := walkSWARPairsWithTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1820,7 +1869,12 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithMemoryProfile(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, &f)
+	frame, err := checkedFrameBytes(f.frameHeader(), summary.locals*2, summary.peak*2)
+	if err != nil {
+		return nil, FunctionInfo{}, nil, err
+	}
+	f.frameBytes = frame
+	actual, err := walkSWARPairsWithTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1859,6 +1913,9 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	code, info, err := frameFunctionCalls(f.a.B, widths, params, summary.peak*2, true, -1, info, f.calls)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
+	}
+	if info.FrameBytes != f.frameBytes {
+		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: SWAR tail frame layout changed")
 	}
 	if len(code) > summary.codeBound {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: SWAR code exceeded its admitted bound")

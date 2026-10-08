@@ -39,9 +39,10 @@ type integerTrap struct {
 }
 type integerEmitter struct {
 	target
-	traps     []integerTrap
-	calls     []directCall
-	propagate []int
+	traps      []integerTrap
+	calls      []directCall
+	propagate  []int
+	frameBytes int
 }
 
 // The separate fallback uses fixed temporary registers and canonical operand
@@ -604,6 +605,33 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			}
+		case 0x12:
+			idx, e := r.U32()
+			if e != nil {
+				return integerSummary{}, e
+			}
+			if state == nil || !state.localTailCalls || !state.production || uint64(idx) >= uint64(len(state.functions)) || idx < uint32(state.importedFunctions) {
+				return integerSummary{}, unsupported("defined local tail target required")
+			}
+			sig := state.functions[idx]
+			if e := admitLocalTailSignature(ft, sig.signature); e != nil {
+				return integerSummary{}, e
+			}
+			callCount++
+			budget += len(sig.params) + len(sig.results)
+			if callCount > maxDirectCalls || budget > integerBudget {
+				return integerSummary{}, unsupported("local tail count/slot budget")
+			}
+			for j := len(sig.params) - 1; j >= 0; j-- {
+				if err = popWidth(sig.params[j]); err != nil {
+					return integerSummary{}, err
+				}
+			}
+			if live && emit != nil {
+				emit.localTailCall(idx, sig, h, state.importedFunctions)
+			}
+			live = false
+			h = ctrl[depth-1].base
 		case 0x11:
 			typeIndex, e := r.U32()
 			if e != nil {
@@ -1163,6 +1191,9 @@ func (f *integerEmitter) operation(op shared.IntOp, w, unary, resultWide bool) {
 }
 
 func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summary integerSummary, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if mode.localTailCalls && (!mode.production || !mode.interruptible) {
+		return nil, FunctionInfo{}, nil, unsupported("local tails require cooperative production")
+	}
 	if mode.foreignTableCalls && summary.tableBridgeBytes > MaxCodeBytes-(64<<10) {
 		return nil, FunctionInfo{}, nil, unsupported("foreign table bridge admission bound")
 	}
@@ -1184,6 +1215,11 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if summary.calls != 0 {
 		f.header = callFrameHeader
 	}
+	frame, err := checkedFrameBytes(f.frameHeader(), n, summary.maxStack)
+	if err != nil {
+		return nil, FunctionInfo{}, nil, err
+	}
+	f.frameBytes = frame
 	actual, err := walkInteger(fn, ft, state, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
@@ -1251,6 +1287,9 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		contextOffset = -8
 	}
 	code, info, err := frameFunctionCalls(f.a.B, widths[:n], len(ft.Params), summary.maxStack, true, contextOffset, info, f.calls)
+	if err == nil && info.FrameBytes != f.frameBytes {
+		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: tail frame layout changed")
+	}
 	if err == nil && mode.foreignTableCalls && len(code) > MaxCodeBytes {
 		return nil, FunctionInfo{}, nil, unsupported("foreign table function image bound")
 	}

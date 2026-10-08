@@ -27,6 +27,10 @@ diagnostics expose finalized code/frame statistics. Profiling builds now retain
 bounded finalized regions and optional sparse source maps, including deferred
 scalar origins and cold traps; wrapper/helper bytes remain unattributed.
 Unwind maps and detailed compiler-site attribution remain pending.
+An internal proper local-tail prerequisite now discards caller frames for exact
+numeric same-image calls, with bounded transport, stack-fence and interruption
+coverage. Public TailCall remains gated pending vector/imported/indirect/reference
+paths and their ownership/continuation protocol.
 Conservative resource-root accounting prepares later
 reference ownership work without changing collection or feature admission.
 Remaining work

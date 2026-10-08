@@ -96,6 +96,9 @@ type swarStateProfile struct {
 // Production integrates qualified state with current public lifecycles.
 // Private pilots retain their original import/export policy.
 func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy swarModulePolicy, state swarStateProfile) (*swarModuleImage, error) {
+	if mode.localTailCalls && (!mode.production || !mode.interruptible) {
+		return nil, unsupported("SWAR local tails require cooperative production")
+	}
 	if m == nil || !mode.production || policy > swarModuleHosts {
 		return nil, unsupported("SWAR decoded module production/policy")
 	}
@@ -302,7 +305,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	summaries := make([]swarSummary, len(m.Code))
 	bound := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithMemoryProfile(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
+		summaries[i], err = walkSWARPairsWithTailMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}

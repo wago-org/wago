@@ -32,9 +32,10 @@ type emissionMode struct {
 	// entry/resume and provides a synchronous root control frame.
 	foreignTableCalls bool
 	// Imported descriptors have independently checked bounded runtime capacity.
-	borrowedTable bool
-	functionIndex uint32
-	entryPC       uint32
+	borrowedTable  bool
+	localTailCalls bool
+	functionIndex  uint32
+	entryPC        uint32
 }
 
 var _ shared.ScalarTarget = (*target)(nil)
