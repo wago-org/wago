@@ -35,6 +35,9 @@ func AdmitProductionSource(data []byte) error {
 // The public integration also calls AdmitProductionSource. Current bounded
 // admission is deliberately retained until the complete port is qualified.
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule, error) {
+	if opts.dynamicTailCalls {
+		return nil, unsupported("private dynamic source plans have no public artifact/runtime contract")
+	}
 	if opts.InvocationContext && !opts.Interruptible {
 		return nil, unsupported("invocation views require cooperative production")
 	}
@@ -175,6 +178,9 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 		tail = &enc.NativeTailModule{}
 		values := 0
 		for _, p := range *opts.tailPlans {
+			if p.kind != 0 {
+				return nil, unsupported("dynamic tail address-free artifact/runtime contract is not enabled")
+			}
 			sig, ok := opts.tailModule.FuncSignature(p.importIndex)
 			if !ok {
 				return nil, unsupported("staged tail import signature metadata")

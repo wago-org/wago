@@ -36,6 +36,7 @@ type emissionMode struct {
 	borrowedTable          bool
 	localTailCalls         bool
 	importTailCalls        bool
+	dynamicTailCalls       bool
 	tailPlans              *[]tailImportPlan
 	tailSiteBase           uint32
 	localMutableReferences bool

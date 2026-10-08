@@ -96,6 +96,9 @@ type swarStateProfile struct {
 // Production integrates qualified state with current public lifecycles.
 // Private pilots retain their original import/export policy.
 func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy swarModulePolicy, state swarStateProfile) (*swarModuleImage, error) {
+	if mode.dynamicTailCalls && (!mode.importTailCalls || !mode.invocationContext || !mode.foreignTableCalls) {
+		return nil, unsupported("private SWAR dynamic tails require invocation/foreign factory contract")
+	}
 	if mode.importTailCalls && (!mode.localTailCalls || mode.tailPlans == nil || len(*mode.tailPlans) != 0 || mode.tailSiteBase > tailRAMaxSites) {
 		return nil, unsupported("private SWAR imported-tail plan contract")
 	}
@@ -316,7 +319,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	bound := 0
 	importTailCount := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithImportTailMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, nil)
+		summaries[i], err = walkSWARPairsWithDynamicTailMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}

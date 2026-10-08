@@ -657,13 +657,16 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			sig := state.types[typeIndex]
 			tail := op == 0x13
 			if tail {
-				// The private table profile owns every descriptor and excludes
-				// imported function proxies and foreign table/context transitions.
-				if !state.localTailCalls || state.foreignTableCalls || state.importedFunctions != 0 {
+				// The local profile excludes imported/foreign targets; the dynamic
+				// profile authenticates those through retained native factories.
+				if !state.localTailCalls || state.dynamicTailCalls && (!state.importTailCalls || !state.foreignTableCalls) || !state.dynamicTailCalls && (state.foreignTableCalls || state.importedFunctions != 0) {
 					return integerSummary{}, unsupported("owned defined indirect tail profile required")
 				}
 				if e := admitLocalTailSignature(ft, sig.signature); e != nil {
 					return integerSummary{}, e
+				}
+				if state.dynamicTailCalls {
+					importTails++
 				}
 			} else {
 				tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
@@ -694,7 +697,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			if live && emit != nil {
 				if tail {
-					emit.localIndirectTailCall(sig.signature, sig.key, h, indexSlot, emit.SpillOffset)
+					if state.dynamicTailCalls {
+						emit.dynamicIndirectTailCall(typeIndex, sig.signature, sig.key, h, indexSlot, emit.SpillOffset, 8)
+					} else {
+						emit.localIndirectTailCall(sig.signature, sig.key, h, indexSlot, emit.SpillOffset)
+					}
 				} else {
 					emit.indirectCall(sig, h, indexSlot)
 				}

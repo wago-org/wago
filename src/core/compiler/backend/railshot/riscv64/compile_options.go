@@ -63,9 +63,10 @@ type CompileOptions struct {
 	tailModule     *wasm.Module
 	localTailCalls bool
 	// Source production and private decoded adapters collect symbolic import sites.
-	importTailCalls bool
-	tailPlans       *[]tailImportPlan
-	tailSiteBase    uint32
+	importTailCalls  bool
+	dynamicTailCalls bool // private declared-type indirect-source qualification
+	tailPlans        *[]tailImportPlan
+	tailSiteBase     uint32
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.

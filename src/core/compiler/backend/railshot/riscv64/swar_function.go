@@ -95,6 +95,13 @@ func walkSWARPairsWithReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile me
 }
 
 func walkSWARPairsWithImportTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls bool, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithDynamicTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, false, emit)
+}
+
+func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls bool, emit *integerEmitter) (swarSummary, error) {
+	if dynamicTailCalls && (!importTailCalls || !foreignTableCalls || !localTailCalls) {
+		return swarSummary{}, unsupported("private dynamic tail walker contract")
+	}
 	memoryCount, indexedMemories := profile.count, profile.indexed
 
 	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
@@ -440,11 +447,14 @@ func walkSWARPairsWithImportTailMode(fn *wasm.Func, ft *wasm.CompType, profile m
 			sig := types[typeIndex]
 			tail := op == 0x13
 			if tail {
-				if !localTailCalls || foreignTableCalls || importedFunctions != 0 {
+				if !localTailCalls || !dynamicTailCalls && (foreignTableCalls || importedFunctions != 0) {
 					return swarSummary{}, unsupported("SWAR owned defined indirect tail profile required")
 				}
 				if err := admitSWARLocalTailSignature(ft, sig); err != nil {
 					return swarSummary{}, err
+				}
+				if dynamicTailCalls {
+					importTails++
 				}
 			}
 			calls++
@@ -480,7 +490,11 @@ func walkSWARPairsWithImportTailMode(fn *wasm.Func, ft *wasm.CompType, profile m
 			usesTraps = true
 			if emit != nil {
 				if tail {
-					emit.localIndirectTailCall(sig, typeKeys[typeIndex], base, h-1, spill)
+					if dynamicTailCalls && flow.live {
+						emit.dynamicIndirectTailCall(typeIndex, sig, typeKeys[typeIndex], base, h-1, spill, 16)
+					} else if !dynamicTailCalls {
+						emit.localIndirectTailCall(sig, typeKeys[typeIndex], base, h-1, spill)
+					}
 				} else {
 					emit.swarIndirectCall(sig, typeKeys[typeIndex], base, h-1, spill)
 				}
@@ -1892,7 +1906,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	summary, err := walkSWARPairsWithImportTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, nil)
+	summary, err := walkSWARPairsWithDynamicTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1915,7 +1929,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	actual, err := walkSWARPairsWithImportTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, &f)
+	actual, err := walkSWARPairsWithDynamicTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

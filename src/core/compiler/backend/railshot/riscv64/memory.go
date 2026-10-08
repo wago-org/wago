@@ -33,6 +33,7 @@ type moduleState struct {
 	localTailCalls         bool
 	foreignTableCalls      bool
 	importTailCalls        bool
+	dynamicTailCalls       bool
 	importReferences       bool
 	localMutableReferences bool
 	ownedTable             bool

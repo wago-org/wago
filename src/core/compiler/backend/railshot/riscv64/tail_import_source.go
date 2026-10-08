@@ -13,6 +13,9 @@ import (
 // not enable public TailCall. Each separately compiled image receives an
 // explicit base in the enclosing owner's flat capability table.
 type tailImportPlan struct {
+	kind                                       uint32 // zero is the existing direct imported site; one is indirect
+	typeIndex                                  uint32
+	referenceBase                              int
 	site, functionIndex, importIndex, sourcePC uint32
 	sourceBase, sourceStride                   int
 }
@@ -21,6 +24,7 @@ type tailImportImage struct {
 	code       []byte
 	functions  []FunctionInfo
 	signatures []*wasm.CompType // imports followed by definitions, owned decode
+	types      []*wasm.CompType // exact declared types for private indirect plans
 	plans      []tailImportPlan
 	siteBase   uint32
 	imports    int
@@ -169,7 +173,7 @@ func tailImportOwnerSpec(bindings []tailImportBinding, s tailRAOwnerSpec) (tailR
 		}
 		for n, p := range i.plans {
 			local := int(p.functionIndex) - i.imports
-			if p.site != uint32(count+n) || local < 0 || local >= len(b.functions) || uint64(p.importIndex) >= uint64(len(b.targets)) || !tailImportExactSignature(b.targets[p.importIndex].signature, i.signatures[p.importIndex]) {
+			if p.kind != 0 || p.site != uint32(count+n) || local < 0 || local >= len(b.functions) || uint64(p.importIndex) >= uint64(len(b.targets)) || !tailImportExactSignature(b.targets[p.importIndex].signature, i.signatures[p.importIndex]) {
 				return tailRAOwnerSpec{}, unsupported("private imported-tail symbolic target/site")
 			}
 			s.sites = append(s.sites, tailRAOwnerSite{caller: b.functions[local], target: b.targets[p.importIndex], sourcePC: p.sourcePC, sourceBase: p.sourceBase, sourceStride: p.sourceStride})
