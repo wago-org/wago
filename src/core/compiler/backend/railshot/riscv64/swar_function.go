@@ -292,6 +292,17 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 		}
 		switch op {
 		case 0x01: // nop
+		case 0xd5, 0xd6:
+			label, err := r.U32()
+			if err != nil {
+				return swarSummary{}, err
+			}
+			if !privateRefs || !referenceCalls {
+				return swarSummary{}, unsupported("SWAR reference branch profile")
+			}
+			if err := flow.referenceBranch(label, op == 0xd6); err != nil {
+				return swarSummary{}, err
+			}
 		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f:
 			done, trap, err := flow.instruction(op, &r)
 			if err != nil {

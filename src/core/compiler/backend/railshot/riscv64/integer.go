@@ -31,6 +31,7 @@ type integerControl struct {
 	params, results                []bool
 	resultRefs                     []bool
 	entry, then, incoming, hasElse bool
+	unreachable                    bool // current typing floor, independent of machine reachability
 	start, falseSite               int
 	sites                          []int
 }
@@ -213,6 +214,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				emit.trap(TrapUnreachable, emit.Jump())
 			}
 			live = false
+			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x01:
 		case 0x02, 0x03, 0x04:
@@ -288,6 +290,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			fr.then = live
 			fr.hasElse = true
+			fr.unreachable = false
 			if live && emit != nil {
 				fr.sites = append(fr.sites, emit.Jump())
 			}
@@ -366,7 +369,89 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, e
 				}
 				live = false
+				ctrl[depth-1].unreachable = true
 				h = ctrl[depth-1].base
+			}
+		case 0xd5, 0xd6:
+			label, e := r.U32()
+			if e != nil {
+				return integerSummary{}, e
+			}
+			if !privateRefs || !state.referenceCalls || uint64(label) >= uint64(depth) {
+				return integerSummary{}, unsupported("reference branch profile/label")
+			}
+			fr := &ctrl[depth-1-int(label)]
+			values, references := fr.results, fr.resultRefs
+			if fr.kind == 0x03 {
+				values, references = fr.params, nil
+			}
+			nonNull := op == 0xd6
+			prefix := len(values)
+			if nonNull {
+				if prefix == 0 || len(references) == 0 || !references[prefix-1] {
+					return integerSummary{}, unsupported("br_on_non_null requires a reference label result")
+				}
+				prefix--
+			}
+			floor := ctrl[depth-1].base
+			if h <= floor && !ctrl[depth-1].unreachable {
+				return integerSummary{}, unsupported("reference branch operand underflow")
+			}
+			if h > floor && !stackRefs[h-1] {
+				return integerSummary{}, unsupported("reference branch operand class")
+			}
+			if _, err = popClass(true); err != nil {
+				return integerSummary{}, err
+			}
+			// Validate label payloads against this control frame's typing floor,
+			// including concrete operands in dead code. Missing dead operands are
+			// virtual; they never cause loads or copies in the emitted function.
+			missing := max(0, prefix-(h-floor))
+			if missing != 0 && !ctrl[depth-1].unreachable || h+missing >= len(stack) {
+				return integerSummary{}, unsupported("reference branch payload bound/underflow")
+			}
+			for j := 0; j < prefix; j++ {
+				at := h - prefix + j
+				ref := len(references) != 0 && references[j]
+				if at >= floor && (stack[at] != values[j] || stackRefs[at] != ref) {
+					return integerSummary{}, unsupported("reference branch payload class")
+				}
+			}
+			if missing != 0 {
+				copy(stack[floor+missing:h+missing], stack[floor:h])
+				copy(stackRefs[floor+missing:h+missing], stackRefs[floor:h])
+				for j := 0; j < missing; j++ {
+					stack[floor+j] = values[j]
+					stackRefs[floor+j] = len(references) != 0 && references[j]
+				}
+				h += missing
+			}
+			skip := -1
+			if live && emit != nil {
+				emit.Load(5, emit.SpillOffset(h), true)
+				condition := enc.NE // non-null fallthrough skips the taken null edge
+				if nonNull {
+					condition = enc.EQ
+				}
+				skip = emit.a.BranchLong(condition, enc.X5, enc.Zero)
+			}
+			if nonNull {
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			}
+			if err = branch(label); err != nil {
+				return integerSummary{}, err
+			}
+			if live && emit != nil {
+				if err = patch(skip, position()); err != nil {
+					return integerSummary{}, err
+				}
+			}
+			if nonNull {
+				h-- // null fallthrough consumes the reference, retaining the prefix
+			} else if err = pushReference(); err != nil {
+				return integerSummary{}, err
 			}
 		case 0x0e:
 			n, e := r.U32()
@@ -403,12 +488,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			live = false
+			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x0f:
 			if err = branch(uint32(depth - 1)); err != nil {
 				return integerSummary{}, err
 			}
 			live = false
+			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x1a:
 			if _, _, err = popAny(); err != nil {
@@ -536,6 +623,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				// An unknown value at an unreachable floor is polymorphic. An
 				// explicitly pushed numeric value still cannot become a reference.
+				if h <= ctrl[depth-1].base && !ctrl[depth-1].unreachable {
+					return integerSummary{}, unsupported("ref.as_non_null operand underflow")
+				}
 				if h > ctrl[depth-1].base && !stackRefs[h-1] {
 					return integerSummary{}, unsupported("ref.as_non_null operand class")
 				}
@@ -659,6 +749,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			live = false
+			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x14:
 			typeIndex, e := r.U32()
@@ -724,6 +815,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				emit.dynamicReferenceTailCall(typeIndex, sig.signature, h, referenceSlot, emit.SpillOffset, 8)
 			}
 			live = false
+			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x11, 0x13:
 			typeIndex, e := r.U32()
@@ -791,6 +883,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			if tail {
 				live = false
+				ctrl[depth-1].unreachable = true
 				h = ctrl[depth-1].base
 				continue
 			}

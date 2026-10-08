@@ -287,6 +287,9 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 				}
 				hasReferenceNonNull = true
 			}
+			if op == 0xd5 || op == 0xd6 {
+				return false, false, false, unsupported("reference branch artifact contract is pending")
+			}
 			referenceTails = referenceTails || op == 0x15
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {

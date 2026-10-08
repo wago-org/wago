@@ -180,6 +180,62 @@ func (flow *swarFlow) branch(label uint32) error {
 	return nil
 }
 
+// Reference branches use the ordinary exact label transfer, but their condition
+// is an opaque 64-bit carrier and their taken/fallthrough operand arities differ.
+func (flow *swarFlow) referenceBranch(label uint32, nonNull bool) error {
+	if uint64(label) >= uint64(flow.depth) {
+		return unsupported("SWAR reference branch label")
+	}
+	fr := &flow.frames[flow.depth-1-int(label)]
+	values := fr.results
+	if fr.kind == 0x03 {
+		values = fr.params
+	}
+	if nonNull && (len(values) == 0 || values[len(values)-1] != swarFuncRef) {
+		return unsupported("SWAR br_on_non_null requires a reference label result")
+	}
+	if err := flow.prepareDead(swarFuncRef); err != nil {
+		return err
+	}
+	if *flow.h == flow.floor() || flow.classes[*flow.h-1] != swarFuncRef {
+		return unsupported("SWAR reference branch operand class/underflow")
+	}
+	*flow.h--
+	skip := -1
+	if flow.live && flow.emit != nil {
+		flow.emit.Load(5, flow.spill(*flow.h), true)
+		condition := enc.NE
+		if nonNull {
+			condition = enc.EQ
+		}
+		skip = flow.emit.a.BranchLong(condition, enc.X5, enc.Zero)
+	}
+	if nonNull {
+		*flow.h++ // the taken edge includes the reference in its label payload
+	}
+	if err := flow.branch(label); err != nil {
+		return err
+	}
+	if flow.live && flow.emit != nil {
+		if err := flow.patch(skip, flow.position()); err != nil {
+			return err
+		}
+	}
+	if nonNull {
+		*flow.h--
+	} else {
+		if *flow.h >= len(flow.classes) {
+			return unsupported("SWAR reference branch operand bound")
+		}
+		flow.classes[*flow.h] = swarFuncRef
+		*flow.h++
+		if flow.live {
+			*flow.peak = max(*flow.peak, *flow.h)
+		}
+	}
+	return nil
+}
+
 func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err error) {
 	switch op {
 	case 0x00:
