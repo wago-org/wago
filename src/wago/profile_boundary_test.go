@@ -468,20 +468,22 @@ func TestProfileLifecycleFailedInitialization(t *testing.T) {
 		t.Fatal("start trap accepted", in, err)
 	}
 	spans := trace.Spans()
-	if len(spans) != 4 {
+	// This start calls the host successfully before trapping. Boundary tracing
+	// also records that activation/callback and both failed-instance cleanup
+	// phases; cleanup must not inherit the failed guest's call ancestry.
+	wantKinds := []string{"instantiate", "initialize-guest", "guest-activation", "host-callback", "logical-close", "physical-release"}
+	if len(spans) != len(wantKinds) {
 		t.Fatal(spans)
 	}
+	wantParents := []uint64{0, spans[0].ID, spans[1].ID, spans[2].ID, 0, 0}
 	for i, span := range spans {
 		want := "trap"
-		if i == 3 {
+		if i >= 3 {
 			want = "return"
 		}
-		if span.Outcome != want || span.End == 0 {
+		if span.Kind != wantKinds[i] || span.ParentID != wantParents[i] || span.Outcome != want || span.End == 0 || span.InstanceID != spans[0].InstanceID {
 			t.Fatal(span)
 		}
-	}
-	if spans[1].ParentID != spans[0].ID {
-		t.Fatal(spans)
 	}
 	if r, err := profilereport.AnalyzeTimeline(spans, trace.Status()); err != nil || !r.Complete {
 		t.Fatal(r, err)
