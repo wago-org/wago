@@ -1019,6 +1019,9 @@ on boundary tracing halfway through existing activations.
 The registry performs no I/O or observer callbacks and retains copied bytes rather
 than executable pointers. `profile/` owns perf-map/jitdump encoders, temporal PC
 resolution, and pprof output with optional compiler-recorded inline ancestry.
+The portable jitdump encoder accepts AMD64, ARM64 and little-endian RV64 machine
+identities. RV64 code-load records and discovery-marker lifecycle are tested;
+this does not qualify native perf sampling or RV64 compiler unwind rules.
 `internal/profcapture` owns workload contracts, collector phase control, and
 manifests; `internal/profilecmd` owns the shared parser and reports. Profiling
 captures remain incomplete while an external collector or conversion is pending.
