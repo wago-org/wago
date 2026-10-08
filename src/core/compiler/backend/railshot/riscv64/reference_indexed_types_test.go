@@ -257,8 +257,8 @@ func TestReferenceIndexedTypesBoundsAndImmediateForms(t *testing.T) {
 		}
 		pressure := 0
 		image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-		if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-			t.Fatal("reference-valued indexed signature opened", image, err, pressure)
+		if image == nil || err != nil || image.NativeReferenceControl || image.NativeReferenceCalls || image.CodeImage != nil || pressure != 1 {
+			t.Fatal("baseline reference-valued indexed signature", err, pressure)
 		}
 	}
 }

@@ -282,7 +282,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				if bt >= int64(len(flow.types)) || flow.types[bt] == nil {
 					return false, false, unsupported("SWAR indexed control signature")
 				}
-				params, results, e = swarControlSignature(flow.types[bt], internalReferenceTypes{swar: flow.types}, flow.privateRefs && flow.typedRefs, flow.budget)
+				params, results, e = swarControlSignature(flow.types[bt], internalReferenceTypes{swar: flow.types}, flow.privateRefs, flow.privateRefs && flow.typedRefs, flow.budget)
 				if e != nil {
 					return false, false, e
 				}

@@ -18,20 +18,5 @@ func railshotValidateReferenceCalls(c *Compiled) error {
 	if (c.needsFuncRefDescs() || len(c.FuncTypeID) != 0) && len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return fmt.Errorf("RV64 typed-reference indexed descriptor extent")
 	}
-	for _, d := range c.Types {
-		if d.Kind != CompositeTypeFunction || !d.Final || len(d.Supers) != 0 || d.HasDescribes || d.HasDescriptor {
-			return fmt.Errorf("RV64 typed-reference requires plain final function signatures")
-		}
-		for _, values := range [][]ValueTypeDescriptor{d.Params, d.Results} {
-			if _, err := rv64IndirectSignatureSlots(values); err != nil {
-				return err
-			}
-			for _, v := range values {
-				if v.Ref != (ReferenceTypeDescriptor{}) {
-					return fmt.Errorf("RV64 typed-reference requires numeric value descriptors")
-				}
-			}
-		}
-	}
-	return nil
+	return rv64ValidateDeclaredControlTypes(c)
 }

@@ -97,11 +97,17 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if err != nil {
 		return nil, err
 	}
+	if referenceControl && len(m.Code) == 0 {
+		return nil, unsupported("typed control declarations require a defined code owner")
+	}
 	opts.referenceTailInstructions = referenceTails
 	opts.referenceCallInstructions = referenceCalls
 	opts.referenceControlInstructions = referenceControl
 	if usesSWAR {
 		return compileSWARProductionModule(m, opts)
+	}
+	if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
+		return nil, err
 	}
 	if len(m.Customs) > MaxFunctions {
 		return nil, unsupported("decoded custom section count bound")
@@ -268,6 +274,37 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector bool) (bool, bool, bool, error) {
 	referenceTails, hasReferenceCall, hasReferenceControl := false, false, false
 	types := internalReferenceTypes{decoded: m.Types, decodedSWAR: vector}
+	for _, group := range m.Types {
+		if len(group.SubTypes) != 1 {
+			return false, false, false, unsupported("control declaration group")
+		}
+		sub := &group.SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
+			return false, false, false, unsupported("control declaration metadata")
+		}
+		_, witness, err := admitDeclaredControlSignature(&sub.Comp, types, true, referenceCalls, vector)
+		if err != nil {
+			return false, false, false, err
+		}
+		hasReferenceControl = hasReferenceControl || witness
+	}
+	// Declared control types never relax the ABI of actual imported/defined
+	// functions, even when their bodies are empty or unreachable.
+	for i := 0; i < m.FuncCount(); i++ {
+		sig, ok := m.FuncSignature(uint32(i))
+		if !ok {
+			return false, false, false, unsupported("function signature binding")
+		}
+		var err error
+		if vector {
+			err = swarCallSignature(sig)
+		} else {
+			err = integerNumericSignature(sig, true)
+		}
+		if err != nil {
+			return false, false, false, err
+		}
+	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		for _, run := range fn.Locals.Runs {
@@ -324,7 +361,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 					return false, false, false, err
 				}
 				if heap >= 0 {
-					if !(referenceCalls || dynamicTails) || uint64(heap) >= uint64(len(m.Types)) {
+					if !(referenceCalls || dynamicTails) || !types.function(uint32(heap)) {
 						return false, false, false, unsupported("indexed ref.null requires retained typed-reference protocol and an in-range function type")
 					}
 					// A typed null still requires the persisted feature witness even

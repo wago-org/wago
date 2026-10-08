@@ -151,7 +151,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 		return swarSummary{}, unsupported("SWAR control type bound")
 	}
 	for _, typ := range types {
-		if err := admitSWARControlSignature(typ, internalReferenceTypes{swar: types}, privateRefs && referenceCalls); err != nil {
+		if err := admitSWARControlSignature(typ, internalReferenceTypes{swar: types}, privateRefs, privateRefs && referenceCalls); err != nil {
 			return swarSummary{}, err
 		}
 	}
@@ -889,7 +889,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if heap != -16 && (!(dynamicTailCalls || referenceCalls) || heap < 0 || uint64(heap) >= uint64(len(types))) {
+				if heap != -16 && (!(dynamicTailCalls || referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return swarSummary{}, unsupported("SWAR private nullable abstract funcref only")
 				}
 				if err := push(swarFuncRef); err != nil {

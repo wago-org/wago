@@ -64,10 +64,12 @@ not allocate call transport; equivalent nullable syntax keeps ordinary
 ReferenceTypes admission. Nullable indexed annotations require the typed witness
 as well. Unreachable untyped selects retain their polymorphic carrier until a typed use;
 known dead operands still undergo class and control-floor checks.
-Private lowering also carries mixed function-reference parameters and results
-through indexed blocks, loops and branches. Whole-module production admission
-for those indexed control signatures remains closed. Callable function
-signatures remain numeric/vector-only. Standalone `ref.null` constants with bounded numeric
+Source compilation and retained artifacts also carry mixed function-reference
+parameters and results through indexed blocks, loops and branches. These internal
+control declarations do not enter the numeric/vector callable ABI or enlarge
+call transport. Non-null/indexed declarations retain the typed witness even when
+unused, and currently require a defined code owner. Aggregate decoded type bytes
+are bounded before validation. Standalone `ref.null` constants with bounded numeric
 function-type indices carry the typed witness, including unreachable uses,
 without allocating declared-call transport. Invocation
 scopes retain imported

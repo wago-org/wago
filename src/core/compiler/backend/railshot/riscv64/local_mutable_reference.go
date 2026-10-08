@@ -5,7 +5,8 @@ package riscv64
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // Mutable local reference cells have no foreign descriptor ingress: no table,
-// imported reference global, reference signature or exported mutable cell.
+// imported reference global, callable reference signature or exported mutable cell. Internal control types
+// cannot introduce foreign descriptors.
 // Every nonnull value therefore names this instance's canonical directory.
 func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
 	has := false
@@ -23,18 +24,18 @@ func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
 			return false, unsupported("local mutable references exclude imported reference globals")
 		}
 	}
-	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 {
-			return false, unsupported("local mutable reference type group")
-		}
-		sig := &group.SubTypes[0].Comp
-		if sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
-			return false, unsupported("local mutable reference signature shape")
+	// Enclosing source admission checks every declared type and its profile
+	// bounds. Only actual callable bindings can introduce foreign descriptors;
+	// internal reference-bearing control declarations cannot do so.
+	for i := 0; i < m.FuncCount(); i++ {
+		sig, ok := m.FuncSignature(uint32(i))
+		if !ok || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
+			return false, unsupported("local mutable reference function binding")
 		}
 		for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
 			for _, typ := range list {
 				if !swarCarrierType(typ) {
-					return false, unsupported("local mutable references exclude reference signatures")
+					return false, unsupported("local mutable references exclude callable reference signatures")
 				}
 			}
 		}

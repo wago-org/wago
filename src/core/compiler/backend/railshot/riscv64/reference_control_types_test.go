@@ -99,9 +99,9 @@ func TestReferenceIndexedControlClassesAndFloors(t *testing.T) {
 				t.Fatal("frontend oracle", err)
 			}
 			for _, enabled := range []bool{false, true} {
-				state := moduleState{production: true, importReferences: true, referenceCalls: enabled, types: specs, functions: specs[:1]}
+				state := moduleState{production: true, importReferences: enabled, referenceCalls: true, types: specs, functions: specs[:1]}
 				_, a := walkInteger(&m.Code[0], types[0], &state, nil)
-				_, b := walkSWARPairsWithTypedCallMode(&m.Code[0], types[0], memoryProfile{}, types, types[:1], nil, 0, nil, nil, 1, 0, true, false, false, false, false, false, enabled, nil)
+				_, b := walkSWARPairsWithTypedCallMode(&m.Code[0], types[0], memoryProfile{}, types, types[:1], nil, 0, nil, nil, 0, 0, enabled, false, false, false, false, false, true, nil)
 				if (a == nil) != (tc.ok && enabled) || (b == nil) != (tc.ok && enabled) {
 					t.Fatal("control-only permission/class", enabled, a, b)
 				}
@@ -113,8 +113,9 @@ func TestReferenceIndexedControlClassesAndFloors(t *testing.T) {
 					}
 					pressure := 0
 					image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-					if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-						t.Fatal("production reference control gate", vector, image, err, pressure)
+					witness := bytes.Contains(tc.body, []byte{0xd5}) || bytes.Contains(tc.body, []byte{0xd6})
+					if image == nil || err != nil || image.NativeReferenceControl != witness || image.NativeReferenceCalls || image.CodeImage != nil || pressure != 1 {
+						t.Fatal("production reference control admission", vector, err, pressure)
 					}
 				}
 			}
@@ -129,7 +130,7 @@ func TestReferenceIndexedControlTypesAndBudget(t *testing.T) {
 		dir := internalReferenceTypes{scalar: []functionSpec{{signature: &wasm.CompType{Kind: wasm.CompFunc}}, spec}}
 		for _, limit := range []int{integerBudget - 4, integerBudget - 3} {
 			budget := limit
-			p, r, pr, rr, err := integerControlSignature(spec, dir, true, true, &budget)
+			p, r, pr, rr, err := integerControlSignature(spec, dir, true, true, true, &budget)
 			if limit == integerBudget-4 {
 				if err != nil || budget != integerBudget || len(p) != 2 || p[0] || !p[1] || !r[0] || !r[1] || pr[0] || !pr[1] || !rr[0] || rr[1] {
 					t.Fatal("reference control flags/budget", err, p, r, pr, rr, budget)
@@ -151,12 +152,12 @@ func TestReferenceIndexedControlTypesAndBudget(t *testing.T) {
 			}
 			budget := 0
 			if vector {
-				_, _, err := swarControlSignature(ft, internalReferenceTypes{swar: []*wasm.CompType{ft}}, true, &budget)
+				_, _, err := swarControlSignature(ft, internalReferenceTypes{swar: []*wasm.CompType{ft}}, true, true, &budget)
 				if (err == nil) != (count == limit) {
 					t.Fatal("SWAR arity", count, err)
 				}
 			} else {
-				_, _, _, _, err := integerControlSignature(functionSpec{signature: ft}, internalReferenceTypes{scalar: []functionSpec{{signature: ft}}}, true, true, &budget)
+				_, _, _, _, err := integerControlSignature(functionSpec{signature: ft}, internalReferenceTypes{scalar: []functionSpec{{signature: ft}}}, true, true, true, &budget)
 				if (err == nil) != (count == limit) {
 					t.Fatal("scalar arity", count, err)
 				}

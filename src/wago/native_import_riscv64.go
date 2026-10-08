@@ -371,9 +371,14 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		if len(c.Types) > railshot.MaxFunctions {
 			return 0, 0, fmt.Errorf("RV64 indirect type directory bound")
 		}
-		for _, typ := range c.Types {
-			if typ.Kind != CompositeTypeFunction {
-				return 0, 0, fmt.Errorf("RV64 indirect signature must be a function")
+		for i := range c.Types {
+			typ := &c.Types[i]
+			controlOnly, err := rv64DeclaredControlSignature(c, typ)
+			if err != nil {
+				return 0, 0, err
+			}
+			if controlOnly {
+				continue
 			}
 			p, err := rv64IndirectSignatureSlots(typ.Params)
 			if err != nil {

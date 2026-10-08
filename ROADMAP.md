@@ -69,12 +69,17 @@ code, matching the SWAR path; typed selects and reference branches specialize
 them without accepting concrete incompatible operands or borrowing below a
 nested control floor. Source and compiler-free artifact fixtures cover admission
 and exact unreachable traps followed by instance reuse.
-Private indexed control signatures now preserve reference parameters/results
+Indexed control signatures now preserve reference parameters/results
 through exact joins, loop backedges and overlapping scalar/SWAR transfers.
 Unreachable branch tables check each target against the original polymorphic
 payload; known incompatible values still reject. Signature budgets precede
-derived carrier allocation. Production admission for reference-valued indexed
-controls and all reference-valued callable signatures remains closed.
+derived carrier allocation. Source and retained-artifact admission distinguish
+internal controls from numeric/vector callable signatures, including unused
+declarations. Scalar and SWAR decoded budgets charge reference encodings before
+validation. Typed declarations without a defined code owner remain closed pending
+a separate empty-code ownership contract; reference-valued callable signatures
+also remain closed. Mixed table/call_ref and private mutable-cell fixtures retain
+foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains
 unconnected to production; collection and feature admission are unchanged.

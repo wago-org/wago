@@ -53,7 +53,8 @@ func rv64NativeTailCompile(t *testing.T, name string, source []byte, artifact bo
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = c.Close() })
+	sourceCompiled := c
+	t.Cleanup(func() { _ = sourceCompiled.Close() })
 	if artifact || mode == "prepare" {
 		blob, err := c.MarshalBinary()
 		if err != nil {
@@ -72,7 +73,8 @@ func rv64NativeTailCompile(t *testing.T, name string, source []byte, artifact bo
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = c.Close() })
+			artifactCompiled := c
+			t.Cleanup(func() { _ = artifactCompiled.Close() })
 		}
 	}
 	return c

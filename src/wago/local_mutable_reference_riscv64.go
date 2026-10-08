@@ -32,6 +32,7 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 		}
 	}
 	// The enclosing validator independently checks every exact global/type and
-	// function signature; only numeric/vector signatures are admitted.
+	// actual function binding. Reference-bearing declarations describe internal
+	// controls only; callable signatures remain numeric/vector-only.
 	return true, nil
 }

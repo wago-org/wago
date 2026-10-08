@@ -305,7 +305,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if bt < 0 || state == nil || bt >= int64(len(state.types)) {
 					return integerSummary{}, unsupported("noninteger block signature")
 				}
-				params, results, paramRefs, resultRefs, e = integerControlSignature(state.types[bt], referenceTypes, privateRefs && state.referenceCalls, floating, &budget)
+				params, results, paramRefs, resultRefs, e = integerControlSignature(state.types[bt], referenceTypes, privateRefs, privateRefs && state.referenceCalls, floating, &budget)
 				if e != nil {
 					return integerSummary{}, e
 				}
@@ -722,7 +722,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 && (!(state.dynamicTailCalls || state.referenceCalls) || heap < 0 || uint64(heap) >= uint64(len(state.types))) {
+				if heap != -16 && (!(state.dynamicTailCalls || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {

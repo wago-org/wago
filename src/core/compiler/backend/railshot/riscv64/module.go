@@ -127,7 +127,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		return nil, fmt.Errorf("rv64: nil module")
 	}
 	var err error
-	if err = admitShapeProfile(m, opts.production, opts.publicStarts); err != nil {
+	if err = admitShapeProfileReferences(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
@@ -286,6 +286,22 @@ func admitWireStartProfile(data []byte, floating, vectors, publicStarts bool) er
 						if err != nil {
 							return err
 						}
+						// Wire admission preserves plain function grammar. Declared
+						// internal references are checked against the decoded type
+						// directory and feature permission before staging.
+						if publicStarts && t == 0x70 {
+							continue
+						}
+						if publicStarts && (t == 0x63 || t == 0x64) {
+							heap, err := s.S33()
+							if err != nil {
+								return err
+							}
+							if heap == -16 || heap >= 0 && uint64(heap) < uint64(count) {
+								continue
+							}
+							return unsupported("declared function reference heap")
+						}
 						if t != 0x7f && t != 0x7e && (!floating || t != 0x7d && t != 0x7c) && (!vectors || t != 0x7b) {
 							return unsupported("noninteger type")
 						}
@@ -312,6 +328,9 @@ func admitShapeMode(m *wasm.Module, floating bool) error {
 }
 
 func admitShapeProfile(m *wasm.Module, floating, publicStarts bool) error {
+	return admitShapeProfileReferences(m, floating, publicStarts, false, false)
+}
+func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referencesAllowed, typed bool) error {
 	// Public modules may contain only state. Import-only modules execute through
 	// instance-owned bridges; neither shape needs placeholder instructions.
 	if len(m.Code) > MaxFunctions || len(m.Code) == 0 && (!floating || !publicStarts) {
@@ -344,12 +363,32 @@ func admitShapeProfile(m *wasm.Module, floating, publicStarts bool) error {
 		if len(s.Comp.Params) > 256 || len(s.Comp.Results) > 256 {
 			return unsupported("signature arity")
 		}
-		for _, v := range append(append([]wasm.ValType(nil), s.Comp.Params...), s.Comp.Results...) {
-			if !scalarType(v, floating) {
-				return unsupported("noninteger signature")
+		if referencesAllowed {
+			if _, _, err := admitDeclaredControlSignature(&s.Comp, internalReferenceTypes{decoded: m.Types}, true, typed, false); err != nil {
+				return err
+			}
+		} else {
+			for _, list := range [][]wasm.ValType{s.Comp.Params, s.Comp.Results} {
+				for _, v := range list {
+					if !scalarType(v, floating) {
+						return unsupported("noninteger signature")
+					}
+				}
 			}
 		}
 	}
+	if referencesAllowed {
+		for i := 0; i < m.FuncCount(); i++ {
+			ft, ok := m.FuncSignature(uint32(i))
+			if !ok {
+				return unsupported("numeric function binding")
+			}
+			if err := integerNumericSignature(ft, floating); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 

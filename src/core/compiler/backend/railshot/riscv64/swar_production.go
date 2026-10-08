@@ -17,7 +17,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
-	if err := admitSWARDecodedBudgetProfile(m, true); err != nil {
+	if err := admitSWARDecodedBudgetReferences(m, true, true, opts.NativeReferenceCalls); err != nil {
 		return nil, err
 	}
 	if err := admitProductionOptions(m, &opts, true); err != nil {

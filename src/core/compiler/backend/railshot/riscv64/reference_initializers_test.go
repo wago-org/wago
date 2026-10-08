@@ -53,7 +53,7 @@ func TestPublicImmutableReferenceGlobalRejectBeforeStaging(t *testing.T) {
 				g.Init = wasm.Expr{BodyBytes: []byte{0x23, 2, 0x0b}}
 				m.Globals = append(m.Globals, g)
 			},
-			func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results = []wasm.ValType{wasm.FuncRef} },
+			func(m *wasm.Module) { m.Types[1].SubTypes[0].Comp.Results = []wasm.ValType{wasm.FuncRef} },
 			func(m *wasm.Module) { m.Globals[0].Type.Type = wasm.ExternRef },
 			func(m *wasm.Module) { m.Globals[0].Init.BodyBytes = []byte{0x23, 0, 0x0b} },
 			func(m *wasm.Module) { m.Globals[0].Init.BodyBytes = []byte{0xd2, 2, 0x0b} },

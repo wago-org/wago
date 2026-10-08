@@ -153,23 +153,8 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	for i, typ := range c.Types {
-		if len(typ.Params) > maxArity || len(typ.Results) > maxArity {
-			return reject("type signature arity")
-		}
-		if i > 0 && c.Types[i-1].RecGroup == typ.RecGroup {
-			return reject("recursive type group lowering is pending")
-		}
-		if typ.Kind != CompositeTypeFunction || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor {
-			return reject("structural type lowering is pending")
-		}
-		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
-			for _, value := range values {
-				if value.Kind != ValueTypeI32 && value.Kind != ValueTypeI64 && value.Kind != ValueTypeF32 && value.Kind != ValueTypeF64 && (!vectorProfile || value.Kind != ValueTypeV128) {
-					return reject("unsupported type")
-				}
-			}
-		}
+	if err := rv64ValidateDeclaredControlTypes(c); err != nil {
+		return reject(err.Error())
 	}
 	if err := rv64ValidateOwnedTable(c); err != nil {
 		return reject(err.Error())

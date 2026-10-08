@@ -108,7 +108,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if m == nil || !mode.production || policy > swarModuleHosts {
 		return nil, unsupported("SWAR decoded module production/policy")
 	}
-	if err := admitSWARDecodedBudgetProfile(m, state.publicStarts); err != nil {
+	if err := admitSWARDecodedBudgetReferences(m, state.publicStarts, state.publicStarts, mode.referenceCalls); err != nil {
 		return nil, err
 	}
 	if state.publicStarts {
@@ -207,7 +207,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return nil, unsupported("SWAR type metadata")
 		}
-		if err := swarCallSignature(&sub.Comp); err != nil {
+		if err := admitSWARControlSignature(&sub.Comp, internalReferenceTypes{decoded: m.Types, decodedSWAR: true}, state.publicStarts, mode.referenceCalls); err != nil {
 			return nil, err
 		}
 		types[i] = &sub.Comp
@@ -294,7 +294,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	}
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
-		if !ok {
+		if !ok || swarCallSignature(ft) != nil {
 			return nil, unsupported("SWAR module function type")
 		}
 		functions[imported+i] = ft
@@ -391,6 +391,9 @@ func admitSWARDecodedBudget(m *wasm.Module) error {
 }
 
 func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
+	return admitSWARDecodedBudgetReferences(m, publicStarts, false, false)
+}
+func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAllowed, typed bool) error {
 	maxMemories := 1
 	if publicStarts {
 		maxMemories = MaxProductionMemories
@@ -431,17 +434,18 @@ func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
 		remaining -= n
 		return true
 	}
+	if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
+		return err
+	}
 	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 || swarCallSignature(&group.SubTypes[0].Comp) != nil {
+		if len(group.SubTypes) != 1 || admitSWARControlSignature(&group.SubTypes[0].Comp, internalReferenceTypes{decoded: m.Types, decodedSWAR: true}, referencesAllowed, typed) != nil {
 			return unsupported("SWAR decoded numeric function types")
 		}
 		sub := &group.SubTypes[0]
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || len(sub.Comp.Fields) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return unsupported("SWAR decoded type metadata")
 		}
-		if !consume(len(group.SubTypes[0].Comp.Params) + len(group.SubTypes[0].Comp.Results)) {
-			return unsupported("SWAR decoded source byte bound")
-		}
+
 	}
 	for _, fn := range m.Code {
 		if fn.BodyBytes == nil || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || len(fn.BodyBytes) > 64<<10 || len(fn.Locals.Runs) > maxSWARLocals || fn.LocalDeclBytes > MaxModuleBytes || !consume(len(fn.BodyBytes)) || !consume(int(fn.LocalDeclBytes)) {

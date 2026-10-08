@@ -41,7 +41,7 @@ func chargeControlTypes(budget *int, count int) error {
 // Reference-bearing control signatures have their own bounded representation.
 // Numeric callable widths and the borrowed signature directory remain unchanged.
 // Charge every occurrence, including dead code, before allocating derived flags.
-func integerControlSignature(sig functionSpec, types internalReferenceTypes, typed, floating bool, budget *int) (params, results, paramRefs, resultRefs []bool, err error) {
+func integerControlSignature(sig functionSpec, types internalReferenceTypes, referencesAllowed, typed, floating bool, budget *int) (params, results, paramRefs, resultRefs []bool, err error) {
 	params, results = sig.params, sig.results
 	if sig.signature == nil {
 		if len(params) > 256 || len(results) > 256 {
@@ -65,7 +65,7 @@ func integerControlSignature(sig functionSpec, types internalReferenceTypes, typ
 			if scalarType(typ, floating) {
 				continue
 			}
-			if !typed || !internalFunctionReferenceWithTypes(typ, true, types) {
+			if !referencesAllowed || !internalFunctionReferenceWithTypes(typ, typed, types) {
 				err = unsupported("integer control carrier")
 				return
 			}
@@ -105,23 +105,23 @@ func integerSameClasses(a, aRefs, b, bRefs []bool) bool {
 	return true
 }
 
-func swarControlClass(typ wasm.ValType, types internalReferenceTypes, typed bool) swarClass {
+func swarControlClass(typ wasm.ValType, types internalReferenceTypes, referencesAllowed, typed bool) swarClass {
 	if class := swarClassOf(typ); class != swarInvalid {
 		return class
 	}
-	if typed && internalFunctionReferenceWithTypes(typ, true, types) {
+	if referencesAllowed && internalFunctionReferenceWithTypes(typ, typed, types) {
 		return swarFuncRef
 	}
 	return swarInvalid
 }
 
-func admitSWARControlSignature(sig *wasm.CompType, types internalReferenceTypes, typed bool) error {
+func admitSWARControlSignature(sig *wasm.CompType, types internalReferenceTypes, referencesAllowed, typed bool) error {
 	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > maxSWARLocals || len(sig.Results) > maxSWARLocals {
 		return unsupported("SWAR control type shape/bound")
 	}
 	for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
 		for _, typ := range list {
-			if swarControlClass(typ, types, typed) == swarInvalid {
+			if swarControlClass(typ, types, referencesAllowed, typed) == swarInvalid {
 				return unsupported("SWAR control type carrier")
 			}
 		}
@@ -129,8 +129,8 @@ func admitSWARControlSignature(sig *wasm.CompType, types internalReferenceTypes,
 	return nil
 }
 
-func swarControlSignature(sig *wasm.CompType, types internalReferenceTypes, typed bool, budget *int) ([]swarClass, []swarClass, error) {
-	if err := admitSWARControlSignature(sig, types, typed); err != nil {
+func swarControlSignature(sig *wasm.CompType, types internalReferenceTypes, referencesAllowed, typed bool, budget *int) ([]swarClass, []swarClass, error) {
+	if err := admitSWARControlSignature(sig, types, referencesAllowed, typed); err != nil {
 		return nil, nil, err
 	}
 	if err := chargeControlTypes(budget, len(sig.Params)+len(sig.Results)); err != nil {
@@ -139,10 +139,70 @@ func swarControlSignature(sig *wasm.CompType, types internalReferenceTypes, type
 	backing := make([]swarClass, len(sig.Params)+len(sig.Results))
 	params, results := backing[:len(sig.Params)], backing[len(sig.Params):]
 	for i, typ := range sig.Params {
-		params[i] = swarControlClass(typ, types, typed)
+		params[i] = swarControlClass(typ, types, referencesAllowed, typed)
 	}
 	for i, typ := range sig.Results {
-		results[i] = swarControlClass(typ, types, typed)
+		results[i] = swarControlClass(typ, types, referencesAllowed, typed)
 	}
 	return params, results, nil
+}
+
+// Declaration admission is distinct from callable admission. Reference-valued
+// entries can describe only internal controls; all actual functions and call
+// sites retain their separate numeric ABI checks. This also classifies unused
+// declarations, whose non-null/indexed annotations still require a witness.
+func admitDeclaredControlSignature(sig *wasm.CompType, types internalReferenceTypes, referencesAllowed, typed, vector bool) (bool, bool, error) {
+	limit := 256
+	if vector {
+		limit = maxSWARLocals
+	}
+	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > limit || len(sig.Results) > limit {
+		return false, false, unsupported("declared control signature shape/bound")
+	}
+	reference, witness := false, false
+	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+		for _, typ := range values {
+			if !vector && scalarType(typ, true) || vector && swarCarrierType(typ) {
+				continue
+			}
+			if !referencesAllowed || !internalFunctionReferenceWithTypes(typ, typed, types) {
+				return false, false, unsupported("declared internal reference carrier")
+			}
+			reference = true
+			witness = witness || !typ.Ref().Nullable() || typ.Ref().Heap().Kind() == wasm.HeapTypeIndex
+		}
+	}
+	return reference, witness, nil
+}
+
+// Bound the serialized carrier payload for hand-built decoded modules before
+// frontend validation expands type metadata. Both source paths share the charge;
+// reference encodings conservatively use a prefix plus a maximal S33 heap index.
+func chargeDeclaredTypeBytes(m *wasm.Module, remaining *int) error {
+	if len(m.Types) > MaxFunctions || *remaining < 0 {
+		return unsupported("decoded declared type byte bound")
+	}
+	for _, group := range m.Types {
+		if len(group.SubTypes) != 1 {
+			return unsupported("decoded declared type group")
+		}
+		sig := &group.SubTypes[0].Comp
+		if len(sig.Params) > 256 || len(sig.Results) > 256 {
+			return unsupported("decoded declared type arity")
+		}
+		charge := 0
+		for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
+			for _, value := range list {
+				charge++
+				if value.Kind() == wasm.ValRef {
+					charge += 5
+				}
+			}
+		}
+		if charge > *remaining {
+			return unsupported("decoded declared type byte bound")
+		}
+		*remaining -= charge
+	}
+	return nil
 }
