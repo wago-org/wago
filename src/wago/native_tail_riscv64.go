@@ -24,6 +24,14 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		if p.Kind != 0 {
 			return fmt.Errorf("%w: RV64 dynamic tail owner attachment is pending", railshot.ErrUnsupported)
 		}
+		local := int(p.FunctionIndex) - c.NumImports
+		if local < 0 || local >= len(c.Entry) {
+			return fmt.Errorf("%w: RV64 tail source entry index", railshot.ErrUnsupported)
+		}
+		frame, err := railshot.NativeFrameBytes(c.code, c.Entry[local])
+		if err != nil || frame != p.FrameBytes {
+			return fmt.Errorf("%w: RV64 tail source frame differs from native entry", railshot.ErrUnsupported)
+		}
 		target, ok := imports[c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
 		if !ok {
 			if err := rv64ScalarHostSignature(c.importFuncSigs[p.ImportIndex]); err != nil {

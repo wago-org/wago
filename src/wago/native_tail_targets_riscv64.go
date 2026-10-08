@@ -32,6 +32,9 @@ func rv64QualifiedNativeTailTarget(target *InstanceExport) (entry, home, context
 	if producer.base == 0 || offset < 0 || offset&15 != 0 || offset >= len(producer.c.code) {
 		return
 	}
+	if _, err := railshot.NativeFrameBytes(producer.c.code, offset); err != nil {
+		return
+	}
 	return uint64(producer.base) + uint64(offset), uint64(producer.jm.LinMemBase()), uint64(producer.nativeContext), true
 }
 
