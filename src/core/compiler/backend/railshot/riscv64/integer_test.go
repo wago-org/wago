@@ -102,7 +102,7 @@ func TestIntegerWholeFunctionSelection(t *testing.T) {
 func TestIntegerAdmissionBounds(t *testing.T) {
 	for name, body := range map[string][]byte{
 		"instructions": append(append(makeNops(integerBudget+1), 0x41, 0), 0x0b),
-		"controls":     nestedBlocks(33),
+		"controls":     nestedBlocks(maxControlNesting + 1),
 		"operands":     excessiveOperands(513),
 		"branch-table": excessiveTable(maxTableEntries + 1),
 	} {

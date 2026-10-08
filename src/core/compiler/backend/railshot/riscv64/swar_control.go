@@ -24,7 +24,7 @@ type swarControl struct {
 // each control frame's typing floor. Every live branch transports exact classes through real
 // padded stack homes; no synthetic graph identities stand in for those copies.
 type swarFlow struct {
-	frames          [33]swarControl
+	frames          [1 + maxControlNesting]swarControl
 	depth           int
 	live            bool
 	h, peak, budget *int

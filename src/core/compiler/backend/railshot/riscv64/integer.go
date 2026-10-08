@@ -77,7 +77,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	}
 	var stack [512]bool
 	var stackRefs [512]bool
-	var ctrl [33]integerControl
+	var ctrl [1 + maxControlNesting]integerControl
 	var rootResults [256]bool
 	for j, t := range ft.Results {
 		rootResults[j] = scalarWide(t)

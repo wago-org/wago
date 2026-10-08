@@ -98,13 +98,13 @@ func TestSWARInlineControlAdmissionAndClosedShapes(t *testing.T) {
 			t.Fatal("malformed/pending control emitted", body, err)
 		}
 	}
-	for _, count := range []int{32, 33} {
+	for _, count := range []int{128, 129} {
 		body := bytes.Repeat([]byte{2, 0x40}, count)
 		body = append(body, bytes.Repeat([]byte{0x0b}, count)...)
 		body = append(body, 0x20, 0, 0x0b)
 		fn, ft := swarValidatedFunction(t, fixtureFunc{params: []byte{0x7b}, result: 0x7b, body: body})
 		code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true})
-		if count == 32 && (len(code) == 0 || err != nil) || count == 33 && (code != nil || err == nil) {
+		if count == 128 && (len(code) == 0 || err != nil) || count == 129 && (code != nil || err == nil) {
 			t.Fatal("control depth bound", count, err)
 		}
 	}
