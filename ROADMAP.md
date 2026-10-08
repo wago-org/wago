@@ -50,7 +50,11 @@ admission; non-null type-only bodies carry the typed feature and artifact witnes
 even without typed opcodes. Frontend initialization checks reject invalid locals
 before image staging. Non-calling reference control does not reserve declared-call
 transport. Selects preserve both full-width reference arms while zero-normalizing
-i32 conditions, including raw incoming upper bits. Public TailCall and
+i32 conditions, including raw incoming upper bits. Standalone indexed `ref.null`
+constants within the admitted numeric function-type directory carry the typed
+feature and retained-carrier witness even in unreachable bodies. Abstract
+`ref.null func` retains baseline admission; neither form reserves declared-call
+transport. Public TailCall and
 TypedFunctionReferences remain
 gated: these bounded cases do not establish complete feature support.
 Conservative resource-root accounting and an independently tested bounded receipt

@@ -89,7 +89,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	referenceTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls)
+	referenceTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 // Ordinary references require their distinct retained normal-return protocol.
 // Reference control retains carriers without requiring declared-call transport.
 // Instruction bytes were bounded before this pass.
-func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, bool, bool, error) {
+func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails bool) (bool, bool, bool, error) {
 	referenceTails, hasReferenceCall, hasReferenceControl := false, false, false
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
@@ -312,6 +312,21 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 					return false, false, false, unsupported("call_ref requires retained native reference protocol")
 				}
 				hasReferenceCall = true
+			}
+			if op == 0xd0 {
+				probe := r
+				heap, err := probe.S33()
+				if err != nil {
+					return false, false, false, err
+				}
+				if heap >= 0 {
+					if !(referenceCalls || dynamicTails) || uint64(heap) >= uint64(len(m.Types)) {
+						return false, false, false, unsupported("indexed ref.null requires retained typed-reference protocol and an in-range function type")
+					}
+					// A typed null still requires the persisted feature witness even
+					// without a reference call, or when its body is unreachable.
+					hasReferenceControl = true
+				}
 			}
 			if op == 0xd4 || op == 0xd5 || op == 0xd6 {
 				if !referenceCalls {

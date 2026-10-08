@@ -61,7 +61,9 @@ abstract function-reference block results, typed selects and initialized
 non-null locals use
 the same full-width carriers. Their retained-carrier artifact requirement does
 not allocate call transport; equivalent nullable syntax keeps ordinary
-ReferenceTypes admission. Invocation
+ReferenceTypes admission. Standalone `ref.null` constants with bounded numeric
+function-type indices carry the typed witness, including unreachable uses,
+without allocating declared-call transport. Invocation
 scopes retain imported
 descriptor owners, including modules with no defined functions, and certified
 snapshots authenticate them across parked callbacks, reentry, table replacement

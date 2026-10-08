@@ -109,6 +109,9 @@ func TestRV64PublicReferenceCallDeadAndNullSourceArtifact(t *testing.T) {
 				if !c.nativeReferenceCallABI || rv64NativeTailModule(c) != nil {
 					t.Fatal("ordinary reference source marker")
 				}
+				if !artifact && !c.nativeReferenceControlABI {
+					t.Fatal("source indexed null must also retain its control witness")
+				}
 				in, err := Instantiate(c)
 				if err != nil {
 					t.Fatal(err)
@@ -132,7 +135,15 @@ func TestRV64PublicReferenceCallDeadAndNullSourceArtifact(t *testing.T) {
 }
 
 func TestRV64PublicReferenceCallMarkerAdmission(t *testing.T) {
-	base := rv64NativeTailCompile(t, "reference-call-marker", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, false, true), false)
+	// Isolate the ordinary-call witness. An indexed null now legitimately adds
+	// its own retained-control witness, which also admits the typed feature.
+	// Metadata validation does not reconstruct opcodes from trusted native code.
+	sig := []wasm.ValType{wasm.I32}
+	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(sig, sig))), wasmtest.Section(3, []byte{2, 0, 0}), wasmtest.Section(9, []byte{1, 3, 0, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x14, 0, 0x0b}))))
+	base := rv64NativeTailCompile(t, "reference-call-marker", source, false)
+	if !base.nativeReferenceCallABI || base.nativeReferenceControlABI || rv64NativeTailModule(base) != nil {
+		t.Fatal("ordinary-call-only marker fixture")
+	}
 	for _, tc := range []struct {
 		name   string
 		mutate func(*Compiled)
