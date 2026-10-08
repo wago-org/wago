@@ -109,7 +109,7 @@ func TestSWARProductionCompilerRejectsDependenciesBeforeStaging(t *testing.T) {
 		{Codegen: codegen.Options{Module: codegen.ModuleInfo{Features: codegen.Features{GC: true}}}},
 		{Optimizations: map[string]bool{"reg-abi": true}}, {SyncHostSlots: -1}, {SyncHostSlots: 65536},
 	} {
-		if opts.Stats != nil && diagnosticsEnabled {
+		if opts.Stats != nil && diagnosticsEnabled || opts.Profile && profileEnabled {
 			continue // Finalized sizes are qualified independently of profiling.
 		}
 		pressure := 0

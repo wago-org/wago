@@ -10,6 +10,7 @@ import (
 )
 
 type swarModuleImage struct {
+	profileModuleState
 	code               []byte
 	functions          []FunctionInfo
 	globals            []swarGlobalInitializer
@@ -317,7 +318,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if err != nil {
 		return nil, err
 	}
-	image := &swarModuleImage{publicInitializers: state.publicInitializers, functions: make([]FunctionInfo, len(m.Code)), globals: globals, data: dataSegments, activeData: activeData, elements: elements, functionKeys: functionKeys, hosts: hostSignatures, hostCode: hostCode, hostEntries: hostEntries}
+	image := &swarModuleImage{profileModuleState: mode.moduleProfile(), publicInitializers: state.publicInitializers, functions: make([]FunctionInfo, len(m.Code)), globals: globals, data: dataSegments, activeData: activeData, elements: elements, functionKeys: functionKeys, hosts: hostSignatures, hostCode: hostCode, hostEntries: hostEntries}
 	if memory != nil {
 		ownedMemory := *memory
 		image.memory = &ownedMemory
@@ -330,6 +331,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	var calls []directCall
 	for i := range m.Code {
 		functionMode := mode
+		functionMode.profileMode = mode.newFunctionProfile(&m.Code[i], uint32(imported+i))
 		functionMode.functionIndex = uint32(imported + i)
 		functionMode.entryPC = uint32(m.Code[i].LocalDeclBytes)
 		code, info, relocations, err := compileSWARPairsWithMemories(&m.Code[i], functions[imported+i], memories, state.indexedMemories, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, functionMode)
@@ -344,6 +346,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			image.code = append(image.code, 0x13, 0, 0, 0)
 		}
 		info.Entry, info.CodeBytes = len(image.code), len(code)
+		if err := image.retainProfile(&info); err != nil {
+			return nil, err
+		}
 		image.functions[i] = info
 		for j := range relocations {
 			relocations[j].site += info.Entry

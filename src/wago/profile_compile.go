@@ -55,6 +55,10 @@ func (c *Compiled) installCodeProfile(cfg *RuntimeConfig, wasm []byte, stats *ra
 		if runtime.GOARCH == "amd64" {
 			im.SiteCoverage += "-and-direct-gp-local-frame-transfers"
 		}
+		if runtime.GOARCH == "riscv64" {
+			im.SourceCoverage = "sparse-opcode-and-deferred-origins-with-wrapper-helper-gaps"
+			im.SiteCoverage = ""
+		}
 	}
 	if cfg.codeProfile.IncludeUnwind() {
 		im.UnwindCoverage = "unsupported"

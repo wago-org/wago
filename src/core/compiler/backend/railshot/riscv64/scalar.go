@@ -25,6 +25,7 @@ type target struct {
 }
 
 type emissionMode struct {
+	profileMode
 	production    bool
 	interruptible bool
 	// The runtime authenticates and retains canonical foreign descriptors at

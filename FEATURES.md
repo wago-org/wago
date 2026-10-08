@@ -38,8 +38,10 @@ widths, aliased imports and growth. Memory64 retains exact declared limits with
 a finite owned reservation of at most 65,535 pages; address and growth overflow
 checks preserve all 64 bits. Fallback scalar/SWAR control nesting is bounded at
 128 constructs, independently of the shared scalar fast path.
-Compiler diagnostics builds report finalized code/frame sizes; source and unwind
-maps remain pending. Function signatures remain numeric/vector;
+Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
+optional source maps record scalar and SWAR opcode origins in finalized code,
+including cold traps, with explicit wrapper/helper gaps. Unwind maps and detailed
+compiler-site attribution remain pending. Function signatures remain numeric/vector;
 Go callback and HostFuncRef reexports remain rejected. Frozen
 attachments retain the actual descriptor storage through producer retirement,
 parked callbacks, and indirect calls. Imported host tables retain the actual

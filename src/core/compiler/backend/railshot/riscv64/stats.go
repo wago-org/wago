@@ -23,5 +23,6 @@ func collectFinalizedStats(c *Compiled, destination *ModuleStats) {
 			snapshot.Funcs[i] = &functions[i]
 		}
 	}
+	c.installProfileStats(&snapshot)
 	*destination = snapshot
 }

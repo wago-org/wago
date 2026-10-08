@@ -244,6 +244,7 @@ func walkSWARPairsWithMemoryProfile(fn *wasm.Func, ft *wasm.CompType, profile me
 		}
 		if emitter != nil && emitter.mode.production {
 			emitter.sourcePC = uint32(fn.LocalDeclBytes) + uint32(r.Offset())
+			emitter.profileOpcode(emitter.sourcePC)
 		}
 		budget++
 		if budget > integerBudget {
@@ -1826,12 +1827,14 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: SWAR admission changed")
 	}
+	f.profileUnknown()
 	if len(f.traps) != 0 {
 		end := f.Jump()
 		for _, tr := range f.traps {
 			if err := f.Patch(tr.site, f.Position()); err != nil {
 				return nil, FunctionInfo{}, nil, err
 			}
+			f.profileCold(tr.sourcePC)
 			f.emitProductionTrap(productionTrapCode(tr.code), tr.sourcePC)
 		}
 		if err := f.Patch(end, f.Position()); err != nil {
@@ -1843,6 +1846,9 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	}
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, nil, f.a.Err()
+	}
+	if err := f.finishProfileBody(); err != nil {
+		return nil, FunctionInfo{}, nil, err
 	}
 	widths := make([]bool, summary.locals*2)
 	for i := range widths {

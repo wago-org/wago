@@ -1022,6 +1022,16 @@ resolution, and pprof output with optional compiler-recorded inline ancestry.
 The portable jitdump encoder accepts AMD64, ARM64 and little-endian RV64 machine
 identities. RV64 code-load records and discovery-marker lifecycle are tested;
 this does not qualify native perf sampling or RV64 compiler unwind rules.
+Experimental RV64 profiling measures frame prefixes, bodies, epilogues, cold
+traps and alignment in the finalized image before executable staging. Optional
+source maps preserve shared deferred origins and fallback scalar/SWAR opcode
+offsets, including the local-declaration prefix. Wrapper and helper bytes leave
+explicit source gaps. Each function has at most 65,536 source/body ranges;
+module directories are capped at 262,144 entries each before retained copies.
+Ordinary builds retain no capture fields or source-recording implementation.
+Compiler-free artifacts can attach mapping profiles with unknown provenance;
+they cannot recover discarded compiler source maps. Unwind maps and inline
+reports remain rejected before publication.
 `internal/profcapture` owns workload contracts, collector phase control, and
 manifests; `internal/profilecmd` owns the shared parser and reports. Profiling
 captures remain incomplete while an external collector or conversion is pending.

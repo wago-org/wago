@@ -22,9 +22,11 @@ carry-checked scalar/SWAR accesses and growth, mixed-width bulk operations and
 I64 initialization while retaining finite physical reservations. Fallback
 control nesting supports 128 constructs. Pinned integer/conversion, float,
 memory and control corpora extend public source/artifact qualification, and
-diagnostics expose finalized code/frame statistics. Optional source-origin and
-layout recording prerequisites are present; public source/unwind maps remain
-pending integration. Conservative resource-root accounting prepares later
+diagnostics expose finalized code/frame statistics. Profiling builds now retain
+bounded finalized regions and optional sparse source maps, including deferred
+scalar origins and cold traps; wrapper/helper bytes remain unattributed.
+Unwind maps and detailed compiler-site attribution remain pending.
+Conservative resource-root accounting prepares later
 reference ownership work without changing collection or feature admission.
 Remaining work
 includes reference-global imports combined with instance-owned imported tables, mutable reference globals, reference

@@ -60,7 +60,8 @@ type CompileOptions struct {
 // or separately instantiated import adapters. GCCodeBytes.Total is the same
 // measured size. All other fields are currently unavailable and remain zero/nil;
 // in particular, zero BoundsChecks/Spills/Reloads is not a measured count.
-// Profiling, source maps and unwind attribution remain unsupported.
+// Profile/SourceMaps add sparse finalized metadata in wago_profile builds;
+// operation counters, CodeSites, inline reports and unwind remain unavailable.
 type CodegenStats struct {
 	FuncIdx, CodeBytes, FrameBytes int
 	Name                           string
@@ -71,7 +72,7 @@ type CodegenStats struct {
 }
 
 // ModuleStats owns a bounded snapshot of this compile's finalized functions.
-// Optional profiling fields remain empty; reusing a sink drops old attribution.
+// Profile/SourceMaps are opt-in; reusing a sink replaces all old attribution.
 type ModuleStats struct {
 	CodeSites      []shared.NativeCodeSite
 	UnwindRanges   []jitprofile.UnwindRange

@@ -9,8 +9,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
-// These helpers are a compiler-only prerequisite. No production option or
-// emitter enables profiling until its actual finalized layout is supplied.
+// Compiler-owned metadata uses bounded directories and measured final spans.
+// Finalization validates the complete layout before any executable staging.
 const (
 	maxProfileFunctionRanges = shared.MaxScalarSourceRanges
 	maxProfileModuleRanges   = 262144

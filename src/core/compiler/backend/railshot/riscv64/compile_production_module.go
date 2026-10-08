@@ -132,8 +132,17 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if opts.Stats != nil && !diagnosticsEnabled {
 		return unsupported("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
 	}
-	if opts.Profile || opts.SourceMaps || opts.UnwindMaps || opts.CollectInlineReport {
-		return unsupported("finalized profiling metadata is pending")
+	if opts.UnwindMaps || opts.CollectInlineReport {
+		return unsupported("unwind metadata and inline reports are pending")
+	}
+	if opts.Profile && !profileEnabled {
+		return unsupported("profiling requires -tags=wago_profile")
+	}
+	if opts.SourceMaps && !opts.Profile {
+		return unsupported("source maps require profiling")
+	}
+	if opts.Profile && opts.Stats == nil {
+		opts.Stats = &ModuleStats{}
 	}
 	if _, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas); err != nil {
 		return err
@@ -142,6 +151,9 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 }
 
 func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModule, error) {
+	if err := c.prepareProfile(len(c.code)); err != nil {
+		return nil, err
+	}
 	if opts.MemoryPressure != nil && (opts.MemoryPressureAt == 0 || len(c.code) >= opts.MemoryPressureAt) {
 		opts.MemoryPressure()
 	}

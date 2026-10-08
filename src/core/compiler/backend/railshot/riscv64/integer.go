@@ -194,6 +194,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	for depth > 0 {
 		if emit != nil && emit.mode.production {
 			emit.sourcePC = uint32(fn.LocalDeclBytes) + uint32(r.Offset())
+			emit.profileOpcode(emit.sourcePC)
 		}
 		op, err := r.Byte()
 		if err != nil {
@@ -1190,12 +1191,14 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: integer admission changed")
 	}
+	f.profileUnknown()
 	exits := []int{f.Jump()}
 	if mode.production {
 		for _, tr := range f.traps {
 			if err = f.Patch(tr.site, f.Position()); err != nil {
 				return nil, FunctionInfo{}, nil, err
 			}
+			f.profileCold(tr.sourcePC)
 			f.emitProductionTrap(productionTrapCode(tr.code), tr.sourcePC)
 		}
 	} else {
@@ -1218,6 +1221,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 			}
 		}
 	}
+	f.profileUnknown()
 	if len(f.propagate) != 0 {
 		for _, site := range f.propagate {
 			if err = f.Patch(site, f.Position()); err != nil {
@@ -1237,6 +1241,9 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	}
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, nil, f.a.Err()
+	}
+	if err := f.finishProfileBody(); err != nil {
+		return nil, FunctionInfo{}, nil, err
 	}
 	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && scalarWide(ft.Results[0]), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
 	contextOffset := -1

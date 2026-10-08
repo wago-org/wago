@@ -32,7 +32,9 @@ func (f *integerEmitter) nativeTableCall(key uint64, argumentSlots, resultSlots 
 	call := f.a.JumpLong(true)
 	skip := f.a.JumpLong(false)
 	start := f.a.Len()
+	f.profileUnknown()
 	f.a.B = append(f.a.B, code...)
+	f.profileOpcode(f.sourcePC)
 	if err := f.a.PatchLong(call, int64(start)); err != nil {
 		f.err = err
 		return

@@ -38,6 +38,7 @@ type FunctionInfo struct {
 // Compiled owns immutable heap code and metadata, never executable mappings.
 // Every function/type/export was admitted before any instruction was emitted.
 type Compiled struct {
+	profileModuleState
 	code      []byte
 	functions []FunctionInfo
 	exports   map[string]int
@@ -124,7 +125,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			}
 		}
 	}
-	c := &Compiled{state: state, functions: make([]FunctionInfo, len(m.Code)), exports: make(map[string]int, len(m.Exports))}
+	c := &Compiled{profileModuleState: newProfileModule(opts.production && opts.Profile, opts.SourceMaps, len(m.Code)), state: state, functions: make([]FunctionInfo, len(m.Code)), exports: make(map[string]int, len(m.Exports))}
 	var worker shared.ScalarState
 	var relocations []directCall
 	defer worker.FinishWorker()
@@ -133,7 +134,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls}
+		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls}
 		if opts.production {
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
@@ -158,6 +159,9 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 		info.Entry = len(c.code)
 		info.CodeBytes = len(code)
+		if err := c.retainProfile(&info); err != nil {
+			return nil, err
+		}
 		c.code = append(c.code, code...)
 		c.functions[i] = info
 		for j := range calls {
@@ -336,7 +340,15 @@ func compileFunctionMode(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.Com
 	if regallocCheckEnabled {
 		defer f.checkEndLifetimes()
 	}
-	slots, err := worker.CompileScalar(fn.BodyBytes, summary, widths[:nlocals], len(ft.Params), &f)
+	var slots int
+	var err error
+	if profileEnabled {
+		slots, err = f.compileProfileScalar(worker, fn, summary, widths[:nlocals], len(ft.Params))
+	} else {
+		// Keep the ordinary call path direct even when the profiling wrapper
+		// exceeds the Go compiler's inlining budget.
+		slots, err = worker.CompileScalar(fn.BodyBytes, summary, widths[:nlocals], len(ft.Params), &f)
+	}
 	if err != nil {
 		return nil, FunctionInfo{}, err
 	}
@@ -345,6 +357,9 @@ func compileFunctionMode(worker *shared.ScalarState, fn *wasm.Func, ft *wasm.Com
 	}
 	if f.a.Err() != nil {
 		return nil, FunctionInfo{}, f.a.Err()
+	}
+	if err := f.finishProfileBody(); err != nil {
+		return nil, FunctionInfo{}, err
 	}
 	info := FunctionInfo{Params: len(ft.Params), Results: 1, SpillSlots: slots, Spills: worker.Spills, Reloads: worker.Reloads, Result64: wasm.EqualValType(ft.Results[0], wasm.I64), mode: mode}
 	return frameFunction(f.a.B, widths[:nlocals], len(ft.Params), slots, false, -1, info)
@@ -410,11 +425,13 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 	for j := range calls {
 		calls[j].site += entry.Position()
 	}
+	prefixBytes := entry.Position()
 	entry.a.B = append(entry.a.B, body...)
 	entry.a.Ld(enc.RA, enc.SP, 0)
 	entry.a.Constant64(enc.Scratch0, int64(frame))
 	entry.a.Add(enc.SP, enc.SP, enc.Scratch0)
 	entry.a.Ret()
+	epilogueBytes := entry.Position() - prefixBytes - len(body)
 	if err := entry.a.PatchLong(bad, int64(entry.a.Len())); err != nil {
 		return nil, FunctionInfo{}, err
 	}
@@ -436,6 +453,9 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 	}
 	if entry.a.Err() != nil {
 		return nil, FunctionInfo{}, entry.a.Err()
+	}
+	if err := info.mode.finishProfileFrame(prefixBytes, len(body), epilogueBytes, entry.Position()); err != nil {
+		return nil, FunctionInfo{}, err
 	}
 	info.FrameBytes = frame
 	return entry.a.B, info, nil

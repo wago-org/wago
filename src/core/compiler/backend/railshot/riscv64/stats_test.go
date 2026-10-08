@@ -28,6 +28,9 @@ func TestProductionStatsOptionGates(t *testing.T) {
 	for _, opts := range []CompileOptions{
 		{Profile: true}, {SourceMaps: true}, {UnwindMaps: true}, {CollectInlineReport: true},
 	} {
+		if opts.Profile && profileEnabled {
+			continue
+		}
 		stats := ModuleStats{Funcs: []*CodegenStats{{CodeBytes: 71}}}
 		before := stats
 		opts.Stats, opts.DeferCodeMapping = &stats, true
