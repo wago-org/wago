@@ -62,7 +62,9 @@ non-null locals use
 the same full-width carriers. Their retained-carrier artifact requirement does
 not allocate call transport; equivalent nullable syntax keeps ordinary
 ReferenceTypes admission. Nullable indexed annotations require the typed witness
-as well. Function signatures remain numeric/vector-only. Standalone `ref.null` constants with bounded numeric
+as well. Unreachable untyped selects retain their polymorphic carrier until a typed use;
+known dead operands still undergo class and control-floor checks.
+Function signatures remain numeric/vector-only. Standalone `ref.null` constants with bounded numeric
 function-type indices carry the typed witness, including unreachable uses,
 without allocating declared-call transport. Invocation
 scopes retain imported

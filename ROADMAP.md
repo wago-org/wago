@@ -64,7 +64,12 @@ annotations carry the typed witness, including unused locals and unreachable
 bodies. Matching signatures, nullability and initialization are proved by the
 frontend before carrier erasure. Real descriptor selection, large-frame local
 reloads and foreign imported-function owners through joined teardown are
-covered. Reference-valued function and indexed control signatures remain
+covered. Scalar untyped selects now preserve unknown carriers in unreachable
+code, matching the SWAR path; typed selects and reference branches specialize
+them without accepting concrete incompatible operands or borrowing below a
+nested control floor. Source and compiler-free artifact fixtures cover admission
+and exact unreachable traps followed by instance reuse.
+Reference-valued function and indexed control signatures remain
 unsupported.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

@@ -86,6 +86,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	}
 	var stack [512]bool
 	var stackRefs [512]bool
+	// Unreachable untyped selects may produce a value whose carrier class is
+	// still polymorphic. Keep it distinct from a known i32 until a typed use.
+	var stackUnknown [512]bool
 	var ctrl [1 + maxControlNesting]integerControl
 	var rootResults [256]bool
 	for j, t := range ft.Results {
@@ -131,6 +134,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		}
 		stack[h] = w
 		stackRefs[h] = false
+		stackUnknown[h] = false
 		h++
 		peak = max(peak, h)
 		return nil
@@ -399,7 +403,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if h <= floor && !ctrl[depth-1].unreachable {
 				return integerSummary{}, unsupported("reference branch operand underflow")
 			}
-			if h > floor && !stackRefs[h-1] {
+			if h > floor && !stackUnknown[h-1] && !stackRefs[h-1] {
 				return integerSummary{}, unsupported("reference branch operand class")
 			}
 			if _, err = popClass(true); err != nil {
@@ -415,18 +419,23 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			for j := 0; j < prefix; j++ {
 				at := h - prefix + j
 				ref := len(references) != 0 && references[j]
-				if at >= floor && (stack[at] != values[j] || stackRefs[at] != ref) {
+				if at >= floor && !stackUnknown[at] && (stack[at] != values[j] || stackRefs[at] != ref) {
 					return integerSummary{}, unsupported("reference branch payload class")
 				}
 			}
 			if missing != 0 {
 				copy(stack[floor+missing:h+missing], stack[floor:h])
 				copy(stackRefs[floor+missing:h+missing], stackRefs[floor:h])
-				for j := 0; j < missing; j++ {
-					stack[floor+j] = values[j]
-					stackRefs[floor+j] = len(references) != 0 && references[j]
-				}
+				copy(stackUnknown[floor+missing:h+missing], stackUnknown[floor:h])
 				h += missing
+			}
+			// Label payloads are popped and restored with their declared types;
+			// this also specializes present unknown and missing virtual values.
+			for j := 0; j < prefix; j++ {
+				at := h - prefix + j
+				stack[at] = values[j]
+				stackRefs[at] = len(references) != 0 && references[j]
+				stackUnknown[at] = false
 			}
 			skip := -1
 			if live && emit != nil {
@@ -520,44 +529,52 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				typedRef = bt == 0x70
 				typedWide = bt == 0x7e || bt == 0x7c || typedRef
 			}
-			if typedRef {
-				// Missing operands are polymorphic only at this frame's explicit
-				// unreachable floor. Known arms and the condition keep their classes.
-				floor := ctrl[depth-1].base
-				missing := max(0, 3-(h-floor))
-				if missing != 0 && !ctrl[depth-1].unreachable {
-					return integerSummary{}, unsupported("reference select operand underflow")
-				}
-				if h+missing > len(stack) {
-					return integerSummary{}, unsupported("reference select operand bound")
-				}
-				for i := 0; i < 3; i++ {
-					at := h - 3 + i
-					if at >= floor && (stackRefs[at] != (i < 2) || stack[at] != (i < 2)) {
-						return integerSummary{}, unsupported("reference select operand class/width")
-					}
-				}
+			// Missing operands are polymorphic only at this frame's explicit
+			// unreachable floor. Concrete dead operands retain their classes.
+			floor := ctrl[depth-1].base
+			missing := max(0, 3-(h-floor))
+			if missing != 0 && !ctrl[depth-1].unreachable {
+				return integerSummary{}, unsupported("select operand underflow")
+			}
+			if h+missing > len(stack) {
+				return integerSummary{}, unsupported("select operand bound")
+			}
+			if missing != 0 {
 				copy(stack[floor+missing:h+missing], stack[floor:h])
 				copy(stackRefs[floor+missing:h+missing], stackRefs[floor:h])
+				copy(stackUnknown[floor+missing:h+missing], stackUnknown[floor:h])
 				for i := 0; i < missing; i++ {
-					stack[floor+i], stackRefs[floor+i] = i < 2, i < 2
+					stack[floor+i], stackRefs[floor+i] = false, false
+					stackUnknown[floor+i] = true
 				}
 				h += missing
 			}
-			if _, err = pop(); err != nil {
-				return integerSummary{}, err
+			cond := h - 1
+			if !stackUnknown[cond] && (stack[cond] || stackRefs[cond]) {
+				return integerSummary{}, unsupported("select condition class/width")
 			}
-			cond := h
-			w, e := popClass(typedRef)
-			if e != nil {
-				return integerSummary{}, e
-			}
-			if _, err = popClass(typedRef); err != nil {
-				return integerSummary{}, err
-			}
+			left, right := h-3, h-2
+			w, unknown := typedWide, false
 			if op == 0x1c {
-				w = typedWide
+				for _, at := range [2]int{left, right} {
+					if !stackUnknown[at] && (stack[at] != typedWide || stackRefs[at] != typedRef) {
+						return integerSummary{}, unsupported("typed select operand class/width")
+					}
+				}
+			} else {
+				if !stackUnknown[left] && stackRefs[left] || !stackUnknown[right] && stackRefs[right] {
+					return integerSummary{}, unsupported("untyped select reference operand")
+				}
+				if !stackUnknown[left] && !stackUnknown[right] && stack[left] != stack[right] {
+					return integerSummary{}, unsupported("untyped select operand width")
+				}
+				unknown = stackUnknown[left] && stackUnknown[right]
+				w = stack[left]
+				if stackUnknown[left] {
+					w = stack[right]
+				}
 			}
+			h -= 3
 			if live && emit != nil {
 				emit.Load(5, emit.SpillOffset(cond), false)
 				emit.Load(6, emit.SpillOffset(h+1), w)
@@ -565,12 +582,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				site := emit.BranchZero(5)
 				emit.Move(5, 7, w)
 				end := emit.Jump()
-				if e = patch(site, position()); e != nil {
-					return integerSummary{}, e
+				if err = patch(site, position()); err != nil {
+					return integerSummary{}, err
 				}
 				emit.Move(5, 6, w)
-				if e = patch(end, position()); e != nil {
-					return integerSummary{}, e
+				if err = patch(end, position()); err != nil {
+					return integerSummary{}, err
 				}
 				emit.Store(emit.SpillOffset(h), 5, w)
 			}
@@ -578,6 +595,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, err
 			}
 			stackRefs[h-1] = typedRef
+			stackUnknown[h-1] = unknown
 		case 0x20, 0x21, 0x22:
 			idx, e := r.U32()
 			if e != nil {
@@ -652,7 +670,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if h <= ctrl[depth-1].base && !ctrl[depth-1].unreachable {
 					return integerSummary{}, unsupported("ref.as_non_null operand underflow")
 				}
-				if h > ctrl[depth-1].base && !stackRefs[h-1] {
+				if h > ctrl[depth-1].base && !stackUnknown[h-1] && !stackRefs[h-1] {
 					return integerSummary{}, unsupported("ref.as_non_null operand class")
 				}
 				if _, err = popClass(true); err != nil {
