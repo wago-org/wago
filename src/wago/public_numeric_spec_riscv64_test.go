@@ -32,7 +32,7 @@ func TestRV64PublicPinnedNumericSpecExecution(t *testing.T) {
 }
 
 func rv64PublicNumericManifest(dir, profile string) (*simdfixture.Manifest, error) {
-	if profile != "numeric" && profile != "float" && profile != "memory" {
+	if profile != "numeric" && profile != "float" && profile != "memory" && profile != "control" && profile != "multimemory" && profile != "memory64" {
 		return nil, fmt.Errorf("unknown pinned numeric profile %q", profile)
 	}
 	data, err := simdfixture.Read(dir, "rv64-"+profile+"-manifest.json", 256<<10)
@@ -51,12 +51,21 @@ func rv64PublicNumericManifest(dir, profile string) (*simdfixture.Manifest, erro
 
 func rv64PublicNumericProvenance(manifest *simdfixture.Manifest, profile string) error {
 	sourceHash, fileHash, sourceCount, fileCount := rv64NumericSpecSourcesSHA256, rv64NumericSpecFilesSHA256, 4, 167
+	commit := "05ca4182176763112561ae20153975c12bd689e4"
 	switch profile {
 	case "numeric":
 	case "float":
 		sourceHash, fileHash, sourceCount, fileCount = rv64FloatSpecSourcesSHA256, rv64FloatSpecFilesSHA256, 6, 56
 	case "memory":
 		sourceHash, fileHash, sourceCount, fileCount = rv64MemorySpecSourcesSHA256, rv64MemorySpecFilesSHA256, 5, 132
+	case "control":
+		sourceHash, fileHash, sourceCount, fileCount = rv64ControlSpecSourcesSHA256, rv64ControlSpecFilesSHA256, 10, 510
+	case "multimemory":
+		sourceHash, fileHash, sourceCount, fileCount = rv64MultiMemorySpecSourcesSHA256, rv64MultiMemorySpecFilesSHA256, 6, 12
+		commit = "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+	case "memory64":
+		sourceHash, fileHash, sourceCount, fileCount = rv64Memory64SpecSourcesSHA256, rv64Memory64SpecFilesSHA256, 4, 71
+		commit = "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
 	default:
 		return fmt.Errorf("unknown pinned numeric profile %q", profile)
 	}
@@ -67,7 +76,7 @@ func rv64PublicNumericProvenance(manifest *simdfixture.Manifest, profile string)
 		"ca9e69cc1de13b4633a3c74fd697319303b21108529d4f10960af4e1f4a65893": true, // Darwin amd64 source
 	}
 	binaryHash, err := hex.DecodeString(manifest.WabtBinarySHA256)
-	if manifest.SpecCommit != "05ca4182176763112561ae20153975c12bd689e4" || manifest.WabtVersion != "1.0.41" ||
+	if manifest.SpecCommit != commit || manifest.WabtVersion != "1.0.41" ||
 		!archives[manifest.WabtArchiveSHA256] || err != nil || len(binaryHash) != sha256.Size || len(manifest.Sources) != sourceCount || len(manifest.Files) != fileCount {
 		return fmt.Errorf("unexpected pinned numeric source/tool provenance")
 	}
@@ -96,6 +105,7 @@ func TestRV64PublicSpecNumericTrapGate(t *testing.T) {
 		{"integer overflow", coreruntime.TrapUnreachable, coreruntime.TrapUnreachable, false},
 		{"invalid conversion to integer", coreruntime.TrapTruncOverflow, coreruntime.TrapTruncOverflow, true},
 		{"out of bounds memory access", coreruntime.TrapDivOverflow, coreruntime.TrapLinMemOutOfBounds, true},
+		{"undefined element", coreruntime.TrapDivOverflow, coreruntime.TrapIndirectOutOfBounds, true},
 		{"new trap diagnostic", coreruntime.TrapDivOverflow, 0, false},
 	}
 	for _, tc := range cases {

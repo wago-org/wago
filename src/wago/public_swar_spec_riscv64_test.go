@@ -63,6 +63,47 @@ func (in *rv64PublicSpecInstance) close() error {
 }
 func rv64PublicSpecInstantiate(t *testing.T, source []byte, artifact bool, registered map[string]*rv64PublicSpecInstance) (*rv64PublicSpecInstance, error) {
 	t.Helper()
+	return rv64PublicSpecInstantiatePolicy(t, source, artifact, registered, rv64PublicSpecDefaultPolicy())
+}
+
+// Each corpus selects its resource/feature envelope explicitly. Per-memory and
+// aggregate bounds are checked before instantiation backs any linear memory.
+type rv64PublicSpecPolicy struct {
+	features                              CoreFeatures
+	maxMemories                           int
+	maxInitialPages, maxTotalInitialPages uint64
+	memory64                              bool
+}
+
+func rv64PublicSpecDefaultPolicy() rv64PublicSpecPolicy {
+	return rv64PublicSpecPolicy{maxMemories: 1, maxInitialPages: 16, maxTotalInitialPages: 16}
+}
+
+func (p rv64PublicSpecPolicy) config() *RuntimeConfig {
+	cfg := NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes)
+	if p.features != 0 {
+		cfg = cfg.WithCoreFeatures(p.features)
+	}
+	return cfg
+}
+
+func (p rv64PublicSpecPolicy) checkMemories(c *Compiled) error {
+	if c.memoryCount() > p.maxMemories {
+		return fmt.Errorf("pinned fixture exceeds memory count budget %d", p.maxMemories)
+	}
+	remaining := p.maxTotalInitialPages
+	for i := 0; i < c.memoryCount(); i++ {
+		def := c.memoryDef(i)
+		if def.Addr64 != p.memory64 || def.Shared || def.Min > p.maxInitialPages || def.Min > remaining {
+			return fmt.Errorf("pinned fixture memory %d exceeds address-width or initial-page budget", i)
+		}
+		remaining -= def.Min
+	}
+	return nil
+}
+
+func rv64PublicSpecInstantiatePolicy(t *testing.T, source []byte, artifact bool, registered map[string]*rv64PublicSpecInstance, policy rv64PublicSpecPolicy) (*rv64PublicSpecInstance, error) {
+	t.Helper()
 	in := &rv64PublicSpecInstance{}
 	complete := false
 	defer func() {
@@ -73,7 +114,7 @@ func rv64PublicSpecInstantiate(t *testing.T, source []byte, artifact bool, regis
 		}
 	}()
 	var err error
-	in.compiled, err = Compile(NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes), source)
+	in.compiled, err = Compile(policy.config(), source)
 	if err != nil {
 		return nil, err
 	}
@@ -115,11 +156,11 @@ func rv64PublicSpecInstantiate(t *testing.T, source []byte, artifact bool, regis
 			t.Fatal("artifact did not retain its pending RW baseline image")
 		}
 	}
-	if in.compiled.NumImports != 0 || in.compiled.memoryCount() > 1 || in.compiled.memoryImportCount() != 0 || in.compiled.tableImportCount() != 0 || len(in.compiled.GlobalImports) > 16 {
+	if in.compiled.NumImports != 0 || in.compiled.memoryImportCount() != 0 || in.compiled.tableImportCount() != 0 || len(in.compiled.GlobalImports) > 16 {
 		t.Fatal("unexpected public fixture resource shape")
 	}
-	if in.compiled.memoryCount() == 1 && in.compiled.memoryDef(0).Min > 16 {
-		t.Fatal("pinned fixture exceeds the 16-page initial backing budget")
+	if err := policy.checkMemories(in.compiled); err != nil {
+		t.Fatal(err)
 	}
 	var imports *Imports
 	if len(in.compiled.GlobalImports) != 0 {
@@ -239,6 +280,11 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 
 func rv64PublicSpecRun(t *testing.T, dir string, manifest *simdfixture.Manifest, want map[string]int) {
 	t.Helper()
+	rv64PublicSpecRunPolicy(t, dir, manifest, want, rv64PublicSpecDefaultPolicy())
+}
+
+func rv64PublicSpecRunPolicy(t *testing.T, dir string, manifest *simdfixture.Manifest, want map[string]int, policy rv64PublicSpecPolicy) {
+	t.Helper()
 	files := make([]string, 0, len(manifest.Sources))
 	for name := range manifest.Sources {
 		if !strings.HasSuffix(name, ".wast") {
@@ -307,7 +353,7 @@ func rv64PublicSpecRun(t *testing.T, dir string, manifest *simdfixture.Manifest,
 							if err != nil {
 								t.Fatal(err)
 							}
-							current, err = rv64PublicSpecInstantiate(t, body, artifact, registered)
+							current, err = rv64PublicSpecInstantiatePolicy(t, body, artifact, registered, policy)
 							if err != nil {
 								t.Fatalf("valid public spec module %s: %v", command.Filename, err)
 							}
@@ -329,7 +375,7 @@ func rv64PublicSpecRun(t *testing.T, dir string, manifest *simdfixture.Manifest,
 							if err != nil {
 								t.Fatal(err)
 							}
-							stage := rv64PublicSpecAssertInvalid(t, body, command)
+							stage := rv64PublicSpecAssertInvalid(t, body, command, policy)
 							counts["assert_invalid_"+stage]++
 							counts[command.Type]++
 						case "assert_malformed":
@@ -370,9 +416,9 @@ func rv64PublicSpecRun(t *testing.T, dir string, manifest *simdfixture.Manifest,
 
 // A target-profile or resource-limit rejection is not a validation assertion.
 // Match the pinned source diagnostic to a specific frontend error category.
-func rv64PublicSpecAssertInvalid(t *testing.T, source []byte, command simdfixture.Command) string {
+func rv64PublicSpecAssertInvalid(t *testing.T, source []byte, command simdfixture.Command, policy rv64PublicSpecPolicy) string {
 	t.Helper()
-	compiled, err := Compile(NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes), source)
+	compiled, err := Compile(policy.config(), source)
 	if compiled != nil {
 		if cleanup := compiled.Close(); cleanup != nil {
 			t.Error(cleanup)
@@ -422,8 +468,10 @@ func rv64PublicSpecInvalidError(text string, err error) error {
 		}
 	case "alignment must not be larger than natural":
 		want = wasm.ErrInvalidAlignment
-	case "unknown local 2":
+	case "unknown local 2", "unknown local":
 		want = wasm.ErrUnknownLocal
+	case "unknown label":
+		want = wasm.ErrUnknownLabel
 	default:
 		return fmt.Errorf("unknown pinned validation diagnostic %q", text)
 	}
@@ -443,6 +491,8 @@ func rv64PublicSpecTrapCode(text string, overflowTrap coreruntime.TrapCode) (cor
 		return coreruntime.TrapLinMemOutOfBounds, true
 	case "integer divide by zero":
 		return coreruntime.TrapDivZero, true
+	case "undefined element":
+		return coreruntime.TrapIndirectOutOfBounds, true
 	case "integer overflow":
 		return overflowTrap, overflowTrap == coreruntime.TrapDivOverflow || overflowTrap == coreruntime.TrapTruncOverflow
 	case "invalid conversion to integer":
