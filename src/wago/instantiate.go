@@ -633,9 +633,11 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			memoryObjs[i] = memory
 			continue
 		}
-		maxPages := uint64(65536)
-		if def.HasMax {
-			maxPages = def.Max
+		maxPages, reservationErr := ownedMemoryReservationPages(def)
+		if reservationErr != nil {
+			closeMem()
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("memory %d: %w", i, reservationErr)
 		}
 		initialPages := def.Min
 		var secondaryJM *runtime.JobMemory

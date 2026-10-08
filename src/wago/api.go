@@ -3216,10 +3216,10 @@ func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
 		if !def.HasMax {
 			// The exact Wasm type remains unbounded in metadata. Policy and managed-
 			// instance accounting charge the finite implementation reservation used
-			// by instantiation. Only staged memory 0 is capped one page below the
-			// full 2^16-page reservation used by memory32 and secondary memories.
+			// by instantiation. Imported unbounded memories retain the conservative
+			// full memory32 charge; their physical reservation belongs to the provider.
 			pages = 1 << 16
-			if i == 0 && def.Addr64 && def.ImportKey == "" {
+			if def.Addr64 && def.ImportKey == "" {
 				pages = 65535
 			}
 		}
