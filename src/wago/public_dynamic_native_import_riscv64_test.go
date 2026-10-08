@@ -140,11 +140,25 @@ func rv64PublicDynamicNativeImportSourceArtifact(t *testing.T, reference bool) {
 	}
 }
 
-func TestRV64PublicDynamicNativeImportRejectsHost(t *testing.T) {
-	c := rv64NativeTailCompile(t, "dynamic-native-host-gate", rv64DynamicNativeImportModule([]wasm.ValType{wasm.I32}, true), false)
-	imports := NewImports().Function("env", "target", HostCallFunc(func(call HostCall) {}))
-	if in, err := Instantiate(c, imports); in != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("host dynamic owner published", err)
+func TestRV64PublicDynamicNativeImportRejectsUnsupportedHost(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t-vector", artifact), func(t *testing.T) {
+			c := rv64NativeTailCompile(t, "dynamic-host-gate-vector", rv64DynamicNativeImportModule([]wasm.ValType{wasm.V128}, true), artifact)
+			imports := NewImports().Function("env", "target", HostCallFunc(func(call HostCall) {}))
+			if in, err := Instantiate(c, imports); in != nil || !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("unsupported host dynamic owner published", err)
+			}
+			if cc := c.loadCodeCache(); cc != nil && (cc.sealed || cc.refs != 0) {
+				t.Fatal("unsupported host published executable code")
+			}
+		})
+	}
+	types := make([]wasm.ValType, 65)
+	for i := range types {
+		types[i] = wasm.I32
+	}
+	if c, err := rv64NativeTailConfig().Compile(rv64DynamicNativeImportModule(types, true)); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("unsupported wide65 host source", err)
 	}
 }
 

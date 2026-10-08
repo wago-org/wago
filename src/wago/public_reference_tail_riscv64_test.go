@@ -172,7 +172,7 @@ func TestRV64PublicReferenceTailAdmission(t *testing.T) {
 			}
 		})
 	}
-	imported := rv64NativeTailCompile(t, "reference-tail-host-gate", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, true), false)
+	imported := rv64NativeTailCompile(t, "reference-tail-host-vector-gate", rv64PublicReferenceTailModule([]wasm.ValType{wasm.V128}, true), false)
 	if in, err := Instantiate(imported, NewImports().Function("env", "target", HostCallFunc(func(HostCall) {}))); in != nil || !errors.Is(err, railshot.ErrUnsupported) {
 		t.Fatal("unqualified host reference published", err)
 	}

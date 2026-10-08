@@ -43,9 +43,26 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		counts.Values += values
 		if i < c.NumImports {
 			target, native := rv64NativeFunctionAttachment(in, i)
-			if !native || target == nil || target.localIdx < 0 {
-				return counts, 0, rv64TailGenerationError("dynamic owner requires genuine native imports")
+			if !native {
+				if _, e := rv64HostTailAttached(in, i); e != nil {
+					return counts, 0, e
+				}
+				bytes, e := railshot.NativeTailHostFunctionBytes(values)
+				if e != nil {
+					return counts, 0, e
+				}
+				ownerBytes, e := rv64HostTailCodeOwnerBytes(values)
+				if e != nil {
+					return counts, 0, e
+				}
+				metadata += bytes + ownerBytes + int(unsafe.Sizeof(railshot.NativeTailCodeImage{}))
+				counts.HostSlots = n
+				continue
 			}
+			if target == nil || target.localIdx < 0 {
+				return counts, 0, rv64TailGenerationError("dynamic owner native import has no definition")
+			}
+			counts.Proxies++
 			if _, e := (rv64TailCodeOwner{target.inst}).NativeTailCodeView(); e != nil {
 				return counts, 0, e
 			}
@@ -62,13 +79,22 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 	if c.NumImports == 0 {
 		metadata, err = railshot.NativeTailDefinedOwnerBytes(n, counts.Values)
 	} else {
-		if _, err = (rv64TailThunkCodeOwner{in}).NativeTailCodeView(); err != nil {
-			return counts, 0, err
+		if counts.Proxies != 0 {
+			if _, err = (rv64TailThunkCodeOwner{in}).NativeTailCodeView(); err != nil {
+				return counts, 0, err
+			}
+			metadata += int(unsafe.Sizeof(rv64TailThunkCodeOwner{}))
 		}
-		counts.Targets, counts.TargetValues, counts.ProxySlots, counts.Proxies = n, counts.Values, n, c.NumImports
+		counts.Targets, counts.TargetValues, counts.ProxySlots = n, counts.Values, n
 		var bytes int
-		bytes, err = railshot.NativeTailImportedOwnerBytes(n, c.NumImports, counts.Values)
-		metadata += bytes + int(unsafe.Sizeof(rv64TailThunkCodeOwner{}))
+		if counts.HostSlots != 0 {
+			bytes, err = railshot.NativeTailHostOwnerBytes(n, c.NumImports, counts.Values)
+		} else {
+			bytes, err = railshot.NativeTailImportedOwnerBytes(n, c.NumImports, counts.Values)
+		}
+		// The base budget conservatively includes an import-wrapper image and
+		// proxy records even for host-only owners; host images are charged above.
+		metadata += bytes
 	}
 	metadata += int(unsafe.Sizeof(rv64TailCodeOwner{}))
 	return counts, metadata, err
@@ -110,13 +136,16 @@ func rv64NewNativeTailOwner(in *Instance, counts railshot.NativeTailOwnerCounts)
 	if err != nil {
 		return nil, err
 	}
-	wrappers, err := railshot.NewNativeTailCodeImage(rv64TailThunkCodeOwner{in})
-	if err != nil {
-		return nil, err
-	}
 	state := &in.ensurePluginState().railshotInvocation
-	if state.nativeImports == nil || len(state.nativeImports.records) != in.c.NumImports {
-		return nil, rv64TailGenerationError("missing certified import construction")
+	var wrappers *railshot.NativeTailCodeImage
+	if counts.Proxies != 0 {
+		wrappers, err = railshot.NewNativeTailCodeImage(rv64TailThunkCodeOwner{in})
+		if err != nil {
+			return nil, err
+		}
+		if state.nativeImports == nil || len(state.nativeImports.records) != in.c.NumImports {
+			return nil, rv64TailGenerationError("missing certified import construction")
+		}
 	}
 	signatures := make([]wasm.CompType, counts.Functions)
 	imports := make([]railshot.NativeTailImport, in.c.NumImports)
@@ -137,6 +166,23 @@ func rv64NewNativeTailOwner(in *Instance, counts railshot.NativeTailOwnerCounts)
 		}
 		signatures[i] = wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
 		if i >= len(imports) {
+			continue
+		}
+		if _, native := rv64NativeFunctionAttachment(in, i); !native {
+			owner, err := rv64NewHostTailCodeOwner(in, i)
+			if err != nil {
+				return nil, err
+			}
+			actual, err := railshot.NewNativeTailCodeImage(owner)
+			if err != nil {
+				return nil, err
+			}
+			r := owner.record
+			host, err := railshot.NewNativeTailHostFunction(actual, r.certificate, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, r.offset, r.dispatchIndex, r.owned, signatures[i])
+			if err != nil {
+				return nil, err
+			}
+			imports[i] = railshot.NativeTailImport{Image: actual, Offset: r.offset, CodeBytes: r.certificate.CodeBytes(), Host: host}
 			continue
 		}
 		r := &state.nativeImports.records[i]

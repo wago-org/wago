@@ -22,11 +22,16 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 	}
 	if rv64HasDynamicTail(m) {
 		// Every canonical imported row can be selected by an indirect reference.
-		// Reject host callbacks and import-only relays before caller publication.
+		// Host rows require scalar wrappers; native rows require genuine frames.
 		for i := 0; i < c.NumImports; i++ {
 			target, native := imports[c.functionImportBindingKey(i)].(*InstanceExport)
 			if !native {
-				return rv64TailGenerationError("dynamic module requires native function imports")
+				if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
+					return err
+				}
+				// Ordinary admission authenticates the callback or owned handle
+				// before mapping; entry freezes its certified physical owner.
+				continue
 			}
 			if err := railshotValidateNativeExport(c, i, target); err != nil {
 				return err

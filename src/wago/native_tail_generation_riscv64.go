@@ -105,6 +105,7 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		counts.TargetValues += actual.TargetValues
 		counts.ProxySlots += actual.ProxySlots
 		counts.Proxies += actual.Proxies
+		counts.HostSlots += actual.HostSlots
 		view, err := (rv64TailCodeOwner{owner}).NativeTailCodeView()
 		if err != nil {
 			return nil, err
@@ -133,6 +134,23 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 			}
 			if err := addRange(view); err != nil {
 				return nil, err
+			}
+		}
+		// Indexed host rows can share an entire logical cache span. Charge that
+		// span once per generation, including nonzero wrapper offsets. Bare
+		// producers keep their ordinary host protocol without acquiring rows.
+		if actual.HostSlots != 0 {
+			for index := 0; index < owner.c.NumImports; index++ {
+				if _, native := rv64NativeFunctionAttachment(owner, index); native {
+					continue
+				}
+				host, err := rv64HostTailAttached(owner, index)
+				if err != nil {
+					return nil, err
+				}
+				if err := addRange(host.view); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -240,8 +258,20 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		site := railshot.NativeTailSite{CallerHome: caller.jm.LinMemBase(), CallerContext: context, TargetContext: context, Target: railshot.NativeImportTarget{Entry: caller.base + uintptr(caller.c.Entry[int(p.FunctionIndex)-caller.c.NumImports]), Home: caller.jm.LinMemBase(), Context: caller.nativeContext, HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}, FrameBytes: p.FrameBytes, SourceBase: p.SourceBase, SourceStride: p.SourceStride, FunctionIndex: p.FunctionIndex, SourcePC: p.SourcePC, Parameters: pt, Results: rt, Continuations: ranges}
 		if p.Kind == encoder.NativeTailDirectImport {
 			target, native := rv64NativeFunctionAttachment(caller, int(p.ImportIndex))
-			if !native || target == nil {
-				return g, rv64TailGenerationError("mixed dynamic/direct target must be native")
+			if !native {
+				// The indexed snapshot already certifies this exact host binding.
+				// Reuse its authenticated attachment; allocate no second owner.
+				host, err := rv64HostTailAttached(caller, int(p.ImportIndex))
+				if err != nil {
+					return g, err
+				}
+				site.HostEntry = true
+				site.Target.Entry = offHeapSlicePtr(host.view) + uintptr(host.record.offset)
+				sites[i] = site
+				continue
+			}
+			if target == nil {
+				return g, rv64TailGenerationError("mixed direct target has no native definition")
 			}
 			entry, home, ctx, valid := rv64QualifiedNativeTailTarget(target)
 			if !valid {
