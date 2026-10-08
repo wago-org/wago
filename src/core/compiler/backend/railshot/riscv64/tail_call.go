@@ -55,6 +55,27 @@ func admitLocalTailSignature(caller, callee *wasm.CompType) error {
 	return nil
 }
 
+// The SWAR path preserves exact scalar/vector classes and compact pair slots.
+// Both signatures are bounded before any array use or physical-cell sum; the
+// scalar Boolean-width walker retains the separate numeric-only helper above.
+func admitSWARLocalTailSignature(caller, callee *wasm.CompType) error {
+	if err := swarCallSignature(caller); err != nil {
+		return err
+	}
+	if err := swarCallSignature(callee); err != nil {
+		return err
+	}
+	if len(caller.Results) != len(callee.Results) {
+		return unsupported("SWAR local tail exact results required")
+	}
+	for i, typ := range caller.Results {
+		if !wasm.EqualValType(typ, callee.Results[i]) {
+			return unsupported("SWAR local tail exact results required")
+		}
+	}
+	return nil
+}
+
 func (f *integerEmitter) admitLocalTailFrame() bool {
 	if f.err != nil || f.a.Err() != nil {
 		return false

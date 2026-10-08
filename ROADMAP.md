@@ -28,8 +28,8 @@ bounded finalized regions and optional sparse source maps, including deferred
 scalar origins and cold traps; wrapper/helper bytes remain unattributed.
 Unwind maps and detailed compiler-site attribution remain pending.
 An internal proper local-tail prerequisite now discards caller frames for exact
-numeric same-image calls, with bounded transport, stack-fence and interruption
-coverage. Public TailCall remains gated pending vector/imported/indirect/reference
+numeric/vector same-image calls, with bounded transport, stack-fence and interruption
+coverage. Public TailCall remains gated pending imported/indirect/reference
 paths and their ownership/continuation protocol.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

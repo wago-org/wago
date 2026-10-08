@@ -370,11 +370,12 @@ func walkSWARPairsWithTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryP
 				return swarSummary{}, unsupported("SWAR defined local tail target required")
 			}
 			sig := functions[index]
-			if err := admitLocalTailSignature(ft, sig); err != nil {
+			if err := admitSWARLocalTailSignature(ft, sig); err != nil {
 				return swarSummary{}, err
 			}
 			calls++
-			budget += len(sig.Params) + len(sig.Results)
+			// Vector arguments/results consume two compact cells each.
+			budget += swarSignatureSlots(sig.Params) + swarSignatureSlots(sig.Results)
 			if calls > maxDirectCalls || budget > integerBudget {
 				return swarSummary{}, unsupported("SWAR local tail count/transfer budget")
 			}

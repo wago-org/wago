@@ -168,13 +168,14 @@ on RV64; their shared API returns unavailable without entering native code.
 Fresh compilation cannot mint those optimization proofs, and artifact loading
 rejects their internal-entry markers.
 
-An internal RV64 prerequisite supports proper same-image numeric `return_call`
+An internal RV64 prerequisite supports proper same-image numeric/vector `return_call`
 with exact result types. It stages arguments in the existing serialized arena,
 restores the incoming return address and result destination, discards the whole
 caller frame, and jumps to the callee's checked cooperative wrapper. Entry stack
 bounds and cancellation checks still precede writes. Scalar and forced-SWAR
-numeric paths preserve their existing 256/128 value limits, respectively. Public
-tail-call admission remains closed: vector signatures, imported targets,
+paths preserve their existing 256/128 logical value limits, respectively, with
+SWAR transfer work bounded and charged in up to 256 physical cells per direction.
+Public tail-call admission remains closed: imported targets,
 indirect/reference tails and profiling combinations await separate lowering and
 qualification. QEMU tests cover constant stack use, wide internal signatures,
 ordinary foreign-bridge return state, stack fences and active interruption.
