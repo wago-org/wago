@@ -10,6 +10,10 @@ nullable funcref globals support local copies, exports, and explicit same-Runtim
 imports into modules with no table, an owned table, or a host-created imported
 table. Nullable funcref locals/control and body-level `ref.func` of export-declared
 local or native-imported numeric/vector functions also work without module state.
+Local mutable nullable funcref globals retain only own canonical descriptors or
+null; their profile excludes tables, reference imports/signatures, and mutable
+reference exports. Parked callbacks, retirement and compiler-free artifact tests
+cover this bounded shape.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD
@@ -35,7 +39,8 @@ Conservative resource-root accounting and an independently tested bounded receip
 primitive prepare later reference ownership work. The receipt primitive remains
 unconnected to production; collection and feature admission are unchanged.
 Remaining work
-includes reference-global imports combined with instance-owned imported tables, mutable reference globals, reference
+includes reference-global imports combined with instance-owned imported tables,
+general mutable reference imports/exports, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
 qualification. The
 experimental build tag and unsupported-feature admission remain in place.

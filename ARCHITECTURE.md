@@ -158,9 +158,15 @@ writer promises or temporary roots, imported host tables retain the actual owner
 of authenticated rows. This bounded scan publishes no roots from malformed table
 extents and releases no resources under native/container locks. Existing quiescent
 attachment transfer handles a retired producer importing the same host table.
-Reference-global imports combined with instance-owned imported tables, mutable
-reference globals and typed references remain gated pending separate ownership
-qualification.
+Local mutable nullable funcref globals are admitted only after complete source
+and artifact checks exclude tables, reference-global imports, reference-valued
+signatures, and mutable reference exports. Cells retain full-width own canonical
+descriptors or null, including importer-owned thunks whose existing attachments
+retain foreign targets. No foreign descriptor address can enter this bounded
+shape; replacement therefore does not transfer a foreign physical root.
+Reference-global imports combined with instance-owned imported tables, general
+mutable reference imports/exports and typed references remain gated pending
+separate ownership qualification.
 
 RV64 host calls retain the framed cooperative park/resume boundary. The
 bounded/live host portals and native scalar leaf optimization are unavailable

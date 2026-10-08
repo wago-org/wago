@@ -678,7 +678,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			g := state.globals[idx]
 			reference := wasm.EqualValType(g.typ, wasm.FuncRef)
-			if reference && (!privateRefs || !state.importReferences || g.mutable) {
+			if reference && (!privateRefs || !state.importReferences || g.mutable && !state.localMutableReferences) {
 				return integerSummary{}, unsupported("immutable retained reference global required")
 			}
 			contextUsed = true
@@ -686,7 +686,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if !g.mutable {
 					return integerSummary{}, unsupported("immutable global set")
 				}
-				if _, err = pop(); err != nil {
+				if _, err = popClass(reference); err != nil {
 					return integerSummary{}, err
 				}
 				if live && emit != nil {

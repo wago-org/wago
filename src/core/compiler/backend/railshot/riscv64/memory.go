@@ -29,26 +29,27 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
-	production        bool
-	localTailCalls    bool
-	importReferences  bool
-	ownedTable        bool
-	ownedTableGrowth  bool
-	elementCount      int
-	memory            *memorySpec
-	memoryCount       int
-	memories          []wasm.MemType
-	indexedMemories   bool
-	globals           []globalSpec
-	data              []native.MemoryInitializer
-	passiveData       [][]byte // all Wasm data indices; active entries are dropped/nil
-	functions         []functionSpec
-	importedFunctions int
-	types             []functionSpec
-	resultCapacity    int
-	capacity          int
-	memoryExports     map[string]bool
-	globalExports     map[string]int
+	production             bool
+	localTailCalls         bool
+	importReferences       bool
+	localMutableReferences bool
+	ownedTable             bool
+	ownedTableGrowth       bool
+	elementCount           int
+	memory                 *memorySpec
+	memoryCount            int
+	memories               []wasm.MemType
+	indexedMemories        bool
+	globals                []globalSpec
+	data                   []native.MemoryInitializer
+	passiveData            [][]byte // all Wasm data indices; active entries are dropped/nil
+	functions              []functionSpec
+	importedFunctions      int
+	types                  []functionSpec
+	resultCapacity         int
+	capacity               int
+	memoryExports          map[string]bool
+	globalExports          map[string]int
 }
 
 func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
@@ -82,6 +83,13 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	s.importReferences = production && importedTables
+	if production && publicExports && importedTables {
+		var err error
+		s.localMutableReferences, err = admitLocalMutableFunctionGlobals(m)
+		if err != nil {
+			return s, err
+		}
+	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
 	s.ownedTable, tableErr = admitTableProfile(m, production, importedTables)
@@ -165,10 +173,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			if !publicExports || !importedTables {
 				return s, unsupported("reference global requires retained public table")
 			}
-			if err := admitImmutableFunctionGlobal(g, m, len(s.globals)); err != nil {
+			if err := admitLocalFunctionGlobal(g, m, len(s.globals), s.localMutableReferences); err != nil {
 				return s, err
 			}
-			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
+			s.globals = append(s.globals, globalSpec{wide: true, mutable: g.Type.Mutable, typ: g.Type.Type})
 			continue
 		}
 		w := scalarWide(g.Type.Type)

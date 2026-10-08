@@ -103,6 +103,10 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 			}
 		}
 	}
+	localMutableReferences, err := admitLocalMutableFunctionGlobals(m)
+	if err != nil {
+		return err
+	}
 	hasReferenceGlobal := false
 	for _, im := range m.Imports {
 		if im.Type.Kind == wasm.ExternGlobal && wasm.EqualValType(im.Type.GlobalType().Type, wasm.FuncRef) {
@@ -115,7 +119,7 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	for i, global := range m.Globals {
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
 			hasReferenceGlobal = true
-			if err := admitImmutableFunctionGlobal(global, m, m.ImportedGlobalCount()+i); err != nil {
+			if err := admitLocalFunctionGlobal(global, m, m.ImportedGlobalCount()+i, localMutableReferences); err != nil {
 				return err
 			}
 			continue

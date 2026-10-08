@@ -157,13 +157,17 @@ func railshotValidateCompiled(c *Compiled) error {
 	if err := rv64ValidateOwnedTable(c); err != nil {
 		return reject(err.Error())
 	}
+	localMutableReferences, err := rv64ValidateLocalMutableReferences(c)
+	if err != nil {
+		return reject(err.Error())
+	}
 	hasReferenceGlobal := false
 	for i, global := range c.Globals {
 		if global.Type == ValFuncRef {
 			hasReferenceGlobal = true
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
-			if err != nil || exact != plain || global.Mutable || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+			if err != nil || exact != plain || global.Mutable && (!localMutableReferences || i < len(c.GlobalImports)) || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
 				return reject("immutable reference global and retained references required")
 			}
 			if i < len(c.GlobalImports) && (global.HasInitFunc || global.HasInitGlobal) {

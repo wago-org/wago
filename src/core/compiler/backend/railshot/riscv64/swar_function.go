@@ -87,6 +87,9 @@ func walkSWARPairsWithMemoryProfile(fn *wasm.Func, ft *wasm.CompType, profile me
 	return walkSWARPairsWithTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, false, emit)
 }
 func walkSWARPairsWithTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls bool, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, false, emit)
+}
+func walkSWARPairsWithReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences bool, emit *integerEmitter) (swarSummary, error) {
 	memoryCount, indexedMemories := profile.count, profile.indexed
 
 	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
@@ -110,7 +113,7 @@ func walkSWARPairsWithTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryP
 		return swarSummary{}, unsupported("SWAR global directory bound")
 	}
 	for _, global := range globals {
-		reference := foreignTableCalls && !global.Mutable && wasm.EqualValType(global.Type, wasm.FuncRef)
+		reference := foreignTableCalls && (!global.Mutable || localMutableReferences) && wasm.EqualValType(global.Type, wasm.FuncRef)
 		if !swarCarrierType(global.Type) && !reference {
 			return swarSummary{}, unsupported("SWAR global carrier")
 		}
@@ -1852,7 +1855,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	summary, err := walkSWARPairsWithTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, nil)
+	summary, err := walkSWARPairsWithReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1875,7 +1878,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	actual, err := walkSWARPairsWithTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, &f)
+	actual, err := walkSWARPairsWithReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

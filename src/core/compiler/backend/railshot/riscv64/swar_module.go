@@ -260,6 +260,13 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, err
 		}
 	}
+	mode.localMutableReferences, err = admitLocalMutableFunctionGlobals(m)
+	if err != nil {
+		return nil, err
+	}
+	if mode.localMutableReferences && !(state.publicInitializers && state.exports && mode.foreignTableCalls && mode.interruptible) {
+		return nil, unsupported("mutable reference globals require the retained cooperative public profile")
+	}
 	globalTypes := make([]wasm.GlobalType, globalImports+len(m.Globals))
 	for i := range globalTypes {
 		globalTypes[i], _ = m.GlobalTypeByIndex(uint32(i))
@@ -305,7 +312,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	summaries := make([]swarSummary, len(m.Code))
 	bound := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithTailMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, nil)
+		summaries[i], err = walkSWARPairsWithReferenceMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
