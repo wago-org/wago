@@ -426,6 +426,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 			// before resuming its parked native activation.
 			active.jm.SetCustomCtx(ctrl)
 		}
+		railshotRestoreNativeInvocation(active, root)
 	}()
 	// Only arbitrary host code can synchronously re-enter this instance. The
 	// active marker includes the callback-scoped invocation identity, so another
@@ -986,6 +987,7 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		return nil, err
 	}
 
+	outerInvocation := railshotSaveNativeInvocation(in)
 	outerEngine, outerCtrl := in.eng, in.ctrl
 	outerArgs, outerResults, outerTrap := in.serArgs, in.results, in.trap
 	outerResultVals := in.resultVals
@@ -1038,6 +1040,7 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		// request back to the parked outer activation before it resumes.
 		propagateCloseInterrupt := in.isLogicallyClosed()
 		binary.LittleEndian.PutUint64(nativeCtx, outerCustomCtx)
+		railshotRestoreSavedNativeInvocation(in, outerInvocation)
 		restoreInvocationContext()
 		unregisterHostControl(in)
 		in.eng, in.ctrl = outerEngine, outerCtrl

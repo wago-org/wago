@@ -110,6 +110,7 @@ func ReleaseEngine(e *Engine) error {
 		return nil
 	}
 	e.preparedScalarHost = nil
+	e.resetNativeInvocation()
 	engineCache.Lock()
 	if engineCache.e == nil {
 		if !e.prepareIdleStackForCache() {
@@ -154,6 +155,18 @@ func (e *Engine) StackBytes() uint64 {
 	return uint64(len(e.stack))
 }
 
+// Only first entry publishes invocation extents. Resume keeps the parked root's
+// view intact, even when a host callback enters a different Engine.
+func (e *Engine) enterNative(code uintptr, arguments []byte, home uintptr, trap, results []byte) {
+	e.prepareNativeInvocation(arguments, results)
+	enterNative(code, slicePtr(arguments), home, slicePtr(trap), slicePtr(results), e.stackTop)
+}
+
+func (e *Engine) enterNativeBounded(code uintptr, arguments []byte, home uintptr, trap, results []byte) {
+	e.prepareNativeInvocation(arguments, results)
+	enterNativeBounded(code, slicePtr(arguments), home, slicePtr(trap), slicePtr(results), e.stackTop)
+}
+
 // Call enters native code at code following WARP's WasmWrapper ABI. serArgs,
 // linMem, trap and results MUST be backed by off-heap memory (Arena/JobMemory)
 // so their addresses are stable across the call. trap must contain at least
@@ -174,7 +187,7 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 		*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
 		*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
 	}
-	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+	e.enterNative(code, serArgs, slicePtr(linMem), trap, results)
 	goruntime.KeepAlive(serArgs)
 	goruntime.KeepAlive(linMem)
 	goruntime.KeepAlive(trap)
@@ -195,7 +208,7 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 	if err := validateTrapBuffer(trap); err != nil {
 		return err
 	}
-	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	e.enterNative(code, serArgs, linMemBase, trap, results)
 	goruntime.KeepAlive(serArgs)
 	goruntime.KeepAlive(trap)
 	goruntime.KeepAlive(results)
@@ -213,7 +226,7 @@ func (e *Engine) CallPreparedBounded(code uintptr, serArgs []byte, linMemBase ui
 	if err := validateTrapBuffer(trap); err != nil {
 		return err
 	}
-	enterNativeBounded(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	e.enterNativeBounded(code, serArgs, linMemBase, trap, results)
 	goruntime.KeepAlive(serArgs)
 	goruntime.KeepAlive(trap)
 	goruntime.KeepAlive(results)

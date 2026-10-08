@@ -25,6 +25,7 @@ type nativeImportTarget struct {
 	arguments, results         []byte
 	argumentSlots, resultSlots int
 	stackOwnedActivation       bool
+	invocationContext          bool
 	hostTrampoline             uintptr
 }
 
@@ -42,14 +43,17 @@ type NativeImportTarget struct {
 	// StackOwnedActivation gives every activation full256-cell transport and
 	// a fixed scalar host frame. Public Go/HostFuncRef calls must fit64 slots.
 	StackOwnedActivation bool
-	HostTrampoline       uintptr
+	// InvocationContext requires both retained contexts to have the RV64 public
+	// extension. Legacy private120-byte contexts leave this false.
+	InvocationContext bool
+	HostTrampoline    uintptr
 }
 
 // NativeImportThunk emits an instance-owned bridge after target attachment and
 // exact signature/ABI validation. Publication and lifetime remain the owner's
 // responsibility; callers must use the normal W^X/process-wide icache mapper.
 func NativeImportThunk(callee NativeImportTarget, callerHome, callerContext uintptr, importIndex uint32) ([]byte, error) {
-	return nativeImportThunk(nativeImportTarget{entry: callee.Entry, home: callee.Home, context: callee.Context, arguments: callee.Arguments, results: callee.Results, argumentSlots: callee.ArgumentSlots, resultSlots: callee.ResultSlots, stackOwnedActivation: callee.StackOwnedActivation, hostTrampoline: callee.HostTrampoline}, callerHome, callerContext, importIndex)
+	return nativeImportThunk(nativeImportTarget{entry: callee.Entry, home: callee.Home, context: callee.Context, arguments: callee.Arguments, results: callee.Results, argumentSlots: callee.ArgumentSlots, resultSlots: callee.ResultSlots, stackOwnedActivation: callee.StackOwnedActivation, hostTrampoline: callee.HostTrampoline, invocationContext: callee.InvocationContext}, callerHome, callerContext, importIndex)
 }
 
 var nativeImportContextFields = [...]struct{ source, destination int32 }{
@@ -138,6 +142,11 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 			a.Ld(enc.Scratch0, enc.Scratch1, field.source)
 			a.Sd(enc.Scratch0, destination, -field.destination)
 		}
+	}
+	if callee.invocationContext {
+		a.Constant64(enc.X28, int64(callerContext))
+		a.Ld(enc.Scratch0, enc.X28, abi.RV64InvocationContextOffset)
+		a.Sd(enc.Scratch0, enc.Scratch1, abi.RV64InvocationContextOffset)
 	}
 	copyContext(enc.X11)
 	if callee.stackOwnedActivation {

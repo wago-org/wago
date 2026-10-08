@@ -134,7 +134,7 @@ func railshotNativeImportCode(c *Compiled, export *InstanceExport, arena *coreru
 		Entry: producer.base + uintptr(producer.c.Entry[export.localIdx]),
 		Home:  producer.jm.LinMemBase(), Context: producer.nativeContext,
 		Arguments: arena.Alloc(rv64NativeImportTransportBytes), Results: arena.Alloc(rv64NativeImportTransportBytes),
-		ArgumentSlots: args, ResultSlots: results, StackOwnedActivation: true, HostTrampoline: trampoline,
+		ArgumentSlots: args, ResultSlots: results, StackOwnedActivation: true, InvocationContext: true, HostTrampoline: trampoline,
 	}, callerHome, callerContext, uint32(index))
 	return code, true, err
 }

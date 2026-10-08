@@ -296,13 +296,13 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 	rootCtrl, rootCtrlPtr := ctrl, ctrlPtr
 	for first := true; ; first = false {
 		if first {
-			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+			e.enterNative(code, serArgs, linMemBase, trap, results)
 		} else {
 			clearTrapUnlessInterrupted(trap)
 			if TrapCode(loadTrap(trap)) == TrapInterrupted {
 				return trapErrorFromBuffer(TrapInterrupted, trap)
 			}
-			stackTop := e.StackTop()
+			stackTop := e.stackTop
 			prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, stackTop)
 		}
@@ -382,13 +382,13 @@ func (e *Engine) callWithHostLoopExpanded(code uintptr, serArgs []byte, linMemBa
 	// forever: both require the caller to arm a timeout.
 	for first := true; ; first = false {
 		if first {
-			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+			e.enterNative(code, serArgs, linMemBase, trap, results)
 		} else {
 			clearTrapUnlessInterrupted(trap) // clear host-pending, but preserve concurrent Close interruption
 			if TrapCode(loadTrap(trap)) == TrapInterrupted {
 				return trapErrorFromBuffer(TrapInterrupted, trap)
 			}
-			stackTop := e.StackTop()
+			stackTop := e.stackTop
 			prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, stackTop)
 		}

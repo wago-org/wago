@@ -197,6 +197,7 @@ func (in *Instance) beginNativeEntry() (executionLease, error) {
 	if err != nil {
 		return lease, err
 	}
+	railshotBindNativeInvocation(in)
 	lease.tables, err = railshotAcquireNativeTableTargets(in)
 	if err != nil {
 		in.unlockNativeEntry(lease)
@@ -262,6 +263,7 @@ func (in *Instance) beginCachedBoundedViewEntry() (executionLease, bool, error) 
 					return executionLease{}, false, err
 				}
 			}
+			railshotBindNativeInvocation(in)
 			return executionLease{local: mu}, reuse, nil
 		}
 		mu.Unlock()
@@ -295,6 +297,7 @@ func (fn *WasmFunc) beginNativeEntry() (executionLease, bool, error) {
 					return executionLease{}, false, err
 				}
 			}
+			railshotBindNativeInvocation(in)
 			fn.hostContextVersion = state.nativeContextVersion.Load()
 			lease := executionLease{local: mu}
 			tables, err := railshotAcquireNativeTableTargets(in)
@@ -668,6 +671,7 @@ func (in *Instance) callPreparedPrivate(entry uintptr, activeTrap []byte) error 
 	if err := refreshNativeControl(true, in.eng, in.jm, activeTrap); err != nil {
 		return err
 	}
+	railshotBindNativeInvocation(in)
 	return in.decorateTrap(in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results))
 }
 
@@ -684,6 +688,7 @@ func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte, reser
 		}
 		defer in.unlockPreparedFastState()
 	}
+	railshotBindNativeInvocation(in)
 	// Isolated ownership keeps the instantiation-time trap binding intact.
 	// A publisher must first revoke this reservation before sharing control.
 	if bounded && preparedBoundedWrapperSchedulerSupported {

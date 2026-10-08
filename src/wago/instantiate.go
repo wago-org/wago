@@ -225,7 +225,7 @@ func (c *Compiled) allowsIndependentInstanceExecution(imports resolvedImports, e
 }
 
 func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) int {
-	need := c.instantiateArenaNeed
+	need := c.instantiateArenaNeed + railshotNativeInvocationContextBytes - runtime.InstanceContextBytes
 	baselineHostBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		baselineHostBytes = c.hostCtrlFrameBytes()
@@ -735,7 +735,8 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		jm.BindInstanceContextBytes(empty[:])
 		railshotSetNativeContextIdentity(jm, 0)
 	}
-	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
+	nativeContext := ar.AllocNoZero(railshotNativeInvocationContextBytes)
+	clear(nativeContext[runtime.InstanceContextBytes:])
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
 	if needsMemoryDir {
 		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)

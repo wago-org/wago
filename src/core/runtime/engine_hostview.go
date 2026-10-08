@@ -44,13 +44,13 @@ func (e *Engine) callWithHostLoopView(code uintptr, serArgs []byte, linMemBase u
 	rootCtrl, rootCtrlPtr := ctrl, ctrlPtr
 	for first := true; ; first = false {
 		if first {
-			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+			e.enterNative(code, serArgs, linMemBase, trap, results)
 		} else {
 			clearTrapUnlessInterrupted(trap)
 			if TrapCode(loadTrap(trap)) == TrapInterrupted {
 				return trapErrorFromBuffer(TrapInterrupted, trap)
 			}
-			stackTop := e.StackTop()
+			stackTop := e.stackTop
 			prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, stackTop)
 		}

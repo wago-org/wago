@@ -54,7 +54,7 @@ func (e *Engine) CallWithHostBaseScalarFixed(code uintptr, serArgs []byte, linMe
 func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, rawSlots uint32, host HostCall, scalar ScalarHostCall, fixed FixedScalarHostCall, argBuf, resBuf []uint64) error {
 	rootCtrl, rootCtrlPtr := ctrl, ctrlPtr
 	n, nres := int(rawSlots&0xffff), int(rawSlots>>16)
-	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	e.enterNative(code, serArgs, linMemBase, trap, results)
 	for {
 		switch tc := loadTrap(trap); {
 		case tc == hostCallPending:
@@ -143,7 +143,7 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 		if TrapCode(loadTrap(trap)) == TrapInterrupted {
 			return trapErrorFromBuffer(TrapInterrupted, trap)
 		}
-		stackTop := e.StackTop()
+		stackTop := e.stackTop
 		prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
 		resumeNative(ctrlPtr, stackTop)
 	}
