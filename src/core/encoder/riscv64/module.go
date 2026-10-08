@@ -23,6 +23,7 @@ type NativeTailModule struct{ Plans []NativeTailPlan }
 // RV64G emits fixed-width instructions; optional extensions are not selected.
 type CompiledModule struct {
 	NativeReferenceCalls                                       bool
+	NativeReferenceNonNull                                     bool
 	NativeTail                                                 *NativeTailModule
 	Code                                                       []byte
 	CodeImage                                                  codeimage.Image

@@ -5,7 +5,6 @@ package riscv64
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -46,9 +45,9 @@ func TestReferenceNonNullPrivateCarrierGates(t *testing.T) {
 	}
 }
 
-// Private lowering must not turn ordinary call_ref's persisted marker into
-// permission for another opcode, even in a module already containing call_ref.
-func TestProductionReferenceNonNullRemainsClosed(t *testing.T) {
+// Opcode witnesses stay distinct even when both operations occur in one
+// module, and record requirements in unreachable code before emission.
+func TestProductionReferenceNonNullContract(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, dead := range []bool{false, true} {
 			for _, call := range []bool{false, true} {
@@ -74,9 +73,27 @@ func TestProductionReferenceNonNullRemainsClosed(t *testing.T) {
 						t.Fatal("invalid gate fixture", err)
 					}
 					pressure := 0
-					image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-					if image != nil || !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "ref.as_non_null artifact contract") || pressure != 0 {
-						t.Fatal("private instruction reached production staging", image, err, pressure)
+					opts := CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }}
+					image, err := CompileModuleWith(m, opts)
+					if err != nil || image == nil || !image.NativeReferenceNonNull || image.NativeReferenceCalls != call || image.NativeTail != nil || image.CodeImage != nil || len(image.Code) == 0 || pressure != 1 {
+						t.Fatal("distinct source instruction witnesses", image, err, pressure)
+					}
+					for _, missing := range []string{"permission", "invocation", "interruptible", "foreign"} {
+						broken := opts
+						switch missing {
+						case "permission":
+							broken.NativeReferenceCalls = false
+						case "invocation":
+							broken.InvocationContext = false
+						case "interruptible":
+							broken.Interruptible = false
+						case "foreign":
+							broken.ForeignTableCalls = false
+						}
+						pressure = 0
+						if image, err := CompileModuleWith(m, broken); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+							t.Fatal("incomplete retained-reference ABI reached staging", missing, image, err, pressure)
+						}
 					}
 				})
 			}

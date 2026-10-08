@@ -116,7 +116,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
-	if rv64HasReferenceTail(c) || c.nativeReferenceCallABI {
+	if rv64HasReferenceTail(c) || c.nativeReferenceCallABI || c.nativeReferenceNonNullABI {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	if c.requiredFeatures & ^qualifiedFeatures != 0 || c.requiredAMD64Features != 0 || c.preparedIsolatedTables {

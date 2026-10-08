@@ -18,8 +18,8 @@ func railshotLockNativeTableScan()   {}
 func railshotUnlockNativeTableScan() {}
 
 func railshotValidateReferenceCalls(c *Compiled) error {
-	if c.nativeReferenceCallABI {
-		return fmt.Errorf("RV64 call_ref execution on a foreign architecture")
+	if c.nativeReferenceCallABI || c.nativeReferenceNonNullABI {
+		return fmt.Errorf("RV64 typed-reference execution on a foreign architecture")
 	}
 	return nil
 }

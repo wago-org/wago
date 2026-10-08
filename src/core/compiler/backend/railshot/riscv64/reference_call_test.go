@@ -35,7 +35,7 @@ func TestProductionReferenceCallContract(t *testing.T) {
 					t.Fatal(err)
 				}
 				second, err := CompileModuleWith(m, opts)
-				if err != nil || !first.NativeReferenceCalls || first.NativeTail != nil || first.CodeImage != nil || len(first.Code) == 0 || !bytes.Equal(first.Code, second.Code) {
+				if err != nil || !first.NativeReferenceCalls || first.NativeReferenceNonNull || first.NativeTail != nil || first.CodeImage != nil || len(first.Code) == 0 || !bytes.Equal(first.Code, second.Code) {
 					t.Fatal("address-free reference contract", err)
 				}
 				for _, missing := range []string{"permission", "invocation", "interruptible", "foreign"} {

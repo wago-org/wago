@@ -41,7 +41,8 @@ type CompileOptions struct {
 	// NativeTailCalls requires the invocation-bound proper-tail factory runtime.
 	// It is an internal qualification contract until every target family is ready.
 	NativeTailCalls bool
-	// NativeReferenceCalls requires retained canonical owners for ordinary call_ref.
+	// NativeReferenceCalls permits ordinary call_ref and ref.as_non_null under
+	// retained canonical owners. Their actual instruction witnesses are distinct.
 	NativeReferenceCalls            bool
 	InvocationContext               bool
 	ForeignTableCalls               bool
@@ -69,10 +70,11 @@ type CompileOptions struct {
 	dynamicTailCalls bool // declared-type indirect/reference source qualification
 	// A source typed-tail requirement must have a qualified emitted plan, even
 	// when all typed-tail instructions occur in unreachable code.
-	referenceTailInstructions bool
-	referenceCallInstructions bool
-	tailPlans                 *[]tailImportPlan
-	tailSiteBase              uint32
+	referenceTailInstructions    bool
+	referenceCallInstructions    bool
+	referenceNonNullInstructions bool
+	tailPlans                    *[]tailImportPlan
+	tailSiteBase                 uint32
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.

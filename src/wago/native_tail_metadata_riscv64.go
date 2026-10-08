@@ -76,6 +76,7 @@ func railshotStoreNativeTail(c *Compiled, image *railshotCompiledModule, cfg *Ru
 		c.ensureCompileIndexes().railshotTail.sourceCodeLimit = cfg.maxNativeCodeBytes
 	}
 	c.nativeReferenceCallABI = image.NativeReferenceCalls
+	c.nativeReferenceNonNullABI = image.NativeReferenceNonNull
 	if image.NativeTail == nil {
 		return nil
 	}

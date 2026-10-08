@@ -55,7 +55,7 @@ func (o rv64TailCodeOwner) nativeOwnerCodeView(allowEmpty bool) ([]byte, error) 
 		return nil, fmt.Errorf("%w: RV64 published image differs from sealed code cache", railshot.ErrUnsupported)
 	}
 	if len(b) == 0 {
-		if allowEmpty && in.c.NumImports > 0 && len(in.c.Funcs) == 0 && len(in.c.Entry) == 0 && len(in.c.InternalEntry) == 0 && !in.c.nativeReferenceCallABI && rv64NativeTailModule(in.c) == nil {
+		if allowEmpty && in.c.NumImports > 0 && len(in.c.Funcs) == 0 && len(in.c.Entry) == 0 && len(in.c.InternalEntry) == 0 && !in.c.nativeReferenceCallABI && !in.c.nativeReferenceNonNullABI && rv64NativeTailModule(in.c) == nil {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("%w: RV64 owner has no executable guest span", railshot.ErrUnsupported)

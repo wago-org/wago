@@ -42,7 +42,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, unsupported("invocation views require cooperative production")
 	}
 	if opts.NativeReferenceCalls && (!opts.InvocationContext || !opts.Interruptible || !opts.ForeignTableCalls) {
-		return nil, unsupported("call_ref requires retained cooperative invocation ABI")
+		return nil, unsupported("typed references require retained cooperative invocation ABI")
 	}
 	if opts.NativeTailCalls {
 		if !opts.InvocationContext || !opts.Interruptible {
@@ -89,12 +89,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	referenceTails, referenceCalls, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls)
+	referenceTails, referenceCalls, referenceNonNull, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls)
 	if err != nil {
 		return nil, err
 	}
 	opts.referenceTailInstructions = referenceTails
 	opts.referenceCallInstructions = referenceCalls
+	opts.referenceNonNullInstructions = referenceNonNull
 	usesSWAR, err := moduleUsesSWAR(m)
 	if err != nil {
 		return nil, err
@@ -253,6 +254,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 	}
 	image.NativeTail = tail
 	image.NativeReferenceCalls = opts.referenceCallInstructions
+	image.NativeReferenceNonNull = opts.referenceNonNullInstructions
 	if diagnosticsEnabled && opts.Stats != nil {
 		collectFinalizedStats(c, opts.Stats)
 	}
@@ -261,35 +263,36 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 
 // Source instruction requirements are persisted independently of reachability.
 // Ordinary references require their distinct retained normal-return protocol.
+// Non-null checks retain carriers without requiring declared-call transport.
 // Instruction bytes were bounded before this pass.
-func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, bool, error) {
-	referenceTails, hasReferenceCall := false, false
+func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, bool, bool, error) {
+	referenceTails, hasReferenceCall, hasReferenceNonNull := false, false, false
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		r := wasm.ReaderFrom(fn.BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
-				return false, false, err
+				return false, false, false, err
 			}
 			if op == 0x14 {
 				if !referenceCalls {
-					return false, false, unsupported("call_ref requires retained native reference protocol")
+					return false, false, false, unsupported("call_ref requires retained native reference protocol")
 				}
 				hasReferenceCall = true
 			}
-			// The private walkers lower this primitive, but ordinary call_ref's
-			// persisted witness does not cover standalone reference control.
-			// Reject it even when unreachable until the loader contract exists.
 			if op == 0xd4 {
-				return false, false, unsupported("ref.as_non_null artifact contract is pending")
+				if !referenceCalls {
+					return false, false, false, unsupported("ref.as_non_null requires retained typed-reference protocol")
+				}
+				hasReferenceNonNull = true
 			}
 			referenceTails = referenceTails || op == 0x15
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
-				return false, false, err
+				return false, false, false, err
 			}
 		}
 	}
-	return referenceTails, hasReferenceCall, nil
+	return referenceTails, hasReferenceCall, hasReferenceNonNull, nil
 }

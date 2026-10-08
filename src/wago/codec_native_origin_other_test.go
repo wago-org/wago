@@ -64,7 +64,28 @@ func TestCompiledCodecRejectsForeignNativeOriginCapability(t *testing.T) {
 	if err := unmarshalCompiledMetadata(&decoded, refCall); err == nil {
 		t.Fatal("foreign call_ref marker accepted")
 	}
-	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeReferenceCallABI || decoded.nativeContextTrapABI || decoded.nativeTableContextABI || decoded.nativeTableReferenceABI {
+	// A lone marker must not disappear into the CPU/CoreFeatures fields.
+	base.nativeContextTrapABI, base.nativeTableContextABI, base.nativeTableReferenceABI, base.nativeReferenceCallABI = false, false, false, false
+	base.nativeReferenceNonNullABI = true
+	lone, err := marshalCompiledMetadata(&base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unmarshalCompiledMetadata(&decoded, lone); err == nil {
+		t.Fatal("lone foreign non-null marker accepted")
+	}
+	base.nativeContextTrapABI, base.nativeTableContextABI, base.nativeTableReferenceABI = true, true, true
+	for _, call := range []bool{false, true} {
+		base.nativeReferenceCallABI = call
+		blob, err := marshalCompiledMetadata(&base)
+		if err != nil || len(blob) != len(plain) {
+			t.Fatal("non-null marker metadata size", err)
+		}
+		if err := unmarshalCompiledMetadata(&decoded, blob); err == nil {
+			t.Fatal("foreign non-null marker accepted", call)
+		}
+	}
+	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeReferenceNonNullABI || decoded.nativeReferenceCallABI || decoded.nativeContextTrapABI || decoded.nativeTableContextABI || decoded.nativeTableReferenceABI {
 		t.Fatal("reused decoder retained native origin capability", err)
 	}
 }

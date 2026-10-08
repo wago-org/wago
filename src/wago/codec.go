@@ -23,7 +23,8 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top thirteen bits avoids growing artifacts.
+	// low range; reserving the top fourteen bits avoids growing artifacts.
+	compiledRV64ReferenceNonNullABI       uint64 = 1 << 50
 	compiledRV64ReferenceCallABI          uint64 = 1 << 51
 	compiledRV64TableReferenceABI         uint64 = 1 << 52
 	compiledRV64TableContextABI           uint64 = 1 << 53
@@ -42,7 +43,7 @@ const (
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
-	compiledCPUFeatures                   uint64 = 0x7ffff << 32
+	compiledCPUFeatures                   uint64 = 0x3ffff << 32
 	compiledGCExecutionMask                      = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 
 	// Import names are attacker-controlled artifact metadata. Bound the decoded
@@ -387,6 +388,9 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
+	if c.nativeReferenceNonNullABI {
+		required |= compiledRV64ReferenceNonNullABI
+	}
 	if c.nativeReferenceCallABI {
 		required |= compiledRV64ReferenceCallABI
 	}
@@ -1126,12 +1130,13 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		return err
 	}
 	gcExecution := required & compiledGCExecutionMask
+	c.nativeReferenceNonNullABI = required&compiledRV64ReferenceNonNullABI != 0
 	c.nativeReferenceCallABI = required&compiledRV64ReferenceCallABI != 0
 	c.nativeContextTrapABI = required&compiledRV64ContextTrapABI != 0
 	c.nativeTableContextABI = required&compiledRV64TableContextABI != 0
 	c.nativeTableReferenceABI = required&compiledRV64TableReferenceABI != 0
-	if c.nativeReferenceCallABI && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&uint64(CoreFeatureTypedFunctionReferences) == 0) {
-		return fmt.Errorf("RV64 call_ref ABI requires typed retained native reference contexts")
+	if (c.nativeReferenceCallABI || c.nativeReferenceNonNullABI) && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&uint64(CoreFeatureTypedFunctionReferences) == 0) {
+		return fmt.Errorf("RV64 typed-reference ABI requires typed retained native reference contexts")
 	}
 	if c.nativeTableReferenceABI && (compiledArchitecture != 4 || !c.nativeTableContextABI || !c.nativeContextTrapABI) {
 		return fmt.Errorf("RV64 table reference ABI requires retained native table contexts")
@@ -1148,11 +1153,11 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64ReferenceNonNullABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
 	if err := railshotValidateReferenceCalls(c); err != nil {
 		return err
 	}
-	if c.nativeReferenceCallABI {
+	if c.nativeReferenceCallABI || c.nativeReferenceNonNullABI {
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 	}
