@@ -51,6 +51,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	// new RV64 architecture identity denotes this framed, polling RV64G ABI.
 	opts.Interruptible = true
 	opts.ForeignTableCalls = true
+	opts.InvocationContext = true
 	return railshot.CompileModuleWith(m, opts)
 }
 

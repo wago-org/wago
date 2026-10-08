@@ -32,13 +32,13 @@ func TestRV64PublicArtifactAndLiveOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if blob[5]>>4 != 3 {
+	if blob[5]>>4 != 4 {
 		t.Fatal("missing polling RV64 ABI identity")
 	}
 	if _, err := Load(blob); err == nil {
 		t.Fatal("ordinary Load accepted executable bytes")
 	}
-	for _, arch := range []byte{1, 2} {
+	for _, arch := range []byte{1, 2, 3} {
 		foreign := slices.Clone(blob)
 		foreign[5] = arch<<4 | foreign[5]&15
 		if _, err := LoadTrustedArtifact(foreign); err == nil || !strings.Contains(err.Error(), "architecture") {

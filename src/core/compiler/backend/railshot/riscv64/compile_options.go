@@ -35,6 +35,9 @@ type CompileOptions struct {
 	// ForeignTableCalls requires a runtime that authenticates and retains all
 	// canonical table targets through entry, host resume and cold decoration.
 	// Entries use a synchronous root control frame and full signature transport.
+	// InvocationContext requires the RV64 public 136-byte context and Engine/
+	// activation-owned views. Legacy private contexts must leave it false.
+	InvocationContext               bool
 	ForeignTableCalls               bool
 	MemoryPressureAt                int
 	MemoryPressure                  func()

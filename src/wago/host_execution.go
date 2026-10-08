@@ -350,6 +350,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		suspension := leaseOwner.suspendGCInvocation(id)
 		gcSuspension = &suspension
 	}
+	parkedNativeInvocation := railshotParkedNativeInvocation(active)
 	var localMu *sync.Mutex
 	var epoch uint64
 	var localVersion uint64
@@ -426,7 +427,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 			// before resuming its parked native activation.
 			active.jm.SetCustomCtx(ctrl)
 		}
-		railshotRestoreNativeInvocation(active, root)
+		railshotRestoreNativeInvocation(active, root, parkedNativeInvocation)
 	}()
 	// Only arbitrary host code can synchronously re-enter this instance. The
 	// active marker includes the callback-scoped invocation identity, so another
@@ -881,6 +882,9 @@ func (in *Instance) restoreTypedScalarNativeContext(ctrl uintptr) {
 		panic(invalidHostReference{err: err})
 	}
 	in.jm.SetCustomCtx(ctrl)
+	// These optimized portals are root-only. A shared-home entry while parked
+	// can replace RV64's live view independently of the 120-byte context copy.
+	railshotBindNativeInvocation(in)
 }
 
 func (in *Instance) hasDirectTypedScalarHost() bool {

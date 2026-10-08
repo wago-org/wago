@@ -20,6 +20,10 @@ type nativeWrapperSaveFrame struct {
 
 const nativeWrapperSaveBytes = unsafe.Sizeof(nativeWrapperSaveFrame{})
 
+// Compile-time layout agreement for generated invocation-view guards.
+var _ [abi.RV64NativeWrapperSaveBytes - nativeWrapperSaveBytes]byte
+var _ [nativeWrapperSaveBytes - abi.RV64NativeWrapperSaveBytes]byte
+
 // Production wrapper ABI: A0=args,A1=linMem,A2=trap,A3=results,X25=pinned linMem.
 func enterNativeRaw(code, serArgs, linMem, trap, results, foreignStackTop uintptr)
 func (*Engine) initNativeEntry() error { return nil }

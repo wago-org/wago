@@ -103,6 +103,9 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 // The public frontend has already validated its configured limits and retains
 // the decoded source. Lowering still enforces the bounded RV64 module policy.
 func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.InvocationContext && (!opts.production || !opts.Interruptible) {
+		return nil, unsupported("invocation views require cooperative production")
+	}
 	if opts.importTailCalls && (!opts.localTailCalls || opts.tailPlans == nil || len(*opts.tailPlans) != 0 || opts.tailSiteBase > tailRAMaxSites) {
 		return nil, unsupported("private imported-tail plan contract")
 	}
@@ -150,7 +153,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}
+		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}
 		if opts.production {
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
@@ -385,6 +388,9 @@ func frameFunction(body []byte, widths []bool, nparams, slots int, initialize bo
 	return frameFunctionCalls(body, widths, nparams, slots, initialize, contextOffset, info, nil)
 }
 func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initialize bool, contextOffset int, info FunctionInfo, calls []directCall) ([]byte, FunctionInfo, error) {
+	if info.mode.invocationContext && (!info.mode.production || !info.mode.interruptible) {
+		return nil, FunctionInfo{}, unsupported("invocation views require cooperative production ABI")
+	}
 	nlocals := len(widths)
 	if info.FrameHeaderBytes == 0 {
 		info.FrameHeaderBytes = 16
@@ -420,6 +426,7 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 			entry.a.Sd(enc.X13, enc.SP, 32)
 		}
 	}
+	viewGuards := entry.initializeNativeInvocation(frame, info)
 	if contextOffset != -1 && !info.mode.production {
 		if contextOffset <= 2047 {
 			entry.a.Ld(enc.X24, enc.X10, int32(contextOffset))
@@ -463,6 +470,14 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 		entry.a.Sw(enc.Scratch0, enc.X12, 0)
 		entry.a.Addi(enc.X10, enc.Zero, 0)
 		entry.a.Ret()
+	}
+	if len(viewGuards) != 0 {
+		for _, site := range viewGuards {
+			if err := entry.a.PatchLong(site, int64(entry.a.Len())); err != nil {
+				return nil, FunctionInfo{}, err
+			}
+		}
+		entry.emitProductionTrap(abi.TrapCalledFnNotLinked, info.mode.entryPC)
 	}
 	if entry.err != nil {
 		return nil, FunctionInfo{}, entry.err

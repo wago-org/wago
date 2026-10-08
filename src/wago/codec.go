@@ -1118,13 +1118,13 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	c.nativeContextTrapABI = required&compiledRV64ContextTrapABI != 0
 	c.nativeTableContextABI = required&compiledRV64TableContextABI != 0
 	c.nativeTableReferenceABI = required&compiledRV64TableReferenceABI != 0
-	if c.nativeTableReferenceABI && (compiledArchitecture != 3 || !c.nativeTableContextABI || !c.nativeContextTrapABI) {
+	if c.nativeTableReferenceABI && (compiledArchitecture != 4 || !c.nativeTableContextABI || !c.nativeContextTrapABI) {
 		return fmt.Errorf("RV64 table reference ABI requires retained native table contexts")
 	}
-	if c.nativeTableContextABI && (compiledArchitecture != 3 || !c.nativeContextTrapABI) {
+	if c.nativeTableContextABI && (compiledArchitecture != 4 || !c.nativeContextTrapABI) {
 		return fmt.Errorf("RV64 native table context ABI requires RV64 native-context traps")
 	}
-	if c.nativeContextTrapABI && compiledArchitecture != 3 {
+	if c.nativeContextTrapABI && compiledArchitecture != 4 {
 		return fmt.Errorf("RV64 native-context trap ABI on a foreign architecture")
 	}
 	c.requiredAMD64Features = shared.AMD64Features((required & compiledCPUFeatures) >> 32)

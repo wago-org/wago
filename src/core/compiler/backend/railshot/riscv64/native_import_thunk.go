@@ -84,9 +84,16 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	if callee.stackOwnedActivation && (callee.hostTrampoline == 0 || callee.hostTrampoline&3 != 0) {
 		return nil, fmt.Errorf("rv64: stack activation requires its stable host trampoline")
 	}
+	if callee.invocationContext && !callee.stackOwnedActivation {
+		return nil, fmt.Errorf("rv64: invocation views require stack-owned import activation")
+	}
 	frameBytes := nativeImportFrameBytes
 	if callee.stackOwnedActivation {
 		frameBytes += 16 + HostFixedFrameBytes + 2*nativeImportTransportBytes
+	}
+	viewOffset := frameBytes
+	if callee.invocationContext {
+		frameBytes += abi.RV64InvocationViewBytes
 	}
 	f := target{mode: emissionMode{production: true, functionIndex: importIndex}}
 	a := &f.a
@@ -100,6 +107,12 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	a.Ld(enc.X29, enc.X28, coreruntime.FuncRefContextOffset)
 	a.Constant64(enc.Scratch1, int64(callerContext))
 	wrongContext := a.BranchLong(enc.NE, enc.X29, enc.Scratch1)
+	var invocationGuards []int
+	if callee.invocationContext {
+		a.Ld(enc.X9, enc.X25, -abi.RV64InvocationViewOffset)
+		invocationGuards = nativeInvocationViewGuards(a, enc.X9, 0)
+		a.Constant64(enc.Scratch1, int64(callerContext))
+	}
 	a.Ld(enc.X29, enc.X25, -abi.StackFenceOffset)
 	below := a.BranchLong(enc.LTU, enc.SP, enc.X29)
 	a.Sub(enc.X28, enc.SP, enc.X29)
@@ -115,6 +128,9 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	a.Sd(enc.X24, enc.SP, 48)
 	a.Ld(enc.Scratch0, enc.X25, -40)
 	a.Sd(enc.Scratch0, enc.SP, 56) // active caller ctrl may differ from canonical ctx
+	if callee.invocationContext {
+		a.Sd(enc.X9, enc.SP, 72)
+	}
 	if callee.stackOwnedActivation {
 		a.Constant64(enc.X28, nativeImportFrameBytes+16+HostFixedFrameBytes)
 		a.Add(enc.X28, enc.SP, enc.X28)
@@ -144,9 +160,9 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 		}
 	}
 	if callee.invocationContext {
-		a.Constant64(enc.X28, int64(callerContext))
-		a.Ld(enc.Scratch0, enc.X28, abi.RV64InvocationContextOffset)
-		a.Sd(enc.Scratch0, enc.Scratch1, abi.RV64InvocationContextOffset)
+		a.Ld(enc.X28, enc.SP, 72)
+		nativeInvocationActivation(a, enc.X28, viewOffset, nativeImportFrameBytes+16+HostFixedFrameBytes, nativeImportFrameBytes+16+HostFixedFrameBytes+nativeImportTransportBytes)
+		a.Sd(enc.X9, enc.X11, -abi.RV64InvocationViewOffset)
 	}
 	copyContext(enc.X11)
 	if callee.stackOwnedActivation {
@@ -176,6 +192,10 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	}
 	a.Ld(enc.Scratch1, enc.SP, 16)
 	copyContext(enc.X25)
+	if callee.invocationContext {
+		a.Ld(enc.Scratch0, enc.SP, 72)
+		a.Sd(enc.Scratch0, enc.X25, -abi.RV64InvocationViewOffset)
+	}
 	a.Sd(enc.Scratch1, enc.X25, -abi.RV64NativeContextOffset)
 	a.Ld(enc.Scratch0, enc.SP, 56)
 	a.Sd(enc.Scratch0, enc.X25, -40)
@@ -198,7 +218,7 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	a.Constant64(enc.Scratch0, int64(frameBytes))
 	a.Add(enc.SP, enc.SP, enc.Scratch0)
 	a.Jalr(enc.Zero, enc.RA, 0)
-	for _, site := range []int{wrongHome, wrongTransport, missingAnchor, wrongContext} {
+	for _, site := range append([]int{wrongHome, wrongTransport, missingAnchor, wrongContext}, invocationGuards...) {
 		if err := a.PatchLong(site, int64(a.Len())); err != nil {
 			return nil, err
 		}

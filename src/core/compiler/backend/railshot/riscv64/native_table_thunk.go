@@ -20,7 +20,7 @@ func (f *integerEmitter) nativeTableCall(key uint64, argumentSlots, resultSlots 
 		f.err = unsupported("foreign table call requires production framed ABI")
 		return
 	}
-	code, err := nativeTableThunkAt(key, argumentSlots, resultSlots, f.mode.functionIndex, f.sourcePC)
+	code, err := nativeTableThunkAtInvocation(key, argumentSlots, resultSlots, f.mode.functionIndex, f.sourcePC, f.mode.invocationContext)
 	if err != nil {
 		f.err = err
 		return
@@ -63,8 +63,24 @@ func nativeTableThunk(key uint64, argumentSlots, resultSlots int, functionIndex 
 }
 
 func nativeTableThunkAt(key uint64, argumentSlots, resultSlots int, functionIndex, sourcePC uint32) ([]byte, error) {
+	return nativeTableThunkAtInvocation(key, argumentSlots, resultSlots, functionIndex, sourcePC, false)
+}
+
+func nativeTableThunkAtInvocation(key uint64, argumentSlots, resultSlots int, functionIndex, sourcePC uint32, invocation bool) ([]byte, error) {
 	if argumentSlots < 0 || argumentSlots > 256 || resultSlots < 0 || resultSlots > 256 || functionIndex >= MaxFunctions {
 		return nil, fmt.Errorf("rv64: native table bridge requires bounded signature and source index")
+	}
+	headerBytes := nativeImportFrameBytes + 16
+	if invocation {
+		headerBytes += 16
+	}
+	ctrlOffset := headerBytes
+	argsOffset := ctrlOffset + HostFixedFrameBytes
+	resultsOffset := argsOffset + nativeImportTransportBytes
+	viewOffset := resultsOffset + nativeImportTransportBytes
+	frameBytes := viewOffset
+	if invocation {
+		frameBytes += abi.RV64InvocationViewBytes
 	}
 	f := target{mode: emissionMode{production: true, functionIndex: functionIndex}}
 	a := &f.a
@@ -133,11 +149,16 @@ func nativeTableThunkAt(key uint64, argumentSlots, resultSlots int, functionInde
 	guard(enc.EQ, enc.X15, enc.Zero)
 	aligned(enc.X15, 3)
 	aligned(enc.SP, 15)
+	if invocation {
+		a.Ld(enc.X9, enc.X25, -abi.RV64InvocationViewOffset)
+		invalid = append(invalid, nativeInvocationViewGuards(a, enc.X9, 0)...)
+		a.Ld(enc.X29, enc.X25, -abi.RV64NativeContextOffset)
+	}
 	a.Ld(enc.X5, enc.X25, -abi.StackFenceOffset)
 	guard(enc.EQ, enc.X5, enc.Zero)
 	below := a.BranchLong(enc.LTU, enc.SP, enc.X5)
 	a.Sub(enc.X5, enc.SP, enc.X5)
-	a.Constant64(enc.Scratch0, nativeTableFrameBytes)
+	a.Constant64(enc.Scratch0, int64(frameBytes))
 	short := a.BranchLong(enc.LTU, enc.X5, enc.Scratch0)
 	a.Sub(enc.SP, enc.SP, enc.Scratch0)
 	a.Sd(enc.RA, enc.SP, 0)
@@ -151,14 +172,19 @@ func nativeTableThunkAt(key uint64, argumentSlots, resultSlots int, functionInde
 	a.Sd(enc.Scratch0, enc.SP, 56)
 	a.Sd(enc.X7, enc.SP, nativeImportFrameBytes)
 	a.Sd(enc.X14, enc.SP, nativeImportFrameBytes+8)
-	a.Constant64(enc.Scratch1, nativeImportFrameBytes+16+HostFixedFrameBytes)
+	if invocation {
+		// Preserve the host resolver's exact ctrl-16 identity prefix.
+		a.Sd(enc.X7, enc.SP, 80)
+		a.Sd(enc.X9, enc.SP, 88)
+	}
+	a.Constant64(enc.Scratch1, int64(argsOffset))
 	a.Add(enc.Scratch1, enc.SP, enc.Scratch1)
 	for i := 0; i < argumentSlots; i++ {
 		a.Ld(enc.Scratch0, enc.X10, int32(i*8))
 		a.Sd(enc.Scratch0, enc.Scratch1, int32(i*8))
 	}
 	a.Addi(enc.X10, enc.Scratch1, 0)
-	a.Constant64(enc.X13, nativeImportFrameBytes+16+HostFixedFrameBytes+nativeImportTransportBytes)
+	a.Constant64(enc.X13, int64(resultsOffset))
 	a.Add(enc.X13, enc.SP, enc.X13)
 	a.Addi(enc.X11, enc.X6, 0)
 	a.Addi(enc.Scratch1, enc.X7, 0)
@@ -171,8 +197,14 @@ func nativeTableThunkAt(key uint64, argumentSlots, resultSlots int, functionInde
 			a.Sd(enc.Scratch0, destination, -field.destination)
 		}
 	}
+	if invocation {
+		// X28 retains the qualified target entry; use X5 for the parent cursor.
+		a.Ld(enc.X5, enc.SP, 88)
+		nativeInvocationActivation(a, enc.X5, viewOffset, argsOffset, resultsOffset)
+		a.Sd(enc.X9, enc.X11, -abi.RV64InvocationViewOffset)
+	}
 	copyContext(enc.X11)
-	a.Addi(enc.Scratch0, enc.SP, nativeImportFrameBytes+16)
+	a.Addi(enc.Scratch0, enc.SP, int32(ctrlOffset))
 	a.Sd(enc.X15, enc.Scratch0, HostTrampolineOffset)
 	a.Sd(enc.Scratch0, enc.X11, -40)
 	a.Sd(enc.Scratch1, enc.X11, -abi.RV64NativeContextOffset)
@@ -194,13 +226,17 @@ func nativeTableThunkAt(key uint64, argumentSlots, resultSlots int, functionInde
 	}
 	a.Ld(enc.Scratch1, enc.SP, 16)
 	copyContext(enc.X25)
+	if invocation {
+		a.Ld(enc.Scratch0, enc.SP, 88)
+		a.Sd(enc.Scratch0, enc.X25, -abi.RV64InvocationViewOffset)
+	}
 	a.Sd(enc.Scratch1, enc.X25, -abi.RV64NativeContextOffset)
 	a.Ld(enc.Scratch0, enc.SP, 56)
 	a.Sd(enc.Scratch0, enc.X25, -40)
 	a.Ld(enc.X10, enc.SP, 24)
 	a.Ld(enc.X12, enc.SP, 32)
 	a.Ld(enc.X13, enc.SP, 40)
-	a.Constant64(enc.Scratch1, nativeImportFrameBytes+16+HostFixedFrameBytes+nativeImportTransportBytes)
+	a.Constant64(enc.Scratch1, int64(resultsOffset))
 	a.Add(enc.Scratch1, enc.SP, enc.Scratch1)
 	for i := 0; i < resultSlots; i++ {
 		a.Ld(enc.Scratch0, enc.Scratch1, int32(i*8))
@@ -209,7 +245,7 @@ func nativeTableThunkAt(key uint64, argumentSlots, resultSlots int, functionInde
 	a.Ld(enc.X24, enc.SP, 48)
 	a.Addi(enc.X11, enc.X25, 0)
 	a.Ld(enc.RA, enc.SP, 0)
-	a.Constant64(enc.Scratch0, nativeTableFrameBytes)
+	a.Constant64(enc.Scratch0, int64(frameBytes))
 	a.Add(enc.SP, enc.SP, enc.Scratch0)
 	a.Jalr(enc.Zero, enc.RA, 0)
 	for _, site := range invalid {

@@ -26,8 +26,9 @@ type target struct {
 
 type emissionMode struct {
 	profileMode
-	production    bool
-	interruptible bool
+	production        bool
+	interruptible     bool
+	invocationContext bool
 	// The runtime authenticates and retains canonical foreign descriptors at
 	// entry/resume and provides a synchronous root control frame.
 	foreignTableCalls bool

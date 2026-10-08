@@ -230,11 +230,16 @@ func rv64ForeignTableCallModule(types []wasm.ValType, seed byte, shared, trappin
 // public imported-table construction and mutation have separate witnesses.
 func rv64InstallForeignTableTarget(t *testing.T, root, producer *Instance) {
 	t.Helper()
+	rv64InstallForeignTableTargetAt(t, root, producer, 1)
+}
+
+func rv64InstallForeignTableTargetAt(t *testing.T, root, producer *Instance, localIndex int) {
+	t.Helper()
 	table, err := root.ExportedTable("table")
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor, ok := producer.localFuncrefDescriptor(1)
+	descriptor, ok := producer.localFuncrefDescriptor(localIndex)
 	if !ok {
 		t.Fatal("canonical producer descriptor")
 	}

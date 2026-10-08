@@ -2,6 +2,8 @@
 
 package wago
 
-// Identity 3 is the framed, cooperatively polled RV64G wrapper ABI. It cannot
-// load the experimental GuestContext ABI or AMD64/ARM64 executable artifacts.
-const compiledArchitecture byte = 3
+// Identity4 adds authenticated invocation views to the framed, cooperative
+// RV64G ABI. Older RV64 images lack the required entry/selector protocol and
+// cannot be combined with future public tails. Other target identities remain
+// unchanged. No native pointer is persisted in an artifact.
+const compiledArchitecture byte = 4
