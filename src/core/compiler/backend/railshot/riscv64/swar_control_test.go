@@ -60,7 +60,7 @@ func TestSWARControlLabelAndAggregateTransferBounds(t *testing.T) {
 	}
 	fn := &wasm.Func{BodyBytes: []byte{2, 0x7b, 0x20, 0, 0x41, 0, 0x0e, 1, 0, 1, 0x0b, 0x1a, 0x41, 0, 0x0b}}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}, Results: []wasm.ValType{wasm.I32}}
-	if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil || !strings.Contains(err.Error(), "branch table carrier class") {
+	if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil || !strings.Contains(err.Error(), "branch carrier class") {
 		t.Fatal("mixed same-table label classes admitted", err)
 	}
 }

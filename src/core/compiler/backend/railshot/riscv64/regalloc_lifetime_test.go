@@ -200,7 +200,7 @@ func TestRegallocImmutableGPSharedAndFallbackAdmissionControls(t *testing.T) {
 	}
 	fixture := fixtureFunc{result: 0x7f, body: []byte{0x41, 7, 0x0b}}
 	fn = &wasm.Func{BodyBytes: fixture.body}
-	ft = &wasm.CompType{Results: []wasm.ValType{wasm.I32}}
+	ft = &wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}}
 	for _, reg := range []enc.Reg{enc.X9, enc.X5} {
 		f := integerEmitter{}
 		f.a.Constant64(reg, 42)

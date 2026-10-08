@@ -151,15 +151,8 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 		return swarSummary{}, unsupported("SWAR control type bound")
 	}
 	for _, typ := range types {
-		if typ == nil || typ.Kind != wasm.CompFunc || len(typ.Params) > maxSWARLocals || len(typ.Results) > maxSWARLocals {
-			return swarSummary{}, unsupported("SWAR control type shape/bound")
-		}
-		for _, list := range [][]wasm.ValType{typ.Params, typ.Results} {
-			for _, carrier := range list {
-				if !swarCarrierType(carrier) {
-					return swarSummary{}, unsupported("SWAR control type carrier")
-				}
-			}
+		if err := admitSWARControlSignature(typ, internalReferenceTypes{swar: types}, privateRefs && referenceCalls); err != nil {
+			return swarSummary{}, err
 		}
 	}
 	if fn == nil || ft == nil || ft.Kind != wasm.CompFunc || len(ft.Params) > maxSWARLocals || len(ft.Results) > maxSWARLocals {
@@ -536,6 +529,9 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 				return swarSummary{}, unsupported("SWAR indirect signature/table identity")
 			}
 			sig := types[typeIndex]
+			if err := swarCallSignature(sig); err != nil {
+				return swarSummary{}, err
+			}
 			tail := op == 0x13
 			if tail {
 				if !localTailCalls || !dynamicTailCalls && (foreignTableCalls || importedFunctions != 0) {

@@ -29,7 +29,7 @@ type integerControl struct {
 	base                           int
 	kind                           byte
 	params, results                []bool
-	resultRefs                     []bool
+	paramRefs, resultRefs          []bool
 	entry, then, incoming, hasElse bool
 	unreachable                    bool // current typing floor, independent of machine reachability
 	start, falseSite               int
@@ -52,9 +52,18 @@ type integerEmitter struct {
 // performs complete pre-emission admission and then lowering of the same bytes.
 func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *integerEmitter) (integerSummary, error) {
 	floating := state != nil && state.production
+	if fn == nil {
+		return integerSummary{}, unsupported("missing integer function")
+	}
+	if err := integerNumericSignature(ft, floating); err != nil {
+		return integerSummary{}, err
+	}
 	profile := memoryProfile{}
 	referenceTypes := internalReferenceTypes{}
 	if state != nil {
+		if len(state.types) > MaxFunctions {
+			return integerSummary{}, unsupported("integer control type directory bound")
+		}
 		profile = makeMemoryProfile(state.memories, state.indexedMemories)
 		referenceTypes.scalar = state.types
 	}
@@ -146,6 +155,46 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		stackRefs[h-1] = true
 		return nil
 	}
+	// Match against the current typing floor, never the target label's lower
+	// base. Missing values are legal only in this frame's explicit dead region.
+	match := func(values, references []bool, exact, refine bool) error {
+		floor := ctrl[depth-1].base
+		missing := max(0, len(values)-(h-floor))
+		if missing != 0 && !ctrl[depth-1].unreachable || h+missing > len(stack) {
+			return unsupported("integer control operand bound/underflow")
+		}
+		if exact && h+missing != floor+len(values) {
+			return unsupported("integer control result stack")
+		}
+		for i, wide := range values {
+			at := h - len(values) + i
+			ref := len(references) != 0 && references[i]
+			if at >= floor && !stackUnknown[at] && (stack[at] != wide || stackRefs[at] != ref) {
+				return unsupported("integer control carrier class")
+			}
+		}
+		if !refine {
+			return nil
+		}
+		if missing != 0 {
+			copy(stack[floor+missing:h+missing], stack[floor:h])
+			copy(stackRefs[floor+missing:h+missing], stackRefs[floor:h])
+			copy(stackUnknown[floor+missing:h+missing], stackUnknown[floor:h])
+			h += missing
+		}
+		for i, wide := range values {
+			at := h - len(values) + i
+			stack[at], stackRefs[at], stackUnknown[at] = wide, len(references) != 0 && references[i], false
+		}
+		return nil
+	}
+	condition := func() error {
+		if err := match(inlineResults[0][:], nil, false, true); err != nil {
+			return err
+		}
+		h--
+		return nil
+	}
 	position := func() int {
 		if emit == nil {
 			return 0
@@ -158,14 +207,17 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		}
 		return emit.Patch(site, pos)
 	}
-	branch := func(label uint32) error {
+	branch := func(label uint32, retainPayload bool) error {
 		if int(label) >= depth {
 			return fmt.Errorf("rv64: invalid validated label")
 		}
 		fr := &ctrl[depth-1-int(label)]
-		values := fr.results
+		values, references := fr.results, fr.resultRefs
 		if fr.kind == 0x03 {
-			values = fr.params
+			values, references = fr.params, fr.paramRefs
+		}
+		if err := match(values, references, false, retainPayload); err != nil {
+			return err
 		}
 		budget += len(values)
 		if budget > integerBudget {
@@ -228,7 +280,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if e != nil {
 				return integerSummary{}, e
 			}
-			var params, results, resultRefs []bool
+			var params, results, paramRefs, resultRefs []bool
 			switch bt {
 			case -64: // empty
 			case -1:
@@ -253,9 +305,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if bt < 0 || state == nil || bt >= int64(len(state.types)) {
 					return integerSummary{}, unsupported("noninteger block signature")
 				}
-				params, results = state.types[bt].params, state.types[bt].results
+				params, results, paramRefs, resultRefs, e = integerControlSignature(state.types[bt], referenceTypes, privateRefs && state.referenceCalls, floating, &budget)
+				if e != nil {
+					return integerSummary{}, e
+				}
 			}
-			budget += len(params) + len(results)
+			if bt < 0 {
+				budget += len(params) + len(results)
+			}
 			if budget > integerBudget {
 				return integerSummary{}, unsupported("integer control signature budget")
 			}
@@ -263,19 +320,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("integer control bound")
 			}
 			if op == 0x04 {
-				if _, e = pop(); e != nil {
+				if e = condition(); e != nil {
 					return integerSummary{}, e
 				}
 				if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), false)
 				}
 			}
-			for range params {
-				if _, e = pop(); e != nil {
-					return integerSummary{}, e
-				}
+			if e = match(params, paramRefs, false, true); e != nil {
+				return integerSummary{}, e
 			}
-			fr := integerControl{base: h, kind: op, params: params, results: results, resultRefs: resultRefs, entry: live, start: position(), falseSite: -1}
+			h -= len(params)
+			fr := integerControl{base: h, kind: op, params: params, results: results, paramRefs: paramRefs, resultRefs: resultRefs, entry: live, start: position(), falseSite: -1}
 			if op == 0x03 && live && emit != nil {
 				emit.emitProductionInterruptPoll()
 			}
@@ -284,15 +340,19 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			ctrl[depth] = fr
 			depth++
-			for _, wide := range params {
+			for i, wide := range params {
 				if err = push(wide); err != nil {
 					return integerSummary{}, err
 				}
+				stackRefs[h-1] = len(paramRefs) != 0 && paramRefs[i]
 			}
 		case 0x05:
 			fr := &ctrl[depth-1]
 			if fr.kind != 0x04 || fr.hasElse {
 				return integerSummary{}, fmt.Errorf("rv64: invalid validated else")
+			}
+			if err = match(fr.results, fr.resultRefs, true, true); err != nil {
+				return integerSummary{}, err
 			}
 			fr.then = live
 			fr.hasElse = true
@@ -307,13 +367,20 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			live = fr.entry
 			h = fr.base
-			for _, wide := range fr.params {
+			for i, wide := range fr.params {
 				if err = push(wide); err != nil {
 					return integerSummary{}, err
 				}
+				stackRefs[h-1] = len(fr.paramRefs) != 0 && fr.paramRefs[i]
 			}
 		case 0x0b:
 			fr := ctrl[depth-1]
+			if fr.kind == 0x04 && !fr.hasElse && !integerSameClasses(fr.params, fr.paramRefs, fr.results, fr.resultRefs) {
+				return integerSummary{}, unsupported("integer result if requires else")
+			}
+			if err = match(fr.results, fr.resultRefs, true, true); err != nil {
+				return integerSummary{}, err
+			}
 			if emit != nil {
 				for _, site := range fr.sites {
 					if err = patch(site, position()); err != nil {
@@ -354,7 +421,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, e
 			}
 			if op == 0x0d {
-				if _, e = pop(); e != nil {
+				if e = condition(); e != nil {
 					return integerSummary{}, e
 				}
 				skip := -1
@@ -362,7 +429,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.Load(5, emit.SpillOffset(h), false)
 					skip = emit.BranchZero(5)
 				}
-				if e = branch(label); e != nil {
+				if e = branch(label, true); e != nil {
 					return integerSummary{}, e
 				}
 				if live && emit != nil {
@@ -371,7 +438,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 				}
 			} else {
-				if e = branch(label); e != nil {
+				if e = branch(label, false); e != nil {
 					return integerSummary{}, e
 				}
 				live = false
@@ -389,7 +456,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			fr := &ctrl[depth-1-int(label)]
 			values, references := fr.results, fr.resultRefs
 			if fr.kind == 0x03 {
-				values, references = fr.params, nil
+				values, references = fr.params, fr.paramRefs
 			}
 			nonNull := op == 0xd6
 			prefix := len(values)
@@ -451,7 +518,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			}
-			if err = branch(label); err != nil {
+			if err = branch(label, true); err != nil {
 				return integerSummary{}, err
 			}
 			if live && emit != nil {
@@ -473,23 +540,39 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("branch table bound")
 			}
 			budget += int(n)
-			if _, e = pop(); e != nil {
+			if e = condition(); e != nil {
 				return integerSummary{}, e
 			}
 			if live && emit != nil {
 				emit.Load(5, emit.SpillOffset(h), false)
 			}
+			signatureArity := -1
 			for i := uint32(0); i <= n; i++ {
 				label, e := r.U32()
 				if e != nil {
 					return integerSummary{}, e
 				}
+				if uint64(label) >= uint64(depth) {
+					return integerSummary{}, unsupported("integer branch table label")
+				}
+				fr := &ctrl[depth-1-int(label)]
+				values := fr.results
+				if fr.kind == 0x03 {
+					values = fr.params
+				}
+				if signatureArity < 0 {
+					signatureArity = len(values)
+				} else if signatureArity != len(values) {
+					return integerSummary{}, unsupported("integer branch table arity")
+				}
+				// Each target checks the original payload independently. Unknown
+				// dead values can match heterogeneous equal-arity label types.
 				skip := -1
 				if i < n && live && emit != nil {
 					emit.Constant(6, int64(i), false)
 					skip = emit.a.BranchLong(enc.NE, enc.X5, enc.X6)
 				}
-				if e = branch(label); e != nil {
+				if e = branch(label, false); e != nil {
 					return integerSummary{}, e
 				}
 				if i < n && live && emit != nil {
@@ -502,7 +585,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x0f:
-			if err = branch(uint32(depth - 1)); err != nil {
+			if err = branch(uint32(depth-1), false); err != nil {
 				return integerSummary{}, err
 			}
 			live = false
@@ -741,6 +824,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("nonlocal direct call")
 			}
 			sig := state.functions[idx]
+			if err = integerCallable(sig, floating); err != nil {
+				return integerSummary{}, err
+			}
 			callCount++
 			budget += len(sig.params) + len(sig.results)
 			if callCount > maxDirectCalls || budget > integerBudget {
@@ -768,6 +854,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("defined local tail target required")
 			}
 			sig := state.functions[idx]
+			if err = integerCallable(sig, floating); err != nil {
+				return integerSummary{}, err
+			}
 			importedTail := idx < uint32(state.importedFunctions)
 			if importedTail {
 				importTails++
@@ -804,6 +893,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("call_ref retained owner/signature contract")
 			}
 			sig := state.types[typeIndex]
+			if err = integerCallable(sig, floating); err != nil {
+				return integerSummary{}, err
+			}
 			callCount++
 			budget += len(sig.params) + len(sig.results) + 1
 			tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
@@ -837,6 +929,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("private dynamic typed tail profile required")
 			}
 			sig := state.types[typeIndex]
+			if err = integerCallable(sig, floating); err != nil {
+				return integerSummary{}, err
+			}
 			if e := admitLocalTailSignature(ft, sig.signature); e != nil {
 				return integerSummary{}, e
 			}
@@ -874,6 +969,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("private table call_indirect shape")
 			}
 			sig := state.types[typeIndex]
+			if err = integerCallable(sig, floating); err != nil {
+				return integerSummary{}, err
+			}
 			tail := op == 0x13
 			if tail {
 				// The local profile excludes imported/foreign targets; the dynamic

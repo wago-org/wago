@@ -104,6 +104,23 @@ func (flow *swarFlow) patch(site, position int) error {
 	return nil
 }
 
+// Unconditional edges consume the payload. Check it without refining unknowns,
+// so a dead br_table can validate the same original values against each label.
+func (flow *swarFlow) checkBranch(values []swarClass) error {
+	floor := flow.floor()
+	missing := max(0, len(values)-(*flow.h-floor))
+	if missing != 0 && !flow.frames[flow.depth-1].unreachable || *flow.h+missing > len(flow.classes) {
+		return unsupported("SWAR branch operand bound/underflow")
+	}
+	for i, wanted := range values {
+		at := *flow.h - len(values) + i
+		if at >= floor && flow.classes[at] != swarUnknown && flow.classes[at] != wanted {
+			return unsupported("SWAR branch carrier class")
+		}
+	}
+	return nil
+}
+
 func (flow *swarFlow) match(base int, results []swarClass, exact bool) error {
 	if err := flow.prepareDead(results...); err != nil {
 		return err
@@ -133,7 +150,7 @@ func (flow *swarFlow) condition() error {
 	return nil
 }
 
-func (flow *swarFlow) branch(label uint32) error {
+func (flow *swarFlow) branch(label uint32, retainPayload bool) error {
 	if uint64(label) >= uint64(flow.depth) {
 		return unsupported("SWAR branch label/dead shape")
 	}
@@ -142,7 +159,11 @@ func (flow *swarFlow) branch(label uint32) error {
 	if fr.kind == 0x03 {
 		values = fr.params
 	}
-	if err := flow.match(flow.floor(), values, false); err != nil {
+	if retainPayload {
+		if err := flow.match(flow.floor(), values, false); err != nil {
+			return err
+		}
+	} else if err := flow.checkBranch(values); err != nil {
 		return err
 	}
 	*flow.budget += len(values)
@@ -214,7 +235,7 @@ func (flow *swarFlow) referenceBranch(label uint32, nonNull bool) error {
 	if nonNull {
 		*flow.h++ // the taken edge includes the reference in its label payload
 	}
-	if err := flow.branch(label); err != nil {
+	if err := flow.branch(label, true); err != nil {
 		return err
 	}
 	if flow.live && flow.emit != nil {
@@ -261,11 +282,9 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				if bt >= int64(len(flow.types)) || flow.types[bt] == nil {
 					return false, false, unsupported("SWAR indexed control signature")
 				}
-				for _, typ := range flow.types[bt].Params {
-					params = append(params, swarClassOf(typ))
-				}
-				for _, typ := range flow.types[bt].Results {
-					results = append(results, swarClassOf(typ))
+				params, results, e = swarControlSignature(flow.types[bt], internalReferenceTypes{swar: flow.types}, flow.privateRefs && flow.typedRefs, flow.budget)
+				if e != nil {
+					return false, false, e
 				}
 			} else {
 				if (bt < -5 || bt > -1) && !(flow.privateRefs && bt == -16) {
@@ -278,7 +297,9 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				results = []swarClass{class}
 			}
 		}
-		*flow.budget += len(params) + len(results)
+		if bt < 0 {
+			*flow.budget += len(params) + len(results)
+		}
 		if *flow.budget > integerBudget {
 			return false, false, unsupported("SWAR control signature budget")
 		}
@@ -388,7 +409,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				skip = flow.emit.BranchZero(5)
 			}
 		}
-		if err := flow.branch(label); err != nil {
+		if err := flow.branch(label, op == 0x0d); err != nil {
 			return false, false, err
 		}
 		if op == 0x0d && flow.live {
@@ -431,18 +452,13 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				if len(results) != len(signature) {
 					return false, false, unsupported("SWAR branch table arity")
 				}
-				for j, class := range results {
-					if class != signature[j] {
-						return false, false, unsupported("SWAR branch table carrier class")
-					}
-				}
 			}
 			skip := -1
 			if i < n && flow.live && flow.emit != nil {
 				flow.emit.Constant(6, int64(i), false)
 				skip = flow.emit.a.BranchLong(enc.NE, enc.X5, enc.X6)
 			}
-			if err := flow.branch(label); err != nil {
+			if err := flow.branch(label, false); err != nil {
 				return false, false, err
 			}
 			if i < n && flow.live {

@@ -69,8 +69,12 @@ code, matching the SWAR path; typed selects and reference branches specialize
 them without accepting concrete incompatible operands or borrowing below a
 nested control floor. Source and compiler-free artifact fixtures cover admission
 and exact unreachable traps followed by instance reuse.
-Reference-valued function and indexed control signatures remain
-unsupported.
+Private indexed control signatures now preserve reference parameters/results
+through exact joins, loop backedges and overlapping scalar/SWAR transfers.
+Unreachable branch tables check each target against the original polymorphic
+payload; known incompatible values still reject. Signature budgets precede
+derived carrier allocation. Production admission for reference-valued indexed
+controls and all reference-valued callable signatures remains closed.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains
 unconnected to production; collection and feature admission are unchanged.
