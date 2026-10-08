@@ -73,19 +73,26 @@ func rv64RetainGlobalDescriptor(global *Global, store *referenceStore) (importGl
 	return entry, nil
 }
 
+// Frozen global entries share ONE acquired root per distinct owner. Consume
+// all aliases before releasing that root: clearing an earlier slot must not
+// erase the deduplication witness for a later alias. The bounded nested scan
+// preserves first-occurrence order without allocating another owner set.
 func railshotReleaseGlobalReferences(entries []importGlobalReference) {
-	for i, entry := range entries {
-		if entry.owner == nil {
+	var cleanup resourceCleanup
+	for i := range entries {
+		owner := entries[i].owner // Reread after recursive drains of this list.
+		entries[i] = importGlobalReference{}
+		if owner == nil {
 			continue
 		}
-		duplicate := false
-		for _, prior := range entries[:i] {
-			duplicate = duplicate || prior.owner == entry.owner
+		for j := i + 1; j < len(entries); j++ {
+			if entries[j].owner == owner {
+				entries[j] = importGlobalReference{}
+			}
 		}
-		if !duplicate {
-			entry.owner.releaseResourceRoot()
-		}
+		cleanup.run(owner.releaseResourceRoot)
 	}
+	cleanup.finish()
 }
 
 func railshotFreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, store *referenceStore) (entries []importGlobalReference, err error) {

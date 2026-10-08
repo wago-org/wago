@@ -824,9 +824,7 @@ func (g *Global) instanceOwnerClosed(in *Instance) {
 	o.retained = nil
 	g.cell = nil
 	o.mu.Unlock()
-	for _, root := range roots {
-		root.releaseResourceRoot()
-	}
+	releaseRetainedResourceRoots(roots)
 }
 
 // GlobalImport supplies an imported global value. Prefer a *Global for mutable

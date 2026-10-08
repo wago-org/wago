@@ -30,3 +30,20 @@ func (c *resourceCleanup) finish() {
 		panic(c.value)
 	}
 }
+
+// releaseRetainedResourceRoots drains an already-claimed slice of exact root
+// units outside container locks. Separate entries may own independent roots on
+// the same Instance, so this helper must not deduplicate by owner. Clearing a
+// slot before the actual decrement permits reentrant local drains to visit only
+// still-owned units. Producer callbacks may panic after the unit is consumed.
+func releaseRetainedResourceRoots(roots []*Instance) {
+	var cleanup resourceCleanup
+	for i := range roots {
+		owner := roots[i] // Reread after any recursive drain of this same batch.
+		roots[i] = nil
+		if owner != nil {
+			cleanup.run(owner.releaseResourceRoot)
+		}
+	}
+	cleanup.finish()
+}

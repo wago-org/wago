@@ -972,9 +972,7 @@ func (t *Table) releaseRetainedInstances() {
 	}
 	t.retained = nil
 	t.mu.Unlock()
-	for _, root := range roots {
-		root.releaseResourceRoot()
-	}
+	releaseRetainedResourceRoots(roots)
 }
 
 // ExportedTable returns the table exported under name as a shared *Table another
