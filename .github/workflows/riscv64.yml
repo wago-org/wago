@@ -10,7 +10,10 @@ on:
       - "src/core/compiler/backend/railshot/shared/**"
       - "src/core/compiler/wasm/**"
       - "src/core/encoder/riscv64/**"
-      - "src/core/runtime/riscv64/**"
+      - "src/core/runtime/**"
+      - "src/wago/**"
+      - "internal/regalloccheck/**"
+      - "tests/support/**"
       - "src/core/codeimage/**"
       - "go.mod"
       - "go.sum"
@@ -74,5 +77,7 @@ jobs:
           echo "GOMODCACHE=$RUNNER_TEMP/wago-rv64-module-cache" >> "$GITHUB_ENV"
       - name: Native runtime and JIT smoke
         run: scripts/ci-riscv64.sh smoke
-      - name: Supported scalar and integer correctness
+      - name: Compiler and runtime correctness
         run: scripts/ci-riscv64.sh supported
+      - name: Public ownership and compiler-free artifacts
+        run: scripts/ci-riscv64.sh public
