@@ -66,7 +66,7 @@ func TestCompiledCodecRejectsForeignNativeOriginCapability(t *testing.T) {
 	}
 	// A lone marker must not disappear into the CPU/CoreFeatures fields.
 	base.nativeContextTrapABI, base.nativeTableContextABI, base.nativeTableReferenceABI, base.nativeReferenceCallABI = false, false, false, false
-	base.nativeReferenceNonNullABI = true
+	base.nativeReferenceControlABI = true
 	lone, err := marshalCompiledMetadata(&base)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +85,7 @@ func TestCompiledCodecRejectsForeignNativeOriginCapability(t *testing.T) {
 			t.Fatal("foreign non-null marker accepted", call)
 		}
 	}
-	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeReferenceNonNullABI || decoded.nativeReferenceCallABI || decoded.nativeContextTrapABI || decoded.nativeTableContextABI || decoded.nativeTableReferenceABI {
+	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeReferenceControlABI || decoded.nativeReferenceCallABI || decoded.nativeContextTrapABI || decoded.nativeTableContextABI || decoded.nativeTableReferenceABI {
 		t.Fatal("reused decoder retained native origin capability", err)
 	}
 }

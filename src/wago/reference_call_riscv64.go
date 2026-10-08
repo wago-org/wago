@@ -4,12 +4,12 @@ package wago
 
 import "fmt"
 
-// The persisted call/non-null witnesses are separate from general typed-
+// The persisted call/control witnesses are separate from general typed-
 // reference permission. Both operate on retained internal function references;
 // only calls require declared-type transport arenas. Reference-valued external
 // signatures and non-function descriptors remain outside this bounded profile.
 func railshotValidateReferenceCalls(c *Compiled) error {
-	if !c.nativeReferenceCallABI && !c.nativeReferenceNonNullABI {
+	if !c.nativeReferenceCallABI && !c.nativeReferenceControlABI {
 		return nil
 	}
 	if !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || len(c.Funcs) == 0 {

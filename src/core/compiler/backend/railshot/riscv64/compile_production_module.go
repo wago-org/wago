@@ -89,13 +89,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	referenceTails, referenceCalls, referenceNonNull, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls)
+	referenceTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls)
 	if err != nil {
 		return nil, err
 	}
 	opts.referenceTailInstructions = referenceTails
 	opts.referenceCallInstructions = referenceCalls
-	opts.referenceNonNullInstructions = referenceNonNull
+	opts.referenceControlInstructions = referenceControl
 	usesSWAR, err := moduleUsesSWAR(m)
 	if err != nil {
 		return nil, err
@@ -254,7 +254,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 	}
 	image.NativeTail = tail
 	image.NativeReferenceCalls = opts.referenceCallInstructions
-	image.NativeReferenceNonNull = opts.referenceNonNullInstructions
+	image.NativeReferenceControl = opts.referenceControlInstructions
 	if diagnosticsEnabled && opts.Stats != nil {
 		collectFinalizedStats(c, opts.Stats)
 	}
@@ -263,10 +263,10 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 
 // Source instruction requirements are persisted independently of reachability.
 // Ordinary references require their distinct retained normal-return protocol.
-// Non-null checks retain carriers without requiring declared-call transport.
+// Reference control retains carriers without requiring declared-call transport.
 // Instruction bytes were bounded before this pass.
 func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, bool, bool, error) {
-	referenceTails, hasReferenceCall, hasReferenceNonNull := false, false, false
+	referenceTails, hasReferenceCall, hasReferenceControl := false, false, false
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		r := wasm.ReaderFrom(fn.BodyBytes)
@@ -281,14 +281,11 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 				}
 				hasReferenceCall = true
 			}
-			if op == 0xd4 {
+			if op == 0xd4 || op == 0xd5 || op == 0xd6 {
 				if !referenceCalls {
-					return false, false, false, unsupported("ref.as_non_null requires retained typed-reference protocol")
+					return false, false, false, unsupported("reference control requires retained typed-reference protocol")
 				}
-				hasReferenceNonNull = true
-			}
-			if op == 0xd5 || op == 0xd6 {
-				return false, false, false, unsupported("reference branch artifact contract is pending")
+				hasReferenceControl = true
 			}
 			referenceTails = referenceTails || op == 0x15
 			var imm wasm.InstructionImmediate
@@ -297,5 +294,5 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 			}
 		}
 	}
-	return referenceTails, hasReferenceCall, hasReferenceNonNull, nil
+	return referenceTails, hasReferenceCall, hasReferenceControl, nil
 }

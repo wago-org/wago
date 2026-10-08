@@ -1061,7 +1061,7 @@ type Compiled struct {
 	// RV64 flags share the descriptor flag's alignment padding.
 	nativeContextTrapABI      bool       // active-context identity and fresh cold-trap provenance
 	nativeReferenceCallABI    bool       // ordinary typed calls with retained owners and declared-type arenas
-	nativeReferenceNonNullABI bool       // full-width null checks on retained internal function references
+	nativeReferenceControlABI bool       // full-width null checks/branches on retained internal function references
 	nativeTableContextABI     bool       // retained canonical table calls with framed context switching
 	nativeTableReferenceABI   bool       // full-width foreign table carriers and active writer/storage scopes
 	Elems                     []ElemInit // active element segments

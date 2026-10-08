@@ -77,7 +77,7 @@ func TestProductionReferenceNonNullContract(t *testing.T) {
 					pressure := 0
 					opts := CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }}
 					image, err := CompileModuleWith(m, opts)
-					if err != nil || image == nil || !image.NativeReferenceNonNull || image.NativeReferenceCalls != call || image.NativeTail != nil || image.CodeImage != nil || len(image.Code) == 0 || pressure != 1 {
+					if err != nil || image == nil || !image.NativeReferenceControl || image.NativeReferenceCalls != call || image.NativeTail != nil || image.CodeImage != nil || len(image.Code) == 0 || pressure != 1 {
 						t.Fatal("distinct source instruction witnesses", image, err, pressure)
 					}
 					for _, missing := range []string{"permission", "invocation", "interruptible", "foreign"} {

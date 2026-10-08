@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -117,13 +116,21 @@ func TestReferenceBranchDeadInstructionBound(t *testing.T) {
 	}
 }
 
-func TestProductionReferenceBranchRemainsClosed(t *testing.T) {
+func TestProductionReferenceBranchContract(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, nonNull := range []bool{false, true} {
 			for _, dead := range []bool{false, true} {
 				for _, witness := range []bool{false, true} {
 					t.Run(fmt.Sprintf("vector%t-nonnull%t-dead%t-witness%t", vector, nonNull, dead, witness), func(t *testing.T) {
-						m, err := wasm.DecodeModule(referenceBranchSource(vector, nonNull, 3))
+						body := []byte{2, 0x40, 0xd0, 0x70, 0xd5, 0, 0x1a, 0x0b, 0x0b}
+						if nonNull {
+							body = []byte{2, 0x70, 0xd0, 0x70, 0xd6, 0, 0xd0, 0x70, 0x0b, 0x1a, 0x0b}
+						}
+						types := [][]byte{wasmtest.FuncType(nil, nil)}
+						if vector {
+							types = append(types, wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))
+						}
+						m, err := wasm.DecodeModule(wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(types...)), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body)))))
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -137,9 +144,27 @@ func TestProductionReferenceBranchRemainsClosed(t *testing.T) {
 							t.Fatal("fixture", err)
 						}
 						pressure := 0
-						image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-						if image != nil || !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "reference branch artifact contract") || pressure != 0 {
-							t.Fatal("reference branch reached production staging", image, err, pressure)
+						opts := CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }}
+						image, err := CompileModuleWith(m, opts)
+						if err != nil || image == nil || !image.NativeReferenceControl || image.NativeReferenceCalls || image.NativeTail != nil || image.CodeImage != nil || len(image.Code) == 0 || pressure != 1 {
+							t.Fatal("reference branch instruction witness", image, err, pressure)
+						}
+						for _, missing := range []string{"permission", "invocation", "interruptible", "foreign"} {
+							broken := opts
+							switch missing {
+							case "permission":
+								broken.NativeReferenceCalls = false
+							case "invocation":
+								broken.InvocationContext = false
+							case "interruptible":
+								broken.Interruptible = false
+							case "foreign":
+								broken.ForeignTableCalls = false
+							}
+							pressure = 0
+							if image, err := CompileModuleWith(m, broken); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+								t.Fatal("incomplete reference branch ABI reached staging", missing, image, err, pressure)
+							}
 						}
 					})
 				}

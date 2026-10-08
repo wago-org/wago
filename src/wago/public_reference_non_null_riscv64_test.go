@@ -43,7 +43,7 @@ func TestRV64PublicReferenceNonNullStandalone(t *testing.T) {
 			for _, dead := range []bool{false, true} {
 				t.Run(fmt.Sprintf("artifact%t-vector%t-dead%t", artifact, vector, dead), func(t *testing.T) {
 					c := rv64NativeTailCompile(t, fmt.Sprintf("non-null-standalone-%t-%t", vector, dead), rv64ReferenceNonNullSource(vector, dead), artifact)
-					if !c.nativeReferenceNonNullABI || c.nativeReferenceCallABI || rv64NativeTailModule(c) != nil || !railshotRequiresNativeOwnerScope(c) {
+					if !c.nativeReferenceControlABI || c.nativeReferenceCallABI || rv64NativeTailModule(c) != nil || !railshotRequiresNativeOwnerScope(c) {
 						t.Fatal("non-calling reference witness or retained owner scope")
 					}
 					// The unused maximal signature must not enlarge call transport merely
@@ -97,7 +97,7 @@ func TestRV64PublicReferenceNonNullCall(t *testing.T) {
 					wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0xd4, 0x14, 0, 0x0b}))),
 				)
 				c := rv64NativeTailCompile(t, fmt.Sprintf("non-null-call-%t", vector), source, artifact)
-				if !c.nativeReferenceNonNullABI || !c.nativeReferenceCallABI {
+				if !c.nativeReferenceControlABI || !c.nativeReferenceCallABI {
 					t.Fatal("combined reference witnesses")
 				}
 				in, err := Instantiate(c)
@@ -152,7 +152,7 @@ func TestRV64PublicReferenceNonNullRetiredGlobalOwner(t *testing.T) {
 					sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
 					c := rv64NativeTailCompile(t, fmt.Sprintf("non-null-borrower-%t-table%t", vector, table), wasmtest.Module(sections...), artifact)
 					in := rv64NativeTokenInstantiate(t, rt, c, NewImports().Global("env", "ref", g))
-					if !c.nativeReferenceNonNullABI || c.nativeReferenceCallABI || !railshotRequiresNativeOwnerScope(c) || (c.tableCount() != 0) != table {
+					if !c.nativeReferenceControlABI || c.nativeReferenceCallABI || !railshotRequiresNativeOwnerScope(c) || (c.tableCount() != 0) != table {
 						t.Fatal("foreign carrier witness")
 					}
 					producer.Close()
@@ -193,7 +193,7 @@ func TestRV64PublicReferenceNonNullMarkerAdmission(t *testing.T) {
 		impossible := cloneCompiledMetadata(base)
 		impossible.NumImports, impossible.Funcs = len(impossible.Funcs), nil
 		impossible.nativeReferenceCallABI = call
-		impossible.nativeReferenceNonNullABI = !call
+		impossible.nativeReferenceControlABI = !call
 		if err := railshotValidateReferenceCalls(impossible); err == nil {
 			t.Fatal("instruction witness without any defined body", call)
 		}
@@ -202,7 +202,7 @@ func TestRV64PublicReferenceNonNullMarkerAdmission(t *testing.T) {
 		name   string
 		mutate func(*Compiled)
 	}{
-		{"missing-marker", func(c *Compiled) { c.nativeReferenceNonNullABI = false }},
+		{"missing-marker", func(c *Compiled) { c.nativeReferenceControlABI = false }},
 		{"missing-typed", func(c *Compiled) { c.requiredFeatures &^= CoreFeatureTypedFunctionReferences }},
 		{"missing-reference-abi", func(c *Compiled) { c.nativeTableReferenceABI = false }},
 		{"missing-context-abi", func(c *Compiled) { c.nativeTableContextABI = false }},
@@ -248,11 +248,11 @@ func TestRV64PublicReferenceNonNullMarkerAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded := Compiled{code: base.code}
-	if err := unmarshalCompiledMetadata(&decoded, markedBytes); err != nil || !decoded.nativeReferenceNonNullABI || decoded.nativeReferenceCallABI {
+	if err := unmarshalCompiledMetadata(&decoded, markedBytes); err != nil || !decoded.nativeReferenceControlABI || decoded.nativeReferenceCallABI {
 		t.Fatal("marked decoder", err)
 	}
 	decoded.code = plain.code
-	if err := unmarshalCompiledMetadata(&decoded, plainBytes); err != nil || decoded.nativeReferenceNonNullABI || decoded.nativeReferenceCallABI {
+	if err := unmarshalCompiledMetadata(&decoded, plainBytes); err != nil || decoded.nativeReferenceControlABI || decoded.nativeReferenceCallABI {
 		t.Fatal("reused decoder retained reference witnesses", err)
 	}
 	roundtrip, err := marshalCompiledMetadata(&decoded)

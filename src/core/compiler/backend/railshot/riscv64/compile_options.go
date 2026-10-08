@@ -41,8 +41,8 @@ type CompileOptions struct {
 	// NativeTailCalls requires the invocation-bound proper-tail factory runtime.
 	// It is an internal qualification contract until every target family is ready.
 	NativeTailCalls bool
-	// NativeReferenceCalls permits ordinary call_ref and ref.as_non_null under
-	// retained canonical owners. Their actual instruction witnesses are distinct.
+	// NativeReferenceCalls permits ordinary call_ref and reference control under
+	// retained canonical owners. Call transport and control witnesses are distinct.
 	NativeReferenceCalls            bool
 	InvocationContext               bool
 	ForeignTableCalls               bool
@@ -72,7 +72,7 @@ type CompileOptions struct {
 	// when all typed-tail instructions occur in unreachable code.
 	referenceTailInstructions    bool
 	referenceCallInstructions    bool
-	referenceNonNullInstructions bool
+	referenceControlInstructions bool
 	tailPlans                    *[]tailImportPlan
 	tailSiteBase                 uint32
 }

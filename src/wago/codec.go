@@ -24,7 +24,9 @@ const (
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
 	// low range; reserving the top fourteen bits avoids growing artifacts.
-	compiledRV64ReferenceNonNullABI       uint64 = 1 << 50
+	// Bit 50 originally witnessed ref.as_non_null. Branches share its retained
+	// internal-carrier ABI; old non-null artifacts keep the same bit and layout.
+	compiledRV64ReferenceControlABI       uint64 = 1 << 50
 	compiledRV64ReferenceCallABI          uint64 = 1 << 51
 	compiledRV64TableReferenceABI         uint64 = 1 << 52
 	compiledRV64TableContextABI           uint64 = 1 << 53
@@ -388,8 +390,8 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
-	if c.nativeReferenceNonNullABI {
-		required |= compiledRV64ReferenceNonNullABI
+	if c.nativeReferenceControlABI {
+		required |= compiledRV64ReferenceControlABI
 	}
 	if c.nativeReferenceCallABI {
 		required |= compiledRV64ReferenceCallABI
@@ -1130,12 +1132,12 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		return err
 	}
 	gcExecution := required & compiledGCExecutionMask
-	c.nativeReferenceNonNullABI = required&compiledRV64ReferenceNonNullABI != 0
+	c.nativeReferenceControlABI = required&compiledRV64ReferenceControlABI != 0
 	c.nativeReferenceCallABI = required&compiledRV64ReferenceCallABI != 0
 	c.nativeContextTrapABI = required&compiledRV64ContextTrapABI != 0
 	c.nativeTableContextABI = required&compiledRV64TableContextABI != 0
 	c.nativeTableReferenceABI = required&compiledRV64TableReferenceABI != 0
-	if (c.nativeReferenceCallABI || c.nativeReferenceNonNullABI) && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&uint64(CoreFeatureTypedFunctionReferences) == 0) {
+	if (c.nativeReferenceCallABI || c.nativeReferenceControlABI) && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&uint64(CoreFeatureTypedFunctionReferences) == 0) {
 		return fmt.Errorf("RV64 typed-reference ABI requires typed retained native reference contexts")
 	}
 	if c.nativeTableReferenceABI && (compiledArchitecture != 4 || !c.nativeTableContextABI || !c.nativeContextTrapABI) {
@@ -1153,11 +1155,11 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64ReferenceNonNullABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
 	if err := railshotValidateReferenceCalls(c); err != nil {
 		return err
 	}
-	if c.nativeReferenceCallABI || c.nativeReferenceNonNullABI {
+	if c.nativeReferenceCallABI || c.nativeReferenceControlABI {
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 	}

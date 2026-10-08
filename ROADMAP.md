@@ -38,11 +38,13 @@ import-only modules without claiming a guest frame for their wrappers. Tests
 cover ordinary `call_ref`, mixed call paths, nested host reentry, table replacement
 while parked, cancellation, exact quotas and compiler-free artifacts. Deep
 prepared-session tests execute 20,000 dynamic tails ending at a host callback
-on the minimum native stack. Internal `ref.as_non_null` checks preserve the full
-reference carrier and use a distinct persisted requirement. Source and
-compiler-free tests cover null traps, unreachable uses, combined `call_ref`,
-and retained foreign immutable globals with and without tables. Non-calling
-checks do not reserve declared-call transport. Public TailCall and
+on the minimum native stack. Internal `ref.as_non_null`, `br_on_null` and
+`br_on_non_null` preserve the full reference carrier and share a retained-carrier
+artifact requirement. Source and compiler-free tests cover null traps, unreachable
+uses, deep typed label transfers, numeric loop parameters, combined `call_ref`,
+and retained foreign immutable globals. Existing non-null artifacts retain the
+same format and load without recompilation. Non-calling reference control does
+not reserve declared-call transport. Public TailCall and
 TypedFunctionReferences remain
 gated: these bounded cases do not establish complete feature support.
 Conservative resource-root accounting and an independently tested bounded receipt
