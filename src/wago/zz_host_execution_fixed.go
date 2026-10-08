@@ -2,7 +2,7 @@ package wago
 
 func (a *hostLoopActivation) dispatchSingleHostCallFixedView(args, results []uint64) {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	binding := &active.syncHosts[0]
@@ -26,7 +26,7 @@ func (a *hostLoopActivation) dispatchSingleHostCallFixedView(args, results []uin
 
 func (a *hostLoopActivation) dispatchSingleTypedNoneFixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	mu := a.localNativeMu()
@@ -41,7 +41,7 @@ func (a *hostLoopActivation) dispatchSingleTypedNoneFixedPortal(a0, a1 uint64) u
 
 func (a *hostLoopActivation) dispatchSingleTypedI32VoidFixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	mu := a.localNativeMu()
@@ -56,7 +56,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32VoidFixedPortal(a0, a1 uint64
 
 func (a *hostLoopActivation) dispatchSingleTypedI32FixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	mu := a.localNativeMu()
 	if mu == nil {
@@ -69,7 +69,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32FixedPortal(a0, a1 uint64) ui
 
 func (a *hostLoopActivation) dispatchSingleTypedI32x2FixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	mu := a.localNativeMu()
 	if mu == nil {
@@ -82,7 +82,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32x2FixedPortal(a0, a1 uint64) 
 
 func (a *hostLoopActivation) dispatchSingleTypedI64FixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	mu := a.localNativeMu()
@@ -97,7 +97,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI64FixedPortal(a0, a1 uint64) ui
 
 func (a *hostLoopActivation) dispatchSingleTypedI64x2FixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	mu := a.localNativeMu()
@@ -112,7 +112,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI64x2FixedPortal(a0, a1 uint64) 
 
 func (a *hostLoopActivation) dispatchSingleTypedF32FixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	mu := a.localNativeMu()
@@ -127,7 +127,7 @@ func (a *hostLoopActivation) dispatchSingleTypedF32FixedPortal(a0, a1 uint64) ui
 
 func (a *hostLoopActivation) dispatchSingleTypedF32x2FixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	mu := a.localNativeMu()
@@ -142,7 +142,7 @@ func (a *hostLoopActivation) dispatchSingleTypedF32x2FixedPortal(a0, a1 uint64) 
 
 func (a *hostLoopActivation) dispatchSingleTypedF64FixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	mu := a.localNativeMu()
@@ -157,7 +157,7 @@ func (a *hostLoopActivation) dispatchSingleTypedF64FixedPortal(a0, a1 uint64) ui
 
 func (a *hostLoopActivation) dispatchSingleTypedF64x2FixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	mu := a.localNativeMu()
@@ -172,7 +172,7 @@ func (a *hostLoopActivation) dispatchSingleTypedF64x2FixedPortal(a0, a1 uint64) 
 
 func (a *hostLoopActivation) dispatchSingleTypedScalarFixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	binding := &active.syncHosts[0]
@@ -196,7 +196,7 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarFixedPortal(a0, a1 uint64)
 
 func (a *hostLoopActivation) dispatchSingleTypedI32x2VoidFixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	binding := &active.syncHosts[0]
@@ -220,7 +220,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32x2VoidFixedPortal(a0, a1 uint
 
 func (a *hostLoopActivation) dispatchSingleTypedI32PairFixedPortal(a0, _ uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	binding := &active.syncHosts[0]
@@ -245,7 +245,7 @@ func (a *hostLoopActivation) dispatchSingleTypedI32PairFixedPortal(a0, _ uint64)
 
 func (a *hostLoopActivation) dispatchSingleTypedI32x2PairFixedPortal(a0, a1 uint64) uint64 {
 	if railshotNativeContextTrapABI() {
-		defer railshotRefreshNativeTableTargets(a.root)
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
 	}
 	active := a.root
 	binding := &active.syncHosts[0]

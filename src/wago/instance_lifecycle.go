@@ -33,7 +33,7 @@ func (in *Instance) Close() (err error) {
 	state, owner := in.beginClose()
 	if !owner {
 		if state.completed.Load() {
-			return state.result
+			return joinPrimary(state.result, railshotRetryClosedNativeTableRetirement(in))
 		}
 		// A callback may reenter Close while the lifecycle owner is still
 		// active. Returning promptly avoids self-deadlock; external callers
@@ -44,6 +44,7 @@ func (in *Instance) Close() (err error) {
 		if recover() != nil {
 			err = joinPrimary(err, fmt.Errorf("wago: instance close: %w", ErrCallbackPanic))
 		}
+		err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
 		state.complete(err)
 		// Managed terminal work must not detach ownership before the logical
 		// result is available to drain and WaitClosed. Retry after publication.
@@ -468,7 +469,7 @@ func (in *Instance) constructionReservationSnapshot() *pluginOperationReservatio
 
 // releaseResources performs the physical teardown after tryFinalize has claimed
 // it by setting resourcesClosed under lifeMu.
-func (in *Instance) releaseResources() {
+func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	if codeProfileEnabled && in.lifecycleProfile() != nil {
 		span := in.beginProfileLifecycle("physical-release")
 		defer finishProfileBoundary(span, nil)
@@ -504,11 +505,13 @@ func (in *Instance) releaseResources() {
 			closeCollector()
 		}
 	}
+	// These containers consume their root units before producer callbacks run.
+	// A nested physical callback must not interrupt our remaining native teardown.
 	for table := in.table; table != nil; table = table.next {
-		table.releaseRetainedInstances()
+		cleanup.run(table.releaseRetainedInstances)
 	}
 	for _, global := range in.globalCells {
-		global.instanceOwnerClosed(in)
+		cleanup.run(func() { global.instanceOwnerClosed(in) })
 	}
 	unregisterHostControl(in)
 	if in.thunkMem != nil {

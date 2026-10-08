@@ -193,6 +193,9 @@ func (l executionLease) memoryBase(in *Instance) uintptr {
 // size/growth fields remain backing-owned; invocation control is refreshed by
 // the engine entry/resume paths.
 func (in *Instance) beginNativeEntry() (executionLease, error) {
+	if err := railshotRetryNativeTableRetirement(in); err != nil {
+		return executionLease{}, err
+	}
 	lease, err := in.lockAndBindNativeEntry()
 	if err != nil {
 		return lease, err
@@ -278,6 +281,9 @@ func (in *Instance) beginCachedBoundedViewEntry() (executionLease, bool, error) 
 // bind or guarded host access invalidates this handle's cached observation.
 func (fn *WasmFunc) beginNativeEntry() (executionLease, bool, error) {
 	in := fn.in
+	if err := railshotRetryNativeTableRetirement(in); err != nil {
+		return executionLease{}, false, err
+	}
 	if in.usesIndependentExecution() {
 		mu := in.independentNativeExecutionMu()
 		mu.Lock()
@@ -392,10 +398,14 @@ func (l executionLease) unlockExecution() {
 	if l.privateContext() {
 		return
 	}
+	err := railshotRetireNativeTableTargets(l.tables)
 	if l.local != nil {
 		l.local.Unlock()
 	} else {
 		nativeExecutionMu.Unlock()
+	}
+	if err != nil {
+		panic(invalidHostReference{err: err})
 	}
 	railshotReleaseNativeTableTargets(l.tables)
 }
@@ -408,7 +418,11 @@ func (in *Instance) unlockNativeEntry(l executionLease) {
 		return
 	}
 	if l.local != nil && !in.threadedMemoryZero && !in.usesIndependentExecution() {
+		err := railshotRetireNativeTableTargets(l.tables)
 		nativeExecutionMu.Unlock()
+		if err != nil {
+			panic(invalidHostReference{err: err})
+		}
 		railshotReleaseNativeTableTargets(l.tables)
 		return
 	}

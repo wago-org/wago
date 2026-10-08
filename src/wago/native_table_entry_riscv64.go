@@ -104,6 +104,9 @@ func railshotAcquireNativeTableTargets(root *Instance) (railshotTableEntryLease,
 	}
 	state := root.ensurePluginState()
 	pool := &state.railshotInvocation
+	if pool.tableDepth != 0 && pool.tableTargets[pool.tableDepth-1].tailRetiring {
+		return railshotTableEntryLease{}, fmt.Errorf("RV64 table entry retirement is pending")
+	}
 	if pool.tableDepth == len(pool.tableTargets) {
 		return railshotTableEntryLease{}, fmt.Errorf("RV64 table entry nesting bound")
 	}
@@ -113,12 +116,15 @@ func railshotAcquireNativeTableTargets(root *Instance) (railshotTableEntryLease,
 		targets = new(rv64NativeTableTargets)
 		pool.tableTargets[slot] = targets
 	}
-	if targets.count != 0 {
+	if targets.count != 0 || targets.tailRetiring {
 		return railshotTableEntryLease{}, fmt.Errorf("RV64 table entry slot is active")
 	}
 	pool.tableDepth++
 	lease := railshotTableEntryLease{root: root, targets: targets, slot: slot}
-	return lease, targets.refresh(root)
+	if err := targets.refresh(root); err != nil {
+		return lease, err
+	}
+	return lease, targets.refreshTailGenerations()
 }
 
 func railshotReleaseNativeTableTargets(lease railshotTableEntryLease) {
@@ -129,26 +135,46 @@ func railshotReleaseNativeTableTargets(lease railshotTableEntryLease) {
 	if pool.tableDepth != lease.slot+1 || pool.tableTargets[lease.slot] != lease.targets {
 		panic("RV64 table entry release order")
 	}
+	if lease.targets.tailBudget != (rv64NativeTailGenerationBudget{}) {
+		panic("RV64 table entry still owns tail generations")
+	}
 	pool.tableDepth--
+	lease.targets.tailRetiring = false
 	lease.targets.release()
 }
 
-// Every parked-host portal invokes this after its native mutex is reacquired.
-// Row replacement can remove a container root, but all previous targets remain
-// physically retained until the enclosing entry finishes cold decoration.
-func railshotRefreshNativeTableTargets(root *Instance) {
+// Capture at portal entry, while its native lease is still held. Defer arguments
+// are evaluated before arbitrary host code runs, so a recursive entry or another
+// root's resume cannot select the generation for this parked activation.
+func railshotCurrentNativeTableTargets(root *Instance) railshotTableEntryLease {
 	if root == nil {
-		return
+		return railshotTableEntryLease{}
 	}
 	state := root.pluginState.Load()
-	if state == nil {
-		return
+	if state == nil || state.railshotInvocation.tableDepth == 0 {
+		return railshotTableEntryLease{}
 	}
 	pool := &state.railshotInvocation
-	for index := 0; index < pool.tableDepth; index++ {
-		if err := pool.tableTargets[index].refresh(root); err != nil {
-			panic(invalidHostReference{err: err})
-		}
+	slot := pool.tableDepth - 1
+	return railshotTableEntryLease{root: root, targets: pool.tableTargets[slot], slot: slot}
+}
+
+// Every parked-host portal invokes this after its native mutex is reacquired.
+// Only this activation's exact entry is refreshed. Suspended outer entries keep
+// their original roots and refresh when their own continuation resumes.
+func railshotRefreshNativeTableTargets(lease railshotTableEntryLease) {
+	if lease.targets == nil {
+		return
+	}
+	pool := &lease.root.pluginState.Load().railshotInvocation
+	if lease.slot < 0 || lease.slot >= pool.tableDepth || pool.tableTargets[lease.slot] != lease.targets {
+		panic("RV64 table resume lost its entry lease")
+	}
+	if err := lease.targets.refresh(lease.root); err != nil {
+		panic(invalidHostReference{err: err})
+	}
+	if err := lease.targets.refreshTailGenerations(); err != nil {
+		panic(invalidHostReference{err: err})
 	}
 }
 

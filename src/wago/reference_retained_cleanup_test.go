@@ -147,3 +147,44 @@ func TestRetainedResourceCleanupWarmExactSliceNoAllocation(t *testing.T) {
 		t.Fatalf("allocations=%v roots=%v batch=%v", allocations, owner.hasResourceRoots(), roots)
 	}
 }
+
+func TestRetainedResourceCleanupTablePruneDrainsClaimedRoots(t *testing.T) {
+	table := &Table{desc: make([]byte, 8), retained: make(map[*Instance]*retainedInstanceRoot)}
+	var visited [3]int
+	var first any
+	var producers []*Instance
+	for i := range visited {
+		producer := cleanupTestRootedProducer(t, func() {
+			if !table.mu.TryLock() {
+				panic("prune callback under table lock")
+			}
+			remaining := len(table.retained)
+			table.mu.Unlock()
+			if remaining != 0 {
+				panic("prune left claimed roots published")
+			}
+			table.pruneRetainedInstances()
+			visited[i]++
+			if i != 2 {
+				marker := new(int)
+				if first == nil {
+					first = marker
+				}
+				panic(marker)
+			}
+		})
+		table.retained[producer] = &retainedInstanceRoot{precise: true}
+		producers = append(producers, producer)
+	}
+	value, panicked := cleanupTestPanic(table.pruneRetainedInstances)
+	if !panicked || value != first || visited != [3]int{1, 1, 1} {
+		t.Fatal("prune abandoned claimed units", value, panicked, visited)
+	}
+	for _, producer := range producers {
+		cleanupTestConsumedProducer(t, producer)
+	}
+	table.pruneRetainedInstances()
+	if visited != [3]int{1, 1, 1} {
+		t.Fatal("prune repeated consumed units")
+	}
+}

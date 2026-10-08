@@ -16,8 +16,10 @@ import (
 // closed until all tail instruction/target families have been qualified.
 type railshotRuntimeConfigState struct{ tailProducts bool }
 type railshotTailCompiledState struct {
-	module  *encoder.NativeTailModule
-	retired []*railshot.NativeTailDispatcher // codeCache.mu protects failed cleanup
+	module                                           *encoder.NativeTailModule
+	retired                                          []*railshot.NativeTailDispatcher // codeCache.mu protects failed cleanup
+	retiredGenerations                               []rv64RetiredTailGeneration
+	retiredGenerationCode, retiredGenerationMetadata int
 	// Mapping-owned exact logical span, independent of readable execution views
 	// and page-rounded cleanup storage. Set once at mapping under codeCache.mu.
 	mappedCodeBytes int

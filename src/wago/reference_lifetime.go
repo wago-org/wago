@@ -67,10 +67,12 @@ func (lifetime referenceLifetime) finalize() {
 	in.lifeMu.Unlock()
 
 	lifetime.notifyStore(store, referenceLifetimeResourcesReleased)
-	in.releaseResources()
+	var cleanup resourceCleanup
+	in.releaseResources(&cleanup)
 	if finalizers != nil && finalizers.physical != nil {
-		finalizers.physical()
+		cleanup.run(finalizers.physical)
 	}
+	cleanup.finish()
 }
 
 func (lifetime referenceLifetime) afterPhysicalRelease(fn func()) {

@@ -951,9 +951,7 @@ func (t *Table) pruneRetainedInstances() {
 	}
 	t.mu.Unlock()
 	railshotUnlockNativeTableScan()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	releaseRetainedResourceRoots(release)
 }
 
 func (t *Table) releaseRetainedInstances() {

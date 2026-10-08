@@ -13,8 +13,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// Private fixed-graph qualification boundary. Public source/artifact admission
-// and ordinary entry hooks do not construct or activate these generations yet.
+// A generation freezes one retained owner graph. Entry/resume replaces it only
+// when that graph grows; older versions survive through the entry's cold exit.
 // Every operation is serialized by nativeExecutionMu. The exact scope keeps all
 // original physical roots through parks, other roots' entries and cold handling.
 const rv64MaxTailGenerations = 32
@@ -116,7 +116,7 @@ func rv64NewDefinedTailGeneration(caller *Instance, scope *rv64NativeTableTarget
 	if err != nil {
 		return nil, err
 	}
-	metadata += ownerMetadata + int(unsafe.Sizeof(rv64NativeTailGeneration{})) + scope.count*16
+	metadata += ownerMetadata + int(unsafe.Sizeof(rv64NativeTailGeneration{})) + 2*int(unsafe.Sizeof(rv64RetiredTailGeneration{})) + 32 + scope.count*16
 	// Conservatively charge every retained guest image per live generation.
 	// Distinct overlapping scopes can contain different images; subtracting
 	// only the newest graph's guests would undercharge their retained union.
@@ -295,6 +295,11 @@ func (g *rv64NativeTailGeneration) Close() error {
 	if err := g.factory.Close(); err != nil {
 		return err
 	}
+	g.releaseReservation()
+	return nil
+}
+
+func (g *rv64NativeTailGeneration) releaseReservation() {
 	for _, budget := range []*rv64NativeTailGenerationBudget{&g.scope.tailBudget, &g.state.tailGenerationBudget} {
 		budget.code -= g.codeBytes
 		budget.metadata -= g.metadataBytes
@@ -305,5 +310,4 @@ func (g *rv64NativeTailGeneration) Close() error {
 	}
 	g.factory, g.owners, g.snapshots, g.callerOwner = nil, nil, nil, nil
 	g.reserved = false
-	return nil
 }

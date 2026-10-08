@@ -160,15 +160,15 @@ func (state *preparedSessionState) closeNow() {
 		return
 	}
 	fn := state.fn
+	defer fn.in.endInvocation()
 	if state.fast {
 		fn.in.ensurePluginState().invokeMu.Unlock()
 	} else {
+		defer state.lease.unlock()
 		if state.host {
-			state.dropHostLease(false)
+			state.dropHostLease(state.hostGate.migrated.Load())
 		}
-		state.lease.unlock()
 	}
-	fn.in.endInvocation()
 }
 
 // Invoke calls the reserved prepared function. Returned results have the same
@@ -379,12 +379,23 @@ func (state *preparedSessionState) hostLeaseValid() bool {
 }
 
 func (state *preparedSessionState) dropHostLease(migrated bool) {
+	// Failed RV64 detachment retains its exact scope in the root pool. This
+	// prepared session must still forget its released native mutex, so later
+	// Close/endCall cannot unlock it twice while quarantine awaits a retry.
+	defer state.clearHostLease()
 	if migrated {
+		err := railshotRetireNativeTableTargets(state.entry.tables)
 		nativeExecutionMu.Unlock()
+		if err != nil {
+			panic(invalidHostReference{err: err})
+		}
 		railshotReleaseNativeTableTargets(state.entry.tables)
 	} else {
 		state.entry.unlockExecution()
 	}
+}
+
+func (state *preparedSessionState) clearHostLease() {
 	pluginState := state.fn.in.ensurePluginState()
 	pluginState.nativeShareMu.Lock()
 	if pluginState.preparedHostGate == &state.hostGate {

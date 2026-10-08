@@ -194,5 +194,29 @@ func railshotRetryNativeTail(c *Compiled) error {
 	}
 	clear(owners[len(retained):])
 	indexes.railshotTail.retired = retained
+	errs = append(errs, rv64RetryRetiredTailGenerations(&indexes.railshotTail, (*railshot.NativeTailDispatcher).Close))
+	return errors.Join(errs...)
+}
+
+// Caller holds codeCache.mu. The close operation is passed explicitly so tests
+// can keep failed owners charged across repeated cleanup attempts.
+func rv64RetryRetiredTailGenerations(state *railshotTailCompiledState, closeMapping func(*railshot.NativeTailDispatcher) error) error {
+	var errs []error
+	generations := state.retiredGenerations
+	pending := generations[:0]
+	for _, g := range generations {
+		if err := closeMapping(g.factory); err != nil {
+			pending = append(pending, g)
+			errs = append(errs, err)
+		} else {
+			state.retiredGenerationCode -= g.code
+			state.retiredGenerationMetadata -= g.metadata
+		}
+	}
+	clear(generations[len(pending):])
+	if len(pending) == 0 {
+		pending = nil
+	}
+	state.retiredGenerations = pending
 	return errors.Join(errs...)
 }

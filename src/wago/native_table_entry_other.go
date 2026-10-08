@@ -8,4 +8,12 @@ func railshotAcquireNativeTableTargets(*Instance) (railshotTableEntryLease, erro
 	return railshotTableEntryLease{}, nil
 }
 func railshotReleaseNativeTableTargets(railshotTableEntryLease) {}
-func railshotRefreshNativeTableTargets(*Instance)               {}
+func railshotCurrentNativeTableTargets(*Instance) railshotTableEntryLease {
+	return railshotTableEntryLease{}
+}
+func railshotRefreshNativeTableTargets(railshotTableEntryLease) {}
+
+func railshotRetireNativeTableTargets(railshotTableEntryLease) error { return nil }
+func railshotRetryNativeTableRetirement(*Instance) error             { return nil }
+
+func railshotRetryClosedNativeTableRetirement(*Instance) error { return nil }
