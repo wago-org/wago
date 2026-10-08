@@ -157,7 +157,7 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 		if owner.c == nil || owner.jm == nil || owner.base == 0 || owner.nativeContext == 0 || owner.hostEvents != nil || !owner.c.nativeContextTrapABI {
 			return fmt.Errorf("RV64 table target requires a retained native framed owner")
 		}
-		if _, err := (rv64TailCodeOwner{owner}).NativeTailCodeView(); err != nil {
+		if _, err := (rv64TailCodeOwner{owner}).nativeOwnerCodeView(true); err != nil {
 			return err
 		}
 		if err := owner.c.validateCached(); err != nil {

@@ -68,6 +68,10 @@ func compile(data []byte, regs []uint8) (*Compiled, error) {
 	return compileOptions(data, regs, CompileOptions{})
 }
 func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.NativeReferenceCalls && (!opts.production || !opts.InvocationContext || !opts.Interruptible || !opts.ForeignTableCalls) {
+		return nil, unsupported("call_ref requires retained cooperative production ABI")
+	}
+
 	if opts.localTailCalls && (!opts.production || !opts.Interruptible) {
 		return nil, unsupported("local tails require the production cooperative runtime ABI")
 	}
@@ -103,6 +107,10 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 // The public frontend has already validated its configured limits and retains
 // the decoded source. Lowering still enforces the bounded RV64 module policy.
 func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.NativeReferenceCalls && (!opts.production || !opts.InvocationContext || !opts.Interruptible || !opts.ForeignTableCalls) {
+		return nil, unsupported("call_ref requires retained cooperative production ABI")
+	}
+
 	if opts.dynamicTailCalls && (!opts.importTailCalls || !opts.InvocationContext || !opts.ForeignTableCalls) {
 		return nil, unsupported("private dynamic tails require invocation/foreign factory contract")
 	}
@@ -130,6 +138,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.foreignTableCalls = opts.ForeignTableCalls
 	state.importTailCalls = opts.importTailCalls
 	state.dynamicTailCalls = opts.dynamicTailCalls
+	state.referenceCalls = opts.NativeReferenceCalls
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	importTailCount := 0
 	integerSummaries := make([]integerSummary, len(m.Code))
@@ -158,7 +167,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}
+		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}
 		if opts.production {
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)

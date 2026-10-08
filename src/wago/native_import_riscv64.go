@@ -367,7 +367,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		}
 		params, results = max(params, p), max(results, r)
 	}
-	if c.tableCount() != 0 {
+	if c.tableCount() != 0 || c.nativeReferenceCallABI {
 		if len(c.Types) > railshot.MaxFunctions {
 			return 0, 0, fmt.Errorf("RV64 indirect type directory bound")
 		}

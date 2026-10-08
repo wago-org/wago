@@ -519,7 +519,11 @@ func TestRV64PublicNativeTailCancellationAndCloseWhileProducerParked(t *testing.
 	rv64TailCancellationAndCloseWhileProducerParked(t, false, false)
 }
 
-func rv64TailCancellationAndCloseWhileProducerParked(t *testing.T, dynamic, reference bool) {
+func TestRV64PublicReferenceCallCancellationAndCloseWhileProducerParked(t *testing.T) {
+	rv64TailCancellationAndCloseWhileProducerParked(t, false, true, true)
+}
+func rv64TailCancellationAndCloseWhileProducerParked(t *testing.T, dynamic, reference bool, call ...bool) {
+	ordinary := len(call) != 0 && call[0]
 	for _, closeRoot := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifacttrue-close%t", closeRoot), func(t *testing.T) {
 			// An independently retained cell witnesses every incorrect guest resume,
@@ -551,12 +555,12 @@ func rv64TailCancellationAndCloseWhileProducerParked(t *testing.T, dynamic, refe
 			if dynamic || reference {
 				callerSource = rv64DynamicNativeImportModule([]wasm.ValType{wasm.I32}, false)
 				if reference {
-					callerSource = rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, true)
+					callerSource = rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, true, ordinary)
 				}
 				callerImports = NewImports().Function("env", "target", export)
 				args = append(args, 0)
 			}
-			consumer, err := Instantiate(rv64NativeTailCompile(t, fmt.Sprintf("native-tail-close-caller-dynamic%t-reference%t", dynamic, reference), callerSource, true), callerImports)
+			consumer, err := Instantiate(rv64NativeTailCompile(t, fmt.Sprintf("native-tail-close-caller-dynamic%t-reference%t-ordinary%t", dynamic, reference, ordinary), callerSource, true), callerImports)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -587,7 +591,7 @@ func rv64TailCancellationAndCloseWhileProducerParked(t *testing.T, dynamic, refe
 			if err := producerCode.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if producer.jm == nil || len(producer.ctrl) == 0 || rv64EntryCapability(consumer) == 0 {
+			if producer.jm == nil || len(producer.ctrl) == 0 || (!ordinary && rv64EntryCapability(consumer) == 0) || (ordinary && consumer.pluginState.Load().railshotInvocation.tableDepth == 0) {
 				t.Fatal("parked retained producer released")
 			}
 			if closeRoot {

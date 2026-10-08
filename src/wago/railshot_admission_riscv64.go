@@ -50,6 +50,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxProductionImports {
 		return reject("aggregate import bound")
 	}
+	if err := railshotValidateReferenceCalls(c); err != nil {
+		return reject(err.Error())
+	}
 	if err := rv64ValidateNativeTail(c); err != nil {
 		return reject(err.Error())
 	}
@@ -113,7 +116,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
-	if rv64HasReferenceTail(c) {
+	if rv64HasReferenceTail(c) || c.nativeReferenceCallABI {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	if c.requiredFeatures & ^qualifiedFeatures != 0 || c.requiredAMD64Features != 0 || c.preparedIsolatedTables {

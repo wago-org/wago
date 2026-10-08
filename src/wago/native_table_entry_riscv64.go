@@ -51,7 +51,7 @@ type railshotTableEntryLease struct {
 }
 
 func railshotRequiresNativeOwnerScope(c *Compiled) bool {
-	return c.tableCount() != 0 || rv64HasDynamicTail(rv64NativeTailModule(c))
+	return c.nativeReferenceCallABI || c.tableCount() != 0 || rv64HasDynamicTail(rv64NativeTailModule(c))
 }
 
 func rv64NeedsTableEntry(root *Instance) (bool, error) {

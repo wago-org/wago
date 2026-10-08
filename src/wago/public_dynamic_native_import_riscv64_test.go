@@ -204,7 +204,11 @@ func TestRV64PublicDynamicNativeImportHostParkReentry(t *testing.T) {
 func TestRV64PublicReferenceTailHostParkReentry(t *testing.T) {
 	rv64PublicDynamicNativeImportHostParkReentry(t, true)
 }
-func rv64PublicDynamicNativeImportHostParkReentry(t *testing.T, reference bool) {
+func TestRV64PublicReferenceCallHostParkReentry(t *testing.T) {
+	rv64PublicDynamicNativeImportHostParkReentry(t, true, true)
+}
+func rv64PublicDynamicNativeImportHostParkReentry(t *testing.T, reference bool, call ...bool) {
+	ordinary := len(call) != 0 && call[0]
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			var producer, in *Instance
@@ -216,8 +220,16 @@ func rv64PublicDynamicNativeImportHostParkReentry(t *testing.T, reference bool) 
 				if depth == 0 {
 					view := rv64InvocationViewForTest(producer)
 					before := bytes.Clone(view)
-					if railshotParkedNativeInvocation(producer) == 0 || rv64EntryCapability(in) == 0 || in.pluginState.Load().railshotInvocation.tailGenerationBudget.count == 0 {
-						panic("parked dynamic tail lost activation/generation")
+					state := &in.pluginState.Load().railshotInvocation
+					if railshotParkedNativeInvocation(producer) == 0 || state.tableDepth == 0 {
+						panic("parked reference lost native owner activation")
+					}
+					if ordinary {
+						if rv64EntryCapability(in) != 0 || state.tailGenerationBudget.count != 0 || state.tailDispatcher != nil {
+							panic("ordinary reference allocated a tail factory")
+						}
+					} else if rv64EntryCapability(in) == 0 || state.tailGenerationBudget.count == 0 {
+						panic("parked dynamic tail lost generation")
 					}
 					depth++
 					got, err := producer.InvokeFromHost(context.Background(), caller, "producer", 8)
@@ -247,9 +259,9 @@ func rv64PublicDynamicNativeImportHostParkReentry(t *testing.T, reference bool) 
 			}
 			source := rv64DynamicNativeImportModule([]wasm.ValType{wasm.I32}, false)
 			if reference {
-				source = rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, true)
+				source = rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, true, ordinary)
 			}
-			c := rv64NativeTailCompile(t, fmt.Sprintf("dynamic-native-host-caller-reference%t", reference), source, artifact)
+			c := rv64NativeTailCompile(t, fmt.Sprintf("dynamic-native-host-caller-reference%t-ordinary%t", reference, ordinary), source, artifact)
 			in, err = Instantiate(c, NewImports().Function("env", "target", export))
 			if err != nil {
 				t.Fatal(err)

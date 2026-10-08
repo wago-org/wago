@@ -40,7 +40,9 @@ type CompileOptions struct {
 	// activation-owned views. Legacy private contexts must leave it false.
 	// NativeTailCalls requires the invocation-bound proper-tail factory runtime.
 	// It is an internal qualification contract until every target family is ready.
-	NativeTailCalls                 bool
+	NativeTailCalls bool
+	// NativeReferenceCalls requires retained canonical owners for ordinary call_ref.
+	NativeReferenceCalls            bool
 	InvocationContext               bool
 	ForeignTableCalls               bool
 	MemoryPressureAt                int
@@ -68,6 +70,7 @@ type CompileOptions struct {
 	// A source typed-tail requirement must have a qualified emitted plan, even
 	// when all typed-tail instructions occur in unreachable code.
 	referenceTailInstructions bool
+	referenceCallInstructions bool
 	tailPlans                 *[]tailImportPlan
 	tailSiteBase              uint32
 }

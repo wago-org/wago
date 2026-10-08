@@ -37,6 +37,7 @@ type emissionMode struct {
 	localTailCalls         bool
 	importTailCalls        bool
 	dynamicTailCalls       bool
+	referenceCalls         bool
 	tailPlans              *[]tailImportPlan
 	tailSiteBase           uint32
 	localMutableReferences bool

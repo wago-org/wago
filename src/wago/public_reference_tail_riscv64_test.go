@@ -17,7 +17,11 @@ import (
 
 // Table-free ref.func requires a declarative segment. Type 2 duplicates type 0,
 // proving that the tail's declared type and function index are distinct spaces.
-func rv64PublicReferenceTailModule(types []wasm.ValType, imported bool) []byte {
+func rv64PublicReferenceTailModule(types []wasm.ValType, imported bool, ordinary ...bool) []byte {
+	opcode := byte(0x15)
+	if len(ordinary) != 0 && ordinary[0] {
+		opcode = 0x14
+	}
 	callerTypes := append(slices.Clone(types), wasm.I32)
 	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(callerTypes, types), wasmtest.FuncType(types, types), wasmtest.FuncType(nil, types)))}
 	var args []byte
@@ -37,15 +41,21 @@ func rv64PublicReferenceTailModule(types []wasm.ValType, imported bool) []byte {
 	}
 	body := []byte{0x20, byte(len(types)), 0x04, 3}
 	body = append(body, args...)
-	body = append(body, 0xd0, 2, 0x15, 2, 0x05)
+	body = append(body, 0xd0, 2, opcode, 2, 0x05)
 	body = append(body, args...)
-	body = append(body, 0xd2, 0, 0x15, 2, 0x0b, 0x0b)
+	body = append(body, 0xd2, 0, opcode, 2, 0x0b, 0x0b)
 	codes = append(codes, wasmtest.Code(body))
 	sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, callIndex), wasmtest.ExportEntry("identity", 0, identityIndex))), wasmtest.Section(9, []byte{1, 3, 0, 1, 0}), wasmtest.Section(10, wasmtest.Vec(codes...)))
 	return wasmtest.Module(sections...)
 }
 
 func TestRV64PublicReferenceTailSourceArtifact(t *testing.T) {
+	rv64PublicReferenceSourceArtifact(t, false)
+}
+func TestRV64PublicReferenceCallSourceArtifact(t *testing.T) {
+	rv64PublicReferenceSourceArtifact(t, true)
+}
+func rv64PublicReferenceSourceArtifact(t *testing.T, ordinary bool) {
 	for _, artifact := range []bool{false, true} {
 		for _, shape := range []string{"zero", "mixed", "vector"} {
 			for _, imported := range []bool{false, true} {
@@ -62,7 +72,7 @@ func TestRV64PublicReferenceTailSourceArtifact(t *testing.T) {
 						input = append(input, 0xaabbccddeeff0011, 0xfedcba9876543210)
 						want = append(want, input[4:]...)
 					}
-					key := fmt.Sprintf("reference-tail-%s-imported%t", shape, imported)
+					key := fmt.Sprintf("reference-call-%s-imported%t-ordinary%t", shape, imported, ordinary)
 					var imports *Imports
 					var producer *Instance
 					if imported {
@@ -79,14 +89,23 @@ func TestRV64PublicReferenceTailSourceArtifact(t *testing.T) {
 						}
 						imports = NewImports().Function("env", "target", export)
 					}
-					c := rv64NativeTailCompile(t, key, rv64PublicReferenceTailModule(types, imported), artifact)
+					c := rv64NativeTailCompile(t, key, rv64PublicReferenceTailModule(types, imported, ordinary), artifact)
 					m := rv64NativeTailModule(c)
-					if c.tableCount() != 0 || !c.needsFuncRefDescs() || m == nil || len(m.Plans) != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || !c.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences) {
+					if c.tableCount() != 0 || !c.needsFuncRefDescs() || !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || !c.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences) {
 						t.Fatal("table-free reference tail metadata")
 					}
-					for _, p := range m.Plans {
-						if p.Kind != encoder.NativeTailReference || p.TypeIndex != 2 || p.ReferenceBase == 0 {
-							t.Fatal("reference plan", p)
+					if ordinary {
+						if m != nil || !c.nativeReferenceCallABI {
+							t.Fatal("ordinary reference lost distinct execution marker")
+						}
+					} else {
+						if m == nil || len(m.Plans) != 2 || c.nativeReferenceCallABI {
+							t.Fatal("tail metadata changed")
+						}
+						for _, p := range m.Plans {
+							if p.Kind != encoder.NativeTailReference || p.TypeIndex != 2 || p.ReferenceBase == 0 {
+								t.Fatal("reference plan", p)
+							}
 						}
 					}
 					in, err := Instantiate(c, imports)
@@ -205,25 +224,11 @@ func TestRV64PublicReferenceTailCodecAdmission(t *testing.T) {
 }
 
 func TestRV64PublicReferenceTailWholeModuleGate(t *testing.T) {
-	for _, extra := range [][]byte{{0x00, 0xd0, 0, 0x14, 0, 0x0b}, {0x00, 0xd0, 0, 0x15, 0, 0x0b}} {
-		source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(extra))))
-		if c, err := rv64NativeTailConfig().Compile(source); c != nil || err == nil {
-			if c != nil {
-				_ = c.Close()
-			}
-			t.Fatalf("unqualified dead opcode %x admitted: %v", extra, err)
-		}
-	}
-	// A real supported tail cannot launder an ordinary call_ref in another body.
-	types := []wasm.ValType{wasm.I32}
-	valid := []byte{0x20, 0, 0x0b}
-	dead := []byte{0x00, 0x14, 2, 0x0b}
-	// Rebuild rather than changing code-section lengths in a serialized module.
-	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(types, types), wasmtest.FuncType(types, types))), wasmtest.Section(3, []byte{3, 0, 1, 0}), wasmtest.Section(9, []byte{1, 3, 0, 1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(valid), wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x15, 2, 0x0b}), wasmtest.Code(dead))))
+	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0xd0, 0, 0x15, 0, 0x0b}))))
 	if c, err := rv64NativeTailConfig().Compile(source); c != nil || err == nil {
 		if c != nil {
 			_ = c.Close()
 		}
-		t.Fatal("unreachable ordinary call_ref laundered through Kind2", err)
+		t.Fatal("dead-only typed tail module admitted without a qualified tail plan", err)
 	}
 }

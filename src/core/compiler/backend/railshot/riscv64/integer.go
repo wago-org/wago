@@ -508,7 +508,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 && (!state.dynamicTailCalls || heap < 0 || uint64(heap) >= uint64(len(state.types))) {
+				if heap != -16 && (!(state.dynamicTailCalls || state.referenceCalls) || heap < 0 || uint64(heap) >= uint64(len(state.types))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -642,6 +642,39 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			live = false
 			h = ctrl[depth-1].base
+		case 0x14:
+			typeIndex, e := r.U32()
+			if e != nil {
+				return integerSummary{}, e
+			}
+			if state == nil || !state.production || !state.referenceCalls || !state.foreignTableCalls || !privateRefs || uint64(typeIndex) >= uint64(len(state.types)) {
+				return integerSummary{}, unsupported("call_ref retained owner/signature contract")
+			}
+			sig := state.types[typeIndex]
+			callCount++
+			budget += len(sig.params) + len(sig.results) + 1
+			tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
+			if callCount > maxDirectCalls || budget > integerBudget {
+				return integerSummary{}, unsupported("call_ref count/slot budget")
+			}
+			if _, err = popClass(true); err != nil {
+				return integerSummary{}, err
+			}
+			referenceSlot := h
+			for j := len(sig.params) - 1; j >= 0; j-- {
+				if err = popWidth(sig.params[j]); err != nil {
+					return integerSummary{}, err
+				}
+			}
+			if live && emit != nil {
+				emit.referenceCall(sig.signature, sig.key, h, referenceSlot, emit.SpillOffset, 8)
+			}
+			for _, wide := range sig.results {
+				if err = push(wide); err != nil {
+					return integerSummary{}, err
+				}
+			}
+
 		case 0x15:
 			typeIndex, e := r.U32()
 			if e != nil {

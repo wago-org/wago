@@ -2,7 +2,10 @@
 
 package wago
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 func railshotAdmitSource([]byte, *wasm.Module) error                                    { return nil }
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
@@ -13,3 +16,10 @@ func railshotPublishConstructedTableProducer(*Table, *Instance) *Instance { retu
 
 func railshotLockNativeTableScan()   {}
 func railshotUnlockNativeTableScan() {}
+
+func railshotValidateReferenceCalls(c *Compiled) error {
+	if c.nativeReferenceCallABI {
+		return fmt.Errorf("RV64 call_ref execution on a foreign architecture")
+	}
+	return nil
+}

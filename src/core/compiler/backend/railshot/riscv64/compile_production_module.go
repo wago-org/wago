@@ -41,6 +41,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if opts.InvocationContext && !opts.Interruptible {
 		return nil, unsupported("invocation views require cooperative production")
 	}
+	if opts.NativeReferenceCalls && (!opts.InvocationContext || !opts.Interruptible || !opts.ForeignTableCalls) {
+		return nil, unsupported("call_ref requires retained cooperative invocation ABI")
+	}
 	if opts.NativeTailCalls {
 		if !opts.InvocationContext || !opts.Interruptible {
 			return nil, unsupported("staged tails require authenticated cooperative invocation ABI")
@@ -86,11 +89,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	referenceTails, err := admitProductionDynamicTails(m)
+	referenceTails, referenceCalls, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls)
 	if err != nil {
 		return nil, err
 	}
 	opts.referenceTailInstructions = referenceTails
+	opts.referenceCallInstructions = referenceCalls
 	usesSWAR, err := moduleUsesSWAR(m)
 	if err != nil {
 		return nil, err
@@ -248,34 +252,38 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 		image.CodeImage = nil
 	}
 	image.NativeTail = tail
+	image.NativeReferenceCalls = opts.referenceCallInstructions
 	if diagnosticsEnabled && opts.Stats != nil {
 		collectFinalizedStats(c, opts.Stats)
 	}
 	return image, nil
 }
 
-// Even unreachable ordinary call_ref instructions stay outside this bounded
-// tail profile until their normal-return transport is qualified. Instruction
-// bytes were bounded before this pass.
-func admitProductionDynamicTails(m *wasm.Module) (bool, error) {
-	referenceTails := false
+// Source instruction requirements are persisted independently of reachability.
+// Ordinary references require their distinct retained normal-return protocol.
+// Instruction bytes were bounded before this pass.
+func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, bool, error) {
+	referenceTails, hasReferenceCall := false, false
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		r := wasm.ReaderFrom(fn.BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
-				return false, err
+				return false, false, err
 			}
 			if op == 0x14 {
-				return false, unsupported("ordinary call_ref runtime attachment is pending")
+				if !referenceCalls {
+					return false, false, unsupported("call_ref requires retained native reference protocol")
+				}
+				hasReferenceCall = true
 			}
 			referenceTails = referenceTails || op == 0x15
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
-				return false, err
+				return false, false, err
 			}
 		}
 	}
-	return referenceTails, nil
+	return referenceTails, hasReferenceCall, nil
 }

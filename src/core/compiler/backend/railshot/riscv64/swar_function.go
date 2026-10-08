@@ -99,6 +99,10 @@ func walkSWARPairsWithImportTailMode(fn *wasm.Func, ft *wasm.CompType, profile m
 }
 
 func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls bool, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithTypedCallMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, false, emit)
+}
+
+func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls bool, emit *integerEmitter) (swarSummary, error) {
 	if dynamicTailCalls && (!importTailCalls || !foreignTableCalls || !localTailCalls) {
 		return swarSummary{}, unsupported("private dynamic tail walker contract")
 	}
@@ -432,27 +436,41 @@ func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile 
 			flow.live = false
 			flow.frames[flow.depth-1].unreachable = true
 			h = flow.floor()
-		case 0x15:
+		case 0x14, 0x15:
+			tail := op == 0x15
 			typeIndex, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
 			}
-			// A typed descriptor is authenticated by the entry-owned factory;
-			// table-free reference tails need no table type-key directory.
-			if !dynamicTailCalls || !privateRefs || uint64(typeIndex) >= uint64(len(types)) {
-				return swarSummary{}, unsupported("SWAR private dynamic typed tail profile required")
+			// A typed descriptor belongs to the retained owner scope. Proper tails
+			// additionally authenticate it through the entry-owned factory.
+			if (tail && !dynamicTailCalls || !tail && !referenceCalls) || !foreignTableCalls || !privateRefs || uint64(typeIndex) >= uint64(len(types)) {
+				return swarSummary{}, unsupported("SWAR typed call requires its retained reference profile")
 			}
 			sig := types[typeIndex]
-			if err := admitSWARLocalTailSignature(ft, sig); err != nil {
-				return swarSummary{}, err
+			if tail {
+				if err := admitSWARLocalTailSignature(ft, sig); err != nil {
+					return swarSummary{}, err
+				}
+				importTails++
+			} else {
+				if err := swarCallSignature(sig); err != nil {
+					return swarSummary{}, err
+				}
+				if err := reserve(nativeTableCallCodeBound(swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results))); err != nil {
+					return swarSummary{}, err
+				}
 			}
-			importTails++
 			calls++
 			budget += swarSignatureSlots(sig.Params) + swarSignatureSlots(sig.Results) + 1
 			if calls > maxDirectCalls || budget > integerBudget {
-				return swarSummary{}, unsupported("SWAR typed tail count/transfer budget")
+				return swarSummary{}, unsupported("SWAR typed call count/transfer budget")
 			}
-			if err := reserve(128*len(sig.Params) + 1024); err != nil {
+			transferValues := len(sig.Params)
+			if !tail {
+				transferValues += len(sig.Results)
+			}
+			if err := reserve(128*transferValues + 1024); err != nil {
 				return swarSummary{}, err
 			}
 			var operands [maxSWARLocals + 1]swarClass
@@ -474,12 +492,25 @@ func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile 
 			}
 			usesTraps = true
 			if emit != nil && flow.live {
-				emit.dynamicReferenceTailCall(typeIndex, sig, base, h-1, spill, 16)
+				if tail {
+					emit.dynamicReferenceTailCall(typeIndex, sig, base, h-1, spill, 16)
+				} else {
+					emit.referenceCall(sig, wasm.StructuralFuncTypeKey(sig), base, h-1, spill, 16)
+				}
 			}
-			flow.usesLoops = true
-			flow.live = false
-			flow.frames[flow.depth-1].unreachable = true
-			h = flow.floor()
+			if tail {
+				flow.usesLoops = true
+				flow.live = false
+				flow.frames[flow.depth-1].unreachable = true
+				h = flow.floor()
+			} else {
+				h = base
+				for _, typ := range sig.Results {
+					if err := push(swarClassOf(typ)); err != nil {
+						return swarSummary{}, err
+					}
+				}
+			}
 		case 0x11, 0x13:
 			typeIndex, err := r.U32()
 			if err != nil {
@@ -510,7 +541,11 @@ func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile 
 			if calls > maxDirectCalls || budget > integerBudget {
 				return swarSummary{}, unsupported("SWAR indirect call count/transfer budget")
 			}
-			if err := reserve(128*(len(sig.Params)+len(sig.Results)) + 1024); err != nil {
+			transferValues := len(sig.Params)
+			if !tail {
+				transferValues += len(sig.Results)
+			}
+			if err := reserve(128*transferValues + 1024); err != nil {
 				return swarSummary{}, err
 			}
 			if foreignTableCalls {
@@ -846,7 +881,7 @@ func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile 
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if heap != -16 && (!dynamicTailCalls || heap < 0 || uint64(heap) >= uint64(len(types))) {
+				if heap != -16 && (!(dynamicTailCalls || referenceCalls) || heap < 0 || uint64(heap) >= uint64(len(types))) {
 					return swarSummary{}, unsupported("SWAR private nullable abstract funcref only")
 				}
 				if err := push(swarFuncRef); err != nil {
@@ -1954,7 +1989,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	summary, err := walkSWARPairsWithDynamicTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, nil)
+	summary, err := walkSWARPairsWithTypedCallMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1977,7 +2012,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	actual, err := walkSWARPairsWithDynamicTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, &f)
+	actual, err := walkSWARPairsWithTypedCallMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

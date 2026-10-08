@@ -44,6 +44,7 @@ func railshotStagedTailFeatures(c *RuntimeConfig) CoreFeatures {
 }
 func railshotConfigureNativeTail(required CoreFeatures, opts *railshotCompileOptions) {
 	opts.NativeTailCalls = required.IsEnabled(CoreFeatureTailCall)
+	opts.NativeReferenceCalls = required.IsEnabled(CoreFeatureTypedFunctionReferences)
 }
 func rv64NativeTailModule(c *Compiled) *encoder.NativeTailModule {
 	if x := c.loadCompileIndexes(); x != nil {
@@ -74,6 +75,7 @@ func railshotStoreNativeTail(c *Compiled, image *railshotCompiledModule, cfg *Ru
 	if cfg != nil {
 		c.ensureCompileIndexes().railshotTail.sourceCodeLimit = cfg.maxNativeCodeBytes
 	}
+	c.nativeReferenceCallABI = image.NativeReferenceCalls
 	if image.NativeTail == nil {
 		return nil
 	}

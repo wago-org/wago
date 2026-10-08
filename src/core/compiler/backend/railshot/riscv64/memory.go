@@ -34,6 +34,7 @@ type moduleState struct {
 	foreignTableCalls      bool
 	importTailCalls        bool
 	dynamicTailCalls       bool
+	referenceCalls         bool
 	importReferences       bool
 	localMutableReferences bool
 	ownedTable             bool
@@ -248,7 +249,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-		if s.ownedTable {
+		if s.ownedTable || s.importReferences {
 			var ok bool
 			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
 			if !ok {

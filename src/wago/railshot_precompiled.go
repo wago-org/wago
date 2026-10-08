@@ -21,6 +21,7 @@ type railshotModuleStats struct{}
 
 type railshotCompileOptions struct {
 	NativeTailCalls        bool
+	NativeReferenceCalls   bool
 	SourceMaps             bool
 	UnwindMaps             bool
 	Profile                bool
