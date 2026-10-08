@@ -140,15 +140,15 @@ func (d *tailRADynamicSite) validate(s *tailRAProofSite) error {
 				if err := f.validate(true); err != nil {
 					return err
 				}
-				if f.code.Base()+uintptr(f.info.Entry) != t.code.Base()+uintptr(t.info.Entry) || f.job.LinMemBase() != t.job.LinMemBase() || tailRAPointer(f.context) != tailRAPointer(t.context) || tailRAPointer(f.directory) != tailRAPointer(t.directory) {
+				if f.codeBase()+uintptr(f.info.Entry) != t.codeBase()+uintptr(t.info.Entry) || f.job.LinMemBase() != t.job.LinMemBase() || tailRAPointer(f.context) != tailRAPointer(t.context) || tailRAPointer(f.directory) != tailRAPointer(t.directory) {
 					return unsupported("dynamic tail defined descriptor retargeted")
 				}
 			}
-			entry, home := f.code.Base()+uintptr(f.info.Entry), f.job.LinMemBase()
+			entry, home := f.codeBase()+uintptr(f.info.Entry), f.job.LinMemBase()
 			key := wasm.StructuralFuncTypeKey(f.signature)
 			desc := o.descriptors[40*(i+1):]
 			row := o.directory[abi.RV64TailTargetsHeaderBytes+i*abi.RV64TailTargetsRowBytes:]
-			if o.proxy(i) == nil && !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(home) || binary.LittleEndian.Uint64(desc) != uint64(entry) || binary.LittleEndian.Uint64(desc[8:]) != key || binary.LittleEndian.Uint64(desc[16:]) != uint64(home)|abi.FuncRefLocalWrapperHomeTag || binary.LittleEndian.Uint64(desc[24:]) != uint64(anchor+uintptr(40*(i+1))) || binary.LittleEndian.Uint64(desc[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(row) != uint64(t.code.Base()+uintptr(t.info.Entry)) || binary.LittleEndian.Uint64(row[8:]) != uint64(t.job.LinMemBase()) || binary.LittleEndian.Uint64(row[16:]) != uint64(tailRAPointer(t.context)) || binary.LittleEndian.Uint64(row[24:]) != 0 {
+			if o.proxy(i) == nil && !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(home) || binary.LittleEndian.Uint64(desc) != uint64(entry) || binary.LittleEndian.Uint64(desc[8:]) != key || binary.LittleEndian.Uint64(desc[16:]) != uint64(home)|abi.FuncRefLocalWrapperHomeTag || binary.LittleEndian.Uint64(desc[24:]) != uint64(anchor+uintptr(40*(i+1))) || binary.LittleEndian.Uint64(desc[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(row) != uint64(t.codeBase()+uintptr(t.info.Entry)) || binary.LittleEndian.Uint64(row[8:]) != uint64(t.job.LinMemBase()) || binary.LittleEndian.Uint64(row[16:]) != uint64(tailRAPointer(t.context)) || binary.LittleEndian.Uint64(row[24:]) != 0 {
 				return unsupported("dynamic tail genuine defined target")
 			}
 		}
@@ -157,10 +157,13 @@ func (d *tailRADynamicSite) validate(s *tailRAProofSite) error {
 }
 
 func (p *tailRADynamicProxy) validate(source, target tailRAFunction, trampoline uintptr) error {
-	if source.code == nil || source.code.Base() == 0 || source.code.Base()&15 != 0 || source.job == nil || source.job.LinMemBase() == 0 || len(source.snapshot) == 0 || len(source.snapshot) > MaxCodeBytes || !bytes.Equal(source.code.Bytes(), source.snapshot) || len(source.context) != abi.RV64InstanceContextBytes || tailRAPointer(source.context)&7 != 0 || len(source.directory) < 40 || tailRAPointer(source.directory)&7 != 0 || source.info.Entry < 0 || source.info.Entry&15 != 0 || source.info.Entry > len(source.snapshot) || source.info.CodeBytes <= 0 || source.info.CodeBytes > len(source.snapshot)-source.info.Entry {
+	if err := source.validateCode(); err != nil {
+		return err
+	}
+	if source.codeBase() == 0 || source.codeBase()&15 != 0 || source.job == nil || source.job.LinMemBase() == 0 || len(source.snapshot) == 0 || len(source.snapshot) > MaxCodeBytes || !bytes.Equal(source.codeBytes(), source.snapshot) || len(source.context) != abi.RV64InstanceContextBytes || tailRAPointer(source.context)&7 != 0 || len(source.directory) < 40 || tailRAPointer(source.directory)&7 != 0 || source.info.Entry < 0 || source.info.Entry&15 != 0 || source.info.Entry > len(source.snapshot) || source.info.CodeBytes <= 0 || source.info.CodeBytes > len(source.snapshot)-source.info.Entry {
 		return unsupported("dynamic tail retained import proxy image")
 	}
-	expected, err := NativeImportThunk(NativeImportTarget{Entry: target.code.Base() + uintptr(target.info.Entry), Home: target.job.LinMemBase(), Context: tailRAPointer(target.context), Arguments: p.arguments, Results: p.results, ArgumentSlots: swarSignatureSlots(source.signature.Params), ResultSlots: swarSignatureSlots(source.signature.Results), StackOwnedActivation: true, InvocationContext: true, HostTrampoline: trampoline}, source.job.LinMemBase(), tailRAPointer(source.context), p.importIndex)
+	expected, err := NativeImportThunk(NativeImportTarget{Entry: target.codeBase() + uintptr(target.info.Entry), Home: target.job.LinMemBase(), Context: tailRAPointer(target.context), Arguments: p.arguments, Results: p.results, ArgumentSlots: swarSignatureSlots(source.signature.Params), ResultSlots: swarSignatureSlots(source.signature.Results), StackOwnedActivation: true, InvocationContext: true, HostTrampoline: trampoline}, source.job.LinMemBase(), tailRAPointer(source.context), p.importIndex)
 	if err != nil || !bytes.Equal(source.snapshot[source.info.Entry:source.info.Entry+source.info.CodeBytes], expected) {
 		return unsupported("dynamic tail exact native import proxy builder")
 	}
@@ -226,7 +229,7 @@ func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
 							if pn == sn && po == on && pf == fn {
 								break previous
 							}
-							if prev.code == f.code {
+							if prev.codeKey() == f.codeKey() {
 								seen = true
 								break previous
 							}
@@ -328,13 +331,13 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 			}
 			a.Constant64(enc.X29, int64(tailRAPointer(o.descriptors)+uintptr(40*(i+1))))
 			next := a.BranchLong(enc.NE, enc.X14, enc.X29)
-			a.Constant64(enc.X29, int64(f.code.Base()+uintptr(f.info.Entry)))
+			a.Constant64(enc.X29, int64(f.codeBase()+uintptr(f.info.Entry)))
 			a.Ld(enc.Scratch0, enc.X14, 0)
 			e.fail(enc.NE, enc.Scratch0, enc.X29)
 			a.Constant64(enc.X29, int64(f.job.LinMemBase()))
 			a.Ld(enc.Scratch0, enc.X19, 16)
 			e.fail(enc.NE, enc.Scratch0, enc.X29)
-			a.Constant64(enc.X29, int64(t.code.Base()+uintptr(t.info.Entry)))
+			a.Constant64(enc.X29, int64(t.codeBase()+uintptr(t.info.Entry)))
 			e.fail(enc.NE, enc.X16, enc.X29)
 			a.Constant64(enc.X29, int64(t.job.LinMemBase()))
 			e.fail(enc.NE, enc.X17, enc.X29)

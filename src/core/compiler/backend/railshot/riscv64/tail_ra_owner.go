@@ -20,6 +20,7 @@ import (
 // Nothing here is a public attachment API or a serialized address contract.
 type tailRAFunction struct {
 	code               *coreruntime.CodeBuffer
+	published          *NativeTailCodeImage
 	snapshot           []byte
 	info               FunctionInfo
 	signature          *wasm.CompType
@@ -30,16 +31,25 @@ type tailRAFunction struct {
 func tailRAPointer(b []byte) uintptr { return uintptr(unsafe.Pointer(unsafe.SliceData(b))) }
 
 func (f tailRAFunction) validate(caller bool) error {
+	if err := f.validateCode(); err != nil {
+		return err
+	}
 	minimum := coreruntime.InstanceContextBytes
 	if caller {
 		minimum = tailRAContextBytes
 	}
-	if f.code == nil || f.code.Base() == 0 || f.code.Base()&15 != 0 || f.job == nil || f.job.LinMemBase() == 0 || len(f.snapshot) == 0 || len(f.snapshot) > MaxCodeBytes || !bytes.Equal(f.code.Bytes(), f.snapshot) || len(f.context) < minimum || tailRAPointer(f.context)&7 != 0 || len(f.directory) < 40 || tailRAPointer(f.directory)&7 != 0 {
+	if f.codeBase() == 0 || f.codeBase()&15 != 0 || f.job == nil || f.job.LinMemBase() == 0 || len(f.snapshot) == 0 || len(f.snapshot) > MaxCodeBytes || !bytes.Equal(f.codeBytes(), f.snapshot) || len(f.context) < minimum || tailRAPointer(f.context)&7 != 0 || len(f.directory) < 40 || tailRAPointer(f.directory)&7 != 0 {
 		return unsupported("private tail frozen code/context/owner")
 	}
 	i := f.info
 	if !i.mode.production || !i.mode.interruptible || i.Entry < 0 || i.Entry&15 != 0 || i.CodeBytes <= 0 || i.CodeBytes&3 != 0 || i.Entry > len(f.snapshot) || i.CodeBytes > len(f.snapshot)-i.Entry || i.FrameBytes < 16 || i.FrameBytes > MaxFrameBytes || i.FrameBytes&15 != 0 || i.FrameHeaderBytes != 16 && i.FrameHeaderBytes != callFrameHeader || caller && i.FrameHeaderBytes != callFrameHeader {
 		return unsupported("private tail framed entry")
+	}
+	if f.published != nil {
+		frame, err := NativeFrameBytes(f.snapshot, i.Entry)
+		if err != nil || frame != i.FrameBytes {
+			return unsupported("native tail published frame metadata")
+		}
 	}
 	if err := tailRASignature(f.signature); err != nil {
 		return err
@@ -129,9 +139,9 @@ func tailRAOwnedBound(s tailRAOwnerSpec) (int, int, error) {
 		}
 	}
 	codeBytes := len(exitCode)
-	seenCode := make(map[*coreruntime.CodeBuffer]bool)
+	seenCode := make(map[tailRACodeKey]bool)
 	perFunction := make(map[struct {
-		code  *coreruntime.CodeBuffer
+		code  tailRACodeKey
 		entry int
 	}]int)
 	for _, site := range s.sites {
@@ -153,20 +163,20 @@ func tailRAOwnedBound(s tailRAOwnerSpec) (int, int, error) {
 			}
 		}
 		key := struct {
-			code  *coreruntime.CodeBuffer
+			code  tailRACodeKey
 			entry int
-		}{site.caller.code, site.caller.info.Entry}
+		}{site.caller.codeKey(), site.caller.info.Entry}
 		perFunction[key]++
 		if perFunction[key] > maxDirectCalls || len(perFunction) > MaxFunctions {
 			return 0, 0, unsupported("private tail per-function site bound")
 		}
 		for _, f := range []tailRAFunction{site.caller, site.target} {
-			if !seenCode[f.code] {
+			if !seenCode[f.codeKey()] {
 				if len(f.snapshot) > MaxCodeBytes-codeBytes {
 					return 0, 0, unsupported("private tail combined code bound")
 				}
 				codeBytes += len(f.snapshot)
-				seenCode[f.code] = true
+				seenCode[f.codeKey()] = true
 			}
 		}
 		values := len(site.target.signature.Params) + len(site.target.signature.Results)
@@ -182,7 +192,7 @@ func tailRAOwnedBound(s tailRAOwnerSpec) (int, int, error) {
 			return 0, 0, unsupported("private tail combined dispatcher bound")
 		}
 		codeBytes += bound
-		p := tailRAProofSite{frameBytes: site.caller.info.FrameBytes, functionIndex: site.caller.info.mode.functionIndex, sourcePC: site.sourcePC, callerHome: site.caller.job.LinMemBase(), callerContext: tailRAPointer(site.caller.context), target: nativeImportTarget{entry: site.target.code.Base() + uintptr(site.target.info.Entry), home: site.target.job.LinMemBase(), context: tailRAPointer(site.target.context), hostTrampoline: s.hostTrampoline}, params: site.target.signature.Params, results: site.target.signature.Results, sourceBase: site.sourceBase, sourceStride: site.sourceStride, argumentRanges: s.arguments, resultRanges: s.results, continuationRanges: s.continuations, stackLimit: s.stackLimit, stackTop: s.stackTop}
+		p := tailRAProofSite{frameBytes: site.caller.info.FrameBytes, functionIndex: site.caller.info.mode.functionIndex, sourcePC: site.sourcePC, callerHome: site.caller.job.LinMemBase(), callerContext: tailRAPointer(site.caller.context), target: nativeImportTarget{entry: site.target.codeBase() + uintptr(site.target.info.Entry), home: site.target.job.LinMemBase(), context: tailRAPointer(site.target.context), hostTrampoline: s.hostTrampoline}, params: site.target.signature.Params, results: site.target.signature.Results, sourceBase: site.sourceBase, sourceStride: site.sourceStride, argumentRanges: s.arguments, resultRanges: s.results, continuationRanges: s.continuations, stackLimit: s.stackLimit, stackTop: s.stackTop}
 		if err := p.validate(); err != nil {
 			return 0, 0, err
 		}
@@ -212,14 +222,14 @@ func newTailRAOwnerPublishWith(s tailRAOwnerSpec, allocate func(int) (*corerunti
 	if err := s.exit.Seal(); err != nil {
 		return nil, err
 	}
-	seen := make(map[*coreruntime.CodeBuffer]bool)
+	seen := make(map[tailRACodeKey]bool)
 	for _, site := range s.sites {
 		for _, f := range []tailRAFunction{site.caller, site.target} {
-			if !seen[f.code] {
-				if err := f.code.Seal(); err != nil {
+			if !seen[f.codeKey()] {
+				if err := f.publishCode(); err != nil {
 					return nil, err
 				}
-				seen[f.code] = true
+				seen[f.codeKey()] = true
 			}
 		}
 	}
@@ -231,12 +241,12 @@ func newTailRAOwnerPublishWith(s tailRAOwnerSpec, allocate func(int) (*corerunti
 	o.spec.retained = append([]any(nil), s.retained...)
 	o.spec.sites = append([]tailRAOwnerSite(nil), s.sites...)
 	helperCapacity := bound - len(s.exit.Bytes())
-	seen = make(map[*coreruntime.CodeBuffer]bool)
+	seen = make(map[tailRACodeKey]bool)
 	for _, site := range s.sites {
 		for _, f := range []tailRAFunction{site.caller, site.target} {
-			if !seen[f.code] {
+			if !seen[f.codeKey()] {
 				helperCapacity -= len(f.snapshot)
-				seen[f.code] = true
+				seen[f.codeKey()] = true
 			}
 		}
 	}
@@ -265,7 +275,7 @@ func newTailRAOwnerPublishWith(s tailRAOwnerSpec, allocate func(int) (*corerunti
 	binary.LittleEndian.PutUint32(o.capability[12:], uint32(len(s.sites)))
 	exit := s.exit.Base()
 	for i, site := range s.sites {
-		p := tailRAProofSite{frameBytes: site.caller.info.FrameBytes, functionIndex: site.caller.info.mode.functionIndex, sourcePC: site.sourcePC, callerHome: site.caller.job.LinMemBase(), callerContext: tailRAPointer(site.caller.context), target: nativeImportTarget{entry: site.target.code.Base() + uintptr(site.target.info.Entry), home: site.target.job.LinMemBase(), context: tailRAPointer(site.target.context), hostTrampoline: s.hostTrampoline}, params: append([]wasm.ValType(nil), site.target.signature.Params...), results: append([]wasm.ValType(nil), site.target.signature.Results...), sourceBase: site.sourceBase, sourceStride: site.sourceStride, argumentRanges: o.spec.arguments, resultRanges: o.spec.results, continuationRanges: o.spec.continuations, stackLimit: s.stackLimit, stackTop: s.stackTop}
+		p := tailRAProofSite{frameBytes: site.caller.info.FrameBytes, functionIndex: site.caller.info.mode.functionIndex, sourcePC: site.sourcePC, callerHome: site.caller.job.LinMemBase(), callerContext: tailRAPointer(site.caller.context), target: nativeImportTarget{entry: site.target.codeBase() + uintptr(site.target.info.Entry), home: site.target.job.LinMemBase(), context: tailRAPointer(site.target.context), hostTrampoline: s.hostTrampoline}, params: append([]wasm.ValType(nil), site.target.signature.Params...), results: append([]wasm.ValType(nil), site.target.signature.Results...), sourceBase: site.sourceBase, sourceStride: site.sourceStride, argumentRanges: o.spec.arguments, resultRanges: o.spec.results, continuationRanges: o.spec.continuations, stackLimit: s.stackLimit, stackTop: s.stackTop}
 		finalize, err := tailRAFinalize(p, exit)
 		if err != nil {
 			return o, err

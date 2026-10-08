@@ -167,7 +167,7 @@ func tailImportOwnerSpec(bindings []tailImportBinding, s tailRAOwnerSpec) (tailR
 		for n, f := range b.functions {
 			info := i.functions[n]
 			first := b.functions[0]
-			if f.code != first.code || f.job != first.job || tailRAPointer(f.context) != tailRAPointer(first.context) || tailRAPointer(f.directory) != tailRAPointer(first.directory) || !bytes.Equal(f.snapshot, i.code) || f.info.Entry != info.Entry || f.info.CodeBytes != info.CodeBytes || f.info.FrameBytes != info.FrameBytes || f.info.FrameHeaderBytes != info.FrameHeaderBytes || f.info.Params != info.Params || f.info.Results != info.Results || f.info.mode.functionIndex != info.mode.functionIndex || !tailImportExactSignature(f.signature, i.signatures[i.imports+n]) {
+			if f.codeKey() != first.codeKey() || f.job != first.job || tailRAPointer(f.context) != tailRAPointer(first.context) || tailRAPointer(f.directory) != tailRAPointer(first.directory) || !bytes.Equal(f.snapshot, i.code) || f.info.Entry != info.Entry || f.info.CodeBytes != info.CodeBytes || f.info.FrameBytes != info.FrameBytes || f.info.FrameHeaderBytes != info.FrameHeaderBytes || f.info.Params != info.Params || f.info.Results != info.Results || f.info.mode.functionIndex != info.mode.functionIndex || !tailImportExactSignature(f.signature, i.signatures[i.imports+n]) {
 				return tailRAOwnerSpec{}, unsupported("private imported-tail frozen caller image")
 			}
 		}

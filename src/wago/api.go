@@ -1489,6 +1489,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		compiled.codeCache.mem = mapping
 		compiled.codeCache.base = base
+		railshotRecordMappedCodeBytes(compiled, len(compiled.code))
 		compiled.codeCache.flags |= compiledCacheWritableCode
 	}
 	keepCodeImage = true
@@ -3698,6 +3699,7 @@ func (c *Compiled) readFromWithLimits(r io.Reader, limits ArtifactLimits, exactB
 		}
 		decoded.codeCache.mem = mapping
 		decoded.codeCache.base = base
+		railshotRecordMappedCodeBytes(decoded, len(decoded.code))
 		decoded.codeCache.flags |= compiledCacheWritableCode
 	}
 	decodedLimit := limits.MaxDecodedBytes

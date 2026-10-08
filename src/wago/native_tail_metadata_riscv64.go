@@ -5,6 +5,7 @@ package wago
 import (
 	"fmt"
 	"slices"
+	"sync/atomic"
 	"unsafe"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -17,6 +18,19 @@ type railshotRuntimeConfigState struct{ tailProducts bool }
 type railshotTailCompiledState struct {
 	module  *encoder.NativeTailModule
 	retired []*railshot.NativeTailDispatcher // codeCache.mu protects failed cleanup
+	// Mapping-owned exact logical span, independent of readable execution views
+	// and page-rounded cleanup storage. Set once at mapping under codeCache.mu.
+	mappedCodeBytes int
+}
+
+func railshotRecordMappedCodeBytes(c *Compiled, n int) {
+	// Called with the cache lock, or by the exclusive unpublished compiler/
+	// decoder owner. Hand-built modules may not have a validation memo yet.
+	if c.loadValidateMemo() == nil {
+		memo := new(validateMemo)
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.validateMemo)), unsafe.Pointer(memo))
+	}
+	c.ensureCompileIndexes().railshotTail.mappedCodeBytes = n
 }
 
 func railshotStagedTailFeatures(c *RuntimeConfig) CoreFeatures {

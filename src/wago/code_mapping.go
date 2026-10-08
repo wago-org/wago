@@ -657,6 +657,7 @@ func (c *Compiled) mapCodeLocked() error {
 		return err
 	}
 	cc.mem, cc.base = mem, base
+	railshotRecordMappedCodeBytes(c, codeLen)
 	// The mapping can be page-rounded; code and artifact sizes must stay exact.
 	c.code = mem[:codeLen:codeLen]
 	// Compiler publication freezes an execution snapshot before code is mapped.

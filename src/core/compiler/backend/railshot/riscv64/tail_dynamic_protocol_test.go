@@ -37,7 +37,7 @@ func tailDynamicOwnerForTest(t *testing.T, functions []tailRAFunction) tailRADyn
 	for i := range o.functions {
 		f := &o.functions[i]
 		f.directory = o.descriptors
-		entry, home := f.code.Base()+uintptr(f.info.Entry), f.job.LinMemBase()
+		entry, home := f.codeBase()+uintptr(f.info.Entry), f.job.LinMemBase()
 		for n, v := range []uint64{uint64(entry), wasm.StructuralFuncTypeKey(f.signature), uint64(home) | abi.FuncRefLocalWrapperHomeTag, uint64(anchor + uintptr(40*(i+1))), uint64(ctx)} {
 			binary.LittleEndian.PutUint64(o.descriptors[40*(i+1)+8*n:], v)
 		}
@@ -54,7 +54,7 @@ func tailDynamicSiteForTest(t *testing.T, caller tailRAFunction, owners []tailRA
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NativeTailSite{dynamic: &tailRADynamicSite{referenceBase: referenceBase, key: wasm.StructuralFuncTypeKey(caller.signature), owners: owners}, CallerHome: caller.job.LinMemBase(), CallerContext: caller.context, TargetContext: caller.context, Target: NativeImportTarget{Entry: caller.code.Base() + uintptr(caller.info.Entry), Home: caller.job.LinMemBase(), Context: tailRAPointer(caller.context), HostTrampoline: trampoline, InvocationContext: true, StackOwnedActivation: true}, FrameBytes: caller.info.FrameBytes, SourceBase: callFrameHeader, SourceStride: 16, FunctionIndex: caller.info.mode.functionIndex, SourcePC: 37, Parameters: caller.signature.Params, Results: caller.signature.Results, Continuations: []NativeTailCodeRange{{caller.code.Base(), uintptr(len(caller.snapshot))}}}
+	return NativeTailSite{dynamic: &tailRADynamicSite{referenceBase: referenceBase, key: wasm.StructuralFuncTypeKey(caller.signature), owners: owners}, CallerHome: caller.job.LinMemBase(), CallerContext: caller.context, TargetContext: caller.context, Target: NativeImportTarget{Entry: caller.codeBase() + uintptr(caller.info.Entry), Home: caller.job.LinMemBase(), Context: tailRAPointer(caller.context), HostTrampoline: trampoline, InvocationContext: true, StackOwnedActivation: true}, FrameBytes: caller.info.FrameBytes, SourceBase: callFrameHeader, SourceStride: 16, FunctionIndex: caller.info.mode.functionIndex, SourcePC: 37, Parameters: caller.signature.Params, Results: caller.signature.Results, Continuations: []NativeTailCodeRange{{caller.codeBase(), uintptr(len(caller.snapshot))}}}
 }
 
 func TestTailDynamicAdmissionAndGeneratedBudget(t *testing.T) {

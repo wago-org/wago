@@ -5,6 +5,8 @@ package wago
 type railshotRuntimeConfigState struct{}
 type railshotTailCompiledState struct{}
 
+func railshotRecordMappedCodeBytes(*Compiled, int) {}
+
 func railshotStagedTailFeatures(*RuntimeConfig) CoreFeatures            { return 0 }
 func railshotConfigureNativeTail(CoreFeatures, *railshotCompileOptions) {}
 func railshotStoreNativeTail(*Compiled, *railshotCompiledModule) error  { return nil }
