@@ -278,6 +278,12 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 				}
 				hasReferenceCall = true
 			}
+			// The private walkers lower this primitive, but ordinary call_ref's
+			// persisted witness does not cover standalone reference control.
+			// Reject it even when unreachable until the loader contract exists.
+			if op == 0xd4 {
+				return false, false, unsupported("ref.as_non_null artifact contract is pending")
+			}
 			referenceTails = referenceTails || op == 0x15
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {

@@ -498,7 +498,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					stackRefs[h-1] = localRefs[idx]
 				}
 			}
-		case 0xd0, 0xd1, 0xd2, 0x25, 0x26:
+		case 0xd0, 0xd1, 0xd2, 0xd4, 0x25, 0x26:
 			if !privateRefs {
 				return integerSummary{}, unsupported("reference instruction without retained reference state")
 			}
@@ -528,6 +528,24 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.Store(emit.SpillOffset(h), 5, false)
 				}
 				if err = push(false); err != nil {
+					return integerSummary{}, err
+				}
+			case 0xd4:
+				if !state.referenceCalls {
+					return integerSummary{}, unsupported("ref.as_non_null requires private typed-reference profile")
+				}
+				// An unknown value at an unreachable floor is polymorphic. An
+				// explicitly pushed numeric value still cannot become a reference.
+				if h > ctrl[depth-1].base && !stackRefs[h-1] {
+					return integerSummary{}, unsupported("ref.as_non_null operand class")
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.referenceAsNonNull(emit.SpillOffset(h))
+				}
+				if err = pushReference(); err != nil {
 					return integerSummary{}, err
 				}
 			case 0xd2:

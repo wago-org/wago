@@ -868,7 +868,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 				emit.swarStore(spill(h-3), left)
 			}
 			h -= 2
-		case 0xd0, 0xd1, 0xd2, 0x25, 0x26:
+		case 0xd0, 0xd1, 0xd2, 0xd4, 0x25, 0x26:
 			if !privateRefs {
 				return swarSummary{}, unsupported("SWAR reference instruction without public reference profile")
 			}
@@ -905,6 +905,20 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 					emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
 				}
 				stackClasses[h-1] = swarI32
+			case 0xd4:
+				if !referenceCalls {
+					return swarSummary{}, unsupported("SWAR ref.as_non_null requires private typed-reference profile")
+				}
+				if err := flow.prepareDead(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				if h == flow.floor() || stackClasses[h-1] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR ref.as_non_null operand class/underflow")
+				}
+				usesTraps = true
+				if emit != nil {
+					emit.referenceAsNonNull(spill(h - 1))
+				}
 			case 0xd2:
 				index, err := r.U32()
 				if err != nil {
