@@ -51,6 +51,15 @@ descriptor owners after writers return or close. Reference imports combined with
 instance-owned imported tables, general mutable reference imports/exports,
 broader reference signatures/equality, GC/EH,
 threads and table64 remain unavailable.
+A private qualification profile additionally exercises proper local,
+native-import, indirect and typed-reference tail calls, ordinary `call_ref`, and
+synchronous scalar Go/owned-host targets. Its numeric/vector guest signatures
+and scalar host signatures remain bounded. Invocation scopes retain imported
+descriptor owners, including modules with no defined functions, and certified
+snapshots authenticate them across parked callbacks, reentry, table replacement
+and cold cleanup. Source and compiler-free
+artifact tests cover these paths; public TailCall and TypedFunctionReferences
+feature admission remains disabled.
 This is not a supported
 release target; native cache and performance qualification remain outstanding.
 See [the runtime contract](ARCHITECTURE.md).

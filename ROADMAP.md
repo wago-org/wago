@@ -31,10 +31,15 @@ diagnostics expose finalized code/frame statistics. Profiling builds now retain
 bounded finalized regions and optional sparse source maps, including deferred
 scalar origins and cold traps; wrapper/helper bytes remain unattributed.
 Unwind maps and detailed compiler-site attribution remain pending.
-An internal proper local-tail prerequisite now discards caller frames for exact
-numeric/vector same-image calls, with bounded transport, stack-fence and interruption
-coverage. Public TailCall remains gated pending imported/indirect/reference
-paths and their ownership/continuation protocol.
+A private qualification profile now exercises proper local, native-import,
+indirect and typed-reference tail calls with numeric/vector signatures, plus
+synchronous scalar Go and owned-host targets. Certified owner snapshots include
+import-only modules without claiming a guest frame for their wrappers. Tests
+cover ordinary `call_ref`, mixed call paths, nested host reentry, table replacement
+while parked, cancellation, exact quotas and compiler-free artifacts. Deep
+prepared-session tests execute 20,000 dynamic tails ending at a host callback
+on the minimum native stack. Public TailCall and TypedFunctionReferences remain
+gated: these bounded cases do not establish complete feature support.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains
 unconnected to production; collection and feature admission are unchanged.
