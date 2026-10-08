@@ -53,6 +53,7 @@ type compiledCodeCache struct {
 }
 
 type compiledHostThunkCache struct {
+	railshotHostThunkConstruction
 	mem     []byte
 	base    uintptr
 	offsets []int

@@ -2270,7 +2270,12 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool, ar
 				}
 				blob = railshotAlignNativeImportBlob(blob)
 				offs[uint32(fidx)] = len(blob)
-				blob = append(blob, railshotHostIndirectOwnedSyncThunk(hostFuncRefDispatchBit|dispatchIndex, paramSlots, resultSlots)...)
+				code, err := railshotOwnedHostThunk(construction, fidx, hostFuncRefDispatchBit|dispatchIndex, paramSlots, resultSlots)
+				if err != nil {
+					return 0, nil, nil, nil, err
+				}
+				railshotRecordNativeImportSpan(construction, fidx, len(blob), len(code))
+				blob = append(blob, code...)
 				continue
 			}
 			needsShared = true
@@ -2328,6 +2333,10 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 		return cache.base, cache.offsets, nil
 	}
 	offsets := make([]int, c.NumImports)
+	var construction railshotHostThunkConstruction
+	if syncMode {
+		railshotInitHostThunkConstruction(&construction, c)
+	}
 	var blob []byte
 	for fidx := 0; fidx < c.NumImports; fidx++ {
 		offsets[fidx] = noHostThunkOffset
@@ -2346,7 +2355,12 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 			}
 			blob = railshotAlignNativeImportBlob(blob)
 			offsets[fidx] = len(blob)
-			blob = append(blob, railshotHostIndirectSyncThunk(uint32(fidx), paramSlots, resultSlots)...)
+			code, err := railshotCertifiedHostThunk(&construction, fidx, uint32(fidx), paramSlots, resultSlots, false)
+			if err != nil {
+				return 0, nil, err
+			}
+			railshotRecordHostThunkSpan(&construction, fidx, len(blob))
+			blob = append(blob, code...)
 			continue
 		}
 		offsets[fidx] = len(blob)
@@ -2367,5 +2381,7 @@ func (c *Compiled) sharedHostFuncThunks(syncMode bool) (uintptr, []int, error) {
 		c.registerProfileThunks(base, mem[:len(blob)], profileOffsets)
 	}
 	cache.mem, cache.base, cache.offsets = mem, base, offsets
+	railshotFinishHostThunkConstruction(&construction, len(blob))
+	cache.railshotHostThunkConstruction = construction
 	return base, offsets, nil
 }

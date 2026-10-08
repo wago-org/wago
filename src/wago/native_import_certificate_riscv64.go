@@ -14,6 +14,7 @@ import (
 // synchronized. Physical instance lifetime owns all borrowed transport slices.
 type railshotNativeImportConstruction struct {
 	records      []rv64NativeImportRecord
+	hosts        railshotHostThunkConstruction
 	codeBytes    int
 	base         uintptr
 	mappingBytes int
@@ -28,37 +29,68 @@ type rv64NativeImportRecord struct {
 }
 
 func railshotNativeImportMetadataBytes(c *Compiled, imports resolvedImports) int {
-	n := 0
+	n, owned, shared := 0, 0, false
 	for i := range c.Imports {
 		if _, native := imports[c.functionImportBindingKey(i)].(*InstanceExport); native {
 			n++
+		} else if h, ok := imports[c.functionImportBindingKey(i)].(*HostFuncRef); ok && h != nil {
+			owned++
+		} else {
+			shared = true
 		}
 	}
-	if n == 0 {
+	if n == 0 && (!c.needsFuncRefDescs() || owned == 0 && !shared) {
 		return 0
 	}
-	size := int(unsafe.Sizeof(railshotNativeImportConstruction{}))
+	size := 0
+	if n != 0 || owned != 0 && c.needsFuncRefDescs() {
+		size = int(unsafe.Sizeof(railshotNativeImportConstruction{}))
+	}
 	// A table-free importer still owns return PCs used by a dynamic callee.
 	// It needs only publication identity; canonical proxy proofs need records.
 	if c.needsFuncRefDescs() {
-		size += c.NumImports*int(unsafe.Sizeof(rv64NativeImportRecord{})) + n*railshot.NativeImportCertificateBytes()
+		if n != 0 {
+			size += c.NumImports*int(unsafe.Sizeof(rv64NativeImportRecord{})) + n*railshot.NativeImportCertificateBytes()
+		}
+		if owned != 0 {
+			size += c.NumImports*int(unsafe.Sizeof(rv64HostThunkRecord{})) + owned*railshot.NativeTailHostCertificateBytes()
+		}
+		if shared {
+			// Charge the shared construction conservatively to every importer;
+			// one instance's retirement cannot refund another's retained cache.
+			size += int(unsafe.Sizeof(railshotHostThunkConstruction{})) + c.NumImports*(int(unsafe.Sizeof(rv64HostThunkRecord{}))+railshot.NativeTailHostCertificateBytes())
+		}
 	}
 	return size
 }
 func railshotInitNativeImportConstruction(s *railshotNativeImportConstruction, c *Compiled, imports resolvedImports) {
-	s.capture = railshotNativeImportMetadataBytes(c, imports) != 0
-	if s.capture && c.needsFuncRefDescs() {
+	native, owned := false, false
+	for i := range c.Imports {
+		switch imports[c.functionImportBindingKey(i)].(type) {
+		case *InstanceExport:
+			native = true
+		case *HostFuncRef:
+			owned = true
+		}
+	}
+	s.capture = native || owned && c.needsFuncRefDescs()
+	if native && c.needsFuncRefDescs() {
 		s.records = make([]rv64NativeImportRecord, c.NumImports)
+	}
+	if owned {
+		railshotInitHostThunkConstruction(&s.hosts, c)
 	}
 }
 func railshotRecordNativeImportSpan(s *railshotNativeImportConstruction, index, offset, size int) {
 	if len(s.records) != 0 {
 		s.records[index].offset, s.records[index].codeBytes = offset, size
 	}
+	railshotRecordHostThunkSpan(&s.hosts, index, offset)
 }
 func railshotFinishNativeImportConstruction(s *railshotNativeImportConstruction, mem []byte, base uintptr, size int) {
 	if s.capture {
 		s.codeBytes, s.base, s.mappingBytes, s.published = size, base, len(mem), true
+		railshotFinishHostThunkConstruction(&s.hosts, size)
 	}
 }
 func railshotInstallNativeImportConstruction(in *Instance, s *railshotNativeImportConstruction) {
