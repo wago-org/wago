@@ -195,7 +195,12 @@ func validateCorpusModule(mod corpusModule) error {
 		if !mod.supports("Exec") {
 			return fmt.Errorf("%s: direct execution is excluded by stages", mod.ID)
 		}
+		exports := make(map[string]bool, len(mod.Exec))
 		for _, invocation := range mod.Exec {
+			if exports[invocation.Export] {
+				return fmt.Errorf("%s: duplicate direct export %q makes child selection ambiguous", mod.ID, invocation.Export)
+			}
+			exports[invocation.Export] = true
 			if invocation.Export == "" || invocation.Want == nil {
 				return fmt.Errorf("%s: every direct invocation needs an export and exact result oracle", mod.ID)
 			}

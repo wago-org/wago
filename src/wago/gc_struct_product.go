@@ -314,6 +314,23 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 }
 
 func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
+	// Ordinary modules cannot match these exact historical fixtures. Check
+	// their sizes before paying for a digest, including the leader pin table.
+	possible := false
+	switch len(data) {
+	case 65, 67, 103, 106, 111, 168, 197, 286, 380, 385, 403, 512, 626, 772, 876, 976:
+		possible = true
+	default:
+		for _, pin := range stagedGCStructLeaderPins {
+			if pin.Size == len(data) {
+				possible = true
+				break
+			}
+		}
+	}
+	if !possible {
+		return 0, false
+	}
 	digest := fmt.Sprintf("%x", sha256.Sum256(data))
 	if (digest == stagedGCStructNumericLocalSHA256 && len(data) == 65) ||
 		(digest == stagedGCStructNumericMutationSHA256 && len(data) == 106) {

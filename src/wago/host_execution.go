@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -68,6 +70,37 @@ func (a *hostLoopActivation) stateFor(active *Instance) *instancePluginState {
 		a.state = state
 	}
 	return state
+}
+
+// The segment proof excludes guest references, helpers and foreign native
+// callees. The sole ordinary Caller binding still receives the complete scope
+// and reentry authority, but needs no collector-root translation or namespace
+// resolution on each callback. Shared or revoked execution keeps generic
+// dispatch responsible for its lease.
+func (a *hostLoopActivation) dispatchBoundedHostView(args, results []uint64) {
+	mu := a.localNativeMu()
+	if mu == nil {
+		a.dispatch(a.ctrl, 0, args, results)
+		return
+	}
+	active := a.root
+	invocation := a.context(active)
+	lease := a.parkIndependentHostCallbackWithMu(a.ctrl, mu)
+	defer lease.resume(a)
+	previousID := a.state.activations.boundedID.Load()
+	a.state.activations.boundedID.Store(uint64(invocation.id))
+	defer a.state.activations.boundedID.Store(previousID)
+	binding := &active.syncHosts[0]
+	scope := &a.state.hostScope
+	generation, parent := scope.beginGeneration(invocation.parent)
+	caller := instanceHostModule{
+		in: active, scope: scope, generation: generation, parentGeneration: parent,
+		invocationID: invocation.id, reservation: invocation.reservation, exact: binding.exact,
+	}
+	defer scope.end(generation, parent)
+	binding.fn.(CallerHostCallFunc)(Caller{instanceHostModule: caller}, HostCall{
+		params: compactHostSlots(args), results: compactHostSlots(results), sig: binding.sig, exact: binding.exact,
+	})
 }
 
 func (a *hostLoopActivation) context(active *Instance) hostInvocationContext {
@@ -157,6 +190,34 @@ func registerHostControl(in *Instance) error {
 		hostControlInstances.Delete(ptr)
 		return fmt.Errorf("register runtime synchronous host control frame: %w", err)
 	}
+	if !codeProfileEnabled && in.c.nativeScalarLeafAllowed() && in.hasSingleDirectTypedScalarHost() {
+		binding := &in.syncHosts[0]
+		params := uint32(1)
+		var fn any = binding.typedI32
+		if binding.scalarKind == syncHostTypedI32x2 {
+			params = 2
+			fn = binding.typedI32x2
+		}
+		admitted, err := coreruntime.RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), in.ctrl, fn, params)
+		if err != nil {
+			coreruntime.UnregisterHostCtrlFrame(in.ctrl)
+			hostControlInstances.Delete(ptr)
+			return err
+		}
+		if admitted {
+			if dispatch := in.jm.CaptureInstanceContext().ImportDispatch; dispatch != 0 {
+				cell := unsafe.Slice((*byte)(offHeapPtr(dispatch)), coreruntime.ImportDispatchEntryBytes)
+				coreruntime.BindNativeScalarLeafImport(runtimebridge.GrantHostScalarCall(), in.ctrl, cell)
+			}
+			for {
+				flags := in.executionFlags.Load()
+				if flags&executionFlagNativeScalarLeaf != 0 || in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeScalarLeaf) {
+					break
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -374,13 +435,9 @@ func (in *Instance) callHostDispatch(ctrl uintptr, importIdx uint32, args, resul
 // caller, so errors and panics restore ownership too. No other goroutine gains
 // callback authority; public state access still acquires the native mutex.
 type parkedIndependentHostLease struct {
-	root      *Instance
-	state     *instancePluginState
-	reusable  bool
-	mu        *sync.Mutex
-	migration *atomic.Bool
-	version   uint64
-	ctrl      uintptr
+	mu      *sync.Mutex
+	version uint64
+	ctrl    uintptr
 }
 
 func (a *hostLoopActivation) parkIndependentHostCallback(ctrl uintptr) parkedIndependentHostLease {
@@ -388,19 +445,57 @@ func (a *hostLoopActivation) parkIndependentHostCallback(ctrl uintptr) parkedInd
 	if mu == nil {
 		panic("wago: local host callback has no native execution lease")
 	}
-	lease := parkedIndependentHostLease{root: a.root, state: a.state, reusable: a.parkedNativeContextReusable, mu: mu, migration: a.preparedMigration, version: a.state.nativeContextVersion.Load(), ctrl: ctrl}
+	// Keep generic parking flat; a wrapper call adds cost to every Caller.
+	lease := parkedIndependentHostLease{mu: mu, version: a.state.nativeContextVersion.Load(), ctrl: ctrl}
 	lease.mu.Unlock()
 	return lease
 }
 
-func (l parkedIndependentHostLease) resume() {
-	migrated := reacquireRootNative(l.root, l.mu)
-	if migrated && l.migration != nil {
-		l.migration.Store(true)
+// Fixed dispatch already resolved the currently owned native mutex. Reuse
+// that decision: ownership cannot migrate before this same goroutine parks.
+func (a *hostLoopActivation) parkIndependentHostCallbackWithMu(ctrl uintptr, mu *sync.Mutex) parkedIndependentHostLease {
+	if mu == nil {
+		panic("wago: local host callback has no native execution lease")
 	}
-	if migrated || !l.reusable || l.version == ^uint64(0) || l.state.nativeContextVersion.Load() != l.version {
-		l.root.restoreTypedScalarNativeContext(l.ctrl)
+	// Snapshot only state that can change while parked. Resume receives the
+	// stable entry activation separately, avoiding a larger lease copy and
+	// preventing the activation from escaping through this returned record.
+	lease := parkedIndependentHostLease{mu: mu, version: a.state.nativeContextVersion.Load(), ctrl: ctrl}
+	lease.mu.Unlock()
+	return lease
+}
+
+func (l parkedIndependentHostLease) resume(a *hostLoopActivation) {
+	migrated := false
+	if goruntime.GOARCH == "arm64" {
+		// ARM64 benefits from separating publication migration from normal
+		// resumption. AMD64 retains its measured faster shared helper.
+		l.mu.Lock()
+		if !a.root.threadedMemoryZero && !a.root.usesIndependentExecution() {
+			l.resumeMigrated(a)
+			return
+		}
+	} else {
+		migrated = reacquireRootNative(a.root, l.mu)
+		if migrated && a.preparedMigration != nil {
+			a.preparedMigration.Store(true)
+		}
 	}
+	if migrated || !a.parkedNativeContextReusable || l.version == ^uint64(0) || a.state.nativeContextVersion.Load() != l.version {
+		a.root.restoreTypedScalarNativeContext(l.ctrl)
+	}
+}
+
+// Publication while parked transfers the lease to process-wide execution.
+// Keep this uncommon transition separate from ordinary callback resumption.
+func (l parkedIndependentHostLease) resumeMigrated(a *hostLoopActivation) {
+	l.mu.Unlock()
+	nativeExecutionMu.Lock()
+	nativeExecutionEpoch++
+	if a.preparedMigration != nil {
+		a.preparedMigration.Store(true)
+	}
+	a.root.restoreTypedScalarNativeContext(l.ctrl)
 }
 
 // reacquireRootNative preserves the lease chosen at entry unless resource
@@ -465,7 +560,7 @@ func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, imp
 
 	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
-		defer resume.resume()
+		defer resume.resume(a)
 		var result uint64
 		if binding.scalarKind == syncHostTypedI32 {
 			result = I32(binding.typedI32(AsI32(a0)))
@@ -516,7 +611,7 @@ func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, 
 
 	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
-		defer resume.resume()
+		defer resume.resume(a)
 		var result uint64
 		if binding.scalarKind == syncHostTypedI32 {
 			result = I32(binding.typedI32(AsI32(a0)))
@@ -561,7 +656,7 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, impor
 		return a.dispatchTypedScalarPortal(ctrl, importIdx, rawSlots, a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(ctrl)
-	defer resume.resume()
+	defer resume.resume(a)
 	var result uint64
 	if binding.scalarKind == syncHostTypedI32 {
 		result = I32(binding.typedI32(AsI32(a0)))
@@ -585,7 +680,7 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintpt
 		return a.dispatchTypedScalarExpandedPortal(ctrl, importIdx, rawSlots, a0, a1)
 	}
 	resume := a.parkIndependentHostCallback(ctrl)
-	defer resume.resume()
+	defer resume.resume(a)
 	result := binding.callTypedScalar(a0, a1)
 	return result, true
 }
@@ -604,13 +699,13 @@ func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint
 	binding := &active.syncHosts[0]
 	call := func() {
 		binding.fn.(HostCallFunc)(HostCall{
-			params: args, results: results, sig: binding.sig, exact: binding.exact,
+			params: compactHostSlots(args), results: compactHostSlots(results), sig: binding.sig, exact: binding.exact,
 		})
 	}
 
 	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
-		defer resume.resume()
+		defer resume.resume(a)
 		call()
 		return
 	}
@@ -640,13 +735,13 @@ func (a *hostLoopActivation) dispatchSingleHostCallView(ctrl uintptr, importIdx 
 	binding := &active.syncHosts[0]
 	call := func() {
 		binding.fn.(HostCallFunc)(HostCall{
-			params: args, results: results, sig: binding.sig, exact: binding.exact,
+			params: compactHostSlots(args), results: compactHostSlots(results), sig: binding.sig, exact: binding.exact,
 		})
 	}
 
 	if a.localNativeMu() != nil {
 		resume := a.parkIndependentHostCallback(ctrl)
-		defer resume.resume()
+		defer resume.resume(a)
 		call()
 		return true
 	}
@@ -905,4 +1000,60 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 			coreruntime.RequestInterrupt(outerTrap)
 		}
 	}, nil
+}
+
+// A host-authorized entry may reach an already parked instance through native
+// imports without invoking that instance through its Go API. Give those sources
+// private control frames before their import descriptors bind the context.
+func (in *Instance) prepareNativeImportReentries(id invocationID) (func(), error) {
+	for _, binding := range in.imports {
+		if ex, ok := binding.(*InstanceExport); ok && ex != nil && ex.inst != nil {
+			return in.prepareNativeImportReentriesSlow(id)
+		}
+	}
+	return nil, nil
+}
+
+func (in *Instance) prepareNativeImportReentriesSlow(id invocationID) (func(), error) {
+	seen := map[*Instance]bool{in: true}
+	var restores []func()
+	restore := func() {
+		for i := len(restores) - 1; i >= 0; i-- {
+			restores[i]()
+		}
+	}
+	var visit func(*Instance) error
+	visit = func(source *Instance) error {
+		if source == nil || seen[source] {
+			return nil
+		}
+		seen[source] = true
+		if isNativeActive(source, id) {
+			undo, err := source.prepareHostReentryState()
+			if err != nil {
+				return err
+			}
+			restores = append(restores, undo)
+		}
+		for i := range source.c.Imports {
+			if ex, ok := source.imports[source.c.functionImportBindingKey(i)].(*InstanceExport); ok && ex != nil {
+				if err := visit(ex.inst); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	for i := range in.c.Imports {
+		if ex, ok := in.imports[in.c.functionImportBindingKey(i)].(*InstanceExport); ok && ex != nil {
+			if err := visit(ex.inst); err != nil {
+				restore()
+				return nil, err
+			}
+		}
+	}
+	if len(restores) == 0 {
+		return nil, nil
+	}
+	return restore, nil
 }

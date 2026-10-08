@@ -365,16 +365,16 @@ func (v *moduleValidator) resolvedCompType(idx TypeIdx) (*CompType, bool) {
 	return entry.ct, entry.ok
 }
 
-func (v *moduleValidator) structFields(idx TypeIdx) ([]FieldType, *SubType, bool) {
+func (v *moduleValidator) structFields(idx TypeIdx) ([]FieldType, *SubType, int, bool) {
 	st, recGroup, ok := v.subtypeByTypeIdxWithRecGroup(idx)
 	if !ok || st.Comp.Kind != CompStruct {
-		return nil, nil, false
+		return nil, nil, 0, false
 	}
 	fields := make([]FieldType, len(st.Comp.Fields))
 	for i, f := range st.Comp.Fields {
 		fields[i] = v.resolveFieldTypeRecIndexes(f, recGroup)
 	}
-	return fields, st, true
+	return fields, st, recGroup, true
 }
 
 func (v *moduleValidator) arrayField(idx TypeIdx) (FieldType, *SubType, bool) {

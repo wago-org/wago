@@ -355,7 +355,7 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 		return nil, sizes, err
 	}
 	mark(&sizes.Elements)
-	w.data(c.Data)
+	w.compiledData(c)
 	w.passiveData(c.PassiveData)
 	mark(&sizes.Data)
 	w.memories(c)
@@ -760,6 +760,20 @@ func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 	}
 	return nil
 }
+func (w *compiledWriter) compiledData(c *Compiled) {
+	if c.compactData == nil {
+		w.data(c.Data)
+		return
+	}
+	w.uvar(uint64(c.activeDataCount()))
+	for i := 0; i < c.activeDataCount(); i++ {
+		d := c.activeDataAt(i)
+		w.u32(d.MemoryIndex)
+		w.offset(d.Offset)
+		w.bytes(d.Bytes)
+	}
+}
+
 func (w *compiledWriter) data(v []DataInit) {
 	w.uvar(uint64(len(v)))
 	for _, d := range v {

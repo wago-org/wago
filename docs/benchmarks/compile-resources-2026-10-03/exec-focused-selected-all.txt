@@ -1,0 +1,60 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     456	     56047 ns/op	        52.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     458	     55440 ns/op	        52.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     495	     54689 ns/op	        51.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     579	     54619 ns/op	        52.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     462	     54348 ns/op	        52.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     649	     54679 ns/op	        52.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     466	     54586 ns/op	        52.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     646	     54398 ns/op	        50.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     483	     53711 ns/op	        53.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkExec/json-as.deserializeN         	     487	     55278 ns/op	        52.00 calls/batch	       0 B/op	       0 allocs/op
+PASS

@@ -44,6 +44,12 @@ func (p stagedGCI31Product) String() string {
 }
 
 func stagedGCI31PinnedProduct(data []byte) (stagedGCI31Product, bool) {
+	// Reject impossible fixture sizes before hashing the whole module.
+	switch len(data) {
+	case 88, 96, 131, 252, 255, 259, 262:
+	default:
+		return 0, false
+	}
 	digest := fmt.Sprintf("%x", sha256.Sum256(data))
 	switch {
 	case len(data) == 252 && digest == "4bdd4d0f186a2fd617b41ad4940e17f2c0415514ebc636a56e41496e8c392aea":

@@ -72,3 +72,27 @@ func TestGP32WriteInvalidatesOldWideIdentity(t *testing.T) {
 	s.Expect("low bits", reg, wide[:4])
 	rejects(t, func() { s.Expect("zero-extended carrier", reg, wide) })
 }
+
+func TestKillPreservesOtherBytesAndClone(t *testing.T) {
+	for _, loc := range []Location{Register(FP, 3), Slot(40)} {
+		var s State
+		value := s.Seed(loc, 16)
+		before := s.Clone()
+		killed := loc.next(4)
+		s.Apply(Effect{Kind: Kill, Dst: killed, Size: 8})
+		before.Expect("clone before kill", loc, value)
+		s.Expect("low bytes outside kill", loc, value[:4])
+		s.Expect("high bytes outside kill", loc.next(12), value[12:])
+		for _, c := range s.Read(killed, 8) {
+			if c != (cell{}) {
+				t.Fatal("killed byte is still known")
+			}
+		}
+		rejects(t, func() { s.Expect("killed identity", killed, value[4:12]) })
+		s.Apply(Effect{Kind: Copy, Dst: Slot(100), Src: killed, Size: 8})
+		rejects(t, func() { s.ExpectKnown("unknown copied value", Slot(100), s.Read(Slot(100), 8)) })
+		if got := testing.AllocsPerRun(100, func() { s.Put(loc, value); s.Apply(Effect{Kind: Kill, Dst: loc, Size: 16}) }); got != 0 {
+			t.Fatalf("kill allocations=%v", got)
+		}
+	}
+}

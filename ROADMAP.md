@@ -53,8 +53,6 @@ they keep the evidence behind current feature status.
 These documents give more detail:
 - [FEATURES.md](FEATURES.md) — the per-feature support matrix (source of truth for
   spec-feature status).
-- [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — the optimization roadmap (what codegen work
-  is landed / pending, and why).
 
 Status: [x] done · 🚧 in progress · [ ] planned.
 

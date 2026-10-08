@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -70,21 +71,21 @@ func TestAdapterTemplateCacheRequiresRepeatedTypeArm64(t *testing.T) {
 	code := []byte{1, 2, 3, 4, 5, 6, 7, 8}
 	var cache adapterTemplateCache
 
-	cache.observe(&ft, code, 8, 8)
-	if _, _, _, ok := cache.lookup(&ft); ok {
+	cache.observe(&ft, X27, code, 8, 8)
+	if _, _, _, ok := cache.lookup(&ft, X27); ok {
 		t.Fatal("first adapter shape was cached before it repeated")
 	}
-	cache.observe(&ft, code, 8, 8)
-	got, returnOff, endOff, ok := cache.lookup(&ft)
+	cache.observe(&ft, X27, code, 8, 8)
+	got, returnOff, endOff, ok := cache.lookup(&ft, X27)
 	if !ok || !bytes.Equal(got, code) || returnOff != 8 || endOff != 8 {
 		t.Fatalf("cached adapter = %v, %d, %d, %t", got, returnOff, endOff, ok)
 	}
-	if _, _, _, ok := cache.lookup(&other); ok {
+	if _, _, _, ok := cache.lookup(&other, X27); ok {
 		t.Fatal("adapter cache matched a different immutable function type")
 	}
 
 	code[0] = 99
-	got, _, _, _ = cache.lookup(&ft)
+	got, _, _, _ = cache.lookup(&ft, X27)
 	if got[0] != 1 {
 		t.Fatal("adapter cache aliases the source function buffer")
 	}
@@ -94,9 +95,9 @@ func TestAdapterTemplateCacheRejectsOversizeShapeArm64(t *testing.T) {
 	var ft wasm.CompType
 	var cache adapterTemplateCache
 	oversize := make([]byte, maxCachedAdapterBytes+1)
-	cache.observe(&ft, oversize, 8, len(oversize))
-	cache.observe(&ft, oversize, 8, len(oversize))
-	if _, _, _, ok := cache.lookup(&ft); ok {
+	cache.observe(&ft, X27, oversize, 8, len(oversize))
+	cache.observe(&ft, X27, oversize, 8, len(oversize))
+	if _, _, _, ok := cache.lookup(&ft, X27); ok {
 		t.Fatal("oversize adapter shape entered the bounded cache")
 	}
 }
@@ -124,5 +125,35 @@ func TestAdapterTemplateCachePreservesNativeSizeAttributionArm64(t *testing.T) {
 	}
 	if got := stats.Funcs[2].NativeSize.AdapterToInternalPaddingBytes; got != want {
 		t.Fatalf("cached adapter padding = %d, want %d", got, want)
+	}
+}
+
+// The same signature can use X17 in a bounded leaf and X27 in a function
+// with memory effects. Both the candidate and promoted keys need that register.
+func TestAdapterTemplateCacheMemoryRegisterArm64(t *testing.T) {
+	if got := unsafe.Sizeof(adapterTemplateCache{}); got != 280 {
+		t.Fatalf("cache bytes=%d want 280", got)
+	}
+	var ft wasm.CompType
+	code := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	for _, first := range []Reg{regNone, X17, X27} {
+		for _, second := range []Reg{regNone, X17, X27} {
+			if first == second {
+				continue
+			}
+			var cache adapterTemplateCache
+			cache.observe(&ft, first, code, 8, 8)
+			cache.observe(&ft, second, code, 8, 8)
+			if _, _, _, ok := cache.lookup(&ft, second); ok {
+				t.Fatal("different registers counted as a repeated shape")
+			}
+			cache.observe(&ft, second, code, 8, 8)
+			if _, _, _, ok := cache.lookup(&ft, first); ok {
+				t.Fatal("cached adapter matched wrong memory-size register")
+			}
+			if _, _, _, ok := cache.lookup(&ft, second); !ok {
+				t.Fatal("matching adapter was not cached")
+			}
+		}
 	}
 }

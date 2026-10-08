@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -73,118 +74,144 @@ func TestPreparedSessionGeneralReservation(t *testing.T) {
 }
 
 func TestPreparedSessionTypedHostCallback(t *testing.T) {
-	c := MustCompile(benchReturningImportModule())
-	defer c.Close()
-	imports := NewImports()
-	imports.HostFunc("env", "f", func(v int32) int32 { return v + 1 })
-	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	fn, err := in.WasmFunc("g")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err := fn.OpenSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !s.state.host {
-		t.Fatal("typed callback missed reserved host path")
-	}
-	for i := 0; i < 10; i++ {
-		got, err := s.Invoke1(I32(41))
-		if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
-			t.Fatalf("host invoke = %v, %v", got, err)
-		}
-	}
-	s.Close()
-	if _, err := s.Invoke1(1); err == nil || !strings.Contains(err.Error(), "closed") {
-		t.Fatalf("closed invoke error = %v", err)
+	for _, bounded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("bounded%t", bounded), func(t *testing.T) {
+			c, compileErr := Compile(NewRuntimeConfig().WithOptimization("prepared-bounded-entry", bounded), benchReturningImportModule())
+			if compileErr != nil {
+				t.Fatal(compileErr)
+			}
+			defer c.Close()
+			// Observe each dispatch so this exercises an ordinary Go callback.
+			calls := 0
+			imports := NewImports()
+			imports.HostFunc("env", "f", func(v int32) int32 { calls++; return v + 1 })
+			in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("g")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := fn.OpenSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.state.host == fn.boundedNumericHost {
+				t.Fatal("typed callback selected wrong native lease strategy")
+			}
+			for i := 0; i < 10; i++ {
+				got, err := s.Invoke1(I32(41))
+				if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+					t.Fatalf("host invoke = %v, %v", got, err)
+				}
+			}
+			s.Close()
+			if _, err := s.Invoke1(1); err == nil || !strings.Contains(err.Error(), "closed") {
+				t.Fatalf("closed invoke error = %v", err)
+			}
+			if calls != 10 {
+				t.Fatalf("Go callback count=%d; want 10", calls)
+			}
+		})
 	}
 }
 
 func TestPreparedSessionCallbackCloseAndReentry(t *testing.T) {
-	c := MustCompile(benchReturningImportModule())
-	defer c.Close()
-	var s *PreparedSession
-	var reentryErr error
-	calls := 0
-	imports := NewImports()
-	imports.HostFunc("env", "f", func(v int32) int32 {
-		calls++
-		if calls == 1 {
-			_, reentryErr = s.Invoke1(I32(v))
-		} else {
-			s.Close()
-		}
-		return v + 1
-	})
-	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	fn, err := in.WasmFunc("g")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err = fn.OpenSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	for i := int32(40); i <= 41; i++ {
-		got, err := s.Invoke1(I32(i))
-		if err != nil || len(got) != 1 || AsI32(got[0]) != i+1 {
-			t.Fatalf("invoke = %v, %v", got, err)
-		}
-	}
-	if reentryErr == nil || !strings.Contains(reentryErr.Error(), "already active") {
-		t.Fatalf("reentry error = %v", reentryErr)
-	}
-	if _, err := s.Invoke1(1); err == nil {
-		t.Fatal("callback-closed session invoked")
+	for _, bounded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("bounded%t", bounded), func(t *testing.T) {
+			c, compileErr := Compile(NewRuntimeConfig().WithOptimization("prepared-bounded-entry", bounded), benchReturningImportModule())
+			if compileErr != nil {
+				t.Fatal(compileErr)
+			}
+			defer c.Close()
+			var s *PreparedSession
+			var reentryErr error
+			calls := 0
+			imports := NewImports()
+			imports.HostFunc("env", "f", func(v int32) int32 {
+				calls++
+				if calls == 1 {
+					_, reentryErr = s.Invoke1(I32(v))
+				} else {
+					s.Close()
+				}
+				return v + 1
+			})
+			in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("g")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err = fn.OpenSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			for i := int32(40); i <= 41; i++ {
+				got, err := s.Invoke1(I32(i))
+				if err != nil || len(got) != 1 || AsI32(got[0]) != i+1 {
+					t.Fatalf("invoke = %v, %v", got, err)
+				}
+			}
+			if reentryErr == nil || !strings.Contains(reentryErr.Error(), "already active") {
+				t.Fatalf("reentry error = %v", reentryErr)
+			}
+			if _, err := s.Invoke1(1); err == nil {
+				t.Fatal("callback-closed session invoked")
+			}
+		})
 	}
 }
 
 func TestPreparedSessionHostSharingRevokesLease(t *testing.T) {
-	c := MustCompile(sessionImportMemoryModule())
-	defer c.Close()
-	var in *Instance
-	imports := NewImports()
-	imports.HostFunc("env", "f", func(v int32) int32 {
-		if _, err := in.ExportedMemory("memory"); err != nil {
-			panic(HostTrap{Err: err})
-		}
-		return v + 1
-	})
-	var err error
-	in, err = Instantiate(c, InstantiateOptions{Imports: imports})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	fn, err := in.WasmFunc("g")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err := fn.OpenSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	if !s.state.host {
-		t.Fatal("missed reserved host path")
-	}
-	for i := 0; i < 2; i++ {
-		got, err := s.Invoke1(I32(41))
-		if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
-			t.Fatalf("invoke after sharing = %v, %v", got, err)
-		}
-		if s.state.host {
-			t.Fatal("retained private lease after sharing")
-		}
+	for _, bounded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("bounded%t", bounded), func(t *testing.T) {
+			c, compileErr := Compile(NewRuntimeConfig().WithOptimization("prepared-bounded-entry", bounded), sessionImportMemoryModule())
+			if compileErr != nil {
+				t.Fatal(compileErr)
+			}
+			defer c.Close()
+			var in *Instance
+			imports := NewImports()
+			imports.HostFunc("env", "f", func(v int32) int32 {
+				if _, err := in.ExportedMemory("memory"); err != nil {
+					panic(HostTrap{Err: err})
+				}
+				return v + 1
+			})
+			var err error
+			in, err = Instantiate(c, InstantiateOptions{Imports: imports})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("g")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := fn.OpenSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			if s.state.host == fn.boundedNumericHost {
+				t.Fatal("selected wrong native lease strategy")
+			}
+			for i := 0; i < 2; i++ {
+				got, err := s.Invoke1(I32(41))
+				if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+					t.Fatalf("invoke after sharing = %v, %v", got, err)
+				}
+				if s.state.host {
+					t.Fatal("retained private lease after sharing")
+				}
+			}
+		})
 	}
 }

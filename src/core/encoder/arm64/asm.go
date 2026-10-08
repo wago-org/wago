@@ -715,6 +715,7 @@ func (a *Asm) Blr(rn Reg) {
 	a.word(0xD63F0000 | r(rn)<<5)
 	if regallocCheckEnabled {
 		a.regallocGPWrites(^uint32(0))
+		regallocCall(a)
 	}
 }
 
@@ -766,6 +767,9 @@ func (a *Asm) LdrLiteralF(rt Reg, f64 bool) int {
 		base = 0x5C000000 // LDR Dt, literal
 	}
 	a.word(base | r(rt))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(rt))
+	}
 	return at
 }
 

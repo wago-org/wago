@@ -624,11 +624,11 @@ func validateRegistration(reg *Registrar) error {
 			return fmt.Errorf("instructions require authority %q: %w", AuthorityCompilerInstructionDefine, ErrPermissionDenied)
 		}
 	}
-	seenInstructions := map[string]struct{}{}
+	seenInstructions := map[instructionKey]struct{}{}
 	for _, ins := range reg.instructions {
-		key := ins.spec.Module + "." + ins.spec.Name
+		key := instructionKey{ins.spec.Module, ins.spec.Name}
 		if _, duplicate := seenInstructions[key]; duplicate {
-			return fmt.Errorf("duplicate instruction %q: %w", key, ErrPluginConflict)
+			return fmt.Errorf("duplicate instruction %q: %w", ins.spec.Module+"."+ins.spec.Name, ErrPluginConflict)
 		}
 		seenInstructions[key] = struct{}{}
 		reg.imports = append(reg.imports, instructionImport(ins))
@@ -792,7 +792,7 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 			rt.caps[cap.cap] = id
 		}
 		for _, ins := range p.reg.instructions {
-			rt.instructions[ins.spec.Module+"."+ins.spec.Name] = ins
+			rt.instructions[instructionKey{ins.spec.Module, ins.spec.Name}] = ins
 		}
 		for _, binder := range p.reg.consumes {
 			slot := binder.contractSlotValue()
@@ -824,9 +824,9 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 	return nil
 }
 
-func validatePluginCommitConflicts(plan []plannedPlugin, existing map[string]*registeredInstruction, policy ImportOverridePolicy) error {
+func validatePluginCommitConflicts(plan []plannedPlugin, existing map[instructionKey]*registeredInstruction, policy ImportOverridePolicy) error {
 	moduleOwner, importOwner := map[string]string{}, map[string]string{}
-	instructionOwner := map[string]string{}
+	instructionOwner := map[instructionKey]string{}
 	for _, p := range plan {
 		id := p.provider.Definition.ID
 		for _, imp := range p.reg.imports {
@@ -839,12 +839,12 @@ func validatePluginCommitConflicts(plan []plannedPlugin, existing map[string]*re
 			moduleOwner[imp.module], importOwner[imp.key()] = id, id
 		}
 		for _, ins := range p.reg.instructions {
-			key := ins.spec.Module + "." + ins.spec.Name
+			key := instructionKey{ins.spec.Module, ins.spec.Name}
 			if owner, exists := instructionOwner[key]; exists {
-				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("instruction %q already provided by plugin %q: %w", key, owner, ErrPluginConflict)}
+				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("instruction %q already provided by plugin %q: %w", ins.spec.Module+"."+ins.spec.Name, owner, ErrPluginConflict)}
 			}
 			if _, exists := existing[key]; exists {
-				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("instruction %q conflicts: %w", key, ErrPluginConflict)}
+				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("instruction %q conflicts: %w", ins.spec.Module+"."+ins.spec.Name, ErrPluginConflict)}
 			}
 			instructionOwner[key] = id
 		}
