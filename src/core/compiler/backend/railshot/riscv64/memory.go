@@ -31,6 +31,7 @@ type memorySpec struct {
 type moduleState struct {
 	production             bool
 	localTailCalls         bool
+	importTailCalls        bool
 	importReferences       bool
 	localMutableReferences bool
 	ownedTable             bool

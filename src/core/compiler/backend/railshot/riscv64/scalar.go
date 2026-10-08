@@ -34,6 +34,9 @@ type emissionMode struct {
 	// Imported descriptors have independently checked bounded runtime capacity.
 	borrowedTable          bool
 	localTailCalls         bool
+	importTailCalls        bool
+	tailPlans              *[]tailImportPlan
+	tailSiteBase           uint32
 	localMutableReferences bool
 	functionIndex          uint32
 	entryPC                uint32

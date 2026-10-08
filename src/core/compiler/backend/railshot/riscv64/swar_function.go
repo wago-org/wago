@@ -15,6 +15,7 @@ const maxSWARLocals = 128
 
 type swarSummary struct {
 	locals, peak, codeBound, calls int
+	importTails                    int
 	usesFP, usesTraps              bool
 	usesLoops                      bool
 }
@@ -90,6 +91,10 @@ func walkSWARPairsWithTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryP
 	return walkSWARPairsWithReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, false, emit)
 }
 func walkSWARPairsWithReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences bool, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithImportTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, false, emit)
+}
+
+func walkSWARPairsWithImportTailMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls bool, emit *integerEmitter) (swarSummary, error) {
 	memoryCount, indexedMemories := profile.count, profile.indexed
 
 	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
@@ -194,6 +199,7 @@ func walkSWARPairsWithReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile me
 	// Covers bounded parameter expansion, frame/zero initialization, compact
 	// result serialization and framing. Per-op bounds include escaped homes
 	// and cold trap islands. Admission computes this before allocating code.
+	importTails := 0
 	codeBound := 64 << 10
 	reserve := func(size int) error {
 		if size > MaxCodeBytes-codeBound {
@@ -309,7 +315,7 @@ func walkSWARPairsWithReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile me
 					}
 				}
 			}
-			return swarSummary{nlocals, peak, codeBound, calls, usesFP, usesTraps, flow.usesLoops}, nil
+			return swarSummary{locals: nlocals, peak: peak, codeBound: codeBound, calls: calls, importTails: importTails, usesFP: usesFP, usesTraps: usesTraps, usesLoops: flow.usesLoops}, nil
 		case 0x10:
 			index, err := r.U32()
 			if err != nil {
@@ -369,10 +375,17 @@ func walkSWARPairsWithReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile me
 			if err != nil {
 				return swarSummary{}, err
 			}
-			if !localTailCalls || uint64(index) >= uint64(len(functions)) || index < uint32(importedFunctions) {
+			if !localTailCalls || uint64(index) >= uint64(len(functions)) || index < uint32(importedFunctions) && !importTailCalls {
 				return swarSummary{}, unsupported("SWAR defined local tail target required")
 			}
 			sig := functions[index]
+			importedTail := index < uint32(importedFunctions)
+			if importedTail {
+				importTails++
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+			}
 			if err := admitSWARLocalTailSignature(ft, sig); err != nil {
 				return swarSummary{}, err
 			}
@@ -401,8 +414,12 @@ func walkSWARPairsWithReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile me
 					return swarSummary{}, unsupported("SWAR local tail carrier class")
 				}
 			}
-			if emit != nil {
-				emit.swarLocalTailCall(index-uint32(importedFunctions), sig, base, spill)
+			if emit != nil && (!importedTail || flow.live) {
+				if importedTail {
+					emit.importTailCall(index, sig, base, spill, 16)
+				} else {
+					emit.swarLocalTailCall(index-uint32(importedFunctions), sig, base, spill)
+				}
 			}
 			flow.usesLoops = true // A pure tail cycle needs the cooperative entry poll.
 			flow.live = false
@@ -1855,7 +1872,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	summary, err := walkSWARPairsWithReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, nil)
+	summary, err := walkSWARPairsWithImportTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1878,7 +1895,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	actual, err := walkSWARPairsWithReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, &f)
+	actual, err := walkSWARPairsWithImportTailMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

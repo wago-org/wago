@@ -23,6 +23,7 @@ type integerSummary struct {
 	context          bool
 	calls            int
 	tableBridgeBytes int
+	importTails      int
 }
 type integerControl struct {
 	base                           int
@@ -95,6 +96,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	contextUsed := false
 	callCount := 0
 	tableBridgeBytes := 0
+	importTails := 0
 	popAny := func() (bool, bool, error) {
 		if h <= ctrl[depth-1].base {
 			if !live {
@@ -610,10 +612,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if e != nil {
 				return integerSummary{}, e
 			}
-			if state == nil || !state.localTailCalls || !state.production || uint64(idx) >= uint64(len(state.functions)) || idx < uint32(state.importedFunctions) {
+			if state == nil || !state.localTailCalls || !state.production || uint64(idx) >= uint64(len(state.functions)) || idx < uint32(state.importedFunctions) && !state.importTailCalls {
 				return integerSummary{}, unsupported("defined local tail target required")
 			}
 			sig := state.functions[idx]
+			importedTail := idx < uint32(state.importedFunctions)
+			if importedTail {
+				importTails++
+			}
 			if e := admitLocalTailSignature(ft, sig.signature); e != nil {
 				return integerSummary{}, e
 			}
@@ -628,7 +634,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
-				emit.localTailCall(idx, sig, h, state.importedFunctions)
+				if importedTail {
+					emit.importTailCall(idx, sig.signature, h, emit.SpillOffset, 8)
+				} else {
+					emit.localTailCall(idx, sig, h, state.importedFunctions)
+				}
 			}
 			live = false
 			h = ctrl[depth-1].base
@@ -1012,7 +1022,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	if r.HasNext() {
 		return integerSummary{}, fmt.Errorf("rv64: trailing validated bytecode")
 	}
-	return integerSummary{maxStack: peak, context: contextUsed, calls: callCount, tableBridgeBytes: tableBridgeBytes}, nil
+	return integerSummary{maxStack: peak, context: contextUsed, calls: callCount, tableBridgeBytes: tableBridgeBytes, importTails: importTails}, nil
 }
 
 func integerOpcode(op byte) (shared.IntOp, bool, bool, bool, bool) {

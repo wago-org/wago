@@ -54,6 +54,10 @@ type CompileOptions struct {
 	hostImports         bool
 	// Internal C2a only; public TailCall remains gated until the whole family.
 	localTailCalls bool
+	// Only the private decoded imported-tail adapter supplies these fields.
+	importTailCalls bool
+	tailPlans       *[]tailImportPlan
+	tailSiteBase    uint32
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.

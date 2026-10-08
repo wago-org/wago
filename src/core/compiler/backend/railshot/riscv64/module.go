@@ -103,6 +103,9 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 // The public frontend has already validated its configured limits and retains
 // the decoded source. Lowering still enforces the bounded RV64 module policy.
 func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.importTailCalls && (!opts.localTailCalls || opts.tailPlans == nil || len(*opts.tailPlans) != 0 || opts.tailSiteBase > tailRAMaxSites) {
+		return nil, unsupported("private imported-tail plan contract")
+	}
 	if opts.localTailCalls && (!opts.production || !opts.Interruptible || opts.Profile || opts.SourceMaps || opts.UnwindMaps) {
 		return nil, unsupported("local tails require cooperative production without profiling metadata")
 	}
@@ -118,7 +121,9 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		return nil, err
 	}
 	state.localTailCalls = opts.localTailCalls
+	state.importTailCalls = opts.importTailCalls
 	summaries := make([]shared.ScalarSummary, len(m.Code))
+	importTailCount := 0
 	integerSummaries := make([]integerSummary, len(m.Code))
 	fallback := make([]bool, len(m.Code))
 	for i := range m.Code {
@@ -129,6 +134,10 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			integerSummaries[i], err = walkInteger(&m.Code[i], ft, &state, nil)
 			if err != nil {
 				return nil, fmt.Errorf("rv64: function %d: %w", i, err)
+			}
+			importTailCount += integerSummaries[i].importTails
+			if opts.importTailCalls && importTailCount > tailRAMaxSites-int(opts.tailSiteBase) {
+				return nil, unsupported("private imported-tail module site bound")
 			}
 		}
 	}
@@ -141,7 +150,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, localTailCalls: opts.localTailCalls}
+		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}
 		if opts.production {
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
