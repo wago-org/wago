@@ -63,9 +63,8 @@ func (f tailRAFunction) validate(caller bool) error {
 	// Existing production framing begins with the authoritative fence load.
 	// The trusted compiler's immutable FunctionInfo/source snapshot is retained;
 	// a claimed arbitrary instruction address is not accepted as a framed entry.
-	var expected enc.Asm
-	expected.Ld(enc.X29, enc.X25, -72)
-	if i.CodeBytes < 4 || !bytes.Equal(f.snapshot[i.Entry:i.Entry+4], expected.B) {
+	expected := uint32(4096-72)<<20 | uint32(enc.X25)<<15 | 3<<12 | uint32(enc.X29)<<7 | 0x03
+	if i.CodeBytes < 4 || binary.LittleEndian.Uint32(f.snapshot[i.Entry:]) != expected {
 		return unsupported("private tail production entry fingerprint")
 	}
 	return nil

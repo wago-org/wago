@@ -404,6 +404,7 @@ func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 // foreign activation. Only its actual gate owner may swap parked public scratch.
 type railshotInvocationState struct {
 	tailDispatcher     *railshot.NativeTailDispatcher
+	definedTailOwner   *railshot.NativeTailDefinedOwner
 	tailTargets        []byte // immutable instance-arena storage; retained with its descriptor owner
 	gateOwner          invocationID
 	longImportKeysOnce sync.Once

@@ -112,10 +112,23 @@ func TestTailDynamicRV64ForeignCycleOneRecord(t *testing.T) {
 				if err := root.Seal(); err != nil {
 					t.Fatal(err)
 				}
-				owners := []tailRADynamicOwner{oa, ob}
+				var owners []*NativeTailDefinedOwner
+				for _, owner := range []tailRADynamicOwner{oa, ob} {
+					fn, _ := tailPublishedFunctionForTest(t, owner.functions[0])
+					derived, err := NewNativeTailDefinedOwner(fn.published, fn.job, owner.context, owner.descriptors, owner.directory, []int{0}, []wasm.CompType{*sig})
+					if err != nil {
+						t.Fatal("derived actual defined owner", err)
+					}
+					owners = append(owners, derived)
+				}
 				for _, fn := range []tailRAFunction{a, b} {
-					s := tailDynamicSiteForTest(t, fn, owners, fn.info.FrameBytes-8)
+					s := tailDynamicSiteForTest(t, fn, nil, fn.info.FrameBytes-8)
+					s.dynamic = nil
 					s.Continuations = append(s.Continuations, NativeTailCodeRange{root.Base(), uintptr(len(root.Bytes()))})
+					s, err := NativeTailDefinedSite(s, fn.info.FrameBytes-8, owners)
+					if err != nil {
+						t.Fatal("derived actual defined site", err)
+					}
 					tailDynamicBindForTest(t, s, len(a.snapshot)+len(b.snapshot)+len(root.Bytes()))
 				}
 				var want []uint64
