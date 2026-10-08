@@ -13,39 +13,13 @@ import (
 // acquired. Cached immutable metadata survives parks, but every use checks the
 // current canonical rows and RX image under the reacquired owner graph lease.
 func rv64NativeDefinedTailOwner(in *Instance) (*railshot.NativeTailDefinedOwner, error) {
-	if in == nil || in.c == nil || !in.c.nativeContextTrapABI || !in.c.nativeTableContextABI || !in.c.registerABIDisabled || in.hostEvents != nil || in.c.NumImports != 0 {
-		return nil, fmt.Errorf("%w: RV64 defined tail snapshot requires a native definition-only owner", railshot.ErrUnsupported)
-	}
-	n := len(in.c.FuncTypeID)
-	if n == 0 || n > len(in.c.Funcs) || n > len(in.c.Entry) || n > railshot.MaxFunctions || !in.c.needsFuncRefDescs() {
-		return nil, fmt.Errorf("%w: RV64 defined tail snapshot function arena", railshot.ErrUnsupported)
+	n, values, err := rv64NativeDefinedTailOwnerCounts(in)
+	if err != nil {
+		return nil, err
 	}
 	state := in.ensurePluginState()
 	if owner := state.railshotInvocation.definedTailOwner; owner != nil {
 		return owner, owner.Validate()
-	}
-	values := 0
-	for _, sig := range in.c.Funcs[:n] {
-		if len(sig.Params) > 256 || len(sig.Results) > 256 {
-			return nil, fmt.Errorf("%w: RV64 defined tail signature count", railshot.ErrUnsupported)
-		}
-		for _, list := range [][]ValType{sig.Params, sig.Results} {
-			cells := 0
-			for _, typ := range list {
-				switch typ {
-				case ValI32, ValI64, ValF32, ValF64:
-					cells++
-				case ValV128:
-					cells += 2
-				default:
-					return nil, fmt.Errorf("%w: RV64 defined tail signature type", railshot.ErrUnsupported)
-				}
-			}
-			if cells > 256 {
-				return nil, fmt.Errorf("%w: RV64 defined tail physical signature bound", railshot.ErrUnsupported)
-			}
-			values += len(list)
-		}
 	}
 	if err := railshot.NativeTailDefinedOwnerBudget(n, values); err != nil {
 		return nil, err
@@ -72,4 +46,38 @@ func rv64NativeDefinedTailOwner(in *Instance) (*railshot.NativeTailDefinedOwner,
 	}
 	state.railshotInvocation.definedTailOwner = owner
 	return owner, nil
+}
+
+func rv64NativeDefinedTailOwnerCounts(in *Instance) (int, int, error) {
+	if in == nil || in.c == nil || !in.c.nativeContextTrapABI || !in.c.nativeTableContextABI || !in.c.registerABIDisabled || in.hostEvents != nil || in.c.NumImports != 0 {
+		return 0, 0, fmt.Errorf("%w: RV64 defined tail snapshot requires a native definition-only owner", railshot.ErrUnsupported)
+	}
+	n := len(in.c.FuncTypeID)
+	if n == 0 || n > len(in.c.Funcs) || n > len(in.c.Entry) || n > railshot.MaxFunctions || !in.c.needsFuncRefDescs() {
+		return 0, 0, fmt.Errorf("%w: RV64 defined tail snapshot function arena", railshot.ErrUnsupported)
+	}
+	values := 0
+	for _, sig := range in.c.Funcs[:n] {
+		if len(sig.Params) > 256 || len(sig.Results) > 256 {
+			return 0, 0, fmt.Errorf("%w: RV64 defined tail signature count", railshot.ErrUnsupported)
+		}
+		for _, list := range [][]ValType{sig.Params, sig.Results} {
+			cells := 0
+			for _, typ := range list {
+				switch typ {
+				case ValI32, ValI64, ValF32, ValF64:
+					cells++
+				case ValV128:
+					cells += 2
+				default:
+					return 0, 0, fmt.Errorf("%w: RV64 defined tail signature type", railshot.ErrUnsupported)
+				}
+			}
+			if cells > 256 {
+				return 0, 0, fmt.Errorf("%w: RV64 defined tail physical signature bound", railshot.ErrUnsupported)
+			}
+			values += len(list)
+		}
+	}
+	return n, values, nil
 }

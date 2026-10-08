@@ -18,10 +18,11 @@ import (
 // Refresh merges new targets without dropping suspended activations' old roots.
 // Container-held Go pointers alone are not a physical activation lifetime.
 type rv64NativeTableTargets struct {
-	owners  [257]*Instance
-	writers [257]*Table
-	storage [257]*Table
-	count   int
+	owners     [257]*Instance
+	writers    [257]*Table
+	storage    [257]*Table
+	count      int
+	tailBudget rv64NativeTailGenerationBudget
 }
 
 func (s *rv64NativeTableTargets) add(owner *Instance) error {
@@ -47,6 +48,9 @@ func (s *rv64NativeTableTargets) add(owner *Instance) error {
 }
 
 func (s *rv64NativeTableTargets) release() {
+	if s.tailBudget != (rv64NativeTailGenerationBudget{}) {
+		panic("RV64 tail generations must retire before scope roots")
+	}
 	s.publishImportedReferenceRows()
 	// Remove transient writer promises and scan current rows under serialization;
 	// prune performs physical releases only after its own native lease unlocks.

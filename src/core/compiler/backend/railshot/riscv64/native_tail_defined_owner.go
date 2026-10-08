@@ -20,14 +20,22 @@ type NativeTailDefinedOwner struct{ owner tailRADynamicOwner }
 // NativeTailDefinedOwnerBudget bounds both staging signatures and retained
 // owner metadata before the runtime converts any per-function type slices.
 func NativeTailDefinedOwnerBudget(count, values int) error {
+	_, err := NativeTailDefinedOwnerBytes(count, values)
+	return err
+}
+
+// NativeTailDefinedOwnerBytes also exposes the conservative staging/retained
+// metadata charge so the runtime can bound a whole graph before constructing
+// any of its per-instance snapshots.
+func NativeTailDefinedOwnerBytes(count, values int) (int, error) {
 	if count <= 0 || count > MaxFunctions || values < 0 || values > 512*count {
-		return unsupported("native defined tail owner metadata count")
+		return 0, unsupported("native defined tail owner metadata count")
 	}
 	size := int(unsafe.Sizeof(NativeTailDefinedOwner{})) + count*(int(unsafe.Sizeof(tailRAFunction{}))+2*int(unsafe.Sizeof(wasm.CompType{}))+8) + 2*values*int(unsafe.Sizeof(wasm.ValType{}))
 	if size > MaxModuleBytes {
-		return unsupported("native defined tail owner metadata bound")
+		return 0, unsupported("native defined tail owner metadata bound")
 	}
-	return nil
+	return size, nil
 }
 
 // NewNativeTailDefinedOwner derives frames and entries from a retained compiler

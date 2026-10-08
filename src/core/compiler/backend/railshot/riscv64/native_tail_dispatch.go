@@ -94,13 +94,17 @@ func nativeTailProofSite(s NativeTailSite) tailRAProofSite {
 // Validate all aggregate bounds and source homes before allocating native data,
 // mapping factory code or materializing per-site instruction sequences.
 func nativeTailDispatcherBound(sites []NativeTailSite, guestCodeBytes int) (int, error) {
+	return nativeTailDispatcherBoundForBinding(sites, guestCodeBytes, true)
+}
+
+func nativeTailDispatcherBoundForBinding(sites []NativeTailSite, guestCodeBytes int, bind bool) (int, error) {
 	if len(sites) == 0 || len(sites) > tailRAMaxSites || guestCodeBytes <= 0 || guestCodeBytes > MaxCodeBytes {
 		return 0, unsupported("native tail factory count/code bound")
 	}
 	metadata := tailRACapHeader + len(sites)*tailRASiteRow
 	code := 0
 	for _, s := range sites {
-		if s.CallerHome != sites[0].CallerHome || tailRAPointer(s.CallerContext) != tailRAPointer(sites[0].CallerContext) || len(s.CallerContext) != abi.RV64InstanceContextBytes || len(s.TargetContext) != abi.RV64InstanceContextBytes || tailRAPointer(s.CallerContext)&7 != 0 || tailRAPointer(s.TargetContext)&7 != 0 || s.Target.Context != tailRAPointer(s.TargetContext) || !s.Target.InvocationContext || !s.Target.StackOwnedActivation || s.FunctionIndex >= 2*MaxFunctions || binary.LittleEndian.Uint64(s.CallerContext[abi.RV64TailCapabilityOffset:]) != 0 || len(s.Parameters) > 256 || len(s.Results) > 256 || len(s.Continuations) == 0 || len(s.Continuations) > tailRAMaxRanges {
+		if s.CallerHome != sites[0].CallerHome || tailRAPointer(s.CallerContext) != tailRAPointer(sites[0].CallerContext) || len(s.CallerContext) != abi.RV64InstanceContextBytes || len(s.TargetContext) != abi.RV64InstanceContextBytes || tailRAPointer(s.CallerContext)&7 != 0 || tailRAPointer(s.TargetContext)&7 != 0 || s.Target.Context != tailRAPointer(s.TargetContext) || !s.Target.InvocationContext || !s.Target.StackOwnedActivation || s.FunctionIndex >= 2*MaxFunctions || bind && binary.LittleEndian.Uint64(s.CallerContext[abi.RV64TailCapabilityOffset:]) != 0 || len(s.Parameters) > 256 || len(s.Results) > 256 || len(s.Continuations) == 0 || len(s.Continuations) > tailRAMaxRanges {
 			return 0, unsupported("native tail retained public contexts/target")
 		}
 		// Account copied signatures and continuation records, not just native rows.
@@ -152,7 +156,19 @@ func NewNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int) (*Nativ
 // The caller must close the dispatcher before releasing that arena. A nil
 // arena selects the independently owned storage used by standalone factories.
 func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, arena *coreruntime.Arena) (*NativeTailDispatcher, error) {
-	bound, err := nativeTailDispatcherBound(sites, guestCodeBytes)
+	return newNativeTailDispatcher(sites, guestCodeBytes, arena, true)
+}
+
+// NewNativeTailDispatcherDetached publishes a complete factory without changing
+// any caller binding. Its individually owned capability arena can be retired
+// separately from the instance and other suspended generations. Bind requires
+// the caller and complete target graph to be authenticated again before use.
+func NewNativeTailDispatcherDetached(sites []NativeTailSite, guestCodeBytes int) (*NativeTailDispatcher, error) {
+	return newNativeTailDispatcher(sites, guestCodeBytes, nil, false)
+}
+
+func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *coreruntime.Arena, bind bool) (*NativeTailDispatcher, error) {
+	bound, err := nativeTailDispatcherBoundForBinding(sites, guestCodeBytes, bind)
 	if err != nil {
 		return nil, err
 	}
@@ -251,10 +267,12 @@ func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, 
 	if err = o.code.Seal(); err != nil {
 		return o, err
 	}
-	for _, ctx := range o.contexts {
-		binary.LittleEndian.PutUint64(ctx[abi.RV64TailCapabilityOffset:], uint64(tailRAPointer(o.capability)))
+	if bind {
+		for _, ctx := range o.contexts {
+			binary.LittleEndian.PutUint64(ctx[abi.RV64TailCapabilityOffset:], uint64(tailRAPointer(o.capability)))
+		}
 	}
-	o.ready, o.bound = true, true
+	o.ready, o.bound = true, bind
 	return o, nil
 }
 

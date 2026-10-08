@@ -68,15 +68,28 @@ func (o *NativeTailDispatcher) Detach() error {
 	if o == nil || !o.bound {
 		return nil
 	}
+	if err := o.CheckDetach(); err != nil {
+		return err
+	}
+	for _, ctx := range o.contexts {
+		binary.LittleEndian.PutUint64(ctx[abi.RV64TailCapabilityOffset:], 0)
+	}
+	o.bound = false
+	return nil
+}
+
+// CheckDetach authenticates the binding without changing it. Runtime graph
+// transitions can validate every affected slot before clearing any of them.
+// The particular caller lease and native serialization must be held.
+func (o *NativeTailDispatcher) CheckDetach() error {
+	if o == nil || !o.bound {
+		return nil
+	}
 	for _, ctx := range o.contexts {
 		value := binary.LittleEndian.Uint64(ctx[abi.RV64TailCapabilityOffset:])
 		if value != 0 && value != uint64(tailRAPointer(o.capability)) {
 			return unsupported("native tail capability binding replaced")
 		}
 	}
-	for _, ctx := range o.contexts {
-		binary.LittleEndian.PutUint64(ctx[abi.RV64TailCapabilityOffset:], 0)
-	}
-	o.bound = false
 	return nil
 }

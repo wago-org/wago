@@ -403,14 +403,16 @@ func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 // Callback authority and ownership of the producer's public gate differ for a
 // foreign activation. Only its actual gate owner may swap parked public scratch.
 type railshotInvocationState struct {
-	tailDispatcher     *railshot.NativeTailDispatcher
-	definedTailOwner   *railshot.NativeTailDefinedOwner
-	tailTargets        []byte // immutable instance-arena storage; retained with its descriptor owner
-	gateOwner          invocationID
-	longImportKeysOnce sync.Once
-	longImportKeys     []string
-	tableTargets       [rv64MaxTableEntryDepth]*rv64NativeTableTargets
-	tableDepth         int
+	tailDispatcher       *railshot.NativeTailDispatcher
+	tailGenerationBudget rv64NativeTailGenerationBudget
+	activeTailGeneration *rv64NativeTailGeneration
+	definedTailOwner     *railshot.NativeTailDefinedOwner
+	tailTargets          []byte // immutable instance-arena storage; retained with its descriptor owner
+	gateOwner            invocationID
+	longImportKeysOnce   sync.Once
+	longImportKeys       []string
+	tableTargets         [rv64MaxTableEntryDepth]*rv64NativeTableTargets
+	tableDepth           int
 }
 
 func railshotSetInvocationGateOwner(state *instancePluginState, id invocationID) {

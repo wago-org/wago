@@ -141,14 +141,20 @@ func rv64ValidateNativeTail(c *Compiled) error {
 	if m == nil {
 		return nil
 	}
-	if !c.nativeContextTrapABI || len(m.Plans) > 4096 {
+	return rv64ValidateNativeTailPlans(c, m.Plans)
+}
+
+// Kept separate for private runtime generation qualification. Public admission
+// still rejects dynamic products until entry/resume integration is complete.
+func rv64ValidateNativeTailPlans(c *Compiled, plans []encoder.NativeTailPlan) error {
+	if !c.nativeContextTrapABI || len(plans) > 4096 {
 		return fmt.Errorf("RV64 native tail context/count contract")
 	}
-	if _, _, err := railshot.NativeTailInstanceBudget(len(m.Plans), len(c.code)); err != nil {
+	if _, _, err := railshot.NativeTailInstanceBudget(len(plans), len(c.code)); err != nil {
 		return err
 	}
 	values := 0
-	for _, p := range m.Plans {
+	for _, p := range plans {
 		local := int(p.FunctionIndex) - c.NumImports
 		if local < 0 || local >= len(c.Funcs) || p.FrameBytes < 48 || p.FrameBytes > railshot.MaxFrameBytes || p.FrameBytes&15 != 0 || p.SourceBase < 48 || p.SourceBase > p.FrameBytes || p.SourceBase&7 != 0 || p.SourceStride != 8 && p.SourceStride != 16 {
 			return fmt.Errorf("RV64 native tail source frame/index contract")
@@ -184,7 +190,7 @@ func rv64ValidateNativeTail(c *Compiled) error {
 			}
 		}
 		values += sig.paramCount() + sig.resultCount()
-		if err := railshot.NativeTailMetadataBudget(len(m.Plans), values); err != nil {
+		if err := railshot.NativeTailMetadataBudget(len(plans), values); err != nil {
 			return err
 		}
 		if len(c.Funcs[local].Results) != sig.resultCount() {
