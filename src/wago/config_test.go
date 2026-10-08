@@ -372,7 +372,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureGC, "gc", completeCore3Backend},
 		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
 		{CoreFeatureMultiMemory, "multi-memory", supportsMultiMemoryBackend(runtime.GOOS, runtime.GOARCH)},
-		{CoreFeatureMemory64, "memory64", completeCore3Backend},
+		{CoreFeatureMemory64, "memory64", supportsMemory64Backend(runtime.GOOS, runtime.GOARCH)},
 		{CoreFeatureTable64, "table64", completeCore3Backend},
 		{CoreFeatureThreads, "threads", supportsThreadsBackend(runtime.GOOS, runtime.GOARCH)},
 	} {
@@ -595,6 +595,9 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 		}
 		if supportsMultiMemoryBackend(runtime.GOOS, runtime.GOARCH) {
 			unsupported &^= CoreFeatureMultiMemory
+		}
+		if supportsMemory64Backend(runtime.GOOS, runtime.GOARCH) {
+			unsupported &^= CoreFeatureMemory64
 		}
 		wantFeatures &^= unsupported
 	}

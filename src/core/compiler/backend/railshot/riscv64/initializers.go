@@ -31,8 +31,14 @@ func admittedScalarConst(expr wasm.Expr, typ wasm.ValType, production bool, impo
 }
 
 func admitI32Offset(expr wasm.Expr, m *wasm.Module, public bool) error {
+	return admitMemoryOffset(expr, m, wasm.I32, public)
+}
+func admitMemoryOffset(expr wasm.Expr, m *wasm.Module, want wasm.ValType, public bool) error {
 	if public {
-		return admitModuleIntegerInitializer(expr, wasm.I32, m, m.ImportedGlobalCount()+len(m.Globals))
+		return admitModuleIntegerInitializer(expr, want, m, m.ImportedGlobalCount()+len(m.Globals))
+	}
+	if !wasm.EqualValType(want, wasm.I32) {
+		return unsupported("private memory64 initializer")
 	}
 	if len(expr.Instrs) != 0 {
 		return unsupported("i32 offset must be byte-backed")

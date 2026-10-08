@@ -32,8 +32,12 @@ function descriptors or element directory. Empty and state-only modules have no
 executable mapping. Bounded opaque custom metadata and empty supported sections
 are accepted. Passive segments and immutable funcref `global.get` element
 initializers preserve canonical descriptor ownership, including partial
-initialization failures. Indexed memory32 scalar, FP, SWAR and bulk operations
-support up to 100 owned/imported memories, including aliased imports and growth.
+initialization failures. Indexed memory32/memory64 scalar, FP, SWAR and bulk
+operations support up to 100 owned/imported memories, including mixed address
+widths, aliased imports and growth. Memory64 retains exact declared limits with
+a finite owned reservation of at most 65,535 pages; address and growth overflow
+checks preserve all 64 bits. Fallback scalar/SWAR control nesting is bounded at
+128 constructs, independently of the shared scalar fast path.
 Compiler diagnostics builds report finalized code/frame sizes; source and unwind
 maps remain pending. Function signatures remain numeric/vector;
 Go callback and HostFuncRef reexports remain rejected. Frozen
@@ -41,7 +45,7 @@ attachments retain the actual descriptor storage through producer retirement,
 parked callbacks, and indirect calls. Imported host tables retain the actual
 descriptor owners after writers return or close. Reference imports combined with
 instance-owned imported tables, mutable reference globals, broader reference signatures/equality, GC/EH,
-threads, memory64 and table64 remain unavailable.
+threads and table64 remain unavailable.
 This is not a supported
 release target; native cache and performance qualification remain outstanding.
 See [the runtime contract](ARCHITECTURE.md).

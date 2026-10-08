@@ -41,6 +41,10 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 // Existing production count/byte budgets precede this walk, and per-type/run
 // limits prevent hand-built decoded callers from hiding unbounded metadata.
 func moduleUsesSWAR(m *wasm.Module) (bool, error) {
+	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories {
+		return false, unsupported("SWAR selector memory/import count bound")
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, group := range m.Types {
 		if len(group.SubTypes) != 1 {
 			return false, unsupported("decoded type group")
@@ -106,7 +110,8 @@ func moduleUsesSWAR(m *wasm.Module) (bool, error) {
 					return true, nil
 				}
 			}
-			if err := wasm.SkipInstructionImmediate(&reader, op); err != nil {
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(&reader, op, &imm); err != nil {
 				return false, err
 			}
 		}

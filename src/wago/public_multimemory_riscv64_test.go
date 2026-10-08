@@ -481,7 +481,7 @@ func TestRV64PublicMultiMemoryAdmission(t *testing.T) {
 	source := rv64MMModule(funcs, defs, nil, 100, nil)
 	sharedDefs, wideDefs := slices.Clone(defs), slices.Clone(defs)
 	sharedDefs[99] = []byte{3, 0, 0}
-	wideDefs[99] = []byte{5, 0, 0}
+	wideDefs[99] = []byte{7, 0, 0}
 	if c, err := Compile(NewRuntimeConfig().WithCoreFeatures(defaultCoreFeatures()&^CoreFeatureMultiMemory), source); err == nil {
 		if c != nil {
 			_ = c.Close()
@@ -496,7 +496,7 @@ func TestRV64PublicMultiMemoryAdmission(t *testing.T) {
 		{"too-many", append(slices.Clone(defs), []byte{1, 0, 0}), funcs},
 		{"invalid-index", defs, rv64MMGrowFuncs(100)},
 		{"unused-shared-secondary", sharedDefs, []rv64MMFunc{{"empty", nil, nil, []byte{0x0b}}}},
-		{"unused-memory64-secondary", wideDefs, []rv64MMFunc{{"empty", nil, nil, []byte{0x0b}}}},
+		{"unused-shared-memory64-secondary", wideDefs, []rv64MMFunc{{"empty", nil, nil, []byte{0x0b}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, err := Compile(nil, rv64MMModule(tc.funcs, tc.defs, nil, len(tc.defs), nil))
@@ -528,6 +528,7 @@ func TestRV64PublicMultiMemoryArtifactMetadata(t *testing.T) {
 					directory.defs[99].Shared = true
 				} else {
 					directory.defs[99].Addr64 = true
+					directory.defs[99].Max = 1 << 49
 				}
 				blob, err := marshalCompiled(&bad)
 				if err != nil {

@@ -17,9 +17,15 @@ suite includes all 472 valid modules and checks 669 binary invalid cases; its 51
 malformed WAT text cases remain outside the binary-only API harness. Table-free
 passive segments and immutable reference-global element initializers preserve
 canonical owners. Bounded multi-memory lowering covers scalar, FP, SWAR, bulk
-operations and aliased imports. Pinned integer/conversion and float corpora extend
-public source/artifact qualification, and diagnostics expose finalized code/frame
-statistics.
+operations and aliased imports. Memory64 adds per-memory address typing,
+carry-checked scalar/SWAR accesses and growth, mixed-width bulk operations and
+I64 initialization while retaining finite physical reservations. Fallback
+control nesting supports 128 constructs. Pinned integer/conversion, float,
+memory and control corpora extend public source/artifact qualification, and
+diagnostics expose finalized code/frame statistics. Optional source-origin and
+layout recording prerequisites are present; public source/unwind maps remain
+pending integration. Conservative resource-root accounting prepares later
+reference ownership work without changing collection or feature admission.
 Remaining work
 includes reference-global imports combined with instance-owned imported tables, mutable reference globals, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance

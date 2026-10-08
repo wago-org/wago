@@ -4,16 +4,19 @@ package riscv64
 
 import enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 
-// X5 is the rawI32 address, X6/X7 the retained vector. Preserve the preflighted
+// X5 is the selected raw I32/I64 address, X6/X7 the retained vector. Preserve the preflighted
 // pointer in X12 while the existing scalar lane helpers use X5 for payload.
 func (f *integerEmitter) swarLaneMemory(offset uint64, width, lane uint8, store bool) {
 	f.swarLaneMemoryAt(0, offset, width, lane, store)
 }
 func (f *integerEmitter) swarLaneMemoryAt(index uint32, offset uint64, width, lane uint8, store bool) {
+	f.swarLaneMemoryTypedAt(index, offset, width, lane, store, false)
+}
+func (f *integerEmitter) swarLaneMemoryTypedAt(index uint32, offset uint64, width, lane uint8, store bool, address64 bool) {
 	if !f.swarLaneCheck(width, lane) {
 		return
 	}
-	f.swarMemoryAddressAt(index, offset, width/8)
+	f.swarMemoryAddressTypedAt(index, offset, width/8, address64)
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}
@@ -46,10 +49,13 @@ func (f *integerEmitter) swarSplatMemory(offset uint64, width uint8) {
 	f.swarSplatMemoryAt(0, offset, width)
 }
 func (f *integerEmitter) swarSplatMemoryAt(index uint32, offset uint64, width uint8) {
+	f.swarSplatMemoryTypedAt(index, offset, width, false)
+}
+func (f *integerEmitter) swarSplatMemoryTypedAt(index uint32, offset uint64, width uint8, address64 bool) {
 	if !f.swarLaneCheck(width, 0) {
 		return
 	}
-	f.swarMemoryAddressAt(index, offset, width/8)
+	f.swarMemoryAddressTypedAt(index, offset, width/8, address64)
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}

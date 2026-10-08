@@ -202,15 +202,25 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	for i := 0; i < c.activeDataCount(); i++ {
 		data := c.activeDataAt(i)
+		if uint64(data.MemoryIndex) >= uint64(c.memoryCount()) {
+			return reject("data initializer memory index")
+		}
+		offsetType := ValI32
+		if c.memoryDef(int(data.MemoryIndex)).Addr64 {
+			offsetType = ValI64
+			if data.Offset.HasGlobal {
+				return reject("memory64 global offset requires an i64 expression")
+			}
+		}
 		if len(data.Offset.Expr) != 0 {
 			if data.Offset.HasGlobal {
 				return reject("conflicting data initializer")
 			}
-			if err := rv64ValidateIntegerInitializer(c, data.Offset.Expr, ValI32, len(c.Globals)); err != nil {
+			if err := rv64ValidateIntegerInitializer(c, data.Offset.Expr, offsetType, len(c.Globals)); err != nil {
 				return reject(err.Error())
 			}
 		}
-		if uint64(data.MemoryIndex) >= uint64(c.memoryCount()) || (data.Offset.HasGlobal && !rv64InitializerGlobal(c, data.Offset.Global, ValI32, len(c.Globals))) {
+		if data.Offset.HasGlobal && !rv64InitializerGlobal(c, data.Offset.Global, ValI32, len(c.Globals)) {
 			return reject("data initializer lowering is pending")
 		}
 	}
@@ -219,8 +229,19 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	for i := 0; i < c.memoryCount(); i++ {
 		memory := c.memoryDef(i)
-		if memory.Shared || memory.Addr64 || memory.Min > 65536 || (memory.HasMax && (memory.Max > 65536 || memory.Max < memory.Min)) {
-			return reject("bounded unshared memory32 required")
+		maxTypePages := uint64(65536)
+		if memory.Addr64 {
+			maxTypePages = 1 << 48
+			if !c.requiredFeatures.IsEnabled(CoreFeatureMemory64) {
+				return reject("memory64 requires feature metadata")
+			}
+		}
+		reservation, err := ownedMemoryReservationPages(memory)
+		if memory.Shared || err != nil || (memory.HasMax && memory.Max > maxTypePages) {
+			return reject("bounded unshared memory required")
+		}
+		if i == 0 && (!c.HasMemory || uint64(c.MemMinPages) != memory.Min || uint64(c.MemMaxPages) < memory.Min || uint64(c.MemMaxPages) > reservation) {
+			return reject("primary memory reservation metadata mismatch")
 		}
 	}
 	if len(c.memoryExportMap()) > railshot.MaxFunctions {
@@ -439,7 +460,7 @@ func rv64InitializerGlobal(c *Compiled, index int, expected ValType, limit int) 
 }
 
 func rv64ValidateIntegerInitializer(c *Compiled, body []byte, expected ValType, limit int) error {
-	if (expected != ValI32 && expected != ValI64) || (!c.requiredFeatures.IsEnabled(CoreFeatureExtendedConst) && !c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions)) {
+	if (expected != ValI32 && expected != ValI64) || (!c.requiredFeatures.IsEnabled(CoreFeatureExtendedConst) && !c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) && !rv64CoreIntegerInitializer(body)) {
 		return fmt.Errorf("integer expression requires its numeric feature metadata")
 	}
 	return railshot.ValidateIntegerInitializer(body, rv64NumericWasmType(expected), func(index uint32) (wasm.ValType, bool) {
@@ -449,4 +470,33 @@ func rv64ValidateIntegerInitializer(c *Compiled, body []byte, expected ValType, 
 		g := c.Globals[index]
 		return rv64NumericWasmType(g.Type), rv64InitializerGlobal(c, int(index), g.Type, limit)
 	})
+}
+
+// Memory64 keeps even literal/global offsets as Expr to retain all 64 bits.
+// This representation alone does not imply extended-constant instructions.
+// The common validator below still proves the result type and global scope.
+func rv64CoreIntegerInitializer(body []byte) bool {
+	if len(body) > railshot.MaxIntegerInitializerBytes {
+		return false
+	}
+	r := wasm.ReaderFrom(body)
+	op, err := r.Byte()
+	if err != nil {
+		return false
+	}
+	switch op {
+	case 0x41:
+		_, err = r.I32()
+	case 0x42:
+		_, err = r.I64()
+	case 0x23:
+		_, err = r.U32()
+	default:
+		return false
+	}
+	if err != nil {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && !r.HasNext()
 }

@@ -51,10 +51,10 @@ func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.Mem
 			if uint64(data.Mode.Mem) >= uint64(len(memories)) {
 				return unsupported("SWAR active data memory32")
 			}
-			if err := admitMemory32(memories[data.Mode.Mem], true); err != nil {
+			if err := admitMemoryType(memories[data.Mode.Mem], true, true); err != nil {
 				return err
 			}
-			if err := admitI32Offset(data.Mode.Offset, m, true); err != nil {
+			if err := admitMemoryOffset(data.Mode.Offset, m, wasm.MemoryAddrType(memories[data.Mode.Mem]), true); err != nil {
 				return err
 			}
 		default:

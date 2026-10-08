@@ -93,7 +93,7 @@ func admitModuleIntegerInitializer(expr wasm.Expr, expected wasm.ValType, m *was
 // AdmitPublicInitializers runs on the original decoded expressions before
 // frontend folding. Literal folding must not erase source resource limits.
 func AdmitPublicInitializers(m *wasm.Module) error {
-	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Tables)+m.ImportedTableCount() > 1 || m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments {
+	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories || len(m.Tables)+m.ImportedTableCount() > 1 || m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("public initializer count bound")
 	}
 	for _, table := range m.Tables {
@@ -146,7 +146,14 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	}
 	for _, data := range m.Data {
 		if data.Mode.Kind == wasm.DataActive {
-			if err := admitModuleIntegerInitializer(data.Mode.Offset, wasm.I32, m, m.ImportedGlobalCount()+len(m.Globals)); err != nil {
+			memory, ok := m.MemoryType(uint32(data.Mode.Mem))
+			if !ok {
+				return unsupported("active data memory index")
+			}
+			if err := admitMemoryType(memory, true, true); err != nil {
+				return err
+			}
+			if err := admitModuleIntegerInitializer(data.Mode.Offset, wasm.MemoryAddrType(memory), m, m.ImportedGlobalCount()+len(m.Globals)); err != nil {
 				return err
 			}
 		}

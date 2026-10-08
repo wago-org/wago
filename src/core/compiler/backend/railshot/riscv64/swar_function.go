@@ -80,6 +80,11 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 	if memoryCount < 0 || memoryCount > MaxProductionMemories || !indexedMemories && memoryCount > 1 {
 		return swarSummary{}, unsupported("SWAR memory count bound")
 	}
+	var memories [MaxProductionMemories]wasm.MemType
+	return walkSWARPairsWithMemoryProfile(fn, ft, makeMemoryProfile(memories[:memoryCount], indexedMemories), types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, emit)
+}
+func walkSWARPairsWithMemoryProfile(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable bool, emit *integerEmitter) (swarSummary, error) {
+	memoryCount, indexedMemories := profile.count, profile.indexed
 
 	if importedFunctions < 0 || importedFunctions > MaxHostFunctionImports || importedFunctions > len(functions) || importedFunctions != 0 && (table != nil && !foreignTableCalls || len(functions) == importedFunctions) {
 		return swarSummary{}, unsupported("SWAR import prefix bound/defined functions/table")
@@ -448,37 +453,42 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 				return swarSummary{}, unsupported("SWAR scalar memory without resource")
 			}
 			var imm wasm.InstructionImmediate
-			if err := wasm.ClassifyInstructionImmediateIntoWithFeatures(&r, op, &imm, false, indexedMemories); err != nil {
+			if err := profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return swarSummary{}, err
 			}
 			memoryIndex := imm.MemIndex
 			if op == 0x3f || op == 0x40 {
 				memoryIndex = imm.Index
 			}
-			if uint64(memoryIndex) >= uint64(memoryCount) || !indexedMemories && (memoryIndex != 0 || imm.HasMemIndex) || imm.MemOffset > uint64(^uint32(0)) {
+			if uint64(memoryIndex) >= uint64(memoryCount) || !indexedMemories && (memoryIndex != 0 || imm.HasMemIndex) {
 				return swarSummary{}, unsupported("SWAR scalar memory index/offset")
+			}
+			address64 := profile.wide(memoryIndex)
+			addressClass := swarI32
+			if address64 {
+				addressClass = swarI64
 			}
 			if err := reserve(768); err != nil { // 1024 including the opcode's base bound.
 				return swarSummary{}, err
 			}
 			if op == 0x3f || op == 0x40 {
 				if op == 0x40 {
-					if err := flow.prepareDead(swarI32); err != nil {
+					if err := flow.prepareDead(addressClass); err != nil {
 						return swarSummary{}, err
 					}
-					if h == flow.floor() || stackClasses[h-1] != swarI32 {
+					if h == flow.floor() || stackClasses[h-1] != addressClass {
 						return swarSummary{}, unsupported("SWAR memory grow delta carrier")
 					}
 					h--
 				}
-				if err := push(swarI32); err != nil {
+				if err := push(addressClass); err != nil {
 					return swarSummary{}, err
 				}
 				if emit != nil {
 					if op == 0x40 {
-						emit.Load(5, spill(h-1), false)
+						emit.Load(5, spill(h-1), address64)
 					}
-					emit.memorySizeGrowAt(memoryIndex, op == 0x40)
+					emit.memorySizeGrowTypedAt(memoryIndex, op == 0x40, address64)
 					emit.Store(spill(h-1), 5, true)
 					emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
 				}
@@ -497,7 +507,7 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 			} else if op == 0x2b || op == 0x39 {
 				class = swarF64
 			}
-			inputs := []swarClass{swarI32}
+			inputs := []swarClass{addressClass}
 			if store {
 				inputs = append(inputs, class)
 			}
@@ -518,8 +528,8 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 				if store {
 					emit.Load(6, spill(base+1), wide)
 				}
-				emit.Load(5, spill(base), false)
-				emit.memoryAccessAt(memoryIndex, imm.MemOffset, size, wide, signed, store)
+				emit.Load(5, spill(base), address64)
+				emit.memoryAccessTypedAt(memoryIndex, imm.MemOffset, size, wide, signed, store, address64)
 				if !store {
 					emit.Store(spill(base), 5, true)
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
@@ -942,7 +952,20 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 				if err := reserve(1024); err != nil {
 					return swarSummary{}, err
 				}
-				if err := flow.prepareRepeatedDead(swarI32, 3); err != nil {
+				kind := wasm.InstrMemoryFill
+				if sub == 10 {
+					kind = wasm.InstrMemoryCopy
+				} else if sub == 8 {
+					kind = wasm.InstrMemoryInit
+				}
+				widths := profile.bulkWidths(kind, memoryIndices[0], memoryIndices[1])
+				classes := [3]swarClass{swarI32, swarI32, swarI32}
+				for i, wide := range widths {
+					if wide {
+						classes[i] = swarI64
+					}
+				}
+				if err := flow.prepareDead(classes[:]...); err != nil {
 					return swarSummary{}, err
 				}
 				base := h - 3
@@ -950,20 +973,14 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 					return swarSummary{}, unsupported("SWAR bulk memory operand underflow")
 				}
 				for i := 0; i < 3; i++ {
-					if stackClasses[base+i] != swarI32 {
+					if stackClasses[base+i] != classes[i] {
 						return swarSummary{}, unsupported("SWAR bulk memory carrier class")
 					}
 				}
 				usesTraps, flow.usesLoops = true, true
 				if emit != nil {
 					for i := 0; i < 3; i++ {
-						emit.Load(uint8(5+i), spill(base+i), false)
-					}
-					kind := wasm.InstrMemoryFill
-					if sub == 10 {
-						kind = wasm.InstrMemoryCopy
-					} else if sub == 8 {
-						kind = wasm.InstrMemoryInit
+						emit.Load(uint8(5+i), spill(base+i), widths[i])
 					}
 					emit.memoryBulkAt(kind, dataOffset, memoryIndices[0], memoryIndices[1])
 				}
@@ -1460,11 +1477,11 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 				lane := byte(0)
 				if indexedMemories {
 					var imm wasm.InstructionImmediate
-					if err := wasm.ClassifyInstructionImmediateIntoWithFeatures(&immediateReader, op, &imm, false, true); err != nil {
+					if err := profile.classifier.ClassifyInto(&immediateReader, op, &imm); err != nil {
 						return swarSummary{}, err
 					}
 					memoryIndex, offset = imm.MemIndex, imm.MemOffset
-					if uint64(memoryIndex) >= uint64(memoryCount) || offset > uint64(^uint32(0)) || imm.MemAlign > maxAlign {
+					if uint64(memoryIndex) >= uint64(memoryCount) || imm.MemAlign > maxAlign {
 						return swarSummary{}, unsupported("SWAR indexed memarg")
 					}
 					r = immediateReader
@@ -1494,31 +1511,36 @@ func walkSWARPairsWithMemoryMode(fn *wasm.Func, ft *wasm.CompType, memoryCount i
 				if laneOp && uint32(lane) >= 16>>maxAlign {
 					return swarSummary{}, unsupported("SWAR memory lane index")
 				}
+				address64 := profile.wide(memoryIndex)
+				addressClass := swarI32
+				if address64 {
+					addressClass = swarI64
+				}
 				store := kind == 11 || (kind >= 88 && kind <= 91)
 				arity := 1
 				if store || laneOp {
 					arity = 2
 				}
-				operands := [2]swarClass{swarI32, swarV128}
+				operands := [2]swarClass{addressClass, swarV128}
 				if err := flow.prepareDead(operands[:arity]...); err != nil {
 					return swarSummary{}, err
 				}
-				if h-flow.floor() < arity || stackClasses[h-arity] != swarI32 || ((store || laneOp) && stackClasses[h-1] != swarV128) {
+				if h-flow.floor() < arity || stackClasses[h-arity] != addressClass || ((store || laneOp) && stackClasses[h-1] != swarV128) {
 					return swarSummary{}, unsupported("SWAR memory carrier class/underflow")
 				}
 				if emit != nil {
 					if store || laneOp {
 						emit.swarLoad(spill(h-1), swarPair{enc.X6, enc.X7})
 					}
-					emit.Load(5, spill(h-arity), false)
+					emit.Load(5, spill(h-arity), address64)
 					if kind == 0 || kind == 11 {
-						emit.swarMemoryAt(memoryIndex, offset, store)
+						emit.swarMemoryTypedAt(memoryIndex, offset, store, address64)
 					} else if laneOp {
-						emit.swarLaneMemoryAt(memoryIndex, offset, uint8(8<<maxAlign), lane, store)
+						emit.swarLaneMemoryTypedAt(memoryIndex, offset, uint8(8<<maxAlign), lane, store, address64)
 					} else if kind >= 7 && kind <= 10 {
-						emit.swarSplatMemoryAt(memoryIndex, offset, uint8(8<<maxAlign))
+						emit.swarSplatMemoryTypedAt(memoryIndex, offset, uint8(8<<maxAlign), address64)
 					} else {
-						emit.swarPartialLoadAt(memoryIndex, offset, kind)
+						emit.swarPartialLoadTypedAt(memoryIndex, offset, kind, address64)
 					}
 					if !store {
 						emit.swarStore(spill(h-arity), swarPair{enc.X6, enc.X7})
@@ -1774,11 +1796,12 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		if !mode.production {
 			return nil, FunctionInfo{}, nil, unsupported("SWAR production memory32 resource")
 		}
-		if err := admitMemory32(memory, true); err != nil {
+		if err := admitMemoryType(memory, true, indexedMemories); err != nil {
 			return nil, FunctionInfo{}, nil, err
 		}
 	}
-	summary, err := walkSWARPairsWithMemoryMode(fn, ft, len(memories), indexedMemories, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, nil)
+	profile := makeMemoryProfile(memories, indexedMemories)
+	summary, err := walkSWARPairsWithMemoryProfile(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -1796,7 +1819,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	actual, err := walkSWARPairsWithMemoryMode(fn, ft, len(memories), indexedMemories, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, &f)
+	actual, err := walkSWARPairsWithMemoryProfile(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

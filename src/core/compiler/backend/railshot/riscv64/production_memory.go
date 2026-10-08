@@ -9,13 +9,18 @@ import (
 	native "github.com/wago-org/wago/src/core/runtime/riscv64"
 )
 
-// Every indexed memory is ordinary wasm32 and uses the shared bounded ceiling.
-func admitMemory32(t wasm.MemType, production bool) error {
+// Exact declared limits remain metadata. Execution uses the shared finite
+// memory64 reservation ceiling; oversized valid maxima may fail later growth.
+func admitMemoryType(t wasm.MemType, production, public bool) error {
 	maxPages := uint64(native.MaxMemoryPages)
+	maxDeclared := uint64(65536)
 	if production {
 		maxPages = 65536
 	}
-	if t.Shared || t.Limits.Addr64 || t.Limits.Min > maxPages || t.Limits.HasMax && (t.Limits.Max < t.Limits.Min || t.Limits.Max > 65536) {
+	if t.Limits.Addr64 && production && public {
+		maxPages, maxDeclared = 65535, 1<<48
+	}
+	if t.Shared || t.Limits.Addr64 && !(production && public) || t.Limits.Min > maxPages || t.Limits.HasMax && (t.Limits.Max < t.Limits.Min || t.Limits.Max > maxDeclared) {
 		return unsupported("shared/memory64/initial memory bound")
 	}
 	return nil
@@ -76,14 +81,21 @@ func (f *integerEmitter) productionMemorySizeAt(index uint32, out enc.Reg) {
 // a zero delta bypasses quotas, matching the existing targets. Reload addresses
 // after long branches, whose veneers consume Scratch1.
 func (f *integerEmitter) productionMemorySizeGrowAt(index uint32, grow bool) {
+	f.productionMemorySizeGrowTypedAt(index, grow, false)
+}
+func (f *integerEmitter) productionMemorySizeGrowTypedAt(index uint32, grow, address64 bool) {
 	f.productionMemoryBaseAt(index, enc.X28)
 	f.a.Lwu(enc.X6, enc.X28, -abi.LinMemCurrentPagesOffset)
 	if !grow {
-		f.Move(5, 6, false)
+		f.Move(5, 6, address64)
 		return
 	}
 	zero := f.a.BranchLong(enc.EQ, enc.X5, enc.Zero)
 	f.a.Add(enc.X7, enc.X5, enc.X6)
+	carry := -1
+	if address64 {
+		carry = f.a.BranchLong(enc.LTU, enc.X7, enc.X5)
+	}
 	f.a.Lwu(enc.X29, enc.X28, -abi.LinMemMaxPagesOffset)
 	failMax := f.a.BranchLong(enc.LTU, enc.X29, enc.X7)
 	f.a.Ld(enc.X28, enc.X25, -abi.MemoryDirPtrOffset)
@@ -105,10 +117,13 @@ func (f *integerEmitter) productionMemorySizeGrowAt(index uint32, grow bool) {
 	f.a.Sd(enc.X29, enc.X28, abi.MemoryDirCurrentBytesOffset)
 	f.a.Sw(enc.X7, enc.X28, abi.MemoryDirCurrentPagesOffset)
 	f.patchBulk(noPublishDir, zero)
-	f.Move(5, 6, false)
+	f.Move(5, 6, address64)
 	end := f.Jump()
 	f.patchBulk(failMax, failPolicy)
-	f.Constant(5, -1, false)
+	if carry >= 0 {
+		f.patchBulk(carry)
+	}
+	f.Constant(5, -1, address64)
 	f.patchBulk(end)
 }
 

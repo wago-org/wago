@@ -118,21 +118,32 @@ func (f *target) swarBits(kind wasm.InstrKind, dst, left, right, mask swarPair) 
 }
 
 // Preflight the entire actual access footprint before any guest memory touch.
-// X5 is a raw I32 address on entry and the resolved byte pointer on success.
+// X5 is the selected raw I32/I64 address on entry and the resolved byte
+// pointer on success; only I32 discards incoming upper bits.
 func (f *integerEmitter) swarMemoryAddress(offset uint64, footprint uint8) {
 	f.swarMemoryAddressAt(0, offset, footprint)
 }
 func (f *integerEmitter) swarMemoryAddressAt(index uint32, offset uint64, footprint uint8) {
+	f.swarMemoryAddressTypedAt(index, offset, footprint, false)
+}
+func (f *integerEmitter) swarMemoryAddressTypedAt(index uint32, offset uint64, footprint uint8, address64 bool) {
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}
-	if offset > math.MaxUint32 || (footprint != 1 && footprint != 2 && footprint != 4 && footprint != 8 && footprint != 16) {
-		f.err = fmt.Errorf("rv64: invalid SWAR memory32 offset")
+	if address64 && !f.mode.production || !address64 && offset > math.MaxUint32 || (footprint != 1 && footprint != 2 && footprint != 4 && footprint != 8 && footprint != 16) {
+		f.err = fmt.Errorf("rv64: invalid SWAR memory address/footprint")
 		return
 	}
-	f.NormalizeI32(5)
-	f.a.Constant64(enc.X28, int64(offset))
-	f.a.Add(enc.X5, enc.X5, enc.X28)
+	if !address64 {
+		f.NormalizeI32(5)
+	}
+	// Keep the complete offset through the unsigned carry check. X6/X7 are
+	// live scalar/vector payloads; long veneers may consume only Scratch1.
+	f.a.Constant64(enc.Scratch0, int64(offset))
+	f.a.Add(enc.X5, enc.X5, enc.Scratch0)
+	if address64 {
+		f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X5, enc.Scratch0))
+	}
 	if f.mode.production {
 		f.productionMemorySizeAt(index, enc.X29)
 	} else {
@@ -152,7 +163,7 @@ func (f *integerEmitter) swarMemoryAddressAt(index uint32, offset uint64, footpr
 	f.a.Add(enc.X5, enc.X28, enc.X5)
 }
 
-// X5 is a raw i32 address, X6/X7 the complete pair. Check all16 bytes before
+// X5 is a typed raw I32/I64 address, X6/X7 the complete pair. Check all16 bytes before
 // touching memory, so a split store cannot partially write at a boundary. Byte
 // instructions support every alignment; there is no poll between the halves.
 // Stores consume X6/X7; the caller owns all operand spill homes.
@@ -160,7 +171,10 @@ func (f *integerEmitter) swarMemory(offset uint64, store bool) {
 	f.swarMemoryAt(0, offset, store)
 }
 func (f *integerEmitter) swarMemoryAt(index uint32, offset uint64, store bool) {
-	f.swarMemoryAddressAt(index, offset, 16)
+	f.swarMemoryTypedAt(index, offset, store, false)
+}
+func (f *integerEmitter) swarMemoryTypedAt(index uint32, offset uint64, store, address64 bool) {
+	f.swarMemoryAddressTypedAt(index, offset, 16, address64)
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}

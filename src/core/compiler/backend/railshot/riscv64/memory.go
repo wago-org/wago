@@ -35,6 +35,7 @@ type moduleState struct {
 	elementCount      int
 	memory            *memorySpec
 	memoryCount       int
+	memories          []wasm.MemType
 	indexedMemories   bool
 	globals           []globalSpec
 	data              []native.MemoryInitializer
@@ -119,7 +120,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("multiple memories")
 			}
 			t := im.Type.MemType()
-			if err := admitMemory32(t, production); err != nil {
+			s.memories = append(s.memories, t)
+			if err := admitMemoryType(t, production, publicExports); err != nil {
 				return s, err
 			}
 			if s.memory == nil {
@@ -140,11 +142,12 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		}
 	}
 	for _, t := range m.Memories {
+		s.memories = append(s.memories, t)
 		s.memoryCount++
 		if s.memoryCount > maxMemories {
 			return s, unsupported("multiple memories")
 		}
-		if err := admitMemory32(t, production); err != nil {
+		if err := admitMemoryType(t, production, publicExports); err != nil {
 			return s, err
 		}
 		if s.memory == nil {
@@ -192,11 +195,11 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if publicExports {
 			available = s.globals
 		}
-		off, err := admittedPublicScalarConst(d.Mode.Offset, wasm.I32, production, publicExports, available)
+		off, err := admittedPublicScalarConst(d.Mode.Offset, wasm.MemoryAddrType(s.memories[d.Mode.Mem]), production, publicExports, available)
 		if err != nil {
 			return s, err
 		}
-		if d.Mode.Mem == 0 {
+		if d.Mode.Mem == 0 && !s.memories[0].Limits.Addr64 {
 			s.data = append(s.data, native.MemoryInitializer{Offset: uint32(off), Bytes: append([]byte(nil), d.Init...)})
 		}
 		s.passiveData = append(s.passiveData, nil)
@@ -422,24 +425,17 @@ func (f *integerEmitter) memoryAccess(offset uint64, size int, wide, signed, sto
 	f.memoryAccessAt(0, offset, size, wide, signed, store)
 }
 func (f *integerEmitter) memoryAccessAt(index uint32, offset uint64, size int, wide, signed, store bool) {
-	f.a.Constant64(enc.X7, int64(offset))
-	f.a.Add(enc.X5, enc.X5, enc.X7)
-	if f.mode.production {
-		f.productionMemorySizeAt(index, enc.X29)
-	} else {
-		f.a.Ld(enc.X28, enc.X24, 0)
-		f.a.Ld(enc.X29, enc.X28, 8)
+	f.memoryAccessTypedAt(index, offset, size, wide, signed, store, false)
+}
+func (f *integerEmitter) memoryAccessTypedAt(index uint32, offset uint64, size int, wide, signed, store, address64 bool) {
+	if size != 1 && size != 2 && size != 4 && size != 8 {
+		f.err = fmt.Errorf("rv64: invalid scalar memory footprint")
+		return
 	}
-	f.a.Addi(enc.X7, enc.Zero, int32(size))
-	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X7))
-	f.a.Sub(enc.X29, enc.X29, enc.X7)
-	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X5))
-	if f.mode.production {
-		f.productionMemoryBaseAt(index, enc.X28)
-	} else {
-		f.a.Ld(enc.X28, enc.X28, 0)
+	f.swarMemoryAddressTypedAt(index, offset, uint8(size), address64)
+	if f.err != nil || f.a.Err() != nil {
+		return
 	}
-	f.a.Add(enc.X5, enc.X28, enc.X5)
 	if store {
 		for j := 0; j < size; j++ {
 			f.a.Sb(enc.X6, enc.X5, int32(j))
@@ -467,9 +463,16 @@ func (f *integerEmitter) memoryAccessAt(index uint32, offset uint64, size int, w
 		f.NormalizeI32(5)
 	}
 }
-func (f *integerEmitter) memorySizeGrowAt(index uint32, grow bool) {
+func (f *integerEmitter) memorySizeGrowTypedAt(index uint32, grow, address64 bool) {
+	if f.err != nil || f.a.Err() != nil {
+		return
+	}
+	if address64 && !f.mode.production {
+		f.err = unsupported("private memory64 growth")
+		return
+	}
 	if f.mode.production {
-		f.productionMemorySizeGrowAt(index, grow)
+		f.productionMemorySizeGrowTypedAt(index, grow, address64)
 		return
 	}
 	f.a.Ld(enc.X28, enc.X24, 0)

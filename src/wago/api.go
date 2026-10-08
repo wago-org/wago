@@ -1290,7 +1290,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.Memory64 && usesMemory64 {
-		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+		if !supportsMemory64Backend(goruntime.GOOS, goruntime.GOARCH) {
 			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		for i := uint32(0); i < uint32(m.MemCount()); i++ {

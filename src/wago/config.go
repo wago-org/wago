@@ -708,6 +708,10 @@ func supportsMultiMemoryBackend(goos, goarch string) bool {
 	return supportsCompleteCore3Backend(goos, goarch) || goos == "linux" && goarch == "riscv64"
 }
 
+func supportsMemory64Backend(goos, goarch string) bool {
+	return supportsCompleteCore3Backend(goos, goarch) || goos == "linux" && goarch == "riscv64"
+}
+
 func supportsThreadsBackend(goos, goarch string) bool {
 	return (goarch == "amd64" || goarch == "arm64") && (goos == "linux" || goos == "darwin")
 }
@@ -716,7 +720,7 @@ func platformCoreFeatures() CoreFeatures {
 	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
 		// The opt-in development backend also enforces a whole-module
 		// allowlist. This is a bounded integration surface, not Core release parity.
-		return CoreFeatureMutableGlobal | CoreFeatureSignExtensionOps | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureNonTrappingFloatToIntConversion | CoreFeatureReferenceTypes | CoreFeatureSIMD | CoreFeatureExtendedConst | CoreFeatureExtendedConstExpressions | CoreFeatureMultiMemory
+		return CoreFeatureMutableGlobal | CoreFeatureSignExtensionOps | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureNonTrappingFloatToIntConversion | CoreFeatureReferenceTypes | CoreFeatureSIMD | CoreFeatureExtendedConst | CoreFeatureExtendedConstExpressions | CoreFeatureMultiMemory | CoreFeatureMemory64
 	}
 	supported := coreFeaturesWago
 	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {

@@ -228,11 +228,12 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if !ok {
 			return nil, unsupported("SWAR memory index")
 		}
-		if err := admitMemory32(resolved, true); err != nil {
+		if err := admitMemoryType(resolved, true, state.indexedMemories); err != nil {
 			return nil, err
 		}
 		memories[i] = resolved
 	}
+	memoryProfile := makeMemoryProfile(memories, state.indexedMemories)
 	var memory *wasm.MemType
 	if len(memories) != 0 {
 		memory = &memories[0]
@@ -300,7 +301,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	summaries := make([]swarSummary, len(m.Code))
 	bound := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithMemoryMode(&m.Code[i], functions[imported+i], len(memories), state.indexedMemories, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
+		summaries[i], err = walkSWARPairsWithMemoryProfile(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}

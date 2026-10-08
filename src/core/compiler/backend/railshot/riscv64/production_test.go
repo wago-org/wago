@@ -170,7 +170,7 @@ func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.
 			if err != nil {
 				t.Fatal("invalid rejection fixture", err)
 			}
-			if shape.name == "two-memories" {
+			if shape.name == "two-memories" || shape.name == "memory64" {
 				if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{MultiMemory: true}, 1, wasm.ValidationLimits{}); err != nil {
 					t.Fatal("policy fixture is not a valid module", err)
 				}
@@ -180,7 +180,7 @@ func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.
 			}
 			pressureCalls := 0
 			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressureCalls++ }})
-			if shape.name == "two-memories" {
+			if shape.name == "two-memories" || shape.name == "memory64" {
 				if image == nil || image.CodeImage != nil || err != nil || pressureCalls != 1 {
 					t.Fatal("public indexed memories rejected while private gate remains closed", err, pressureCalls)
 				}

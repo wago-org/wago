@@ -104,15 +104,16 @@ func TestProductionMultiMemoryBoundsBeforeStagingAndPrivateClosure(t *testing.T)
 		} else if _, err := admitStateMode(m, true); !errors.Is(err, ErrUnsupported) {
 			t.Fatal("private scalar decoded widened", err)
 		}
-		for _, fault := range []string{"count", "shared", "memory64", "minimum", "maximum", "reversed"} {
+		for _, fault := range []string{"count", "shared", "shared-memory64", "minimum", "maximum", "reversed"} {
 			bad := multiMemoryBackendDecode(t, good)
 			switch fault {
 			case "count":
 				bad.Memories = append(bad.Memories, bad.Memories[0])
 			case "shared":
 				bad.Memories[99].Shared = true
-			case "memory64":
+			case "shared-memory64":
 				bad.Memories[99].Limits.Addr64 = true
+				bad.Memories[99].Shared = true
 			case "minimum":
 				bad.Memories[99].Limits.Min = 65537
 			case "maximum":

@@ -49,6 +49,10 @@ type integerEmitter struct {
 // performs complete pre-emission admission and then lowering of the same bytes.
 func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *integerEmitter) (integerSummary, error) {
 	floating := state != nil && state.production
+	profile := memoryProfile{}
+	if state != nil {
+		profile = makeMemoryProfile(state.memories, state.indexedMemories)
+	}
 	var locals [256]bool
 	var localRefs [256]bool
 	privateRefs := floating && (state.ownedTable || state.importReferences)
@@ -108,6 +112,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		return wide, err
 	}
 	pop := func() (bool, error) { return popClass(false) }
+	popWidth := func(wide bool) error {
+		w, err := pop()
+		if err == nil && live && w != wide {
+			return unsupported("memory operand width")
+		}
+		return err
+	}
 	push := func(w bool) error {
 		if h >= len(stack) {
 			return unsupported("integer operand bound")
@@ -669,7 +680,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 		case 0xfc:
 			var imm wasm.InstructionImmediate
-			if err = wasm.ClassifyInstructionImmediateIntoWithFeatures(&r, op, &imm, false, state != nil && state.indexedMemories); err != nil {
+			if err = profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return integerSummary{}, err
 			}
 			if sub, ok := saturatingFloatKind(imm.Kind); ok && floating {
@@ -796,19 +807,20 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if state.memory == nil {
 				return integerSummary{}, unsupported("bulk instruction without memory")
 			}
-			for _, reg := range []uint8{7, 6, 5} {
-				if _, err = pop(); err != nil {
+			dst, src := imm.Index, imm.Index2
+			if imm.Kind == wasm.InstrMemoryInit {
+				dst, src = imm.Index2, 0
+			}
+			widths := profile.bulkWidths(imm.Kind, dst, src)
+			for i := 2; i >= 0; i-- {
+				if err = popWidth(widths[i]); err != nil {
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
-					emit.Load(reg, emit.SpillOffset(h), false)
+					emit.Load(uint8(5+i), emit.SpillOffset(h), widths[i])
 				}
 			}
 			if live && emit != nil {
-				dst, src := imm.Index, imm.Index2
-				if imm.Kind == wasm.InstrMemoryInit {
-					dst, src = imm.Index2, 0
-				}
 				emit.memoryBulkAt(imm.Kind, dataOffset, dst, src)
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x38, 0x39, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
@@ -820,7 +832,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			contextUsed = true
 			var imm wasm.InstructionImmediate
-			if err = wasm.ClassifyInstructionImmediateInto(&r, op, &imm); err != nil {
+			if err = profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return integerSummary{}, err
 			}
 			memoryIndex := imm.MemIndex
@@ -830,20 +842,21 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if uint64(memoryIndex) >= uint64(state.memoryCount) || !state.indexedMemories && (memoryIndex != 0 || imm.HasMemIndex) {
 				return integerSummary{}, unsupported("nonzero memory index")
 			}
+			address64 := profile.wide(memoryIndex)
 			if op == 0x3f || op == 0x40 {
 				if op == 0x40 {
-					if _, err = pop(); err != nil {
+					if err = popWidth(address64); err != nil {
 						return integerSummary{}, err
 					}
 				}
 				if live && emit != nil {
 					if op == 0x40 {
-						emit.Load(5, emit.SpillOffset(h), false)
+						emit.Load(5, emit.SpillOffset(h), address64)
 					}
-					emit.memorySizeGrowAt(memoryIndex, op == 0x40)
-					emit.Store(emit.SpillOffset(h), 5, false)
+					emit.memorySizeGrowTypedAt(memoryIndex, op == 0x40, address64)
+					emit.Store(emit.SpillOffset(h), 5, address64)
 				}
-				if err = push(false); err != nil {
+				if err = push(address64); err != nil {
 					return integerSummary{}, err
 				}
 			} else {
@@ -852,19 +865,19 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("noninteger memory access")
 				}
 				if store {
-					if _, err = pop(); err != nil {
+					if err = popWidth(w); err != nil {
 						return integerSummary{}, err
 					}
 					if live && emit != nil {
 						emit.Load(6, emit.SpillOffset(h), w)
 					}
 				}
-				if _, err = pop(); err != nil {
+				if err = popWidth(address64); err != nil {
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
-					emit.Load(5, emit.SpillOffset(h), false)
-					emit.memoryAccessAt(memoryIndex, imm.MemOffset, size, w, signed, store)
+					emit.Load(5, emit.SpillOffset(h), address64)
+					emit.memoryAccessTypedAt(memoryIndex, imm.MemOffset, size, w, signed, store, address64)
 					if !store {
 						emit.Store(emit.SpillOffset(h), 5, w)
 					}

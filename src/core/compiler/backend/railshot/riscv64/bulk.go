@@ -17,7 +17,8 @@ func (f *integerEmitter) dataDrop(offset int32) {
 	f.a.Sd(enc.Zero, base, off)
 }
 
-// X5=destination, X6=source/value and X7=count are unsigned low-word i32.
+// X5=destination, X6=source/value and X7=count are unsigned carriers.
+// Their exact I32/I64 widths are selected by the caller per memory index.
 // The caller loads canonical slots; X28/X29 and permanently reserved X31 are
 // the only additional temporaries. All complete ranges are checked before the
 // zero-count exit, any byte access, or the first mutation.
@@ -87,6 +88,7 @@ func (f *integerEmitter) memoryBulkAt(kind wasm.InstrKind, dataOffset int32, dst
 }
 
 // X29 contains a length on entry and its length-count residual on success.
+// Subtraction preflight is overflow-safe even for full-u64 offsets and counts.
 func (f *integerEmitter) bulkRange(offset enc.Reg) {
 	f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X7))
 	f.a.Sub(enc.X29, enc.X29, enc.X7)
