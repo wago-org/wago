@@ -3463,6 +3463,7 @@ func (in *Instance) retainResourceRootMode(finalization bool) bool {
 		return false
 	}
 	in.resourceRefs++
+	railshotResourceRootAcquiredLocked(in)
 	return true
 }
 
@@ -3476,6 +3477,7 @@ func (in *Instance) releaseResourceRoot() {
 		return
 	}
 	in.resourceRefs--
+	railshotResourceRootReleasedLocked(in)
 	closed := in.closed
 	in.lifeMu.Unlock()
 	if closed {

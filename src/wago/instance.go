@@ -84,6 +84,7 @@ type Instance struct {
 // between Runtime plugin policy and cold funcref-owner indexes.
 type instanceImportState struct {
 	pluginGCImports  map[uint32]struct{}
+	rootAccounting   referenceRootAccounting // RV64 lazy ownership shadow; empty on existing targets
 	funcrefImports   atomic.Pointer[funcrefImportContainers]
 	importRefEntries []importReferenceEntry  // RV64 immutable wrappers and native attachments
 	globalRefEntries []importGlobalReference // RV64 immutable cells and retained descriptor storage
