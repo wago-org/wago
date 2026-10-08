@@ -79,6 +79,97 @@ func TestRegallocIndexedVectorLoads(t *testing.T) {
 	}
 }
 
+// Decode the destination from the emitted bytes, independently of the checker.
+// Reg is a byte; every value >= 8 requests the physical extension bit.
+func TestRegallocIndexedLoadsEncodedDestination(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		emit func(*Asm, Reg, bool)
+	}{
+		{"SSE", func(a *Asm, r Reg, load bool) {
+			if load {
+				a.MovdquLoadIdx(r, RAX, RCX, 32)
+			} else {
+				a.MovdquStoreIdx(RAX, RCX, r, 32)
+			}
+		}},
+		{"SSE-raw", func(a *Asm, r Reg, load bool) {
+			op := byte(0x7f)
+			if load {
+				op = 0x6f
+			}
+			a.SseIdx(0xf3, op, r, RAX, RCX, 32)
+		}},
+		{"AVX", func(a *Asm, r Reg, load bool) {
+			if load {
+				a.VMovdquLoadIdx(r, RAX, RCX, 32)
+			} else {
+				a.VMovdquStoreIdx(RAX, RCX, r, 32)
+			}
+		}},
+		{"AVX-raw", func(a *Asm, r Reg, load bool) {
+			op := byte(0x7f)
+			if load {
+				op = 0x6f
+			}
+			a.VMovdquIdx(op, r, RAX, RCX, 32)
+		}},
+		{"f32", func(a *Asm, r Reg, load bool) {
+			if load {
+				a.FLoadIdx(r, RAX, RCX, 32, false)
+			} else {
+				a.FStoreIdx(RAX, RCX, r, 32, false)
+			}
+		}},
+		{"f64", func(a *Asm, r Reg, load bool) {
+			if load {
+				a.FLoadIdx(r, RAX, RCX, 32, true)
+			} else {
+				a.FStoreIdx(RAX, RCX, r, 32, true)
+			}
+		}},
+	} {
+		for _, load := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/load=%v", tc.name, load), func(t *testing.T) {
+				for raw := 0; raw < 256; raw++ {
+					var a Asm
+					var state regalloccheck.State
+					var values [16]regalloccheck.Value
+					for i := range values {
+						values[i] = state.Seed(regalloccheck.Register(regalloccheck.FP, uint8(i)), 16)
+					}
+					var effect regalloccheck.Effect
+					a.ObserveRegalloc(func(e regalloccheck.Effect) { effect = e; state.Apply(e) })
+					tc.emit(&a, Reg(raw), load)
+					// Each address ends with ModRM, SIB, and an 8-bit displacement.
+					encoded := a.B[len(a.B)-3] >> 3 & 7
+					if a.B[0] == 0xc4 {
+						if a.B[1]&0x80 == 0 { // inverted VEX.R
+							encoded |= 8
+						}
+					} else if a.B[1]&0xf0 == 0x40 && a.B[1]&4 != 0 {
+						encoded |= 8 // REX.R
+					}
+					if load && (effect.Kind != regalloccheck.Kill || effect.Dst.Bank != regalloccheck.FP || effect.Dst.Index != int32(encoded) || effect.Size != 16) {
+						t.Fatalf("raw=%d bytes=%x effect=%+v encoded=%d", raw, a.B, effect, encoded)
+					}
+					for i, value := range values {
+						loc := regalloccheck.Register(regalloccheck.FP, uint8(i))
+						if load && uint8(i) == encoded {
+							if !reflect.DeepEqual(state.Read(loc, 16), make(regalloccheck.Value, 16)) {
+								t.Fatalf("raw=%d bytes=%x retained XMM%d facts", raw, a.B, i)
+							}
+							requireVectorLost(t, func() { state.Expect("encoded load destination", loc, value) })
+						} else {
+							state.Expect("preserved vector", loc, value)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
 // This isolates the active checker cost. Reuse the register facts and byte
 // buffer. Restore known input facts on each iteration, including store controls.
 func BenchmarkIndexedVectorObserved(b *testing.B) {

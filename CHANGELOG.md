@@ -27,7 +27,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 ### Fixed
 
 - Invalidate stale vector facts after indexed AMD64 loads in the optional
-  register-allocation checker, without allocating temporary kill values.
+  register-allocation checker, including encoded register aliases, without
+  allocating temporary kill values.
 
 ## [v0.1.0-beta.12] - 2026-10-07
 

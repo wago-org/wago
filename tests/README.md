@@ -481,6 +481,11 @@ registers, and unrelated stack slots must keep their facts. No faulty native
 code is executed. Literal encoding tests run in both ordinary and checked
 builds. These tests do not qualify all FP/SIMD joins, calls, or ARM64 transport.
 
+An additional test covers all 256 raw register values for indexed vector and
+scalar loads and stores. It decodes the physical destination from the emitted
+ModRM and REX/VEX bits, checks that all 16 destination bytes become unknown,
+and checks that all other vectors and store sources retain their facts.
+
 `BenchmarkIndexedVectorEncoding` measures emission with no active observer.
 `BenchmarkIndexedVectorObserved` measures an active checker, including restoring
 known input facts on every iteration. Both reuse the byte buffer. A checker
