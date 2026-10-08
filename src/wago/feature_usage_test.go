@@ -836,3 +836,69 @@ func BenchmarkRequiredFeaturesScalarBody(b *testing.B) {
 		}
 	}
 }
+
+// Explicit reference syntax carries both a heap and nullability. The latter
+// must survive both the direct byte scanner and the validated-analysis path.
+func TestRequiredFeaturesExplicitReferenceNullability(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		heap byte
+		want CoreFeatures
+	}{
+		{"func", 0x70, CoreFeatureReferenceTypes},
+		{"extern", 0x6f, CoreFeatureReferenceTypes},
+		{"any", 0x6e, CoreFeatureReferenceTypes | CoreFeatureGC},
+		{"exn", 0x69, CoreFeatureReferenceTypes | CoreFeatureExceptionHandling},
+		{"indexed", 0, CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences},
+	} {
+		for _, form := range []byte{0x63, 0x64} {
+			want := tc.want
+			if form == 0x64 {
+				want |= CoreFeatureTypedFunctionReferences
+			}
+			for _, shape := range []struct {
+				name string
+				body []byte
+			}{
+				{"block", []byte{2, form, tc.heap, 0, 0x0b, 0x1a, 0x0b}},
+				{"loop", []byte{3, form, tc.heap, 0, 0x0b, 0x1a, 0x0b}},
+				{"if", []byte{0x41, 1, 4, form, tc.heap, 0, 5, 0, 0x0b, 0x1a, 0x0b}},
+				{"select", []byte{0, 0x1c, 1, form, tc.heap, 0x1a, 0x0b}},
+			} {
+				name := tc.name + "/" + shape.name + "/nullable"
+				if form == 0x64 {
+					name = tc.name + "/" + shape.name + "/nonnull"
+				}
+				t.Run(name, func(t *testing.T) {
+					if got := requiredFeaturesForBodyBytes(shape.body); got != want {
+						t.Fatal("explicit reference body features", got, want)
+					}
+					source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(shape.body))))
+					m, err := wasm.DecodeModule(source)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var analysis wasm.ValidatedModuleAnalysis
+					if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+						t.Fatal("fixture", err)
+					}
+					if got := analyzeModuleRequirements(m).features; got != want {
+						t.Fatal("direct module features", got, want)
+					}
+					if got := analyzeModuleRequirementsWithValidation(m, &analysis).features; got != want {
+						t.Fatal("validated module features", got, want)
+					}
+					if tc.name == "func" && form == 0x64 {
+						c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).Compile(source)
+						if c != nil {
+							c.Close()
+						}
+						if err == nil || (!strings.Contains(err.Error(), "typed-function-references") || !strings.Contains(err.Error(), "disabled")) {
+							t.Fatal("non-null feature gate", err)
+						}
+					}
+				})
+			}
+		}
+	}
+}

@@ -5,7 +5,6 @@ package riscv64
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -86,6 +85,23 @@ func TestReferenceTypesFrontendInitialization(t *testing.T) {
 			if (err == nil) != tc.ok {
 				t.Fatal("frontend initialization proof", err)
 			}
+			if !tc.ok {
+				want := wasm.ErrUninitializedLocal
+				if tc.name == "nullable-assignment" {
+					want = wasm.ErrTypeMismatch
+				}
+				for _, vector := range []bool{false, true} {
+					if vector {
+						m.Types = append(m.Types, wasm.RecType{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}}}}})
+					}
+					pressure := 0
+					image, compileErr := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
+					var validationErr *wasm.ValidationError
+					if image != nil || !errors.As(compileErr, &validationErr) || validationErr.Code != want || pressure != 0 {
+						t.Fatal("initialization rejected before staging", vector, image, compileErr, pressure)
+					}
+				}
+			}
 		})
 	}
 	for _, form := range []byte{0x63, 0x64} {
@@ -97,14 +113,14 @@ func TestReferenceTypesFrontendInitialization(t *testing.T) {
 	}
 }
 
-func TestProductionReferenceTypesRemainClosed(t *testing.T) {
+func TestProductionReferenceTypesContract(t *testing.T) {
 	for _, local := range []bool{false, true} {
 		for _, form := range []byte{0x63, 0x64} {
 			for _, dead := range []bool{false, true} {
 				t.Run(fmt.Sprintf("local%t-form%x-dead%t", local, form, dead), func(t *testing.T) {
-					body := []byte{2, form, 0x70, 0xd0, 0x70, 0xd4, 0x0b, 0x1a, 0x0b}
+					body := []byte{2, form, 0x70, 0, 0x0b, 0x1a, 0x0b}
 					if local {
-						body = []byte{0xd0, 0x70, 0xd4, 0x21, 0, 0x20, 0, 0x1a, 0x0b}
+						body = []byte{0x0b} // even an unused non-null declaration requires the witness
 					}
 					if dead {
 						body = append([]byte{0}, body...)
@@ -113,10 +129,22 @@ func TestProductionReferenceTypesRemainClosed(t *testing.T) {
 					if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
 						t.Fatal("fixture", err)
 					}
-					pressure := 0
-					image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
-					if image != nil || !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "artifact contract is pending") || pressure != 0 {
-						t.Fatal("explicit type reached production staging", image, err, pressure)
+					for _, vector := range []bool{false, true} {
+						if vector {
+							m.Types = append(m.Types, wasm.RecType{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}}}}})
+						}
+						for _, permission := range []bool{false, true} {
+							pressure := 0
+							typed := local || form == 0x64
+							image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: permission, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
+							if typed && !permission {
+								if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+									t.Fatal("missing typed permission reached staging", image, err, pressure)
+								}
+							} else if err != nil || image == nil || image.NativeReferenceControl != typed || image.NativeReferenceCalls || image.NativeTail != nil || image.CodeImage != nil || len(image.Code) == 0 || pressure != 1 {
+								t.Fatal("type-only instruction witness", image, err, pressure)
+							}
+						}
 					}
 				})
 			}

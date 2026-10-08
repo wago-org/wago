@@ -708,3 +708,48 @@ func TestValueAndGlobalTypeSupportHelpers(t *testing.T) {
 		t.Fatal("reference type accepted without reference-types")
 	}
 }
+
+func TestExplicitReferenceByteSupportNullability(t *testing.T) {
+	for _, heap := range []byte{0x70, 0x6f} {
+		for _, nullable := range []bool{false, true} {
+			for _, refs := range []bool{false, true} {
+				for _, typed := range []bool{false, true} {
+					form := byte(0x64)
+					if nullable {
+						form = 0x63
+					}
+					pass := supportPass{m: &wasm.Module{}, feat: Features{ReferenceTypes: refs, TypedFunctionReferences: typed}}
+					typ := wasm.RefVal(wasm.Ref(nullable, wasm.AbsHeap(wasm.AbsHeapType(heap)), false))
+					want := refs && (nullable || typed)
+					if pass.supportedValType(typ) != want {
+						t.Fatal("decoded reference support", heap, nullable, refs, typed)
+					}
+					for _, body := range [][]byte{
+						{2, form, heap, 0, 0x0b, 0x1a, 0x0b},
+						{3, form, heap, 0, 0x0b, 0x1a, 0x0b},
+						{0x41, 1, 4, form, heap, 0, 5, 0, 0x0b, 0x1a, 0x0b},
+						{0, 0x1c, 1, form, heap, 0x1a, 0x0b},
+					} {
+						if err := pass.exprBytes(body, "test"); (err == nil) != want {
+							t.Fatal("byte/decoded reference support", heap, nullable, refs, typed, body, err)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, tc := range []struct {
+		heap byte
+		feat Features
+	}{
+		{0x6e, Features{ReferenceTypes: true, GCI31Products: true}},
+		{0x69, Features{ReferenceTypes: true, ExceptionHandling: true, ExceptionReferences: true}},
+	} {
+		pass := supportPass{m: &wasm.Module{}, feat: tc.feat}
+		for _, body := range [][]byte{{2, 0x64, tc.heap, 0, 0x0b, 0x1a, 0x0b}, {0, 0x1c, 1, 0x64, tc.heap, 0x1a, 0x0b}} {
+			if err := pass.exprBytes(body, "test"); err == nil {
+				t.Fatal("non-null heap bypassed typed permission", tc.heap)
+			}
+		}
+	}
+}

@@ -515,6 +515,9 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 					break
 				}
 				out |= requiredFeaturesForHeapImmediate(heap)
+				if first == 0x64 {
+					out |= CoreFeatureTypedFunctionReferences
+				}
 			} else {
 				out |= CoreFeatureMultiValue
 				for first&0x80 != 0 {
@@ -552,6 +555,9 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 						break
 					}
 					out |= requiredFeaturesForHeapImmediate(heap)
+					if b == 0x64 {
+						out |= CoreFeatureTypedFunctionReferences
+					}
 				}
 			}
 			continue

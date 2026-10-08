@@ -43,8 +43,13 @@ on the minimum native stack. Internal `ref.as_non_null`, `br_on_null` and
 artifact requirement. Source and compiler-free tests cover null traps, unreachable
 uses, deep typed label transfers, numeric loop parameters, combined `call_ref`,
 and retained foreign immutable globals. Existing non-null artifacts retain the
-same format and load without recompilation. Non-calling reference control does
-not reserve declared-call transport. Public TailCall and
+same format and load without recompilation. Explicit abstract function-reference
+block results and initialized non-null locals are qualified through the same
+retained-carrier contract. Nullable spellings retain ordinary ReferenceTypes
+admission; non-null type-only bodies carry the typed feature and artifact witness
+even without typed opcodes. Frontend initialization checks reject invalid locals
+before image staging. Non-calling reference control does not reserve declared-call
+transport. Public TailCall and
 TypedFunctionReferences remain
 gated: these bounded cases do not establish complete feature support.
 Conservative resource-root accounting and an independently tested bounded receipt

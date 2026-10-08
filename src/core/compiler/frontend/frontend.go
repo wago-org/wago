@@ -1254,7 +1254,11 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 					return err
 				}
 				exceptionHeap := heap == -23 || heap == -12
-				if !p.feat.ReferenceTypes || !((p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
+				// Explicit nullable func/extern spellings have the same feature
+				// requirement as their bare aliases. Every non-null form still
+				// requires typed references, including GC and exception heaps.
+				nullableLegacy := b == 0x63 && (heap == -16 || heap == -17)
+				if !p.feat.ReferenceTypes || b == 0x64 && !p.feat.TypedFunctionReferences || !(nullableLegacy || (p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
 					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
 				}
 				return nil

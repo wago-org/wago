@@ -56,8 +56,11 @@ native-import, indirect and typed-reference tail calls, ordinary `call_ref`, and
 synchronous scalar Go/owned-host targets. Its numeric/vector guest signatures
 and scalar host signatures remain bounded. Internal function references also
 support `ref.as_non_null`, `br_on_null` and `br_on_non_null`, with full-width
-reference predicates, typed label transfers and precise traps. Their shared
-retained-carrier artifact requirement does not allocate call transport. Invocation
+reference predicates, typed label transfers and precise traps. Explicit
+abstract function-reference block results and initialized non-null locals use
+the same full-width carriers. Their retained-carrier artifact requirement does
+not allocate call transport; equivalent nullable syntax keeps ordinary
+ReferenceTypes admission. Invocation
 scopes retain imported
 descriptor owners, including modules with no defined functions, and certified
 snapshots authenticate them across parked callbacks, reentry, table replacement

@@ -271,7 +271,10 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 	for _, fn := range m.Code {
 		for _, run := range fn.Locals.Runs {
 			if run.Type.Kind() == wasm.ValRef && !run.Type.Ref().Nullable() {
-				return false, false, false, unsupported("non-null local artifact contract is pending")
+				if !referenceCalls || !internalFunctionReference(run.Type, true) {
+					return false, false, false, unsupported("non-null local requires retained abstract function-reference protocol")
+				}
+				hasReferenceControl = true
 			}
 		}
 		r := wasm.ReaderFrom(fn.BodyBytes)
@@ -281,8 +284,11 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls bool) (bool, boo
 				return false, false, false, err
 			}
 			if op == 0x02 || op == 0x03 || op == 0x04 {
-				if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
-					return false, false, false, unsupported("explicit reference block artifact contract is pending")
+				if lead, ok := r.Peek(); ok && lead == 0x64 {
+					if !referenceCalls {
+						return false, false, false, unsupported("non-null block requires retained typed-reference protocol")
+					}
+					hasReferenceControl = true
 				}
 			}
 			if op == 0x14 {
