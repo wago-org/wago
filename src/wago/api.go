@@ -1264,7 +1264,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 	}
-	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && railshotStagedTailFeatures(cfg) == 0 {
 		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	if features.ExceptionHandling {
@@ -1361,6 +1361,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	compileOptions := railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats, SourceMaps: codeProfileEnabled && cfg.codeProfile.IncludeSources(), UnwindMaps: codeProfileEnabled && cfg.codeProfile.IncludeUnwind(), Profile: codeProfileEnabled && cfg.codeProfile != nil}
+	railshotConfigureNativeTail(requiredByModule, &compileOptions)
 	var cm *railshotCompiledModule
 	if codegen.SourceChecks {
 		cm, err = railshotCompileValidatedModuleWith(m, compileOptions, &validationAnalysis, validationFeatures)
@@ -1437,6 +1438,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
 		c.validateMemo.maxInstanceMetadataBytes = cfg.maxInstanceMetadataBytes
 		c.validateMemo.snapshotLimit = cfg.maxCompiledMetadataBytes
+	}
+	if err := railshotStoreNativeTail(c, cm); err != nil {
+		return nil, err
+	}
+	if cfg.maxNativeCodeBytes != 0 && railshotNativeCodeBytes(c) > cfg.maxNativeCodeBytes {
+		return nil, &wruntime.ResourceLimitError{Resource: "native code bytes", Scope: "compile", Requested: railshotNativeCodeBytes(c), Limit: cfg.maxNativeCodeBytes}
 	}
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
@@ -1967,7 +1974,7 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, s
 		if i >= len(c.importFuncSigs) {
 			return fmt.Errorf("cross-instance import %q is missing its signature", key)
 		}
-		if c.importFuncSigs[i].unsafeCrossTail {
+		if c.importFuncSigs[i].unsafeCrossTail && !railshotNativeTailImport(c, i) {
 			return fmt.Errorf("cross-instance import %q requires unsupported cross-instance tail ABI", key)
 		}
 		if gcSubtypeLinkConsumer && ex.inst.c.stagedGCTypeSubtypingProduct() != gcSubtypeLinkProvider {

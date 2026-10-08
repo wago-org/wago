@@ -103,7 +103,7 @@ func TestRV64PublicNativeReferenceTokens(t *testing.T) {
 								im.Memory("env", "memory", mem)
 							}
 							producer := rv64NativeTokenInstantiate(t, rt, pc, pim)
-							if (len(producer.funcRefDescs) != 0) != rich {
+							if (len(producer.funcRefDescs) > 40) != rich || !rich && !rv64HeaderOnlyContext(producer) {
 								t.Fatal("bare/descriptor producer fixture")
 							}
 							ex, err := producer.ExportedFunc("identity")

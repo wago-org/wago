@@ -2,9 +2,19 @@ package riscv64
 
 import "github.com/wago-org/wago/src/core/codeimage"
 
+// NativeTailPlan is address-free immutable source/physical frame metadata.
+// Imported target owners are attached separately for each instance.
+type NativeTailPlan struct {
+	FunctionIndex, ImportIndex, SourcePC uint32
+	FrameBytes, SourceBase, SourceStride int
+}
+
+type NativeTailModule struct{ Plans []NativeTailPlan }
+
 // CompiledModule carries a production native image and its function entries.
 // RV64G emits fixed-width instructions; optional extensions are not selected.
 type CompiledModule struct {
+	NativeTail                                                 *NativeTailModule
 	Code                                                       []byte
 	CodeImage                                                  codeimage.Image
 	Entry, InternalEntry                                       []int

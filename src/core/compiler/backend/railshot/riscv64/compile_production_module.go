@@ -38,6 +38,16 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if opts.InvocationContext && !opts.Interruptible {
 		return nil, unsupported("invocation views require cooperative production")
 	}
+	if opts.NativeTailCalls {
+		if !opts.InvocationContext || !opts.Interruptible {
+			return nil, unsupported("staged tails require authenticated cooperative invocation ABI")
+		}
+		opts.tailModule = m
+		opts.localTailCalls = true
+		opts.importTailCalls = true
+		var plans []tailImportPlan
+		opts.tailPlans = &plans
+	}
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
@@ -157,6 +167,29 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 }
 
 func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModule, error) {
+	var tail *enc.NativeTailModule
+	if opts.NativeTailCalls {
+		if _, _, err := NativeTailInstanceBudget(len(*opts.tailPlans), len(c.code)); err != nil {
+			return nil, err
+		}
+		tail = &enc.NativeTailModule{}
+		values := 0
+		for _, p := range *opts.tailPlans {
+			sig, ok := opts.tailModule.ImportFuncType(int(p.importIndex))
+			if !ok {
+				return nil, unsupported("staged tail import signature metadata")
+			}
+			values += len(sig.Params) + len(sig.Results)
+			if err := NativeTailMetadataBudget(len(*opts.tailPlans), values); err != nil {
+				return nil, err
+			}
+			local := int(p.functionIndex) - c.state.importedFunctions
+			if local < 0 || local >= len(c.functions) || c.functions[local].FrameHeaderBytes != callFrameHeader {
+				return nil, unsupported("staged tail finalized frame metadata")
+			}
+			tail.Plans = append(tail.Plans, enc.NativeTailPlan{FunctionIndex: p.functionIndex, ImportIndex: p.importIndex, SourcePC: p.sourcePC, FrameBytes: c.functions[local].FrameBytes, SourceBase: p.sourceBase, SourceStride: p.sourceStride})
+		}
+	}
 	if err := c.prepareProfile(len(c.code)); err != nil {
 		return nil, err
 	}
@@ -177,6 +210,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 		}
 		image.CodeImage = nil
 	}
+	image.NativeTail = tail
 	if diagnosticsEnabled && opts.Stats != nil {
 		collectFinalizedStats(c, opts.Stats)
 	}

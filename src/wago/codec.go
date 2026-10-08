@@ -429,6 +429,9 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	if c.HasStart {
 		w.u32(startIndex)
 	}
+	if err := railshotWriteNativeTail(&w, c); err != nil {
+		return nil, sizes, err
+	}
 	sizes.Features += w.length() - start
 	start = w.length()
 	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {
@@ -1151,12 +1154,15 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 			return err
 		}
 	}
+	if err := railshotReadNativeTail(&r, c); err != nil {
+		return err
+	}
 	// Version-5 EH code dereferences descriptor zero to recover its owning native
 	// context on an exceptional cross-instance return. Derive the fixed-header
 	// requirement from authoritative feature metadata as well as the redundant
 	// bit before footprint validation, so a sparse producer cannot create native
 	// code with a missing context anchor.
-	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0 || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling)
+	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0 || c.nativeContextTrapABI && c.NumImports+len(c.Funcs) > 0 || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling)
 	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
 	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
 		label := "native GC call-boundary"

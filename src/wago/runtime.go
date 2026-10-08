@@ -807,11 +807,11 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 // Prepared compilation supplies its captured configuration, not a later runtime
 // generation. Source compilation checks these limits during compilation.
 func checkArtifactAdmissionLimits(c *Compiled, maxNativeCodeBytes uint64, maxMemories uint32) error {
-	if maxNativeCodeBytes != 0 && uint64(len(c.code)) > maxNativeCodeBytes {
+	if maxNativeCodeBytes != 0 && railshotNativeCodeBytes(c) > maxNativeCodeBytes {
 		return &coreruntime.ResourceLimitError{
 			Resource:  "native code bytes",
 			Scope:     "compile",
-			Requested: uint64(len(c.code)),
+			Requested: railshotNativeCodeBytes(c),
 			Limit:     maxNativeCodeBytes,
 		}
 	}

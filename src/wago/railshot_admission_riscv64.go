@@ -50,6 +50,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxProductionImports {
 		return reject("aggregate import bound")
 	}
+	if err := rv64ValidateNativeTail(c); err != nil {
+		return reject(err.Error())
+	}
 	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
 	if c.NumImports != 0 {
 		if !c.needsFuncRefContextHeader {
@@ -102,7 +105,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
-	if c.requiredFeatures & ^platformCoreFeatures() != 0 || c.requiredAMD64Features != 0 || c.preparedIsolatedTables {
+	if c.requiredFeatures & ^(platformCoreFeatures()|CoreFeatureTailCall) != 0 || c.requiredAMD64Features != 0 || c.preparedIsolatedTables {
 		return reject("feature or ISA contract")
 	}
 	for i, entry := range c.Entry {
@@ -262,6 +265,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	return nil
 }
 
+// Every callable RV64 producer has a canonical context anchor, including
+// import-free scalar exports used as retained proper-tail targets.
 func railshotNeedsImportContextHeader(count int) bool { return count > 0 }
 
 // Binding policy runs before prepareCodeMapping, including trusted artifacts.
@@ -273,6 +278,9 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 		return nil
 	}
 	if err := railshotValidateCompiled(c); err != nil {
+		return err
+	}
+	if err := rv64ValidateTailImports(c, imports); err != nil {
 		return err
 	}
 	if err := rv64ValidateResolvedGlobals(c, imports, store); err != nil {

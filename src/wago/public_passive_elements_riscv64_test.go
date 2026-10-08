@@ -87,7 +87,7 @@ func TestRV64PublicPassiveElementsWithoutTable(t *testing.T) {
 						defer in.Close()
 						other := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 						defer other.Close()
-						if (len(in.funcRefDescs) == 0) != (payload == "null") || len(in.globalCells) != 0 {
+						if (!in.c.needsFuncRefDescs()) != (payload == "null") || payload == "null" && !rv64HeaderOnlyContext(in) || len(in.globalCells) != 0 {
 							t.Fatal("passive descriptor/global allocation")
 						}
 						directory := rv64PassiveDirectory(t, in)
@@ -323,7 +323,7 @@ func TestRV64PublicEmptyPassiveDescriptorFeatureWitness(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if in.tableDescPtr != 0 || len(in.funcRefDescs) != 0 || in.jm.PassiveElemPtr() == 0 {
+			if in.tableDescPtr != 0 || !rv64HeaderOnlyContext(in) || in.jm.PassiveElemPtr() == 0 {
 				t.Fatal("empty passive instance layout")
 			}
 			directory := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr())), coreruntime.PassiveElemDescBytes)
@@ -377,7 +377,7 @@ func TestRV64PublicPassiveGlobalInitializersWithoutTable(t *testing.T) {
 					owner := in
 					if imported {
 						owner = producer
-						if len(in.funcRefDescs) != 0 || !producer.hasPhysicalResources() {
+						if !rv64HeaderOnlyContext(in) || !producer.hasPhysicalResources() {
 							t.Fatal("foreign raw descriptor ownership")
 						}
 					}

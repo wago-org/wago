@@ -20,6 +20,7 @@ type railshotOptimizationSnapshot = optimization.Snapshot
 type railshotModuleStats struct{}
 
 type railshotCompileOptions struct {
+	NativeTailCalls        bool
 	SourceMaps             bool
 	UnwindMaps             bool
 	Profile                bool

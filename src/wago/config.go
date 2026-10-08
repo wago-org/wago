@@ -222,6 +222,7 @@ func (m BoundsCheckMode) String() string {
 // RuntimeConfig configures compilation and execution. It is immutable — every
 // WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
+	railshotState            railshotRuntimeConfigState
 	codeProfile              *CodeProfile
 	features                 CoreFeatures
 	optimizations            map[string]bool
@@ -880,7 +881,7 @@ func (c *RuntimeConfig) Validate() error {
 	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
 		return errNativeCPUFeatures
 	}
-	supported := platformCoreFeatures()
+	supported := platformCoreFeatures() | railshotStagedTailFeatures(c)
 	if unsupported := c.features &^ supported; unsupported != 0 {
 		return &UnsupportedFeatureError{
 			Requested: unsupported,

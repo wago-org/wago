@@ -286,7 +286,7 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 	// its arena-stable instance-context cell exists even when the module has no
 	// local ref.func/table descriptor payloads. Key EH to the analyzed required
 	// feature so tag-free try_table/catch_all modules receive the header too.
-	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef || requirements.features.IsEnabled(CoreFeatureExceptionHandling) || railshotNeedsImportContextHeader(c.NumImports)
+	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef || requirements.features.IsEnabled(CoreFeatureExceptionHandling) || railshotNeedsImportContextHeader(c.NumImports+len(c.Funcs))
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
 	for i := range m.Tables {
 		tableIndex := importedTables + i

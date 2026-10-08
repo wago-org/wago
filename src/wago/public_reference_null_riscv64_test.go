@@ -57,7 +57,7 @@ func TestRV64PublicNullReferenceCarriersWithoutState(t *testing.T) {
 				defer rt.Close()
 				in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 				defer in.Close()
-				if len(in.funcRefDescs) != 0 || in.tableDescPtr != 0 || len(in.globalCells) != 0 || !in.usesIndependentExecution() {
+				if !rv64HeaderOnlyContext(in) || in.tableDescPtr != 0 || len(in.globalCells) != 0 || !in.usesIndependentExecution() {
 					t.Fatal("pure reference carrier storage/entry contract")
 				}
 				fn, err := in.WasmFunc("carrier")

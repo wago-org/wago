@@ -107,7 +107,7 @@ func TestRV64PublicReferenceGlobalsWithoutTable(t *testing.T) {
 					if pc.tableCount() != 0 || producer.tableDescPtr != 0 {
 						t.Fatal("table-free producer has table storage")
 					}
-					if null && len(producer.funcRefDescs) != 0 {
+					if null && !rv64HeaderOnlyContext(producer) {
 						t.Fatal("null-only producer allocated descriptors")
 					}
 					wantNull := uint64(0)
@@ -131,7 +131,7 @@ func TestRV64PublicReferenceGlobalsWithoutTable(t *testing.T) {
 					}
 					c := rv64TableStageCompile(t, fmt.Sprintf("ref-no-table-consumer-vector%t", vector), rv64ReferenceNoTableModule(vector, true, false), artifact)
 					in := rv64NativeTokenInstantiate(t, rt, c, NewImports().Global("env", "ref", g))
-					if c.tableCount() != 0 || in.tableDescPtr != 0 || len(in.funcRefDescs) != 0 {
+					if c.tableCount() != 0 || in.tableDescPtr != 0 || !rv64HeaderOnlyContext(in) {
 						t.Fatal("table-free imported carrier allocated a local descriptor arena")
 					}
 					producer.Close()
@@ -333,7 +333,7 @@ func TestRV64PublicReferenceGlobalsWithoutTableUnusedImport(t *testing.T) {
 				defer g.Close()
 				in := rv64NativeTokenInstantiate(t, rt, c, NewImports().Global("env", "ref", g))
 				defer in.Close()
-				if in.usesIndependentExecution() || len(in.funcRefDescs) != 0 || in.tableDescPtr != 0 {
+				if in.usesIndependentExecution() || !rv64HeaderOnlyContext(in) || in.tableDescPtr != 0 {
 					t.Fatal("unused import entry/storage contract")
 				}
 				importedGlobalInvoke(t, in, "f", want, args...)

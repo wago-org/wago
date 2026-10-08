@@ -403,6 +403,7 @@ func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 // Callback authority and ownership of the producer's public gate differ for a
 // foreign activation. Only its actual gate owner may swap parked public scratch.
 type railshotInvocationState struct {
+	tailDispatcher     *railshot.NativeTailDispatcher
 	gateOwner          invocationID
 	longImportKeysOnce sync.Once
 	longImportKeys     []string

@@ -61,6 +61,7 @@ type compiledHostThunkCache struct {
 // compiledCacheIndexes holds cold compile/runtime indexes separately from the
 // fixed code-mapping header. It is allocated only when a module needs them.
 type compiledCacheIndexes struct {
+	railshotTail       railshotTailCompiledState
 	valueTypeIndex     map[ValueTypeDescriptor]uint32
 	gcTypeMapping      *gcTypeMappingCacheEntry
 	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
@@ -125,12 +126,14 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 	var gcFrameRoots *compiledGCFrameRoots
 	var importModuleEnds []uint64
 	var snapshotLimit uint64
+	var indexes *compiledCacheIndexes
 	if c.validateMemo != nil {
+		indexes = c.loadCompileIndexes()
 		gcFrameRoots = c.validateMemo.gcFrameRoots
 		importModuleEnds = c.validateMemo.importModuleEnds
 		snapshotLimit = c.validateMemo.snapshotLimit
 	}
-	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots, importModuleEnds: importModuleEnds, snapshotLimit: snapshotLimit}
+	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots, importModuleEnds: importModuleEnds, snapshotLimit: snapshotLimit, compileIndexes: indexes}
 	goruntime.SetFinalizer(c, func(c *Compiled) {
 		_ = c.Close()
 	})
@@ -761,6 +764,7 @@ func (c *Compiled) releaseCode() {
 		}
 		_ = c.releaseHostThunksLocked()
 		_ = c.releaseFailedMappingsLocked()
+		_ = railshotRetryNativeTail(c)
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
@@ -841,6 +845,7 @@ func (c *Compiled) mapPrivateThunkCode(code []byte) ([]byte, uintptr, error) {
 
 func (c *Compiled) releaseFailedPublicationMappingsLocked() error {
 	err := c.releaseFailedMappingsLocked()
+	err = errors.Join(err, railshotRetryNativeTail(c))
 	if memo := c.loadValidateMemo(); memo != nil {
 		for i := range memo.hostThunks {
 			cache := &memo.hostThunks[i]
@@ -918,7 +923,7 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 				cc.mem = nil
 			}
 		}
-		releaseErr = errors.Join(releaseErr, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked())
+		releaseErr = errors.Join(releaseErr, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
 		cc.mu.Unlock()
 		goruntime.SetFinalizer(c, nil)
 		if releaseErr != nil {
@@ -965,5 +970,5 @@ func (c *Compiled) Close() error {
 			cc.mem = nil
 		}
 	}
-	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked())
+	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
 }

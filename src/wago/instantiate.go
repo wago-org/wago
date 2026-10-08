@@ -246,7 +246,7 @@ func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) i
 			}
 		}
 	}
-	return need - baselineHostBytes + actualHostBytes + railshotNativeImportArenaBytes(c, imports)
+	return need - baselineHostBytes + actualHostBytes + railshotNativeImportArenaBytes(c, imports) + railshotNativeTailArenaBytes(c)
 }
 
 func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) error {
@@ -680,10 +680,14 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
+	var tailInstance *Instance
 	var thunkMem []byte // instance-specific HostFuncRef thunks; unmapped on failure/close
 	defer func() {
 		if b.success {
 			return
+		}
+		if tailInstance != nil {
+			railshotReleaseNativeTail(tailInstance)
 		}
 		if thunkMem != nil {
 			_ = c.releaseOwnedCodeMapping(thunkMem)
@@ -1739,6 +1743,10 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		nativeContext:      nativeContextPtr,
 		threadedMemoryZero: c.threadedMemory0(),
 		moduleIdentity:     opts.moduleIdentity,
+	}
+	tailInstance = in
+	if err := railshotPrepareNativeTail(in, imports); err != nil {
+		return nil, err
 	}
 	if len(importRefEntries) != 0 {
 		in.ensureImportState().importRefEntries = importRefEntries

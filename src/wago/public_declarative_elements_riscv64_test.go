@@ -156,7 +156,7 @@ func TestRV64PublicDeclarativeElementsWithoutTable(t *testing.T) {
 							if c.tableCount() != 0 || in.tableDescPtr != 0 || len(in.globalCells) != 0 {
 								t.Fatal("declaration allocated table/global state")
 							}
-							if !references && len(in.funcRefDescs) != 0 {
+							if !references && !rv64HeaderOnlyContext(in) {
 								t.Fatal("inert declaration allocated descriptors")
 							}
 							var directory []byte

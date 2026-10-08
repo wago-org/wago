@@ -43,6 +43,35 @@ type NativeTailDispatcher struct {
 	bound      bool
 }
 
+// NativeTailInstanceBudget covers a module-local factory with one retained
+// caller image per site. Zero imported sites needs no dispatcher allocation.
+func NativeTailInstanceBudget(count, guestCodeBytes int) (codeBytes, arenaBytes int, err error) {
+	if count < 0 || count > tailRAMaxSites || guestCodeBytes < 0 || guestCodeBytes > MaxCodeBytes {
+		return 0, 0, unsupported("native tail instance budget")
+	}
+	if count == 0 {
+		return 0, 0, nil
+	}
+	codeBytes = count * (tailRADispatchBound + 128)
+	if guestCodeBytes == 0 || codeBytes > MaxCodeBytes-guestCodeBytes {
+		return 0, 0, unsupported("native tail combined instance code budget")
+	}
+	return codeBytes, tailRACapHeader + count*tailRASiteRow, nil
+}
+
+// NativeTailMetadataBudget charges copied signatures and one retained caller
+// range per module-local site before allocating per-site type slices.
+func NativeTailMetadataBudget(count, values int) error {
+	if count < 0 || count > tailRAMaxSites || values < 0 || values > 512*count {
+		return unsupported("native tail metadata count budget")
+	}
+	size := tailRACapHeader + count*(tailRASiteRow+128+16) + 16*values
+	if size > MaxModuleBytes {
+		return unsupported("native tail factory metadata bound")
+	}
+	return nil
+}
+
 func nativeTailProofSite(s NativeTailSite) tailRAProofSite {
 	ranges := make([]tailRARange, len(s.Continuations))
 	for n, r := range s.Continuations {
@@ -93,6 +122,13 @@ func nativeTailDispatcherBound(sites []NativeTailSite, guestCodeBytes int) (int,
 // Capability words remain zero until every factory byte is sealed executable
 // and process-wide Linux instruction-cache synchronization has completed.
 func NewNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int) (*NativeTailDispatcher, error) {
+	return NewNativeTailDispatcherInArena(sites, guestCodeBytes, nil)
+}
+
+// NewNativeTailDispatcherInArena borrows instance-owned capability storage.
+// The caller must close the dispatcher before releasing that arena. A nil
+// arena selects the independently owned storage used by standalone factories.
+func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, arena *coreruntime.Arena) (*NativeTailDispatcher, error) {
 	bound, err := nativeTailDispatcherBound(sites, guestCodeBytes)
 	if err != nil {
 		return nil, err
@@ -107,11 +143,14 @@ func NewNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int) (*Nativ
 		return o, err
 	}
 	base := o.code.Base()
-	o.arena, err = coreruntime.NewArena(tailRACapHeader + len(sites)*tailRASiteRow)
-	if err != nil {
-		return o, err
+	if arena == nil {
+		o.arena, err = coreruntime.NewArena(tailRACapHeader + len(sites)*tailRASiteRow)
+		if err != nil {
+			return o, err
+		}
+		arena = o.arena
 	}
-	o.capability = o.arena.Alloc(tailRACapHeader + len(sites)*tailRASiteRow)
+	o.capability = arena.Alloc(tailRACapHeader + len(sites)*tailRASiteRow)
 	clear(o.capability)
 	binary.LittleEndian.PutUint64(o.capability, tailRACapMagic)
 	binary.LittleEndian.PutUint32(o.capability[8:], tailRAVersion)
@@ -192,6 +231,12 @@ func (o *NativeTailDispatcher) Close() error {
 			binary.LittleEndian.PutUint64(ctx[abi.RV64TailCapabilityOffset:], 0)
 		}
 		o.bound = false
+	}
+	// Detached owners retry only mappings; they must not retain borrowed context
+	// or capability slices after the instance releases its arena.
+	o.contexts = nil
+	if o.arena == nil {
+		o.capability = nil
 	}
 	var errs []error
 	if o.code != nil {

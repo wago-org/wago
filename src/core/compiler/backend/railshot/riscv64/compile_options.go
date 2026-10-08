@@ -8,6 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 type ImportBinding = shared.ImportBinding
@@ -37,6 +38,9 @@ type CompileOptions struct {
 	// Entries use a synchronous root control frame and full signature transport.
 	// InvocationContext requires the RV64 public 136-byte context and Engine/
 	// activation-owned views. Legacy private contexts must leave it false.
+	// NativeTailCalls requires the invocation-bound proper-tail factory runtime.
+	// It is an internal qualification contract until every target family is ready.
+	NativeTailCalls                 bool
 	InvocationContext               bool
 	ForeignTableCalls               bool
 	MemoryPressureAt                int
@@ -56,8 +60,9 @@ type CompileOptions struct {
 	publicStarts        bool
 	hostImports         bool
 	// Internal C2a only; public TailCall remains gated until the whole family.
+	tailModule     *wasm.Module
 	localTailCalls bool
-	// Only the private decoded imported-tail adapter supplies these fields.
+	// Source production and private decoded adapters collect symbolic import sites.
 	importTailCalls bool
 	tailPlans       *[]tailImportPlan
 	tailSiteBase    uint32
