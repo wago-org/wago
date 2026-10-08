@@ -158,7 +158,8 @@ func NewNativeTailDispatcherInArena(sites []NativeTailSite, guestCodeBytes int, 
 	for _, s := range sites {
 		if s.dynamic != nil {
 			for _, owner := range s.dynamic.owners {
-				for _, f := range owner.functions {
+				for i := 0; i < len(owner.functions)+len(owner.targets); i++ {
+					f := owner.retainedFunction(i)
 					if err := f.code.Seal(); err != nil {
 						return nil, err
 					}

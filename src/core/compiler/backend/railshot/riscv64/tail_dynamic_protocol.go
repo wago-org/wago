@@ -3,6 +3,7 @@
 package riscv64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"unsafe"
 
@@ -12,11 +13,42 @@ import (
 )
 
 // Private native-only dynamic proof. All mappings are exclusively retained by
-// the invocation owner through execution and parks. Imported proxies and host
-// rows remain closed; this stage selects genuine defined framed functions.
+// the invocation owner through execution and parks. Canonical imported proxies
+// preserve ordinary bridge identity while selecting true defined framed targets.
+// Host rows remain closed at this private boundary.
 type tailRADynamicOwner struct {
 	descriptors, context, directory []byte
 	functions                       []tailRAFunction
+	// Optional parallel producer/proxy metadata. Nil targets selects the source
+	// defined functions. A nonnil proxy authenticates the exact ordinary bridge.
+	targets []tailRAFunction
+	proxies []*tailRADynamicProxy
+}
+
+type tailRADynamicProxy struct {
+	importIndex        uint32
+	arguments, results []byte
+}
+
+func (o tailRADynamicOwner) target(i int) tailRAFunction {
+	if o.targets != nil {
+		return o.targets[i]
+	}
+	return o.functions[i]
+}
+
+func (o tailRADynamicOwner) retainedFunction(i int) tailRAFunction {
+	if i < len(o.functions) {
+		return o.functions[i]
+	}
+	return o.targets[i-len(o.functions)]
+}
+
+func (o tailRADynamicOwner) proxy(i int) *tailRADynamicProxy {
+	if o.proxies == nil {
+		return nil
+	}
+	return o.proxies[i]
 }
 
 type tailRADynamicSite struct {
@@ -39,18 +71,24 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 	code = 2048 + 1024*len(d.owners)
 	count := 0
 	for _, o := range d.owners {
-		if len(o.functions) == 0 || len(o.functions) > MaxFunctions-count || len(o.descriptors) != 40*(len(o.functions)+1) || len(o.context) != abi.RV64InstanceContextBytes || len(o.directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*len(o.functions) {
+		if len(o.functions) == 0 || len(o.functions) > MaxFunctions-count || o.targets != nil && len(o.targets) != len(o.functions) || o.proxies != nil && (len(o.proxies) != len(o.functions) || o.targets == nil) || len(o.descriptors) != 40*(len(o.functions)+1) || len(o.context) != abi.RV64InstanceContextBytes || len(o.directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*len(o.functions) {
 			return 0, 0, unsupported("dynamic tail retained owner extent")
 		}
 		count += len(o.functions)
-		metadata += len(o.functions) * int(unsafe.Sizeof(tailRAFunction{}))
-		for _, f := range o.functions {
+		metadata += (len(o.functions)+len(o.targets))*int(unsafe.Sizeof(tailRAFunction{})) + len(o.proxies)*int(unsafe.Sizeof((*tailRADynamicProxy)(nil)))
+		for _, p := range o.proxies {
+			if p != nil {
+				metadata += int(unsafe.Sizeof(*p))
+			}
+		}
+		for i := 0; i < len(o.functions)+len(o.targets); i++ {
+			f := o.retainedFunction(i)
 			if f.signature == nil || len(f.signature.Params) > 256 || len(f.signature.Results) > 256 {
 				return 0, 0, unsupported("dynamic tail frozen signature extent")
 			}
 			metadata += int(unsafe.Sizeof(wasm.CompType{})) + (len(f.signature.Params)+len(f.signature.Results))*int(unsafe.Sizeof(wasm.ValType{}))
 		}
-		code += 512 * len(o.functions)
+		code += 1024 * len(o.functions)
 		if metadata > MaxModuleBytes || code > MaxCodeBytes {
 			return 0, 0, unsupported("dynamic tail metadata/code budget")
 		}
@@ -84,19 +122,63 @@ func (d *tailRADynamicSite) validate(s *tailRAProofSite) error {
 			}
 		}
 		for i, f := range o.functions {
-			if err := f.validate(true); err != nil {
+			t := o.target(i)
+			if len(t.context) != abi.RV64InstanceContextBytes {
+				return unsupported("dynamic tail true producer context extent")
+			}
+			if err := t.validate(true); err != nil {
 				return err
+			}
+			if !t.info.mode.invocationContext || !wasm.FuncTypeEqual(f.signature, t.signature) || binary.LittleEndian.Uint64(t.directory[16:]) != uint64(t.job.LinMemBase()) {
+				return unsupported("dynamic tail exact producer signature/anchor")
+			}
+			if p := o.proxy(i); p != nil {
+				if err := p.validate(f, t, s.target.hostTrampoline); err != nil {
+					return err
+				}
+			} else {
+				if err := f.validate(true); err != nil {
+					return err
+				}
+				if f.code.Base()+uintptr(f.info.Entry) != t.code.Base()+uintptr(t.info.Entry) || f.job.LinMemBase() != t.job.LinMemBase() || tailRAPointer(f.context) != tailRAPointer(t.context) || tailRAPointer(f.directory) != tailRAPointer(t.directory) {
+					return unsupported("dynamic tail defined descriptor retargeted")
+				}
 			}
 			entry, home := f.code.Base()+uintptr(f.info.Entry), f.job.LinMemBase()
 			key := wasm.StructuralFuncTypeKey(f.signature)
 			desc := o.descriptors[40*(i+1):]
 			row := o.directory[abi.RV64TailTargetsHeaderBytes+i*abi.RV64TailTargetsRowBytes:]
-			if !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(home) || binary.LittleEndian.Uint64(desc) != uint64(entry) || binary.LittleEndian.Uint64(desc[8:]) != key || binary.LittleEndian.Uint64(desc[16:]) != uint64(home)|abi.FuncRefLocalWrapperHomeTag || binary.LittleEndian.Uint64(desc[24:]) != uint64(anchor+uintptr(40*(i+1))) || binary.LittleEndian.Uint64(desc[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(row) != uint64(entry) || binary.LittleEndian.Uint64(row[8:]) != uint64(home) || binary.LittleEndian.Uint64(row[16:]) != uint64(ctx) || binary.LittleEndian.Uint64(row[24:]) != 0 {
+			if o.proxy(i) == nil && !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(home) || binary.LittleEndian.Uint64(desc) != uint64(entry) || binary.LittleEndian.Uint64(desc[8:]) != key || binary.LittleEndian.Uint64(desc[16:]) != uint64(home)|abi.FuncRefLocalWrapperHomeTag || binary.LittleEndian.Uint64(desc[24:]) != uint64(anchor+uintptr(40*(i+1))) || binary.LittleEndian.Uint64(desc[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(row) != uint64(t.code.Base()+uintptr(t.info.Entry)) || binary.LittleEndian.Uint64(row[8:]) != uint64(t.job.LinMemBase()) || binary.LittleEndian.Uint64(row[16:]) != uint64(tailRAPointer(t.context)) || binary.LittleEndian.Uint64(row[24:]) != 0 {
 				return unsupported("dynamic tail genuine defined target")
 			}
 		}
 	}
 	return nil
+}
+
+func (p *tailRADynamicProxy) validate(source, target tailRAFunction, trampoline uintptr) error {
+	if source.code == nil || source.code.Base() == 0 || source.code.Base()&15 != 0 || source.job == nil || source.job.LinMemBase() == 0 || len(source.snapshot) == 0 || len(source.snapshot) > MaxCodeBytes || !bytes.Equal(source.code.Bytes(), source.snapshot) || len(source.context) != abi.RV64InstanceContextBytes || tailRAPointer(source.context)&7 != 0 || len(source.directory) < 40 || tailRAPointer(source.directory)&7 != 0 || source.info.Entry < 0 || source.info.Entry&15 != 0 || source.info.Entry > len(source.snapshot) || source.info.CodeBytes <= 0 || source.info.CodeBytes > len(source.snapshot)-source.info.Entry {
+		return unsupported("dynamic tail retained import proxy image")
+	}
+	expected, err := NativeImportThunk(NativeImportTarget{Entry: target.code.Base() + uintptr(target.info.Entry), Home: target.job.LinMemBase(), Context: tailRAPointer(target.context), Arguments: p.arguments, Results: p.results, ArgumentSlots: swarSignatureSlots(source.signature.Params), ResultSlots: swarSignatureSlots(source.signature.Results), StackOwnedActivation: true, InvocationContext: true, HostTrampoline: trampoline}, source.job.LinMemBase(), tailRAPointer(source.context), p.importIndex)
+	if err != nil || !bytes.Equal(source.snapshot[source.info.Entry:source.info.Entry+source.info.CodeBytes], expected) {
+		return unsupported("dynamic tail exact native import proxy builder")
+	}
+	return nil
+}
+
+func tailRADynamicFreezeFunctions(functions []tailRAFunction) []tailRAFunction {
+	if functions == nil {
+		return nil
+	}
+	frozen := append([]tailRAFunction(nil), functions...)
+	for n := range frozen {
+		sig := *frozen[n].signature
+		sig.Params = append([]wasm.ValType(nil), sig.Params...)
+		sig.Results = append([]wasm.ValType(nil), sig.Results...)
+		frozen[n].signature = &sig
+	}
+	return frozen
 }
 
 func (d *tailRADynamicSite) freeze() *tailRADynamicSite {
@@ -106,13 +188,16 @@ func (d *tailRADynamicSite) freeze() *tailRADynamicSite {
 	f := *d
 	f.owners = append([]tailRADynamicOwner(nil), d.owners...)
 	for i := range f.owners {
-		f.owners[i].functions = append([]tailRAFunction(nil), d.owners[i].functions...)
-		for n := range f.owners[i].functions {
-			fn := &f.owners[i].functions[n]
-			sig := *fn.signature
-			sig.Params = append([]wasm.ValType(nil), sig.Params...)
-			sig.Results = append([]wasm.ValType(nil), sig.Results...)
-			fn.signature = &sig
+		f.owners[i].functions = tailRADynamicFreezeFunctions(d.owners[i].functions)
+		f.owners[i].targets = tailRADynamicFreezeFunctions(d.owners[i].targets)
+		if d.owners[i].proxies != nil {
+			f.owners[i].proxies = append([]*tailRADynamicProxy(nil), d.owners[i].proxies...)
+			for n, p := range f.owners[i].proxies {
+				if p != nil {
+					v := *p
+					f.owners[i].proxies[n] = &v
+				}
+			}
 		}
 	}
 	return &f
@@ -127,7 +212,8 @@ func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
 			continue
 		}
 		for on, o := range s.dynamic.owners {
-			for fn, f := range o.functions {
+			for fn := 0; fn < len(o.functions)+len(o.targets); fn++ {
+				f := o.retainedFunction(fn)
 				seen := false
 			previous:
 				for pn, p := range sites[:sn+1] {
@@ -135,7 +221,8 @@ func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
 						continue
 					}
 					for po, owner := range p.dynamic.owners {
-						for pf, prev := range owner.functions {
+						for pf := 0; pf < len(owner.functions)+len(owner.targets); pf++ {
+							prev := owner.retainedFunction(pf)
 							if pn == sn && po == on && pf == fn {
 								break previous
 							}
@@ -223,31 +310,45 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 	a.Ld(enc.X17, enc.X15, 8)
 	a.Ld(enc.X18, enc.X15, 16)
 	a.Ld(enc.X29, enc.X15, 24)
-	e.fail(enc.NE, enc.X29, enc.Zero) // Host/proxy rows remain closed.
-	e.fail(enc.NE, enc.X18, enc.X20)
+	e.fail(enc.NE, enc.X29, enc.Zero) // Host rows remain closed.
 	a.Ld(enc.X29, enc.X19, 16)
-	e.fail(enc.NE, enc.X29, enc.X17)
-	a.Constant64(enc.X29, int64(abi.FuncRefLocalWrapperHomeTag))
-	a.Or(enc.X29, enc.X17, enc.X29)
+	a.Constant64(enc.Scratch0, int64(abi.FuncRefLocalWrapperHomeTag))
+	a.Or(enc.X29, enc.X29, enc.Scratch0)
 	a.Ld(enc.Scratch0, enc.X14, 16)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
-	a.Ld(enc.X29, enc.X14, 0)
-	e.fail(enc.NE, enc.X29, enc.X16)
 	// Authenticate the exact frozen entry as well as the live directory. Even
 	// coordinated descriptor/row corruption cannot substitute arbitrary code.
 	var genuine []int
 	for _, o := range d.owners {
 		for i, f := range o.functions {
+			t := o.target(i)
 			// A live key cannot relabel a genuine function of another signature.
-			if wasm.StructuralFuncTypeKey(f.signature) != d.key {
+			if wasm.StructuralFuncTypeKey(f.signature) != d.key || wasm.StructuralFuncTypeKey(t.signature) != d.key {
 				continue
 			}
 			a.Constant64(enc.X29, int64(tailRAPointer(o.descriptors)+uintptr(40*(i+1))))
 			next := a.BranchLong(enc.NE, enc.X14, enc.X29)
 			a.Constant64(enc.X29, int64(f.code.Base()+uintptr(f.info.Entry)))
-			e.fail(enc.NE, enc.X16, enc.X29)
+			a.Ld(enc.Scratch0, enc.X14, 0)
+			e.fail(enc.NE, enc.Scratch0, enc.X29)
 			a.Constant64(enc.X29, int64(f.job.LinMemBase()))
+			a.Ld(enc.Scratch0, enc.X19, 16)
+			e.fail(enc.NE, enc.Scratch0, enc.X29)
+			a.Constant64(enc.X29, int64(t.code.Base()+uintptr(t.info.Entry)))
+			e.fail(enc.NE, enc.X16, enc.X29)
+			a.Constant64(enc.X29, int64(t.job.LinMemBase()))
 			e.fail(enc.NE, enc.X17, enc.X29)
+			a.Constant64(enc.X29, int64(tailRAPointer(t.context)))
+			e.fail(enc.NE, enc.X18, enc.X29)
+			// The actual producer tuple has now matched frozen physical owners.
+			// Authenticate its anchor using constants before reading anchor data.
+			a.Ld(enc.Scratch0, enc.X18, 16)
+			a.Constant64(enc.X29, int64(tailRAPointer(t.directory)))
+			e.fail(enc.NE, enc.Scratch0, enc.X29)
+			a.Ld(enc.Scratch0, enc.X29, 32)
+			e.fail(enc.NE, enc.Scratch0, enc.X18)
+			a.Ld(enc.Scratch0, enc.X29, 16)
+			e.fail(enc.NE, enc.Scratch0, enc.X17)
 			genuine = append(genuine, a.JumpLong(false))
 			e.patch(next)
 		}

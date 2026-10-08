@@ -93,6 +93,9 @@ func TestTailDynamicAdmissionAndGeneratedBudget(t *testing.T) {
 		{"descriptor-extent", func(s *NativeTailSite) { s.dynamic.owners[0].descriptors = s.dynamic.owners[0].descriptors[:40] }},
 		{"context-extent", func(s *NativeTailSite) { s.dynamic.owners[0].context = s.dynamic.owners[0].context[:128] }},
 		{"host-mode", func(s *NativeTailSite) { s.HostEntry = true }},
+		{"target-count", func(s *NativeTailSite) { s.dynamic.owners[0].targets = []tailRAFunction{} }},
+		{"proxy-count", func(s *NativeTailSite) { s.dynamic.owners[0].proxies = []*tailRADynamicProxy{} }},
+		{"proxy-without-targets", func(s *NativeTailSite) { s.dynamic.owners[0].proxies = []*tailRADynamicProxy{nil} }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := valid
