@@ -5,9 +5,17 @@ import "github.com/wago-org/wago/src/core/codeimage"
 // NativeTailPlan is address-free immutable source/physical frame metadata.
 // Imported target owners are attached separately for each instance.
 type NativeTailPlan struct {
+	Kind, TypeIndex                      uint32
 	FunctionIndex, ImportIndex, SourcePC uint32
 	FrameBytes, SourceBase, SourceStride int
+	ReferenceBase                        int
 }
+
+const (
+	NativeTailDirectImport uint32 = iota
+	NativeTailIndirect
+	NativeTailReference
+)
 
 type NativeTailModule struct{ Plans []NativeTailPlan }
 

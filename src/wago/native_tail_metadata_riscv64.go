@@ -50,6 +50,75 @@ func railshotStoreNativeTail(c *Compiled, image *railshotCompiledModule) error {
 	rv64StoreNativeTailModule(c, m)
 	return nil // finalized signatures are assigned next; validation precedes publication
 }
+
+// Validation borrows frozen metadata. It does not allocate converted type
+// slices per site, including for repeated declared signatures near the budget.
+type rv64TailSignatureView struct {
+	params, results []ValType
+	declared        *DefinedTypeDescriptor
+}
+
+func (s rv64TailSignatureView) paramCount() int {
+	if s.declared != nil {
+		return len(s.declared.Params)
+	}
+	return len(s.params)
+}
+func (s rv64TailSignatureView) resultCount() int {
+	if s.declared != nil {
+		return len(s.declared.Results)
+	}
+	return len(s.results)
+}
+func (s rv64TailSignatureView) param(i int) ValType {
+	if s.declared != nil {
+		v, _ := s.declared.Params[i].ABIType(nil)
+		return v
+	}
+	return s.params[i]
+}
+func (s rv64TailSignatureView) result(i int) ValType {
+	if s.declared != nil {
+		v, _ := s.declared.Results[i].ABIType(nil)
+		return v
+	}
+	return s.results[i]
+}
+func rv64NativeTailPlanSignature(c *Compiled, p encoder.NativeTailPlan) (rv64TailSignatureView, error) {
+	if p.Kind == encoder.NativeTailDirectImport {
+		if uint64(p.ImportIndex) >= uint64(len(c.importFuncSigs)) || p.TypeIndex != 0 || p.ReferenceBase != 0 {
+			return rv64TailSignatureView{}, fmt.Errorf("RV64 direct tail target/canonical fields")
+		}
+		sig := c.importFuncSigs[p.ImportIndex]
+		return rv64TailSignatureView{params: sig.Params, results: sig.Results}, nil
+	}
+	if p.Kind != encoder.NativeTailIndirect && p.Kind != encoder.NativeTailReference || p.ImportIndex != 0 || uint64(p.TypeIndex) >= uint64(len(c.Types)) || !c.needsFuncRefDescs() {
+		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail declared type/kind/descriptor contract")
+	}
+	if p.Kind == encoder.NativeTailIndirect && (c.tableCount() != 1 || c.TableAddr64) {
+		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail table shape")
+	}
+	d := &c.Types[p.TypeIndex]
+	if d.Kind != CompositeTypeFunction || !d.Final || len(d.Supers) != 0 || d.HasDescribes || d.HasDescriptor || len(d.Params) > 256 || len(d.Results) > 256 {
+		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail plain declared function type")
+	}
+	for _, list := range [][]ValueTypeDescriptor{d.Params, d.Results} {
+		slots := 0
+		for _, v := range list {
+			if v.Kind > ValueTypeV128 || v.Ref != (ReferenceTypeDescriptor{}) {
+				return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail numeric declared signature")
+			}
+			slots++
+			if v.Kind == ValueTypeV128 {
+				slots++
+			}
+		}
+		if slots > 256 {
+			return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail physical slot bound")
+		}
+	}
+	return rv64TailSignatureView{declared: d}, nil
+}
 func rv64ValidateNativeTail(c *Compiled) error {
 	m := rv64NativeTailModule(c)
 	if c.requiredFeatures.IsEnabled(CoreFeatureTailCall) != (m != nil) {
@@ -67,21 +136,55 @@ func rv64ValidateNativeTail(c *Compiled) error {
 	values := 0
 	for _, p := range m.Plans {
 		local := int(p.FunctionIndex) - c.NumImports
-		if local < 0 || local >= len(c.Funcs) || int(p.ImportIndex) >= len(c.importFuncSigs) || p.FrameBytes < 48 || p.FrameBytes > railshot.MaxFrameBytes || p.FrameBytes&15 != 0 || p.SourceBase < 48 || p.SourceBase > p.FrameBytes || p.SourceStride != 8 && p.SourceStride != 16 {
+		if local < 0 || local >= len(c.Funcs) || p.FrameBytes < 48 || p.FrameBytes > railshot.MaxFrameBytes || p.FrameBytes&15 != 0 || p.SourceBase < 48 || p.SourceBase > p.FrameBytes || p.SourceBase&7 != 0 || p.SourceStride != 8 && p.SourceStride != 16 {
 			return fmt.Errorf("RV64 native tail source frame/index contract")
 		}
-		sig := c.importFuncSigs[p.ImportIndex]
-		values += len(sig.Params) + len(sig.Results)
+		sig, err := rv64NativeTailPlanSignature(c, p)
+		if err != nil {
+			return err
+		}
+		if sig.paramCount() > 256 || sig.resultCount() > 256 {
+			return fmt.Errorf("RV64 native tail signature count")
+		}
+		for _, result := range []bool{false, true} {
+			count, slots := sig.paramCount(), 0
+			if result {
+				count = sig.resultCount()
+			}
+			for n := 0; n < count; n++ {
+				v := sig.param
+				if result {
+					v = sig.result
+				}
+				switch v(n) {
+				case ValI32, ValI64, ValF32, ValF64:
+					slots++
+				case ValV128:
+					slots += 2
+				default:
+					return fmt.Errorf("RV64 native tail numeric signature")
+				}
+			}
+			if slots > 256 {
+				return fmt.Errorf("RV64 native tail physical slots")
+			}
+		}
+		values += sig.paramCount() + sig.resultCount()
 		if err := railshot.NativeTailMetadataBudget(len(m.Plans), values); err != nil {
 			return err
 		}
-		if !slices.Equal(c.Funcs[local].Results, sig.Results) {
-			return fmt.Errorf("RV64 native tail result contract")
+		if len(c.Funcs[local].Results) != sig.resultCount() {
+			return fmt.Errorf("RV64 native tail result count")
+		}
+		for i, v := range c.Funcs[local].Results {
+			if v != sig.result(i) {
+				return fmt.Errorf("RV64 native tail result contract")
+			}
 		}
 		at := p.SourceBase
-		for _, typ := range sig.Params {
+		for i := 0; i < sig.paramCount(); i++ {
 			width := 8
-			switch typ {
+			switch sig.param(i) {
 			case ValI32, ValI64, ValF32, ValF64:
 			case ValV128:
 				width = 16
@@ -95,6 +198,9 @@ func rv64ValidateNativeTail(c *Compiled) error {
 				return fmt.Errorf("RV64 native tail source home extent")
 			}
 			at += p.SourceStride
+		}
+		if p.Kind != encoder.NativeTailDirectImport && (p.ReferenceBase < 48 || p.ReferenceBase&7 != 0 || p.ReferenceBase > p.FrameBytes-8 || p.ReferenceBase < at) {
+			return fmt.Errorf("RV64 dynamic tail full-width reference home")
 		}
 	}
 	return nil
@@ -110,9 +216,21 @@ func railshotWriteNativeTail(w *compiledWriter, c *Compiled) error {
 	if m == nil {
 		return nil
 	}
-	w.u32(1)
+	version := uint32(1)
+	for _, p := range m.Plans {
+		if p.Kind != encoder.NativeTailDirectImport {
+			version = 2
+			break
+		}
+	}
+	w.u32(version)
 	w.uvar(uint64(len(m.Plans)))
 	for _, p := range m.Plans {
+		if version == 2 {
+			w.u32(p.Kind)
+			w.u32(p.TypeIndex)
+			w.u32(uint32(p.ReferenceBase))
+		}
 		w.u32(p.FunctionIndex)
 		w.u32(p.ImportIndex)
 		w.u32(p.SourcePC)
@@ -130,10 +248,14 @@ func railshotReadNativeTail(r *compiledReader, c *Compiled) error {
 	if err != nil {
 		return err
 	}
-	if v != 1 {
+	if v != 1 && v != 2 {
 		return fmt.Errorf("RV64 native tail plan version %d", v)
 	}
-	n, err := r.countElements("RV64 native tail plans", 24, unsafe.Sizeof(encoder.NativeTailPlan{}))
+	wire := 24
+	if v == 2 {
+		wire = 36
+	}
+	n, err := r.countElements("RV64 native tail plans", wire, unsafe.Sizeof(encoder.NativeTailPlan{}))
 	if err != nil {
 		return err
 	}
@@ -142,6 +264,21 @@ func railshotReadNativeTail(r *compiledReader, c *Compiled) error {
 	}
 	m := &encoder.NativeTailModule{Plans: make([]encoder.NativeTailPlan, n)}
 	for i := range m.Plans {
+		var kind, typeIndex, referenceBase uint32
+		if v == 2 {
+			kind, err = r.u32()
+			if err != nil {
+				return err
+			}
+			typeIndex, err = r.u32()
+			if err != nil {
+				return err
+			}
+			referenceBase, err = r.u32()
+			if err != nil {
+				return err
+			}
+		}
 		var fields [6]uint32
 		for j := range fields {
 			fields[j], err = r.u32()
@@ -149,7 +286,7 @@ func railshotReadNativeTail(r *compiledReader, c *Compiled) error {
 				return err
 			}
 		}
-		m.Plans[i] = encoder.NativeTailPlan{FunctionIndex: fields[0], ImportIndex: fields[1], SourcePC: fields[2], FrameBytes: int(fields[3]), SourceBase: int(fields[4]), SourceStride: int(fields[5])}
+		m.Plans[i] = encoder.NativeTailPlan{Kind: kind, TypeIndex: typeIndex, ReferenceBase: int(referenceBase), FunctionIndex: fields[0], ImportIndex: fields[1], SourcePC: fields[2], FrameBytes: int(fields[3]), SourceBase: int(fields[4]), SourceStride: int(fields[5])}
 	}
 	rv64StoreNativeTailModule(c, m)
 	return rv64ValidateNativeTail(c)
@@ -180,7 +317,7 @@ func railshotNativeTailImport(c *Compiled, index int) bool {
 	m := rv64NativeTailModule(c)
 	if m != nil {
 		for _, p := range m.Plans {
-			if int(p.ImportIndex) == index {
+			if p.Kind == encoder.NativeTailDirectImport && int(p.ImportIndex) == index {
 				return true
 			}
 		}

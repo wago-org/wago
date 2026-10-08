@@ -21,6 +21,9 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		return nil
 	}
 	for _, p := range m.Plans {
+		if p.Kind != 0 {
+			return fmt.Errorf("%w: RV64 dynamic tail owner attachment is pending", railshot.ErrUnsupported)
+		}
 		target, ok := imports[c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
 		if !ok {
 			if err := rv64ScalarHostSignature(c.importFuncSigs[p.ImportIndex]); err != nil {
@@ -71,10 +74,17 @@ func rv64TailTypes(values []ValType) ([]wasm.ValType, error) {
 	return out, nil
 }
 func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64) error {
+	m := rv64NativeTailModule(in.c)
+	if m != nil {
+		for _, p := range m.Plans {
+			if p.Kind != 0 {
+				return fmt.Errorf("%w: RV64 dynamic tail runtime attachment is pending", railshot.ErrUnsupported)
+			}
+		}
+	}
 	if err := rv64PrepareTailTargets(in, imports, sharedBase, sharedOffsets, ownedAddr); err != nil {
 		return err
 	}
-	m := rv64NativeTailModule(in.c)
 	if m == nil || len(m.Plans) == 0 {
 		return nil
 	}

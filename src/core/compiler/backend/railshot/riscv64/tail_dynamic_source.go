@@ -146,3 +146,60 @@ func compileDynamicTailSource(source []byte, siteBase uint32, forceSWAR bool) (*
 	}
 	return i, nil
 }
+
+// This stages only immutable symbolic metadata. Public compilation and native
+// runtime admission still reject these dynamic plans until leases are wired.
+func (i *tailImportImage) symbolicTailPlans() (*enc.NativeTailModule, error) {
+	if i == nil || i.siteBase != 0 || len(i.plans) > tailRAMaxSites {
+		return nil, unsupported("private symbolic tail image/count")
+	}
+	if _, _, err := NativeTailInstanceBudget(len(i.plans), len(i.code)); err != nil {
+		return nil, err
+	}
+	values := 0
+	for n, p := range i.plans {
+		local := int(p.functionIndex) - i.imports
+		if p.site != uint32(n) || local < 0 || local >= len(i.functions) || uint64(p.functionIndex) >= uint64(len(i.signatures)) || i.functions[local].FrameHeaderBytes != callFrameHeader || p.kind > enc.NativeTailReference {
+			return nil, unsupported("private symbolic tail source frame/kind")
+		}
+		var sig *wasm.CompType
+		if p.kind == enc.NativeTailDirectImport {
+			if uint64(p.importIndex) >= uint64(i.imports) || p.typeIndex != 0 || p.referenceBase != 0 {
+				return nil, unsupported("private symbolic direct tail fields")
+			}
+			sig = i.signatures[p.importIndex]
+		} else {
+			if p.importIndex != 0 || uint64(p.typeIndex) >= uint64(len(i.types)) {
+				return nil, unsupported("private symbolic declared tail type")
+			}
+			sig = i.types[p.typeIndex]
+		}
+		if err := tailRASignature(sig); err != nil {
+			return nil, err
+		}
+		if err := admitSWARLocalTailSignature(i.signatures[p.functionIndex], sig); err != nil {
+			return nil, err
+		}
+		frame := i.functions[local].FrameBytes
+		if frame < callFrameHeader || frame > MaxFrameBytes || frame&15 != 0 || p.sourceBase < callFrameHeader || p.sourceBase > frame || p.sourceBase&7 != 0 || p.sourceStride != 8 && p.sourceStride != 16 || len(sig.Params) > (frame-p.sourceBase)/p.sourceStride {
+			return nil, unsupported("private symbolic tail parameter homes")
+		}
+		for _, typ := range sig.Params {
+			if wasm.EqualValType(typ, wasm.V128) && p.sourceStride != 16 {
+				return nil, unsupported("private symbolic tail vector home")
+			}
+		}
+		if p.kind != enc.NativeTailDirectImport && (p.referenceBase < p.sourceBase+len(sig.Params)*p.sourceStride || p.referenceBase > frame-8 || p.referenceBase&7 != 0) {
+			return nil, unsupported("private symbolic tail reference home")
+		}
+		values += len(sig.Params) + len(sig.Results)
+		if err := NativeTailMetadataBudget(len(i.plans), values); err != nil {
+			return nil, err
+		}
+	}
+	m := &enc.NativeTailModule{Plans: make([]enc.NativeTailPlan, len(i.plans))}
+	for n, p := range i.plans {
+		m.Plans[n] = enc.NativeTailPlan{Kind: p.kind, TypeIndex: p.typeIndex, ReferenceBase: p.referenceBase, FunctionIndex: p.functionIndex, ImportIndex: p.importIndex, SourcePC: p.sourcePC, FrameBytes: i.functions[int(p.functionIndex)-i.imports].FrameBytes, SourceBase: p.sourceBase, SourceStride: p.sourceStride}
+	}
+	return m, nil
+}

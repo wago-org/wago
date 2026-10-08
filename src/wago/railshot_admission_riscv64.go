@@ -53,6 +53,13 @@ func railshotValidateCompiled(c *Compiled) error {
 	if err := rv64ValidateNativeTail(c); err != nil {
 		return reject(err.Error())
 	}
+	if m := rv64NativeTailModule(c); m != nil {
+		for _, p := range m.Plans {
+			if p.Kind != 0 {
+				return reject("dynamic tail entry/resume owner attachment is pending")
+			}
+		}
+	}
 	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
 	if c.NumImports != 0 {
 		if !c.needsFuncRefContextHeader {
