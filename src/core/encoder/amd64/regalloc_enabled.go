@@ -355,7 +355,12 @@ func (a *Asm) regallocCrossCopy(dst, src Reg, dstFP bool, size int) {
 // backend installs a semantic result identity when its contract permits one.
 func (a *Asm) regallocKillFP(dst Reg) {
 	if a.regallocObserver != nil {
+		// Match the ModRM register field and the encoder's extension-bit rule.
+		encodedDst := uint8(dst & 7)
+		if dst >= 8 {
+			encodedDst |= 8
+		}
 		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Kill,
-			Dst: regalloccheck.Register(regalloccheck.FP, uint8(dst)), Size: 16})
+			Dst: regalloccheck.Register(regalloccheck.FP, encodedDst), Size: 16})
 	}
 }
