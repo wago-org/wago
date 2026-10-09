@@ -138,6 +138,9 @@ func ResolveWithLimits(events []jitprofile.Event, samples []Sample, unit string,
 	if len(samples) > limits.Samples {
 		return report, fmt.Errorf("profile sample limit exceeded")
 	}
+	if len(samples) == 0 {
+		return report, nil
+	}
 	events = append([]jitprofile.Event(nil), events...)
 	samples = append([]Sample(nil), samples...)
 	sort.SliceStable(events, func(i, j int) bool {
@@ -147,20 +150,21 @@ func ResolveWithLimits(events []jitprofile.Event, samples []Sample, unit string,
 		return events[i].Timestamp < events[j].Timestamp
 	})
 	sort.SliceStable(samples, func(i, j int) bool { return samples[i].Timestamp < samples[j].Timestamp })
-	active := make(map[uint64]*jitprofile.Image)
+	lastSampleTime := samples[len(samples)-1].Timestamp
+	events = events[:sort.Search(len(events), func(i int) bool { return events[i].Timestamp > lastSampleTime })]
+	active := newLiveImages(events)
 	symbols := make(map[uint64]map[int]*jitprofile.Function)
-	var sorted []*jitprofile.Image
+	var changedLoads []int
 	rows := make(map[string]int)
 	hot := make(map[string]map[uint64]*HotPC)
 	event := 0
 	hotCount := 0
 	inlineCount := 0
 	for _, sample := range samples {
-		changed := false
+		changedLoads = changedLoads[:0]
 		for event < len(events) && events[event].Timestamp <= sample.Timestamp {
 			e := events[event]
 			event++
-			changed = true
 			switch e.Kind {
 			case "load":
 				if e.Image == nil {
@@ -187,7 +191,7 @@ func ResolveWithLimits(events []jitprofile.Event, samples []Sample, unit string,
 				if err := jitprofile.ValidateInlineSources(e.Image.Sources, e.Image.InlineFrames); err != nil {
 					return report, err
 				}
-				active[e.ImageID] = e.Image
+				changedLoads = append(changedLoads, active.load(event-1, e.Image))
 				table := make(map[int]*jitprofile.Function, len(e.Image.Functions))
 				for i := range e.Image.Functions {
 					f := &e.Image.Functions[i]
@@ -195,25 +199,15 @@ func ResolveWithLimits(events []jitprofile.Event, samples []Sample, unit string,
 				}
 				symbols[e.ImageID] = table
 			case "retire":
-				delete(active, e.ImageID)
+				active.retire(e.ImageID)
 				delete(symbols, e.ImageID)
 			default:
 				return report, fmt.Errorf("unknown lifecycle event %q", e.Kind)
 			}
 		}
-		if changed {
-			sorted = sorted[:0]
-			for _, im := range active {
-				sorted = append(sorted, im)
-			}
-			sort.Slice(sorted, func(i, j int) bool { return sorted[i].Base < sorted[j].Base })
-			for i, im := range sorted {
-				if im.Base > ^uint64(0)-im.Size {
-					return report, fmt.Errorf("image address overflow")
-				}
-				if i > 0 && sorted[i-1].Base+sorted[i-1].Size > im.Base {
-					return report, fmt.Errorf("overlapping live images")
-				}
+		for _, position := range changedLoads {
+			if err := active.checkLoad(position); err != nil {
+				return report, err
 			}
 		}
 		if sample.Period > math.MaxUint64-report.Weight {
@@ -221,13 +215,12 @@ func ResolveWithLimits(events []jitprofile.Event, samples []Sample, unit string,
 		}
 		report.Samples++
 		report.Weight += sample.Period
-		n := sort.Search(len(sorted), func(i int) bool { return sorted[i].Base > sample.PC }) - 1
-		if n < 0 || sample.PC-sorted[n].Base >= sorted[n].Size {
+		im := active.lookup(sample.PC)
+		if im == nil || sample.PC-im.Base >= im.Size {
 			report.UnknownSamples++
 			report.UnknownWeight += sample.Period
 			continue
 		}
-		im := sorted[n]
 		off := sample.PC - im.Base
 		ri := sort.Search(len(im.Regions), func(i int) bool { return im.Regions[i].Offset+im.Regions[i].Size > off })
 		region := im.Regions[ri]
