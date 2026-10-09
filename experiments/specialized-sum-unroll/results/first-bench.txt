@@ -1,0 +1,23 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 4279974	        28.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 5214138	        21.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 3990268	        29.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 5095917	        23.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 1440738	        86.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  131536	       927.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    3928	     32564 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	      78	   1339546 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 4247025	        27.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 5662392	        21.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 4028779	        29.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 5044752	        24.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 1406920	        83.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  128383	       971.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    3134	     38812 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	      82	   1379547 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	    8858	     12876 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	    7528	     16403 ns/op	   26296 B/op	      30 allocs/op
+PASS
