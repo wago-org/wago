@@ -10,7 +10,10 @@ pointer-export overrides, zero-length vectors and repeated operation on one
 instance. Input bytes are checked independently. Pointer setup has separate
 counters and must happen once. The guest stores a bounded ring of 16 argument
 tuples; tests cross its wrap boundary. After long benchmark runs, the oracle
-checks the total call count and the last 16 tuples, not the entire history.
+checks the last 16 tuples, not the entire history. The completed-call counter
+is 32 bits and is compared modulo 2^32. Normal duration-calibrated benchmark
+runs stay below that limit; extremely large fixed-count runs do not prove an
+exact total across counter wrap.
 
 Omitted, duplicated, reordered and wrong-argument schedules run through the real
 adapters and must fail for the expected count or argument mismatch. A duplicate
@@ -37,6 +40,7 @@ go test ./bench/suite -run '^$' -bench '^BenchmarkPreparedSemanticSchedule$' -be
 ```
 
 This is a bounded contribution to #826. Cache/API/compiler-path attribution,
-first-call phases and native ARM64 execution remain separate qualifications.
-The existing batched allocation-unit correction is tracked separately in #878;
-this change does not include or claim that correction.
+first-call phases and native ARM64 timing remain separate qualifications.
+The batched allocation-unit correction from merged #878 is inherited from main;
+this change adds schedule qualification and call-count metadata. Native CI
+qualifies execution correctness rather than benchmark latency.
