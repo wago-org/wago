@@ -23,11 +23,14 @@ func TestCaptureExistingFib(t *testing.T) {
 	// Test binaries omit VCS build info; supply an explicit test identity only.
 	s.Provenance.CompilerRevision = "test-build"
 	r, err := Compare(s, s)
-	if err != nil || !r.Complete || r.Known != 12 || r.Unknown != 0 || len(s.Regions) != 8 {
+	if err != nil || !r.Complete || r.Known != 12 || r.Unknown != 0 || len(s.Regions) != 8 || !r.RawComplete || r.RawCompared != 3 {
 		t.Fatal(r, err)
 	}
 	if s.Capture.NativeBytes != 105 || s.Capture.MappedBytes != 51 || s.Capture.UnmappedBytes != 54 {
 		t.Fatal(s.Capture)
+	}
+	if len(s.RawRegions) != 3 || len(s.RawRegions[0].Hex)/2 != 24 || len(s.RawRegions[1].Hex)/2 != 22 || len(s.RawRegions[2].Hex)/2 != 8 || s.RawRegions[0].Kind != "entry-adapter" || s.RawRegions[1].Kind != "guest-body" {
+		t.Fatal(s.RawRegions)
 	}
 	// Back edge to the mapped instruction start is a stable source anchor.
 	in := s.Regions[6].Instructions[0]
@@ -136,6 +139,33 @@ func BenchmarkCompareCapturedFib(b *testing.B) {
 		r, err := Compare(s, s)
 		if err != nil || !r.Complete || r.Known != 12 {
 			b.Fatal(r, err)
+		}
+	}
+}
+
+func TestOpaqueOwnershipCanCutDisassemblyData(t *testing.T) {
+	s := fixture("amd64", "31c0")
+	s.Regions[0].Instructions[0].Offset = 2
+	s.Capture = &CaptureMetadata{NativeBytes: 5, MappedBytes: 2, UnmappedBytes: 3, NativeSHA256: strings.Repeat("a", 64)}
+	code := []byte{0x31, 0xc0, 0x31, 0xc0, 0xc3}
+	owners := []jitprofile.Region{{Offset: 0, Size: 1, Kind: "literal-data", Function: -1}, {Offset: 1, Size: 1, Kind: "padding", Function: -1}, {Offset: 2, Size: 3, Kind: "guest-body", Function: 0}}
+	if err := populateRaw(&s, owners, code); err != nil {
+		t.Fatal(err)
+	}
+	if err := validate(s); err != nil {
+		t.Fatal(err)
+	}
+	if s.RawRegions[0].Function != -1 || s.RawRegions[0].Hex != "31" || s.RawRegions[1].Hex != "c0" {
+		t.Fatal("data forced into instructions", s.RawRegions)
+	}
+	for _, bad := range [][]jitprofile.Region{
+		{{Offset: 0, Size: 5, Kind: "guest-body", Function: 1}},
+		{{Offset: 0, Size: 3, Kind: "guest-body", Function: 0}, {Offset: 3, Size: 2, Kind: "guest-body", Function: 0}},
+		{{Offset: 0, Size: 4, Kind: "guest-body", Function: 0}},
+	} {
+		s.RawRegions = nil
+		if err := populateRaw(&s, bad, code); err == nil {
+			t.Fatal("owner mismatch/cut/gap accepted", bad)
 		}
 	}
 }

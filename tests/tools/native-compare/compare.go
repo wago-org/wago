@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -43,6 +42,7 @@ type CaptureMetadata struct {
 	NativeBytes   uint64 `json:"native_bytes"`
 	MappedBytes   uint64 `json:"mapped_bytes"`
 	UnmappedBytes uint64 `json:"unmapped_bytes"`
+	RawCoverage   bool   `json:"raw_coverage,omitempty"`
 }
 
 type Snapshot struct {
@@ -50,6 +50,7 @@ type Snapshot struct {
 	Architecture string           `json:"architecture"`
 	Provenance   Provenance       `json:"provenance"`
 	Regions      []Region         `json:"regions"`
+	RawRegions   []RawRegion      `json:"raw_regions,omitempty"`
 }
 type Register struct {
 	Number int `json:"number"`
@@ -71,17 +72,17 @@ type Record struct {
 	Encoding       string      `json:"comparison_encoding"`
 	Raw            string      `json:"raw"`
 	Opcode         string      `json:"opcode"`
-	Known          bool        `json:"known"`
 	Reads          [2]Register `json:"reads,omitempty"`
 	Writes         [1]Register `json:"writes,omitempty"`
 	Width          int         `json:"width,omitempty"`
 	Immediate      uint64      `json:"immediate_bits,omitempty"`
 	Address        Address     `json:"address,omitempty"`
+	ImmediateWidth int         `json:"immediate_width,omitempty"`
+	Target         string      `json:"target,omitempty"`
+	Known          bool        `json:"known"`
 	ZeroExtends    bool        `json:"zero_extends,omitempty"`
 	FlagsRead      bool        `json:"flags_read,omitempty"`
-	ImmediateWidth int         `json:"immediate_width,omitempty"`
 	FlagsWrite     bool        `json:"flags_write,omitempty"`
-	Target         string      `json:"target,omitempty"`
 }
 type Change struct {
 	Category     string  `json:"category"`
@@ -104,6 +105,10 @@ type UnknownSite struct {
 }
 
 type Report struct {
+	OperandScope  string           `json:"operand_scope"`
+	RawComplete   bool             `json:"raw_complete"`
+	RawCompared   int              `json:"raw_compared"`
+	RawChanges    []RawChange      `json:"raw_changes,omitempty"`
 	BeforeCapture *CaptureMetadata `json:"before_capture,omitempty"`
 	AfterCapture  *CaptureMetadata `json:"after_capture,omitempty"`
 	UnknownSites  []UnknownSite    `json:"unknown_sites,omitempty"`
@@ -178,7 +183,7 @@ func validate(s Snapshot) error {
 			return fmt.Errorf("inconsistent capture byte counts")
 		}
 	}
-	return nil
+	return validateRaw(s)
 }
 
 func provenanceComplete(p Provenance) bool {
@@ -199,7 +204,7 @@ func provenanceComplete(p Provenance) bool {
 // Insertions/region mismatch are inconclusive rather than guessed alignment.
 // Runtime is linear in admitted input size; no LCS or quadratic search is used.
 func Compare(a, b Snapshot) (Report, error) {
-	out := Report{Complete: true, Changes: make([]Change, 0), BeforeCapture: a.Capture, AfterCapture: b.Capture}
+	out := Report{OperandScope: "supplied-source-regions", Complete: true, Changes: make([]Change, 0), BeforeCapture: a.Capture, AfterCapture: b.Capture}
 	if err := validate(a); err != nil {
 		return out, err
 	}
@@ -216,6 +221,10 @@ func Compare(a, b Snapshot) (Report, error) {
 	ap, bp := a.Provenance, b.Provenance
 	if ap.CPUFeatures != bp.CPUFeatures || ap.Bounds != bp.Bounds || ap.Build != bp.Build || ap.Path != bp.Path || ap.InputSHA256 != bp.InputSHA256 {
 		incomplete("configuration/input mismatch")
+	}
+	compareRaw(a, b, &out)
+	if !out.RawComplete && (a.Capture != nil && a.Capture.RawCoverage || b.Capture != nil && b.Capture.RawCoverage) {
+		incomplete("raw region coverage/alignment incomplete")
 	}
 	if len(a.Regions) != len(b.Regions) {
 		incomplete("region count mismatch")
@@ -236,9 +245,13 @@ func Compare(a, b Snapshot) (Report, error) {
 			if err != nil {
 				return out, err
 			}
-			bv, err := decode(b.Architecture, bi)
-			if err != nil {
-				return out, err
+			identical := ai.Relocation == bi.Relocation && strings.EqualFold(ai.Hex, bi.Hex)
+			bv := av
+			if !identical {
+				bv, err = decode(b.Architecture, bi)
+				if err != nil {
+					return out, err
+				}
 			}
 			out.Compared++
 			if av.Known && bv.Known {
@@ -252,6 +265,9 @@ func Compare(a, b Snapshot) (Report, error) {
 					return out, nil
 				}
 				out.UnknownSites = append(out.UnknownSites, UnknownSite{ar.ID, ar.Function, ar.WasmOffset, ai.Offset, bi.Offset, av.Raw, bv.Raw})
+			}
+			if identical {
+				continue
 			}
 			ac, bc := av, bv
 			ac.Raw = ""
@@ -288,17 +304,19 @@ func decode(arch string, in Instruction) (Record, error) {
 		if !r.Known || !branchRecord(r) {
 			return r, fmt.Errorf("relocation is not an admitted direct branch")
 		}
-		copyBytes := bytes.Clone(b)
-		if arch == "amd64" {
-			start := 1
-			if len(b) == 6 {
-				start = 2
+		if arch == "arm64" {
+			r.Encoding = "00000014"
+		} else if r.Opcode == "jmp" {
+			if len(b) == 2 {
+				r.Encoding = "eb00"
+			} else {
+				r.Encoding = "e900000000"
 			}
-			clear(copyBytes[start:])
+		} else if len(b) == 2 {
+			r.Encoding = jccShort[b[0]&15]
 		} else {
-			binary.LittleEndian.PutUint32(copyBytes, binary.LittleEndian.Uint32(b)&0xfc000000)
+			r.Encoding = jccNear[b[1]&15]
 		}
-		r.Encoding = hex.EncodeToString(copyBytes)
 		r.Target = in.Relocation
 		r.Immediate = 0
 	}
@@ -605,3 +623,6 @@ func samePC(a, b *uint32) bool {
 	}
 	return *a == *b
 }
+
+var jccShort = [16]string{"7000", "7100", "7200", "7300", "7400", "7500", "7600", "7700", "7800", "7900", "7a00", "7b00", "7c00", "7d00", "7e00", "7f00"}
+var jccNear = [16]string{"0f8000000000", "0f8100000000", "0f8200000000", "0f8300000000", "0f8400000000", "0f8500000000", "0f8600000000", "0f8700000000", "0f8800000000", "0f8900000000", "0f8a00000000", "0f8b00000000", "0f8c00000000", "0f8d00000000", "0f8e00000000", "0f8f00000000"}
