@@ -262,7 +262,7 @@ func (in *Instance) beginDirectInvocation() error {
 // inline. A false result acquired no lease; the caller must use beginInvocation
 // for Runtime accounting, contention, and the original error handling.
 func (in *Instance) tryBeginDirectInvocation() bool {
-	return in.rt == nil && !in.guestStorageBorrowed() && in.invocationState.CompareAndSwap(0, 1)
+	return in.rt == nil && !in.guestStorageBorrowed() && in.invocationState.word.CompareAndSwap(0, 1)
 }
 
 func (in *Instance) endInvocation() {
@@ -305,7 +305,7 @@ func (in *Instance) endInvocation() {
 // atomic operation. A concurrent Close changes the state and takes the full
 // endInvocation finalization path; Runtime-owned instances retain operation accounting.
 func (in *Instance) endDirectInvocation() {
-	if in.rt == nil && in.invocationState.CompareAndSwap(1, 0) {
+	if in.rt == nil && in.invocationState.word.CompareAndSwap(1, 0) {
 		return
 	}
 	in.endInvocation()

@@ -97,6 +97,11 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 
 func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
+	if fn.directIsolated && fn.tryBeginFastInvocation() {
+		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
+		in.endFastInvocation(in.pluginState.Load())
+		return out, err
+	}
 	if !in.tryBeginDirectInvocation() {
 		if err := in.beginInvocation(); err != nil {
 			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
