@@ -266,9 +266,7 @@ func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, lim
 				de.SectionID = id
 				de.SectionStart = start
 				de.SectionEnd = end
-				if de.Offset == 0 {
-					de.Offset = start
-				}
+				de.Offset += start
 				return nil, de
 			}
 			return nil, err
@@ -321,7 +319,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		}
 		hints, err := decodeBranchHintSectionWithBudget(payload, r.budget)
 		if err != nil {
-			return err
+			return rebaseDecodeError(err, r.off()-len(payload))
 		}
 		dm.m.BranchHints = hints
 		dm.seenBranchHints = true
@@ -332,6 +330,15 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 	}
 	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: ownedPayload})
 	return nil
+}
+
+// Nested readers report offsets within their own byte slice. Move a decode
+// error to the containing section before the outer decoder adds the file base.
+func rebaseDecodeError(err error, base int) error {
+	if de, ok := err.(*DecodeError); ok {
+		de.Offset += base
+	}
+	return err
 }
 
 func decodeDirectTableSection(dm *directModule, r *reader) error {
@@ -742,20 +749,21 @@ func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemo
 		if err != nil {
 			return nil, false, err
 		}
+		bodyStart := r.off() - len(body)
 		sub.reset(body)
 		locals, err := decodeLocals(&sub)
 		if err != nil {
-			return nil, false, err
+			return nil, false, rebaseDecodeError(err, bodyStart)
 		}
 		var exprBytes []byte
 		var bodyUsesDataCount bool
 		exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, widths, multiMemory)
 		if err != nil {
-			return nil, false, err
+			return nil, false, rebaseDecodeError(err, bodyStart)
 		}
 		usesDataCountInstr = usesDataCountInstr || bodyUsesDataCount
 		if sub.has() {
-			return nil, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: sub.off()}
+			return nil, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: bodyStart + sub.off()}
 		}
 		out = append(out, Func{Locals: locals, LocalDeclBytes: uint32(sub.off() - len(exprBytes)), BodyBytes: exprBytes})
 	}
