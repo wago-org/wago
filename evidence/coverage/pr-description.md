@@ -58,6 +58,8 @@ Against current main, ordinary AMD64 runtime builds are byte-identical: 14,755,7
 SHA256 3552d4c0b92f427dcbfcae463b20ae89c0e01690cd55c07da064104e2d17b13e. There is no
 production speed claim. Historical small paired compile medians vary −0.87% to +0.79%,
 execution +0.41%, with A/A variation ~1%; an initial tiny compile signal did not reproduce.
+Measured source: 66dedc1decfe9061b60a3b42101400950915a7c3; later changes are documentation/evidence only.
+The optional standalone profile tool is 8,950,106 bytes; fib native image remains 105 bytes.
 Main has no comparator, so diagnostic deltas use the prior integration 8e82e1b2 as control.
 
 | Diagnostic workload | Before median (range) | After median (range) | Median delta | B/op before→after; allocs |

@@ -64,6 +64,9 @@ The frozen optional diagnostic command is 8,950,106 bytes; its executable SHA256
 is retained in frozen-binary-hashes.txt. This standalone tool is absent from ordinary
 production builds.
 
+The frozen optional profile command is 8,950,106 bytes (hash in frozen-binary-hashes.txt).
+It is a separate developer executable; native Fibonacci remains 105 bytes.
+
 Fresh ordinary production runtime builds are byte-identical at 14,755,751 bytes,
 SHA256 3552d4c0b92f427dcbfcae463b20ae89c0e01690cd55c07da064104e2d17b13e.
 The ARM64-only main advance does not affect that AMD64 binary. Historical paired
