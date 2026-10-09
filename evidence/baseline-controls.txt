@@ -5,4 +5,4 @@
     baseline_test.go:12: stack-displacement: opcode-only projection cannot distinguish operands
 --- PASS: TestOpcodeOnlyBaselineBlindSpots (0.00s)
 PASS
-ok  	github.com/wago-org/wago/tests/tools/native-compare	0.001s
+ok      github.com/wago-org/wago/tests/tools/native-compare     0.001s

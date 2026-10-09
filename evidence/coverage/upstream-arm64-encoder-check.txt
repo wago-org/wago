@@ -1,0 +1,1 @@
+ok      github.com/wago-org/wago/src/core/encoder/arm64 0.032s

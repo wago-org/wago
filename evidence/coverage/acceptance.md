@@ -8,17 +8,17 @@ or semantic-equivalence claim. The GitHub issue checkboxes were not edited.
 | Literal issue acceptance criterion | Status | Supporting evidence |
 |---|---|---|
 | Identical opcodes with different constants, false destination dependencies, changed spill widths and harmless relocation changes | Completed for controlled initial subset | Paired distinct bytes; opcode-only baseline misses constants/XOR dependencies/stack-store widths/displacements; admitted matching-target relocation compares equal; targets/conditions/widths remain distinct |
-| Both AMD64 and ARM64 records for explicit initial subset; unknown semantics remain unknown | Completed for portable record subset | AMD64 facts and16 Jcc controls; ARM64 MOVZ/ADD/LDR/STR/B word controls; checked/profile ARM64 cross-build; identical unknowns and invalid relocations reject qualification |
-| At least one current performance fixture agrees with human-readable disassembly and source attribution | Completed on native AMD64 | Existing88-byte fib.wasm emits105 native bytes; objdump/source ranges; independent i32.add attribution accounting for local-declaration bytes; selected XOR attribution and six public API oracles |
-| Bound time/memory and report incomplete mappings/truncated regions | Completed within diagnostic budgets | Linear mapped/raw partition;64 mapped/128 raw regions;4096 instructions;1 MiBJSON;64 KiBnative;512 reports; unknowns/anchor/count changes incomplete; early limit rejection; allocations measured; caps are not compiler peak-memory limits |
-| No additional state/codegen/allocation/dispatch in ordinary builds | Completed for production paths | No production import/source modification against current mainc95243aa; identical actualcli/wago ordinary runtime bytes/hash; diagnostic main is a separate opt-in executable; tests run in test builds |
+| Both AMD64 and ARM64 records for explicit initial subset; unknown semantics remain unknown | Completed for portable record subset | AMD64 facts and 16 Jcc controls; ARM64 MOVZ/ADD/LDR/STR/B word controls; checked/profile ARM64 cross-build; identical unknowns and invalid relocations reject qualification |
+| At least one current performance fixture agrees with human-readable disassembly and source attribution | Completed on native AMD64 | Existing 88-byte fib.wasm emits 105 native bytes; objdump/source ranges; independent i32.add attribution accounting for local-declaration bytes; selected XOR attribution and six public API oracles |
+| Bound time/memory and report incomplete mappings/truncated regions | Completed within diagnostic budgets | Linear mapped/raw partition; 64 mapped / 128 raw regions; 4096 instructions;1 MiB JSON; 64 KiB native; 512 reports; unknowns/anchor/count changes incomplete; early limit rejection; allocations measured; caps are not compiler peak-memory limits |
+| No additional state/codegen/allocation/dispatch in ordinary builds | Completed for production paths | No experiment production import/source modification against verified main e4bcc524; identical actual cli/wago ordinary runtime bytes/hash; diagnostic main is a separate opt-in executable; tests run in test builds |
 
 ## Completed practical integration
 
 - Capture/compare/focused-test just recipes and documented standalone exit codes.
 - Existing compiler profile/source/disassembly contracts reused; no profiler added.
 - Captured actual binary/input/native identity and configured compiler path/features.
-- All fib bytes retained:51 mapped +54 raw; verified nonoverlapping complete partition.
+- All fib bytes retained: 51 mapped + 54 raw; verified nonoverlapping complete partition.
 - Three raw ranges preserve real profile ownership without fabricated Wasm locations.
 - Mapped operand changes and opaque byte changes separated in output.
 - Unknowns, invalid metadata, mismatched anchors and omitted/truncated coverage explicit.
@@ -53,7 +53,7 @@ additional guard before expanding architecture support beyond record comparison.
 
 ## Exact architectural decision for broader operand coverage
 
-To classify the 54raw fib bytes as operands, decide who supplies authoritative
+To classify the 54 raw fib bytes as operands, decide who supplies authoritative
 code-versus-literal boundaries, stable entry/internal-call target identities and
 call/return/stack implicit-effect rules. ProfileRegions alone is byte ownership,
 not that contract. Options are extending established emitter/artifact observers or

@@ -73,4 +73,4 @@
     --- PASS: TestMalformedShapesAndUnknownPartialWrites/region-budget (0.00s)
     --- PASS: TestMalformedShapesAndUnknownPartialWrites/unaligned-arm (0.00s)
 PASS
-ok  	github.com/wago-org/wago/tests/tools/native-compare	0.004s
+ok      github.com/wago-org/wago/tests/tools/native-compare     0.004s

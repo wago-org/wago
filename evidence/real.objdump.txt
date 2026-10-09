@@ -5,18 +5,18 @@
 Disassembly of section .data:
 
 0000000000000000 <.data>:
-   0:	48 89 f3                                        	mov    rbx,rsi
-   3:	51                                              	push   rcx
-   4:	48 8b 07                                        	mov    rax,QWORD PTR [rdi]
-   7:	48 8b 4f 08                                     	mov    rcx,QWORD PTR [rdi+0x8]
-   b:	e8 05 00 00 00                                  	call   0x15
-  10:	59                                              	pop    rcx
-  11:	48 89 01                                        	mov    QWORD PTR [rcx],rax
-  14:	c3                                              	ret
-  15:	48 81 ec 00 00 00 00                            	sub    rsp,0x0
-  1c:	41 89 c1                                        	mov    r9d,eax
-  1f:	41 89 ca                                        	mov    r10d,ecx
-  22:	44 89 c8                                        	mov    eax,r9d
-  25:	44 31 d0                                        	xor    eax,r10d
-  28:	48 81 c4 00 00 00 00                            	add    rsp,0x0
-  2f:	c3                                              	ret
+   0:   48 89 f3                                                mov    rbx,rsi
+   3:   51                                                      push   rcx
+   4:   48 8b 07                                                mov    rax,QWORD PTR [rdi]
+   7:   48 8b 4f 08                                             mov    rcx,QWORD PTR [rdi+0x8]
+   b:   e8 05 00 00 00                                          call   0x15
+  10:   59                                                      pop    rcx
+  11:   48 89 01                                                mov    QWORD PTR [rcx],rax
+  14:   c3                                                      ret
+  15:   48 81 ec 00 00 00 00                                    sub    rsp,0x0
+  1c:   41 89 c1                                                mov    r9d,eax
+  1f:   41 89 ca                                                mov    r10d,ecx
+  22:   44 89 c8                                                mov    eax,r9d
+  25:   44 31 d0                                                xor    eax,r10d
+  28:   48 81 c4 00 00 00 00                                    add    rsp,0x0
+  2f:   c3                                                      ret

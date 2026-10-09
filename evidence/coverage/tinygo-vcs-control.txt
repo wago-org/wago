@@ -1,0 +1,1 @@
+ok      github.com/wago-org/wago/cli/manager/internal/standalone        164.978s

@@ -58,8 +58,8 @@ supplied regions: compared=12 supported=12 unknown=0 changes=0 complete=true lim
 opaque bytes without source locations: before=54 after=54; raw ranges compared=3 changes=0 complete=true
 ```
 
-All 105 native bytes are accounted for:51 source-mapped bytes and 54 opaque bytes.
-The opaque ranges are24-byte entry adapter,22-byte body setup/initialization and
+All 105 native bytes are accounted for: 51 source-mapped bytes and 54 opaque bytes.
+The opaque ranges are 24-byte entry adapter, 22-byte body setup/initialization and
 8-byte epilogue. Calls, stack setup and returns in these ranges have no invented
 Wasm PC or decoded operand semantics. Profile ownership may include cold code,
 padding or literals; its boundaries may split objdump records, so gaps are raw bytes.
@@ -77,7 +77,7 @@ Examples of interpretation:
 
 - `constant`: at function 0 / Wasm PC 31, ADD immediate 1 changed to 2. The opcode is still
   ADD; preserve and inspect that constant before attributing a performance effect.
-- `width`: a GP stack store changed 32→64bits. Its address/register facts stay visible;
+- `width`: a GP stack store changed 32→64 bits. Its address/register facts stay visible;
   source/allocator evidence is needed before calling it an actual spill/reload.
 - `register-dependency`: XOR of a register with itself has no input dependency;
   XOR with a different register reads both inputs. That distinction is retained.
@@ -133,17 +133,17 @@ profile mode. Build-info revision/dirty status is used when available; recipes s
 the build checkout. A stamp alone does not attest a clean checkout. Unstamped builds
 without VCS information remain unqualified. Unknown names are not normalized away.
 
-Limits:1 MiB input JSON,64 mapped regions,4096 instructions,128 profile owners/raw
-ranges and512 changes or unknown sites. Capture additionally caps trusted Wasm at
-32 KiB, module/local counts, native bytes at64 KiB and objdump output at1 MiB/five seconds.
-Capture output JSON is capped at1 MiB. Native size is checked **after** compilation;
+Limits: 1 MiB input JSON, 64 mapped regions, 4096 instructions, 128 profile owners/raw
+ranges and 512 changes or unknown sites. Capture additionally caps trusted Wasm at
+32 KiB, module/local counts, native bytes at 64 KiB and objdump output at 1 MiB/five seconds.
+Capture output JSON is capped at 1 MiB. Native size is checked **after** compilation;
 these are not a compiler heap quota or a claim to accept arbitrary untrusted inputs.
 Alignment and partition validation are linear; no LCS, global cache or second profiler.
 
 Against the previous integration, short pinned pairs cut equal scalar comparison
-medians 56–60%. Captured Fibonacci compare:2.615→2.012 µs,96→0 B and8→0 allocations,
-including the new opaque checks. A 32-change report:32,192→26,912 B, six allocations.
-Capture adds1,241 B and22 allocations (133,913 B / 835 allocations); ~10.7 ms includes
+medians 55–61%. Captured Fibonacci compare: 2.361→2.118 µs, 96→0 B and 8→0 allocations,
+including the new opaque checks. A 32-change report: 32,192→26,912 B, six allocations.
+Capture adds 1,252 B and 22 allocations (133,920 B / 835 allocations); ~11.4 ms includes
 executable hashing and objdump, excluding JSON/file writing. Capture timing is noisy,
 with no speed claim. RSS and peak/retained heap were not measured. Ordinary runtime
 builds are byte-identical; no production optimization or runtime overhead is introduced.
