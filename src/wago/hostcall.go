@@ -827,8 +827,11 @@ func (h staticHostModule) ReleaseExternRef(ref ExternRef) bool {
 // registrations stay callable but fail closed if their descriptor would cross
 // a public funcref boundary.
 type HostFuncRef struct {
-	mu            sync.Mutex
-	fn            slotHostFunc
+	mu sync.Mutex
+	fn slotHostFunc
+	// scalarBinding reuses the validated binding captured by fn for direct
+	// numeric imports. Reference and indirect calls retain the scoped wrapper.
+	scalarBinding *syncHostBinding
 	store         *referenceStore
 	sig           FuncSig
 	source        *Instance
@@ -924,6 +927,10 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 		store: rt.refStore,
 		sig:   sig,
 	}
+	if binding.scalarKind >= syncHostTypedI32 && binding.gate == nil &&
+		!hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) {
+		owner.scalarBinding = &binding
+	}
 	owner.gcCapable = gcCapable
 	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)
 	if err != nil {
@@ -975,6 +982,7 @@ func (h *HostFuncRef) Close() error {
 	h.closed = true
 	if !h.tokenLive {
 		h.fn = nil
+		h.scalarBinding = nil
 	}
 	if store.liveObjects > 0 {
 		store.liveObjects--
@@ -1301,6 +1309,7 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 		h.descriptor = 0
 		if h.closed {
 			h.fn = nil
+			h.scalarBinding = nil
 		}
 	}
 	h.mu.Unlock()
@@ -1814,6 +1823,22 @@ func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 		return syncHostBinding{}, fmt.Errorf("v128 host callbacks are not supported")
 	}
 	switch fn := value.(type) {
+	case *HostFuncRef:
+		if fn == nil {
+			return syncHostBinding{}, fmt.Errorf("host funcref owner is nil")
+		}
+		fn.mu.Lock()
+		defer fn.mu.Unlock()
+		if fn.closed || fn.fn == nil {
+			return syncHostBinding{}, fmt.Errorf("host funcref owner is closed")
+		}
+		if !funcSigEqual(fn.sig, sig) {
+			return syncHostBinding{}, fmt.Errorf("host funcref signature mismatch")
+		}
+		if fn.scalarBinding != nil {
+			return *fn.scalarBinding, nil
+		}
+		return syncHostBinding{fn: fn.fn}, nil
 	case I32HostEvent, gatedI32HostEvent:
 		return syncHostBinding{}, fmt.Errorf("deferred host event cannot be used by a module that requires synchronous host control")
 	case callerSlotHostFunc:

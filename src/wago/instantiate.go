@@ -781,6 +781,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if ownedThunkAddr != nil {
 				addr = ownedThunkAddr[uint32(i)]
 			}
+			// A direct numeric import uses its frozen import-index binding. Its
+			// funcref descriptor still uses the owner-specific thunk below.
+			if i < len(syncHosts) && syncHosts[i].scalarKind >= syncHostTypedI32 {
+				addr = 0
+			}
 			ordinaryGoThunk := addr == 0
 			if addr == 0 && i < len(sharedThunkOffsets) && sharedThunkOffsets[i] != noHostThunkOffset {
 				addr = uint64(sharedThunkBase) + uint64(sharedThunkOffsets[i])
@@ -2014,6 +2019,7 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (s
 				}
 				owner.mu.Lock()
 				dispatchIndex := owner.dispatchIndex
+				needsShared = needsShared || (c.dynamicImports && owner.scalarBinding != nil)
 				owner.mu.Unlock()
 				if binding, ok := owner.dispatchBinding(c, fidx); ok {
 					dispatchIndex = binding.dispatchIndex
