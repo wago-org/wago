@@ -17,7 +17,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		return err
 	}
 	imported := counts.functions
-	if m.UsesCompactImports || len(m.Tables) != 0 || m.Start != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
+	if m.UsesCompactImports || len(m.Tables) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
 		return unsupported("closed reference module external state")
 	}
 	remaining := MaxModuleBytes
@@ -130,6 +130,16 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		return unsupported("closed reference module requires internal reference functions")
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
+	if m.Start != nil {
+		index := uint64(*m.Start)
+		if index < uint64(imported) || index >= uint64(imported+len(m.Code)) || !numericTarget(uint32(index)) || !consume(5) {
+			return unsupported("closed reference start requires a bounded defined numeric function")
+		}
+		ft := &m.Types[m.FuncTypes[int(index)-imported].Index].SubTypes[0].Comp
+		if len(ft.Params) != 0 || len(ft.Results) != 0 {
+			return unsupported("closed reference defined start requires a void signature")
+		}
+	}
 	for _, ex := range m.Exports {
 		switch ex.Index.Kind {
 		case wasm.ExternFunc:

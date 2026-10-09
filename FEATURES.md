@@ -115,7 +115,13 @@ including foreign entry with aliased memory growth and callback interruption.
 Finalized source staging checks the exact ordered plan directory and emitted
 frame; retained trusted artifacts recheck direct target, numeric result and
 frame/home bounds. Private source rows remain noncallable. Native vector targets
-use paired transport; Go callbacks remain scalar. Reference-valued
+use paired transport; Go callbacks remain scalar. Defined numeric `() -> ()`
+starts also compose with private reference functions, numeric imports and local
+or imported proper tails. Source and retained admission check the exact defined
+binding, canonical selector and actual framed entry before publication. Existing
+construction leases protect callbacks, nested reentry and rollback; initialized
+imported effects remain visible after a start trap. Imported starts remain gated
+in this private-reference mode. Reference-valued
 imports/exports remain unsupported in this mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories

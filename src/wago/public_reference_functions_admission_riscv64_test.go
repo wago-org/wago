@@ -120,7 +120,7 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 			"reference-export":          func(v *Compiled) { v.Exports["hidden"] = 2 },
 			"dynamic-imports":           func(v *Compiled) { v.dynamicImports = true },
 			"dynamic-escape":            func(v *Compiled) { v.dynamicFuncrefEscape = true },
-			"start":                     func(v *Compiled) { v.HasStart = true; v.StartLocalFunc = 1 },
+			"start":                     func(v *Compiled) { v.HasStart = true; v.StartLocalFunc = 2 },
 			"inactive-start":            func(v *Compiled) { v.StartLocalFunc = 1 },
 			"inactive-imported-start":   func(v *Compiled) { v.StartImportIdx = 1 },
 			"inactive-start-kind":       func(v *Compiled) { v.StartIsImport = true },

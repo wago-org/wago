@@ -133,7 +133,14 @@ before publication; internal source rows remain noncallable. Baseline RV64G
 source/artifact tests cover foreign homes, native reexports, parked alias growth,
 joined interruption, static quota rejection/retry, warm native allocation and
 deep local tails followed by an imported tail on the minimum stack. Native vector
-targets are supported; V128 Go host signatures remain unsupported. Mixed table/call_ref and private mutable-cell fixtures retain
+targets are supported; V128 Go host signatures remain unsupported. Defined numeric
+void starts now compose with private reference functions and direct imported tails,
+with canonical source/retained selectors, real framed-entry validation and bounded
+metadata accounting. Construction, callback scope, nonnil operation reservations,
+physical owners and static capabilities survive nested reentry and parked growth.
+Start-once, nonzero/final ordinals, trap/panic/initializer rollback, cancellation,
+Close joins and exact quota rejection/retry have focused source/artifact coverage.
+Imported starts remain excluded from this selected mode. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains
