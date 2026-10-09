@@ -283,23 +283,31 @@ func (in *Instance) endInvocation() {
 			if closeState := in.closeState.Load(); closeState != nil {
 				closeState.signalQuiesced()
 			}
-			in.tryFinalize()
+			var cleanup resourceCleanup
+			cleanup.run(in.tryFinalize)
+			cleanup.run(in.endRuntimeInvocation)
+			cleanup.finish()
+			return
 		}
-		// Keep the Runtime operation admitted through invocation finalization.
-		// Managed terminal hooks can finish asynchronously; manager drain
-		// separately waits for terminalDone before provider teardown.
-		if in.rt != nil {
-			in.rt.mu.Lock()
-			if in.rt.activeOperations == 0 {
-				in.rt.mu.Unlock()
-				panic("wago: runtime invocation operation underflow")
-			}
-			in.rt.activeOperations--
-			in.rt.stateCond.Broadcast()
-			in.rt.mu.Unlock()
-		}
+		in.endRuntimeInvocation()
 		return
 	}
+}
+
+// Keep the operation admitted through finalization, including panicking physical
+// callbacks. Managed terminal hooks have a separate terminalDone drain.
+func (in *Instance) endRuntimeInvocation() {
+	if in.rt == nil {
+		return
+	}
+	in.rt.mu.Lock()
+	if in.rt.activeOperations == 0 {
+		in.rt.mu.Unlock()
+		panic("wago: runtime invocation operation underflow")
+	}
+	in.rt.activeOperations--
+	in.rt.stateCond.Broadcast()
+	in.rt.mu.Unlock()
 }
 
 // endDirectInvocation releases the uncontended direct-instance lease with one
