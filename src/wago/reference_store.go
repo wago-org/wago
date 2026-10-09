@@ -680,6 +680,7 @@ const (
 
 type gcNativeFrameRoots struct {
 	owner                *Instance
+	physicalStack        *coreruntime.Engine
 	base                 uintptr
 	offsets              []uint32
 	frameBytes           uint32
@@ -732,7 +733,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 		return true
 	}
 	r.syncGlobalsBeforeCollection()
-	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}, nil) {
+	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}, r.physicalStack) {
 		return false
 	}
 	state := r.suspended
@@ -783,7 +784,7 @@ func (s classifiedRootSink) VisitRootRef(r gc.Ref) bool {
 
 func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	r.syncGlobalsBeforeCollection()
-	if !r.rangeChain(fn, sink, nil) {
+	if !r.rangeChain(fn, sink, r.physicalStack) {
 		return false
 	}
 	state := r.suspended
@@ -917,6 +918,15 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	return true
 }
 
+func gcNativeFrameFitsStack(base uintptr, frameBytes uint32, stack *coreruntime.Engine) bool {
+	if stack == nil {
+		return true
+	}
+	top := stack.StackTop()
+	bytes := uintptr(stack.StackBytes())
+	return bytes != 0 && top >= bytes && base >= top-bytes && base < top && uintptr(frameBytes) <= top-base
+}
+
 func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
 	owner := r.owner
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
@@ -928,8 +938,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 	var stackTop uintptr
 	if stack != nil {
 		stackTop = stack.StackTop()
-		stackBytes := uintptr(stack.StackBytes())
-		if stackBytes == 0 || stackTop < stackBytes || base < stackTop-stackBytes || base >= stackTop {
+		if !gcNativeFrameFitsStack(base, frameBytes, stack) {
 			panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
 		}
 	} else if owner != nil && owner.eng != nil {

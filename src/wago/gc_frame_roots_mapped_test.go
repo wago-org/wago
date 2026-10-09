@@ -147,6 +147,37 @@ func TestGCNativeFrameRootsParkedActivationUsesPhysicalStack(t *testing.T) {
 	}
 }
 
+func TestGCNativeFrameRootsDirectHelperUsesPhysicalStack(t *testing.T) {
+	frame := mappedFrameChain(t, 1)
+	oldStack := frame.owner.eng
+	newStack, err := coreruntime.NewEngineWithStackBytes(coreruntime.MinNativeStackBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := newStack.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	frame.owner.eng = newStack // A cross-instance helper can run on the public root's stack.
+	frame.physicalStack = oldStack
+	seen := 0
+	frame.RangeRoots(func(gc.RootSlot) bool { seen++; return true })
+	if seen != 1 {
+		t.Fatalf("direct roots visited = %d, want 1", seen)
+	}
+	// The frame remains mapped on oldStack if the explicit bound is ignored.
+	frame.physicalStack = newStack
+	got := func() (failure any) {
+		defer func() { failure = recover() }()
+		frame.RangeRoots(func(gc.RootSlot) bool { return true })
+		return nil
+	}()
+	if fmt.Sprint(got) != "generic GC native frame exceeds stack bounds" {
+		t.Fatalf("mismatched direct stack panic = %v", got)
+	}
+}
+
 func BenchmarkGCNativeFrameRootsMappedStack(b *testing.B) {
 	for _, frames := range []int{1, 64, 4098} {
 		b.Run(fmt.Sprintf("frames=%d", frames), func(b *testing.B) {

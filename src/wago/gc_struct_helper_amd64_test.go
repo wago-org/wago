@@ -320,8 +320,8 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}) - unsafe.Sizeof(profileCacheState{}); got != 64 {
 		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64", got)
 	}
-	if got := unsafe.Sizeof(gcPublicState{}); got != 4048 {
-		t.Fatalf("gcPublicState size = %d, want 4048 with parked stack owners and inline fast paths", got)
+	if got := unsafe.Sizeof(gcPublicState{}); got != 4056 {
+		t.Fatalf("gcPublicState size = %d, want 4056 with physical stack bounds and inline fast paths", got)
 	}
 	if got := unsafe.Sizeof(gcRefTokenEntry{}); got != 48 {
 		t.Fatalf("gcRefTokenEntry size = %d, want 48", got)

@@ -289,7 +289,11 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		}
 		if active.gc != nil {
 			helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
-			active.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)
+			physicalStack := active.eng
+			if root != nil && root.eng != nil {
+				physicalStack = root.eng
+			}
+			active.dispatchGCHelperParkedOnStack(ctrl, helper, safepoint, args, results, physicalStack)
 			return
 		}
 		// Preserve the injected dispatcher path used by hardening tests and by a
