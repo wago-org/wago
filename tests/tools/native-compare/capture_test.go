@@ -9,7 +9,99 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestCaptureInlineCallerLocations(t *testing.T) {
+	// Same bounded shape as the backend's inline-source contract test. The
+	// imported function shifts full Wasm indices; no guest code is executed.
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec([]byte{1, 'm', 1, 'f', 0, 0})),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("first", 0, 2), wasmtest.ExportEntry("second", 0, 4))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x41, 3, 0x73, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x10, 1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x41, 3, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x10, 3, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := compileCapture(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer code.close()
+	seen := map[uint32]bool{}
+	for _, source := range code.sources {
+		if source.InlineParent == 0 {
+			continue
+		}
+		if source.Function != 1 && source.Function != 3 || source.WasmOffset != 5 {
+			t.Fatal("unexpected logical inline location", source)
+		}
+		owned := false
+		for _, owner := range code.owners {
+			if owner.Function == int(source.Function+1) && source.Offset >= owner.Offset && source.Offset+source.Size <= owner.Offset+owner.Size {
+				owned = true
+			}
+		}
+		if !owned {
+			t.Fatal("inline source escaped physical caller", source)
+		}
+		seen[source.Function] = true
+	}
+	if len(seen) != 2 {
+		t.Fatal("fixture did not exercise both inlined callees", seen)
+	}
+	s, err := captureBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Provenance.CompilerRevision = "inline-control"
+	if len(s.InlineFrames) != 2 {
+		t.Fatal("caller table omitted", s.InlineFrames)
+	}
+	seen = map[uint32]bool{}
+	for _, r := range s.Regions {
+		if r.InlineParent == 0 {
+			continue
+		}
+		frame := s.InlineFrames[r.InlineParent-1]
+		if frame.Parent != 0 || frame.Function != r.Function+1 || frame.WasmOffset != 3 || r.WasmOffset == nil || *r.WasmOffset != 5 {
+			t.Fatal("logical callee/caller location lost", r, frame)
+		}
+		seen[r.Function] = true
+	}
+	if len(seen) != 2 {
+		t.Fatal("inlined regions omitted", seen)
+	}
+	r, err := Compare(s, s)
+	if err != nil || !r.RawComplete || r.Unknown != 0 && r.Complete {
+		t.Fatal(r, err)
+	}
+	t.Logf("inline capture: %d bytes, mapped=%d raw=%d; supported=%d unknown=%d complete=%v", s.Capture.NativeBytes, s.Capture.MappedBytes, s.Capture.UnmappedBytes, r.Known, r.Unknown, r.Complete)
+}
+
+func TestCaptureInlineOwnerRejection(t *testing.T) {
+	for _, owner := range []int{2, 1, -1} {
+		s := fixture("amd64", "31c0")
+		s.Regions[0].Function = 1
+		s.Regions[0].InlineParent = 1
+		s.InlineFrames = []InlineFrame{{Function: 2, WasmOffset: 3}}
+		s.Capture = &CaptureMetadata{NativeBytes: 3, MappedBytes: 2, UnmappedBytes: 1}
+		err := populateRaw(&s, []jitprofile.Region{{Offset: 0, Size: 3, Kind: "guest-body", Function: owner}}, []byte{0x31, 0xc0, 0xc3})
+		if (err == nil) != (owner == 2) {
+			t.Fatal("incorrect physical ownership qualification", owner, err)
+		}
+	}
+}
 
 func TestCaptureExistingFib(t *testing.T) {
 	data, err := os.ReadFile("../../fixtures/wasm/fib.wasm")

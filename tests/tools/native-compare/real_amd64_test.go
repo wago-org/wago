@@ -260,7 +260,7 @@ func TestExistingFibSourceRegions(t *testing.T) {
 	foundAdd := false
 	for i, source := range stats.SourceRanges {
 		pc := source.WasmOffset
-		r := Region{fmt.Sprintf("f%d.pc%d.region%d", source.Function, pc, i), source.Function, &pc, nil}
+		r := Region{fmt.Sprintf("f%d.pc%d.region%d", source.Function, pc, i), source.Function, &pc, nil, 0}
 		if int(source.Function) >= len(m.Code) || int(pc) < int(m.Code[source.Function].LocalDeclBytes) || int(pc) >= int(m.Code[source.Function].LocalDeclBytes)+len(m.Code[source.Function].BodyBytes) {
 			t.Fatal("source offset outside function body")
 		}

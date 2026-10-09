@@ -111,7 +111,13 @@ or normalization of opaque bytes. Call/return semantics and target normalization
 for wrappers remain deliberately unsupported.
 
 Mapped regions use function/Wasm-PC/occurrence identity and positional alignment.
-PCs include local-declaration bytes. Insertions or changed anchors/counts produce
+PCs include local-declaration bytes. Inlined regions keep the logical callee/PC and
+`inline_parent`, referencing a bounded caller-frame table. Physical byte ownership
+uses the root caller, including full function indices with imports. Caller tables
+and parent references must agree exactly across snapshots; changed/reordered caller
+context is incomplete. Changes and unknowns retain logical locations and both caller
+tables. Dangling, cyclic/forward or oversized ancestry is invalid. Insertions or
+changed anchors/counts produce
 incomplete results rather than guessed alignment. Raw ranges use profile kind,
 signed function ownership (-1 for module/shared), owner occurrence and adjacent
 mapped anchors or explicit owner-start/end sentinels. Offsets/sizes are observations,
@@ -134,18 +140,22 @@ the build checkout. A stamp alone does not attest a clean checkout. Unstamped bu
 without VCS information remain unqualified. Unknown names are not normalized away.
 
 Limits: 1 MiB input JSON, 64 mapped regions, 4096 instructions, 128 profile owners/raw
-ranges and 512 changes or unknown sites. Capture additionally caps trusted Wasm at
+ranges, 128 inline caller frames and 512 changes or unknown sites. Capture additionally caps trusted Wasm at
 32 KiB, module/local counts, native bytes at 64 KiB and objdump output at 1 MiB/five seconds.
 Capture output JSON is capped at 1 MiB. Native size is checked **after** compilation;
 these are not a compiler heap quota or a claim to accept arbitrary untrusted inputs.
 Alignment and partition validation are linear; no LCS, global cache or second profiler.
 
-Against the previous integration, short pinned pairs cut equal scalar comparison
+At frozen measured source 66dedc1d, short pairs against the previous integration
+cut equal scalar comparison
 medians 55–61%. Captured Fibonacci compare: 2.361→2.118 µs, 96→0 B and 8→0 allocations,
 including the new opaque checks. A 32-change report: 32,192→26,912 B, six allocations.
 Capture adds 1,252 B and 22 allocations (133,920 B / 835 allocations); ~11.4 ms includes
 executable hashing and objdump, excluding JSON/file writing. Capture timing is noisy,
-with no speed claim. RSS and peak/retained heap were not measured. Ordinary runtime
+with no speed claim. The later inline-ownership and build-variant correctness fixes
+were not rebenchmarked; ancestry validation and added payload fields have unmeasured
+costs. The figures above remain historical frozen-source measurements. RSS and
+peak/retained heap were not measured. Ordinary runtime
 builds are byte-identical; no production optimization or runtime overhead is introduced.
 
 [Acceptance checklist and remaining scope](../../../evidence/coverage/acceptance.md),
