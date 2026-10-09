@@ -127,7 +127,7 @@ func TestExperimentalNativeArtifacts(t *testing.T) {
 				selected = ""
 			}
 			var stats ModuleStats
-			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, AMD64FeaturesSet: true, ExperimentalLoopMode: selected})
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures(), ExperimentalLoopMode: selected})
 			if err != nil {
 				t.Fatal(err)
 			}

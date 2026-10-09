@@ -116,7 +116,7 @@ func TestExperimentalReplication(t *testing.T) {
 				if !bytes.Equal(m.Code[0].BodyBytes, original) {
 					t.Fatal("input changed")
 				}
-				opts := CompileOptions{AMD64FeaturesSet: true}
+				opts := CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures()}
 				ref := newLoopExperimentRun(t, m, opts, 65536)
 				opts.ExperimentalLoopMode = mode
 				got := newLoopExperimentRun(t, m, opts, 65536)
@@ -195,6 +195,13 @@ func TestExperimentalReplicationRejects(t *testing.T) {
 	}
 }
 
+func experimentBenchmarkFeatures() shared.AMD64Features {
+	if os.Getenv("WAGO_LOOP_FEATURES") == "modern" {
+		return shared.AMD64ModernBaseline
+	}
+	return 0
+}
+
 func BenchmarkExperimentalReplication(b *testing.B) {
 	mode := os.Getenv("WAGO_LOOP_REPLICATION")
 	for _, name := range []string{"map-i32", "dependent-i32", "dependent-f64", "pointer", "simd-i32", "map-f32"} {
@@ -208,7 +215,7 @@ func BenchmarkExperimentalReplication(b *testing.B) {
 			continue
 		}
 		m := loopExperimentModule(b, name)
-		opts := CompileOptions{ExperimentalLoopMode: mode, AMD64FeaturesSet: true}
+		opts := CompileOptions{ExperimentalLoopMode: mode, AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures()}
 		b.Run(name+"/compile", func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
@@ -247,7 +254,7 @@ func BenchmarkExperimentalReplication(b *testing.B) {
 				if name == "pointer" {
 					args = []uint64{0, n, 0}
 				}
-				ref := newLoopExperimentRun(b, m, CompileOptions{AMD64FeaturesSet: true}, size)
+				ref := newLoopExperimentRun(b, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: opts.AMD64Features}, size)
 				copy(ref.jm.CurrentBytes(), r.jm.CurrentBytes())
 				if err := ref.call(args...); err != nil {
 					b.Fatal(err)
@@ -295,8 +302,8 @@ func TestExperimentalWritingMemory32Wrap(t *testing.T) {
 			t.Run(name+"/"+mode, func(t *testing.T) {
 				m := loopExperimentModule(t, name)
 				m.Memories[0].Limits.Max = 65536
-				ref := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true}, 1<<32)
-				got := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: mode}, 1<<32)
+				ref := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures()}, 1<<32)
+				got := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures(), ExperimentalLoopMode: mode}, 1<<32)
 				for _, n := range []uint64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x40000000, 0xffffffff} {
 					for _, pair := range [][2]uint64{{256, 0xfffffff0}, {0xfffffff0, 256}, {0xfffffff0, 0xfffffff0}, {256, 0xfffffff9}, {0xfffffff9, 256}} {
 						// Large counts use a boundary access that traps within two

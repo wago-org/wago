@@ -25,9 +25,9 @@ func TestExperimentalMaps(t *testing.T) {
 			if err != nil || reason != "accepted" || lowered == m {
 				t.Fatal(reason, err)
 			}
-			ref := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true}, 65536)
-			got := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: mode}, 65536)
-			fast := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: mode + "-assert"}, 65536)
+			ref := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures()}, 65536)
+			got := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures(), ExperimentalLoopMode: mode}, 65536)
+			fast := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures(), ExperimentalLoopMode: mode + "-assert"}, 65536)
 			for _, n := range []uint64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 511, 512, 513, 8192} {
 				for _, pair := range [][2]uint64{{128, 32768}, {128, 128}, {129, 128}, {128, 129}, {132, 128}, {128, 132}, {1, 32769}, {65520, 128}, {128, 65520}} {
 					init := func(mem []byte) {
@@ -65,7 +65,7 @@ func TestExperimentalMaps(t *testing.T) {
 			if diagnosticsEnabled {
 				for _, variant := range []string{"", mode} {
 					var stats ModuleStats
-					cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: variant, Stats: &stats})
+					cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures(), ExperimentalLoopMode: variant, Stats: &stats})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -82,8 +82,8 @@ func TestExperimentalTrapOrigins(t *testing.T) {
 	for _, mode := range []string{"count2", "count4", "guard2", "vector-i32"} {
 		for _, name := range []string{"map-i32", "pointer"} {
 			m := loopExperimentModule(t, name)
-			ref := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true}, 65536)
-			got := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: mode}, 65536)
+			ref := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures()}, 65536)
+			got := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures(), ExperimentalLoopMode: mode}, 65536)
 			for _, args := range [][]uint64{{128, 65532, 4, 3, 7}, {65532, 128, 4, 3, 7}} {
 				if name == "pointer" {
 					args = []uint64{65536, 4, 0}
@@ -118,8 +118,8 @@ func TestExperimentalMapOperationsAndImmediateOffsets(t *testing.T) {
 				body[plan.Loop.BodyStart+int(plan.Loop.Operations[4].Start)] = first
 				body[plan.Loop.BodyStart+int(plan.Loop.Operations[6].Start)] = second
 				m.Code[0].BodyBytes = body
-				ref := newLoopExperimentRun(t, &m, CompileOptions{AMD64FeaturesSet: true}, 65536)
-				got := newLoopExperimentRun(t, &m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: mode}, 65536)
+				ref := newLoopExperimentRun(t, &m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures()}, 65536)
+				got := newLoopExperimentRun(t, &m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures(), ExperimentalLoopMode: mode}, 65536)
 				scales, biases := []uint32{0xffffffff, 0x80000000, 0, 1}, []uint32{0xffffffff, 0x80000001, 0}
 				if fp {
 					scales = []uint32{0, 0x80000000, 0x3f800000, 0xbf800000, 1, 0x7f800000, 0x7fc12345}
@@ -159,8 +159,8 @@ func TestExperimentalMapOperationsAndImmediateOffsets(t *testing.T) {
 			}
 			m.Memories = append([]wasm.MemType(nil), base.Memories...)
 			m.Memories[0].Limits.Max = 65536
-			ref := newLoopExperimentRun(t, &m, CompileOptions{AMD64FeaturesSet: true}, 1<<32)
-			got := newLoopExperimentRun(t, &m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: mode}, 1<<32)
+			ref := newLoopExperimentRun(t, &m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures()}, 1<<32)
+			got := newLoopExperimentRun(t, &m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: experimentBenchmarkFeatures(), ExperimentalLoopMode: mode}, 1<<32)
 			args := []uint64{256, 0xfffffffc, 1, 3, 7}
 			if which == 8 {
 				args[0], args[1] = 0xfffffffc, 256
