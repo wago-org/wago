@@ -1,0 +1,22 @@
+[
+  {
+    "control": "fib",
+    "exit": 0,
+    "synthetic": false
+  },
+  {
+    "control": "constant-synthetic",
+    "exit": 0,
+    "synthetic": true
+  },
+  {
+    "control": "raw-synthetic",
+    "exit": 0,
+    "synthetic": true
+  },
+  {
+    "control": "unknown-synthetic",
+    "exit": 3,
+    "synthetic": true
+  }
+]

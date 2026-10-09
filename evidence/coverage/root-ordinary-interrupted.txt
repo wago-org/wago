@@ -1,0 +1,367 @@
+--- FAIL: TestShellBootstrapMatchesReleaseContract (0.00s)
+    --- FAIL: TestShellBootstrapMatchesReleaseContract/latest (0.00s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: socket: operation not permitted [recovered, repanicked]
+
+goroutine 61 [running]:
+testing.tRunner.func1.2({0x107e1d0, 0x1889aa571ac0})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329
+panic({0x107e1d0?, 0x1889aa571ac0?})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125
+net/http/httptest.newLocalListener()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:226 +0xd9
+net/http/httptest.NewUnstartedServer(...)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0x10fee30, 0x1889aa5b8aa0})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:267 +0x25
+github.com/wago-org/wago.TestShellBootstrapMatchesReleaseContract.func1(0x1889aa6c9448)
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/install_test.go:55 +0x348
+testing.tRunner(0x1889aa6c9448, 0x1889aa768150)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 60
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+FAIL    github.com/wago-org/wago        0.325s
+--- FAIL: TestInstallerCanonicalBetaManagerResolutionPaginates (0.00s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: socket: operation not permitted [recovered, repanicked]
+
+goroutine 20 [running]:
+testing.tRunner.func1.2({0xc35c38, 0xaab71636ab0})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329
+panic({0xc35c38?, 0xaab71636ab0?})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125
+net/http/httptest.newLocalListener()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:226 +0xd9
+net/http/httptest.NewUnstartedServer(...)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0xc8ef48, 0xaab716026c0})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:267 +0x25
+github.com/wago-org/wago/cli/installer.TestInstallerCanonicalBetaManagerResolutionPaginates(0xaab716a7688)
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/cli/installer/install_test.go:287 +0xb5
+testing.tRunner(0xaab716a7688, 0xc93a48)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 1
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+FAIL    github.com/wago-org/wago/cli/installer  0.012s
+ok      github.com/wago-org/wago/cli/internal/automation        0.002s
+ok      github.com/wago-org/wago/cli/internal/command   0.002s
+ok      github.com/wago-org/wago/cli/internal/handoff   0.004s
+?       github.com/wago-org/wago/cli/internal/parallel  [no test files]
+ok      github.com/wago-org/wago/cli/internal/pluginmenu        0.002s
+ok      github.com/wago-org/wago/cli/internal/profiling 0.002s
+ok      github.com/wago-org/wago/cli/internal/project   1.382s
+ok      github.com/wago-org/wago/cli/internal/settings  0.142s
+?       github.com/wago-org/wago/cli/internal/settings/cmd/genschema    [no test files]
+ok      github.com/wago-org/wago/cli/internal/tui       0.002s
+?       github.com/wago-org/wago/cli/internal/ui        [no test files]
+ok      github.com/wago-org/wago/cli/internal/wasmcall  0.002s
+ok      github.com/wago-org/wago/cli/internal/watchsupervisor   1.226s
+ok      github.com/wago-org/wago/cli/manager    11.784s
+ok      github.com/wago-org/wago/cli/manager/commands/auth      0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/auth/login        0.001s
+?       github.com/wago-org/wago/cli/manager/commands/auth/logout       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/auth/whoami       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/cache     [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/cache/clean       0.002s
+?       github.com/wago-org/wago/cli/manager/commands/cache/dir [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/cache/options     [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/cache/prune       0.002s
+?       github.com/wago-org/wago/cli/manager/commands/cache/size        [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/compile   0.014s
+ok      github.com/wago-org/wago/cli/manager/commands/config    0.001s
+?       github.com/wago-org/wago/cli/manager/commands/config/completions        [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/diff       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/get        [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/list       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/options    [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/reset      [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/config/set        [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/init      0.003s
+ok      github.com/wago-org/wago/cli/manager/commands/plugin    0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/add        0.002s
+?       github.com/wago-org/wago/cli/manager/commands/plugin/catalog    [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/config     0.002s
+?       github.com/wago-org/wago/cli/manager/commands/plugin/deprecate  [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/grant      0.002s
+?       github.com/wago-org/wago/cli/manager/commands/plugin/outdated   [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/publish    [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/rebuild    [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/remove     0.002s
+?       github.com/wago-org/wago/cli/manager/commands/plugin/tree       [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/plugin/unpublish  [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/plugin/update     0.002s
+?       github.com/wago-org/wago/cli/manager/commands/self      [no test files]
+?       github.com/wago-org/wago/cli/manager/commands/self/uninstall    [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/self/update       0.002s
+?       github.com/wago-org/wago/cli/manager/commands/status    [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/update    0.002s
+ok      github.com/wago-org/wago/cli/manager/commands/version   0.002s
+?       github.com/wago-org/wago/cli/manager/commands/version/current   [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/version/install   0.002s
+?       github.com/wago-org/wago/cli/manager/commands/version/list      [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/version/switch    0.002s
+?       github.com/wago-org/wago/cli/manager/commands/version/uninstall [no test files]
+ok      github.com/wago-org/wago/cli/manager/commands/version/update    0.002s
+?       github.com/wago-org/wago/cli/manager/commands/version/which     [no test files]
+ok      github.com/wago-org/wago/cli/manager/internal/cache     0.261s
+ok      github.com/wago-org/wago/cli/manager/internal/config    0.008s
+--- FAIL: TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata (0.00s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: socket: operation not permitted [recovered, repanicked]
+
+goroutine 216 [running]:
+testing.tRunner.func1.2({0xcb1dc0, 0xb74d60e9190})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329
+panic({0xcb1dc0?, 0xb74d60e9190?})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125
+net/http/httptest.newLocalListener()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:226 +0xd9
+net/http/httptest.NewUnstartedServer(...)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0xd0e348, 0xb74d618fc80})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:267 +0x25
+github.com/wago-org/wago/cli/manager/internal/plugin.TestHTTPCatalogUsesRepeatedRangesAndStrictMetadata(0xb74d6126248)
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/cli/manager/internal/plugin/catalog_test.go:638 +0x22d
+testing.tRunner(0xb74d6126248, 0xd12db0)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 1
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+FAIL    github.com/wago-org/wago/cli/manager/internal/plugin    17.055s
+ok      github.com/wago-org/wago/cli/manager/internal/plugin/build      3.253s
+ok      github.com/wago-org/wago/cli/manager/internal/plugin/gocommand  1.444s
+ok      github.com/wago-org/wago/cli/manager/internal/progress  0.303s
+--- FAIL: TestDeviceAuthorizationKeepsCredentialsOutOfURLs (0.00s)
+    --- FAIL: TestDeviceAuthorizationKeepsCredentialsOutOfURLs/browser (0.00s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: socket: operation not permitted [recovered, repanicked]
+
+goroutine 8 [running]:
+testing.tRunner.func1.2({0xbd30b0, 0xbe993932b30})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329
+panic({0xbd30b0?, 0xbe993932b30?})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125
+net/http/httptest.newLocalListener()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:226 +0xd9
+net/http/httptest.NewUnstartedServer(...)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0xc2a878, 0xbe993910c40})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:267 +0x25
+github.com/wago-org/wago/cli/manager/internal/registry.newDeviceFlowServer(0xbe9939a86c8, {0x826c8a, 0x27}, 0xc8, {0x822a90, 0x22})
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/cli/manager/internal/registry/auth_security_test.go:38 +0x110
+github.com/wago-org/wago/cli/manager/internal/registry.TestDeviceAuthorizationKeepsCredentialsOutOfURLs.func1(0xbe9939a86c8)
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/cli/manager/internal/registry/auth_security_test.go:105 +0x50
+testing.tRunner(0xbe9939a86c8, 0xbe993964d00)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 7
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+FAIL    github.com/wago-org/wago/cli/manager/internal/registry  0.006s
+ok      github.com/wago-org/wago/cli/manager/internal/self      0.142s
+?       github.com/wago-org/wago/cli/manager/internal/self/replace      [no test files]
+--- FAIL: TestTinyGoArtifactSupportsCooperativeInterruption (10.37s)
+    build_linux_test.go:47: tinygo build: exit status 1
+        error obtaining VCS status: exit status 128
+                Use -buildvcs=false to disable VCS stamping.
+--- FAIL: TestBuildTinyGoEmbedsArtifactWithoutCompiler (0.50s)
+    build_test.go:147: tinygo build: exit status 1
+        error obtaining VCS status: exit status 128
+                Use -buildvcs=false to disable VCS stamping.
+--- FAIL: TestBuildTinyGoStripsByDefault (0.50s)
+    build_test.go:205: tinygo build: exit status 1
+        error obtaining VCS status: exit status 128
+                Use -buildvcs=false to disable VCS stamping.
+FAIL
+FAIL    github.com/wago-org/wago/cli/manager/internal/standalone        13.580s
+ok      github.com/wago-org/wago/cli/manager/internal/status    0.007s
+--- FAIL: TestDownloadReleaseAssetRejectsOversizedChecksumBeforeAsset (0.00s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: socket: operation not permitted [recovered, repanicked]
+
+goroutine 24 [running]:
+testing.tRunner.func1.2({0xc6a250, 0xf475e9fc770})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329
+panic({0xc6a250?, 0xf475e9fc770?})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125
+net/http/httptest.newLocalListener()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:226 +0xd9
+net/http/httptest.NewUnstartedServer(...)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0xcc93b0, 0xf475e9fc720})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:267 +0x25
+github.com/wago-org/wago/cli/manager/internal/version.TestDownloadReleaseAssetRejectsOversizedChecksumBeforeAsset(0xf475ea406c8)
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/cli/manager/internal/version/download_hardening_test.go:77 +0xf7
+testing.tRunner(0xf475ea406c8, 0xcce9c8)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 1
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+FAIL    github.com/wago-org/wago/cli/manager/internal/version   0.010s
+ok      github.com/wago-org/wago/cli/runtime    0.008s
+ok      github.com/wago-org/wago/cli/runtime/commands   0.002s
+✓ built /tmp/TestBuildPublishesThroughRelativeOutputSymlinkChain494460327/001/output.wago
+✓ built /tmp/TestCommandWritesRunnableArtifact1831305663/001/empty.wago
+--- FAIL: TestBuildNewLinuxOutputMatchesDirectCreationMetadata (0.00s)
+    new_output_metadata_linux_test.go:23: invalid argument
+--- FAIL: TestBuildPreservesLinuxOutputAccessACL (0.00s)
+    --- FAIL: TestBuildPreservesLinuxOutputAccessACL/direct (0.00s)
+        output_acl_linux_test.go:40: invalid argument
+    --- FAIL: TestBuildPreservesLinuxOutputAccessACL/symlink-target (0.00s)
+        output_acl_linux_test.go:40: invalid argument
+--- FAIL: TestBuildPublicationBoundaryRejectsAccessACLChange (0.00s)
+    output_acl_linux_test.go:78: invalid argument
+--- FAIL: TestBuildAccessACLFailureLeavesOutputIntact (0.00s)
+    output_acl_linux_test.go:123: invalid argument
+--- FAIL: TestBuildAccessACLCaptureUsesOpenedDescriptor (0.00s)
+    output_acl_linux_test.go:193: invalid argument
+--- FAIL: TestBuildSnapshotCallbackRejectsAccessACLChange (0.00s)
+    output_metadata_race_linux_test.go:23: invalid argument
+✓ built /tmp/TestBuildNewOutputDoesNotExposeSeparateUmaskProbe3110516155/001/output.wago
+FAIL
+FAIL    github.com/wago-org/wago/cli/runtime/commands/build     0.150s
+?       github.com/wago-org/wago/cli/runtime/commands/module    [no test files]
+?       github.com/wago-org/wago/cli/runtime/commands/module/capabilities       [no test files]
+ok      github.com/wago-org/wago/cli/runtime/commands/module/exports    0.002s
+?       github.com/wago-org/wago/cli/runtime/commands/module/imports    [no test files]
+?       github.com/wago-org/wago/cli/runtime/commands/plugin    [no test files]
+ok      github.com/wago-org/wago/cli/runtime/commands/plugin/inspect    0.002s
+ok      github.com/wago-org/wago/cli/runtime/commands/plugin/list       0.002s
+7
+7
+--- FAIL: TestWatchSupervisorRestartsLongRunningChildWithDetachedDescendant (0.00s)
+    watch_test.go:87: listen tcp 127.0.0.1:0: socket: operation not permitted
+FAIL
+FAIL    github.com/wago-org/wago/cli/runtime/commands/run       2.658s
+ok      github.com/wago-org/wago/cli/runtime/commands/validate  0.003s
+ok      github.com/wago-org/wago/cli/runtime/internal/artifactcache     0.072s
+ok      github.com/wago-org/wago/cli/runtime/internal/module    0.003s
+ok      github.com/wago-org/wago/cli/runtime/internal/modulefile        0.002s
+ok      github.com/wago-org/wago/cli/runtime/internal/plugin    0.002s
+?       github.com/wago-org/wago/cli/runtime/internal/profile   [no test files]
+ok      github.com/wago-org/wago/cli/runtime/internal/version   0.002s
+ok      github.com/wago-org/wago/cli/standalone 0.205s
+--- FAIL: TestManagerRunRedirectsToVersionInstallWithoutSelectedRunner (0.00s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: socket: operation not permitted [recovered, repanicked]
+
+goroutine 48 [running]:
+testing.tRunner.func1.2({0xd947a8, 0x240d8be14e80})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329
+panic({0xd947a8?, 0x240d8be14e80?})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125
+net/http/httptest.newLocalListener()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:226 +0xd9
+net/http/httptest.NewUnstartedServer(...)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0xdfb4c0, 0x240d8be14e30})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:267 +0x25
+github.com/wago-org/wago/cli/wago.TestManagerRunRedirectsToVersionInstallWithoutSelectedRunner(0x240d8bcd4fc8)
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/cli/wago/manager_test.go:212 +0x111
+testing.tRunner(0x240d8bcd4fc8, 0xe00290)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 1
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+FAIL    github.com/wago-org/wago/cli/wago       0.027s
+?       github.com/wago-org/wago/codegen        [no test files]
+?       github.com/wago-org/wago/codegen/amd64  [no test files]
+?       github.com/wago-org/wago/codegen/arm64  [no test files]
+ok      github.com/wago-org/wago/examples/01-hello      0.002s
+ok      github.com/wago-org/wago/examples/02-runtime-typed      0.004s
+ok      github.com/wago-org/wago/examples/03-host-import        0.003s
+ok      github.com/wago-org/wago/examples/04-memory     0.003s
+ok      github.com/wago-org/wago/examples/05-globals    0.004s
+ok      github.com/wago-org/wago/examples/06-runtime-service    0.007s
+ok      github.com/wago-org/wago/examples/07-runtime-limits     0.009s
+ok      github.com/wago-org/wago/examples/08-custom-plugin      0.004s
+ok      github.com/wago-org/wago/examples/09-plugin-config-lifecycle    0.003s
+ok      github.com/wago-org/wago/examples/10-hooks      0.004s
+ok      github.com/wago-org/wago/examples/11-source-transform   0.002s
+ok      github.com/wago-org/wago/examples/12-caller-context     0.003s
+ok      github.com/wago-org/wago/examples/13-plugin-contracts   0.002s
+ok      github.com/wago-org/wago/examples/14-handles    0.002s
+ok      github.com/wago-org/wago/examples/15-config     0.004s
+ok      github.com/wago-org/wago/examples/16-serialize  0.003s
+ok      github.com/wago-org/wago/examples/17-managed-instances  0.003s
+ok      github.com/wago-org/wago/examples/18-custom-instruction 0.003s
+ok      github.com/wago-org/wago/examples/19-custom-type        0.004s
+ok      github.com/wago-org/wago/examples/20-core-handles       0.003s
+ok      github.com/wago-org/wago/examples/21-guest-storage      0.003s
+ok      github.com/wago-org/wago/examples/22-language-guests    0.003s
+ok      github.com/wago-org/wago/examples/23-public-api 0.005s
+ok      github.com/wago-org/wago/examples/internal/exampleplugin        0.002s
+ok      github.com/wago-org/wago/examples/internal/mods 0.003s
+?       github.com/wago-org/wago/experiments/signed-immediate-830/inspect       [no test files]
+--- FAIL: TestDownloadExecutable (0.00s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: socket: operation not permitted [recovered, repanicked]
+
+goroutine 7 [running]:
+testing.tRunner.func1.2({0xbb7ff0, 0x3f9d50eac710})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329
+panic({0xbb7ff0?, 0x3f9d50eac710?})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125
+net/http/httptest.newLocalListener()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:226 +0xd9
+net/http/httptest.NewUnstartedServer(...)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0xc0e658, 0x3f9d50ef7b00})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:267 +0x25
+github.com/wago-org/wago/internal/actionartifact.TestDownloadExecutable(0x3f9d50f1c488)
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/internal/actionartifact/artifact_test.go:31 +0x165
+testing.tRunner(0x3f9d50f1c488, 0xc12ed0)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 1
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+FAIL    github.com/wago-org/wago/internal/actionartifact        0.006s
+--- FAIL: TestReplaceFileFallsBackWhenOTmpfileIsUnsupported (0.00s)
+    --- FAIL: TestReplaceFileFallsBackWhenOTmpfileIsUnsupported/posix-default-acl (0.00s)
+        umask_fallback_linux_test.go:85: invalid argument
+FAIL
+FAIL    github.com/wago-org/wago/internal/atomicfile    0.010s
+ok      github.com/wago-org/wago/internal/filelock      0.055s
+ok      github.com/wago-org/wago/internal/functionworkers       0.003s
+ok      github.com/wago-org/wago/internal/genfacade     0.037s
+--- FAIL: TestClientBoundsHeaderAndBodyStalls (0.00s)
+    --- FAIL: TestClientBoundsHeaderAndBodyStalls/headers (0.00s)
+panic: httptest: failed to listen on a port: listen tcp6 [::1]:0: socket: operation not permitted [recovered, repanicked]
+
+goroutine 8 [running]:
+testing.tRunner.func1.2({0xb7d1a0, 0x3992d4d8a6c0})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329
+panic({0xb7d1a0?, 0x3992d4d8a6c0?})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125
+net/http/httptest.newLocalListener()
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:226 +0xd9
+net/http/httptest.NewUnstartedServer(...)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:284
+net/http/httptest.NewServer({0xbd59e0, 0xbdaa48})
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/net/http/httptest/server.go:267 +0x25
+github.com/wago-org/wago/internal/httpclient.TestClientBoundsHeaderAndBodyStalls.func3(0x3992d4dfa6c8)
+        /home/jtenner/Documents/Codex/2026-10-09/task-3/wago-815/internal/httpclient/client_test.go:38 +0x45
+testing.tRunner(0x3992d4dfa6c8, 0x3992d4dbc460)
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 7
+        /home/jtenner/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4
+FAIL    github.com/wago-org/wago/internal/httpclient    0.006s
+ok      github.com/wago-org/wago/internal/installbootstrap      0.002s
+ok      github.com/wago-org/wago/internal/jitprofile    0.002s
+ok      github.com/wago-org/wago/internal/jsonstrict    0.003s
+ok      github.com/wago-org/wago/internal/managedrelease        0.167s
+ok      github.com/wago-org/wago/internal/namecheck     0.094s
+ok      github.com/wago-org/wago/internal/profcapture   0.223s
+?       github.com/wago-org/wago/internal/profilecmd    [no test files]
+--- FAIL: TestLocalCorrectnessWorkflowsEnableChecker (0.01s)
+    workflow_test.go:30: ../../.just/test.just: missing checker tag: GOMAXPROCS=1 go test -p=1 -count=1 ./tests/tools/native-compare
+FAIL
+FAIL    github.com/wago-org/wago/internal/regalloccheck 0.010s
+ok      github.com/wago-org/wago/internal/regularfile   0.002s
+?       github.com/wago-org/wago/internal/runtimebridge [no test files]
+ok      github.com/wago-org/wago/internal/sourcearchive 0.024s
+ok      github.com/wago-org/wago/internal/wagopaths     0.002s
+ok      github.com/wago-org/wago/plugin 0.002s

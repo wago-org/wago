@@ -1,0 +1,2 @@
+ok      github.com/wago-org/wago/tests/tools/native-compare     0.036s
+ok      github.com/wago-org/wago/internal/regalloccheck 0.014s

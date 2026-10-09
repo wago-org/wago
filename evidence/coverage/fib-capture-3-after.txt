@@ -1,0 +1,6 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/tests/tools/native-compare
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkCaptureExistingFib            5          10565444 ns/op               105.0 native-bytes         133920 B/op        835 allocs/op
+PASS

@@ -1,0 +1,2 @@
+supplied regions: compared=12 supported=12 unknown=0 changes=0 complete=true limit=false
+opaque bytes without source locations: before=54 after=54; raw ranges compared=3 changes=0 complete=true

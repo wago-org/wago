@@ -1,0 +1,2 @@
+wago: artifact cache maintenance failed: open /home/jtenner/.cache/wago/0.0.0/modules/.wago-atomic-1238250677: read-only file system
+6765
