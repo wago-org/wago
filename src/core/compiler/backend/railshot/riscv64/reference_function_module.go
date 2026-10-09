@@ -187,17 +187,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			return unsupported("closed reference module numeric exports only")
 		}
 	}
-	elements := 0
-	for _, e := range m.Elements {
-		if e.Mode.Kind != wasm.ElemDeclarative && (len(m.Tables) == 0 || e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive) || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Mode.Kind != wasm.ElemActive && len(e.Mode.Offset.BodyBytes) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Exprs) != 0 || len(e.Kind.Funcs) > MaxOwnedTableEntries-elements || !consume(4*len(e.Kind.Funcs)) {
-			return unsupported("closed reference module numeric legacy elements only")
-		}
-		elements += len(e.Kind.Funcs)
-		for _, idx := range e.Kind.Funcs {
-			if !numericTarget(uint32(idx)) {
-				return unsupported("closed reference module descriptor escape")
-			}
-		}
+	if err := admitClosedReferenceElements(m, &remaining, numericTarget); err != nil {
+		return err
 	}
 	for _, custom := range m.Customs {
 		if custom.Name == "metadata.code.branch_hint" {
@@ -259,8 +250,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			if op == 0xfc {
 				switch imm.Kind {
 				case wasm.InstrTableInit, wasm.InstrElemDrop:
-					if len(m.Tables) != 1 || uint64(imm.Index) >= uint64(len(m.Elements)) || imm.Index2 != 0 {
-						return unsupported("closed reference element operation requires own table and exact ordinal")
+					if imm.Kind == wasm.InstrTableInit && len(m.Tables) != 1 || uint64(imm.Index) >= uint64(len(m.Elements)) || imm.Index2 != 0 {
+						return unsupported("closed reference element operation requires exact ordinal and init own table")
 					}
 				case wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
 					if len(m.Tables) != 1 || imm.Index != 0 || imm.Index2 != 0 {

@@ -62,7 +62,7 @@ func ClosedReferenceProperIndirectTailsImportedInitializer(vector, wide bool, st
 	return closedReferenceLocalCells(vector, true, wide, start, 0, 0, true, true, false, true)
 }
 
-func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer byte, target int, ownedTable, tableBulk, referenceTail, indirectTail bool) []byte {
+func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer byte, target int, ownedTable, tableBulk, referenceTail, indirectTail bool, expressionMode ...bool) []byte {
 	typ, typeByte := wasm.F64, byte(0x7c)
 	if vector {
 		typ, typeByte = wasm.V128, 0x7b
@@ -184,15 +184,39 @@ func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer 
 		// the indexed parameter or the complete copied table row.
 		body := []byte{0x20, 0, 0x41, 1, 0xfc, 15, 0, 0xad, 0x24, 15,
 			0x23, 15, 0x42, 3, 0x51, 0x04, 0x40, 0x41, 0, 0x41, 0, 0x41, 3, 0xfc, 12, 2, 0,
-			0x05, 0x41, 0, 0x41, 0, 0x41, 0, 0xfc, 12, 2, 0, 0x0b, 0xfc, 13, 2, 0xfc, 13, 2,
-			0x41, 0, 0x20, 0, 0x41, 1, 0xfc, 17, 0, 0x41, 3, 0x41, 0, 0x41, 1, 0xfc, 14, 0, 0,
-			0x41, 3, 0x25, 0, 0x24, 14, 0x20, 1}
+			0x05, 0x41, 0, 0x41, 0, 0x41, 0, 0xfc, 12, 2, 0, 0x0b, 0xfc, 13, 2, 0xfc, 13, 2}
+		expression := len(expressionMode) != 0 && expressionMode[0]
+		if expression {
+			// First dispatch must consume the untouched expression-installed row.
+			// On later invocations the dropped payload is empty, so refill row0.
+			body = append(body, 0x23, 15, 0x42, 3, 0x52, 0x04, 0x40)
+		}
+		body = append(body, 0x41, 0, 0x20, 0, 0x41, 1, 0xfc, 17, 0)
+		if expression {
+			body = append(body, 0x0b)
+		}
+		body = append(body, 0x41, 3, 0x41, 0, 0x41, 1, 0xfc, 14, 0, 0,
+			0x41, 3, 0x25, 0, 0x24, 14, 0x20, 1)
 		if indirectTail {
 			body = append(body, 0x41, 3, 0x13, 0, 0, 0x0b)
 		} else {
 			body = append(body, 0x20, 0, 0x15, 0, 0x0b)
 		}
 		extra[1] = Code(body)
+	}
+
+	if len(expressionMode) != 0 && expressionMode[0] {
+		index := byte(0)
+		if target == 1 {
+			index = 11
+		} else if target == 2 {
+			index = 2
+		}
+		// The passive null overwrites the initial nonzero void-function row1.
+		// Keep all original ordinals and declaration targets exactly confined.
+		elements = []byte{3, 4, 0x41, 0, 0x0b, 3, 0xd2, index, 0x0b, 0xd2, 1, 0x0b, 0xd2, 7, 0x0b,
+			7, 0x70, 6, 0xd2, 0, 0x0b, 0xd2, 1, 0x0b, 0xd2, 2, 0x0b, 0xd2, 3, 0x0b, 0xd2, 7, 0x0b, 0xd2, 11, 0x0b,
+			5, 0x70, 3, 0xd2, index, 0x0b, 0xd0, 0x70, 0x0b, 0xd2, 7, 0x0b}
 	}
 
 	sections := [][]byte{Section(1, Vec(types...)), Section(2, Vec(imports...)), Section(3, functionTypes)}

@@ -172,7 +172,7 @@ strict frontend-backed dead operands, dirty-upper indices, private trap/reuse,
 maximum ordered transport, no-max reserved capacities, starts, retired relays,
 parked cleanup and compiler-free artifacts qualify the new slice. Bulk table
 init/drop/copy/grow/fill now compose through the same confined private profile,
-with bounded passive legacy numeric elements, original segment indices and
+with bounded passive numeric elements, original segment indices and
 per-instance drops. Active/passive payloads share the 1024-value and aggregate
 byte budgets. Strict scalar/SWAR operand floors, complete range guards, overlap,
 growth-before-length publication, exact private trap/reuse and interruption
@@ -196,7 +196,15 @@ untyped-only private indirect module needs no typed-reference permission. Canoni
 wrong-signature/null/bounds traps, distinct type/function/table ordinals, far
 full-width maximum homes, active target parking and exact dynamic quotas qualify
 source, retained artifacts and compiler-free execution. Broader table ingress and
-reference external signatures remain gated.
+reference external signatures remain gated. Confined nullable funcref literal
+expression elements now compose with these private frames. Every original null
+or numeric function literal is proved before discarded declarative payloads are
+removed. Exact retained element type-pool bindings include empty/dropped slots;
+final declarations without retained slots do not intern unused types. Tableless
+declarative drops are bounded and idempotent; tableless active/passive state stays
+closed. Complete null replacement, expression-installed own/native/Go targets,
+original ordinals, exact aggregate bounds, compiler-free artifacts and retained
+codec rejection/repair qualify the slice. No new owner graph or ABI is needed.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt

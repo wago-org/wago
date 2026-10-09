@@ -104,6 +104,16 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 			return reject("global initializer bytes")
 		}
 	}
+	// The preceding element proof checks exact plain funcref bindings, including
+	// empty and dropped expression slots. They consume a pool entry without a
+	// table/global use; discarded declarations do not manufacture a binding.
+	for _, elements := range [][]ElemInit{c.Elems, c.passiveElems} {
+		for _, e := range elements {
+			if e.HasValueType {
+				used |= 1 << e.ValueTypeIndex
+			}
+		}
+	}
 	if used != uint8((1<<len(c.ValueTypes))-1) {
 		return reject("unused numeric exact value types")
 	}

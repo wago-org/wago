@@ -75,8 +75,8 @@ func TestReferenceFunctionOwnedTableConfinement(t *testing.T) {
 		"private-declarative": func(m *wasm.Module) { m.Elements[1].Kind.Funcs[0] = 12 },
 		"missing-active":      func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = MaxFunctions },
 		"passive-offset":      func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemPassive },
-		"expression-active": func(m *wasm.Module) {
-			m.Elements[0].Kind = wasm.ElemKind{Kind: wasm.ElemFuncExprs, Exprs: []wasm.Expr{{BodyBytes: []byte{0xd2, 0, 0x0b}}}}
+		"global-expression-active": func(m *wasm.Module) {
+			m.Elements[0].Kind = wasm.ElemKind{Kind: wasm.ElemFuncExprs, Exprs: []wasm.Expr{{BodyBytes: []byte{0x23, 3, 0x0b}}}}
 		},
 		"global-offset":   func(m *wasm.Module) { m.Elements[0].Mode.Offset = wasm.Expr{BodyBytes: []byte{0x23, 0, 0x0b}} },
 		"inactive-offset": func(m *wasm.Module) { m.Elements[1].Mode.Offset = wasm.Expr{BodyBytes: []byte{0x41, 0, 0x0b}} },

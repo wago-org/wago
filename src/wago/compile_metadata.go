@@ -458,7 +458,10 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		}
 		hasValueType := e.Kind.Kind != wasm.ElemFuncs
 		var valueTypeIndex uint32
-		if hasValueType {
+		// Closed RV64 source proof checks even discarded declarative literals.
+		// A final declaration without a drop slot has no retained type binding;
+		// avoid creating an orphan pool entry in that selected profile only.
+		if hasValueType && !(c.nativeReferenceFunctionABI && e.Mode.Kind == wasm.ElemDeclarative && i >= len(c.passiveElems)) {
 			valueTypeIndex = valueTypes.internCompiled(c, exactType)
 		}
 		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: valueTypeIndex, HasValueType: hasValueType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}

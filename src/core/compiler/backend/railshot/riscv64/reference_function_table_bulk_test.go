@@ -100,14 +100,18 @@ func TestReferenceFunctionTableBulkAggregateBoundary(t *testing.T) {
 			}
 		})
 	}
-	// A selected no-table private module cannot enable element operations.
+	// Tableless declarative drop is harmless; table.init still needs a table.
 	m, err := wasm.DecodeModule(wasmtest.ClosedReferenceNumericCalls(false, false, false, 0, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.Code[0].BodyBytes = []byte{0, 0xfc, 13, 0, 0x0b}
+	if err := admitClosedReferenceFunctionModule(m, false); err != nil {
+		t.Fatal("tableless declarative drop", err)
+	}
+	m.Code[0].BodyBytes = []byte{0, 0xfc, 12, 0, 0, 0x0b}
 	if err := admitClosedReferenceFunctionModule(m, false); !errors.Is(err, ErrUnsupported) {
-		t.Fatal("selected no-table elem.drop", err)
+		t.Fatal("selected no-table table.init", err)
 	}
 }
 

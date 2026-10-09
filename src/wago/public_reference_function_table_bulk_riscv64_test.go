@@ -254,7 +254,10 @@ func TestRV64PublicReferenceFunctionTableBulkRetainedBounds(t *testing.T) {
 		"private": func(v *Compiled) { v.passiveElems[2].Values[0].FuncIndex = 13 }, "missing": func(v *Compiled) { v.passiveElems[2].Values[0].FuncIndex = 127 },
 		"null": func(v *Compiled) { v.passiveElems[2].Values[0].Null = true }, "global": func(v *Compiled) { v.passiveElems[2].Values[0].HasGlobal = true }, "inactive-global": func(v *Compiled) { v.passiveElems[2].Values[0].GlobalIndex = 1 },
 		"i31": func(v *Compiled) { v.passiveElems[2].Values[0].I31Wrap = true }, "repeat": func(v *Compiled) { v.passiveElems[2].Values[0].RepeatPrevious = true }, "expression": func(v *Compiled) { v.passiveElems[2].Values[0].Expr = []byte{0xd2, 0, 0x0b} },
-		"offset": func(v *Compiled) { v.passiveElems[2].Offset.Base = 1 }, "table": func(v *Compiled) { v.passiveElems[2].TableIndex = 1 }, "typed": func(v *Compiled) { v.passiveElems[2].HasValueType = true }, "count": func(v *Compiled) { v.passiveElems = append(v.passiveElems, ElemInit{}) },
+		"offset": func(v *Compiled) { v.passiveElems[2].Offset.Base = 1 }, "table": func(v *Compiled) { v.passiveElems[2].TableIndex = 1 }, "typed-unbound": func(v *Compiled) {
+			v.passiveElems[2].HasValueType = true
+			v.passiveElems[2].ValueTypeIndex = uint32(len(v.ValueTypes))
+		}, "count": func(v *Compiled) { v.passiveElems = append(v.passiveElems, ElemInit{}) },
 		"combined1025": func(v *Compiled) { v.passiveElems[2].Values = make([]RefInit, 1023) },
 	} {
 		t.Run(name, func(t *testing.T) {

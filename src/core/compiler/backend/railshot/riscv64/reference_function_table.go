@@ -49,3 +49,63 @@ func admitClosedReferenceOwnedTableState(m *wasm.Module, remaining *int) error {
 	}
 	return nil
 }
+
+// All original payloads, including unused declarative segments, are proved
+// before validation discards them. Expression elements have no global or foreign
+// owner ingress: only exact nullable funcref literals may name numeric slots.
+func admitClosedReferenceElements(m *wasm.Module, remaining *int, numericTarget func(uint32) bool) error {
+	if len(m.Elements) > MaxOwnedElementSegments {
+		return unsupported("closed reference element directory bound")
+	}
+	consume := func(n int) bool {
+		if n > *remaining {
+			return false
+		}
+		*remaining -= n
+		return true
+	}
+	values := MaxOwnedTableEntries
+	for _, e := range m.Elements {
+		if e.Mode.Kind != wasm.ElemDeclarative && (len(m.Tables) == 0 || e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive) || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Mode.Kind != wasm.ElemActive && len(e.Mode.Offset.BodyBytes) != 0 {
+			return unsupported("closed reference exact confined element mode")
+		}
+		switch e.Kind.Kind {
+		case wasm.ElemFuncs:
+			if e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Exprs) != 0 || len(e.Kind.Funcs) > values || !consume(4*len(e.Kind.Funcs)) {
+				return unsupported("closed reference canonical legacy elements bound")
+			}
+			values -= len(e.Kind.Funcs)
+			for _, index := range e.Kind.Funcs {
+				if !numericTarget(uint32(index)) {
+					return unsupported("closed reference element descriptor escape")
+				}
+			}
+		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			if len(e.Kind.Funcs) != 0 || e.Kind.Kind == wasm.ElemFuncExprs && e.Kind.Ref != (wasm.RefType{}) || e.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef) || len(e.Kind.Exprs) > values {
+				return unsupported("closed reference exact nullable funcref expression elements")
+			}
+			values -= len(e.Kind.Exprs)
+			// The table proof already charges all original segment headers. Keep
+			// the qualified table-free legacy budget unchanged while charging new
+			// declarative expression headers even without a retained drop slot.
+			if len(m.Tables) == 0 && !consume(16) || e.Kind.Kind == wasm.ElemTypedExprs && !consume(1) {
+				return unsupported("closed reference expression element metadata byte bound")
+			}
+			for _, expr := range e.Kind.Exprs {
+				value, err := tableElementExpression(expr)
+				if err != nil {
+					return err
+				}
+				if !consume(len(expr.BodyBytes)) {
+					return unsupported("closed reference expression element byte bound")
+				}
+				if !value.Null && !numericTarget(value.FuncIndex) {
+					return unsupported("closed reference expression element descriptor escape")
+				}
+			}
+		default:
+			return unsupported("closed reference element kind")
+		}
+	}
+	return nil
+}

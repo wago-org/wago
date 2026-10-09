@@ -17,6 +17,12 @@ import (
 )
 
 func rv64ReferenceNumericCallsFixture(tableStage int, importedInitializer, vector, tails, wide bool, start, target int) []byte {
+	if tableStage == 5 {
+		if importedInitializer {
+			return wasmtest.ClosedReferenceExpressionElementsImportedInitializer(vector, wide, start)
+		}
+		return wasmtest.ClosedReferenceExpressionElements(vector, wide, start, target)
+	}
 	if tableStage == 4 {
 		if importedInitializer {
 			return wasmtest.ClosedReferenceProperIndirectTailsImportedInitializer(vector, wide, start)
@@ -162,6 +168,9 @@ func rv64ReferenceFunctionNumericCallsSourceArtifact(t *testing.T, tableStage in
 	}
 	if tableStage == 4 {
 		product = "proper-indirect-tail"
+	}
+	if tableStage == 5 {
+		product = "expression-elements"
 	}
 	for _, target := range []int{0, 1, 2} {
 		for _, artifact := range []bool{false, true} {

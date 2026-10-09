@@ -145,15 +145,24 @@ rechecks actual call/control witnesses. Ordered maximum transport, callback park
 retired import reexports, foreign dynamic roots, precise private null traps,
 stack-trap reuse and bounded allocation checks qualify the composition. One bounded
 private owned nullable funcref table32 also composes with these frames/cells through
-ordinary numeric `call_indirect` and table.get/set/size. Active legacy numeric
+ordinary numeric `call_indirect` and table.get/set/size. Active numeric
 function elements and literal null/own numeric table initializers stay confined;
 exact empty table export metadata prevents host descriptor ingress. Every private
 row remains noncallable. Aggregate source/retained budgets, strict dead operand
 floors, dirty-upper table indices, table-only exact type pools, zero-size and no-max
 initializers, maximum ordered transport, precise private indirect traps and reuse,
 starts and parked/retired owners have source/compiler-free coverage. This private
-profile also supports table.init/elem.drop/copy/grow/fill with bounded legacy
-passive numeric function elements. Active/passive payloads share the 1024-value
+profile also supports table.init/elem.drop/copy/grow/fill with bounded numeric
+function elements, including literal expression forms. Implicit or explicit plain
+nullable funcref elements accept only exact null-func and numeric ref.func
+literals. All original targets, including discarded declarations, are checked;
+legacy and expression payloads share the same aggregate bounds. Retained
+expression segments bind exact pooled types, including empty/dropped slots;
+discarded final declarations add no unused type. Tableless declarative elem.drop
+preserves original ordinals and dropped state; tableless active/passive remain
+gated. Complete null rows replace prior nonzero rows. Scalar/SWAR source,
+artifact and compiler-free tests cover imported expression-produced targets,
+private continuations, parks, retirement, quotas and precise trap/reuse. Active/passive payloads share the 1024-value
 and aggregate byte limits; original segment indices and per-instance drop state
 stay intact. Range guards precede writes, copy handles overlap, and growth fully
 initializes entries before publishing length. No-max tables with growth require

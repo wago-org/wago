@@ -40,29 +40,45 @@ func rv64ValidateReferenceFunctionTable(c *Compiled, remaining *int) error {
 	if len(c.Elems) > railshot.MaxOwnedElementSegments || len(c.passiveElems) > railshot.MaxOwnedElementSegments {
 		return reject("element directory bound")
 	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	elementType := func(e ElemInit, active bool) bool {
+		if e.HasValueType {
+			return e.RefType == ValFuncRef && uint64(e.ValueTypeIndex) < uint64(len(c.ValueTypes)) && c.ValueTypes[e.ValueTypeIndex] == plain
+		}
+		return e.ValueTypeIndex == 0 && (e.RefType == ValFuncRef || !active && e.RefType == 0)
+	}
+	literal := func(v RefInit, expression bool) bool {
+		if v.HasGlobal || v.GlobalIndex != 0 || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 {
+			return false
+		}
+		if v.Null {
+			return expression && v.FuncIndex == 0
+		}
+		return uint64(v.FuncIndex) < uint64(c.NumImports+len(c.Funcs)) && !railshotNonCallableFunction(c, int(v.FuncIndex))
+	}
 	values := railshot.MaxOwnedTableEntries
 	for _, e := range c.Elems {
-		if !hasTable || e.Mode != ElemModeActive || e.TableIndex != 0 || e.RefType != ValFuncRef || e.HasValueType || e.ValueTypeIndex != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 || len(e.Values) > values || !consume(20) || !consume(4*len(e.Values)) {
-			return reject("bounded active legacy numeric literal elements required")
+		if !hasTable || e.Mode != ElemModeActive || e.TableIndex != 0 || !elementType(e, true) || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 || len(e.Values) > values || !consume(20) || e.HasValueType && !consume(4) || !consume(4*len(e.Values)) {
+			return reject("bounded active numeric literal elements required")
 		}
 		values -= len(e.Values)
 		for _, v := range e.Values {
-			if v.Null || v.HasGlobal || v.GlobalIndex != 0 || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(v.FuncIndex)) {
-				return reject("private element target escape")
+			if !literal(v, e.HasValueType) {
+				return reject("private element target escape or noncanonical literal")
 			}
 		}
 	}
 	for _, e := range c.passiveElems {
-		if e.Mode != ElemModeDeclarative && (!hasTable || e.Mode != ElemModeActive && e.Mode != ElemModePassive) || e.TableIndex != 0 || e.RefType != 0 && e.RefType != ValFuncRef || e.HasValueType || e.ValueTypeIndex != 0 || e.Mode != ElemModePassive && len(e.Values) != 0 || len(e.Values) > values || e.Offset.Base != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 {
-			return reject("canonical legacy passive or dropped active/declarative state required")
+		if e.Mode != ElemModeDeclarative && (!hasTable || e.Mode != ElemModeActive && e.Mode != ElemModePassive) || e.TableIndex != 0 || !elementType(e, false) || e.Mode != ElemModePassive && len(e.Values) != 0 || len(e.Values) > values || e.Offset.Base != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 {
+			return reject("canonical passive or dropped active/declarative state required")
 		}
-		if hasTable && (!consume(16) || !consume(4*len(e.Values))) {
+		if (hasTable || e.HasValueType) && (!consume(16) || e.HasValueType && !consume(4) || !consume(4*len(e.Values))) {
 			return reject("aggregate element metadata/payload byte bound")
 		}
 		values -= len(e.Values)
 		for _, v := range e.Values {
-			if v.Null || v.HasGlobal || v.GlobalIndex != 0 || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(v.FuncIndex)) {
-				return reject("private passive element target escape")
+			if !literal(v, e.HasValueType) {
+				return reject("private passive target escape or noncanonical literal")
 			}
 		}
 	}

@@ -43,6 +43,9 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 	if tableStage == 4 {
 		product = "proper-indirect-tail"
 	}
+	if tableStage == 5 {
+		product = "expression-elements"
+	}
 	for _, vector := range []bool{false, true} {
 		t.Run(fmt.Sprintf("vector%t", vector), func(t *testing.T) {
 			owners := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
