@@ -1605,6 +1605,15 @@ func (f *fn) popBranchCondition() (Reg, bool) {
 }
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
+	if op == 0x03 && integerReductionLoopEnabled {
+		if done, err := f.tryIntegerReductionLoop(r); done || err != nil {
+			return err
+		}
+	}
+	return f.opBlockPlain(r, op)
+}
+
+func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {
 		return err
