@@ -19,20 +19,22 @@ func equalRecursiveGroups(n int) *Module {
 
 func TestRecursiveGroupLateMismatchRollsBack(t *testing.T) {
 	const members = 128
-	m := equalRecursiveGroups(members)
-	m.Types[1].SubTypes[members-1].Comp.Params[0] = I64
-	v := &moduleValidator{m: m}
-	state := make(map[moduleTypePair]uint8)
-	a, b := TypeIdx{Index: 0}, TypeIdx{Index: members}
-	if v.typeIdxEquivalentWithState(a, b, state) {
-		t.Fatal("groups with a late mismatch compare equal")
-	}
-	if len(state) != 0 {
-		t.Fatalf("failed comparison retained %d provisional pairs", len(state))
-	}
-	m.Types[1].SubTypes[members-1].Comp.Params[0] = I32
-	if !v.typeIdxEquivalentWithState(a, b, state) {
-		t.Fatal("equal groups compare unequal after rollback")
+	for _, member := range []uint32{0, members - 2} {
+		m := equalRecursiveGroups(members)
+		m.Types[1].SubTypes[members-1].Comp.Params[0] = I64
+		v := &moduleValidator{m: m}
+		state := make(map[moduleTypePair]uint8)
+		a, b := TypeIdx{Index: member}, TypeIdx{Index: member + members}
+		if v.typeIdxEquivalentWithState(a, b, state) {
+			t.Fatalf("groups with a late mismatch compare equal from member %d", member)
+		}
+		if len(state) != 0 {
+			t.Fatalf("failed comparison retained %d provisional pairs from member %d", len(state), member)
+		}
+		m.Types[1].SubTypes[members-1].Comp.Params[0] = I32
+		if !v.typeIdxEquivalentWithState(a, b, state) {
+			t.Fatalf("equal groups compare unequal after rollback from member %d", member)
+		}
 	}
 }
 
