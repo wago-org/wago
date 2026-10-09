@@ -33,6 +33,10 @@ func newLiveImages(events []jitprofile.Event) *liveImages {
 	if loadCount == 0 {
 		return &liveImages{}
 	}
+	// One load needs only a live image slot, without address or rank arrays.
+	if loadCount == 1 {
+		return &liveImages{images: make([]*jitprofile.Image, 1)}
+	}
 	loads := make([]load, 0, loadCount)
 	for i, event := range events {
 		if event.Kind == "load" && event.Image != nil {
@@ -91,6 +95,12 @@ func (index *liveImages) selectRank(rank int) int {
 
 func (index *liveImages) load(event int, image *jitprofile.Image) int {
 	index.last = nil
+	if len(index.images) == 1 {
+		if image.Size != 0 {
+			index.images[0] = image
+		}
+		return 0
+	}
 	if old, ok := index.active[image.ID]; ok {
 		index.images[old] = nil
 		index.add(old, -1)
@@ -108,6 +118,12 @@ func (index *liveImages) load(event int, image *jitprofile.Image) int {
 
 func (index *liveImages) retire(id uint64) {
 	index.last = nil
+	if len(index.images) == 1 {
+		if image := index.images[0]; image != nil && image.ID == id {
+			index.images[0] = nil
+		}
+		return
+	}
 	if position, ok := index.active[id]; ok {
 		index.images[position] = nil
 		index.add(position, -1)
@@ -124,6 +140,9 @@ func (index *liveImages) checkLoad(position int) error {
 	}
 	if image.Base > ^uint64(0)-image.Size {
 		return fmt.Errorf("image address overflow")
+	}
+	if len(index.images) == 1 {
+		return nil
 	}
 	if before := index.count(position); before > 0 {
 		previous := index.images[index.selectRank(before)]
@@ -143,6 +162,13 @@ func (index *liveImages) checkLoad(position int) error {
 func (index *liveImages) lookup(pc uint64) *jitprofile.Image {
 	if image := index.last; image != nil && pc >= image.Base && pc-image.Base < image.Size {
 		return image
+	}
+	if len(index.images) == 1 {
+		if image := index.images[0]; image != nil && pc >= image.Base {
+			index.last = image
+			return image
+		}
+		return nil
 	}
 	end := sort.Search(len(index.bases), func(i int) bool { return index.bases[i] > pc })
 	if rank := index.count(end); rank > 0 {
