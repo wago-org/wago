@@ -100,3 +100,39 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 	}
 	return nil
 }
+
+// A Wasm module has one export namespace. Keep its count and name bytes shared
+// across the retained maps without allocating another name directory.
+func rv64ValidateReferenceFunctionExports(c *Compiled, remaining *int) error {
+	memories := c.memoryExportMap()
+	if len(c.Exports)+len(c.GlobalExports)+len(memories) > railshot.MaxFunctions {
+		return fmt.Errorf("RV64 closed reference export count bound")
+	}
+	for name, index := range c.GlobalExports {
+		if index < 0 || index >= len(c.Globals) {
+			return fmt.Errorf("RV64 closed reference global export index")
+		}
+		if _, duplicate := c.Exports[name]; duplicate {
+			return fmt.Errorf("RV64 closed reference duplicate export name")
+		}
+	}
+	for name, index := range memories {
+		if index < 0 || index >= c.memoryCount() {
+			return fmt.Errorf("RV64 closed reference memory export index")
+		}
+		_, function := c.Exports[name]
+		_, global := c.GlobalExports[name]
+		if function || global {
+			return fmt.Errorf("RV64 closed reference duplicate export name")
+		}
+	}
+	for _, exports := range []map[string]int{c.Exports, c.GlobalExports, memories} {
+		for name := range exports {
+			if len(name) > *remaining {
+				return fmt.Errorf("RV64 closed reference export name byte bound")
+			}
+			*remaining -= len(name)
+		}
+	}
+	return nil
+}

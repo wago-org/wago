@@ -76,7 +76,7 @@ exact reference result types and reuse the checked frame protocol. This private
 mode rejects imports and indirect/reference calls or tails; legacy production
 staging routes reject the mode. Private decoded whole-module compilation also
 checks numeric exports and descriptor targets, bounded declarations/code and
-inert metadata before validation. It excludes external state and prevents
+inert metadata before validation. It excludes imported state and prevents
 reference-bearing functions from escaping; legacy isolated instantiation rejects
 the mode before allocation. Private sparse owner snapshots retain every physical
 function frame while leaving internal-only descriptor and target rows empty.
@@ -94,11 +94,15 @@ empty internal rows and numeric ordinals. Foreign numeric calls retain closed
 producers and size their internal transport from actual signatures. These closed
 modules also compose with bounded owned numeric globals, unshared memory32/64,
 multiple memories and active/passive data. References remain internal across
-growth, bulk memory operations and local proper tails; resource imports/exports
-and reference-valued imports/exports remain unsupported in this mode. Initializer
+growth, bulk memory operations and local proper tails. Owned numeric memories
+and globals may be exported with exact names and aliases; export counts and name
+bytes share the module budget. Resource imports and reference-valued imports/exports
+remain unsupported in this mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories
-through final attachment retirement. Standalone `ref.null` constants with bounded numeric
+through final attachment retirement. Separate memory-only and global-only borrowers
+also preserve the entire producer lifetime, including after all function callers close.
+Standalone `ref.null` constants with bounded numeric
 function-type indices carry the typed witness, including unreachable uses,
 without allocating declared-call transport. Invocation
 scopes retain imported

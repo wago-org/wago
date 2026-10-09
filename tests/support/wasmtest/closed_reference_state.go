@@ -10,15 +10,21 @@ import (
 // operate on owned numeric globals, two mixed-width memories and bulk data.
 // Only numeric functions are exported. Function ordinals 2 and 3 are internal.
 func ClosedReferenceState(vector, tails, wideFirst bool) []byte {
-	return closedReferenceState(vector, tails, wideFirst, 32)
+	return closedReferenceState(vector, tails, wideFirst, 32, false)
 }
 
 // ClosedReferenceStateOffset varies the full memory64 active initializer address.
 func ClosedReferenceStateOffset(vector bool, offset uint64) []byte {
-	return closedReferenceState(vector, false, true, offset)
+	return closedReferenceState(vector, false, true, offset, false)
 }
 
-func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64) []byte {
+// ClosedReferenceResources exports owned numeric resources and contains no grow
+// instruction: exported reservations must still support growth by borrowers.
+func ClosedReferenceResources(vector, tails, wideFirst bool) []byte {
+	return closedReferenceState(vector, tails, wideFirst, 32, true)
+}
+
+func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, resources bool) []byte {
 	typ := wasm.F64
 	load, store := []byte{0x2b}, []byte{0x39}
 	zero := []byte{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b}
@@ -62,7 +68,8 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64) []by
 			exports = append(exports, ExportEntry(name, 0, index))
 		}
 	}
-	add([]wasm.ValType{wasm.I32, typ}, []wasm.ValType{typ, wasm.I32, wasm.I32}, []byte{0xd2, 1, 0x20, 0, 0x20, 1, 0x10, 2, 0xd1, 0x0b}, "run", false)
+	root := []byte{0xd2, 1, 0x20, 0, 0x20, 1, 0x10, 2, 0xd1, 0x0b}
+	add([]wasm.ValType{wasm.I32, typ}, []wasm.ValType{typ, wasm.I32, wasm.I32}, root, "run", false)
 	add(nil, nil, []byte{0x0b}, "", false)
 	params, results := []wasm.ValType{wasm.FuncRef, wasm.I32, typ}, []wasm.ValType{typ, wasm.I32, wasm.FuncRef}
 	call := byte(0x10)
@@ -72,10 +79,16 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64) []by
 	add(params, results, []byte{0x20, 0, 0x20, 1, 0x20, 2, call, 3, 0x0b}, "", false)
 	// Keep the reference as an operand across numeric side effects, then save
 	// and reload it through a reference local after the last bulk operation.
-	leaf := []byte{0x20, 0, 0x20, 1, 0x23, 0, 0x6a, 0x24, 1, 0x20, 2, 0x24, 2}
+	leaf := []byte{0x20, 0, 0x20, 1}
+	if resources {
+		leaf = append(leaf, 0x23, 1, 0x6a)
+	}
+	leaf = append(leaf, 0x23, 0, 0x6a, 0x24, 1, 0x20, 2, 0x24, 2)
 	for i := 0; i < 2; i++ {
-		leaf = append(leaf, constant(i, 1)...)
-		leaf = append(leaf, 0x40, byte(i), 0x1a)
+		if !resources {
+			leaf = append(leaf, constant(i, 1)...)
+			leaf = append(leaf, 0x40, byte(i), 0x1a)
+		}
 		leaf = append(leaf, constant(i, 64)...)
 		leaf = append(leaf, 0x23, 2)
 		leaf = append(leaf, memarg(store, i)...)
@@ -94,8 +107,16 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64) []by
 		storeBody = append(storeBody, 0x0b)
 		add([]wasm.ValType{addrType(i)}, []wasm.ValType{typ}, loadBody, fmt.Sprintf("load%d", i), false)
 		add([]wasm.ValType{addrType(i), typ}, nil, storeBody, fmt.Sprintf("store%d", i), false)
-		add([]wasm.ValType{addrType(i)}, []wasm.ValType{addrType(i)}, []byte{0x20, 0, 0x40, byte(i), 0x0b}, fmt.Sprintf("grow%d", i), false)
+		if !resources {
+			add([]wasm.ValType{addrType(i)}, []wasm.ValType{addrType(i)}, []byte{0x20, 0, 0x40, byte(i), 0x0b}, fmt.Sprintf("grow%d", i), false)
+		}
 		add(nil, []wasm.ValType{addrType(i)}, []byte{0x3f, byte(i), 0x0b}, fmt.Sprintf("size%d", i), false)
+	}
+	if resources {
+		for i := uint32(0); i < 2; i++ {
+			exports = append(exports, ExportEntry(fmt.Sprintf("memory%d", i), 2, i), ExportEntry(fmt.Sprintf("alias%d", i), 2, i))
+		}
+		exports = append(exports, ExportEntry("constant", 3, 0), ExportEntry("counter", 3, 1), ExportEntry("counter-alias", 3, 1), ExportEntry("payload", 3, 2), ExportEntry("payload-alias", 3, 2))
 	}
 	var memories, data [][]byte
 	for i, wide := range widths {

@@ -98,7 +98,21 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(len(m.Code)) && !references[index] }
 	for _, ex := range m.Exports {
-		if ex.Index.Kind != wasm.ExternFunc || !numericTarget(ex.Index.Index) {
+		switch ex.Index.Kind {
+		case wasm.ExternFunc:
+			if !numericTarget(ex.Index.Index) {
+				return unsupported("closed reference module numeric function exports only")
+			}
+		case wasm.ExternMem:
+			if uint64(ex.Index.Index) >= uint64(len(m.Memories)) {
+				return unsupported("closed reference module owned memory export index")
+			}
+		case wasm.ExternGlobal:
+			// State admission already proved every global is owned and numeric.
+			if uint64(ex.Index.Index) >= uint64(len(m.Globals)) {
+				return unsupported("closed reference module owned numeric global export index")
+			}
+		default:
 			return unsupported("closed reference module numeric exports only")
 		}
 	}

@@ -85,7 +85,7 @@ Separately enabled local proper tails preserve exact reference result types,
 original return addresses, constant entry SP, and cooperative cancellation across
 mixed reference/vector transfers. Private decoded scalar/SWAR module adapters
 now require a bounded closed-module proof: numeric exports and descriptor targets,
-no external state, and no indirect/reference calls. They retain actual function
+no imported state, and no indirect/reference calls. They retain actual function
 indices across descriptor-directory holes. Legacy production staging routes and
 legacy isolated instantiation reject that mode before allocation. A private
 sparse owner constructor now retains full physical function spans with explicit
@@ -108,8 +108,12 @@ Source and retained admission bound state and types together; exact export maps
 and canonical initializer forms preserve confinement. Scalar/SWAR tests cover
 stateful calls and local tails, high-bit initializer bounds, failed stores without
 partial writes, exact generation quotas and all-memory retirement after foreign
-callers close. Resource imports/exports in this closed mode, general
-reference-valued imports/exports and mutable reference ownership remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
+callers close. Owned numeric resource exports now have exact shared namespace
+validation, aggregate name/count budgets and alias sharing. Borrowers can grow an
+exported memory even when the producer contains no growth instructions. Independent
+memory-only/global-only borrowers retain all storage after function callers close;
+late imports and host state access through a closed producer reject. Resource
+imports in this closed mode, general reference-valued imports/exports and mutable reference ownership remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

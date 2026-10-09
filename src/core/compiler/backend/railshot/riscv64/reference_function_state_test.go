@@ -75,8 +75,8 @@ func TestReferenceFunctionOwnedStateAdmission(t *testing.T) {
 			"large-offset":      func(m *wasm.Module) { m.Data[0].Mode.Offset.BodyBytes = make([]byte, MaxIntegerInitializerBytes+1) },
 			"passive-offset":    func(m *wasm.Module) { m.Data[2].Mode.Offset.BodyBytes = []byte{0x41, 0, 0x0b} },
 			"passive-memory":    func(m *wasm.Module) { m.Data[2].Mode.Mem = 1 },
-			"global-export":     func(m *wasm.Module) { m.Exports[0].Index.Kind = wasm.ExternGlobal },
-			"memory-export":     func(m *wasm.Module) { m.Exports[0].Index.Kind = wasm.ExternMem },
+			"global-export":     func(m *wasm.Module) { m.Exports[0].Index.Kind = wasm.ExternGlobal; m.Exports[0].Index.Index = 3 },
+			"memory-export":     func(m *wasm.Module) { m.Exports[0].Index.Kind = wasm.ExternMem; m.Exports[0].Index.Index = 2 },
 		} {
 			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
 				m := referenceStateDecode(t, vector, false, false)

@@ -53,7 +53,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeReferenceCallABI || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions || len(c.FuncTypeID) != len(c.Funcs) {
 		return reject("bounded framed function ABI required")
 	}
-	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || c.dynamicImports || c.dynamicFuncrefEscape || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.memoryImport != "" || c.tableCount() != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || len(c.tableExports) != 0 || len(c.Elems) != 0 || len(c.customInstructions) != 0 {
+	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || c.dynamicImports || c.dynamicFuncrefEscape || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.memoryImport != "" || c.tableCount() != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.GlobalImports) != 0 || len(c.tableExports) != 0 || len(c.Elems) != 0 || len(c.customInstructions) != 0 {
 		return reject("external state or callable escape")
 	}
 	if m := rv64NativeTailModule(c); m != nil && len(m.Plans) != 0 {
@@ -62,7 +62,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if c.TableHasValueType || c.TableValueTypeIndex != 0 {
 		return reject("unused exact value metadata")
 	}
-	if d := c.memoryDir; d != nil && (len(d.exports) != 0 || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil) {
+	if d := c.memoryDir; d != nil && (len(d.ehTags) != 0 || len(d.ehTagExports) != 0 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil) {
 		return reject("resource initializer metadata")
 	}
 	if err := rv64ValidateDeclaredControlTypes(c); err != nil {
@@ -70,6 +70,9 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	}
 	remaining := railshot.MaxModuleBytes
 	if err := rv64ValidateReferenceFunctionState(c, &remaining); err != nil {
+		return err
+	}
+	if err := rv64ValidateReferenceFunctionExports(c, &remaining); err != nil {
 		return err
 	}
 	for _, typ := range c.Types {

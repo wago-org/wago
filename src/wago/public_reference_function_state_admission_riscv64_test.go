@@ -66,7 +66,7 @@ func TestRV64PublicReferenceFunctionStateRetainedAdmission(t *testing.T) {
 			"memory-inactive-max":          func(v *Compiled) { v.memoryDir.defs[1].HasMax = false },
 			"memory-late-import":           func(v *Compiled) { v.memoryDir.defs[1].ImportKey = "env.memory" },
 			"memory-advisory-exports":      func(v *Compiled) { v.memoryDir.exactExports = false },
-			"memory-export":                func(v *Compiled) { v.memoryDir.exports = map[string]int{"memory": 0} },
+			"memory-export":                func(v *Compiled) { v.memoryDir.exports = map[string]int{"memory": 2} },
 			"memory-primary-cache":         func(v *Compiled) { v.MemMinPages++ },
 			"data-count":                   func(v *Compiled) { v.Data = make([]DataInit, 257) },
 			"passive-count":                func(v *Compiled) { v.PassiveData = make([]PassiveDataInit, 257) },
