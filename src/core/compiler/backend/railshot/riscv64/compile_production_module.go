@@ -96,7 +96,24 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if err != nil {
 		return nil, err
 	}
-	referenceTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, usesSWAR)
+	if opts.NativeReferenceFunctions {
+		opts.referenceFunctions, err = hasDefinedReferenceFunctions(m)
+		if err != nil {
+			return nil, err
+		}
+		if opts.referenceFunctions {
+			// Closed modules use direct calls/tails only. General tail permission
+			// must not attach import or dynamic owner plans to this ABI.
+			opts.importTailCalls, opts.dynamicTailCalls = false, false
+			if err := admitClosedReferenceProductionOptions(opts); err != nil {
+				return nil, err
+			}
+			if err := admitClosedReferenceFunctionModule(m, usesSWAR); err != nil {
+				return nil, err
+			}
+		}
+	}
+	referenceTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +149,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	c, err := compileDecodedModule(m, scalarRegisters[:], opts)
 	if err != nil {
 		return nil, err
+	}
+	if opts.referenceFunctions {
+		return stageClosedReferenceProductionModule(c, opts, m, false)
 	}
 	return stageProductionModule(c, opts)
 }
@@ -195,6 +215,12 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 	if err := admitProductionFunctionABI(c); err != nil {
 		return nil, err
 	}
+	return stageAdmittedProductionModule(c, opts)
+}
+
+// Both callers authenticate the selected function ABI before this shared
+// profile/ownership staging implementation can allocate a code image.
+func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModule, error) {
 	var tail *enc.NativeTailModule
 	if opts.NativeTailCalls {
 		if _, _, err := NativeTailInstanceBudget(len(*opts.tailPlans), len(c.code)); err != nil {
@@ -250,7 +276,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 	if opts.MemoryPressure != nil && (opts.MemoryPressureAt == 0 || len(c.code) >= opts.MemoryPressureAt) {
 		opts.MemoryPressure()
 	}
-	image, err := stageProduction(c, opts.DeferCodeMapping)
+	image, err := stageProductionImage(c, opts.DeferCodeMapping)
 	if err != nil {
 		return image, err
 	}
@@ -267,6 +293,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 	image.NativeTail = tail
 	image.NativeReferenceCalls = opts.referenceCallInstructions
 	image.NativeReferenceControl = opts.referenceControlInstructions
+	image.NativeReferenceFunctions = c.state.referenceFunctions
 	if diagnosticsEnabled && opts.Stats != nil {
 		collectFinalizedStats(c, opts.Stats)
 	}
@@ -277,7 +304,7 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 // Ordinary references require their distinct retained normal-return protocol.
 // Reference control retains carriers without requiring declared-call transport.
 // Instruction bytes were bounded before this pass.
-func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector bool) (bool, bool, bool, error) {
+func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, error) {
 	referenceTails, hasReferenceCall, hasReferenceControl := false, false, false
 	types := internalReferenceTypes{decoded: m.Types, decodedSWAR: vector}
 	for _, group := range m.Types {
@@ -294,15 +321,17 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 		}
 		hasReferenceControl = hasReferenceControl || witness
 	}
-	// Declared control types never relax the ABI of actual imported/defined
-	// functions, even when their bodies are empty or unreachable.
+	// Control-only declarations do not relax actual function signatures. The
+	// closed function ABI is selected separately after whole-module proof.
 	for i := 0; i < m.FuncCount(); i++ {
 		sig, ok := m.FuncSignature(uint32(i))
 		if !ok {
 			return false, false, false, unsupported("function signature binding")
 		}
 		var err error
-		if vector {
+		if referenceFunctions {
+			_, _, err = admitDeclaredControlSignature(sig, types, true, referenceCalls, vector)
+		} else if vector {
 			err = swarCallSignature(sig)
 		} else {
 			err = integerNumericSignature(sig, true)

@@ -24,6 +24,7 @@ type NativeTailModule struct{ Plans []NativeTailPlan }
 type CompiledModule struct {
 	NativeReferenceCalls                                       bool
 	NativeReferenceControl                                     bool
+	NativeReferenceFunctions                                   bool
 	NativeTail                                                 *NativeTailModule
 	Code                                                       []byte
 	CodeImage                                                  codeimage.Image

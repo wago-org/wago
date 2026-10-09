@@ -43,7 +43,11 @@ type CompileOptions struct {
 	NativeTailCalls bool
 	// NativeReferenceCalls permits ordinary call_ref and reference control under
 	// retained canonical owners. Call transport and control witnesses are distinct.
-	NativeReferenceCalls            bool
+	NativeReferenceCalls bool
+	// NativeReferenceFunctions permits closed modules with internal reference
+	// parameters/results and numeric exports. It requires sparse physical owners;
+	// the image witness is selected only when an actual function uses this ABI.
+	NativeReferenceFunctions        bool
 	InvocationContext               bool
 	ForeignTableCalls               bool
 	MemoryPressureAt                int
@@ -62,7 +66,8 @@ type CompileOptions struct {
 	production          bool
 	publicStarts        bool
 	hostImports         bool
-	// Private decoded closed-module prerequisite; never production staging.
+	// Selected by bounded closed-module admission, or private decoded tests.
+	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool
 	// Public TailCall remains gated until the whole instruction/target family.
 	tailModule     *wasm.Module

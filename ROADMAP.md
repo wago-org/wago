@@ -86,13 +86,20 @@ original return addresses, constant entry SP, and cooperative cancellation acros
 mixed reference/vector transfers. Private decoded scalar/SWAR module adapters
 now require a bounded closed-module proof: numeric exports and descriptor targets,
 no external state, and no indirect/reference calls. They retain actual function
-indices across descriptor-directory holes. Both production staging routes and
+indices across descriptor-directory holes. Legacy production staging routes and
 legacy isolated instantiation reject that mode before allocation. A private
 sparse owner constructor now retains full physical function spans with explicit
 noncallable ordinals, empty descriptor/target rows and bounded frozen metadata.
 Callable targets after internal functions preserve their indices; entry binding
-also works when ordinal zero is internal. Foreign parking/ownership and
-retained reference-callable integration remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
+also works when ordinal zero is internal. A separate backend staging permission
+now selects only actual reference-valued functions, rechecks closed source and
+all emitted modes, and records a distinct image witness. Scalar/SWAR direct calls
+and local proper tails retain framed ABI and bounded metadata. Bare nullable
+signatures keep baseline ReferenceTypes admission; ordinary modules and unused
+control declarations keep their existing witnesses. Public source/artifact
+wiring and destination permission before mapping remain the next boundary.
+Foreign parking/ownership and general reference-callable integration remain
+separate work. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

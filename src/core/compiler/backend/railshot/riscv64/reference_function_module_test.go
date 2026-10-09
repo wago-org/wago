@@ -394,7 +394,7 @@ func TestReferenceFunctionModuleDirectoryAndLocalBounds(t *testing.T) {
 func TestReferenceFunctionModuleModeAndValidationGates(t *testing.T) {
 	m := closedReferenceDecode(t, false, false, false, true)
 	for _, change := range []func(*CompileOptions){
-		func(o *CompileOptions) { o.production = false }, func(o *CompileOptions) { o.publicStarts = false }, func(o *CompileOptions) { o.Interruptible = false }, func(o *CompileOptions) { o.ForeignTableCalls = false }, func(o *CompileOptions) { o.NativeReferenceCalls = false }, func(o *CompileOptions) { o.InvocationContext = false }, func(o *CompileOptions) { o.importTailCalls = true }, func(o *CompileOptions) { o.dynamicTailCalls = true }, func(o *CompileOptions) { o.Profile = true }, func(o *CompileOptions) { o.SourceMaps = true }, func(o *CompileOptions) { o.UnwindMaps = true },
+		func(o *CompileOptions) { o.production = false }, func(o *CompileOptions) { o.publicStarts = false }, func(o *CompileOptions) { o.Interruptible = false }, func(o *CompileOptions) { o.ForeignTableCalls = false }, func(o *CompileOptions) { o.InvocationContext = false }, func(o *CompileOptions) { o.importTailCalls = true }, func(o *CompileOptions) { o.dynamicTailCalls = true }, func(o *CompileOptions) { o.Profile = true }, func(o *CompileOptions) { o.SourceMaps = true }, func(o *CompileOptions) { o.UnwindMaps = true },
 	} {
 		opts := closedReferenceOptions(false)
 		change(&opts)
@@ -404,7 +404,7 @@ func TestReferenceFunctionModuleModeAndValidationGates(t *testing.T) {
 	}
 	vm := closedReferenceDecode(t, true, false, false, true)
 	for _, change := range []func(*emissionMode){
-		func(o *emissionMode) { o.production = false }, func(o *emissionMode) { o.interruptible = false }, func(o *emissionMode) { o.foreignTableCalls = false }, func(o *emissionMode) { o.referenceCalls = false }, func(o *emissionMode) { o.invocationContext = false }, func(o *emissionMode) { o.importTailCalls = true }, func(o *emissionMode) { o.dynamicTailCalls = true },
+		func(o *emissionMode) { o.production = false }, func(o *emissionMode) { o.interruptible = false }, func(o *emissionMode) { o.foreignTableCalls = false }, func(o *emissionMode) { o.invocationContext = false }, func(o *emissionMode) { o.importTailCalls = true }, func(o *emissionMode) { o.dynamicTailCalls = true },
 	} {
 		mode := closedReferenceMode(false)
 		change(&mode)

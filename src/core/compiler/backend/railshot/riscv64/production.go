@@ -47,6 +47,11 @@ func stageProduction(c *Compiled, deferMapping bool) (*enc.CompiledModule, error
 	if err := admitProductionFunctionABI(c); err != nil {
 		return nil, err
 	}
+	return stageProductionImage(c, deferMapping)
+}
+
+// Callers must admit the complete function ABI before allocating an image.
+func stageProductionImage(c *Compiled, deferMapping bool) (*enc.CompiledModule, error) {
 	if len(c.code) == 0 && len(c.functions) == 0 && c.state.importedFunctions == 0 {
 		// State-only modules have nothing to publish. In particular, do not
 		// create the page-rounded empty code mapping used by imported bridges.

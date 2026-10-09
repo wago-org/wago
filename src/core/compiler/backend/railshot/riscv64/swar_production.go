@@ -29,11 +29,15 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	} else if len(m.Imports) != 0 {
 		policy = swarModuleHosts
 	}
-	image, err := compileSWARDecodedModuleProfile(m, emissionMode{profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}, policy, swarStateProfile{publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls})
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}, policy, swarStateProfile{publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls})
 	if err != nil {
 		return nil, err
 	}
-	return stageProductionModule(&Compiled{profileModuleState: image.profileModuleState, code: image.code, functions: image.functions, state: moduleState{importedFunctions: len(image.hosts)}}, opts)
+	c := &Compiled{profileModuleState: image.profileModuleState, code: image.code, functions: image.functions, state: moduleState{importedFunctions: len(image.hosts), referenceFunctions: opts.referenceFunctions}}
+	if opts.referenceFunctions {
+		return stageClosedReferenceProductionModule(c, opts, m, true)
+	}
+	return stageProductionModule(c, opts)
 }
 
 // moduleUsesSWAR walks encoded instructions, skipping their actual immediates;

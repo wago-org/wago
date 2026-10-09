@@ -68,7 +68,7 @@ func compile(data []byte, regs []uint8) (*Compiled, error) {
 	return compileOptions(data, regs, CompileOptions{})
 }
 func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, error) {
-	if opts.referenceFunctions {
+	if opts.referenceFunctions || opts.NativeReferenceFunctions {
 		return nil, unsupported("private reference functions require decoded closed-module admission")
 	}
 	if opts.NativeReferenceCalls && (!opts.production || !opts.InvocationContext || !opts.Interruptible || !opts.ForeignTableCalls) {
@@ -130,7 +130,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		return nil, fmt.Errorf("rv64: nil module")
 	}
 	if opts.referenceFunctions {
-		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.NativeReferenceCalls || !opts.InvocationContext || opts.importTailCalls || opts.dynamicTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
+		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls || opts.dynamicTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
 			return nil, unsupported("closed reference module requires private cooperative production")
 		}
 		if err := admitClosedReferenceFunctionModule(m, false); err != nil {

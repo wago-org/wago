@@ -73,7 +73,7 @@ are bounded before validation. Private same-image direct-call lowering
 preserves function-reference arguments/results, mixed compact cells and
 reference root joins. Its separately enabled cooperative proper tails require
 exact reference result types and reuse the checked frame protocol. This private
-mode rejects imports and indirect/reference calls or tails; both production
+mode rejects imports and indirect/reference calls or tails; legacy production
 staging routes reject the mode. Private decoded whole-module compilation also
 checks numeric exports and descriptor targets, bounded declarations/code and
 inert metadata before validation. It excludes external state and prevents
@@ -81,8 +81,13 @@ reference-bearing functions from escaping; legacy isolated instantiation rejects
 the mode before allocation. Private sparse owner snapshots retain every physical
 function frame while leaving internal-only descriptor and target rows empty.
 They preserve function indices, authenticate the code lifetime, and exclude those
-rows from dynamic target selection. Source/artifact callable signatures remain
-numeric/vector-only. Standalone `ref.null` constants with bounded numeric
+rows from dynamic target selection. An explicit backend compiler permission now
+stages closed scalar/SWAR modules with internal reference-valued functions after
+rechecking confinement and every emitted function mode. The image records a
+distinct selected ABI witness; bare nullable references do not require the typed
+call/control witnesses. Permission alone does not change numeric, imported or
+control-only modules. Public Wago source/artifact integration remains pending;
+its callable signatures remain numeric/vector-only. Standalone `ref.null` constants with bounded numeric
 function-type indices carry the typed witness, including unreachable uses,
 without allocating declared-call transport. Invocation
 scopes retain imported

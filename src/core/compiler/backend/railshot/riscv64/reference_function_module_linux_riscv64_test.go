@@ -15,6 +15,14 @@ import (
 )
 
 func TestReferenceFunctionModuleRV64ClosedDescriptorTransport(t *testing.T) {
+	testReferenceFunctionModuleRV64Transport(t, false)
+}
+
+func TestReferenceFunctionProductionRV64StagedTransport(t *testing.T) {
+	testReferenceFunctionModuleRV64Transport(t, true)
+}
+
+func testReferenceFunctionModuleRV64Transport(t *testing.T, staged bool) {
 	for _, vector := range []bool{false, true} {
 		for _, tails := range []bool{false, true} {
 			for _, indexed := range []bool{false, true} {
@@ -39,6 +47,23 @@ func TestReferenceFunctionModuleRV64ClosedDescriptorTransport(t *testing.T) {
 						c, err := closedReferenceCompile(m, vector, tails)
 						if err != nil {
 							t.Fatal("whole-module code", err)
+						}
+						if staged {
+							opts := closedReferenceProductionOptions(tails, indexed || !nullable)
+							image, err := CompileModuleWith(m, opts)
+							if err != nil {
+								t.Fatal("closed staged image", err)
+							}
+							if !image.NativeReferenceFunctions || image.NativeReferenceControl != (indexed || !nullable) || image.NativeReferenceCalls || image.CodeImage != nil {
+								t.Fatal("staged ABI witnesses/ownership")
+							}
+							if len(image.Entry) != len(c.functions) {
+								t.Fatal("staged physical function extent")
+							}
+							c.code = image.Code
+							for i := range c.functions {
+								c.functions[i].Entry = image.Entry[i]
+							}
 						}
 						base := thunkImageRV64(t, c.code)
 						e, j, args, results, trap, _ := thunkFixtureRV64(t, 256)
