@@ -1,6 +1,9 @@
 package arm64
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 // Golden 32-bit instruction words produced by clang's integrated assembler
 // (`clang --target=aarch64-linux-gnu -c`) disassembled with llvm-objdump. These
@@ -468,5 +471,31 @@ func TestStoreImmIdxAddressAndValueOrder(t *testing.T) {
 	dense.StoreImmIdx(X0, X1, 8, 0x1234, 4)
 	if len(dense.B) == 0 || len(dense.B)%4 != 0 {
 		t.Fatalf("dense indexed store encoded %d bytes", len(dense.B))
+	}
+}
+
+func TestStoreImmIdxDenseFallbackMaterializesValueOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		disp int32
+	}{
+		{"unaligned", 3},
+		{"beyond scaled range", 16384},
+		{"large unaligned", 0x12345},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const val int32 = 0x12345678
+			got := Asm{DenseIdxDisp: true}
+			got.StoreImmIdx(X1, X2, tc.disp, val, 4)
+
+			var want Asm
+			want.AddShifted(X16, X1, X2, 0, false)
+			want.addDispX16(tc.disp)
+			want.MovImm64(X17, uint64(uint32(val)))
+			want.StrIdx(X17, X16, XZR, 4)
+			if !bytes.Equal(got.B, want.B) {
+				t.Fatalf("encoded %x, want %x", got.B, want.B)
+			}
+		})
 	}
 }
