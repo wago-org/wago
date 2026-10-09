@@ -66,6 +66,34 @@ excluded from the prepared-call benchmark. No wall-clock threshold is asserted.
 Native ARM64 and admitted memory-region/shared-compiler loops remain outside
 this coverage.
 
+## ARM64 direct synchronous host results
+
+`TestSyncHostResultPressureCompile` and `TestSyncHostResultPressureExecution`
+cover integer, floating-point, mixed, and vector host results up to the direct
+ABI's 64-slot limit, with lazy local reload enabled and disabled. Each result
+is stored separately with its exact Wasm width. The test checks all bits,
+scalar padding, memory guards, live integer/vector values below the results,
+callback counts, and repeated calls with changed
+values, including signed zero and NaN payloads. Diagnostic builds also require
+one actual direct synchronous host call. Public dynamic import wrappers use a
+separate lowering; these tests do not claim to qualify that path.
+
+`TestSyncHostRestoresX11LocalAfterResults`,
+`TestSyncHostRestoresX11GlobalAfterResults`, and
+`TestSyncHostResultSpillsPreserveRootMetadata` inspect the emission seam. They
+check explicit X11 pin restoration and reference-root metadata after spills.
+They never execute partial native code. The allocator tests also prevent
+floating-point or vector values from being selected as general-purpose spill
+victims. This is a structural root check, not a
+collector-liveness proof.
+
+`BenchmarkSyncHostResults` measures compilation and prepared execution
+separately for valid one-result calls. These signatures work on the compiler
+before and after the fix. Wider signatures are correctness cases; known-bad
+native output is not executed as a timing baseline. No timing threshold is
+asserted. ARM64 emulation establishes only emulated behavior and timing;
+native ARM64 CI and hardware measurements must be labelled separately.
+
 ## Bytecode summary agreement
 
 `TestBytecodeSummary*` in `src/core/compiler/wasm` and `src/wago` checks the
