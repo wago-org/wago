@@ -71,11 +71,11 @@ func TestSumUnrollCorpusAdmission(t *testing.T) {
 			t.Fatalf("new eligible control %s: %d/%d", entry.ID, base, candidate)
 		}
 		record := struct {
-			ID, SHA256                              string
+			ID, SHA256, NativeSHA256                string
 			TotalBytes, BaselineHits, CandidateHits int
 			Exports                                 []wasm.Export
 			Stats                                   railshot.ModuleStats
-		}{entry.ID, fmt.Sprintf("%x", sha256.Sum256(entry.bytes)), len(cm.Code), base, candidate, m.Exports, stats}
+		}{entry.ID, fmt.Sprintf("%x", sha256.Sum256(entry.bytes)), fmt.Sprintf("%x", sha256.Sum256(cm.Code)), len(cm.Code), base, candidate, m.Exports, stats}
 		text, err := json.MarshalIndent(record, "", "  ")
 		if err != nil {
 			t.Fatal(err)
