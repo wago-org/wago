@@ -94,7 +94,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 		return reject("resource initializer metadata")
 	}
 	// Bound resource directories before exact-name helpers scan their prefixes.
-	if c.memoryCount() > railshot.MaxProductionMemories || len(c.Globals) > 256 || len(c.GlobalImports) > len(c.Globals) || len(c.ValueTypes) > 5 {
+	if c.memoryCount() > railshot.MaxProductionMemories || len(c.Globals) > 256 || len(c.GlobalImports) > len(c.Globals) || len(c.ValueTypes) > 6 {
 		return reject("bounded numeric resource directories required")
 	}
 	functions, _, memories, _, exact := c.importModuleEndSections()

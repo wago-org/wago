@@ -147,6 +147,15 @@ native outer frame; native callbacks identify the original producer, including
 reexports, and retain full-width transport. Start-once, nested private guest
 entry, cancellation/Close joins, genuine native traps, code retirement, linking
 before publication and exact quota retries have source/artifact coverage.
+Owned mutable nullable funcref cells now compose with private functions, confined
+to null or own numeric descriptor slots, including imported numeric targets.
+Complete bounded source proofs preserve scalar256/SWAR128 limits and reject
+private initializer targets, reference imports/exports and dead escapes. Retained
+exact-type/pool/literal checks, full-width distinct saved/lower snapshots after
+callback clearing, start and foreign reentry, parked retirement/Close joins,
+aggregate and physical quotas, compiler-free execution and zero-allocation warm
+local calls qualify the bounded composition. No mutable foreign-owner edge or
+cycle collector is introduced.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt

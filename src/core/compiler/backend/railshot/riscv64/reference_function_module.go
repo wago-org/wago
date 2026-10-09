@@ -130,6 +130,17 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		return unsupported("closed reference module requires internal reference functions")
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
+	for _, global := range m.Globals {
+		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
+			value, err := tableElementExpression(global.Init)
+			if err != nil {
+				return err
+			}
+			if !value.Null && !numericTarget(value.FuncIndex) {
+				return unsupported("closed reference cell initializer descriptor escape")
+			}
+		}
+	}
 	if m.Start != nil {
 		index := uint64(*m.Start)
 		if index >= uint64(imported+len(m.Code)) || !numericTarget(uint32(index)) || !consume(5) {
@@ -156,8 +167,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 				return unsupported("closed reference module owned memory export index")
 			}
 		case wasm.ExternGlobal:
-			// State admission already proved every global is numeric.
-			if uint64(ex.Index.Index) >= uint64(counts.globals+len(m.Globals)) {
+			// Reference cells are private even though their values name numeric slots.
+			if uint64(ex.Index.Index) >= uint64(counts.globals+len(m.Globals)) || int(ex.Index.Index) >= counts.globals && m.Globals[int(ex.Index.Index)-counts.globals].Type.Type.Kind() == wasm.ValRef {
 				return unsupported("closed reference module owned numeric global export index")
 			}
 		default:

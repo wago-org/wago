@@ -31,7 +31,8 @@ func countClosedReferenceImports(m *wasm.Module) (closedReferenceImports, error)
 	return counts, nil
 }
 
-// Numeric owned or imported storage cannot contain a function-reference carrier. Its
+// Imported storage remains numeric; owned mutable reference cells contain only
+// null or this instance's numeric descriptor slots. Their
 // initializers and payloads share the closed module's aggregate byte budget,
 // before validation, copying data, or allocating derived state directories.
 func admitClosedReferenceNumericState(m *wasm.Module, vector bool, remaining *int) error {
@@ -91,8 +92,16 @@ func admitClosedReferenceNumericStateWithImports(m *wasm.Module, vector bool, re
 	}
 	for _, global := range m.Globals {
 		typ := global.Type.Type
-		if typ.Kind() == wasm.ValRef || !scalarType(typ, true) && !(vector && wasm.EqualValType(typ, wasm.V128)) {
-			return unsupported("closed reference owned numeric globals only")
+		reference := wasm.EqualValType(typ, wasm.FuncRef) && global.Type.Mutable
+		if !reference && (typ.Kind() == wasm.ValRef || !scalarType(typ, true) && !(vector && wasm.EqualValType(typ, wasm.V128))) {
+			return unsupported("closed reference owned numeric or private mutable funcref globals only")
+		}
+		if reference {
+			// This parser is bounded and never calls the local-mutable helper:
+			// early initializer approval may itself call the closed-module proof.
+			if _, err := tableElementExpression(global.Init); err != nil {
+				return err
+			}
 		}
 		if len(global.Init.Instrs) != 0 || len(global.Init.BodyBytes) == 0 || len(global.Init.BodyBytes) > MaxIntegerInitializerBytes || !consume(2+len(global.Init.BodyBytes)) {
 			return unsupported("closed reference global initializer bytes")

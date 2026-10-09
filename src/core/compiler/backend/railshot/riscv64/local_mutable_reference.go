@@ -24,6 +24,24 @@ func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
 			return false, unsupported("local mutable references exclude imported reference globals")
 		}
 	}
+	// Initializer admission reaches this helper before ordinary staging budgets.
+	// Reference-bearing bindings require the complete bounded confinement proof,
+	// including dead descriptor escapes, not an unexported-function heuristic.
+	privateFunctions, err := hasDefinedReferenceFunctions(m)
+	if err != nil {
+		return false, err
+	}
+	if privateFunctions {
+		// The two bounded proofs preserve scalar256 and SWAR128 limits without
+		// running moduleUsesSWAR before its byte budget. Staging repeats the
+		// precise proof; success here selects no execution ABI or carrier mode.
+		if err := admitClosedReferenceFunctionModule(m, false); err != nil {
+			if err := admitClosedReferenceFunctionModule(m, true); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
+	}
 	// Enclosing source admission checks every declared type and its profile
 	// bounds. Only actual callable bindings can introduce foreign descriptors;
 	// internal reference-bearing control declarations cannot do so.

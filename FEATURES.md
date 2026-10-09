@@ -126,7 +126,15 @@ resource imports preserve the function ordinal. Shared/owned Go starts retain
 scoped callback authority and construction reservations through guest reentry;
 native starts retain the actual producer and full-width framed transport.
 Linking failures reject before publication, and joined rollback releases physical
-owners and executable code. Reference-valued
+owners and executable code. Owned mutable nullable funcref cells also compose
+with private reference functions. These table-free cells have no exports or
+foreign reference ingress: each value is null or an own numeric descriptor slot.
+Literal initializers reject private targets, and complete source confinement
+precedes early initializer approval. Private saved locals and lower operands
+preserve distinct full-width references across cell clearing, reentry and parks;
+foreign numeric attachments retain storage and code through logical retirement.
+Null-only cells keep only the context header when instructions do not require
+descriptors; reference initializers allocate the full directory without creating typed-call/control permission. Reference-valued
 imports/exports remain unsupported in this mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories

@@ -9,7 +9,8 @@ import (
 )
 
 // Retained numeric state uses the ordinary exact metadata representation. The
-// closed witness cannot authorize references in storage or imported signatures.
+// closed witness confines mutable reference cells to own numeric descriptors;
+// imported storage and signatures remain numeric.
 // Shared validators subsequently check limits, initializer types and indices.
 func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 	reject := func(detail string) error { return fmt.Errorf("RV64 closed reference state: %s", detail) }
@@ -21,7 +22,7 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		return true
 	}
 	memories := c.memoryCount()
-	if memories > railshot.MaxProductionMemories || len(c.Globals) > 256 || len(c.GlobalImports) > len(c.Globals) || c.activeDataCount() > 256 || len(c.PassiveData) > 256 || len(c.ValueTypes) > 5 {
+	if memories > railshot.MaxProductionMemories || len(c.Globals) > 256 || len(c.GlobalImports) > len(c.Globals) || c.activeDataCount() > 256 || len(c.PassiveData) > 256 || len(c.ValueTypes) > 6 {
 		return reject("directory bound")
 	}
 	if memories == 0 {
@@ -46,9 +47,10 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		}
 	}
 	var kinds, used uint8
+	plainReference, _ := valueTypeDescriptorFromValType(ValFuncRef)
 	for _, v := range c.ValueTypes {
-		if v.Kind > ValueTypeV128 || v.Ref != (ReferenceTypeDescriptor{}) || v.Kind == ValueTypeV128 && !c.requiredFeatures.IsEnabled(CoreFeatureSIMD) || kinds&(1<<v.Kind) != 0 {
-			return reject("unique numeric exact value types required")
+		if v.Kind > ValueTypeReference || v.Kind == ValueTypeReference && v != plainReference || v.Kind != ValueTypeReference && v.Ref != (ReferenceTypeDescriptor{}) || v.Kind == ValueTypeV128 && !c.requiredFeatures.IsEnabled(CoreFeatureSIMD) || kinds&(1<<v.Kind) != 0 {
+			return reject("unique numeric or canonical nullable funcref exact value types required")
 		}
 		kinds |= 1 << v.Kind
 	}
@@ -61,6 +63,15 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 			return reject("numeric global ABI mismatch")
 		}
 		used |= 1 << g.ValueTypeIndex
+		if g.Type == ValFuncRef {
+			if index < len(c.GlobalImports) || !g.Mutable || c.ValueTypes[g.ValueTypeIndex] != plainReference || g.HasInitGlobal || g.InitGlobal != 0 || len(g.InitExpr) != 0 || g.Bits != 0 || g.V128 != (V128{}) || !g.HasInitFunc && g.InitFunc != 0 || g.HasInitFunc && (uint64(g.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(g.InitFunc))) {
+				return reject("private mutable reference cell literal/target confinement")
+			}
+			if !consume(18) {
+				return reject("reference cell initializer bytes")
+			}
+			continue
+		}
 		if index < len(c.GlobalImports) {
 			imp := c.GlobalImports[index]
 			if !imp.HasValueType || imp.ValueTypeIndex != g.ValueTypeIndex || imp.Type != g.Type || imp.Mutable != g.Mutable || g.HasInitFunc || g.InitFunc != 0 || g.HasInitGlobal || g.InitGlobal != 0 || len(g.InitExpr) != 0 || g.Bits != 0 || g.V128 != (V128{}) {
@@ -123,7 +134,7 @@ func rv64ValidateReferenceFunctionExports(c *Compiled, remaining *int) error {
 		return fmt.Errorf("RV64 closed reference export count bound")
 	}
 	for name, index := range c.GlobalExports {
-		if index < 0 || index >= len(c.Globals) {
+		if index < 0 || index >= len(c.Globals) || c.Globals[index].Type == ValFuncRef {
 			return fmt.Errorf("RV64 closed reference global export index")
 		}
 		if _, duplicate := c.Exports[name]; duplicate {
