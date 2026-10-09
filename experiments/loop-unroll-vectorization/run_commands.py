@@ -34,6 +34,15 @@ with out.open("w") as f:
                     jobs.append((variant, exe, scalar if variant == "scalar" else {},
                                  ["-wasm", f"corpus/workloads/polybench/{workload}.wasm", "-export",
                                   "polybench_run", "-repeat", str(repeat), "-expected", str(expected)]))
+        for path, export, arg, expected, init in [
+                ("compute/linked_list", "sum", 4096, 8386560, ""),
+                ("assemblyscript/blake-as-simd", "hashN", 100, 26497025, "_initialize"),
+                ("assemblyscript/utf-as-simd", "convertN", 200, 710400, "_initialize")]:
+            for variant in ["baseline", "default"]:
+                exe = base + ("workload-baseline" if variant == "baseline" else "workload")
+                jobs.append((variant, exe, {}, ["-wasm", f"corpus/workloads/{path}.wasm",
+                             "-export", export, "-arg", str(arg), "-expected", str(expected),
+                             "-init", init]))
         if sample % 2:
             jobs.reverse()
         for variant, exe, settings, args in jobs:
