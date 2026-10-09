@@ -122,7 +122,11 @@ func TestSumUnrollOracle(t *testing.T) {
 		data[i] = byte((uint64(i)*37 + (uint64(i)>>9)*71) ^ 0xa5)
 	}
 	saved := append([]byte(nil), data...)
-	counts := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 512, 8192, 262144}
+	var counts []uint32
+	for n := uint32(0); n <= 35; n++ {
+		counts = append(counts, n)
+	}
+	counts = append(counts, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 8192, 262144)
 	for _, pressure := range []int{0, 4, 12} {
 		for _, bounded := range []bool{false, true} {
 			t.Run(fmt.Sprintf("pressure%d/bounded%t", pressure, bounded), func(t *testing.T) {
@@ -194,7 +198,7 @@ func TestSumUnrollFullMemory32(t *testing.T) {
 	native := sumUnrollNative(t, m, CompileOptions{})
 	baseline := sumUnrollBaseline(t, m)
 	scalar := sumUnrollNative(t, m, CompileOptions{Optimizations: map[string]bool{"linear-sum-loop": false}})
-	for _, tc := range [][2]uint32{{0xfffffff8, 0}, {0xfffffff8, 1}, {0xfffffff8, 2}, {0xfffffff0, 9}, {0xffffff80, 17}, {0xffffff80, 33}, {0xfffffff9, 1}, {0xffffffef, 3}} {
+	for _, tc := range [][2]uint32{{0xfffffff8, 0}, {0xfffffff8, 1}, {0xfffffff8, 2}, {0xfffffff0, 9}, {0xffffff80, 17}, {0xffffff80, 33}, {0xffffff00, 35}, {0xfffffe00, 65}, {0xfffffc00, 129}, {0xfffff800, 257}, {0xfffff000, 513}, {0xfffffff9, 1}, {0xffffffef, 3}} {
 		want, trap := sumOracle(data, tc[0], tc[1], ^uint64(0), 0)
 		got, err := native.call(mem, tc[0], tc[1], ^uint64(0), 0)
 		ref, refErr := scalar.call(mem, tc[0], tc[1], ^uint64(0), 0)

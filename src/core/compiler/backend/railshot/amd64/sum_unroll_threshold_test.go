@@ -26,7 +26,7 @@ func BenchmarkSumUnrollThreshold(b *testing.B) {
 	}
 	native := sumUnrollNative(b, m, CompileOptions{})
 	for _, addr := range []uint32{0, 1} {
-		for _, count := range []uint32{64, 128, 256, 1024, 2048, 4096} {
+		for _, count := range []uint32{15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1024, 2048, 4096} {
 			b.Run(fmt.Sprintf("addr%d/n%d", addr, count), func(b *testing.B) {
 				want, trap := sumOracle(data, addr, count, 7, 0)
 				if trap {
