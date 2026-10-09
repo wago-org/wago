@@ -469,6 +469,14 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 		return err
 	}
 	o := t.owner
+	// Acquisition alone checks capacity. Validation of an already attached
+	// alias still succeeds without creating a second counter obligation.
+	o.mu.Lock()
+	err := o.validateImporterCountLocked()
+	o.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	if o.elementType == ValFuncRef && o.instance == nil {
 		if t.hasIncompatibleGCProducer(store) {
 			return fmt.Errorf("funcref table contains a producer from an incompatible GC invocation domain")
@@ -484,6 +492,9 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 		if o.closed {
 			return fmt.Errorf("table owner is closed")
 		}
+		if err := o.validateImporterCountLocked(); err != nil {
+			return err
+		}
 		if err := o.validateFuncrefStoreLocked(store); err != nil {
 			return err
 		}
@@ -494,17 +505,17 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 		} else if o.funcrefStores[nil] != 0 {
 			return fmt.Errorf("standalone and Runtime instances cannot concurrently share a mutable funcref table")
 		}
-		if topology != nil && topology.funcrefGCActive {
-			if o.hasForeignFuncrefStoreLocked(store) {
-				return fmt.Errorf("Runtime GC domains cannot share a mutable funcref table across reference stores")
-			}
-			o.funcrefGCStore = store
-		}
 		if o.funcrefStores[store] == ^uint32(0) {
 			return fmt.Errorf("funcref table has too many importers in one reference store")
 		}
 		if topology != nil && topology.funcrefTables[t] == ^uint32(0) {
 			return fmt.Errorf("funcref table has too many importers in one Runtime")
+		}
+		if topology != nil && topology.funcrefGCActive {
+			if o.hasForeignFuncrefStoreLocked(store) {
+				return fmt.Errorf("Runtime GC domains cannot share a mutable funcref table across reference stores")
+			}
+			o.funcrefGCStore = store
 		}
 		if o.funcrefStores == nil {
 			o.funcrefStores = make(map[*referenceStore]uint32)
@@ -524,6 +535,9 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 	if o.closed {
 		return fmt.Errorf("table owner is closed")
 	}
+	if err := o.validateImporterCountLocked(); err != nil {
+		return err
+	}
 	if err := o.validateFuncrefStoreLocked(store); err != nil {
 		return err
 	}
@@ -534,9 +548,23 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 	return nil
 }
 
-func (t *Table) detachImporter(store *referenceStore) {
+// Capacity guards precede both actual producer retention and host topology
+// allocation. The caller holds tableOwner.mu.
+func (o *tableOwner) validateImporterCountLocked() error {
+	if o.importers < 0 {
+		return fmt.Errorf("table importer count is negative")
+	}
+	if o.importers == int(^uint(0)>>1) {
+		return fmt.Errorf("table importer count overflows int")
+	}
+	return nil
+}
+
+// detachImporterCounter consumes the exact store/count obligations without
+// releasing an Instance. Producer callbacks run only after all locks are gone.
+func (t *Table) detachImporterCounter(store *referenceStore) (*Instance, bool) {
 	if t == nil || t.owner == nil {
-		return
+		return nil, false
 	}
 	o := t.owner
 	if o.elementType == ValFuncRef && o.instance == nil {
@@ -551,32 +579,38 @@ func (t *Table) detachImporter(store *referenceStore) {
 			}
 		}
 		o.mu.Lock()
-		if o.importers > 0 {
-			o.importers--
-			if refs := o.funcrefStores[store]; refs <= 1 {
-				delete(o.funcrefStores, store)
+		refs := o.funcrefStores[store]
+		if o.importers <= 0 || refs == 0 || store != nil && (topology == nil || topology.funcrefTables[t] == 0) {
+			o.mu.Unlock()
+			return nil, false
+		}
+		o.importers--
+		if refs <= 1 {
+			delete(o.funcrefStores, store)
+		} else {
+			o.funcrefStores[store] = refs - 1
+		}
+		if topology != nil {
+			if refs := topology.funcrefTables[t]; refs <= 1 {
+				delete(topology.funcrefTables, t)
 			} else {
-				o.funcrefStores[store] = refs - 1
-			}
-			if topology != nil {
-				if refs := topology.funcrefTables[t]; refs <= 1 {
-					delete(topology.funcrefTables, t)
-				} else {
-					topology.funcrefTables[t] = refs - 1
-				}
+				topology.funcrefTables[t] = refs - 1
 			}
 		}
 		o.mu.Unlock()
-		return
+		return nil, true
 	}
-	var instance *Instance
 	o.mu.Lock()
-	if o.importers > 0 {
-		o.importers--
-		instance = o.instance
+	defer o.mu.Unlock()
+	if o.importers <= 0 || o.store != store {
+		return nil, false
 	}
-	o.mu.Unlock()
-	if instance != nil {
+	o.importers--
+	return o.instance, true
+}
+
+func (t *Table) detachImporter(store *referenceStore) {
+	if instance, consumed := t.detachImporterCounter(store); consumed && instance != nil {
 		instance.releaseResourceRoot()
 	}
 }

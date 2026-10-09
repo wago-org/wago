@@ -375,6 +375,9 @@ type tableImportAttachments struct {
 }
 
 func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	if a.set.n != 0 && a.store != store {
+		return fmt.Errorf("table import attachments use inconsistent reference stores")
+	}
 	if err := table.validateImportWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
@@ -386,8 +389,6 @@ func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact
 	}
 	if a.set.n == 0 {
 		a.store = store
-	} else if a.store != store {
-		return fmt.Errorf("table import attachments use inconsistent reference stores")
 	}
 	a.set.push(table)
 	return nil

@@ -3123,9 +3123,8 @@ func (s *referenceStore) releaseEntriesLocked() referenceTokenEntries {
 		topology.byCollector = nil
 		topology.codeRanges = nil
 		topology.singleCodeOwner = nil
-		topology.funcrefMu.Lock()
-		topology.funcrefTables = nil
-		topology.funcrefMu.Unlock()
+		// Table attachments can outlive logical closure and token/GC retirement.
+		// Their physical owners consume these exact counts at final detach.
 	}
 	return entries
 }
