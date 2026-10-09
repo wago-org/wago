@@ -85,6 +85,7 @@ func TestSumUnrollNativeFallback(t *testing.T) {
 			sumUnrollExperiment.chains = tc.chains
 			sumUnrollExperiment.budget = tc.budget
 			sumUnrollExperiment.hybrid = tc.hybrid
+			sumUnrollExperiment.threshold = 0
 			var stats ModuleStats
 			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
 			if err != nil {
@@ -112,5 +113,39 @@ func TestSumUnrollNativeFallback(t *testing.T) {
 				t.Fatal("compiler changed Wasm instructions")
 			}
 		})
+	}
+}
+
+func TestSumUnrollThresholdBudgetFallback(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	saved := sumUnrollExperiment
+	defer func() { sumUnrollExperiment = saved }()
+	setSumUnrollMeasurement(16, false, 128)
+	sumUnrollExperiment.budget = 527
+	m := sumUnrollModule(t, 0)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm.CodeImage.Close()
+	if s := stats.Funcs[0]; s.Peephole["experimental-linear-sum"] != 0 || s.Peephole["linear-sum-unroll4"] != 1 {
+		t.Fatalf("threshold fallback: %v", s.Peephole)
+	}
+	mem, err := rt.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mem.Close()
+	for i := range mem.CurrentBytes() {
+		mem.CurrentBytes()[i] = byte(i * 17)
+	}
+	n := sumUnrollNative(t, m, CompileOptions{})
+	for _, count := range []uint32{0, 16, 127, 128, 129, 513} {
+		want, trap := sumOracle(mem.CurrentBytes(), 1, count, ^uint64(0), 0)
+		got, err := n.call(mem, 1, count, ^uint64(0), 0)
+		if trap || err != nil || got != want {
+			t.Fatalf("fallback %d: %x want %x: %v", count, got, want, err)
+		}
 	}
 }

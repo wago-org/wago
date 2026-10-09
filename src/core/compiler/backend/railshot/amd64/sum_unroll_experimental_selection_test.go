@@ -23,7 +23,7 @@ func selectSumUnroll(t testing.TB) {
 		factor, chains = 2, 2
 	case "D":
 		factor, chains = 16, 4
-	case "H":
+	case "H", "T64", "T128", "T256":
 		factor, chains = 16, 4
 	case "E":
 		factor, chains = 16, 8
@@ -33,6 +33,15 @@ func selectSumUnroll(t testing.TB) {
 	sumUnrollExperiment.factor = factor
 	sumUnrollExperiment.chains = chains
 	sumUnrollExperiment.hybrid = os.Getenv("WAGO_SUM_VARIANT") == "H"
+	sumUnrollExperiment.threshold = 0
+	switch os.Getenv("WAGO_SUM_VARIANT") {
+	case "T64":
+		sumUnrollExperiment.threshold = 64
+	case "T128":
+		sumUnrollExperiment.threshold = 128
+	case "T256":
+		sumUnrollExperiment.threshold = 256
+	}
 	sumUnrollExperiment.budget = 576
 }
 

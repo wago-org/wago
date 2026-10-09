@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	wago "github.com/wago-org/wago"
@@ -59,6 +60,9 @@ func TestSumUnrollCorpusAdmission(t *testing.T) {
 			}
 			if os.Getenv("WAGO_SUM_VARIANT") == "H" && s.Peephole["experimental-linear-sum-hybrid"] != 1 {
 				t.Fatalf("hybrid not selected: %v", s.Peephole)
+			}
+			if strings.HasPrefix(os.Getenv("WAGO_SUM_VARIANT"), "T") && s.Peephole["experimental-linear-sum-threshold"] != 1 {
+				t.Fatalf("threshold not selected: %v", s.Peephole)
 			}
 			if err := os.WriteFile(filepath.Join(dir, "memory.bin"), cm.Code, 0644); err != nil {
 				t.Fatal(err)

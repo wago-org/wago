@@ -7,20 +7,22 @@ package amd64
 var sumUnrollExperiment struct {
 	factor, chains, budget int
 	hybrid                 bool
+	threshold              int
 }
 
 // Called once by the corpus test bridge, before any compilation or timing.
 // This private setter exists only in experimental builds.
-func setSumUnrollMeasurement(factor int, hybrid bool) {
+func setSumUnrollMeasurement(factor int, hybrid bool, threshold int) {
 	sumUnrollExperiment.factor = factor
 	sumUnrollExperiment.chains = 4
 	sumUnrollExperiment.budget = 576
 	sumUnrollExperiment.hybrid = hybrid
+	sumUnrollExperiment.threshold = threshold
 }
 
 func (f *fn) trySelectedLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	c := sumUnrollExperiment
-	if c.factor != 0 && f.tryLinearSumLatchWithTail(loop, counter, c.factor, c.chains, c.budget, c.hybrid) {
+	if c.factor != 0 && f.tryLinearSumLatchWithTail(loop, counter, c.factor, c.chains, c.budget, c.hybrid, c.threshold) {
 		return true
 	}
 	return f.tryUnrolledLinearSumLatch(loop, counter)
@@ -30,11 +32,11 @@ func (f *fn) trySelectedLinearSumLatch(loop *ctrlFrame, counter int) bool {
 // emitter. Only grouping and the number of independent chains differ.
 // A conservative encoding bound caps this latch at 512 bytes for 16/8.
 func (f *fn) tryExperimentalLinearSumLatch(loop *ctrlFrame, counter int, factor, chains, budget int) bool {
-	return f.tryLinearSumLatchWithTail(loop, counter, factor, chains, budget, false)
+	return f.tryLinearSumLatchWithTail(loop, counter, factor, chains, budget, false, 0)
 }
 
 // Hybrid groups share setup, wrap dispatch, scalar tail, and final combination.
-func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, chains, budget int, hybrid bool) bool {
+func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, chains, budget int, hybrid bool, threshold int) bool {
 	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
 		return false
 	}
@@ -48,14 +50,19 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	}
 
 	bound := 256 + 8*factor + 16*chains
-	if hybrid {
+	fourTail := hybrid || threshold != 0
+	if fourTail {
 		bound += 64
+	}
+	if threshold != 0 {
+		bound += 16
 	}
 	// Select only free registers. Do not spill or relinquish local pins. Failure
 	// leaves assembler, allocator, and local state unchanged for the default path.
 	if factor < 2 || factor > 16 || factor&(factor-1) != 0 ||
 		chains < 2 || chains > 8 || chains > factor || factor%chains != 0 ||
-		budget < bound || hybrid && (factor != 16 || chains != 4) {
+		budget < bound || fourTail && (factor != 16 || chains != 4) ||
+		threshold != 0 && (hybrid || threshold != 64 && threshold != 128 && threshold != 256) {
 		return false
 	}
 	var regs [8]Reg
@@ -85,7 +92,7 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
 	firstDone := f.a.JccPlaceholder(condE)
 	minimum := factor
-	if hybrid {
+	if fourTail {
 		minimum = 4
 	}
 	f.a.AluRI(cmpDigit, counterReg, int32(minimum), false)
@@ -105,10 +112,14 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	}
 
 	toFour := -1
-	if hybrid {
+	if fourTail {
 		// The wrap check precedes every group-offset load, including small
 		// counts that could cross memory32. They must use the scalar tail.
-		f.a.AluRI(cmpDigit, counterReg, int32(factor), false)
+		entryCount := factor
+		if threshold != 0 {
+			entryCount = threshold
+		}
+		f.a.AluRI(cmpDigit, counterReg, int32(entryCount), false)
 		toFour = f.a.JccPlaceholder(condB)
 	}
 	group := f.a.Len()
@@ -121,9 +132,16 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	moreGroups := f.a.JccPlaceholder(condAE)
 	f.a.PatchRel32(moreGroups, group)
 
-	if hybrid {
-		f.a.AluRI(cmpDigit, counterReg, 4, false)
-		toScalar := f.a.JccPlaceholder(condB)
+	if fourTail {
+		// Hybrid large ranges use the four-element tail. The threshold design
+		// instead preserves D's scalar tail on the large-range arm.
+		toScalar := -1
+		if hybrid {
+			f.a.AluRI(cmpDigit, counterReg, 4, false)
+			toScalar = f.a.JccPlaceholder(condB)
+		} else {
+			toScalar = f.a.JmpPlaceholder()
+		}
 		four := f.a.Len()
 		f.a.PatchRel32(toFour, four)
 		for i := 0; i < 4; i++ {
@@ -163,6 +181,9 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	f.stats.peep("experimental-linear-sum")
 	if hybrid {
 		f.stats.peep("experimental-linear-sum-hybrid")
+	}
+	if threshold != 0 {
+		f.stats.peep("experimental-linear-sum-threshold")
 	}
 	return true
 }

@@ -62,7 +62,7 @@ func TestSumUnrollFollowupEmission(t *testing.T) {
 			}
 		}
 		saved := *f
-		if f.tryLinearSumLatchWithTail(nil, 1, 16, 4, budget, true) {
+		if f.tryLinearSumLatchWithTail(nil, 1, 16, 4, budget, v == "H", sumUnrollExperiment.threshold) {
 			t.Fatal("unsafe candidate accepted")
 		}
 		if !bytes.Equal(f.a.B, []byte{0x90}) || f.pinned != saved.pinned || f.reserved != saved.reserved || f.regUser != saved.regUser {
