@@ -94,7 +94,7 @@ func loopExperimentSetup(mem []byte, name string) {
 	}
 }
 func TestExperimentalReplication(t *testing.T) {
-	for _, name := range []string{"map-i32", "dependent-i32", "dependent-f64", "pointer"} {
+	for _, name := range []string{"map-i32", "dependent-i32", "dependent-f64", "pointer", "simd-i32"} {
 		modes := []string{"count2", "count4", "guard2"}
 		if name == "simd-i32" {
 			modes = []string{"simd2", "simd4"}
@@ -191,7 +191,7 @@ func TestExperimentalReplicationRejects(t *testing.T) {
 
 func BenchmarkExperimentalReplication(b *testing.B) {
 	mode := os.Getenv("WAGO_LOOP_REPLICATION")
-	for _, name := range []string{"map-i32", "dependent-i32", "dependent-f64", "pointer"} {
+	for _, name := range []string{"map-i32", "dependent-i32", "dependent-f64", "pointer", "simd-i32"} {
 		if name == "simd-i32" && mode != "" && mode != "simd2" && mode != "simd4" {
 			continue
 		}
