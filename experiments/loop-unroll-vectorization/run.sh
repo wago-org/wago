@@ -44,5 +44,6 @@ for round in 1 2 3 4 5 6; do
     WAGO_LOOP_REPLICATION="$mode" GOMAXPROCS=1 "$out/experiment.test" -test.run '^$' -test.bench '^BenchmarkExperimentalCorpusCompile$' -test.benchmem -test.benchtime 100ms >> "$out/corpus-${mode:-scalar}.txt"
   done
   GOMAXPROCS=1 experiments/loop-unroll-vectorization/results/baseline.test -test.run '^$' -test.bench '^(BenchmarkLinearSumNoWrapAMD64|BenchmarkCompileLinearSumAMD64)$' -test.benchmem -test.benchtime 100ms >> "$out/default-baseline.txt"
+  GOMAXPROCS=1 experiments/loop-unroll-vectorization/results/baseline.test -test.run '^$' -test.bench '^(BenchmarkExperimentalRejectedCompile|BenchmarkExperimentalCorpusCompile)$' -test.benchmem -test.benchtime 100ms >> "$out/default-baseline-extra.txt"
   GOMAXPROCS=1 "$out/experiment.test" -test.run '^$' -test.bench '^(BenchmarkLinearSumNoWrapAMD64|BenchmarkCompileLinearSumAMD64)$' -test.benchmem -test.benchtime 100ms >> "$out/default-final.txt"
  done
