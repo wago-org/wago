@@ -311,3 +311,7 @@ Before you submit AI-assisted work:
 For a large design change, open an issue first and describe the intended
 behavior. A clear human explanation is more important than the first draft's
 source.
+
+For bounded offline operand inspection, see the [native comparison diagnostic](tests/tools/native-compare/README.md).
+`just bench native-capture input.wasm snapshot.json`, `just bench native-compare before.json after.json`,
+and `just test native-compare` use existing profile/source-map facilities and report coverage explicitly.

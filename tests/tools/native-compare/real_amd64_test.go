@@ -287,8 +287,8 @@ func TestExistingFibSourceRegions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Compared == 0 || r.Known == 0 || r.Unknown == 0 || r.Complete || len(r.Changes) != 0 {
-		t.Fatalf("expected honest partial coverage %+v", r)
+	if r.Compared == 0 || r.Known == 0 || r.Unknown != 0 || !r.Complete || len(r.Changes) != 0 {
+		t.Fatalf("expected complete mapped scalar coverage %+v", r)
 	}
 	t.Logf("current fib fixture: wasm=%d native=%d mapped regions=%d compared=%d known=%d unknown=%d complete=%v", len(data), len(cm.Code), len(s.Regions), r.Compared, r.Known, r.Unknown, r.Complete)
 	if dir := os.Getenv("WAGO_815_EVIDENCE_PATH"); dir != "" {
