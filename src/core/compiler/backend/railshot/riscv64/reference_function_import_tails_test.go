@@ -178,6 +178,9 @@ func TestReferenceFunctionImportedTailDeadAdmission(t *testing.T) {
 					t.Fatal(err)
 				}
 				body := []byte{op, 0}
+				if op == 0x14 {
+					body[1] = 3
+				} // Numeric ordinary references are now admitted; private targets stay closed.
 				if op == 0x11 || op == 0x13 {
 					body = append(body, 0)
 				}
@@ -186,7 +189,7 @@ func TestReferenceFunctionImportedTailDeadAdmission(t *testing.T) {
 				}
 				m.Code[2].BodyBytes = append(body, 0x0b)
 				if err := admitClosedReferenceFunctionModule(m, vector); !errors.Is(err, ErrUnsupported) {
-					t.Fatal("dead/live dynamic opcode admitted", vector, dead, op, err)
+					t.Fatal("dead/live unconfined descriptor target admitted", vector, dead, op, err)
 				}
 			}
 			m, err := wasm.DecodeModule(wasmtest.ClosedReferenceImportTails(vector, false))

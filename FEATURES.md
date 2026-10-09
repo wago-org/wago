@@ -73,7 +73,8 @@ are bounded before validation. Private same-image direct-call lowering
 preserves function-reference arguments/results, mixed compact cells and
 reference root joins. Its separately enabled cooperative proper tails require
 exact reference result types and reuse the checked frame protocol. This private
-mode rejects reference-valued imports and indirect/reference calls or tails; legacy production
+mode rejects reference-valued imports, indirect calls and reference tails; ordinary
+numeric reference calls use the bounded bridge described below. Legacy production
 staging routes reject the mode. Private decoded whole-module compilation also
 checks numeric exports and descriptor targets, bounded declarations/code and
 inert metadata before validation. It admits bounded numeric resource imports and prevents
@@ -135,7 +136,15 @@ preserve distinct full-width references across cell clearing, reentry and parks;
 foreign numeric attachments retain storage and code through logical retirement.
 Null-only cells keep only the context header when instructions do not require
 descriptors; reference initializers allocate the full directory without creating typed-call/control permission. Reference-valued
-imports/exports remain unsupported in this mode. Initializer
+imports/exports remain unsupported in this mode. Ordinary numeric `call_ref` now
+composes with these private frames and cells through the existing retained-owner
+bridge. Indexed numeric targets include own functions, imported native functions
+and scalar shared/owned Go wrappers; private functions remain noncallable descriptor
+holes. Source proofs reject reference-valued targets even in dead code, staging
+rechecks actual call/control witnesses, and indirect/table/reference-tail calls
+remain outside this table-free mode. Ordered maximum transport, callback parks,
+retired import reexports, foreign dynamic roots, precise private null traps,
+stack-trap reuse and bounded allocation checks qualify the composition. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories
 through final attachment retirement. Separate memory-only and global-only borrowers

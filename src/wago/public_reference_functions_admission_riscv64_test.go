@@ -112,33 +112,36 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 			"missing-context":           func(v *Compiled) { v.nativeContextTrapABI = false },
 			"missing-table-context":     func(v *Compiled) { v.nativeTableContextABI = false },
 			"missing-table-reference":   func(v *Compiled) { v.nativeTableReferenceABI = false },
-			"reference-call-witness":    func(v *Compiled) { v.nativeReferenceCallABI = true },
-			"missing-exact-binding":     func(v *Compiled) { v.Funcs[2].HasTypeIndex = false },
-			"bad-type-index":            func(v *Compiled) { v.Funcs[2].TypeIndex = 99 },
-			"wrong-binding":             func(v *Compiled) { v.Funcs[2].TypeIndex = 1 },
-			"wrong-abi-carrier":         func(v *Compiled) { v.Funcs[2].Params[0] = ValI64 },
-			"reference-export":          func(v *Compiled) { v.Exports["hidden"] = 2 },
-			"dynamic-imports":           func(v *Compiled) { v.dynamicImports = true },
-			"dynamic-escape":            func(v *Compiled) { v.dynamicFuncrefEscape = true },
-			"start":                     func(v *Compiled) { v.HasStart = true; v.StartLocalFunc = 2 },
-			"inactive-start":            func(v *Compiled) { v.StartLocalFunc = 1 },
-			"inactive-imported-start":   func(v *Compiled) { v.StartImportIdx = 1 },
-			"inactive-start-kind":       func(v *Compiled) { v.StartIsImport = true },
-			"inactive-memory":           func(v *Compiled) { v.MemMinPages = 1 },
-			"imported-memory":           func(v *Compiled) { v.HasMemory = true; v.memoryImport = "env.memory" },
-			"table":                     func(v *Compiled) { v.HasTable = true },
-			"inactive-table-type":       func(v *Compiled) { v.TableValueTypeIndex = 1 },
-			"inactive-table-exact":      func(v *Compiled) { v.TableHasValueType = true },
-			"value-pool":                func(v *Compiled) { v.ValueTypes = []ValueTypeDescriptor{{Kind: ValueTypeI32}} },
-			"inactive-describes":        func(v *Compiled) { v.Types[2].Describes = 1 },
-			"inactive-descriptor":       func(v *Compiled) { v.Types[2].Descriptor = 1 },
-			"type-fields":               func(v *Compiled) { v.Types[2].Fields = []FieldTypeDescriptor{{}} },
-			"type-array":                func(v *Compiled) { v.Types[2].Array.Mutable = true },
-			"recursive-group":           func(v *Compiled) { v.Types[2].RecGroup = v.Types[1].RecGroup },
-			"recursive-heap":            func(v *Compiled) { v.Types[2].Params[0].Ref.Heap.TypeIndex = 2 },
-			"inactive-heap":             func(v *Compiled) { v.Types[2].Params[0].Ref.Heap.Abstract = AbstractHeapFunc },
-			"exact-reference":           func(v *Compiled) { v.Types[2].Params[0].Ref.Exact = true },
-			"passive-element":           func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
+			"reference-call-without-context": func(v *Compiled) {
+				v.nativeReferenceCallABI = true
+				v.nativeTableContextABI = false
+			},
+			"missing-exact-binding":   func(v *Compiled) { v.Funcs[2].HasTypeIndex = false },
+			"bad-type-index":          func(v *Compiled) { v.Funcs[2].TypeIndex = 99 },
+			"wrong-binding":           func(v *Compiled) { v.Funcs[2].TypeIndex = 1 },
+			"wrong-abi-carrier":       func(v *Compiled) { v.Funcs[2].Params[0] = ValI64 },
+			"reference-export":        func(v *Compiled) { v.Exports["hidden"] = 2 },
+			"dynamic-imports":         func(v *Compiled) { v.dynamicImports = true },
+			"dynamic-escape":          func(v *Compiled) { v.dynamicFuncrefEscape = true },
+			"start":                   func(v *Compiled) { v.HasStart = true; v.StartLocalFunc = 2 },
+			"inactive-start":          func(v *Compiled) { v.StartLocalFunc = 1 },
+			"inactive-imported-start": func(v *Compiled) { v.StartImportIdx = 1 },
+			"inactive-start-kind":     func(v *Compiled) { v.StartIsImport = true },
+			"inactive-memory":         func(v *Compiled) { v.MemMinPages = 1 },
+			"imported-memory":         func(v *Compiled) { v.HasMemory = true; v.memoryImport = "env.memory" },
+			"table":                   func(v *Compiled) { v.HasTable = true },
+			"inactive-table-type":     func(v *Compiled) { v.TableValueTypeIndex = 1 },
+			"inactive-table-exact":    func(v *Compiled) { v.TableHasValueType = true },
+			"value-pool":              func(v *Compiled) { v.ValueTypes = []ValueTypeDescriptor{{Kind: ValueTypeI32}} },
+			"inactive-describes":      func(v *Compiled) { v.Types[2].Describes = 1 },
+			"inactive-descriptor":     func(v *Compiled) { v.Types[2].Descriptor = 1 },
+			"type-fields":             func(v *Compiled) { v.Types[2].Fields = []FieldTypeDescriptor{{}} },
+			"type-array":              func(v *Compiled) { v.Types[2].Array.Mutable = true },
+			"recursive-group":         func(v *Compiled) { v.Types[2].RecGroup = v.Types[1].RecGroup },
+			"recursive-heap":          func(v *Compiled) { v.Types[2].Params[0].Ref.Heap.TypeIndex = 2 },
+			"inactive-heap":           func(v *Compiled) { v.Types[2].Params[0].Ref.Heap.Abstract = AbstractHeapFunc },
+			"exact-reference":         func(v *Compiled) { v.Types[2].Params[0].Ref.Exact = true },
+			"passive-element":         func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
 			"element-values": func(v *Compiled) {
 				v.passiveElems = []ElemInit{{Mode: ElemModeDeclarative, Values: []RefInit{{FuncIndex: 1}}}}
 			},
@@ -168,7 +171,7 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 		// Persisted malformed shape must also fail loading. Inactive union fields
 		// and inferred feature bits have canonicalizing writers, so test those
 		// directly above instead of assuming the codec preserves them.
-		for _, name := range []string{"missing-witness", "missing-control-witness", "missing-frame", "missing-context", "missing-table-context", "missing-table-reference", "reference-call-witness", "bad-type-index", "wrong-binding", "wrong-abi-carrier", "reference-export", "dynamic-imports", "dynamic-escape", "start", "imported-memory", "table", "value-pool", "type-fields", "type-array", "recursive-group", "recursive-heap", "exact-reference", "passive-element", "element-values"} {
+		for _, name := range []string{"missing-witness", "missing-control-witness", "missing-frame", "missing-context", "missing-table-context", "missing-table-reference", "reference-call-without-context", "bad-type-index", "wrong-binding", "wrong-abi-carrier", "reference-export", "dynamic-imports", "dynamic-escape", "start", "imported-memory", "table", "value-pool", "type-fields", "type-array", "recursive-group", "recursive-heap", "exact-reference", "passive-element", "element-values"} {
 			t.Run(fmt.Sprintf("vector%t-codec-%s", vector, name), func(t *testing.T) {
 				copy := *c.executionView()
 				copy.Types = cloneDefinedTypeDescriptors(copy.Types)

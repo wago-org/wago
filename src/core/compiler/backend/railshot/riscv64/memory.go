@@ -35,7 +35,8 @@ type moduleState struct {
 	importTailCalls   bool
 	dynamicTailCalls  bool
 	referenceCalls    bool
-	// Private same-image direct calls only; never source/artifact admission.
+	// Private reference signatures use same-image direct calls. Descriptor calls
+	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions     bool
 	importReferences       bool
 	localMutableReferences bool

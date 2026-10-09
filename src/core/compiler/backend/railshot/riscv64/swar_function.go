@@ -464,7 +464,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 			flow.frames[flow.depth-1].unreachable = true
 			h = flow.floor()
 		case 0x14, 0x15:
-			if referenceFunctions {
+			if referenceFunctions && op == 0x15 {
 				return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 			}
 			tail := op == 0x15

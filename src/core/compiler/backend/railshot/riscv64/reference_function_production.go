@@ -38,7 +38,7 @@ func admitClosedReferenceProductionOptions(opts CompileOptions) error {
 	if !opts.NativeReferenceFunctions || !opts.referenceFunctions || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls && !opts.localTailCalls || opts.dynamicTailCalls || opts.localTailCalls != opts.NativeTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
 		return unsupported("closed reference staging requires cooperative local-call production")
 	}
-	if opts.NativeTailCalls && opts.tailPlans == nil || !opts.importTailCalls && opts.tailPlans != nil && len(*opts.tailPlans) != 0 || opts.referenceTailInstructions || opts.referenceCallInstructions {
+	if opts.NativeTailCalls && opts.tailPlans == nil || !opts.importTailCalls && opts.tailPlans != nil && len(*opts.tailPlans) != 0 || opts.referenceTailInstructions || opts.referenceCallInstructions && !opts.NativeReferenceCalls {
 		return unsupported("closed reference staging excludes dynamic foreign call plans")
 	}
 	return nil
@@ -57,12 +57,12 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if opts.NativeTailCalls && opts.tailModule != m || !opts.NativeTailCalls && opts.tailModule != nil {
 		return nil, unsupported("closed reference staged source identity")
 	}
-	_, _, control, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, false, vector, true)
+	tails, calls, control, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, false, vector, true)
 	if err != nil {
 		return nil, err
 	}
-	if opts.referenceControlInstructions != control {
-		return nil, unsupported("closed reference staged control witness")
+	if tails || opts.referenceCallInstructions != calls || opts.referenceControlInstructions != control {
+		return nil, unsupported("closed reference staged call/control witness")
 	}
 	if c == nil || !c.state.referenceFunctions || c.state.importedFunctions != m.ImportedFuncCount() || len(c.functions) != len(m.Code) || len(c.code) == 0 || len(c.code) > MaxCodeBytes {
 		return nil, unsupported("closed reference staged function extent")

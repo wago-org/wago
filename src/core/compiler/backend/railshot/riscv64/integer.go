@@ -945,9 +945,6 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x14:
-			if functionRefs {
-				return integerSummary{}, unsupported("private reference functions require same-image direct calls")
-			}
 			typeIndex, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -965,13 +962,25 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("call_ref count/slot budget")
 			}
-			if _, err = popClass(true); err != nil {
+			if functionRefs {
+				if err = match(inlineResults[1][:], inlineReference[:], false, true); err != nil {
+					return integerSummary{}, err
+				}
+				h--
+			} else if _, err = popClass(true); err != nil {
 				return integerSummary{}, err
 			}
 			referenceSlot := h
-			for j := len(sig.params) - 1; j >= 0; j-- {
-				if err = popWidth(sig.params[j]); err != nil {
+			if functionRefs {
+				if err = match(sig.params, nil, false, true); err != nil {
 					return integerSummary{}, err
+				}
+				h -= len(sig.params)
+			} else {
+				for j := len(sig.params) - 1; j >= 0; j-- {
+					if err = popWidth(sig.params[j]); err != nil {
+						return integerSummary{}, err
+					}
 				}
 			}
 			if live && emit != nil {

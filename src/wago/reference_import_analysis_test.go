@@ -43,3 +43,23 @@ func TestReferenceImportsValidationAnalysisParity(t *testing.T) {
 		t.Fatal("dynamic reference-valued call lost escape")
 	}
 }
+
+func TestReferenceImportsValidationAnalysisParityNumericCalls(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, tails := range []bool{false, true} {
+			t.Run(fmt.Sprintf("vector%t-tails%t", vector, tails), func(t *testing.T) {
+				m, err := wasm.DecodeModule(wasmtest.ClosedReferenceNumericCalls(vector, tails, true, 2, 0))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var analysis wasm.ValidatedModuleAnalysis
+				if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{MultiMemory: true, ExtendedConstGlobals: true}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+					t.Fatal(err)
+				}
+				if !analysis.ValidFor(m) || moduleDynamicFuncrefEscape(m) || moduleDynamicFuncrefEscapeWithValidation(m, &analysis) || moduleDynamicFuncrefEscapeWithValidation(m, nil) {
+					t.Fatal("numeric call_ref with private carriers implies dynamic escape")
+				}
+			})
+		}
+	}
+}

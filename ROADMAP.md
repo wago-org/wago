@@ -85,7 +85,8 @@ Separately enabled local proper tails preserve exact reference result types,
 original return addresses, constant entry SP, and cooperative cancellation across
 mixed reference/vector transfers. Private decoded scalar/SWAR module adapters
 now require a bounded closed-module proof: numeric exports and descriptor targets,
-numeric function imports only, and no indirect/reference calls. They retain actual function
+numeric function imports only, and no indirect calls or reference tails. Ordinary
+numeric reference calls now compose through the bounded retained bridge. They retain actual function
 indices across descriptor-directory holes. Legacy production staging routes and
 legacy isolated instantiation reject that mode before allocation. A private
 sparse owner constructor now retains full physical function spans with explicit
@@ -156,6 +157,13 @@ callback clearing, start and foreign reentry, parked retirement/Close joins,
 aggregate and physical quotas, compiler-free execution and zero-allocation warm
 local calls qualify the bounded composition. No mutable foreign-owner edge or
 cycle collector is introduced.
+Ordinary numeric `call_ref` now composes with the selected scalar/SWAR private
+frames and own mutable cells. Numeric own/native/Go targets stay canonical; private
+reference-bearing rows remain noncallable. Dead target confinement, frontend-backed
+operand-floor checks, exact staging witnesses, ordered transport at existing
+scalar/import/vector bounds, private trap attribution and reuse, retired relays,
+foreign dynamic roots, quotas and zero-allocation own calls qualify this slice.
+Tables, indirect calls and reference tails remain separately gated in this mode.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
