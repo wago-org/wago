@@ -31,6 +31,10 @@ func regionEnd(r Region) uint64 {
 	return in.Offset + uint64(len(in.Hex)/2)
 }
 func validateRaw(s Snapshot) error {
+	var roots [maxInlineFrames]uint32
+	if err := inlineOwners(s, &roots); err != nil {
+		return err
+	}
 	if len(s.RawRegions) > maxRawRegions {
 		return fmt.Errorf("raw region budget")
 	}
@@ -69,13 +73,13 @@ func validateRaw(s Snapshot) error {
 		}
 		if r.LeftAnchor != "owner-start" {
 			j, ok := anchors[r.LeftAnchor]
-			if !ok || r.Function < 0 || s.Regions[j].Function != uint32(r.Function) || regionEnd(s.Regions[j]) != r.Offset {
+			if !ok || r.Function < 0 || sourceOwnerFunction(s.Regions[j], &roots) != uint32(r.Function) || regionEnd(s.Regions[j]) != r.Offset {
 				return fmt.Errorf("invalid raw left source anchor")
 			}
 		}
 		if r.RightAnchor != "owner-end" {
 			j, ok := anchors[r.RightAnchor]
-			if !ok || r.Function < 0 || s.Regions[j].Function != uint32(r.Function) || s.Regions[j].Instructions[0].Offset != r.Offset+n {
+			if !ok || r.Function < 0 || sourceOwnerFunction(s.Regions[j], &roots) != uint32(r.Function) || s.Regions[j].Instructions[0].Offset != r.Offset+n {
 				return fmt.Errorf("invalid raw right source anchor")
 			}
 		}

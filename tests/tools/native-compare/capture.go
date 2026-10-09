@@ -32,6 +32,7 @@ type capturedCode struct {
 	bytes    []byte
 	sources  []jitprofile.SourceRange
 	owners   []jitprofile.Region
+	frames   []jitprofile.InlineFrame
 	features string
 	close    func()
 }
@@ -136,6 +137,15 @@ func captureBytes(data []byte) (Snapshot, error) {
 	s.Architecture = runtime.GOARCH
 	s.Provenance = Provenance{compilerIdentity(), hex.EncodeToString(hash.Sum(nil)), fmt.Sprintf("%x", sha256.Sum256(data)), code.features, "explicit", "wago_profile", "established/direct-backend"}
 	s.Capture = &CaptureMetadata{NativeSHA256: fmt.Sprintf("%x", sha256.Sum256(code.bytes)), NativeBytes: uint64(len(code.bytes))}
+	if len(code.frames) > maxInlineFrames {
+		return s, fmt.Errorf("inline frame budget")
+	}
+	if len(code.frames) > 0 {
+		s.InlineFrames = make([]InlineFrame, len(code.frames))
+		for i, frame := range code.frames {
+			s.InlineFrames[i] = InlineFrame{frame.Function, frame.WasmOffset, frame.Parent}
+		}
+	}
 	if err := populateRegions(&s, code.sources, instructions); err != nil {
 		return s, err
 	}
@@ -206,10 +216,16 @@ func branchDestination(arch string, in Instruction) (uint64, bool) {
 }
 
 func populateRegions(s *Snapshot, sources []jitprofile.SourceRange, instructions []Instruction) error {
+	if err := inlineRoots(s.InlineFrames, nil); err != nil {
+		return err
+	}
 	occurrences := make(map[string]int)
 	cursor := 0
 	var previousSourceEnd uint64
 	for _, source := range sources {
+		if uint64(source.InlineParent) > uint64(len(s.InlineFrames)) {
+			return fmt.Errorf("dangling inline source parent")
+		}
 		if source.Offset > s.Capture.NativeBytes || source.Size > s.Capture.NativeBytes-source.Offset {
 			return fmt.Errorf("source map outside image")
 		}
@@ -224,7 +240,7 @@ func populateRegions(s *Snapshot, sources []jitprofile.SourceRange, instructions
 		key := fmt.Sprintf("f%d.pc%d", source.Function, pc)
 		id := fmt.Sprintf("%s.%d", key, occurrences[key])
 		occurrences[key]++
-		r := Region{ID: id, Function: source.Function, WasmOffset: &pc}
+		r := Region{ID: id, Function: source.Function, WasmOffset: &pc, InlineParent: source.InlineParent}
 		for cursor < len(instructions) && instructions[cursor].Offset < source.Offset {
 			cursor++
 		}
@@ -257,6 +273,10 @@ func populateRegions(s *Snapshot, sources []jitprofile.SourceRange, instructions
 // Profile ownership can include data/cold code and may cut objdump's decode.
 // Gaps therefore retain raw bytes without guessed instruction or Wasm facts.
 func populateRaw(s *Snapshot, owners []jitprofile.Region, code []byte) error {
+	var roots [maxInlineFrames]uint32
+	if err := inlineOwners(*s, &roots); err != nil {
+		return err
+	}
 	if len(owners) > maxRawRegions {
 		return fmt.Errorf("profile ownership budget")
 	}
@@ -289,7 +309,7 @@ func populateRaw(s *Snapshot, owners []jitprofile.Region, code []byte) error {
 		for mi < len(s.Regions) && s.Regions[mi].Instructions[0].Offset < end {
 			r := s.Regions[mi]
 			start, stop := r.Instructions[0].Offset, regionEnd(r)
-			if start < cursor || stop > end || owner.Function < 0 || uint32(owner.Function) != r.Function {
+			if start < cursor || stop > end || owner.Function < 0 || uint32(owner.Function) != sourceOwnerFunction(r, &roots) {
 				return fmt.Errorf("source region crosses/mismatches profile owner")
 			}
 			if err := add(cursor, start, r.ID); err != nil {

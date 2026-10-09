@@ -32,7 +32,7 @@ func compileCapture(m *wasm.Module) (capturedCode, error) {
 	if err != nil {
 		return capturedCode{}, err
 	}
-	return capturedCode{cm.Code, stats.SourceRanges, stats.ProfileRegions, fmt.Sprintf("configured-mask=00000000;optimizations=%x", sha256.Sum256(encoded)), func() {
+	return capturedCode{cm.Code, stats.SourceRanges, stats.ProfileRegions, stats.SourceFrames, fmt.Sprintf("configured-mask=00000000;optimizations=%x", sha256.Sum256(encoded)), func() {
 		if cm.CodeImage != nil {
 			cm.CodeImage.Close()
 		}

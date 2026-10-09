@@ -36,6 +36,7 @@ type Region struct {
 	Function     uint32        `json:"function"`
 	WasmOffset   *uint32       `json:"wasm_offset"`
 	Instructions []Instruction `json:"instructions"`
+	InlineParent uint32        `json:"inline_parent,omitempty"`
 }
 type CaptureMetadata struct {
 	NativeSHA256  string `json:"native_sha256"`
@@ -51,6 +52,7 @@ type Snapshot struct {
 	Provenance   Provenance       `json:"provenance"`
 	Regions      []Region         `json:"regions"`
 	RawRegions   []RawRegion      `json:"raw_regions,omitempty"`
+	InlineFrames []InlineFrame    `json:"inline_frames,omitempty"`
 }
 type Register struct {
 	Number int `json:"number"`
@@ -93,6 +95,7 @@ type Change struct {
 	AfterOffset  uint64  `json:"after_offset"`
 	Before       Record  `json:"before"`
 	After        Record  `json:"after"`
+	InlineParent uint32  `json:"inline_parent,omitempty"`
 }
 type UnknownSite struct {
 	Region       string  `json:"region"`
@@ -102,23 +105,26 @@ type UnknownSite struct {
 	AfterOffset  uint64  `json:"after_offset"`
 	BeforeHex    string  `json:"before_hex"`
 	AfterHex     string  `json:"after_hex"`
+	InlineParent uint32  `json:"inline_parent,omitempty"`
 }
 
 type Report struct {
-	OperandScope  string           `json:"operand_scope"`
-	RawComplete   bool             `json:"raw_complete"`
-	RawCompared   int              `json:"raw_compared"`
-	RawChanges    []RawChange      `json:"raw_changes,omitempty"`
-	BeforeCapture *CaptureMetadata `json:"before_capture,omitempty"`
-	AfterCapture  *CaptureMetadata `json:"after_capture,omitempty"`
-	UnknownSites  []UnknownSite    `json:"unknown_sites,omitempty"`
-	Complete      bool             `json:"complete"`
-	Compared      int              `json:"compared"`
-	Known         int              `json:"known"`
-	Unknown       int              `json:"unknown"`
-	Changes       []Change         `json:"changes"`
-	Limit         bool             `json:"limit"`
-	Reasons       []string         `json:"reasons,omitempty"`
+	OperandScope       string           `json:"operand_scope"`
+	RawComplete        bool             `json:"raw_complete"`
+	RawCompared        int              `json:"raw_compared"`
+	RawChanges         []RawChange      `json:"raw_changes,omitempty"`
+	BeforeCapture      *CaptureMetadata `json:"before_capture,omitempty"`
+	AfterCapture       *CaptureMetadata `json:"after_capture,omitempty"`
+	BeforeInlineFrames []InlineFrame    `json:"before_inline_frames,omitempty"`
+	AfterInlineFrames  []InlineFrame    `json:"after_inline_frames,omitempty"`
+	UnknownSites       []UnknownSite    `json:"unknown_sites,omitempty"`
+	Complete           bool             `json:"complete"`
+	Compared           int              `json:"compared"`
+	Known              int              `json:"known"`
+	Unknown            int              `json:"unknown"`
+	Changes            []Change         `json:"changes"`
+	Limit              bool             `json:"limit"`
+	Reasons            []string         `json:"reasons,omitempty"`
 }
 
 func validate(s Snapshot) error {
@@ -204,7 +210,7 @@ func provenanceComplete(p Provenance) bool {
 // Insertions/region mismatch are inconclusive rather than guessed alignment.
 // Runtime is linear in admitted input size; no LCS or quadratic search is used.
 func Compare(a, b Snapshot) (Report, error) {
-	out := Report{OperandScope: "supplied-source-regions", Complete: true, Changes: make([]Change, 0), BeforeCapture: a.Capture, AfterCapture: b.Capture}
+	out := Report{OperandScope: "supplied-source-regions", Complete: true, Changes: make([]Change, 0), BeforeCapture: a.Capture, AfterCapture: b.Capture, BeforeInlineFrames: a.InlineFrames, AfterInlineFrames: b.InlineFrames}
 	if err := validate(a); err != nil {
 		return out, err
 	}
@@ -222,6 +228,9 @@ func Compare(a, b Snapshot) (Report, error) {
 	if ap.CPUFeatures != bp.CPUFeatures || ap.Bounds != bp.Bounds || ap.Build != bp.Build || ap.Path != bp.Path || ap.InputSHA256 != bp.InputSHA256 {
 		incomplete("configuration/input mismatch")
 	}
+	if !sameInlineFrames(a.InlineFrames, b.InlineFrames) {
+		incomplete("inline caller context mismatch")
+	}
 	compareRaw(a, b, &out)
 	if !out.RawComplete && (a.Capture != nil && a.Capture.RawCoverage || b.Capture != nil && b.Capture.RawCoverage) {
 		incomplete("raw comparison incomplete")
@@ -232,7 +241,7 @@ func Compare(a, b Snapshot) (Report, error) {
 	}
 	for i, ar := range a.Regions {
 		br := b.Regions[i]
-		if ar.ID != br.ID || ar.Function != br.Function || !samePC(ar.WasmOffset, br.WasmOffset) || len(ar.Instructions) != len(br.Instructions) {
+		if ar.ID != br.ID || ar.Function != br.Function || ar.InlineParent != br.InlineParent || !samePC(ar.WasmOffset, br.WasmOffset) || len(ar.Instructions) != len(br.Instructions) {
 			incomplete("ambiguous region alignment: " + ar.ID)
 			continue
 		}
@@ -264,7 +273,7 @@ func Compare(a, b Snapshot) (Report, error) {
 					incomplete("unknown-site budget")
 					return out, nil
 				}
-				out.UnknownSites = append(out.UnknownSites, UnknownSite{ar.ID, ar.Function, ar.WasmOffset, ai.Offset, bi.Offset, av.Raw, bv.Raw})
+				out.UnknownSites = append(out.UnknownSites, UnknownSite{ar.ID, ar.Function, ar.WasmOffset, ai.Offset, bi.Offset, av.Raw, bv.Raw, ar.InlineParent})
 			}
 			if identical {
 				continue
@@ -278,7 +287,7 @@ func Compare(a, b Snapshot) (Report, error) {
 					incomplete("change budget")
 					return out, nil
 				}
-				out.Changes = append(out.Changes, Change{classify(av, bv), ar.ID, ar.Function, ar.WasmOffset, ai.Offset, bi.Offset, av, bv})
+				out.Changes = append(out.Changes, Change{classify(av, bv), ar.ID, ar.Function, ar.WasmOffset, ai.Offset, bi.Offset, av, bv, ar.InlineParent})
 			}
 		}
 	}

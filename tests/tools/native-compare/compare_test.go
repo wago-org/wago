@@ -12,7 +12,7 @@ import (
 
 func fixture(arch, code string) Snapshot {
 	pc := uint32(5)
-	return Snapshot{nil, arch, Provenance{"rev", strings.Repeat("a", 64), strings.Repeat("b", 64), "baseline", "explicit", "ordinary", "established"}, []Region{{"f0.pc5", 0, &pc, []Instruction{{0, code, ""}}}}, nil}
+	return Snapshot{nil, arch, Provenance{"rev", strings.Repeat("a", 64), strings.Repeat("b", 64), "baseline", "explicit", "ordinary", "established"}, []Region{{"f0.pc5", 0, &pc, []Instruction{{0, code, ""}}, 0}}, nil, nil}
 }
 func TestPairedControls(t *testing.T) {
 	for _, c := range controls {
@@ -129,7 +129,7 @@ func TestIncompleteCoverageAndConfiguration(t *testing.T) {
 			case "wrong-config":
 				b.Provenance.Path = "shared"
 			case "missing-region":
-				b.Regions = append(b.Regions, Region{"other", 1, b.Regions[0].WasmOffset, []Instruction{{2, "31c0", ""}}})
+				b.Regions = append(b.Regions, Region{"other", 1, b.Regions[0].WasmOffset, []Instruction{{2, "31c0", ""}}, 0})
 			case "count-mismatch":
 				b.Regions[0].Instructions = append(b.Regions[0].Instructions, Instruction{2, "31c0", ""})
 			case "wrong-anchor":
@@ -178,7 +178,7 @@ func TestResourceAndInputLimits(t *testing.T) {
 		}
 	}
 	s = fixture("amd64", "31c0")
-	s.Regions = append(s.Regions, Region{"overlap", 1, s.Regions[0].WasmOffset, []Instruction{{0, "31c0", ""}}})
+	s.Regions = append(s.Regions, Region{"overlap", 1, s.Regions[0].WasmOffset, []Instruction{{0, "31c0", ""}}, 0})
 	if _, err = Compare(s, s); err == nil {
 		t.Fatal("overlap accepted")
 	}
@@ -252,7 +252,7 @@ func TestMalformedShapesAndUnknownPartialWrites(t *testing.T) {
 			case "region-budget":
 				for i := 1; i <= maxRegions; i++ {
 					pc := uint32(i)
-					s.Regions = append(s.Regions, Region{fmt.Sprint(i), uint32(i), &pc, []Instruction{{uint64(i * 2), "31c0", ""}}})
+					s.Regions = append(s.Regions, Region{fmt.Sprint(i), uint32(i), &pc, []Instruction{{uint64(i * 2), "31c0", ""}}, 0})
 				}
 			case "unaligned-arm":
 				s = fixture("arm64", "01000014")
