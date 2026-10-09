@@ -2,10 +2,29 @@
 
 package wago
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
+)
 
 type functionDependencyAttachments struct{}
 type memoryDependencyAttachments struct{}
+type globalDependencyAttachments struct{}
+
+func railshotAcquireGlobalDependency(_ *globalImportAttachments, global *Global, store *referenceStore, collector *gc.Collector, _ *resourceCleanup) error {
+	if isReferenceValType(global.Type) {
+		return global.attachReferenceImporterWithCollector(store, collector)
+	}
+	return global.attachNumericImporter()
+}
+func railshotDrainBuilderGlobalDependencies(*globalImportAttachments) bool  { return false }
+func railshotHasBuilderGlobalDependencies(*globalImportAttachments) bool    { return false }
+func railshotInstallGlobalDependencies(*Instance, *globalImportAttachments) {}
+func railshotAdoptGlobalDependencies(*Instance, bool) error                 { return nil }
+func railshotDrainInstanceGlobalDependencies(*Instance) bool                { return false }
+func railshotTransferGlobalDependency(*Instance, *Global) bool              { return false }
+func railshotTransferredGlobalDependency(*Instance, *Global) (bool, bool)   { return false, false }
 
 func railshotAcquireMemoryDependency(_ *memoryImportAttachments, memory *Memory, _ *resourceCleanup) error {
 	return memory.attachImporter()

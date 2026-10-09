@@ -358,7 +358,7 @@ func (b *instanceBuilder) buildNativeGCInstanceView(localTypes []gc.TypeID) (*gc
 	return gc.BuildNativeInstanceView(b.collector, localTypes)
 }
 
-func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
+func (b *instanceBuilder) attachImports(cleanup *resourceCleanup) ([]*resolvedGlobalImport, error) {
 	for i, displayKey := range b.c.Imports {
 		key := b.c.functionImportBindingKey(i)
 		switch value := b.imports[key].(type) {
@@ -384,7 +384,7 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 		if global == nil || (!isReferenceValType(imp.Type) && global.owner == nil) {
 			continue
 		}
-		if err := b.globalAttachments.attach(global, b.opts.store, b.collector); err != nil {
+		if err := b.globalAttachments.attach(global, b.opts.store, b.collector, cleanup); err != nil {
 			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
 		}
 	}
@@ -519,7 +519,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			cleanup.run(b.rollbackPreparedState)
 		}
 	}()
-	importGlobals, err := b.attachImports()
+	importGlobals, err := b.attachImports(&cleanup.resourceCleanup)
 	if err != nil {
 		return nil, err
 	}
@@ -1923,7 +1923,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 		cleanup.run(in.endConstruction)
 	}
-	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments) || railshotHasBuilderMemoryDependencies(&memoryAttachments)
+	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments) || railshotHasBuilderMemoryDependencies(&memoryAttachments) || railshotHasBuilderGlobalDependencies(&b.globalAttachments)
 	if opts.runtime == nil && (c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
 		in.beginConstruction(opts.operationReservation)
 		defer finishConstruction()
@@ -1941,6 +1941,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	// rollback. Graph adoption waits until the construction native lease is gone.
 	railshotInstallFunctionDependencies(in, &b.functionAttachments)
 	railshotInstallMemoryDependencies(in, &memoryAttachments)
+	railshotInstallGlobalDependencies(in, &b.globalAttachments)
 	if opts.store != nil {
 		if err := opts.store.registerInstance(in); err != nil {
 			return nil, err
@@ -2002,8 +2003,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	if err := railshotAdoptMemoryDependencies(in, finishMemoryContext == nil); err != nil {
 		return nil, err
 	}
+	if err := railshotAdoptGlobalDependencies(in, finishMemoryContext == nil); err != nil {
+		return nil, err
+	}
 	if opts.afterCreate != nil {
-		// Function and memory receipts are adopted before callbacks can expose in.
+		// Concrete import receipts are adopted before callbacks can expose in.
 		if err := opts.afterCreate(in); err != nil {
 			return nil, err
 		}

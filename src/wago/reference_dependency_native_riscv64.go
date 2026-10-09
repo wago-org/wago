@@ -62,6 +62,7 @@ type rv64FunctionDependencyOwnership struct {
 	member           dependencyMember
 	functions        importDedup[functionDependencyRoot]
 	memories         atomic.Pointer[rv64MemoryDependencyRows]
+	globals          atomic.Pointer[rv64GlobalDependencyRows]
 	managed          bool        // remains true after drain; a reentrant call never rescans imports
 	cleanupCompleted atomic.Bool // resourcesClosed alone is only a cleanup claim
 }
@@ -190,6 +191,9 @@ func railshotDrainInstanceFunctionDependencies(in *Instance) bool {
 func railshotFunctionDependencyCleanupCompleted(in *Instance) {
 	if ownership := rv64ExistingFunctionDependencyOwnership(in); ownership != nil {
 		if rows := ownership.memories.Load(); rows != nil && !rows.complete() {
+			return
+		}
+		if rows := ownership.globals.Load(); rows != nil && !rows.complete() {
 			return
 		}
 		ownership.cleanupCompleted.Store(true)

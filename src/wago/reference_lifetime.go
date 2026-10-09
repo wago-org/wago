@@ -186,6 +186,9 @@ func (in *Instance) transferImportedGlobalAttachment(global *Global) {
 	if in == nil || global == nil {
 		return
 	}
+	if railshotTransferGlobalDependency(in, global) {
+		return
+	}
 	state := transferredImportState(in)
 	state.mu.Lock()
 	if state.globals == nil {
@@ -202,6 +205,9 @@ func (in *Instance) transferImportedGlobalAttachment(global *Global) {
 }
 
 func (in *Instance) ownsTransferredGlobalAttachment(global *Global) bool {
+	if transferred, managed := railshotTransferredGlobalDependency(in, global); managed {
+		return transferred
+	}
 	value, ok := transferredImportAttachments.Load(in)
 	if !ok {
 		return false

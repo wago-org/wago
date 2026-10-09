@@ -104,20 +104,21 @@ func TestGlobalImporterCounterValidationAndAliases(t *testing.T) {
 			})
 		}
 		t.Run(fmt.Sprintf("%s-aliases", typ), func(t *testing.T) {
-			producer := &Instance{}
+			producer := globalDependencyUnitOwner(t)
 			store := newReferenceStore(true)
 			g := counterGlobal(typ, producer, 0, store)
 			other := counterGlobal(typ, producer, 0, store)
 			var batch globalImportAttachments
 			failed := false
 			allocs := testing.AllocsPerRun(100, func() {
-				if batch.attach(g, store, nil) != nil || batch.attach(g, store, nil) != nil || batch.attach(other, store, nil) != nil || g.owner.importers != 1 || other.owner.importers != 1 || producer.resourceRefs != 2 {
+				var cleanup resourceCleanup
+				if batch.attach(g, store, nil, &cleanup) != nil || batch.attach(g, store, nil, &cleanup) != nil || batch.attach(other, store, nil, &cleanup) != nil || g.owner.importers != 1 || other.owner.importers != 1 || producer.resourceRefs != 2 {
 					failed = true
 				}
 				batch.detachAll()
 				batch.detachAll()
 			})
-			if failed || allocs != 0 || g.owner.importers != 0 || other.owner.importers != 0 || producer.resourceRefs != 0 {
+			if failed || allocs > globalDependencyColdRowAllocationBound || g.owner.importers != 0 || other.owner.importers != 0 || producer.resourceRefs != 0 {
 				t.Fatal("exact alias/independent-handle acquisition changed", failed, allocs)
 			}
 		})

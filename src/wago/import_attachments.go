@@ -258,23 +258,22 @@ func detachImportedHostFuncRefs(in *Instance) {
 }
 
 type globalImportAttachments struct {
-	set importDedup[*Global]
+	dependencies globalDependencyAttachments // empty on existing targets; not trailing
+	set          importDedup[*Global]
 }
 
-func (a *globalImportAttachments) attach(global *Global, store *referenceStore, collector *gc.Collector) error {
+func (a *globalImportAttachments) attach(global *Global, store *referenceStore, collector *gc.Collector, cleanup *resourceCleanup) error {
 	if global == nil {
 		return fmt.Errorf("global is nil")
 	}
 	validate := global.validateNumericImport
-	attach := global.attachNumericImporter
 	if isReferenceValType(global.Type) {
 		validate = func() error { return global.validateReferenceImportWithCollector(store, collector) }
-		attach = func() error { return global.attachReferenceImporterWithCollector(store, collector) }
 	}
 	if a.set.contains(global) {
 		return validate()
 	}
-	if err := attach(); err != nil {
+	if err := railshotAcquireGlobalDependency(a, global, store, collector, cleanup); err != nil {
 		return err
 	}
 	a.set.push(global)
@@ -282,10 +281,16 @@ func (a *globalImportAttachments) attach(global *Global, store *referenceStore, 
 }
 
 func (a *globalImportAttachments) detachAll() {
+	if railshotDrainBuilderGlobalDependencies(a) {
+		return
+	}
 	a.set.drain((*Global).detachReferenceImporter)
 }
 
 func detachImportedGlobals(in *Instance) {
+	if railshotDrainInstanceGlobalDependencies(in) {
+		return
+	}
 	if in == nil || in.c == nil {
 		return
 	}
