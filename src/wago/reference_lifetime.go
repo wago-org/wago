@@ -149,6 +149,9 @@ func (in *Instance) transferImportedMemoryAttachment(memory *Memory) {
 	if in == nil || memory == nil {
 		return
 	}
+	if railshotTransferMemoryDependency(in, memory) {
+		return
+	}
 	state := transferredImportState(in)
 	state.mu.Lock()
 	if state.memories == nil {
@@ -165,6 +168,9 @@ func (in *Instance) transferImportedMemoryAttachment(memory *Memory) {
 }
 
 func (in *Instance) ownsTransferredMemoryAttachment(memory *Memory) bool {
+	if transferred, managed := railshotTransferredMemoryDependency(in, memory); managed {
+		return transferred
+	}
 	value, ok := transferredImportAttachments.Load(in)
 	if !ok {
 		return false

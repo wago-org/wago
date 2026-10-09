@@ -51,9 +51,11 @@ descriptor owners after writers return or close. Reference imports combined with
 instance-owned imported tables, general mutable reference imports/exports,
 broader reference signatures/equality, GC/EH,
 threads and table64 remain unavailable.
-Native function-import acquisition receipts now track each distinct producer
-Instance, including producers that share memory, through construction rollback
-and physical teardown. This is accounting for future ownership work; it does not
+Native function and memory-import acquisition receipts now track their actual
+producer Instances, including producers that share memory, through construction
+rollback and physical teardown. Memory rows own each distinct handle's exact
+importer counter and retain consumer resources through concurrent transfer and
+cleanup callbacks. This is accounting for future ownership work; it does not
 enable cycle collection or broaden feature admission. The bounded prototype
 registry preserves exact anonymous roots when metadata fills and still requires
 complete growable registration before collection can be enabled.

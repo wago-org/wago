@@ -215,13 +215,15 @@ codec rejection/repair qualify the slice. No new owner graph or ABI is needed.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
-primitive prepare later reference ownership work. Native function imports now
-record their actual producer acquisitions in one process graph and transfer
+primitive prepare later reference ownership work. Native function and memory
+imports now record their actual producer acquisitions in one process graph and transfer
 receipt ownership from construction to instance teardown. Cleanup retires graph
 members only after physical callbacks finish. This noncollecting prerequisite
 keeps the physical-root shadow entirely external; its prototype metadata ceiling
 and exact anonymous fallback do not qualify complete registration or collection.
-Memory, global, table and container acquisitions still require receipt integration,
+Memory rows also preserve exact per-handle importer counters and protect consumer
+resources through concurrent transfer, counter consumption and producer callbacks.
+Global, table and container acquisitions still require receipt integration,
 followed by scalable complete registration and cycle collection. Feature admission
 is unchanged.
 Remaining work

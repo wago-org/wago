@@ -139,14 +139,16 @@ func detachImportedTags(in *Instance) {
 	if in == nil || in.c == nil || in.c.memoryDir == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*Tag]
 	importCount := in.c.tagImportCount()
 	for i := 0; i < importCount; i++ {
 		tag, ok := in.imports.tag(in.c.tagImportBindingKey(i))
 		if ok && seen.add(tag) {
-			tag.detachImporter()
+			cleanup.run(tag.detachImporter)
 		}
 	}
+	cleanup.finish()
 }
 
 func (in *Instance) ExportedTag(name string) (*Tag, error) {

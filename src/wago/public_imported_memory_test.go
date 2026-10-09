@@ -287,6 +287,7 @@ func TestPublicImportedMemoryQuotaRecheckedAfterLeaseWait(t *testing.T) {
 	if err := p.bindNativeContext(); err != nil {
 		t.Fatal(err)
 	}
+	railshotBindNativeInvocation(p)
 	binary.LittleEndian.PutUint64(p.serArgs, 2)
 	if err := callNative(p.c, p.eng, p.jm, true, p.base+uintptr(p.c.Entry[1]), p.serArgs, p.trap, p.results); err != nil {
 		t.Fatal(err)

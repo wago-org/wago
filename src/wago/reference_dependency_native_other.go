@@ -5,6 +5,19 @@ package wago
 import "fmt"
 
 type functionDependencyAttachments struct{}
+type memoryDependencyAttachments struct{}
+
+func railshotAcquireMemoryDependency(_ *memoryImportAttachments, memory *Memory, _ *resourceCleanup) error {
+	return memory.attachImporter()
+}
+func railshotDrainBuilderMemoryDependencies(*memoryImportAttachments) bool  { return false }
+func railshotHasBuilderMemoryDependencies(*memoryImportAttachments) bool    { return false }
+func railshotInstallMemoryDependencies(*Instance, *memoryImportAttachments) {}
+func railshotAdoptMemoryDependencies(*Instance, bool) error                 { return nil }
+func railshotHasInstanceMemoryDependencies(*Instance) bool                  { return false }
+func railshotDrainInstanceMemoryDependencies(*Instance) bool                { return false }
+func railshotTransferMemoryDependency(*Instance, *Memory) bool              { return false }
+func railshotTransferredMemoryDependency(*Instance, *Memory) (bool, bool)   { return false, false }
 
 func railshotAcquireFunctionDependency(_ *functionImportAttachments, producer *Instance) error {
 	if !producer.retainResourceRoot() {

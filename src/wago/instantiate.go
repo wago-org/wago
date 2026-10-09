@@ -429,7 +429,27 @@ func (b *instanceBuilder) rollbackPreparedState() {
 	cleanup.finish()
 }
 
+type instanceConstructionCleanup struct {
+	resourceCleanup
+	primaryFailure bool // terminal observer/start failure stays primary
+}
+
 func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance, err error) {
+	// The body boundary preserves a panic that started before failure teardown.
+	// All deferred ownership classes share one journal, so later cleanup panics
+	// cannot replace the first one and cannot skip another class's release.
+	var body resourceCleanup
+	var cleanup instanceConstructionCleanup
+	body.run(func() { result, err = b.instantiateWithCleanup(mappingOwner, &cleanup) })
+	body.finish()
+	if cleanup.panicked && cleanup.primaryFailure {
+		return nil, joinPrimary(err, fmt.Errorf("wago: instantiation cleanup: %w", ErrCallbackPanic))
+	}
+	cleanup.finish()
+	return result, err
+}
+
+func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup *instanceConstructionCleanup) (result *Instance, err error) {
 	if err := b.validateCompiled(); err != nil {
 		return nil, err
 	}
@@ -491,12 +511,12 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	}
 	defer func() {
 		if !b.success && gcExternConversion != nil {
-			_ = gcExternConversion.close()
+			cleanup.run(func() { _ = gcExternConversion.close() })
 		}
 	}()
 	defer func() {
 		if !b.success {
-			b.rollbackPreparedState()
+			cleanup.run(b.rollbackPreparedState)
 		}
 	}()
 	importGlobals, err := b.attachImports()
@@ -509,7 +529,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	}
 	defer func() {
 		if !b.success {
-			railshotReleaseGlobalReferences(globalRefs)
+			cleanup.run(func() { railshotReleaseGlobalReferences(globalRefs) })
 		}
 	}()
 	stackBytes := opts.nativeStackBytes
@@ -523,6 +543,11 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if !b.success {
+			cleanup.run(func() { runtime.ReleaseEngine(eng) })
+		}
+	}()
 	// Memory: a host-imported *Memory if the module imports one, otherwise an
 	// instance-owned mapping (guard-page-backed for signals-based modules, so the
 	// fault handler catches OOB accesses through the normal Invoke path).
@@ -531,29 +556,43 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		memObj          *Memory
 		ownsMem         bool
 		threadedControl bool
+		ownsControl     bool
 		memoryObjs      []*Memory
 		memoryOwns      []bool
 	)
-	var memoryAttachments importDedup[*Memory]
-	attachMemory := func(memory *Memory) error {
-		if memoryAttachments.contains(memory) {
-			return nil
+	var memoryAttachments memoryImportAttachments
+	defer func() {
+		if !b.success {
+			cleanup.run(memoryAttachments.detachAll)
 		}
-		if err := memory.attachImporter(); err != nil {
-			return err
+	}()
+	attachMemory := func(memory *Memory) error { return memoryAttachments.attach(memory, &cleanup.resourceCleanup) }
+	// The primary control mapping is a separate unit from imported memory 0,
+	// even when the module has multiple memories. Zero-memory modules still own
+	// their primary control mapping. Consume every owned bit before release.
+	defer func() {
+		if b.success {
+			return
 		}
-		memoryAttachments.push(memory)
-		return nil
-	}
+		for i := len(memoryObjs) - 1; i >= 1; i-- {
+			if memoryObjs[i] != nil && memoryOwns[i] {
+				memory := memoryObjs[i]
+				memoryOwns[i] = false
+				cleanup.run(func() { runtime.ReleaseJobMemory(memory.jobMemory()) })
+			}
+		}
+		if ownsMem || ownsControl {
+			ownsMem, ownsControl = false, false
+			cleanup.run(func() { runtime.ReleaseJobMemory(jm) })
+		}
+	}()
 	if c.memoryImport != "" {
 		m, ok := imports.memory(c.memoryImportBindingKey(0))
 		if !ok {
-			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
 		}
 		if def, ok := c.memoryImportAt(0); ok {
 			if err := m.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64, def.Shared); err != nil {
-				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("imported memory %q limits: %w", c.memoryImport, err)
 			}
 		}
@@ -565,22 +604,18 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		// owner's memory, or a deserialized signals-based module in a default binary).
 		guarded, _ := m.importShape()
 		if c.boundsMode == BoundsChecksSignalsBased && !guarded {
-			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
 		}
 		if err := attachMemory(m); err != nil {
-			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
 		}
 		memObj = m
 		if c.threadedMemory0() {
 			jm, err = runtime.AcquireJobMemoryGrowable(0, 0)
 			if err != nil {
-				m.detachImporter()
-				runtime.ReleaseEngine(eng)
 				return nil, wrapContextError("allocate threaded instance control", err)
 			}
-			threadedControl = true
+			threadedControl, ownsControl = true, true
 		} else {
 			jm = m.jobMemory()
 		}
@@ -592,7 +627,6 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			jm, err = runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
 		}
 		if err != nil {
-			runtime.ReleaseEngine(eng)
 			return nil, err
 		}
 		memObj, ownsMem = &Memory{jm: jm}, true
@@ -604,44 +638,18 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		memoryOwns = make([]bool, memoryCount)
 		memoryObjs[0], memoryOwns[0] = memObj, ownsMem
 	}
-	// Release every owned mapping once and detach every distinct imported memory
-	// once. Multiple import declarations may deliberately alias one host Memory.
-	closeMem := func() {
-		if memoryCount <= 1 {
-			if threadedControl {
-				runtime.ReleaseJobMemory(jm)
-			}
-			if ownsMem {
-				runtime.ReleaseJobMemory(jm)
-			}
-			memoryAttachments.each((*Memory).detachImporter)
-			return
-		}
-		for i := memoryCount - 1; i >= 0; i-- {
-			memory := memoryObjs[i]
-			if memory != nil && memoryOwns[i] {
-				runtime.ReleaseJobMemory(memory.jobMemory())
-			}
-		}
-		memoryAttachments.each((*Memory).detachImporter)
-	}
+
 	for i := 1; i < memoryCount; i++ {
 		def := c.memoryDef(i)
 		if def.ImportKey != "" {
 			memory, ok := imports.memory(c.memoryImportBindingKey(i))
 			if !ok {
-				closeMem()
-				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("missing imported memory %q", def.ImportKey)
 			}
 			if err := memory.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64, def.Shared); err != nil {
-				closeMem()
-				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("imported memory %q limits: %w", def.ImportKey, err)
 			}
 			if err := attachMemory(memory); err != nil {
-				closeMem()
-				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("imported memory %q: %w", def.ImportKey, err)
 			}
 			memoryObjs[i] = memory
@@ -649,8 +657,6 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		}
 		maxPages, reservationErr := ownedMemoryReservationPages(def)
 		if reservationErr != nil {
-			closeMem()
-			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("memory %d: %w", i, reservationErr)
 		}
 		initialPages := def.Min
@@ -666,8 +672,6 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			secondaryJM, allocErr = runtime.AcquireJobMemoryGrowable(int(initialPages)*65536, int(maxPages)*65536)
 		}
 		if allocErr != nil {
-			closeMem()
-			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("memory %d: %w", i, allocErr)
 		}
 		memoryObjs[i] = &Memory{jm: secondaryJM}
@@ -677,15 +681,11 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	var nativeTagIDs []byte
 	ar, err := runtime.AcquireArena(arenaNeed)
 	if err != nil {
-		closeMem()
-		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
 	base, err := mappingOwner.acquireCode()
 	if err != nil {
-		runtime.ReleaseArena(ar)
-		closeMem()
-		runtime.ReleaseEngine(eng)
+		cleanup.run(func() { runtime.ReleaseArena(ar) })
 		return nil, err
 	}
 	var tailInstance *Instance
@@ -695,15 +695,13 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			return
 		}
 		if tailInstance != nil {
-			railshotReleaseNativeTail(tailInstance)
+			cleanup.run(func() { railshotReleaseNativeTail(tailInstance) })
 		}
 		if thunkMem != nil {
-			_ = c.releaseOwnedCodeMapping(thunkMem)
+			cleanup.run(func() { _ = c.releaseOwnedCodeMapping(thunkMem) })
 		}
-		c.releaseCode()
-		runtime.ReleaseArena(ar)
-		closeMem()
-		runtime.ReleaseEngine(eng)
+		cleanup.run(c.releaseCode)
+		cleanup.run(func() { runtime.ReleaseArena(ar) })
 	}()
 	// An ordinary imported memory shares its basedata with the provider and
 	// other importers. Construction must own the same lease as native entries,
@@ -1813,7 +1811,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		}
 		defer func() {
 			if !b.success {
-				unregisterHostControl(in)
+				cleanup.run(func() { unregisterHostControl(in) })
 			}
 		}()
 	}
@@ -1918,13 +1916,14 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 				err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
 			}
 		}
+		cleanup.primaryFailure = cleanup.primaryFailure || err != nil
 		if !b.success {
 			b.success = true // the normal Close path now owns all instance resources
-			err = joinPrimary(err, in.Close())
+			cleanup.run(func() { err = joinPrimary(err, in.Close()) })
 		}
-		in.endConstruction()
+		cleanup.run(in.endConstruction)
 	}
-	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments)
+	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments) || railshotHasBuilderMemoryDependencies(&memoryAttachments)
 	if opts.runtime == nil && (c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
 		in.beginConstruction(opts.operationReservation)
 		defer finishConstruction()
@@ -1941,6 +1940,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	// Transfer concrete acquisition records only after normal Close owns terminal
 	// rollback. Graph adoption waits until the construction native lease is gone.
 	railshotInstallFunctionDependencies(in, &b.functionAttachments)
+	railshotInstallMemoryDependencies(in, &memoryAttachments)
 	if opts.store != nil {
 		if err := opts.store.registerInstance(in); err != nil {
 			return nil, err
@@ -1999,8 +1999,11 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	if err := railshotAdoptFunctionDependencies(in, finishMemoryContext == nil); err != nil {
 		return nil, err
 	}
+	if err := railshotAdoptMemoryDependencies(in, finishMemoryContext == nil); err != nil {
+		return nil, err
+	}
 	if opts.afterCreate != nil {
-		// Function receipts are already adopted before any callback can expose in.
+		// Function and memory receipts are adopted before callbacks can expose in.
 		if err := opts.afterCreate(in); err != nil {
 			return nil, err
 		}

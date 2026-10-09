@@ -130,6 +130,29 @@ type functionImportAttachments struct {
 	set          importDedup[*Instance]
 }
 
+type memoryImportAttachments struct {
+	dependencies memoryDependencyAttachments // empty on existing targets; not trailing
+	set          importDedup[*Memory]
+}
+
+func (a *memoryImportAttachments) attach(memory *Memory, cleanup *resourceCleanup) error {
+	if a.set.contains(memory) {
+		return nil
+	}
+	if err := railshotAcquireMemoryDependency(a, memory, cleanup); err != nil {
+		return err
+	}
+	a.set.push(memory)
+	return nil
+}
+
+func (a *memoryImportAttachments) detachAll() {
+	if railshotDrainBuilderMemoryDependencies(a) {
+		return
+	}
+	a.set.drain((*Memory).detachImporter)
+}
+
 func (a *functionImportAttachments) attach(export *InstanceExport) error {
 	if export == nil || export.inst == nil {
 		return fmt.Errorf("instance export is nil")
@@ -159,6 +182,7 @@ func detachImportedFunctions(in *Instance) {
 	if in == nil || in.c == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*Instance]
 	for i := range in.c.Imports {
 		export, ok := in.imports[in.c.functionImportBindingKey(i)].(*InstanceExport)
@@ -166,9 +190,10 @@ func detachImportedFunctions(in *Instance) {
 			continue
 		}
 		if seen.add(export.inst) {
-			export.inst.releaseResourceRoot()
+			cleanup.run(func() { export.inst.releaseResourceRoot() })
 		}
 	}
+	cleanup.finish()
 }
 
 type hostFuncRefAttachments struct {
@@ -217,17 +242,19 @@ func detachImportedHostFuncRefs(in *Instance) {
 	if in == nil || in.c == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*HostFuncRef]
 	for i := range in.c.Imports {
 		owner, ok := in.imports[in.c.functionImportBindingKey(i)].(*HostFuncRef)
 		if !ok || owner == nil {
 			continue
 		}
-		owner.releaseDispatchBinding(in.c, i)
+		cleanup.run(func() { owner.releaseDispatchBinding(in.c, i) })
 		if seen.add(owner) {
-			owner.detachImporter()
+			cleanup.run(func() { owner.detachImporter() })
 		}
 	}
+	cleanup.finish()
 }
 
 type globalImportAttachments struct {
@@ -262,6 +289,7 @@ func detachImportedGlobals(in *Instance) {
 	if in == nil || in.c == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*Global]
 	for i, imp := range in.c.GlobalImports {
 		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
@@ -269,9 +297,10 @@ func detachImportedGlobals(in *Instance) {
 			continue
 		}
 		if seen.add(provided.Global) && !in.ownsTransferredGlobalAttachment(provided.Global) {
-			provided.Global.detachReferenceImporter()
+			cleanup.run(func() { provided.Global.detachReferenceImporter() })
 		}
 	}
+	cleanup.finish()
 }
 
 func retainProducerRootsInImportedGlobals(in *Instance) bool {
@@ -395,6 +424,7 @@ func detachImportedTables(in *Instance) {
 	if in == nil || in.c == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*Table]
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
@@ -402,9 +432,10 @@ func detachImportedTables(in *Instance) {
 			continue
 		}
 		if seen.add(table) && !in.ownsTransferredTableAttachment(table) {
-			table.detachImporter(in.refStore)
+			cleanup.run(func() { table.detachImporter(in.refStore) })
 		}
 	}
+	cleanup.finish()
 }
 
 func retainProducerRootsInImportedTables(in *Instance) bool {

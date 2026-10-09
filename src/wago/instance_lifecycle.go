@@ -481,13 +481,13 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	// Every imported raw-pointer dependency remains attached until physical
 	// release. A table/global/token or downstream function importer may keep this
 	// instance's native code and context callable after logical Close.
-	railshotReleaseNativeTail(in)
+	cleanup.run(func() { railshotReleaseNativeTail(in) })
 	cleanup.run(func() { detachImportedFunctions(in) })
-	detachImportedHostFuncRefs(in)
-	detachImportedGlobals(in)
-	railshotReleaseGlobalReferences(in.importGlobalReferences())
-	detachImportedTables(in)
-	detachImportedTags(in)
+	cleanup.run(func() { detachImportedHostFuncRefs(in) })
+	cleanup.run(func() { detachImportedGlobals(in) })
+	cleanup.run(func() { railshotReleaseGlobalReferences(in.importGlobalReferences()) })
+	cleanup.run(func() { detachImportedTables(in) })
+	cleanup.run(func() { detachImportedTags(in) })
 	if in.gc != nil {
 		closeCollector := func() {
 			if table := in.existingGCRefTestTableState(); table != nil {
@@ -520,6 +520,7 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	}
 	in.c.releaseCode()
 	runtime.ReleaseArena(in.ar)
+	managedMemories := railshotHasInstanceMemoryDependencies(in)
 	var detachedMemories importDedup[*Memory]
 	if in.memoryDir != nil {
 		for i := len(in.memoryDir.memories) - 1; i >= 1; i-- {
@@ -528,26 +529,33 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 				continue
 			}
 			if i < len(in.memoryDir.owns) && in.memoryDir.owns[i] {
-				memoryJM := memory.jobMemory()
-				memory.ownerClosed()
-				runtime.ReleaseJobMemory(memoryJM)
-			} else if detachedMemories.add(memory) && !in.ownsTransferredMemoryAttachment(memory) {
-				memory.detachImporter()
+				cleanup.run(func() {
+					memoryJM := memory.jobMemory()
+					memory.ownerClosed()
+					runtime.ReleaseJobMemory(memoryJM)
+				})
+			} else if !managedMemories && detachedMemories.add(memory) && !in.ownsTransferredMemoryAttachment(memory) {
+				cleanup.run(memory.detachImporter)
 			}
 		}
 	}
 	if in.c.threadedMemory0() {
-		runtime.ReleaseJobMemory(in.jm)
-		if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
-			in.memory.detachImporter()
+		cleanup.run(func() { runtime.ReleaseJobMemory(in.jm) })
+		if !managedMemories && in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
+			cleanup.run(in.memory.detachImporter)
 		}
 	} else if in.ownsMem {
-		if in.memory != nil {
-			in.memory.ownerClosed()
-		}
-		runtime.ReleaseJobMemory(in.jm)
-	} else if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
-		in.memory.detachImporter()
+		cleanup.run(func() {
+			if in.memory != nil {
+				in.memory.ownerClosed()
+			}
+			runtime.ReleaseJobMemory(in.jm)
+		})
+	} else if !managedMemories && in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
+		cleanup.run(in.memory.detachImporter)
+	}
+	if managedMemories {
+		cleanup.run(func() { railshotDrainInstanceMemoryDependencies(in) })
 	}
 	transferredImportAttachments.Delete(in)
 	runtime.ReleaseEngine(in.eng)

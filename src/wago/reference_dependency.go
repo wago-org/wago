@@ -340,7 +340,13 @@ func (r dependencyReceipt) commit(consumer *dependencyMember, kind dependencyKin
 // release is called outside every store/native/container/lifetime lock. Claim
 // once and demote before physical release; finalize the record in a defer even
 // if actual finalization or the after-decrement test callback propagates panic.
-func (r dependencyReceipt) release() bool {
+func (r dependencyReceipt) release() bool { return r.releaseWithCleanup(nil) }
+
+// A storage receipt must become non-adoptable before its counter obligation is
+// consumed. The optional prerequisite runs after the exact graph release claim,
+// outside graph/lifetime locks, before the real physical root decrement. Both
+// cleanup steps complete and preserve the first panic.
+func (r dependencyReceipt) releaseWithCleanup(before func()) bool {
 	if r.graph == nil {
 		return false
 	}
@@ -379,9 +385,14 @@ func (r dependencyReceipt) release() bool {
 			g.afterReceiptRelease(target, consumer)
 		}
 	}()
-	target.owner.releaseResourceRoot()
-	if g.afterRelease != nil {
-		g.afterRelease(target.owner)
+	var cleanup resourceCleanup
+	if before != nil {
+		cleanup.run(before)
 	}
+	cleanup.run(target.owner.releaseResourceRoot)
+	if g.afterRelease != nil {
+		cleanup.run(func() { g.afterRelease(target.owner) })
+	}
+	cleanup.finish()
 	return true
 }
