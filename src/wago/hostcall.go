@@ -1828,18 +1828,25 @@ func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 		if fn == nil {
 			return syncHostBinding{}, fmt.Errorf("host funcref owner is nil")
 		}
+		// Keep unlocks explicit: a defer inflates every return in this large
+		// switch under TinyGo, including recursive gated callback binding.
 		fn.mu.Lock()
-		defer fn.mu.Unlock()
 		if fn.closed || fn.fn == nil {
+			fn.mu.Unlock()
 			return syncHostBinding{}, fmt.Errorf("host funcref owner is closed")
 		}
 		if !funcSigEqual(fn.sig, sig) {
+			fn.mu.Unlock()
 			return syncHostBinding{}, fmt.Errorf("host funcref signature mismatch")
 		}
 		if fn.scalarBinding != nil {
-			return *fn.scalarBinding, nil
+			binding := *fn.scalarBinding
+			fn.mu.Unlock()
+			return binding, nil
 		}
-		return syncHostBinding{fn: fn.fn}, nil
+		callback := fn.fn
+		fn.mu.Unlock()
+		return syncHostBinding{fn: callback}, nil
 	case I32HostEvent, gatedI32HostEvent:
 		return syncHostBinding{}, fmt.Errorf("deferred host event cannot be used by a module that requires synchronous host control")
 	case callerSlotHostFunc:
