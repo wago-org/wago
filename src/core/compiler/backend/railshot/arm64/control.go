@@ -236,7 +236,7 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
 }
 
 func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
-	if !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
+	if shared.SumExperiment == "A" || !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
 		return
 	}
 	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
@@ -286,6 +286,12 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
 // accumulators. Addition is associative modulo 2^64, so regrouping preserves
 // Wasm semantics while exposing independent load/add chains to the CPU.
 func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
+	if factor, accumulators, enabled := shared.SumExperimentShape(); enabled {
+		if factor == 1 {
+			return false
+		}
+		return f.tryExperimentalSumLatch(counter, factor, accumulators)
+	}
 	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
 		return false
 	}

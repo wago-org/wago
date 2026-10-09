@@ -218,7 +218,7 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
 }
 
 func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFrame) {
-	if !f.opt(optLinearSumLoop) || f.guardMode && !linearSumSignalsEnabled || f.threadedMemory0 || f.memoryAddr64(0) || !f.guardMode && f.memSizeReg == regNone {
+	if shared.SumExperiment == "A" || !f.opt(optLinearSumLoop) || f.guardMode && !linearSumSignalsEnabled || f.threadedMemory0 || f.memoryAddr64(0) || !f.guardMode && f.memSizeReg == regNone {
 		return
 	}
 	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
@@ -272,6 +272,12 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 // not change Wasm results, while independent dependency chains let AMD64 retire
 // the four loads at load-port throughput instead of add latency.
 func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
+	if factor, accumulators, enabled := shared.SumExperimentShape(); enabled {
+		if factor == 1 {
+			return false
+		}
+		return f.tryExperimentalSumLatch(counter, factor, accumulators)
+	}
 	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
 		return false
 	}
