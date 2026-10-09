@@ -57,6 +57,9 @@ func TestSumUnrollCorpusAdmission(t *testing.T) {
 			if (s.Peephole["experimental-linear-sum"] == 1) != want || (!want && s.Peephole["linear-sum-unroll4"] != 1) {
 				t.Fatalf("sum selection: %v", s.Peephole)
 			}
+			if os.Getenv("WAGO_SUM_VARIANT") == "H" && s.Peephole["experimental-linear-sum-hybrid"] != 1 {
+				t.Fatalf("hybrid not selected: %v", s.Peephole)
+			}
 			if err := os.WriteFile(filepath.Join(dir, "memory.bin"), cm.Code, 0644); err != nil {
 				t.Fatal(err)
 			}

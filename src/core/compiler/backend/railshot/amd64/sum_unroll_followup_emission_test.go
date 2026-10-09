@@ -36,7 +36,11 @@ func TestSumUnrollFollowupEmission(t *testing.T) {
 	if f.stats.Peephole[marker] != 1 {
 		t.Fatalf("candidate not emitted: %v", f.stats.Peephole)
 	}
-	if f.a.Len() > 576 {
+	bound := 512
+	if v != "H" {
+		bound = 528
+	}
+	if f.a.Len() > bound {
 		t.Fatalf("latch budget: %d", f.a.Len())
 	}
 	if f.pinned != pins {
@@ -47,19 +51,22 @@ func TestSumUnrollFollowupEmission(t *testing.T) {
 			t.Fatal("temporary owner leaked")
 		}
 	}
-	f = makeFn()
-	f.a.B = []byte{0x90}
-	for _, r := range gpAlloc {
-		f.reserved = f.reserved.add(r)
-	}
-	sumUnrollExperiment.budget = 0
-	// Direct rejection of the configurable emitter, before baseline fallback.
-	// The outer wrapper's native fallback is covered by TestSumUnrollNativeFallback.
-	saved := *f
-	if f.tryExperimentalLinearSumLatch(nil, 1, 16, 4, 0) {
-		t.Fatal("zero budget accepted")
-	}
-	if !bytes.Equal(f.a.B, []byte{0x90}) || f.pinned != saved.pinned || f.reserved != saved.reserved || f.regUser != saved.regUser {
-		t.Fatal("rejection mutated state")
+	for _, pressure := range []bool{false, true} {
+		f = makeFn()
+		f.a.B = []byte{0x90}
+		budget := 511
+		if pressure {
+			budget = 576
+			for _, r := range gpAlloc {
+				f.reserved = f.reserved.add(r)
+			}
+		}
+		saved := *f
+		if f.tryLinearSumLatchWithTail(nil, 1, 16, 4, budget, true) {
+			t.Fatal("unsafe candidate accepted")
+		}
+		if !bytes.Equal(f.a.B, []byte{0x90}) || f.pinned != saved.pinned || f.reserved != saved.reserved || f.regUser != saved.regUser {
+			t.Fatal("rejection mutated state")
+		}
 	}
 }

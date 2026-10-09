@@ -4,11 +4,23 @@ package amd64
 
 // Experimental builds only. Tests set this value before serial compilation.
 // It is absent from normal builds and is not a production compiler option.
-var sumUnrollExperiment struct{ factor, chains, budget int }
+var sumUnrollExperiment struct {
+	factor, chains, budget int
+	hybrid                 bool
+}
+
+// Called once by the corpus test bridge, before any compilation or timing.
+// This private setter exists only in experimental builds.
+func setSumUnrollMeasurement(factor int, hybrid bool) {
+	sumUnrollExperiment.factor = factor
+	sumUnrollExperiment.chains = 4
+	sumUnrollExperiment.budget = 576
+	sumUnrollExperiment.hybrid = hybrid
+}
 
 func (f *fn) trySelectedLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	c := sumUnrollExperiment
-	if c.factor != 0 && f.tryExperimentalLinearSumLatch(loop, counter, c.factor, c.chains, c.budget) {
+	if c.factor != 0 && f.tryLinearSumLatchWithTail(loop, counter, c.factor, c.chains, c.budget, c.hybrid) {
 		return true
 	}
 	return f.tryUnrolledLinearSumLatch(loop, counter)
@@ -18,6 +30,11 @@ func (f *fn) trySelectedLinearSumLatch(loop *ctrlFrame, counter int) bool {
 // emitter. Only grouping and the number of independent chains differ.
 // A conservative encoding bound caps this latch at 512 bytes for 16/8.
 func (f *fn) tryExperimentalLinearSumLatch(loop *ctrlFrame, counter int, factor, chains, budget int) bool {
+	return f.tryLinearSumLatchWithTail(loop, counter, factor, chains, budget, false)
+}
+
+// Hybrid groups share setup, wrap dispatch, scalar tail, and final combination.
+func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, chains, budget int, hybrid bool) bool {
 	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
 		return false
 	}
@@ -30,11 +47,15 @@ func (f *fn) tryExperimentalLinearSumLatch(loop *ctrlFrame, counter int, factor,
 		return false
 	}
 
+	bound := 256 + 8*factor + 16*chains
+	if hybrid {
+		bound += 64
+	}
 	// Select only free registers. Do not spill or relinquish local pins. Failure
 	// leaves assembler, allocator, and local state unchanged for the default path.
 	if factor < 2 || factor > 16 || factor&(factor-1) != 0 ||
 		chains < 2 || chains > 8 || chains > factor || factor%chains != 0 ||
-		budget < 256+8*factor+16*chains {
+		budget < bound || hybrid && (factor != 16 || chains != 4) {
 		return false
 	}
 	var regs [8]Reg
@@ -63,7 +84,11 @@ func (f *fn) tryExperimentalLinearSumLatch(loop *ctrlFrame, counter int, factor,
 	// The scalar body already consumed the first element and advanced addr.
 	f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
 	firstDone := f.a.JccPlaceholder(condE)
-	f.a.AluRI(cmpDigit, counterReg, int32(factor), false)
+	minimum := factor
+	if hybrid {
+		minimum = 4
+	}
+	f.a.AluRI(cmpDigit, counterReg, int32(minimum), false)
 	toRemainder := f.a.JccPlaceholder(condB)
 
 	toWrapping := -1
@@ -79,6 +104,13 @@ func (f *fn) tryExperimentalLinearSumLatch(loop *ctrlFrame, counter int, factor,
 		toWrapping = f.a.JccPlaceholder(condNE)
 	}
 
+	toFour := -1
+	if hybrid {
+		// The wrap check precedes every group-offset load, including small
+		// counts that could cross memory32. They must use the scalar tail.
+		f.a.AluRI(cmpDigit, counterReg, int32(factor), false)
+		toFour = f.a.JccPlaceholder(condB)
+	}
 	group := f.a.Len()
 	for i := 0; i < factor; i++ {
 		f.a.AluIdx(aluTable[opAdd].rm, regs[i%chains], RBX, addrReg, int32(i*8), true)
@@ -89,6 +121,21 @@ func (f *fn) tryExperimentalLinearSumLatch(loop *ctrlFrame, counter int, factor,
 	moreGroups := f.a.JccPlaceholder(condAE)
 	f.a.PatchRel32(moreGroups, group)
 
+	if hybrid {
+		f.a.AluRI(cmpDigit, counterReg, 4, false)
+		toScalar := f.a.JccPlaceholder(condB)
+		four := f.a.Len()
+		f.a.PatchRel32(toFour, four)
+		for i := 0; i < 4; i++ {
+			f.a.AluIdx(aluTable[opAdd].rm, regs[i], RBX, addrReg, int32(i*8), true)
+		}
+		f.a.AluRI(aluTable[opAdd].digit, addrReg, 32, false)
+		f.a.AluRI(aluTable[opSub].digit, counterReg, 4, false)
+		f.a.AluRI(cmpDigit, counterReg, 4, false)
+		moreFour := f.a.JccPlaceholder(condAE)
+		f.a.PatchRel32(moreFour, four)
+		f.a.PatchRel32(toScalar, f.a.Len())
+	}
 	f.a.PatchRel32(toRemainder, f.a.Len())
 	if toWrapping >= 0 {
 		f.a.PatchRel32(toWrapping, f.a.Len())
@@ -114,5 +161,8 @@ func (f *fn) tryExperimentalLinearSumLatch(loop *ctrlFrame, counter int, factor,
 	}
 	f.markLocalDirty(counter)
 	f.stats.peep("experimental-linear-sum")
+	if hybrid {
+		f.stats.peep("experimental-linear-sum-hybrid")
+	}
 	return true
 }

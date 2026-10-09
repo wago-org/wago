@@ -23,6 +23,8 @@ func selectSumUnroll(t testing.TB) {
 		factor, chains = 2, 2
 	case "D":
 		factor, chains = 16, 4
+	case "H":
+		factor, chains = 16, 4
 	case "E":
 		factor, chains = 16, 8
 	default:
@@ -30,7 +32,8 @@ func selectSumUnroll(t testing.TB) {
 	}
 	sumUnrollExperiment.factor = factor
 	sumUnrollExperiment.chains = chains
-	sumUnrollExperiment.budget = 512
+	sumUnrollExperiment.hybrid = os.Getenv("WAGO_SUM_VARIANT") == "H"
+	sumUnrollExperiment.budget = 576
 }
 
 func sumUnrollBaseline(t testing.TB, m *wasm.Module) *sumNative {

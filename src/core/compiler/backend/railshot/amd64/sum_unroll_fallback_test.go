@@ -73,8 +73,10 @@ func TestSumUnrollNativeFallback(t *testing.T) {
 	for _, tc := range []struct {
 		name                             string
 		pressure, factor, chains, budget int
+		hybrid                           bool
 	}{
-		{"budget", 0, 16, 8, 511}, {"pressure", 12, 8, 8, 512},
+		{"budget", 0, 16, 8, 511, false}, {"pressure", 12, 8, 8, 512, false},
+		{"hybrid-budget", 0, 16, 4, 511, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := sumUnrollModule(t, tc.pressure)
@@ -82,6 +84,7 @@ func TestSumUnrollNativeFallback(t *testing.T) {
 			sumUnrollExperiment.factor = tc.factor
 			sumUnrollExperiment.chains = tc.chains
 			sumUnrollExperiment.budget = tc.budget
+			sumUnrollExperiment.hybrid = tc.hybrid
 			var stats ModuleStats
 			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
 			if err != nil {
