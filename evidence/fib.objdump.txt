@@ -1,0 +1,35 @@
+
+/tmp/TestExistingFibSourceRegions4277387563/001/fib.bin:     file format binary
+
+
+Disassembly of section .data:
+
+0000000000000000 <.data>:
+   0:	48 89 f3                                        	mov    rbx,rsi
+   3:	4c 8b bb e0 fe ff ff                            	mov    r15,QWORD PTR [rbx-0x120]
+   a:	51                                              	push   rcx
+   b:	48 8b 07                                        	mov    rax,QWORD PTR [rdi]
+   e:	e8 05 00 00 00                                  	call   0x18
+  13:	59                                              	pop    rcx
+  14:	48 89 01                                        	mov    QWORD PTR [rcx],rax
+  17:	c3                                              	ret
+  18:	48 81 ec 28 00 00 00                            	sub    rsp,0x28
+  1f:	89 04 24                                        	mov    DWORD PTR [rsp],eax
+  22:	31 c0                                           	xor    eax,eax
+  24:	45 31 db                                        	xor    r11d,r11d
+  27:	89 44 24 0c                                     	mov    DWORD PTR [rsp+0xc],eax
+  2b:	45 31 d2                                        	xor    r10d,r10d
+  2e:	41 b9 01 00 00 00                               	mov    r9d,0x1
+  34:	66 0f 1f 84 00 00 00 00 00                      	nop    WORD PTR [rax+rax*1+0x0]
+  3d:	0f 1f 00                                        	nop    DWORD PTR [rax]
+  40:	8b 3c 24                                        	mov    edi,DWORD PTR [rsp]
+  43:	44 39 d7                                        	cmp    edi,r10d
+  46:	0f 8e 12 00 00 00                               	jle    0x5e
+  4c:	44 89 df                                        	mov    edi,r11d
+  4f:	45 89 cb                                        	mov    r11d,r9d
+  52:	41 01 f9                                        	add    r9d,edi
+  55:	41 83 c2 01                                     	add    r10d,0x1
+  59:	e9 e2 ff ff ff                                  	jmp    0x40
+  5e:	44 89 d8                                        	mov    eax,r11d
+  61:	48 81 c4 28 00 00 00                            	add    rsp,0x28
+  68:	c3                                              	ret

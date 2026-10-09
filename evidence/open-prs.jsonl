@@ -1,0 +1,31 @@
+{"branch":"experiment/loop-unroll-vectorization","head":"28832779031eea033cd3195228221a8524bfc978","number":909,"title":"experiment: qualify loop unrolling and 128-bit vector maps"}
+{"branch":"codex/review-p5-profile-join","head":"b4ccf90f3e81233a327afc0225be352c4200eeca","number":907,"title":"fix(profile): avoid repeated sorting in sample resolution"}
+{"branch":"codex/review-p2-subtype-chain","head":"f85698beea0217ed6b2e170a3879d4e7599b7e88","number":906,"title":"Speed up declared supertype chain checks during validation"}
+{"branch":"codex/review-p3-addtypes","head":"0ad9600fb68df3a2e3ebc0d0be514652df339a58","number":905,"title":"Avoid rebuilding GC intervals for independent type roots"}
+{"branch":"codex/review-p4-funcref-retention","head":"ed99084255767d25ca0736e232bffd07d2678e9b","number":904,"title":"Reduce repeated funcref retention scans"}
+{"branch":"codex/review-p8-rel32-fold","head":"29ebda88a85b9a9c2927cbf3540d3fec3d647593","number":903,"title":"Speed up AMD64 branch-fold relocation cleanup"}
+{"branch":"codex/review-p1-rec-group","head":"3826631898ce6496d7dfaa4cb8ac14b2b09b6d61","number":902,"title":"Avoid quadratic recursive-group equivalence scans"}
+{"branch":"codex/review-p7-perfmap-overlap","head":"e4148fd7084180225a6906e7c213f05431bba79d","number":901,"title":"Speed up perf-map overlap checks"}
+{"branch":"codex/review-p6-samply-metadata","head":"880b594ff00eae36adfa1608d8841146fa46047f","number":900,"title":"Speed up Samply function metadata joins"}
+{"branch":"codex/review-c1-arm64-adr","head":"17a843205b7abb5e14f40baa6648dbd546582970","number":899,"title":"fix(arm64): reject out-of-range adapter ADR patches"}
+{"branch":"codex/review-c2-gc-frame-depth","head":"8492728fc09fb828a3923e93d4a88492ef1669a1","number":898,"title":"fix(gc): remove fixed native frame depth limit"}
+{"branch":"codex/review-p9-arm64-store","head":"4375dc1c58b7155196254dbf96c144e5e22bff92","number":897,"title":"fix(arm64): avoid duplicate immediate store loads"}
+{"branch":"codex/wasmfyi-runtime-performance","head":"c6d331cbbecab4e65f16d987b94f9c3dcc1011fd","number":895,"title":"perf: speed up AMD64 execution and owned numeric host calls"}
+{"branch":"codex/safe-compiler-recovery-fixtures","head":"74287882bc744a3c9b94adb3905cdd4e96010e8d","number":892,"title":"test(amd64): use bounds panics for compiler recovery fixtures"}
+{"branch":"experiment/810-integer-loop-pressure","head":"963065314d40338d88c1a48796694eec4c308ac5","number":882,"title":"test(amd64): qualify integer state across loop backedges"}
+{"branch":"experiment/810-integer-join-pressure","head":"27fb172f07819d634613f7d0409ff572d3a0be11","number":881,"title":"test(amd64): qualify integer values across conditional joins"}
+{"branch":"experiment/826-first-prepared-call","head":"d5f9bc7f012f9dab421e97c11d291d796c4d659a","number":880,"title":"test(bench): qualify first prepared calls on fresh instances"}
+{"branch":"experiment/826-semantic-adapter-schedule","head":"5b569616e5fd8b21b475f8472e5ba15148c5a52a","number":879,"title":"test(bench): qualify prepared semantic call schedules"}
+{"branch":"experiment/810-integer-call-pressure","head":"763691ed267d0980457d1d1a581ec2de10f070f5","number":877,"title":"test(amd64): qualify integer values live across calls"}
+{"branch":"experiment/871-floor-average","head":"92a5a2057be12fdc804d7b7b68c065bc243099b0","number":875,"title":"test: qualify SIMD floor average sources and bounded applicability"}
+{"branch":"experiment/870-widening-multiply","head":"4ec8d133ae9951bfbed60648032d2a615229756d","number":874,"title":"fix(arm64): reduce i64x2 multiply pressure and qualify source pairs"}
+{"branch":"perf/arm64-await-third-party","head":"086e7c29063f5ec18f51bb5ff9364f384e89a1b1","number":849,"title":"perf(arm64): avoid repeated branch-hint and stack-depth walks"}
+{"branch":"perf/ready-register-moves","head":"cebc815a18fb5c719efbc7ff5fb1261201928894","number":847,"title":"perf(shared): schedule ready register moves and walk cycles once"}
+{"branch":"perf/scalar-local-constants","head":"3e6d87b92437d4a0c13fa9b7bde199a4519945ee","number":846,"title":"perf(shared): preserve constants through scalar local assignments"}
+{"branch":"perf/stream-tail-argument-slots","head":"6c516328f8642f62cd6496528784c17a62c22b00","number":845,"title":"perf(compiler): stream tail argument slots without type snapshots"}
+{"branch":"perf/eh-module-summary","head":"2beb0981d329af4bf66d347d5651fb1403a57d68","number":837,"title":"perf(compiler): reuse exception payload summaries per module"}
+{"branch":"jairus/security-bughunt-20261003","head":"a5bc7f03091652f704c54e2d0e8a5712765b9b36","number":784,"title":"fix(cli): harden installer identity, artifact auth, and uninstall"}
+{"branch":"jairus/profiler-application-experiments","head":"5a4cd84033b855e41b1e9d36fd0dd9c5a0a1bbde","number":719,"title":"Add application profiling, artifact sidecars, and paired experiments"}
+{"branch":"jairus/dragline-mvp","head":"3cf5409373defa7fe6a86f0c95a2bbeed14633e4","number":544,"title":"compiler: add experimental Dragline backend"}
+{"branch":"feat/pico2-32bit","head":"999a3d90225a090039e0856215e7611479221f7c","number":285,"title":"pico2: add experimental Arm32 and RV32 backends"}
+{"branch":"feat/riscv-linux","head":"0eaa85dde94fb8d52273a27ce30af2fcc6ba4fbf","number":284,"title":"riscv64: add native Linux JIT backend with RV64G SIMD"}

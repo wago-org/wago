@@ -1,0 +1,81 @@
+=== RUN   TestOpcodeOnlyBaselineBlindSpots
+    baseline_test.go:40: constant: b82a000000 -> b82b000000: opcode-only equal
+    baseline_test.go:40: zero-idiom-dependency: 31c0 -> 31c8: opcode-only equal
+    baseline_test.go:40: spill-width: 89442408 -> 4889442408: opcode-only equal
+    baseline_test.go:40: stack-displacement: 89442408 -> 89442410: opcode-only equal
+    baseline_test.go:40: relocation: e901000000 -> e902000000: opcode-only equal
+--- PASS: TestOpcodeOnlyBaselineBlindSpots (0.00s)
+=== RUN   TestPairedControls
+=== RUN   TestPairedControls/constant
+    compare_test.go:52: opcode-only equal; operand changes=1, complete=true
+=== RUN   TestPairedControls/zero-idiom-dependency
+    compare_test.go:52: opcode-only equal; operand changes=1, complete=true
+=== RUN   TestPairedControls/spill-width
+    compare_test.go:52: opcode-only equal; operand changes=1, complete=true
+=== RUN   TestPairedControls/stack-displacement
+    compare_test.go:52: opcode-only equal; operand changes=1, complete=true
+=== RUN   TestPairedControls/relocation
+    compare_test.go:52: opcode-only equal; operand changes=0, complete=true
+--- PASS: TestPairedControls (0.00s)
+    --- PASS: TestPairedControls/constant (0.00s)
+    --- PASS: TestPairedControls/zero-idiom-dependency (0.00s)
+    --- PASS: TestPairedControls/spill-width (0.00s)
+    --- PASS: TestPairedControls/stack-displacement (0.00s)
+    --- PASS: TestPairedControls/relocation (0.00s)
+=== RUN   TestARM64Controls
+=== RUN   TestARM64Controls/constant
+=== RUN   TestARM64Controls/spill-width
+=== RUN   TestARM64Controls/load-width
+=== RUN   TestARM64Controls/add-constant
+=== RUN   TestARM64Controls/register-read
+=== RUN   TestARM64Controls/branch-relocation
+--- PASS: TestARM64Controls (0.00s)
+    --- PASS: TestARM64Controls/constant (0.00s)
+    --- PASS: TestARM64Controls/spill-width (0.00s)
+    --- PASS: TestARM64Controls/load-width (0.00s)
+    --- PASS: TestARM64Controls/add-constant (0.00s)
+    --- PASS: TestARM64Controls/register-read (0.00s)
+    --- PASS: TestARM64Controls/branch-relocation (0.00s)
+=== RUN   TestRelocationRequiresMatchingIdentityAndBranch
+--- PASS: TestRelocationRequiresMatchingIdentityAndBranch (0.00s)
+=== RUN   TestIncompleteCoverageAndConfiguration
+=== RUN   TestIncompleteCoverageAndConfiguration/unknown
+=== RUN   TestIncompleteCoverageAndConfiguration/unmapped
+=== RUN   TestIncompleteCoverageAndConfiguration/missing-provenance
+=== RUN   TestIncompleteCoverageAndConfiguration/wrong-config
+=== RUN   TestIncompleteCoverageAndConfiguration/missing-region
+=== RUN   TestIncompleteCoverageAndConfiguration/count-mismatch
+=== RUN   TestIncompleteCoverageAndConfiguration/wrong-anchor
+--- PASS: TestIncompleteCoverageAndConfiguration (0.00s)
+    --- PASS: TestIncompleteCoverageAndConfiguration/unknown (0.00s)
+    --- PASS: TestIncompleteCoverageAndConfiguration/unmapped (0.00s)
+    --- PASS: TestIncompleteCoverageAndConfiguration/missing-provenance (0.00s)
+    --- PASS: TestIncompleteCoverageAndConfiguration/wrong-config (0.00s)
+    --- PASS: TestIncompleteCoverageAndConfiguration/missing-region (0.00s)
+    --- PASS: TestIncompleteCoverageAndConfiguration/count-mismatch (0.00s)
+    --- PASS: TestIncompleteCoverageAndConfiguration/wrong-anchor (0.00s)
+=== RUN   TestResourceAndInputLimits
+--- PASS: TestResourceAndInputLimits (0.00s)
+=== RUN   TestSnapshotReplay
+--- PASS: TestSnapshotReplay (0.00s)
+=== RUN   TestMalformedShapesAndUnknownPartialWrites
+=== RUN   TestMalformedShapesAndUnknownPartialWrites/architecture
+=== RUN   TestMalformedShapesAndUnknownPartialWrites/long-instruction
+=== RUN   TestMalformedShapesAndUnknownPartialWrites/bad-hex
+=== RUN   TestMalformedShapesAndUnknownPartialWrites/gap
+=== RUN   TestMalformedShapesAndUnknownPartialWrites/region-budget
+=== RUN   TestMalformedShapesAndUnknownPartialWrites/unaligned-arm
+--- PASS: TestMalformedShapesAndUnknownPartialWrites (0.00s)
+    --- PASS: TestMalformedShapesAndUnknownPartialWrites/architecture (0.00s)
+    --- PASS: TestMalformedShapesAndUnknownPartialWrites/long-instruction (0.00s)
+    --- PASS: TestMalformedShapesAndUnknownPartialWrites/bad-hex (0.00s)
+    --- PASS: TestMalformedShapesAndUnknownPartialWrites/gap (0.00s)
+    --- PASS: TestMalformedShapesAndUnknownPartialWrites/region-budget (0.00s)
+    --- PASS: TestMalformedShapesAndUnknownPartialWrites/unaligned-arm (0.00s)
+=== RUN   TestRealScalarSourceRegion
+    real_amd64_test.go:181: native bytes=48; mapped regions=1; compared=2; known=2; unknown=0; complete=true; trusted executions=6; XOR=  25:	44 31 d0                                        	xor    eax,r10d
+--- PASS: TestRealScalarSourceRegion (0.01s)
+=== RUN   TestExistingFibSourceRegions
+    real_amd64_test.go:205: open ../../fixtures/wasm/fib.wasm: no such file or directory
+--- FAIL: TestExistingFibSourceRegions (0.00s)
+FAIL

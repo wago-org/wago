@@ -1,0 +1,6 @@
+go version go1.27.1 linux/amd64
+Linux notwindows 6.12.111+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.111-1 (2026-09-28) x86_64 GNU/Linux
+GNU objdump (GNU Binutils for Debian) 2.44
+ac5937bfa687bd57260b65aa5758f7c99c4184d032adae6db7ce759452de7fd6  /tmp/wago-815-baseline.test
+b977ada20353e237bf81976227450a86079a0e4e35dcfd65e3c5fa2d36ba0801  /tmp/wago-815-candidate.test
+d8c0e47c163e3216330a038b9df2454ff6a7b3bd4fbfb2e6c9385c350b0bec65  /tmp/wago-native-compare
