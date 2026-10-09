@@ -2,8 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 out=${WAGO_EXPERIMENT_RESULTS:-experiments/loop-unroll-vectorization/results/final}
+resume=${WAGO_EXPERIMENT_RESUME_ROUND:-1}
+first_phase=${WAGO_EXPERIMENT_FIRST_PHASE:-all}
+[[ "$resume" =~ ^[1-6]$ && ( "$first_phase" == all || "$first_phase" == corpus ) ]] || exit 1
 for key in ${!WAGO_@}; do unset "$key"; done
-if [[ -d "$out" ]] && compgen -G "$out/*.txt" >/dev/null; then
+if [[ "$resume" == 1 && "$first_phase" == all && -d "$out" ]] && compgen -G "$out/*.txt" >/dev/null; then
   echo "Choose an empty results directory. Existing samples are preserved." >&2
   exit 1
 fi
@@ -18,7 +21,9 @@ order() {
   fi
 }
 for round in 1 2 3 4 5 6; do
+  (( round >= resume )) || continue
   printf 'round=%d\n' "$round"
+  if (( round != resume )) || [[ "$first_phase" == all ]]; then
   for variant in $(order A B C D E F G H); do
     WAGO_LOOP_SUM_EXPERIMENT="$variant" GOMAXPROCS=1 "$out/experiment.test" -test.run '^$' -test.bench '^(BenchmarkLinearSumNoWrapAMD64|BenchmarkCompileLinearSumAMD64)$' -test.benchmem -test.benchtime 100ms >> "$out/A-final-$variant.txt"
     WAGO_LOOP_SUM_EXPERIMENT="$variant" GOMAXPROCS=1 "$out/experiment.test" -test.run '^$' -test.bench '^BenchmarkExperimentalSumAddress$' -test.benchmem -test.benchtime 100ms >> "$out/A-address-$variant.txt"
@@ -39,6 +44,7 @@ for round in 1 2 3 4 5 6; do
   for mode in $(order scalar pair128 wide256 adjacent128 adjacent256); do
     WAGO_LOOP_F64_MODE="$mode" GOMAXPROCS=1 "$out/experiment.test" -test.run '^$' -test.bench '^BenchmarkExperimentalExistingF64$' -test.benchmem -test.benchtime 100ms >> "$out/f64-$mode.txt"
   done
+  fi
   for mode in $(order scalar count2 vector-f32 vector-i32); do
     [[ "$mode" != scalar ]] || mode=''
     WAGO_LOOP_REPLICATION="$mode" GOMAXPROCS=1 "$out/experiment.test" -test.run '^$' -test.bench '^BenchmarkExperimentalCorpusCompile$' -test.benchmem -test.benchtime 100ms >> "$out/corpus-${mode:-scalar}.txt"

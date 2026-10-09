@@ -14,7 +14,11 @@ import (
 )
 
 func experimentCorpusModule(t testing.TB, path string) *wasm.Module {
-	raw, err := os.ReadFile(filepath.Join("../../../../../..", path))
+	full := path
+	if _, err := os.Stat(full); err != nil {
+		full = filepath.Join("../../../../../..", path)
+	}
+	raw, err := os.ReadFile(full)
 	if err != nil {
 		t.Fatal(err)
 	}
