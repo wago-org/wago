@@ -62,6 +62,9 @@ func TestRV64PrivateElementArtifactBoundaries(t *testing.T) {
 }
 
 func TestRV64PrivateTableInitActiveCancellationAndReuse(t *testing.T) {
+	rv64PrivateTableInitCancellation(t, false, false)
+}
+func rv64PrivateTableInitCancellation(t *testing.T, privateFrame, vector bool) {
 	previous := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(previous)
 	functions := make([]uint32, 1024)
@@ -83,7 +86,12 @@ func TestRV64PrivateTableInitActiveCancellationAndReuse(t *testing.T) {
 		wasmtest.Section(9, wasmtest.Vec(privateLegacyElement(1, functions...))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code([]byte{0x41, 7, 0x0b}), wasmtest.Code([]byte{0x41, 9, 0x0b}), wasmtest.Code([]byte{0x41, 0, 0x11, 1, 0, 0x0b}), wasmtest.Code([]byte{0xfc, 13, 0, 0x0b}))),
 	)
-	c := ownedTableCompile(t, data)
+	var c *Compiled
+	if privateFrame {
+		c = rv64ReferenceTableBulkCompile(t, "cancel-init", data, vector, false)
+	} else {
+		c = ownedTableCompile(t, data)
+	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +101,12 @@ func TestRV64PrivateTableInitActiveCancellationAndReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer loaded.Close()
-	in, err := Instantiate(loaded)
+	var in *Instance
+	if privateFrame {
+		in = rv64ReferenceTableBulkInstantiate(t, loaded)
+	} else {
+		in, err = Instantiate(loaded)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

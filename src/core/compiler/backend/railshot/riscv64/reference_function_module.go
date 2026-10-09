@@ -189,8 +189,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	}
 	elements := 0
 	for _, e := range m.Elements {
-		if e.Mode.Kind != wasm.ElemDeclarative && (e.Mode.Kind != wasm.ElemActive || len(m.Tables) == 0) || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Mode.Kind == wasm.ElemDeclarative && len(e.Mode.Offset.BodyBytes) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Exprs) != 0 || len(e.Kind.Funcs) > MaxOwnedTableEntries-elements || !consume(4*len(e.Kind.Funcs)) {
-			return unsupported("closed reference module numeric active/declarative elements only")
+		if e.Mode.Kind != wasm.ElemDeclarative && (len(m.Tables) == 0 || e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive) || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Mode.Kind != wasm.ElemActive && len(e.Mode.Offset.BodyBytes) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Exprs) != 0 || len(e.Kind.Funcs) > MaxOwnedTableEntries-elements || !consume(4*len(e.Kind.Funcs)) {
+			return unsupported("closed reference module numeric legacy elements only")
 		}
 		elements += len(e.Kind.Funcs)
 		for _, idx := range e.Kind.Funcs {
@@ -260,8 +260,17 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			}
 			if op == 0xfc {
 				switch imm.Kind {
-				case wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
-					return unsupported("closed reference table bulk/growth requires separate qualification")
+				case wasm.InstrTableInit, wasm.InstrElemDrop:
+					if len(m.Tables) != 1 || uint64(imm.Index) >= uint64(len(m.Elements)) || imm.Index2 != 0 {
+						return unsupported("closed reference element operation requires own table and exact ordinal")
+					}
+				case wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
+					if len(m.Tables) != 1 || imm.Index != 0 || imm.Index2 != 0 {
+						return unsupported("closed reference bulk operation requires own table zero")
+					}
+					if imm.Kind == wasm.InstrTableGrow && !m.Tables[0].Type.Limits.HasMax && m.Tables[0].Type.Limits.Min > MaxOwnedTableEntries/2 {
+						return unsupported("closed reference no-max growth reservation bound")
+					}
 				}
 			}
 			if op == 0x14 || op == 0x11 {

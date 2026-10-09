@@ -110,7 +110,7 @@ func TestRV64PublicReferenceFunctionOwnedTableRetainedAdmission(t *testing.T) {
 		"pool-unbound":           func(v *Compiled) { v.TableValueTypeIndex = 127 },
 		"pool-unused":            func(v *Compiled) { v.ValueTypes = append(v.ValueTypes, ValueTypeDescriptor{Kind: ValueTypeI32}) },
 		"pool-duplicate":         func(v *Compiled) { v.ValueTypes = append(v.ValueTypes, v.ValueTypes[0]) },
-		"passive-ingress":        func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
+		"passive-ingress":        func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive, Offset: OffsetInit{Base: 1}}} },
 		"dropped-payload": func(v *Compiled) {
 			v.passiveElems = []ElemInit{{Mode: ElemModeDeclarative, Values: []RefInit{{FuncIndex: 0}}}}
 		},

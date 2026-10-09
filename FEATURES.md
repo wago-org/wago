@@ -152,8 +152,16 @@ exact empty table export metadata prevents host descriptor ingress. Every privat
 row remains noncallable. Aggregate source/retained budgets, strict dead operand
 floors, dirty-upper table indices, table-only exact type pools, zero-size and no-max
 initializers, maximum ordered transport, precise private indirect traps and reuse,
-starts and parked/retired owners have source/compiler-free coverage. Selected-mode
-table.init/elem.drop/copy/grow/fill await their own qualification. Initializer
+starts and parked/retired owners have source/compiler-free coverage. This private
+profile also supports table.init/elem.drop/copy/grow/fill with bounded legacy
+passive numeric function elements. Active/passive payloads share the 1024-value
+and aggregate byte limits; original segment indices and per-instance drop state
+stay intact. Range guards precede writes, copy handles overlap, and growth fully
+initializes entries before publishing length. No-max tables with growth require
+a minimum of at most 512; reserved capacity stays bounded by 1024. Private operand
+floors, exact trap locations/reuse, cancellation, lifetime parks and compiler-free
+artifacts qualify the composition. Indirect/reference proper tails remain gated
+in this selected mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories
 through final attachment retirement. Separate memory-only and global-only borrowers

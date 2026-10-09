@@ -53,11 +53,17 @@ func rv64ValidateReferenceFunctionTable(c *Compiled, remaining *int) error {
 		}
 	}
 	for _, e := range c.passiveElems {
-		if e.Mode != ElemModeDeclarative && (!hasTable || e.Mode != ElemModeActive) || e.TableIndex != 0 || e.RefType != 0 && e.RefType != ValFuncRef || e.HasValueType || e.ValueTypeIndex != 0 || len(e.Values) != 0 || e.Offset.Base != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 {
-			return reject("only canonical dropped active/declarative state is retained")
+		if e.Mode != ElemModeDeclarative && (!hasTable || e.Mode != ElemModeActive && e.Mode != ElemModePassive) || e.TableIndex != 0 || e.RefType != 0 && e.RefType != ValFuncRef || e.HasValueType || e.ValueTypeIndex != 0 || e.Mode != ElemModePassive && len(e.Values) != 0 || len(e.Values) > values || e.Offset.Base != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 {
+			return reject("canonical legacy passive or dropped active/declarative state required")
 		}
-		if hasTable && !consume(16) {
-			return reject("aggregate dropped element metadata byte bound")
+		if hasTable && (!consume(16) || !consume(4*len(e.Values))) {
+			return reject("aggregate element metadata/payload byte bound")
+		}
+		values -= len(e.Values)
+		for _, v := range e.Values {
+			if v.Null || v.HasGlobal || v.GlobalIndex != 0 || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(v.FuncIndex)) {
+				return reject("private passive element target escape")
+			}
 		}
 	}
 	return nil

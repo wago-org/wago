@@ -96,12 +96,26 @@ func privateTableMutationLoop(operation string) []byte {
 }
 
 func TestRV64PrivateTableBulkCancellationCompleteEntriesAndGrowth(t *testing.T) {
+	rv64PrivateTableBulkCancellation(t, false, false)
+}
+func rv64PrivateTableBulkCancellation(t *testing.T, privateFrame, vector bool) {
 	previous := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(previous)
 	for _, operation := range []string{"fill", "copy", "grow"} {
 		t.Run(operation, func(t *testing.T) {
-			c := ownedTableCompile(t, privateTableMutationLoop(operation))
-			in, err := Instantiate(c)
+			var c *Compiled
+			if privateFrame {
+				c = rv64ReferenceTableBulkCompile(t, "cancel-"+operation, privateTableMutationLoop(operation), vector, false)
+			} else {
+				c = ownedTableCompile(t, privateTableMutationLoop(operation))
+			}
+			var in *Instance
+			var err error
+			if privateFrame {
+				in = rv64ReferenceTableBulkInstantiate(t, c)
+			} else {
+				in, err = Instantiate(c)
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

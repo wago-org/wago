@@ -1205,6 +1205,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						emit.privateElementDrop(imm.Index)
 					}
 				} else {
+					if functionRefs {
+						operands := [3]bool{}
+						if err = match(operands[:], nil, false, true); err != nil {
+							return integerSummary{}, err
+						}
+					}
 					for _, reg := range []uint8{5, 7, 6} {
 						if _, err = pop(); err != nil {
 							return integerSummary{}, err
@@ -1222,6 +1228,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
 				if !state.ownedTable || !privateRefs || imm.Index != 0 || imm.Index2 != 0 || (imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth) {
 					return integerSummary{}, unsupported("bounded private table mutation shape")
+				}
+				if functionRefs {
+					widths, references := [3]bool{}, [3]bool{}
+					n := 3
+					if imm.Kind == wasm.InstrTableGrow {
+						n, widths[0], references[0] = 2, true, true
+					} else if imm.Kind == wasm.InstrTableFill {
+						widths[1], references[1] = true, true
+					}
+					if err = match(widths[:n], references[:n], false, true); err != nil {
+						return integerSummary{}, err
+					}
 				}
 				if _, err = pop(); err != nil {
 					return integerSummary{}, err

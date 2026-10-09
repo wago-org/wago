@@ -20,16 +20,23 @@ import (
 )
 
 func TestRV64PublicReferenceFunctionNumericCallsParked(t *testing.T) {
-	rv64ReferenceFunctionNumericCallsParked(t, false)
+	rv64ReferenceFunctionNumericCallsParked(t, 0)
 }
 func TestRV64PublicReferenceFunctionOwnedTableParked(t *testing.T) {
-	rv64ReferenceFunctionNumericCallsParked(t, true)
+	rv64ReferenceFunctionNumericCallsParked(t, 1)
 }
-func rv64ReferenceFunctionNumericCallsParked(t *testing.T, ownedTable bool) {
+func TestRV64PublicReferenceFunctionTableBulkParked(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsParked(t, 2)
+}
+func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
+	ownedTable := tableStage > 0
 	t.Helper()
 	product := "numeric-calls"
 	if ownedTable {
 		product = "owned-table"
+	}
+	if tableStage == 2 {
+		product = "table-bulk"
 	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
@@ -47,7 +54,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, ownedTable bool) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-v%t-ttrue-wtrue-s%d-target0", product, vector, start), rv64ReferenceNumericCallsFixture(ownedTable, false, vector, true, true, start, 0), artifact)
+						pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-v%t-ttrue-wtrue-s%d-target0", product, vector, start), rv64ReferenceNumericCallsFixture(tableStage, false, vector, true, true, start, 0), artifact)
 						ctx, cancel := context.WithCancel(context.Background())
 						defer cancel()
 						entered, release := make(chan Caller, 1), make(chan struct{})
@@ -221,16 +228,23 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, ownedTable bool) {
 }
 
 func TestRV64PublicReferenceFunctionNumericCallsForeignOwners(t *testing.T) {
-	rv64ReferenceFunctionNumericCallsForeignOwners(t, false)
+	rv64ReferenceFunctionNumericCallsForeignOwners(t, 0)
 }
 func TestRV64PublicReferenceFunctionOwnedTableForeignOwners(t *testing.T) {
-	rv64ReferenceFunctionNumericCallsForeignOwners(t, true)
+	rv64ReferenceFunctionNumericCallsForeignOwners(t, 1)
 }
-func rv64ReferenceFunctionNumericCallsForeignOwners(t *testing.T, ownedTable bool) {
+func TestRV64PublicReferenceFunctionTableBulkForeignOwners(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsForeignOwners(t, 2)
+}
+func rv64ReferenceFunctionNumericCallsForeignOwners(t *testing.T, tableStage int) {
+	ownedTable := tableStage > 0
 	t.Helper()
 	product := "numeric-calls"
 	if ownedTable {
 		product = "owned-table"
+	}
+	if tableStage == 2 {
+		product = "table-bulk"
 	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
@@ -278,7 +292,7 @@ func rv64ReferenceFunctionNumericCallsForeignOwners(t *testing.T, ownedTable boo
 						if err != nil {
 							t.Fatal(err)
 						}
-						pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-import-init-v%t-w%t", product, vector, wide), rv64ReferenceNumericCallsFixture(ownedTable, true, vector, true, wide, 0, 0), artifact)
+						pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-import-init-v%t-w%t", product, vector, wide), rv64ReferenceNumericCallsFixture(tableStage, true, vector, true, wide, 0, 0), artifact)
 						selected = rv64NativeTokenInstantiate(t, rt, pc, im.Function("env.calls", "unused.fn", nf).Function("env.calls", "start.fn", pf).Function("env.calls", "finish.fn", func(v int32) int32 { return v + 1 }))
 						initial := readGlobalObject(selected.globalCells[3], ValFuncRef)
 						if index, ok := selected.funcrefDescriptorIndex(initial); !ok || index != 0 || initial>>32 == 0 || calls != 0 {

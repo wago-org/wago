@@ -171,8 +171,13 @@ Source and retained aggregate bounds, sparse SWAR keys, table-only pooled types,
 strict frontend-backed dead operands, dirty-upper indices, private trap/reuse,
 maximum ordered transport, no-max reserved capacities, starts, retired relays,
 parked cleanup and compiler-free artifacts qualify the new slice. Bulk table
-init/drop/copy/grow/fill and indirect/reference proper tails remain gated in this
-selected mode pending separate qualification.
+init/drop/copy/grow/fill now compose through the same confined private profile,
+with bounded passive legacy numeric elements, original segment indices and
+per-instance drops. Active/passive payloads share the 1024-value and aggregate
+byte budgets. Strict scalar/SWAR operand floors, complete range guards, overlap,
+growth-before-length publication, exact private trap/reuse and interruption
+checks qualify this slice. No-max growth requires minimum<=512 with at most 1024
+reserved entries. Indirect/reference proper tails remain separately gated.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt

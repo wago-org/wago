@@ -13,16 +13,23 @@ import (
 )
 
 func TestRV64PublicReferenceFunctionNumericCallsQuota(t *testing.T) {
-	rv64ReferenceFunctionNumericCallsQuota(t, false)
+	rv64ReferenceFunctionNumericCallsQuota(t, 0)
 }
 func TestRV64PublicReferenceFunctionOwnedTableQuota(t *testing.T) {
-	rv64ReferenceFunctionNumericCallsQuota(t, true)
+	rv64ReferenceFunctionNumericCallsQuota(t, 1)
 }
-func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, ownedTable bool) {
+func TestRV64PublicReferenceFunctionTableBulkQuota(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsQuota(t, 2)
+}
+func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
+	ownedTable := tableStage > 0
 	t.Helper()
 	product := "numeric-calls"
 	if ownedTable {
 		product = "owned-table"
+	}
+	if tableStage == 2 {
+		product = "table-bulk"
 	}
 	for _, vector := range []bool{false, true} {
 		t.Run(fmt.Sprintf("vector%t", vector), func(t *testing.T) {
@@ -30,7 +37,7 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, ownedTable bool) {
 			defer rv64HostCertificateCloseRuntime(t, owners)
 			provider, _, memories, im, _ := rv64ReferenceStartProvider(t, owners, false, vector, true, true)
 			native, nf := rv64ReferenceStartNative(t, owners, false)
-			pc := rv64NativeTailCompile(t, "reference-"+product+"-quota", rv64ReferenceNumericCallsFixture(ownedTable, false, vector, true, true, 1, 0), false)
+			pc := rv64NativeTailCompile(t, "reference-"+product+"-quota", rv64ReferenceNumericCallsFixture(tableStage, false, vector, true, true, 1, 0), false)
 			view := pc.executionView()
 			if err := view.validateCached(); err != nil {
 				t.Fatal(err)

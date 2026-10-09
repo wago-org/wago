@@ -74,7 +74,7 @@ func TestReferenceFunctionOwnedTableConfinement(t *testing.T) {
 		"private-active":      func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 12 },
 		"private-declarative": func(m *wasm.Module) { m.Elements[1].Kind.Funcs[0] = 12 },
 		"missing-active":      func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = MaxFunctions },
-		"passive":             func(m *wasm.Module) { m.Elements[0].Mode = wasm.ElemMode{Kind: wasm.ElemPassive} },
+		"passive-offset":      func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemPassive },
 		"expression-active": func(m *wasm.Module) {
 			m.Elements[0].Kind = wasm.ElemKind{Kind: wasm.ElemFuncExprs, Exprs: []wasm.Expr{{BodyBytes: []byte{0xd2, 0, 0x0b}}}}
 		},
@@ -97,7 +97,7 @@ func TestReferenceFunctionOwnedTableConfinement(t *testing.T) {
 		"dead-private-indirect": {0, 0x11, 2, 0, 0x0b}, "dead-missing-indirect": {0, 0x11, 127, 0, 0x0b}, "dead-wrong-table": {0, 0x11, 0, 1, 0x0b},
 		"dead-get-table": {0, 0x25, 1, 0x0b}, "dead-set-table": {0, 0x26, 1, 0x0b}, "dead-size-table": {0, 0xfc, 16, 1, 0x0b},
 		"dead-indirect-tail": {0, 0x13, 0, 0, 0x0b}, "dead-reference-tail": {0, 0x15, 0, 0x0b},
-		"dead-init": {0, 0xfc, 12, 0, 0, 0x0b}, "dead-drop": {0, 0xfc, 13, 0, 0x0b}, "dead-copy": {0, 0xfc, 14, 0, 0, 0x0b}, "dead-grow": {0, 0xfc, 15, 0, 0x0b}, "dead-fill": {0, 0xfc, 17, 0, 0x0b},
+		"dead-init": {0, 0xfc, 12, 127, 0, 0x0b}, "dead-drop": {0, 0xfc, 13, 127, 0x0b}, "dead-copy": {0, 0xfc, 14, 1, 0, 0x0b}, "dead-grow": {0, 0xfc, 15, 1, 0x0b}, "dead-fill": {0, 0xfc, 17, 1, 0x0b},
 	} {
 		mutations[name] = func(m *wasm.Module) { m.Code[0].BodyBytes = body }
 	}
