@@ -33,13 +33,9 @@ func readSnapshot(path string) (Snapshot, error) {
 	return s, nil
 }
 
-var compiledRevision = "unqualified-build"
-
 func main() {
 	if len(os.Args) == 4 && os.Args[1] == "capture" {
-		if err := captureFile(os.Args[2], os.Args[3]); err != nil {
-			fail(err)
-		}
+		captureCommand(os.Args[2], os.Args[3])
 		return
 	}
 	if len(os.Args) == 4 && os.Args[1] == "compare" {
