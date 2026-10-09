@@ -21,7 +21,7 @@ func selectSumUnroll(t testing.TB) {
 		factor, chains = 8, 8
 	case "C":
 		factor, chains = 2, 2
-	case "D":
+	case "D", "P", "DR", "PR":
 		factor, chains = 16, 4
 	case "H", "T64", "T128", "T256":
 		factor, chains = 16, 4

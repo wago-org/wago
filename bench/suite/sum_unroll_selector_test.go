@@ -16,7 +16,7 @@ func setSumUnrollMeasurement(factor int, hybrid bool, threshold int)
 func init() {
 	switch v := os.Getenv("WAGO_SUM_VARIANT"); v {
 	case "", "baseline", "default":
-	case "D", "H", "T64", "T128", "T256":
+	case "D", "P", "DR", "PR", "H", "T64", "T128", "T256":
 		threshold := 0
 		switch v {
 		case "T64":
