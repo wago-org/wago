@@ -24,6 +24,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Add bounded AMD64 integer pressure profiles with independently checked
+  values live across non-inlined calls and native arithmetic-placement controls.
 - Add mixed-scalar host-call checks across nested memory, global, and table
   changes, including nested traps and repeated resolved calls.
 - Bind corpus child completion to loaded input identity and exact invocation

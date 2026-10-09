@@ -601,3 +601,43 @@ counters do not include every worker allocation. Native ARM64 timing must be
 measured on ARM64 hardware. QEMU timing is only a bounded cost check for the
 emulated compiler. Shared admission is checked separately from profile builds,
 which use the established path and record source ranges.
+
+### Integer values live across calls (bounded #810 slice)
+
+`amd64/integer_call_pressure_test.go` generates 30 Linux AMD64 fixtures: i32/i64,
+1/6/8/12/24 computed values and three fixed operation schedules. Every fixture
+runs 52 edge/seed inputs through independent Go arithmetic checks. All prefix
+results and the callee result are checked separately; a memory counter checks
+completed work. Divisors are +3/-3, excluding division-by-zero and signed overflow
+traps. Inputs and result guards have deliberate corruption controls.
+
+```sh
+go test ./src/core/compiler/backend/railshot/amd64 -run '^TestInteger(LiveAcrossCall|Pressure)' -count=1
+go test -tags=wago_regalloccheck,wago_codegenstats ./src/core/compiler/backend/railshot/amd64 -run '^TestInteger(LiveAcrossCall|Pressure)' -count=1 -v
+go test ./src/core/compiler/backend/railshot/amd64 -run '^$' -bench '^BenchmarkIntegerLiveAcrossCall$' -benchmem
+```
+
+Compilation disables inlining and selects the base AMD64 feature profile.
+Diagnostic builds require one real call and spills/reloads in the 12/24-value
+rows, and report actual shared/established paths and source/native hashes. A
+valid no-call substitute returns the same results and does the same work but
+must fail the call-evidence gate. Ordinary builds still run numerical checks;
+unavailable diagnostics do not qualify pressure or transport.
+
+When GNU objdump is available, a separate test independently decodes all 30
+native images and requires exactly N division and N shift instructions within
+the caller region before the unique direct call to the expected callee. Missing
+GNU objdump skips only this explicit qualification. Function spill totals do not
+locate individual spills, and arithmetic placement is not a source/transport/
+lifetime proof. This does not extend paused #807 or the #847 copy scheduler.
+
+Retained low/high benchmarks separate decode/validation/codegen from prepared
+execution. Fixture construction, code mapping, trap binding, memory-base lookup,
+warmup and result checks are outside execution timing. Inputs/results remain in
+bounded off-heap buffers; results and the modulo-i32 work counter are checked
+after timing. Compile rows omit native mapping. These measure existing fixture
+costs, not a compiler optimization. Compiler allocation traffic is not retained
+scratch or RSS. No ordinary production code, state or size budgets change.
+
+This does not complete #810: ARM64, mixed FP/SIMD/reference profiles, loops,
+joins and cyclic-copy coverage remain separate scopes.
