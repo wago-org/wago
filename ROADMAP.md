@@ -215,7 +215,7 @@ codec rejection/repair qualify the slice. No new owner graph or ABI is needed.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
-primitive prepare later reference ownership work. Native function, memory and global
+primitive prepare later reference ownership work. Native function, memory, global and table
 imports now record their actual producer acquisitions in one process graph and transfer
 receipt ownership from construction to instance teardown. Cleanup retires graph
 members only after physical callbacks finish. This noncollecting prerequisite
@@ -225,8 +225,10 @@ Memory rows also preserve exact per-handle importer counters and protect consume
 resources through concurrent transfer, counter consumption and producer callbacks.
 Global rows also keep counted cell owners separate from frozen descriptor owners,
 preserve aliases and host-only counts, and hold consumer resources through
-concurrent transfers and producer callbacks. Frozen descriptor, table and other
-container acquisitions still require receipt integration,
+concurrent transfers and producer callbacks. Table rows preserve the acquired store,
+actual storage owner, host topology and unconsumed counter obligations; acquisition
+precedes native construction and adoption follows construction-lease release.
+Frozen descriptor and other container acquisitions still require receipt integration,
 followed by scalable complete registration and cycle collection. Feature admission
 is unchanged.
 Remaining work

@@ -51,12 +51,16 @@ descriptor owners after writers return or close. Reference imports combined with
 instance-owned imported tables, general mutable reference imports/exports,
 broader reference signatures/equality, GC/EH,
 threads and table64 remain unavailable.
-Native function, memory and global-import acquisition receipts now track their actual
+Native function, memory, global and table-import acquisition receipts now track their actual
 producer Instances, including producers that share memory, through construction
 rollback and physical teardown. Memory rows own each distinct handle's exact
 importer counter and retain consumer resources through concurrent transfer and
 cleanup callbacks. Counted global rows separately retain each distinct cell's
 actual owner; aliases share one count, and host globals have no producer edge.
+Table rows record the acquired store and actual storage owner before native
+construction, then adopt storage receipts after releasing that construction lease.
+They preserve host topology and failed counter obligations through physical cleanup,
+separately from descriptors installed in the table.
 Frozen function-reference descriptor roots retain their separate owners.
 This is accounting for future ownership work; it does not
 enable cycle collection or broaden feature admission. The bounded prototype
