@@ -42,6 +42,39 @@ The default benchmark writes `bench/.bench-run.txt`. `just bench render`,
 `just bench website`, and `just bench publish` consume that capture without
 silently changing the selected corpus.
 
+## Batched execution accounting
+
+`BenchmarkExec` and `BenchmarkWazeroExec` prepare a callable function, check its
+result, and calibrate a batch before timing repeated calls. These rows measure
+warm repeated calls, not the first invocation. Compile, instantiate, export
+lookup, oracle work and calibration are outside their timers.
+
+For these rows, `ns/op`, `B/op` and `allocs/op` all describe one operation:
+one prepared call for scalar entries, or the complete vector case-set for a
+semantic vector entry. Go's iteration count is the number of batches; the legacy
+`calls/batch` metric counts these operations, not individual vector-case calls.
+Memory snapshots include the timed loop and timer bookkeeping; wall-clock
+timing excludes that bookkeeping. They count Go allocation traffic for the
+process, not retained memory, native allocations or RSS. Run performance samples without concurrent benchmark jobs.
+
+`TestExecBatchAllocationUnits` runs the actual batch loop in an isolated child
+with a fixed batch. It checks completed calls, excludes deliberate setup
+allocations, and verifies both zero-allocation and 64-byte allocating controls.
+`BenchmarkExecBatchAccounting` keeps those controls available for comparing the
+measurement harness itself; they are synthetic, not guest workloads.
+`BenchmarkExecBatchBoundary` uses a fixed batch and reports untimed reporting
+cost per trial, including timer transitions. On Go 1.27.1 the corrected boundary
+performs five memory-stat reads versus two previously: the two explicit snapshots
+and one additional read from the changed timer sequence. Boundary bytes and
+allocations include the full helper, while the guest metrics remain per operation.
+These process-wide observations can include background traffic.
+
+```sh
+go test ./bench/suite -run '^TestExecBatchAllocationUnits$'
+go test ./bench/suite -run '^$' -bench '^BenchmarkExecBatchAccounting$' -benchmem
+go test ./bench/suite -run '^$' -bench '^BenchmarkExecBatchBoundary$' -benchtime=64x -benchmem
+```
+
 ## Workload profiling
 
 Use `wagoprof` for reproducible phase captures, native
