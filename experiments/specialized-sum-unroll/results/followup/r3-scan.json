@@ -1,0 +1,246 @@
+{
+  "revision": "bea10061c81428260ff029a9953273540a0c32e2",
+  "tree_source": "/tmp/wago-followup-r3-bench-tree.json",
+  "modules_selected": 21,
+  "bytes_selected": 9441146,
+  "rows": [
+    {
+      "path": "wasm-r3-bench/bullet.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/bullet.wasm",
+      "git_blob": "e2b36a5dc0727c3c643b2d3a63acde9f11646f97",
+      "listed_bytes": 688142,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "7ebf7bcce7c23d7036fbc8d7e6328ce0eeb5000a17a35df6900b2aff01d6411a",
+      "bytes": 688142,
+      "functions": 2841,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/factorial.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/factorial.wasm",
+      "git_blob": "212df922ed78f78bd0505da5d8cdfb39ae244c4d",
+      "listed_bytes": 38965,
+      "arithmetic_toy_excluded_from_application_claim": true,
+      "sha256": "83481bf48fd4081039344bd9a4e3b7adfff192fd4e5f9c0f58f6c92adcac8e8e",
+      "bytes": 38965,
+      "functions": 123,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/fib.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/fib.wasm",
+      "git_blob": "477e36f52dad8b427d10b453b80858b3e2e089a8",
+      "listed_bytes": 106539,
+      "arithmetic_toy_excluded_from_application_claim": true,
+      "sha256": "6d90fade289e5e322f4c297fe0e4ec01fb6cf5539191678568e3393d7343b3ad",
+      "bytes": 106539,
+      "functions": 293,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/figma-startpage.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/figma-startpage.wasm",
+      "git_blob": "3575796cc9f6d6fc8dcf6047d323dbed602f33f5",
+      "listed_bytes": 1109053,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "d33cd216477fe2ef526dc6b851818d7eecd12c1a000a08b185a96762b3f768d9",
+      "bytes": 1109053,
+      "functions": 5361,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/game-of-life.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/game-of-life.wasm",
+      "git_blob": "a0a19feccdbd42e416c5f4b5cd8e89398bb2438c",
+      "listed_bytes": 1199,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "05a0dc3d79ee841cf76a75a5568f34b249d44c77e52eb66bb077963883b8dfcf",
+      "bytes": 1199,
+      "functions": 3,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/guiicons.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/guiicons.wasm",
+      "git_blob": "47e9f5bf8122aa1eceb515f3ad5ab37a8251d876",
+      "listed_bytes": 376838,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "9b248fe93073ca9b2bd249c928419db1edf2b93249b7738154cda3873321cdb6",
+      "bytes": 376838,
+      "functions": 505,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/hydro.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/hydro.wasm",
+      "git_blob": "362031ad78c6c91f811797c14705887234296fa7",
+      "listed_bytes": 824085,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "a97f0261abba863428b9dc65b73780453f53a769e9288ffb939df39604e1a706",
+      "bytes": 824085,
+      "functions": 1592,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/jqkungfu.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/jqkungfu.wasm",
+      "git_blob": "6dde38106c036cee0a1ce72b460350c58f1b2139",
+      "listed_bytes": 820695,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "611cb4c25b6d32ddd67edd5a4d59ab9784e19572865ac5816766bd8f8d8fff29",
+      "bytes": 820695,
+      "functions": 633,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/mandelbrot.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/mandelbrot.wasm",
+      "git_blob": "7a7a015c1d79ff76820cdc44b68f90874eb728fa",
+      "listed_bytes": 240403,
+      "arithmetic_toy_excluded_from_application_claim": true,
+      "sha256": "f20b664cd5135fcc1c42110f00a613d57b5179a5747d256f9e71c31cb1895230",
+      "bytes": 240403,
+      "functions": 167,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/multiplyDouble.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/multiplyDouble.wasm",
+      "git_blob": "952906d87be38de053984ea66bb115ddd9d9492b",
+      "listed_bytes": 106820,
+      "arithmetic_toy_excluded_from_application_claim": true,
+      "sha256": "6b953af380f19048fe5a13461a3c36a71ed1a181b602a7919258e9d0217c4b2b",
+      "bytes": 106820,
+      "functions": 293,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/multiplyInt.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/multiplyInt.wasm",
+      "git_blob": "71cbb38ac3d2c7c0335a94608055584796a2a2c7",
+      "listed_bytes": 106634,
+      "arithmetic_toy_excluded_from_application_claim": true,
+      "sha256": "594e23041ccfc3ebfafaa1e1e64a46da1197a5ce8bcf5347ef30de594155e769",
+      "bytes": 106634,
+      "functions": 293,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/pacalc.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/pacalc.wasm",
+      "git_blob": "2b6de00a277e66d8f275931822e534cda0f13d94",
+      "listed_bytes": 291250,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "5935e43d5393ca5a6524630c7d1c69384251c8e39bae90ec006da54a4c1ba98d",
+      "bytes": 291250,
+      "functions": 406,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/pathfinding.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/pathfinding.wasm",
+      "git_blob": "1b059acc317ca18381219d930a8f2b70568e3f42",
+      "listed_bytes": 196182,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "e09265195263f516736441c14e9298d7d337a9f473a9669113414b7eb943a1df",
+      "bytes": 196182,
+      "functions": 139,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/rfxgen.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/rfxgen.wasm",
+      "git_blob": "56c659dc4add05158ce5cae1297fd3d4efbd6ce6",
+      "listed_bytes": 502035,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "5702ed22e6d31a8f002f8c443d098b6b07295d0398ebbcc9b98f04b92004dd45",
+      "bytes": 502035,
+      "functions": 587,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/rguilayout.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/rguilayout.wasm",
+      "git_blob": "21f9730be25eb74a1c83ef0856e2ee818b8f411c",
+      "listed_bytes": 516369,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "0ef584c06505b53a51e14edc6ea3a42d0c6b3205abf68072737f92ac78735ba7",
+      "bytes": 516369,
+      "functions": 510,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/rguistyler.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/rguistyler.wasm",
+      "git_blob": "f1423434ecfacae5ce96357417d39ff59d13d6e1",
+      "listed_bytes": 558009,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "9402f0146301285116ee368aa3c348eef4893bdfd22e32a3b77f3b41a39e215a",
+      "bytes": 558009,
+      "functions": 575,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/riconpacker.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/riconpacker.wasm",
+      "git_blob": "44ee7008034d33e1234b1ec10e289b0de8a88af6",
+      "listed_bytes": 486543,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "deab7b9d2172bc500328c27a822de5d298f9287872f85a040d8b6e926b26e179",
+      "bytes": 486543,
+      "functions": 576,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/rtexpacker.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/rtexpacker.wasm",
+      "git_blob": "2dc80878809c421db288bebe2d550128be2a4da0",
+      "listed_bytes": 450222,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "19aac1753637bfdf2d61e7fd89b6ad29822806c0ceff028c6b787c4d559d296f",
+      "bytes": 450222,
+      "functions": 866,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/rtexviewer.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/rtexviewer.wasm",
+      "git_blob": "e7e67496be81be41ea54aa5519aef554ded3689a",
+      "listed_bytes": 386612,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "1959644047d6db53a1600db79d41b75d03451eb655b75be2727ebdebf97ff413",
+      "bytes": 386612,
+      "functions": 688,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/sandspiel.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/sandspiel.wasm",
+      "git_blob": "f211a9fe6666e8880c09433f12b077436ccc9558",
+      "listed_bytes": 921837,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "48cd514455d412cea21e8f5e9cead303fe352b71f603da3c0b36c36d7ea12aa5",
+      "bytes": 921837,
+      "functions": 96,
+      "candidate_matches": []
+    },
+    {
+      "path": "wasm-r3-bench/sqlgui.wasm",
+      "url": "https://raw.githubusercontent.com/doehyunbaek/wasm-benchmarks/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench/sqlgui.wasm",
+      "git_blob": "57f68c7221958dcf94f5d244ec7121287a344aca",
+      "listed_bytes": 712714,
+      "arithmetic_toy_excluded_from_application_claim": false,
+      "sha256": "bcbda5da3413bf3747ce2fbe450e8c25daab398733b7921cd3ec267691f15a08",
+      "bytes": 712714,
+      "functions": 1895,
+      "candidate_matches": []
+    }
+  ],
+  "limitations": [
+    "Conservative byte-pattern scan of code sections. Matches would need instruction-boundary, local-type, control-shape, compiler-feature, and register-pin verification.",
+    "The fixed zero offset, stride 8, decrement 1, and branch labels use canonical LEB encodings in this scan; noncanonical fixed immediates are not matched.",
+    "No build, Wago compilation, replay, or native execution occurred. Runtime diagnostic admission is unverified.",
+    "Replay names do not establish workload provenance, correctness oracle, meaningful work count, or redistribution rights. No eligible real-application claim is made from names.",
+    "Only the 21 modules below 2 MiB were fetched. Larger modules were excluded. Arithmetic toy names are explicitly excluded from application claims."
+  ]
+}

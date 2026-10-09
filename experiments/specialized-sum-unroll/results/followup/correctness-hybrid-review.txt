@@ -1,0 +1,34 @@
+Independent read-only hybrid correctness review
+Worktree: /home/jtenner/Projects/wago-sum-unroll
+Implementation reviewed through head d8104c5a22551fc73abfef81d0620b7f0f0a7755, after tests-first commit a07ce1e29fb1eb0c3a66d5134c06844042e0c53c. This includes the private scalar-argument setter bridge and separate budget/pressure rejection checks.
+No repository edits, builds, tests, or native execution were performed by this reviewer.
+
+Blocking correctness findings: none found.
+
+Control flow:
+- sum_unroll_experimental.go:84-92 retains the scalar peel decrement and firstDone branch. Hybrid minimum=4 sends remaining counts 1-3 to the scalar tail.
+- Lines 94-105 perform the widened wrap check before either group block. The wrapping branch targets the scalar tail after both group blocks. Small remaining counts 4-15 therefore cannot use native offsets across memory32 wrap.
+- Lines 107-113 select the four-load block only after the wrap check, when remaining count is below 16 and at least four.
+- Lines 114-122 consume groups of 16 until fewer than 16 remain. Lines 124-137 consume groups of four only when at least four remain. Remaining count zero bypasses the four-load block and scalar loads. Counts one to three use scalar loads.
+- The two group blocks use the same four accumulators. Address advances by exactly the group width, and counter decreases by exactly the element count. Induction updates remain 32-bit. The scalar remainder and common combination preserve all exit values; integer reassociation remains valid modulo 2^64.
+
+Storage and fallback:
+- Hybrid configuration is restricted to factor 16/chains 4. Budget validation includes the extra four-group block. All configuration, budget, and free-register checks occur before code or allocator mutation.
+- The hybrid block adds no temporary register or stack allocation. It uses the same bounded [8]Reg array and regs[0:4].
+- Every emitted runtime path reaches the common combination. The compiler unpins/releases each temporary once after emission. Existing local dirty-state handling remains unchanged.
+- Invalid configuration, inadequate budget, or inadequate free registers returns before mutation; the wrapper retains the default four-element emitter fallback.
+
+Tests and admission:
+- The tests-first native matrix covers counts 0-35 and 63-65, 127-129, 255-257, 511-513, 8192 and 262144. Full-memory32 tests include wrapping counts 35, 65, 129, 257 and 513.
+- TestSumUnrollFollowupEmission requires the hybrid diagnostic marker, bounds emitted length and checks pin/owner cleanup. This prevents silent default fallback from satisfying the follow-up selection check.
+- TestSumUnrollSelectedPath retains unconstrained selection and high-pressure selection checks. Corpus admission checks the exact existing memory.wasm sum function and treats other corpus modules as negative controls.
+- Native tests retain independent oracle/scalar/default comparisons, source-byte preservation, live exit locals, overflow seeds, alignment, trap metadata, and bounded/unbounded memory variants.
+
+Dedicated rejection coverage:
+The selected-wrapper native fallback test includes hybrid=true with budget 511, below the hybrid bound 512, and checks actual default selection, native results and source-byte preservation. TestSumUnrollFollowupEmission now separates insufficient-budget rejection (511, free registers) from register-pressure rejection (576, all registers reserved). Both call the hybrid emitter directly and check unchanged native bytes/pin/reserved/owner state. The earlier rejection-coverage gap is addressed.
+
+Corpus linkname:
+bench/suite/sum_unroll_selector_test.go:13-14 now links a private setter with scalar arguments (int, bool), and sum_unroll_experimental.go:14 supplies the matching signature. This avoids sharing anonymous-record layout across packages. The setter selects factor, chains=4, budget=576 and hybrid mode before compilation. The declaration is in a _test.go file, and both bridge and target are gated by amd64 && wago_sumunroll. No normal-build compiler API or timed operation is added. No bridge correctness issue was found.
+
+Validation limit:
+This review establishes source-level evidence only. The parent's execution records must establish which native tests passed, including actual 4 GiB mapping execution. Threshold implementation review is pending.

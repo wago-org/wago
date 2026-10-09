@@ -1,0 +1,18 @@
+{
+  "modules": 125,
+  "functions": 223466,
+  "candidate_matches": [
+    {
+      "path": "corpus/workloads/synthetic/memory.wasm",
+      "local_function_index": 1,
+      "body_offset": 13,
+      "locals": {
+        "count": 0,
+        "acc": 2,
+        "addr": 1
+      }
+    }
+  ],
+  "errors": [],
+  "limit": "Conservative raw byte scan of code bodies for canonical exact recognizer shape. Candidates need instruction-boundary/type/pin validation; a negative result does not exclude noncanonical LEB encodings."
+}

@@ -1,0 +1,40 @@
+Final independent follow-up correctness review
+Repository: /home/jtenner/Projects/wago-sum-unroll
+Head reviewed: 1a4c6e1eac8d26c34a48494d80ffc9b12fa9ce0c
+Scope: hybrid and threshold emitter, original exact recognizer/range proof interface, native oracle tests, selection/emission/fallback tests, and corpus measurement bridge.
+Method: read-only source review. This reviewer did not edit the repository, build, run tests, or execute native code.
+
+Blocking correctness findings: none found.
+
+Threshold control flow and flags:
+- sum_unroll_experimental.go:91-99 decrements the original counter after the existing scalar peel. The thresholds apply to REMAINING elements. firstDone uses the subtraction zero flag immediately. Remaining counts 1-3 bypass all grouped loads.
+- Lines 101-112 preserve the existing widened wrap dispatch. MovImm64(p1, 0) is a flag-preserving MOV; the subsequent condNE observes the shift's zero flag. The wrapping target is the scalar tail, after both group blocks. This keeps both threshold arms and the hybrid tail safe for memory32 wrap.
+- Lines 114-124 compare the remaining count with the selected threshold using 32-bit unsigned comparison. Only thresholds 64, 128, 256 are admitted; equality chooses the large arm. All admitted thresholds exceed factor 16.
+- Lines 125-133 execute sixteen-element groups until fewer than sixteen remain. For threshold mode, the unconditional branch at line 143 skips the four-element block and reaches the scalar tail, preserving D's large-range behavior. For hybrid mode, the guarded four-element block follows the sixteen-element groups.
+- Lines 145-155 implement the short threshold arm with groups of four until fewer than four remain. The initial gate reaches this arm only with at least four elements because of the earlier minimum check. The large-arm jump targets the instruction after the complete four-element block.
+- Lines 157-179 retain the common scalar tail, count-zero bypass, accumulator combination, and register cleanup. Each control path consumes exactly the remaining count and returns the same sum/address/counter. Address and count updates remain 32-bit; i64 sums combine modulo 2^64.
+
+Admission, bounds and storage:
+The exact recognizer and full-range proof are unchanged. The threshold/hybrid code requires the existing proven-loop marker, current control depth and pinned GP induction/accumulator locals. Configuration checks reject threshold plus hybrid, any threshold outside 64/128/256, and any four-arm combination outside factor 16/chains 4. These checks and the increased conservative byte budget occur before emission or register-state mutation. The free-register mask excludes all existing owners, pins and reservations. Both arms share one bounded [8]Reg array and the same three extra chains; no arm allocates another register or heap object. Common cleanup releases those temporaries once. The default wrapper and four-element fallback remain intact.
+
+Tests reviewed:
+- Native matrix: independent oracle, existing Wago baseline and scalar path; aligned/unaligned addresses; seeds that overflow i64; live locals and exit values; bounded/unbounded memories; OOB and trap metadata; source bytes and memory contents unchanged. Expanded counts cover 0-35, 63-66, 127-130, 255-258, 511-513, 8192 and 262144.
+- Full-memory32 matrix: both ordinary wrapping and small/large counts that must bypass all native group offsets, including counts 35, 65, 129, 257 and 513.
+- Selection: diagnostic markers require actual follow-up emission; the ordinary selected-path test verifies unconstrained admission and expected pressure fallback.
+- Direct rejection: separate insufficient-budget and adequate-budget register-pressure cases invoke the selected hybrid/threshold configuration and verify unchanged bytes, pins, reservations and owners.
+- Native rejection: hybrid-budget and TestSumUnrollThresholdBudgetFallback require the existing four-element marker and execute the fallback against the independent oracle. Threshold budget 527 is below its conservative bound 528.
+
+Threshold boundary coverage is addressed:
+The native oracle matrix at sum_unroll_experiment_test.go now includes original counts 66, 130 and 258, in addition to the previous below/equal pairs. These execute remaining counts one above each post-peel threshold. No coverage recommendation or blocking finding remains from this review.
+
+Corpus bridge:
+bench/suite/sum_unroll_selector_test.go declares the same scalar setter signature as the compiler: (factor int, hybrid bool, threshold int). This removes shared-record layout coupling. Both sides are tagged amd64 && wago_sumunroll; the bridge is a _test.go file. It runs in init, outside all timers, and assigns only the isolated experimental record. Normal builds retain the existing compiler path and expose no new option. No signature or timing-placement issue was found.
+
+Corpus evidence remains qualified:
+The current 125-module Wago corpus scan found only the existing synthetic memory.wasm exact sum. The additional pinned 21-module Wasm-R3 scan found no canonical exact-shape candidate in 18,442 function bodies. Neither scan supports a positive real-application reduction claim. Scripts, pinned URLs/hashes and limitations are retained in /tmp and were reported separately.
+
+Independent Claude review:
+Both prior read-only attempts exited 1 with Not logged in. No Claude review occurred. This independent source review is separate from the parent's implementation/testing work.
+
+Recorded execution evidence inspected:
+I read results/followup/{baseline,D,H,T64,T128,T256}-tests.txt. Each ends PASS and an ok package result. Each records TestSumUnrollFullMemory32 as PASS, not SKIP, so the 4 GiB mapping test ran for all six configurations. The threshold log also records PASS for native oracle, direct emission/rejection, selected path and budget fallback tests. These logs are evidence of the parent-run checks; this reviewer did not run those commands. Full CI coverage and any remaining incomplete checks must still be reported by the parent.

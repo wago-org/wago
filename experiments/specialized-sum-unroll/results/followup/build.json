@@ -1,0 +1,30 @@
+{
+  "head": "1a4c6e1eac8d26c34a48494d80ffc9b12fa9ce0c",
+  "source_sha256": {
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_followup_bench_test.go": "f05ec094843e7921c77690f38f7c6aac28b7f975527f16abd37da9e64c5ba7fb",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_selection_test.go": "2ac812d1ce9e16007a682f548cba2a54d39e8804c4e183d34263e1616a59b2f6",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_experimental_selection_test.go": "85778c97dad257bf7c2eec222c139350619b6a168d081d495a0aa20b5619efbe",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_default.go": "6ff5b40a0bee1f85946c305ae663d234ee27979b543580df045b4aa9a742f63c",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_threshold_test.go": "340cb109bdd55f13cea89abf2a4d1a77b0b458f54d30bf0a8e32216a21e2767d",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_followup_emission_test.go": "571f69cb5ee120e7d90f850215015064c753b57fc8dc1ca75158aca52746ddee",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_experiment_test.go": "0b6e2a5019c68188ca802ff24f6f0018195b340528502635b4fa383557f35114",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_fallback_test.go": "22a67548af2ce95515dfa6a15fe14114e9111fa4647f749d06de11ce0560ec17",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_experimental.go": "88e7f94867f0783b09190eb1a282bd505e321d69c58573345a4cd8a3edd39797",
+    "bench/suite/sum_unroll_selector_test.go": "027f1916600c06463c0f594174a7e8b204423a6bad6d1914a5273118b577bcb7",
+    "bench/suite/sum_unroll_followup_test.go": "4506a159183d31d8eb2165bbf6c8fe8a3d9a13bd27dad0b3dfc2937d3b40dcb6",
+    "src/core/compiler/backend/railshot/amd64/control.go": "aa0f7b27e5d92f2cb525de9f17ffbaa0f9c97c0f8513788fe5a50da02607e03b"
+  },
+  "binaries": {
+    "/tmp/wago-followup-all.test": "fcd02514cefbfb32359dd133c75654778597cfe1f3aaad098808a9b945c7768a",
+    "/tmp/wago-followup-normal.test": "d66f1c32715fac7136130e4b63677d33b3d0412ee24473a8fb7d050a8d3685d3",
+    "/tmp/wago-followup-corpus-all.test": "ad7f29ea98bbcad3de2ac44b1d20b1433db6b7ee218a736e8bda39839ca75c01",
+    "/tmp/wago-followup-corpus-baseline.test": "b68d6505c358dc74b98e7f7f3c0bb6f2dee1a274ae68f6b66738a56f8fe29440",
+    "/tmp/wago-followup-corpus-D.test": "4477468be9c1717839b28adf367f8d1b60b55ddfd5d6dc51efedd2d94f7838ae"
+  },
+  "allocation_profile_commands": [
+    "cd bench/suite; WAGO_SUM_VARIANT=baseline GOMAXPROCS=1 taskset -c 2 /tmp/wago-followup-corpus-all.test -test.run '^$' -test.bench '^BenchmarkCompileFull$/memory$' -test.benchtime=1000x -test.memprofilerate=1 -test.memprofile /tmp/wago-followup-profiles/baseline.pprof -wago.corpus memory",
+    "same command with WAGO_SUM_VARIANT=D and D.pprof",
+    "go tool pprof -sample_index=alloc_space -diff_base=/tmp/wago-followup-profiles/baseline.pprof -top -nodecount=15 /tmp/wago-followup-corpus-all.test /tmp/wago-followup-profiles/D.pprof",
+    "go tool pprof -sample_index=alloc_objects -diff_base=/tmp/wago-followup-profiles/baseline.pprof -list=compileModuleParallel /tmp/wago-followup-corpus-all.test /tmp/wago-followup-profiles/D.pprof"
+  ]
+}

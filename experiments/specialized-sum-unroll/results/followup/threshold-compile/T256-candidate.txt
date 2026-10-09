@@ -1,0 +1,140 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   12630	     14778 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     17604 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   12432	     14269 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	    9694	     18214 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   13962	     13540 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     16316 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14077	     12758 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15563 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14038	     13284 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15612 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   13852	     12913 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15927 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14119	     14064 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     16142 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14140	     12932 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15607 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14085	     13838 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15633 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   13990	     12739 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     17375 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14094	     13229 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	    9962	     16548 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   12738	     14429 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	    9906	     16991 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   13998	     12900 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10221	     15558 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   13956	     12781 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   11428	     15466 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14104	     13709 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15817 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14118	     12940 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15651 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14098	     13445 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15708 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   14067	     12664 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     15513 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   12699	     14362 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     18312 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollCompile/pressure0         	   12651	     15028 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12        	   10000	     17218 ns/op	   26296 B/op	      30 allocs/op
+PASS

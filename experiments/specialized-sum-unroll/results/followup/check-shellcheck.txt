@@ -1,0 +1,7 @@
+
+In experiments/specialized-sum-unroll/followup.sh line 28:
+corpus_args=(--baseline "$build_dir/corpus-normal.test" --candidate "$build_dir/corpus-all.test" --cwd "$root_dir/bench/suite" --corpus memory,linked_list,blake-as-simd,utf-as-simd,yyjson,xxhash,drwav --bench '^(BenchmarkCompile|BenchmarkExec|BenchmarkCompileFull|BenchmarkSumUnrollLifecycle)$')
+            ^-- SC2054 (warning): Use spaces, not commas, to separate array elements.
+
+For more information:
+  https://www.shellcheck.net/wiki/SC2054 -- Use spaces, not commas, to separa...

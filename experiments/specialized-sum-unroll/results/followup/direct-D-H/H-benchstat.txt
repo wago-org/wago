@@ -1,0 +1,61 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                 │ experiments/specialized-sum-unroll/results/followup/direct-D-H/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/direct-D-H/H-candidate.txt │
+                                 │                                    sec/op                                     │                         sec/op                           vs base               │
+SumUnrollFollowup/addr0/n16                                                                         23.05n ±  3%                                              22.78n ±  2%  -1.19% (p=0.005 n=20)
+SumUnrollFollowup/addr0/n64                                                                         27.79n ±  2%                                              26.47n ±  2%  -4.73% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n128                                                                        33.78n ±  2%                                              32.05n ±  2%  -5.14% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n512                                                                        66.25n ±  2%                                              66.09n ±  2%       ~ (p=0.351 n=20)
+SumUnrollFollowup/addr0/n8192                                                                       887.2n ±  2%                                              889.3n ±  3%       ~ (p=0.410 n=20)
+SumUnrollFollowup/addr0/n262144                                                                     30.95µ ±  3%                                              30.91µ ±  2%       ~ (p=0.678 n=20)
+SumUnrollFollowup/addr0/n8388607                                                                    1.352m ± 10%                                              1.290m ± 10%       ~ (p=0.063 n=20)
+SumUnrollFollowup/addr1/n16                                                                         23.58n ±  2%                                              22.54n ±  4%  -4.41% (p=0.002 n=20)
+SumUnrollFollowup/addr1/n64                                                                         27.68n ±  3%                                              27.39n ±  2%  -1.01% (p=0.006 n=20)
+SumUnrollFollowup/addr1/n128                                                                        33.85n ±  3%                                              33.31n ±  2%  -1.60% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n512                                                                        70.61n ±  2%                                              67.25n ±  2%  -4.77% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n8192                                                                       961.8n ±  2%                                              994.6n ±  2%  +3.40% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n262144                                                                     34.94µ ±  3%                                              34.80µ ±  3%       ~ (p=0.473 n=20)
+SumUnrollFollowup/addr1/n8388607                                                                    1.354m ± 12%                                              1.414m ± 10%       ~ (p=0.583 n=20)
+geomean                                                                                             671.3n                                                    661.4n        -1.48%
+
+                                 │ experiments/specialized-sum-unroll/results/followup/direct-D-H/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/direct-D-H/H-candidate.txt │
+                                 │                                     B/op                                      │                         B/op                           vs base                 │
+SumUnrollFollowup/addr0/n16                                                                         0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n64                                                                         0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n128                                                                        0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n512                                                                        0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8192                                                                       0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n262144                                                                     0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8388607                                                                    0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20)
+SumUnrollFollowup/addr1/n16                                                                         0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n64                                                                         0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n128                                                                        0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n512                                                                        0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8192                                                                       0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n262144                                                                     0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8388607                                                                    0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                        ²                                                          +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                 │ experiments/specialized-sum-unroll/results/followup/direct-D-H/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/direct-D-H/H-candidate.txt │
+                                 │                                   allocs/op                                   │                       allocs/op                        vs base                 │
+SumUnrollFollowup/addr0/n16                                                                         0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n64                                                                         0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n128                                                                        0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n512                                                                        0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8192                                                                       0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n262144                                                                     0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8388607                                                                    0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n16                                                                         0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n64                                                                         0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n128                                                                        0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n512                                                                        0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8192                                                                       0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n262144                                                                     0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8388607                                                                    0.000 ± 0%                                                0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                        ²                                                          +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

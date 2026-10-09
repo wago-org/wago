@@ -1,0 +1,63 @@
+Independent performance evidence confirmation review
+Repository: /home/jtenner/Projects/wago-sum-unroll
+Source freeze: 1a4c6e1eac8d26c34a48494d80ffc9b12fa9ce0c
+Review scope: read-only. No builds, tests, or timings run. Original findings remain in the earlier review files. Final corpus sets and the follow-up report remain pending.
+
+Evidence checked
+- results/followup/threshold-discovery: 78 comparison rows, 26 per T64/T128/T256.
+- results/followup/threshold-compile: 6 rows, two pressure cases per threshold.
+- results/followup/kernel-repeat: 88 rows, 44 each for H and T64.
+- results/followup/direct-D-H: 14 rows, D as baseline and H as candidate.
+All CSV cells were checked against the raw Go benchmark output: sample count, median ns/op, bytes/op, allocs/op, ratio-of-medians change, and median paired change. They agree. Each row has 20 samples per side. Order records show successful runs, alternating order, taskset CPU 2, and GOMAXPROCS=1. Primary comparisons use the recorded normal baseline binary d66f1c32715fac7136130e4b63677d33b3d0412ee24473a8fb7d050a8d3685d3 and candidate binary fcd02514cefbfb32359dd133c75654778597cfe1f3aaad098808a9b945c7768a. The direct D/H comparison uses the same candidate binary for both modes. Input and setup are shared; compilation, memory fill, oracle, argument setup, and preflight are outside execution timing. The native engine call boundary remains in execution measurements.
+
+Threshold meaning and selection
+src/core/compiler/backend/railshot/amd64/sum_unroll_experimental.go:90-94 subtracts the first scalar element before the entry comparison at lines 118-123. Gates 64/128/256 therefore first select the 16-element arm at original counts 65/129/257. Counts 64/128/256 use the four-element arm. Wrapping ranges select the scalar path before group loads. The threshold large arm retains D's scalar remainder; H instead uses the four-element tail. Do not describe these as thresholds on original count or as a threshold-gated H.
+The fixed FOLLOWUP-PLAN.md records the three gates and a separate confirmation. Only T64 is confirmed. T128 and T256 are discovery evidence and cannot support repeatability claims. The full repeat matrix adds counts absent from discovery; those rows are first measurements for T64, not repetitions.
+The reduced discovery gate matrix covers remaining counts just below and at each gate through original64/65,128/129,256/257. The T64 repeat adds original66/130/258, so it covers remaining counts just above each gate. The repeat also includes original63/127/255. This supports the specified gates, not a global optimal crossover.
+
+Repeated H results versus normal Wago (first / repeat, percent)
+- aligned n512: -15.26 / -15.41, p<.001 in both runs.
+- unaligned n512: -12.16 / -12.46, p<.001 in both runs.
+- aligned n8192: -7.91 / -6.24, p<.001 in both runs.
+- unaligned n8192: +0.55 (p=.324) / +0.32 (p=.133). No significant gain.
+- aligned n262144: -7.56 / -6.49, p<.001 in both runs.
+- unaligned n262144: -11.06 / -11.03, p<.001 in both runs.
+- streaming aligned n8388607: -5.94 (p=.512) / -2.68 (p=.015).
+- streaming unaligned: -12.36 (p=.024) / -0.13 (p=.289).
+No repeated 5% streaming gain is established.
+Blocking for an overbroad 'no short-loop regressions' claim: H repeat unaligned n16 is +1.32%, p=.017, whereas its first-run estimate is -2.06%, p=.068. Keep both. Repeat raw values include baseline 38.75ns and candidate 27.04ns outliers; 15/20 candidate samples exceed their paired baseline. Do not remove these samples after inspecting the result. The loss is small and not repeated, but it rules out a categorical regression-free statement. Aligned n8/n16 repeat changes are +0.49%/+0.52%, not significant.
+
+Repeated T64 results versus normal Wago (discovery / confirmation, percent)
+- original aligned n65: -4.82 / -4.78; unaligned -3.05 / -3.80, p<.001.
+- aligned n128: -6.30 / -6.43; unaligned -4.29 / -4.58, p<.001.
+- aligned n129: -9.01 / -9.82; unaligned -8.31 / -8.60, p<.001.
+- aligned n512: -13.79 / -14.06; unaligned -11.11 / -10.94, p<.001.
+- aligned n8192: -6.08 / -6.88, p<.001; unaligned +0.99 (p=.323) / +0.82 (p=.262).
+- aligned n262144: -6.92 / -8.32; unaligned -9.84 / -10.34, p<.001.
+- streaming aligned: -1.29 (p=.495) / -2.34 (p=.024).
+- streaming unaligned: -0.84 (p=.398) / -3.40 (p=.001).
+No repeated 5% streaming gain is established. Confirmation n8/n16 rows show no significant loss. Discovery T128/T256 show cache gains comparable to T64 but delay their large arm to original129/257; no evidence establishes that either higher gate should replace T64. T256 unaligned n16 +1.30% is not significant (p=.229).
+
+Direct same-binary D -> H (one run, not repeated)
+- aligned n16 -1.19% (p=.005), n64 -4.73% (p<.001), n128 -5.14% (p<.001).
+- unaligned n16 -4.41% (p=.002), n64 -1.01% (p=.006), n128 -1.60% (p<.001), n512 -4.77% (p<.001).
+- aligned n512/n8192/n262144 and unaligned n262144 show no significant difference.
+- H is slower at unaligned n8192 by +3.40% (p<.001). All 20 paired H samples are slower; median paired change is +4.44%. This is a material opposing result. The absence of a significant H-versus-normal change in this row does not cancel the D-versus-H result. Report that H does not dominate D.
+- streaming aligned -4.59% (p=.063), unaligned +4.50% (p=.583), both not significant. Wide streaming variation must remain visible; median paired unaligned change is only +0.16%, unlike the median-ratio +4.50%.
+The same Go binary removes the normal-vs-tagged Go binary layout difference for this comparison. Guest layout still changes with H. Tail benefit and guest branch/alignment differences cannot be separated from these data. No universal fastest configuration is established.
+
+Compilation, allocation and native-cost limits
+Every new raw CompileModule comparison has equal bytes and allocation counts: pressure0 26072 B/29 allocs; pressure12 26296 B/30 allocs. Every new compile time difference is not significant. Threshold compile estimates range approximately -4.30% to +2.79%; their p-values do not support a faster/slower compiler claim. H repeat pressure0 -5.24% has p=.383; it is not a credible compile speedup. No added backend compilation cost has been measured reliably, so a backend break-even count based on a positive median alone must be labeled a noisy estimate.
+Earlier corpus evidence remains valid: public CompileFull/memory D adds 1792 B and 2 allocations, from the two slice-growth sites. Raw-backend no-allocation results cannot be extended to the public API. Final H/T64 public corpus costs still need review.
+Earlier native inspection remains applicable: common adapter44; kernel baseline total347, D410, H467, T64 462, T128/T256465 bytes; pressure0 frame56 and operand spill counters0. H adds120 bytes vs baseline and57 vs D. T64 adds115 vs baseline and52 vs D. These are diagnostic fixture sizes, not every real function. Operand spill counters exclude local/frame/ABI traffic. H four-tail dispatch and changed group offset are costs. T128/T256 group offset differs by3 bytes because the gate immediate is wider. Do not attribute every gain solely to branch reduction.
+
+Methodology limits and required report corrections
+1. Retain every adverse and non-significant row, including H n16 repeat and direct H unaligned n8192. Do not imply H/T64 are globally faster or that streaming gains repeat.
+2. Define reported percent changes as ratios of medians. Median paired ratios differ in noisy rows. Benchstat p-values use the supplied distributions; the sampling order is paired/interleaved, but those tests are not paired statistical tests. p=0.000 should be written p<.001.
+3. Multiple rows/designs were examined. A lone p=.017/.024 result is exploratory evidence, not a family-wise error-controlled result. Repeated large cache effects provide stronger evidence. Do not base promotion on the geomean of a chosen synthetic count set.
+4. One CPU, one host, boost enabled and the stated shared-desktop environment remain limitations. Cache-resident and streaming results do not establish another architecture's result.
+5. FOLLOWUP-PLAN.md:24-25 still says the linkname bridge targets a private 'record'. It now calls a private scalar-argument setter. Correct this stale description.
+6. Need final corpus confirmation/control and final follow-up report before recommendation sign-off. No new real-application eligible loop has been shown; the synthetic memory.sum result must be labeled as such. Keep initial linked_list public compile loss and use its same-tagged-binary control, not an assertion that layout explains it without evidence.
+
+Current conclusion
+Evidence supports further study of D, H and T64 for selected cache-resident sums. H improves D's small-count behavior but pays a larger code cost and loses to D in the direct unaligned64KiB row. T64 retains repeat cache gains and does not show significant short-count losses in this confirmation; its confirmed streaming gain remains below5%. No compile allocation increase appears at the raw backend level, but the public API has a verified D allocation increase. No new production default or promotion recommendation is justified until corpus evidence is complete, and absent real-application admission remains a limit. No blocker to keeping the opt-in experiment and evidence in a draft PR if these qualifications appear in the report.

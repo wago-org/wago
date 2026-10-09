@@ -1,0 +1,7 @@
+panic: open ../../tests/fixtures/wasm/fib.wasm: no such file or directory
+
+goroutine 1 [running]:
+github.com/wago-org/wago/bench/suite.mustRead(...)
+	/home/jtenner/Projects/wago-sum-unroll/bench/suite/bench_test.go:22
+github.com/wago-org/wago/bench/suite.init()
+	/home/jtenner/Projects/wago-sum-unroll/bench/suite/bench_test.go:28 +0x53e

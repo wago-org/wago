@@ -1,0 +1,23 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                            │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T64-baseline.txt │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T64-candidate.txt │
+                            │                                         sec/op                                         │                              sec/op                               vs base               │
+SumUnrollCompile/pressure0                                                                              13.90µ ± 10%                                                        14.07µ ± 7%       ~ (p=0.615 n=20)
+SumUnrollCompile/pressure12                                                                             16.88µ ±  9%                                                        17.35µ ± 7%       ~ (p=0.570 n=20)
+geomean                                                                                                 15.32µ                                                              15.62µ       +2.00%
+
+                            │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T64-baseline.txt │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T64-candidate.txt │
+                            │                                          B/op                                          │                              B/op                               vs base                 │
+SumUnrollCompile/pressure0                                                                              25.46Ki ± 0%                                                     25.46Ki ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure12                                                                             25.68Ki ± 0%                                                     25.68Ki ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                 25.57Ki                                                          25.57Ki       +0.00%
+¹ all samples are equal
+
+                            │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T64-baseline.txt │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T64-candidate.txt │
+                            │                                       allocs/op                                        │                           allocs/op                             vs base                 │
+SumUnrollCompile/pressure0                                                                                29.00 ± 0%                                                       29.00 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure12                                                                               30.00 ± 0%                                                       30.00 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                   29.50                                                            29.50       +0.00%
+¹ all samples are equal

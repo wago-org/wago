@@ -1,0 +1,23 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                            │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T256-baseline.txt │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T256-candidate.txt │
+                            │                                         sec/op                                          │                              sec/op                                vs base               │
+SumUnrollCompile/pressure0                                                                                13.97µ ± 6%                                                         13.36µ ± 5%       ~ (p=0.142 n=20)
+SumUnrollCompile/pressure12                                                                               16.52µ ± 6%                                                         15.87µ ± 7%       ~ (p=0.698 n=20)
+geomean                                                                                                   15.19µ                                                              14.56µ       -4.11%
+
+                            │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T256-baseline.txt │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T256-candidate.txt │
+                            │                                          B/op                                           │                              B/op                                vs base                 │
+SumUnrollCompile/pressure0                                                                               25.46Ki ± 0%                                                      25.46Ki ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure12                                                                              25.68Ki ± 0%                                                      25.68Ki ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                  25.57Ki                                                           25.57Ki       +0.00%
+¹ all samples are equal
+
+                            │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T256-baseline.txt │ experiments/specialized-sum-unroll/results/followup/threshold-compile/T256-candidate.txt │
+                            │                                        allocs/op                                        │                            allocs/op                             vs base                 │
+SumUnrollCompile/pressure0                                                                                 29.00 ± 0%                                                        29.00 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure12                                                                                30.00 ± 0%                                                        30.00 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                    29.50                                                             29.50       +0.00%
+¹ all samples are equal

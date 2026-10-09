@@ -1,5 +1,9 @@
 # Specialized integer-sum unrolling
 
+The original study is retained below. The current continuation and decision are
+in [Phase 2](#phase-2-hybrid-and-bounded-runtime-gates): retain opt-in evidence,
+keep production 4/4, and investigate further without promotion.
+
 This experiment keeps the existing four-element, four-accumulator path as the
 default. It changes only the AMD64 sum latch. It does not rewrite Wasm or add a
 general loop optimizer. The branch starts at `2286d676facdfa1cabe2d1c61072e505438ca7f2`.
@@ -380,3 +384,429 @@ complete comparison CSV and numerical JSON.
    Extend recognition only when measured coverage and speed justify it.
 
 Neither follow-up is implemented here. No other PR is opened by this task.
+
+## Phase 2: hybrid and bounded runtime gates
+
+This section continues PR #910 from verified local and remote head
+`d49f7252a906af9ffab94dabe1c83059c8589819`. The phase 1 report and all its raw
+evidence above remain historical results. In particular, its lack of enabled
+corpus measurements is addressed below. No rebase, new worktree, new PR,
+production default change, ARM64 change, or general loop rewrite is included.
+The continuation uses the same experimental branch and AMD64-only build tag.
+
+### Designs and correctness
+
+H uses sixteen loads per group with four chains, then four loads per group with
+the **same four chains**, then scalar loads. T64, T128 and T256 compare the
+remaining count once: below the gate, use four-element groups; at or above it,
+use D's sixteen-element groups and scalar remainder. All counts in this report
+are original call counts; the gate sees `count - 1` after the existing peel.
+Thus original count 64 takes T64's small arm and count 65 takes its large arm.
+Only the three planned gates are accepted. No gated hybrid or layout tuning
+was added. The complete discovery sets were retained before T64 was selected
+for independent confirmation; see [confirmation-plan.txt](results/followup/confirmation-plan.txt).
+
+The bounds recognizer/proof, scalar peel, source Wasm, live exit locals and
+fallback are unchanged. One widened wrap test routes full-memory32 wrapping
+to the existing scalar tail before either grouped path. Address/counter updates
+remain 32-bit; accumulator arithmetic remains modulo 2^64. Both arms share
+setup, three temporary GP registers, scalar tail, combination and cleanup.
+The implementation uses the existing fixed `[8]Reg` storage. It rejects an
+unsupported configuration, insufficient free registers or insufficient byte
+budget before emitting bytes or changing ownership. Conservative latch limits are
+512 bytes for H and 528 for T, within the test selector's 576-byte budget.
+No public option was added. The corpus bridge calls a private scalar-argument
+setter from a tagged `_test.go` initializer, outside timing. Normal builds use
+the unchanged four-element wrapper.
+
+Tests preceded implementation. The native oracle matrix now covers 0–35,
+63–66, 127–130, 255–258, 511–513, 8192 and 262144, with aligned/unaligned
+loads, nonzero overflow seeds, all remainders, exit values, bounded/unbounded
+memories, overflowed range calculations, OOB traps and trap metadata, unchanged
+Wasm/memory, and live-parameter pressure. Full sparse 4 GiB wrapping tests ran
+and passed for baseline, D, H and all three gates; they did not skip.
+Diagnostic assertions require the selected H/T marker, so a silent fallback
+cannot pass as candidate coverage. Direct tests separately reject register
+pressure with sufficient budget and budget pressure with sufficient registers,
+then check byte and ownership preservation. Native budget rejection tests
+execute the original 4/4 fallback against the oracle. Existing scalar and
+register-pressure fallback tests remain. Both sides and equality of each
+post-peel gate execute in the native tests.
+
+### Workload coverage
+
+The conservative scan of 125 checked-in corpus modules and 223,466 function
+bodies found only `synthetic/memory.wasm`, function 1, export `sum`. Function
+diagnostics confirm exactly one specialized latch in that function for all
+four principal configurations. The timed `memory.sum` calls count 512; its
+existing zero-filled input and zero oracle remain identical. It is a synthetic
+kernel, and no result here is an application-level speed claim. The new
+lifecycle benchmark measures public compilation, instantiation, one sum call
+and close, which supplies a complete small synthetic workload cost.
+
+The other measured corpus modules—linked_list, blake-as-simd, utf-as-simd,
+yyjson, xxhash and drwav—have zero selected sum latches. many_funcs was also
+checked for admission. Their native sizes are equal across modes, with no
+selected sum latch. The separate post-timing
+[native-control-hashes.json](results/followup/native-control-hashes.json)
+audit confirms byte equality for all seven negative controls across all six
+modes. Original input hashes, sizes, admission counts and memory.bin bytes
+also match. Only diagnostic output gained a native SHA-256 field in
+`cb57571d5`; frozen emitter and benchmark timer sources were not changed.
+They are negative controls, not positive coverage. Input SHA-256, function
+statistics and assembly are in `results/followup/native-corpus-*`.
+
+A bounded additional search fetched 21 published Wasm-R3 modules below 2 MiB,
+9,441,146 bytes and 18,442 function bodies, from pinned revision
+`bea10061c81428260ff029a9953273540a0c32e2` of
+[`doehyunbaek/wasm-benchmarks`](https://github.com/doehyunbaek/wasm-benchmarks/tree/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench).
+There were no canonical exact-shape matches. [r3-scan.json](results/followup/r3-scan.json)
+retains pinned URLs, SHA-256 and Git blob checks. [scan-r3.py](scan-r3.py)
+repeats that search. Fixed immediates use canonical LEB patterns; noncanonical
+encodings and modules above the bound are outside the search. A byte match
+would still need instruction/type/proof checks and native admission. These
+negative modules were not compiled or run by this scan. Replay filenames do
+not prove application provenance or an oracle. Arithmetic toys are excluded
+from application claims. **No eligible real application was found.** This
+limits the result and prevents promotion; recognition was not broadened to
+manufacture coverage.
+
+### Measurement process
+
+The frozen confirmation implementation is commit
+`1a4c6e1eac8d26c34a48494d80ffc9b12fa9ce0c`.
+[build.json](results/followup/build.json) records source and binary SHA-256.
+The first corpus D run used the earlier tests-first bridge at `5bbee26aa`;
+the corpus repeat uses the final setter and compiler binary. Each set records
+its own binary hashes. Guest D bytes are unchanged, but Go compiler layout
+and selection plumbing are not asserted to be identical between those runs.
+Every decisive row has 20 alternating baseline/candidate pairs, CPU 2,
+`GOMAXPROCS=1`, and 150 ms benchmark duration. All builds, diagnostic checks
+and profiling preceded their timing windows. The primary reference is a
+normal-build Wago binary with unchanged 4/4; D→H and same-binary corpus
+comparisons are explicitly supplementary. Native D bytes match the original
+phase 1 artifact. Identical inputs/settings/features are retained. Execution
+timers exclude compile/setup and report zero allocations. Compilation and
+public lifecycle have separate timers. Allocation profiles are diagnostics;
+their timings are not used as performance samples.
+
+The CPU is the same Ryzen 7 8845HS and Go version is go1.27.1. Each run saves
+environment and sample order. Turbo remains on, the desktop remains active,
+the governor is powersave, and SMT sibling CPU 3 is not isolated. Pinning is
+not CPU isolation. All samples, including unfavorable streaming outliers,
+remain. `benchstat` supplies unpaired significance; `analyze.py` also retains
+paired ratios and medians. A nonsignificant result does not prove equivalence.
+Many rows are exploratory, without a multiple-comparison correction; isolated
+small p-values are not adoption evidence. No hardware counters or controlled
+instruction-alignment experiment was run.
+
+### Native code and dependency costs
+
+| Configuration | Kernel bytes incl. adapter | Corpus sum bytes | Corpus module bytes | Kernel frame, pressure 0/4/12 | Operand spills/reloads |
+|---|---:|---:|---:|---|---|
+| Existing 4/4 | 347 | 312 | 472 | 56/88/168 | 0/0 |
+| Existing D 16/4 | 410 | 375 | 535 | 56/88/168 | 0/0 |
+| H hybrid | 467 | 432 | 592 | 56/88/168 | 0/0 |
+| T64 | 462 | 427 | 587 | 56/88/168 | 0/0 |
+| T128 | 465 | 430 | 590 | 56/88/168 | 0/0 |
+| T256 | 465 | 430 | 590 | 56/88/168 | 0/0 |
+
+The corpus sum frame stays 40 bytes in every mode. Zero operand spills do not
+mean there are no ABI/local stack transfers; the grouped loops introduce no
+stack accesses. The existing frame slot maximum is unchanged. Four chains
+keep register demand fixed. The sixteen-element body contains sixteen
+memory-source ADDs, four dependent adds per chain, followed by two induction
+updates, compare and backedge. The original body has four memory-source ADDs
+and the same four control instructions per four elements. Thus the main group
+reduces control work per element without adding accumulator parallelism.
+H's four-element tail has four memory ADDs to the same four registers and one
+group backedge. Combination occurs once after the common scalar tail.
+
+T adds one CMP/conditional dispatch and an unconditional jump over the small
+body on the large path; no complete second proof/setup/cleanup is emitted.
+H also guards the four-tail block. Costs depend on the remainder after peel.
+For original count 512, 511 remain: D processes 496 grouped plus 15 scalar,
+where H processes 496 + 12 grouped plus 3 scalar. That is a plausible cause
+of H's gains, not a measured hardware attribution. Code layout also changes:
+D's main group starts at kernel offset 0xbf; H/T64 at 0xc9 and T128/T256 at
+0xcc. Larger gate immediates add three bytes. Alignment and frontend effects
+can explain differences but were not isolated. Assembly is retained for every
+mode and pressure. Bigger code has a measured allocation consequence below.
+
+### Kernel execution results
+
+All cells below are median execution deltas against each interleaved normal
+4/4 reference, first run / separate repeat. Negative means faster. The full
+42 execution rows are retained; compilation has two additional rows per
+confirmed mode. Addresses 0 and 1 use identical data bytes and sum seeds.
+2 MiB (262144 elements) fits this CPU's 16 MiB L3; the approximately 64 MiB
+8388607-element buffer exceeds L3. No synthetic geomean is an application gain.
+
+| Original count | H aligned | H unaligned | T64 aligned | T64 unaligned |
+|---:|---|---|---|---|
+| 0 | -0.31% / -0.07% | -0.14% / -1.43% | +0.19% / -0.31% | +0.56% / +0.31% |
+| 8 | +1.13% / +0.49% | -1.41% / -0.28% | -0.07% / -0.14% | +0.45% / +0.02% |
+| 16 | +0.22% / +0.52% | -2.06% / +1.32% | -0.37% / -0.05% | +0.17% / -0.58% |
+| 17 | -0.79% / -0.27% | -0.09% / -0.42% | — / +0.29% | — / +0.49% |
+| 33 | -1.64% / -0.99% | -1.03% / -0.87% | — / -1.44% | — / -0.65% |
+| 63 | -4.31% / -2.90% | -3.40% / -2.72% | — / +0.43% | — / -0.18% |
+| 64 | -3.41% / -3.51% | -4.19% / -2.17% | -0.36% / -1.28% | -0.09% / -1.69% |
+| 65 | -4.98% / -4.57% | -5.50% / -1.06% | -4.82% / -4.78% | -3.05% / -3.80% |
+| 66 | -5.30% / -5.66% | -3.65% / -2.02% | — / -5.19% | — / -3.83% |
+| 127 | -11.23% / -8.78% | -8.44% / -6.72% | — / -7.12% | — / -4.06% |
+| 128 | -10.77% / -8.40% | -7.50% / -7.48% | -6.30% / -6.43% | -4.29% / -4.58% |
+| 129 | -7.69% / -9.00% | -10.62% / -8.02% | -9.01% / -9.82% | -8.31% / -8.60% |
+| 130 | -9.01% / -10.49% | -10.72% / -8.01% | — / -9.38% | — / -7.92% |
+| 255 | -12.26% / -13.03% | -9.73% / -10.94% | — / -10.56% | — / -7.62% |
+| 256 | -13.61% / -12.51% | -10.88% / -12.26% | -11.41% / -12.21% | -8.75% / -7.48% |
+| 257 | -13.05% / -12.94% | -11.76% / -12.72% | -13.31% / -13.14% | -11.37% / -12.12% |
+| 258 | -12.04% / -14.10% | -12.69% / -10.16% | — / -12.78% | — / -10.79% |
+| 512 | -15.26% / -15.41% | -12.16% / -12.46% | -13.79% / -14.06% | -11.11% / -10.94% |
+| 8192 | -7.91% / -6.24% | +0.55% / +0.32% | -6.08% / -6.88% | +0.99% / +0.82% |
+| 262144 | -7.56% / -6.49% | -11.06% / -11.03% | -6.92% / -8.32% | -9.84% / -10.34% |
+| 8388607 | -5.94% / -2.68% | -12.36% / -0.13% | -1.29% / -2.34% | -0.84% / -3.40% |
+
+The first threshold discovery matrix did not include counts 17, 33, 63, 66,
+127, 130, 255 or 258; their T64 repeat is a single measured set, while native
+correctness executes them. No missing sample was discarded.
+
+H retains repeatable gains at aligned 128, 256, 512, 8192 and 262144 (p<.001
+in both runs). Unaligned 128/256/512 and 262144 gains also repeat. Unaligned
+8192 is +0.55% / +0.32%, neither significant; no gain is established. Short
+8/16-element aligned calls have no significant loss in either run. Unaligned
+16 is -2.06% (p=.068) then +1.32% (p=.017): the loss is not repeated, but
+“all short regressions eliminated” is not established. The scalar/grouped
+tradeoff after the peel matters; boundary rows are kept above.
+
+T64 preserves small-input four-group behavior. At aligned 8/16 and unaligned
+8/16 its repeated differences are not significant. Its complete gated-path
+measurements bound the observed cost of selection; an isolated CMP latency
+was not measured. T64 repeats useful aligned cache gains, but does not improve
+unaligned 8192. There is no evidence that 64 is a universal profitable gate.
+T128/T256 delay the large arm and add three bytes without a clear overall
+advantage. Their complete discovery rows and compile samples remain in
+[threshold-discovery](results/followup/threshold-discovery/comparison.csv) and
+[threshold-compile](results/followup/threshold-compile/comparison.csv); only
+T64 was selected for repeat before confirmation began.
+
+Streaming results do not support a repeatable 5% gain. H aligned is -5.94%
+(p=.512) / -2.68% (p=.015); unaligned -12.36% (p=.024) / -0.13% (p=.289).
+The first streaming run has wide scatter and paired medians only -1.12% /
+-4.37%. T64 aligned is -1.29% (not significant) / -2.34% (p=.024); unaligned
+-0.84% (not significant) / -3.40% (p=.001). All unfavorable samples remain.
+Loop-control savings are a smaller part of total time when memory dominates.
+
+The supplementary same-binary D→H comparison gives aligned 16/64/128 changes
+-1.19% / -4.73% / -5.14%, and unaligned 16/64/128/512 changes -4.41% /
+-1.01% / -1.60% / -4.77%, all significant. Aligned 512, both aligned cache
+sizes beyond that, unaligned 262144 and both streams are not significant.
+**Unaligned 8192 regresses +3.40% (p<.001)**. H uses 57 more bytes than D.
+This is one direct set, not an independently repeated H-over-D advantage.
+It improves middle/remainder behavior but is not a universal new winner.
+See [direct-D-H](results/followup/direct-D-H/comparison.csv).
+
+### Compilation and allocations
+
+Raw kernel compilation uses 26072 B/op and 29 allocations at pressure 0,
+26296 B/op and 30 allocations at pressure 12 for all new modes, unchanged.
+H compile time first/repeat is -0.66%/-5.24% at pressure 0 and -1.77%/-1.23%
+at pressure 12, all nonsignificant. T64 is +1.21%/+0.73% and +2.79%/-3.32%,
+all nonsignificant. These estimates do not establish zero compile-time cost.
+The raw corpus backend and public CompileFull must be assessed separately.
+
+The public `memory.wasm` compile reveals a real hidden cost: 23361 B/op and
+108 allocations for baseline versus 25153 B/op and 110 for D/H/T64. The one-call
+lifecycle is 24945/117 versus 26737/119. **Native execution still allocates
+zero; public compilation adds two allocations and about 1792 bytes.**
+The emitter has no new heap object, but larger native bytes cross an existing
+code-buffer capacity boundary. The 80-byte Wasm bodies give capacity 496;
+normal worker/join output 470/472 fits, whereas every new mode exceeds it.
+Two existing append-growth sites allocate 896 bytes each.
+`compile.go`'s worker arena append and final join account for the entire
+increase in paired allocation profiles; see
+[diff-sites.txt](results/followup/allocation-profiles/diff-sites.txt).
+The raw backend uses its mapped arena and remains 11216 B/op / 29 allocs for
+this corpus module. No allocator or capacity-policy change is included.
+
+The other two gates have no public allocation timing; their larger bytes also
+exceed the capacity, but a matching allocation cost is an inference only.
+
+### Corpus costs and negative controls
+
+The table retains every corpus row. A star means unpaired benchstat p<.05;
+these exploratory stars do not prove practical importance. Primary columns
+compare normal Wago with enabled candidates. The final column is a separate
+same-tagged-binary control, not a replacement primary reference. No execution
+gain in a zero-admission control is attributed to sum unrolling.
+
+| Benchmark | D first | D repeat | H first | T64 first | Same-binary D |
+|---|---:|---:|---:|---:|---:|
+| Compile/memory | +0.90% | +0.17% | -2.14% | +1.75% * | -0.39% |
+| Compile/linked_list | +1.08% | +0.58% | -1.34% | -0.92% | -0.39% |
+| Compile/blake-as-simd | +0.36% | -0.34% | +2.26% | +1.40% * | +0.13% |
+| Compile/utf-as-simd | +0.18% | +0.57% | +1.02% | +1.12% | -0.52% |
+| Compile/yyjson | -0.13% | +0.38% | -0.42% | +0.60% | +0.97% |
+| Compile/xxhash | +0.68% | -0.46% | -0.06% | +1.13% | -0.87% |
+| Compile/drwav | +1.25% | -2.67% | -1.82% | +1.79% | +1.23% |
+| CompileFull/memory | +5.04% * | +3.70% * | +4.70% * | +5.35% * | +2.70% * |
+| CompileFull/linked_list | +3.55% * | +2.32% * | +1.28% | +1.95% * | +0.02% |
+| CompileFull/blake-as-simd | -1.80% * | +0.15% | -0.69% | +0.82% | +0.24% |
+| CompileFull/utf-as-simd | -0.05% | +0.30% | +0.58% | +0.52% | +1.14% |
+| CompileFull/yyjson | -0.06% | +1.27% | +2.22% | -0.80% | -0.18% |
+| CompileFull/xxhash | +0.51% | +0.20% | -0.92% | +0.27% | +0.92% |
+| CompileFull/drwav | +0.15% | -0.33% | -0.79% | +1.25% | -0.45% |
+| Exec/memory.sum | -9.91% * | -10.60% * | -11.64% * | -11.21% * | -10.57% * |
+| Exec/linked_list.sum | +0.82% | -1.17% | +0.52% | -0.11% | -0.62% |
+| Exec/blake-as-simd.hashN | -0.09% | -0.11% | -0.07% | -0.05% | +0.22% |
+| Exec/utf-as-simd.convertN | +0.07% | +0.09% | +0.00% | -0.07% | +1.30% * |
+| Exec/utf-as-simd.validateN | -0.06% | +0.67% | +0.08% | +0.31% | +0.25% |
+| Exec/yyjson.yyjson_run | -0.64% | +0.49% | -0.60% | -0.20% | -0.24% |
+| Exec/xxhash.xxhash_run | +0.55% | -2.02% | -0.71% | -0.64% | -0.11% |
+| Exec/drwav.drwav_run | +1.13% | +0.03% | +0.66% | -1.02% * | +0.74% |
+| SumUnrollLifecycle/memory | +1.43% * | +1.41% * | +0.98% | +1.73% * | +0.88% * |
+
+D's synthetic memory.sum gain repeats, as do its public compile and one-call
+lifecycle losses. The linked_list public compile loss is +3.55% then +2.32%,
+both significant; T64 first is +1.95% (p=.004). The same-binary D control
+is +0.022% (p=.947). This supports a compiler-binary/init/layout contribution
+to the cross-binary loss but does not establish its cause or prove that mode
+overhead is zero. Same-binary utf convert is +1.30% (p=.020), and T64 first
+raw blake compile is +1.40% (p=.024). These adverse rows are not discarded.
+Other isolated small control gains are not optimization evidence.
+The normal production emitter and wrapper sources have no continuation diff.
+Disabling experiments has no new dispatch or emitter code in the normal build;
+there is no reason to infer a production regression from enabled-only costs.
+
+The separate memory repeat includes all four timers, not just execution:
+
+| Timer | H first / repeat | T64 first / repeat |
+|---|---:|---:|
+| Compile/memory | -2.14% / +3.59% * | +1.75% * / +0.24% |
+| CompileFull/memory | +4.70% * / +6.80% * | +5.35% * / +8.72% * |
+| Exec/memory.sum | -11.64% * / -11.41% * | -11.21% * / -11.85% * |
+| SumUnrollLifecycle/memory | +0.98% / +4.11% * | +1.73% * / +3.45% * |
+
+H repeat raw compile is +3.59% (p=.028), public compile +6.80% (p=.009),
+and lifecycle +4.11% (p=.043). T64 repeat public compile is +8.72% and
+lifecycle +3.45% (both p<.001). Both execute about 11–12% faster (p<.001
+in both runs). Thus the observed execution benefit does **not** make a
+compile-and-run-once workload faster. Public repeat B/op is 23360→25153,
+an observed 1793-byte delta; earlier medians are 23361→25153, 1792 bytes.
+Both have 108→110 allocations. Do not normalize the raw one-byte rounding
+difference away; the profiles locate two 896-byte growth allocations.
+Lifecycle bytes/counts remain 24945/117→26737/119.
+
+Median-only amortization for reused synthetic sum(512) is roughly D 84–121
+executions, H 95–141, and T64 111–184 to recover extra public compile time.
+This divides public compile delta by execution-only time saved and rounds up.
+It excludes additional application work and uncertainty; it is not an oracle
+for profitability. The raw kernel compile deltas are not significant, so they
+do not give a credible added-cost break-even. Higher real call counts could
+amortize compilation, but eligible real call counts were not found.
+
+### Decision table
+
+Execution and public compilation below are synthetic corpus memory.sum, first
+run / independent repeat, relative to normal Wago. Native size is the low-
+pressure kernel including its adapter. Runtime execution allocates zero in
+every case. Public allocations list bytes/count; raw backend allocations stay
+unchanged. Additional gates have discovery-only kernel evidence.
+
+| Candidate | Execution | Compilation | Allocations | Native size | Decision |
+|---|---|---|---|---:|---|
+| Existing 4/4 | Reference | Reference | Public 23360–23361/108 | 347 B | Production reference |
+| Existing experimental D 16/4 | -9.91% / -10.60% | Public +5.04% / +3.70%; raw not significant | Public 25153/110; +2 allocs | 410 B | Retain simplest experimental reference |
+| H 16/4 + 4 tail | -11.64% / -11.41% | Public +4.70% / +6.80%; raw repeat +3.59% | Public 25153/110; +2 allocs | 467 B | Useful middle/cache gains; further evidence needed |
+| Threshold-gated T64 | -11.21% / -11.85% | Public +5.35% / +8.72%; raw first +1.75%, repeat not significant | Public 25153/110; +2 allocs | 462 B | Do not prefer the gate for production |
+| T128 discovery | Aligned kernel512 -13.99%; no corpus timer | Raw kernel -0.22%, not significant | Raw kernel26072/29; public unmeasured | 465 B | No separate repeat; not preferred |
+| T256 discovery | Aligned kernel512 -13.94%; no corpus timer | Raw kernel -4.30%, not significant | Raw kernel26072/29; public unmeasured | 465 B | No separate repeat; not preferred |
+
+**Investigate further. Keep 4/4 as the production default and D as the
+smallest reference experimental winner.** H is the promising new tail design:
+it retains aligned cache gains and improves several middle/remainder cases
+over D. The direct comparison also finds an unaligned8192 loss, and H adds
+57 bytes over D. It does not dominate D. T64's small-call behavior is useful
+but is not justified by a real workload and adds 52 bytes over D. Higher gates
+delay useful groups without a clear additional benefit. No gated hybrid was
+justified. No candidate has verified application gains, unchanged public
+allocations, or a faster one-call lifecycle. **Do not promote any candidate.**
+
+The final question has a limited answer: the hybrid and one gate retain useful
+cache-resident synthetic gains and improve many short/middle cases, but the
+evidence does not establish elimination of short losses, real-application
+gains, or preservation of public compilation costs/allocations. Streaming
+gains are inconsistent. Stop this tuning study; retain all evidence and use
+real coverage to decide any future recognition or production work.
+
+### Independent reviews and final validation
+
+Two independent agents performed read-only reviews. The correctness review
+checked ownership/cleanup, flags and branch targets, range/wrap behavior,
+trap/fallback paths, native oracle coverage and the test bridge. Its threshold
+boundary finding was fixed by adding original counts 66/130/258, and its
+shared-record concern was fixed by a private scalar-argument setter. No
+blocking correctness finding remains. See
+[correctness-final-review.txt](results/followup/correctness-final-review.txt).
+
+The performance review checked raw samples, pair order, normal Wago references,
+selection, medians, allocations, native bytes, significance and amortization.
+Its control-code hash evidence finding was fixed with the separate audit,
+without replacing original diagnostics or changing timed code. All adverse
+short/cache/streaming and control results remain visible. See
+[performance-confirmation-review.txt](results/followup/performance-confirmation-review.txt)
+and [performance-corpus-final-review.txt](results/followup/performance-corpus-final-review.txt).
+Claude Code was attempted with the requested read-only Opus command but
+returned `Not logged in`; no Claude review occurred. See
+[claude.txt](results/followup/claude.txt).
+
+Passed checks: native oracle/selection/fallback tests for all
+six modes with codegen statistics and register checks, full checked bench
+module, full tagged AMD64 suite with `WAGO_SHARED_SCALAR=0`, guard-page
+runtime/public API, `just lint`, `just docs`, tagged vet, Python syntax, and
+checked ARM64 cross-build. The full ordinary/checked `just test unit` rerun and
+corrected shellcheck also passed. All attempt and rerun statuses are recorded in
+[check-status.txt](results/followup/check-status.txt).
+
+The first unit attempt failed in TinyGo VCS stamping. The rerun uses the
+established `GOFLAGS=-buildvcs=false`; the first log is retained. The first
+hash-audit attempt used the wrong working directory and failed before running
+the test; corrected audit logs are retained. Initial shellcheck flagged an
+unquoted comma-list array argument; it was quoted and rerun. No timing sample
+was replaced by these checks.
+
+The full normal shared-scalar statistics suite still fails with the exact
+same 86 test/subtest names as phase 1. See
+[baseline-failure-comparison.json](results/followup/baseline-failure-comparison.json).
+No unrelated compiler repair is included. Draft smoke and CI passed on the
+implementation head `1a4c6e1e`; final pushed-head draft status is recorded on
+PR #910 after push.
+The full native OS/architecture, race/fuzz and conformance CI matrix is skipped
+by draft policy; it was not run locally. ARM64 is a cross-build, not native
+execution. Hardware counters, controlled layout, enabled execution timing
+with extra live parameters, another CPU, and eligible application gains remain
+unvalidated. These limits rule out promotion.
+
+### Follow-up reproduction and retained evidence
+
+Use a new output directory and an allowed CPU ID:
+
+```sh
+experiments/specialized-sum-unroll/followup.sh /tmp/wago-sum-followup-results 2
+python3 experiments/specialized-sum-unroll/scan-r3.py --out /tmp/wago-r3-search
+```
+
+The follow-up script uses current normal Wago as its primary reference and
+builds/tests all binaries before sampling. It retains initial discovery,
+confirmation, direct D/H and same-binary control comparisons. Diagnostic JSON
+now records native SHA-256. The first historical D corpus run's older binary
+is identified above; new reproductions use the final bridge. Allocation
+profile commands are in `build.json`. Existing `run.sh` still reproduces phase
+1. [evidence-index.json](results/followup/evidence-index.json) lists all ten
+follow-up sets, 353 comparison rows, hashes and windows. Each row has 20
+samples per side; CSV/benchstat/raw/order/environment files are retained.
+Original phase 1 evidence was neither rewritten nor removed.
+
+The two recorded follow-up ideas remain SIMD map emission without module
+cloning and broader reduction recognition supported by real coverage. Neither
+is implemented, and no additional PR is opened. PR #910 remains draft for
+human review. Do not merge or enable a new default from this experiment.

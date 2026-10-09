@@ -1,0 +1,21 @@
+Read-only follow-up review for PR #910
+Head inspected: d49f7252a906af9ffab94dabe1c83059c8589819
+No repository edits, builds, or tests were performed.
+
+Current constraints
+- control.go:152 inspectLinearSumLoop requires exact instruction order: accumulator local.get, address local.get, memory-zero i64.load with zero offset, i64.add and accumulator local.set; then address += 8, counter -= 1, br 0, end, end. Address and counter must differ. Accumulator is i64, address i32, and packed local indices must fit 16 bits.
+- control.go:220 tryHoistLinearSumBounds rejects disabled optimization, unsupported signal admission, shared memory zero, memory64, and explicit-bounds emission without a memory-size register. Counter and address must be pinned GP locals. It retains widened count*8+address proof and the existing full-4-GiB aligned-wrap exception.
+- control.go:356 tryCountedLoopLatch requires the existing counted-loop option, no interruption polling, no calls, empty operand stack, a zero-parameter/result loop under a zero-arity block, matching counted-loop header state, and an i32 pinned counter.
+- sum_unroll_experimental.go:20 requires the proven-loop marker at the current control depth and pinned GP counter/address/accumulator. Factor is a power of two from 2 to 16; chains are from 2 to 8, no greater than factor, and divide factor. Budget must exceed the conservative bound. All temporary registers must be free and outside transient/local/reserved masks. Rejection is before any code or allocator mutation.
+- sum_unroll_experimental.go:64 onward follows the unchanged scalar peel protocol. Address and counter updates remain 32-bit. A widened remaining range selects the scalar tail when native offsets can cross memory32 wrap. Extra chains combine modulo 2^64 and are unpinned/released after combination. Existing default fallback remains the four-element/four-chain path.
+
+Corpus evidence
+The existing source corpus/sources/wat/memory.wat:13-23 has an exact eligible sum export. Its artifact is corpus/workloads/synthetic/memory.wasm. The catalog invokes sum(512), expecting zero, at corpus/catalog.json:2057-2076. wasm2wat confirms the exact instruction sequence and local types. It is a synthetic fixture, not evidence of a real application reduction.
+
+A conservative read-only byte scan of code sections in all 125 corpus .wasm files inspected 223,466 function bodies with no parse errors. It found only memory.wasm local function 1, body offset 13 (count local 0, accumulator local 2, address local 1). Scan details are saved in /tmp/wago-sum-review-corpus-scan.json. The scan recognizes canonical immediate encodings for the fixed constants/labels and does not replace full instruction-boundary, type, or pin validation; absence is therefore qualified.
+
+No matching real application reduction was found. Source examples explain likely exclusions: linked_list.wat sums i32 values with dependent pointer loads; yyjson/wago_yyjson.c:7-14 hashes bytes with xor and multiplication; xxhash/wago_xxhash.c:12-14 combines a call result with xor/shift arithmetic; drwav/wago_drwav.c:29-33 calls a decoder, accumulates returned frame counts, and hashes 16-bit samples. The exact recognizer must remain unchanged in this focused experiment. The synthetic memory export is a useful positive control; real applications remain negative controls unless emission stats demonstrate admission.
+
+Claude was attempted again with the requested read-only settings. It exited 1 with Not logged in · Please run /login. No Claude review occurred. Files: /tmp/wago-sum-review-claude-followup.txt, .stderr, .status.
+
+Hybrid/threshold implementation review is pending receipt of the new diff.

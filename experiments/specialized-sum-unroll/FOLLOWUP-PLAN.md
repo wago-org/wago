@@ -21,6 +21,7 @@ Preserve the original evidence. Do not change the recognizer or production defau
 5. Stop after these designs. Report any absent real-application coverage.
    Do not infer application gains from synthetic memory.sum.
 
-The corpus benchmark selector is a test-only linkname bridge to the private
-build-tagged record. It is not linked into production. Function-level diagnostic
+The corpus benchmark selector is a test-only linkname bridge to a private
+build-tagged setter (the original shared-record bridge was replaced during
+correctness review). It is not linked into production. Function-level diagnostic
 assertions and native artifacts must confirm that this bridge selects the emitter.

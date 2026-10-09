@@ -1,0 +1,39 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                          │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-candidate.txt │
+                          │                                         sec/op                                          │                              sec/op                               vs base                │
+Compile/memory                                                                                          14.76µ ± 5%                                                        15.28µ ± 7%   +3.59% (p=0.028 n=20)
+CompileFull/memory                                                                                      23.07µ ± 7%                                                        24.64µ ± 8%   +6.80% (p=0.009 n=20)
+Exec/memory.sum                                                                                         97.83n ± 1%                                                        86.66n ± 1%  -11.41% (p=0.000 n=20)
+SumUnrollLifecycle/memory                                                                               57.33µ ± 5%                                                        59.69µ ± 5%   +4.11% (p=0.043 n=20)
+geomean                                                                                                 6.610µ                                                             6.643µ        +0.50%
+
+                          │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-candidate.txt │
+                          │                                          B/op                                           │                              B/op                                vs base                 │
+Compile/memory                                                                                       10.95Ki ± 0%                                                        10.95Ki ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/memory                                                                                   22.81Ki ± 0%                                                        24.56Ki ± 0%  +7.68% (p=0.000 n=20)
+Exec/memory.sum                                                                                        0.000 ± 0%                                                          0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollLifecycle/memory                                                                            24.36Ki ± 0%                                                        26.11Ki ± 0%  +7.18% (p=0.000 n=20)
+geomean                                                                                                           ²                                                                    +3.65%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                          │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-candidate.txt │
+                          │                                        allocs/op                                        │                            allocs/op                             vs base                 │
+Compile/memory                                                                                         29.00 ± 0%                                                          29.00 ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/memory                                                                                     108.0 ± 0%                                                          110.0 ± 0%  +1.85% (p=0.000 n=20)
+Exec/memory.sum                                                                                        0.000 ± 0%                                                          0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollLifecycle/memory                                                                              117.0 ± 0%                                                          119.0 ± 0%  +1.71% (p=0.000 n=20)
+geomean                                                                                                           ²                                                                    +0.89%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                   │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-candidate.txt │
+                   │                                         code-B                                          │                              code-B                               vs base                │
+CompileFull/memory                                                                                472.0 ± 0%                                                         592.0 ± 0%  +25.42% (p=0.000 n=20)
+
+                │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-memory-repeat/H-candidate.txt │
+                │                                       calls/batch                                       │                           calls/batch                             vs base                │
+Exec/memory.sum                                                                               21.12k ± 1%                                                        23.87k ± 3%  +13.05% (p=0.000 n=20)

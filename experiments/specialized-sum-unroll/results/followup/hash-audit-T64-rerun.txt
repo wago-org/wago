@@ -1,0 +1,3 @@
+=== RUN   TestSumUnrollCorpusAdmission
+--- PASS: TestSumUnrollCorpusAdmission (0.19s)
+PASS

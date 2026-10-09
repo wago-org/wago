@@ -1,0 +1,6 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/memory         	    1000	    310808 ns/op	       472.0 code-B	   23360 B/op	     108 allocs/op
+PASS

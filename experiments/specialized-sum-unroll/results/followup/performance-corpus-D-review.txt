@@ -1,0 +1,50 @@
+Independent follow-up corpus evidence review — uniform D, first run
+Reviewer: performance_review. Read-only review; no builds, tests, or timing runs.
+Evidence: results/followup/corpus-D-run1; native-corpus-baseline/native-corpus-D JSON and memory ASM; corpus benchmark sources; test-only selector; public compile and backend allocation paths. Original findings remain unchanged as historical evidence.
+
+Confirmed raw evidence:
+- All 23 comparison CSV rows recompute exactly from raw samples, including every median, allocated-byte/count metric, ratio-of-medians delta, and median paired delta.
+- All rows have 20 samples per side. 40 successful order records alternate correctly, with taskset CPU2 and GOMAXPROCS=1. Binary hashes and environment are recorded.
+- memory.sum execution is 96.685→87.105 ns (-9.9085%, p<.001), with zero execution allocations.
+- Backend Compile/memory is 15064.5→15200.5 ns (+0.9028%, p=.149), unchanged 11216 B/op and 29 allocations/op.
+- Public CompileFull/memory is 22847.5→24000 ns (+5.0443%, p<.001), 23361→25153 B/op and 108→110 allocations/op.
+- Full one-call memory lifecycle is 54896.5→55681 ns (+1.4291%, p=.011), 24945→26737 B/op and 117→119 allocations/op.
+- Public and lifecycle byte deltas are exactly +1792 B and +2 allocations. These costs must qualify earlier backend-only statements about unchanged allocation costs; do not erase the earlier raw measurements.
+
+Admission and corpus coverage:
+- Original Wasm hashes are identical between baseline and D.
+- memory sum is exported as function1. Its per-function counters change from one linear-sum-unroll4 hit to one experimental-linear-sum hit. Its native function grows 312→375 bytes, frame stays 40 bytes, operand spills/reloads remain zero. Module grows 472→535 bytes.
+- memory fill is unchanged. Other diagnostic modules have zero eligible hits and unchanged sizes: linked_list268, many_funcs8363, blake-as-simd39679, utf-as-simd22227, yyjson299269, xxhash3193, drwav89737 bytes.
+- Only corpus memory.sum gives positive reduction coverage in the measured set. It remains a synthetic sequential sum inside the real corpus; other rows are application/adjacent controls.
+- The test-only init/linkname bridge now writes the selected setting before benchmarks. It resolves the previous imported-package _test.go selection gap.
+
+Allocation source cause (source proof; allocation profiles recommended for confirmation):
+1. src/wago/api.go:1360 sets DeferCodeMapping=true in public compilation.
+2. compile.go:1927-1929 excludes this two-function memory module from serialHeap. It therefore uses compileModuleParallel even with one worker. The raw backend benchmark does not defer mapping and uses the serial mapped buffer instead.
+3. Body sizes from diagnostic records are 36+44=80 bytes. moduleCodeCapacityAMD64 at compile.go:742-747 uses TaperedModuleCodeCapacity(80,2,40,37,...), which returns 496 logical bytes (capacity.go:92-111).
+4. Baseline worker output is 158+312=470 bytes; final output includes 2 padding bytes, total472. Both fit496. D worker output is 158+375=533; final total535. Both exceed496.
+5. ws.arena append at compile.go:2284 and final join append at compile.go:2387 each grow from capacity496. JoinedModuleCodeCapacity at capacity.go:75-85 never raises the initial496 estimate.
+6. Local Go1.27.1 nextslicecap uses 496+(496+3*256)>>2 = 812 bytes before allocator rounding. Byte allocation size-class rounds this to896. The two additional grow allocations account for 896+896=1792 bytes and +2 allocations exactly.
+7. Raw serial code uses a mapped CodeBuffer, rounded to an OS page, so both outputs fit without an added Go heap allocation. This explains the observed split between raw backend and public costs.
+No allocator fix is recommended in this focused PR. Report this threshold cost and retain profile evidence if collected.
+
+Control differences and statistical limits:
+- Public CompileFull/linked_list is +3.5466%, p<.001 despite no eligible guest code. Public blake-as-simd is -1.7965%, p=.043. Execution controls have no significant changes. These public compiler differences require repeat and same-tagged-binary baseline control to distinguish settings/dispatch cost from binary layout and measurement effects.
+- Do not describe linked_list loss as definitely a layout artifact without control evidence. The changed Go compiler wrapper can incur experimental dispatch even when no candidate is admitted.
+- Uniform D memory execution benefit needs a separate confirmation run before a final corpus performance claim.
+- First-run public CompileFull cost difference divided by memory execution saving gives about121 calls (1152.5/9.58, rounded up). This remains a noisy estimate and is not a guaranteed break-even count; backend-only36-call estimate uses a different benchmark and must not substitute for public cost.
+
+Private-record bridge guard:
+- Current anonymous-record shape matches factor, chains, budget int in both packages. Unsafe linkname does not enforce type/layout equality.
+- An unsafe.Sizeof check only in bench checks the bench copy, not the compiler target. Add matching exact field-count/order/type, size, and offset assertions in both packages (or a shared tagged type/layout version). Guard init values and retain function-level admission assertions.
+- A tagged-only unexported setter reached through linkname is cleaner than aliasing variable storage: scalar argument types remove shared struct-layout risk without a normal-build API or operation. Do not mutate setting during concurrent compilation.
+
+Status: first-run corpus evidence is internally consistent. Public allocation growth is a real, bounded measured cost, and no longer permits an unqualified unchanged-allocation claim for public compilation. New hybrid/threshold evidence remains pending. No promotion sign-off.
+
+Profile and selector confirmation at frozen source1a4c6e1eac8d26c34a48494d80ffc9b12fa9ce0c:
+- Saved same-tagged-binary allocation profile differences confirm the source prediction. diff-sites.txt attributes1003 added objects to worker arena append (compile.go:2284) and1003 to final code join append (:2387). diff-space.txt reports877.625 KiB at each site, equal to1003*896 bytes. With1000 timed benchmark operations plus setup/calibration, this is exactly896 bytes and one object per compile at each site. Profile output allocs/op also changes108→110. Profile timings approximately310 microseconds are instrumented and must not be used for performance claims.
+- Shared-record unsafe layout coupling was removed. bench/suite/sum_unroll_selector_test.go:14 calls private tagged setSumUnrollMeasurement(factor int, hybrid bool, threshold int), matching compiler definition at sum_unroll_experimental.go:15. Init runs before all compilation/timing. No normal-build selector API or operation is introduced.
+- Corpus diagnostic assertions now require experimental-linear-sum-hybrid for H and experimental-linear-sum-threshold for T configurations, in addition to generic candidate and per-function checks. Runtime dispatch arm still needs proof from assembly and post-peel input count.
+- Current125-module local scan and pinned21-module external scan report no additional canonical exact-shape match; the sole local match remains memory.wasm. Keep raw-byte/noncanonical-LEB and external<2MiB selection limits. The scan does not prove no missed application reductions generally.
+- Exact profile capture/diff commands were not found in the profile directory; record sample rate, fixed1000x count, corpus filter, same binary/variant selection, and pprof sample/base flags for reproduction. This is a documentation correction, not an allocation-result blocker.
+- Hybrid and threshold timings are running; no new performance recommendation or sign-off from incomplete samples.

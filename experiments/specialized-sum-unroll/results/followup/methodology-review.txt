@@ -1,0 +1,30 @@
+Independent follow-up methodology review
+Baseline reviewed: PR #910 head d49f7252a906af9ffab94dabe1c83059c8589819.
+Read-only source review. No builds, timings, or repository edits.
+Original initial/final evidence findings remain unchanged. This extension does not approve any unmeasured emitter or threshold change.
+
+Current corpus coverage:
+- default-corpus compares two normal builds with the experiment disabled. Its saved results remain valid controls but do not qualify enabled candidates.
+- corpus/sources/wat/memory.wat:13-24 has the existing exact i64 contiguous sum shape. The sum is function index1; function0 fills memory with stores. This is a positive candidate-admission watchpoint, though it remains a synthetic corpus module, not application coverage.
+- linked_list.wat has i32 pointer-chasing loads, not an i64 contiguous reduction. many_funcs and SIMD application rows provide adjacent-path controls. A zero experimental hit on those controls is expected and must be reported, not presented as reduction coverage.
+
+Important admission issue before new corpus timing:
+The selected setting is currently written only by sum_unroll_experimental_selection_test.go:11-33. Imported compiler package _test.go files are not included in a bench/suite test binary. Building bench/suite with wago_sumunroll and setting WAGO_SUM_VARIANT=D therefore does not select D by itself. The package variable remains zero. bench/suite/backend_amd64.go:15 simply compiles with Workers:1. New corpus timings must add a test/tag-isolated selection route, or use corpus benchmarks in package amd64 where selectSumUnroll runs. Keep selection outside every timer and absent from normal builds.
+
+Proof required before each candidate corpus timing:
+1. Hash unchanged original corpus Wasm and record export/function-index mapping.
+2. In a diagnostic build, compile with the exact selected variant and settings. Save per-function experimental-linear-sum and linear-sum-unroll4 counters, total/internal native size, frame and operand-spill data, and native bytes/disassembly.
+3. Assert the timed function itself selects the requested emitter. A hit in another function or only a module-wide hit is insufficient. The tagged build, environment value, successful compilation, and measured gain are insufficient proof.
+4. Record binary/source lineage and the diagnostics-versus-timing build tags. Timing builds must exclude diagnostics; use common source and explicit selection before compilation.
+5. For hybrid runtime dispatch, compile admission only proves both arms exist. Verify native branch direction for the workload after the existing first-element peel and wrapping check. Check that the selected input count/address actually executes the intended group. Keep labels clear for scalar tail, baseline arm, candidate arm, and wrap fallback.
+
+Bounded threshold study:
+- Uniform D results do not predict the new hybrid: dispatch cost and code placement can change the result.
+- Record a small threshold set before timing. Separate exploratory selection from a confirmation run after the selected hybrid is frozen.
+- Measure normal4/4 versus hybrid and retain uniformD as a separate comparator. Do not replace normal Wago with a weakened baseline.
+- Include counts immediately below/at/above thresholds, full groups and remainders, known count16/count64 costs, unaligned8192 regression controls, cache-resident 2 MiB, streaming 64 MiB, and register-pressure fallback.
+- A small-count baseline arm still pays any dispatch instructions emitted before it. Verify its execution cost rather than assuming identical behavior.
+- Use existing 20-pair alternating CPU2/GOMAXPROCS1 process sampling and a separate repeated confirmation. Keep raw output, order files, hashes, and all explored thresholds, including rejected choices.
+- Describe cutoff conclusions as tested sizes on this CPU. Choosing a threshold and proving benefit from the same samples alone risks selection bias.
+
+Pending: new corpus admission diagnostics, enabled-candidate raw samples, hybrid source and correctness review, bounded threshold measurements, and updated report. No new performance sign-off yet.

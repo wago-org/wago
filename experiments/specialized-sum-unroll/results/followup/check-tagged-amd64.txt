@@ -1,0 +1,166 @@
+--- FAIL: TestCommuteSelfUpdate (0.00s)
+    commute_self_update_test.go:58: commute-self-update = 0, want 2 (all: map[compact-i32-frame:1 frame-header-elide:1])
+--- FAIL: TestSizePrefersLowRegisterForHotLeafLocalAMD64 (0.00s)
+    compact_pin_test.go:45: compact low pin count = 0, want 1
+--- FAIL: TestConstFoldPackPeep (0.00s)
+    --- FAIL: TestConstFoldPackPeep/compare-fold (0.00s)
+        constfold_test.go:218: Peephole["const-fold"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+    --- FAIL: TestConstFoldPackPeep/same-operand-compare (0.00s)
+        constfold_test.go:218: Peephole["same-operand"] = 0, want 1 (all: map[frame-header-elide:1])
+--- FAIL: TestEntryArgPinFires (0.00s)
+    entryargpin_test.go:40: entry-arg-local-pin = 0, want >=1 (all: map[compact-i32-frame:1 frame-header-elide:1])
+--- FAIL: TestI64Mask32Lowering (0.00s)
+    --- FAIL: TestI64Mask32Lowering/low-31 (0.00s)
+        i64_mask32_test.go:61: i64-mask32 = 0, want 1 (all: map[frame-header-elide:1])
+    --- FAIL: TestI64Mask32Lowering/high-bit (0.00s)
+        i64_mask32_test.go:61: i64-mask32 = 0, want 1 (all: map[frame-header-elide:1])
+    --- FAIL: TestI64Mask32Lowering/mixed (0.00s)
+        i64_mask32_test.go:61: i64-mask32 = 0, want 1 (all: map[frame-header-elide:1])
+    --- FAIL: TestI64Mask32Lowering/full-low-32 (0.00s)
+        i64_mask32_test.go:61: i64-mask32 = 0, want 1 (all: map[frame-header-elide:1])
+    --- FAIL: TestI64Mask32Lowering/constant-left (0.00s)
+        i64_mask32_test.go:61: i64-mask32 = 0, want 1 (all: map[frame-header-elide:1])
+    --- FAIL: TestI64Mask32Lowering/local-tee (0.00s)
+        i64_mask32_test.go:61: i64-mask32 = 0, want 1 (all: map[frame-header-elide:1])
+--- FAIL: TestIfPrefixRematExecution (5.54s)
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memoryfalse/mergefalse/compactfalse/features0 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memoryfalse/mergefalse/compactfalse/features15 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memoryfalse/mergefalse/compacttrue/features0 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memoryfalse/mergefalse/compacttrue/features15 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memoryfalse/mergetrue/compactfalse/features0 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memoryfalse/mergetrue/compactfalse/features15 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memoryfalse/mergetrue/compacttrue/features0 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memoryfalse/mergetrue/compacttrue/features15 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memorytrue/mergefalse/compactfalse/features0 (0.33s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memorytrue/mergefalse/compactfalse/features15 (0.33s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memorytrue/mergefalse/compacttrue/features0 (0.34s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memorytrue/mergefalse/compacttrue/features15 (0.35s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memorytrue/mergetrue/compactfalse/features0 (0.35s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memorytrue/mergetrue/compactfalse/features15 (0.32s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memorytrue/mergetrue/compacttrue/features0 (0.36s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addfalse/memorytrue/mergetrue/compacttrue/features15 (0.34s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memoryfalse/mergefalse/compactfalse/features0 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memoryfalse/mergefalse/compactfalse/features15 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memoryfalse/mergefalse/compacttrue/features0 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memoryfalse/mergefalse/compacttrue/features15 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memoryfalse/mergetrue/compactfalse/features0 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memoryfalse/mergetrue/compactfalse/features15 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memoryfalse/mergetrue/compacttrue/features0 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memoryfalse/mergetrue/compacttrue/features15 (0.00s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memorytrue/mergefalse/compactfalse/features0 (0.35s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memorytrue/mergefalse/compactfalse/features15 (0.34s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memorytrue/mergefalse/compacttrue/features0 (0.34s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memorytrue/mergefalse/compacttrue/features15 (0.34s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memorytrue/mergetrue/compactfalse/features0 (0.36s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memorytrue/mergetrue/compactfalse/features15 (0.34s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memorytrue/mergetrue/compacttrue/features0 (0.35s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+    --- FAIL: TestIfPrefixRematExecution/addtrue/memorytrue/mergetrue/compacttrue/features15 (0.35s)
+        if_prefix_remat_test.go:49: admission true map[compact-i32-frame:1 frame-header-elide:1]
+--- FAIL: TestSizeIncDecImmediateForms (0.00s)
+    --- FAIL: TestSizeIncDecImmediateForms/i32_add_one (0.00s)
+        incdec_test.go:45: inc-dec hits = 0, want 1
+    --- FAIL: TestSizeIncDecImmediateForms/i32_add_minus_one (0.00s)
+        incdec_test.go:45: inc-dec hits = 0, want 1
+    --- FAIL: TestSizeIncDecImmediateForms/i32_sub_one (0.00s)
+        incdec_test.go:45: inc-dec hits = 0, want 1
+    --- FAIL: TestSizeIncDecImmediateForms/i32_sub_minus_one (0.00s)
+        incdec_test.go:45: inc-dec hits = 0, want 1
+    --- FAIL: TestSizeIncDecImmediateForms/i64_add_one (0.00s)
+        incdec_test.go:45: inc-dec hits = 0, want 1
+    --- FAIL: TestSizeIncDecImmediateForms/i64_add_minus_one (0.00s)
+        incdec_test.go:45: inc-dec hits = 0, want 1
+    --- FAIL: TestSizeIncDecImmediateForms/i64_sub_one (0.00s)
+        incdec_test.go:45: inc-dec hits = 0, want 1
+    --- FAIL: TestSizeIncDecImmediateForms/i64_sub_minus_one (0.00s)
+        incdec_test.go:45: inc-dec hits = 0, want 1
+--- FAIL: TestLazyIntervalBorrowsPreserveCode (0.00s)
+    interval_compile_cost_test.go:38: fixture did not use regional locals
+--- FAIL: TestIntervalRegionDynamicReuse (0.00s)
+    interval_region_test.go:140: interval-region = 0, want 1 (all: map[compact-i32-frame:1 frame-header-elide:1])
+--- FAIL: TestIntervalRegionControlBoundaries (0.00s)
+    --- FAIL: TestIntervalRegionControlBoundaries/if-else (0.00s)
+        interval_region_test.go:214: control region not used within two-register cap: {Events:49 EventOverflows:0 Candidates:0 Activations:0 ActivationLoads:0 PressureMisses:0 Evictions:0 DirtyWritebacks:0 FinalTransfers:0 MaxActive:0 Shadow:{Candidates:3 Versions:8 Segments:8 Profitable:2 Reads:8 Defines:3 LoadsAvoided:3 SyncDebt:0 MaxLive:3 PressureDebt:0 Admissions:2 Evictions:0 Reloads:1 Writebacks:0 FailSoft:0}}
+--- FAIL: TestIntervalRSILease (0.00s)
+    interval_region_test.go:497: max active=0 want=11
+--- FAIL: TestLateFrameCommute (0.00s)
+    late_frame_commute_test.go:37: wide=false op=6a: admission off=map[compact-i32-frame:1 frame-header-elide:1] on=map[compact-i32-frame:1 frame-header-elide:1]
+--- FAIL: TestLonePredicateExecution (0.00s)
+    lone_predicate_linux_test.go:33: fixture did not exercise admission
+--- FAIL: TestExecDeferredRHSRelocation (0.00s)
+    rhs_relocate_test.go:143: RHS relocations = 0, want 2 (pins=0, peepholes=map[])
+--- FAIL: TestAdjacentSetGetTeeFold (0.00s)
+    --- FAIL: TestAdjacentSetGetTeeFold/i32 (0.00s)
+        set_get_tee_test.go:36: folds = 0, want 1
+--- FAIL: TestShiftOwnedDestination (0.00s)
+    shift_owned_destination_test.go:33: owned shift was not reused map[compact-i32-frame:1 frame-header-elide:1]
+--- FAIL: TestCodegenStatsPeepholes (0.00s)
+    --- FAIL: TestCodegenStatsPeepholes/const-fold (0.00s)
+        stats_test.go:110: Peephole["const-fold"] = 0, want 1 (all: map[frame-adjust-elide:1 frame-header-elide:1])
+    --- FAIL: TestCodegenStatsPeepholes/alu-identity (0.00s)
+        stats_test.go:110: Peephole["alu-identity"] = 0, want 1 (all: map[frame-header-elide:1])
+    --- FAIL: TestCodegenStatsPeepholes/strength-reduce (0.00s)
+        stats_test.go:110: Peephole["strength-reduce"] = 0, want 1 (all: map[frame-header-elide:1])
+    --- FAIL: TestCodegenStatsPeepholes/lea-scaled-index (0.00s)
+        stats_test.go:110: Peephole["lea-scaled-index"] = 0, want 1 (all: map[compact-i32-frame:1 frame-header-elide:1])
+    --- FAIL: TestCodegenStatsPeepholes/compare-setcc (0.00s)
+        stats_test.go:110: Peephole["compare-setcc"] = 0, want 1 (all: map[frame-header-elide:1])
+--- FAIL: TestLeaScaledIndexFoldsNestedALU (0.00s)
+    stats_test.go:139: lea-scaled-index = 0, want 1 (all: map[compact-i32-frame:1 frame-header-elide:1])
+--- FAIL: TestTeeSlotPredicateExecution (0.02s)
+    --- FAIL: TestTeeSlotPredicateExecution/if/prefixfalse/enabledtrue/compactfalse (0.00s)
+        tee_slot_predicate_test.go:54: admission=false want=true pins=0
+    --- FAIL: TestTeeSlotPredicateExecution/if/prefixfalse/enabledtrue/compacttrue (0.00s)
+        tee_slot_predicate_test.go:54: admission=false want=true pins=0
+    --- FAIL: TestTeeSlotPredicateExecution/if/prefixtrue/enabledtrue/compactfalse (0.00s)
+        tee_slot_predicate_test.go:54: admission=false want=true pins=0
+    --- FAIL: TestTeeSlotPredicateExecution/if/prefixtrue/enabledtrue/compacttrue (0.00s)
+        tee_slot_predicate_test.go:54: admission=false want=true pins=0
+--- FAIL: TestAssociativeTreeCover (0.00s)
+    treecover_test.go:42: assoc-tree = 0, want 1 (all: map[compact-i32-frame:1 frame-header-elide:1])
+--- FAIL: TestAssociativeTreeCoverBeyondEightLeaves (0.00s)
+    treecover_test.go:93: assoc-tree = 0, want one whole-tree cover (all: map[compact-i32-frame:1])
+--- FAIL: TestAssociativeTreeCoverDestination (0.00s)
+    --- FAIL: TestAssociativeTreeCoverDestination/no-alias (0.00s)
+        treecover_test.go:158: assoc-tree-dest hit = false, want true (all: map[compact-i32-frame:1])
+    --- FAIL: TestAssociativeTreeCoverDestination/one-destination-input (0.00s)
+        treecover_test.go:158: assoc-tree-dest hit = false, want true (all: map[compact-i32-frame:1])
+    --- FAIL: TestAssociativeTreeCoverDestination/repeated-destination-input (0.00s)
+        treecover_test.go:158: assoc-tree-dest hit = false, want true (all: map[compact-i32-frame:1])
+--- FAIL: TestAssociativeTreeCoverNestedRepeatedDestination (0.00s)
+    treecover_test.go:207: assoc-tree-dest-repeat = 0, want 1 (all: map[compact-i32-frame:1])
+--- FAIL: TestValentTreeOrder (0.00s)
+    treeorder_test.go:60: tree-order = 0, want 1 (all: map[compact-i32-frame:1 frame-header-elide:1])
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	19.357s
+FAIL

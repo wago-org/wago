@@ -1,0 +1,86 @@
+Independent phase 2 corpus performance review (interim; pending final controls)
+Repository: /home/jtenner/Projects/wago-sum-unroll
+Frozen compiler/timed source: 1a4c6e1eac8d26c34a48494d80ffc9b12fa9ce0c
+Read-only review: no builds, tests, or timings. Earlier review findings remain valid.
+
+Evidence verification
+corpus-D-repeat contains 23 rows and 40 order records; corpus-H-T64 contains46rows and80records. All have20samples per side and alternating baseline/candidate order. I independently parsed the raw benchmark output and verified every median timing/bytes/allocation cell, ratio-of-medians percentage, and median paired percentage in the CSV files. All match. Successful runs use CPU2, GOMAXPROCS1,150ms,normal baseline b68d6505c358dc74b98e7f7f3c0bb6f2dee1a274ae68f6b66738a56f8fe29440 and tagged candidate ad7f29ea98bbcad3de2ac44b1d20b1433db6b7ee218a736e8bda39839ca75c01. Input corpus filter/settings are equal. Compiler/timed source files still match every source SHA in build.json.
+Phase2 REPORT.md kernel table contains152 measured numeric cells; all match the specified first/repeat CSV at stated precision. Missing T64 discovery counts are explicitly marked and described. The threshold count semantics, directD/H limitation, H short-count loss, streaming scatter, unpaired statistics, and oneCPU limits are stated correctly.
+
+Corpus results checked against benchstat
+Normal -> D first / repeat:
+- memory.sum96.685->87.105ns(-9.91%,p<.001) /96.27->86.07ns(-10.60%,p<.001). Useful synthetic kernel gain repeats.
+- raw memory compile15064.5->15200.5ns(+.90%,p=.149) /15164.5->15190ns(+.17%,not significant).11216B/29allocs equal.
+- public memory compile22847.5->24000ns(+5.04%,p<.001) /22986.5->23836ns(+3.70%,p<.001).
+- memory one-call lifecycle54896.5->55681ns(+1.43%,p=.011) /55659.5->56444ns(+1.41%,p=.028).
+- public linked_list compile+3.55%(p<.001) /+2.32%(p=.002),despite zero selected guest latches. This loss repeats across different tagged bridge binaries. Its cause is still unproved; same-binary control is required.
+No repeat D execution negative control has a significant change. All repeat raw compilation controls are not significant. No other repeat public compilation row is significant.
+
+Normal -> H first corpus:
+- memory.sum97.67->86.305ns,-11.64%,p<.001.
+- raw memory compile15398.5->15069.5ns,-2.14%,not significant;11216B/29allocs unchanged.
+- public memory compile22795->23867.5ns,+4.70%,p<.001.
+- lifecycle55404.5->55949.5ns,+.98%,not significant.
+- Other execution and compilation controls show no significant time difference in this set. No equivalence claim follows.
+This is only one corpus set until memory repeat completes.
+
+Normal -> T64 first corpus:
+- memory.sum98.225->87.215ns,-11.21%,p<.001.
+- raw memory compile15386->15655.5ns,+1.75%,p=.018;11216B/29allocs unchanged.
+- public memory compile22666->23878ns,+5.35%,p<.001.
+- lifecycle55143->56098.5ns,+1.73%,p=.007.
+- Negative-control raw blake-as-simd compile+1.40%,p=.024; public linked_list compile+1.95%,p=.004; execution drwav-1.02%,p=.040. Retain all,without interpreting isolated small p-values as guest optimization gains. No emitter selected in these controls.
+This is only one corpus set until memory repeat completes.
+
+Public allocation cost and profiles
+All new public memory compile rows have23361B/108allocs baseline and25153B/110candidate. Lifecycle24945B/117allocs versus26737B/119. Increase is exactly1792B and2allocations per compilation. All measured execution rows report0bytes and0allocations. Each mode D/H/T exceeds the existing496-byte capacity estimate; baseline worker/join outputs470/472 fit. The previously verified two896-byte growth allocations at compile.go:2284 and2387 explain the public cost. diff-sites.txt shows1003 extraobjects at each site; diff-space.txt shows877.625KiB at each,consistent with1003x896. The capture command/count1000x/memprofilerate1/same tagged binary and pprof flags are now recorded in build.json. Profile timings are correctly excluded from performance samples. This confirms D's site cause; equal H/T64 allocation deltas and the same capacity/source mechanism support the same cause for those modes. Do not claim separately captured H/T allocation profiles.
+Public compile median break-even estimates from current sets,if desired,must use the same row's execution saving: D repeat849.5/10.2 ->ceil84calls,H first1072.5/11.365 ->ceil95,T64 first1212/11.01 ->ceil111. These are noisy median-based estimates,notconfidence-bounded constants. The full lifecycle already shows that one-call execution savings do not recover public compile/instantiate costs. Wait for repeats before final ranges.
+
+Native/selection evidence
+Memory input hash is identical across all modes; sum export maps to function1. H requires hybridmarker and T requires thresholdmarker in diagnostics. Native sum/module sizes baseline312/472,D375/535,H432/592,T64427/587,T128430/590,T256430/590;sumframe40,operandspills/reloads0. All reported values match JSON and binary lengths. Other control modules have equal input hashes,zero selected latches,and equal native sizes across all modes. This is good negative-control admission evidence.
+Important evidence gap: TestSumUnrollCorpusAdmission writes memory.bin only. Control JSON records source WasmSHA256 and size,not native-code SHA256. The report's 'generated guest code is identical' statement needs a byte/hash audit or qualification to equal sizes/zero selected latches. Parent acknowledged this and will preserve existing diagnostics and add a separate native hash audit after timing ends. Audit/source/testSHA/commands must be saved separately; compiler and timing binaries should remain unchanged.
+
+Reproduction/source scan
+followup.sh builds all timing binaries and all diagnostic artifacts before its serial timing sequence,uses20pair default sample.py,normal Wago primary reference,and explicit same-binary D/H and corpus controls. It keeps discovery then frozen confirmation and emits all results. It replays the final designs; it does not reconstruct the earlier first-run bridge/compiler binary. That historical lineage is correctly recorded in REPORT.md and build.json.
+scan-r3.py uses pinned tree revisionbea10061c81428260ff029a9953273540a0c32e2,bounds download size,checks Gitblob identity andSHA256,scans code sections without compilation/execution. The selectedtree rows match r3-scan.json:21modules,9441146bytes,18442functions,noerrors/noexactcanonicalmatches. Limitations for noncanonical fixedLEB,byte boundaries,type/control/proof/runtimeadmission,andmodules>=2MiB are recorded. No eligible realapplication found is properly qualified as this bounded search. This cannot establish absence of broader reductions.
+
+Current assessment
+No statistical/numeric error found in the completed Phase2 sections. Preserve the repeated linked_list public compile loss and all T64 negative controls. Do not say enabled corpus is regression-free. All positive coverage remains synthetic memory.sum. Gains coexist with a verified public compilation allocation/time cost and no net one-call benefit. Final recommendation and finalsign-off require same-binary-D,memory-repeat,the consolidated guest hash audit,and completed report/validation sections. Keeping this opt-in experiment in a draftPR remains appropriate; promotion is not supported.
+
+
+Final timing sets: completed evidence review
+corpus-same-binary-D has 23 rows and 40 order records. corpus-memory-repeat has 8 rows and 80 order records. All CSV cells were independently verified against raw samples, including median ratios and paired ratios. All rows have 20 samples per side. Runs succeeded on CPU 2, with GOMAXPROCS=1 and alternating order. Same-binary-D uses ad7f29ea98bbcad3de2ac44b1d20b1433db6b7ee218a736e8bda39839ca75c01 on both sides. Memory repeat uses normal b68d6505c358dc74b98e7f7f3c0bb6f2dee1a274ae68f6b66738a56f8fe29440 and candidate ad7f29ea98bbcad3de2ac44b1d20b1433db6b7ee218a736e8bda39839ca75c01. No raw sample was omitted.
+
+Same-tagged-binary baseline -> D supplementary control
+- memory.sum: 95.995 -> 85.845 ns, -10.57%, p<.001. Public compile: 23160 -> 23786 ns, +2.70%, p=.002. Lifecycle: 55490 -> 55979.5 ns, +.88%, p=.006. Raw memory compile is -.39%, not significant. The public allocation increase remains 1792 B and 2 allocations. Memory execution gains and public costs persist without different Go timing binaries.
+- linked_list public compile: 20138 -> 20142.5 ns, +.022%, not significant. This differs from the normal-versus-tagged +3.55%/+2.32% loss and supports a contribution from binary layout or initialization. It does not prove the cause, establish equivalence, or remove the adverse primary results. Only one such control set exists.
+- utf-as-simd.convertN: 54018.5 -> 54722.5 ns, +1.30%, p=.020. Retain this adverse control result even if the native hash audit establishes equal bytes. No sum emitter is selected in this module. Host noise, mapping addresses, or process initialization remain possible causes; these were not separated by this experiment.
+- All other raw compile, public compile, and execution control changes are not significant. This does not prove that the corpus has no regressions.
+
+Memory H/T64 separate repeat
+H execution: 97.825 -> 86.66 ns, -11.41%, p<.001 (first -11.64%, p<.001). T64 execution: 99.615 -> 87.81 ns, -11.85%, p<.001 (first -11.21%, p<.001). Both synthetic gains repeat.
+H raw memory compile: 14755 -> 15284 ns, +3.59%, p=.028; its first -2.14% result was not significant. This is an adverse repeat result, but the raw compiler loss did not repeat. T64 raw repeat: 16553.5 -> 16594 ns, +.24%, not significant; its first +1.75% result had p=.018. Neither pair establishes zero raw compiler cost. Bytes remain 11216 and allocations remain 29.
+H public compile: 23068 -> 24636 ns, +6.80%, p=.009, versus first +4.70%, p<.001. T64 public compile: 24904 -> 27074.5 ns, +8.72%, p<.001, versus first +5.35%, p<.001. The public cost repeats and outweighs a single call's 11 ns saving.
+H lifecycle: 57329.5 -> 59685 ns, +4.11%, p=.043 (first +.98%, not significant). T64 lifecycle: 62054.5 -> 64197.5 ns, +3.45%, p<.001 (first +1.73%, p=.007). One-call cost increases. Execution-only gains do not establish a net lifecycle benefit.
+Repeat public compile byte medians are 23360 baseline and 25153 candidate: +1793 B and +2 allocations. Earlier sets show 23361/25153: +1792 B. Keep the observed repeat values. Profiles identify two 896 B growth sites, but that does not justify changing raw B/op. Lifecycle remains 24945/26737 B, or 1792 B extra. Total additional public allocation is approximately 1792 B and two objects. Source and profiles support the two 896 B sites. Qualify small accounting or rounding variation; do not use it as an exact correction.
+Median public compile break-even estimates: H first ceil(1072.5/11.365)=95 calls, repeat ceil(1568/11.165)=141 calls. T64 first ceil(1212/11.01)=111 calls, repeat ceil(2170.5/11.805)=184 calls. D normal first 121 calls, repeat 84 calls. D same-binary ceil(626/10.15)=62 calls is supplementary. These are estimates from medians, not uncertainty bounds or application amortization proof. They apply only to this count-512 fixture. The lifecycle includes other costs.
+
+Final measurement conclusion before report and hash sign-off
+D, H and T64 show repeatable synthetic memory.sum and cache gains. None shows a repeatable 5% streaming gain or an eligible real application. H short-loop and direct D comparison losses, plus T64 and negative control costs, remain. Public allocation, code growth, compile costs and lifecycle costs prevent treating raw backend allocation equality as no overall memory cost. Promotion is not justified. All requested timing evidence is complete and retains adverse samples. The separate guest hash audit and complete report remain to be reviewed. This review does not yet claim that either is complete.
+
+Final report and native hash audit sign-off
+The completed Phase 2 report was checked after the final controls and diagnostic audit. No blocking performance evidence finding remains. All 115 corpus matrix values and significance stars, all 16 memory repeat values and stars, and all 152 kernel table values match the saved measurements. Decision table figures match the same source rows. Public median break-even ranges D 84–121, H 95–141 and T64 111–184 calls are correct and are qualified as uncertain estimates for the synthetic count-512 fixture. No direct D/H repeat or application benefit is claimed.
+
+The separate native-control-hashes.json audit contains 48 rows: eight modules in six modes. Each of the seven negative-control modules has one native hash across all six modes, one source hash, equal native size, and zero selected latches. Each recorded memory native hash equals the SHA-256 of the original saved memory.bin for that mode; input hashes, native sizes and admission counts agree with original diagnostics. Corrected hash-audit rerun logs show the diagnostic test passed. The SHA-256 field hashes cm.Code directly. Audit-only diagnostic output was added after timings in cb57571d5; this is not a measurement rebuild or replacement. Original diagnostics remain.
+
+Verified actual compiler/source hashes:
+- sum_unroll_default.go: 6ff5b40a0bee1f85946c305ae663d234ee27979b543580df045b4aa9a742f63c
+- sum_unroll_experimental.go: 88e7f94867f0783b09190eb1a282bd505e321d69c58573345a4cd8a3edd39797
+- control.go: aa0f7b27e5d92f2cb525de9f17ffbaa0f9c97c0f8513788fe5a50da02607e03b
+These match build.json and the audit's frozen compiler hashes. The diagnostic-only sum_unroll_followup_test.go hash is 2d1b30e1891e228f8a8f91f83ad58fcf8c342fa658530cc7cf30d1b6c9670dd4 and matches the current file. All other timed source hashes still match the frozen build; this diagnostic output addition is the stated exception.
+
+The evidence index contains ten sets and 353 comparison rows. Counts, binary hashes, process counts, and timing windows were independently checked against CSV/environment/order files; the windows do not overlap. Every row has 20 samples per side. All 181 original Phase 1 result files are unchanged after CSV CRLF normalization; raw samples, assembly and statistics were not overwritten. The Phase1 report text is retained, with only the current-decision pointer inserted at its top and a trailing blank line before Phase 2.
+
+followup.sh and scan-r3.py remain consistent with the stated bounded study. The corrected private-setter description replaces the stale record bridge description. The report now links the post-timing hash audit and states the diagnostic-only commit/frozen implementation lineage. It keeps adverse short-loop, direct-cache, streaming and control results, explains public allocation growth, and does not infer application gains from synthetic sums. Its recommendation to stop tuning, retain D as the small experimental reference, investigate H with real coverage, keep 4/4 in production, and promote no candidate is supported. No universal fastest configuration has been established.
+
+Performance evidence is signed off for this draft experimental PR. This sign-off is not promotion approval. It does not claim an independent test run: review remained read-only. The parent's final ordinary/checked unit and shellcheck reruns were in progress when this review ended; final validation status must reflect their actual completion. Known 86 shared-scalar test/subtest failures, unavailable Claude review, cross-build-only ARM64 validation, absent hardware counters/layout isolation, absent live-pressure execution timings and absent eligible applications remain explicit limits.

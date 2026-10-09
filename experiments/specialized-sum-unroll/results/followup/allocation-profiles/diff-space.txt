@@ -1,0 +1,23 @@
+File: wago-followup-corpus-all.test
+Build ID: 7465ae54cfdc700f3db47bf81d873e65eda82e7c
+Type: alloc_space
+Time: 2026-10-09 09:06:19 EDT
+Showing nodes accounting for 1755.25kB, 6.85% of 25620.80kB total
+Dropped 35 nodes (cum <= 128.10kB)
+Showing top 15 nodes out of 17
+      flat  flat%   sum%        cum   cum%
+  877.62kB  3.43%  3.43%   877.62kB  3.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleParallel
+  877.62kB  3.43%  6.85%   877.62kB  3.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleParallel.func1
+         0     0%  6.85%   877.76kB  3.43%  github.com/wago-org/wago.Compile (inline)
+         0     0%  6.85%   877.76kB  3.43%  github.com/wago-org/wago/bench/suite.BenchmarkCompileFull.func1
+         0     0%  6.85%   877.76kB  3.43%  github.com/wago-org/wago/bench/suite.eachModule.func1
+         0     0%  6.85%   470.16kB  1.84%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).tryLinearSumLatchWithTail
+         0     0%  6.85%  -470.16kB  1.84%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).tryUnrolledLinearSumLatch
+         0     0%  6.85%   877.62kB  3.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith
+         0     0%  6.85%   877.62kB  3.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+         0     0%  6.85%  -470.16kB  1.84%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).sibAddr
+         0     0%  6.85%   877.76kB  3.43%  github.com/wago-org/wago/src/wago.Compile
+         0     0%  6.85%   877.76kB  3.43%  github.com/wago-org/wago/src/wago.compileWithConfig (inline)
+         0     0%  6.85%   877.76kB  3.43%  github.com/wago-org/wago/src/wago.compileWithConfigAndInstructions
+         0     0%  6.85%   877.76kB  3.43%  github.com/wago-org/wago/src/wago.compileWithFrontendFeaturesAndInstructions
+         0     0%  6.85%   877.62kB  3.43%  github.com/wago-org/wago/src/wago.railshotCompileModuleWith

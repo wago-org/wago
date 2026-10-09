@@ -1,0 +1,7 @@
+variant,benchmark,samples_each,baseline_ns,baseline_bytes,baseline_allocs,candidate_ns,candidate_bytes,candidate_allocs,time_delta_percent,median_paired_time_delta_percent
+T128,BenchmarkSumUnrollCompile/pressure0,20,13791.5,26072.0,29.0,13760.5,26072.0,29.0,-0.22477613022513498,-2.42152650657127
+T128,BenchmarkSumUnrollCompile/pressure12,20,16458.5,26296.0,30.0,16910.5,26296.0,30.0,2.7463013032779315,0.2840533806413137
+T256,BenchmarkSumUnrollCompile/pressure0,20,13965.0,26072.0,29.0,13364.5,26072.0,29.0,-4.300035803795199,-3.416823975398442
+T256,BenchmarkSumUnrollCompile/pressure12,20,16518.0,26296.0,30.0,15872.0,26296.0,30.0,-3.9108850950478224,0.3237564639140933
+T64,BenchmarkSumUnrollCompile/pressure0,20,13902.0,26072.0,29.0,14070.0,26072.0,29.0,1.2084592145015005,0.9360078669303107
+T64,BenchmarkSumUnrollCompile/pressure12,20,16878.0,26296.0,30.0,17349.5,26296.0,30.0,2.793577438085082,1.4397582474871107

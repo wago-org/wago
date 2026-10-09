@@ -1,0 +1,19 @@
+Read-only Wasm-R3 eligibility scan
+Pinned revision: bea10061c81428260ff029a9953273540a0c32e2
+Fetched and verified: 21 modules, 9,441,146 bytes; all selected modules are below 2 MiB.
+Scanned local function bodies: 18442
+Canonical exact-shape candidates: 0. Download, Git-blob integrity, and section-parse errors: 0.
+No build, compiler execution, replay, native execution, or repository edit occurred.
+
+Reproduction script: /tmp/wago-sum-r3-scan.py
+Pinned URL, SHA-256, Git blob, byte size, function count and candidate list for every module: /tmp/wago-sum-r3-eligibility/scan.json
+
+Excluded from application claims: factorial, fib, multiplyInt, multiplyDouble, and mandelbrot. These were scanned for completeness; no positive matches occurred.
+All other module names remain unqualified as real workload evidence: a replay name alone supplies no input/output oracle, meaningful work count or provenance. Existing corpus/PROVENANCE.md:65-87 documents earlier replay-admission limits; this source scan does not admit modules into the corpus.
+
+Limitations:
+Conservative byte-pattern scan of code sections. Matches would need instruction-boundary, local-type, control-shape, compiler-feature, and register-pin verification.
+The fixed zero offset, stride 8, decrement 1, and branch labels use canonical LEB encodings in this scan; noncanonical fixed immediates are not matched.
+No build, Wago compilation, replay, or native execution occurred. Runtime diagnostic admission is unverified.
+Replay names do not establish workload provenance, correctness oracle, meaningful work count, or redistribution rights. No eligible real-application claim is made from names.
+Only the 21 modules below 2 MiB were fetched. Larger modules were excluded. Arithmetic toy names are explicitly excluded from application claims.

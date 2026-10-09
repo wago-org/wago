@@ -1,0 +1,15 @@
+unit 1
+bench-full 0
+tagged-amd64 1
+legacy-amd64 0
+guard 0
+lint 0
+docs 0
+tagged-vet 0
+script-syntax 0
+shellcheck 1
+python-syntax 0
+arm64-build 0
+diff-check 0
+unit-rerun 0
+shellcheck-rerun 0

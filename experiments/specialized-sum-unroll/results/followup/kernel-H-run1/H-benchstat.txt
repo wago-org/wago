@@ -1,0 +1,151 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                 │ experiments/specialized-sum-unroll/results/followup/kernel-H-run1/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/kernel-H-run1/H-candidate.txt │
+                                 │                                      sec/op                                      │                          sec/op                            vs base                │
+SumUnrollCompile/pressure0                                                                             14.28µ ±  5%                                                14.18µ ±  6%        ~ (p=0.478 n=20)
+SumUnrollCompile/pressure12                                                                            17.56µ ±  8%                                                17.25µ ±  4%        ~ (p=0.678 n=20)
+SumUnrollFollowup/addr0/n0                                                                             21.30n ±  3%                                                21.23n ±  2%        ~ (p=0.533 n=20)
+SumUnrollFollowup/addr0/n8                                                                             21.71n ±  3%                                                21.95n ±  2%        ~ (p=0.825 n=20)
+SumUnrollFollowup/addr0/n16                                                                            22.73n ±  2%                                                22.79n ±  2%        ~ (p=0.733 n=20)
+SumUnrollFollowup/addr0/n17                                                                            22.89n ±  3%                                                22.71n ±  2%        ~ (p=0.743 n=20)
+SumUnrollFollowup/addr0/n33                                                                            24.44n ±  1%                                                24.04n ±  2%   -1.64% (p=0.007 n=20)
+SumUnrollFollowup/addr0/n63                                                                            27.59n ±  2%                                                26.40n ±  2%   -4.31% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n64                                                                            27.72n ±  3%                                                26.78n ±  2%   -3.41% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n65                                                                            27.52n ±  3%                                                26.14n ±  3%   -4.98% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n66                                                                            27.91n ±  1%                                                26.43n ±  2%   -5.30% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n127                                                                           35.90n ±  2%                                                31.86n ±  3%  -11.23% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n128                                                                           35.94n ±  2%                                                32.06n ±  3%  -10.77% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n129                                                                           35.25n ±  4%                                                32.54n ±  2%   -7.69% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n130                                                                           35.62n ±  2%                                                32.41n ±  2%   -9.01% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n255                                                                           49.70n ±  2%                                                43.60n ±  2%  -12.26% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n256                                                                           50.12n ±  2%                                                43.30n ±  2%  -13.61% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n257                                                                           49.76n ±  2%                                                43.26n ±  3%  -13.05% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n258                                                                           49.44n ±  2%                                                43.49n ±  2%  -12.04% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n512                                                                           78.33n ±  2%                                                66.38n ±  2%  -15.26% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n8192                                                                          967.2n ±  1%                                                890.6n ±  3%   -7.91% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n262144                                                                        33.16µ ±  2%                                                30.65µ ±  4%   -7.56% (p=0.000 n=20)
+SumUnrollFollowup/addr0/n8388607                                                                       1.447m ± 11%                                                1.361m ± 22%        ~ (p=0.512 n=20)
+SumUnrollFollowup/addr1/n0                                                                             21.30n ±  2%                                                21.27n ±  2%        ~ (p=0.410 n=20)
+SumUnrollFollowup/addr1/n8                                                                             22.01n ±  2%                                                21.70n ±  2%        ~ (p=0.140 n=20)
+SumUnrollFollowup/addr1/n16                                                                            23.02n ±  2%                                                22.54n ±  3%        ~ (p=0.068 n=20)
+SumUnrollFollowup/addr1/n17                                                                            22.93n ±  2%                                                22.92n ±  2%        ~ (p=0.499 n=20)
+SumUnrollFollowup/addr1/n33                                                                            24.73n ±  2%                                                24.47n ±  2%        ~ (p=0.129 n=20)
+SumUnrollFollowup/addr1/n63                                                                            28.06n ±  3%                                                27.11n ±  2%   -3.40% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n64                                                                            28.28n ±  2%                                                27.09n ±  2%   -4.19% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n65                                                                            28.12n ±  2%                                                26.57n ±  3%   -5.50% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n66                                                                            28.25n ±  2%                                                27.22n ±  2%   -3.65% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n127                                                                           35.79n ±  2%                                                32.77n ±  2%   -8.44% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n128                                                                           36.28n ±  3%                                                33.55n ±  3%   -7.50% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n129                                                                           36.27n ±  1%                                                32.41n ±  3%  -10.62% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n130                                                                           36.47n ±  1%                                                32.56n ±  2%  -10.72% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n255                                                                           49.98n ±  1%                                                45.12n ±  1%   -9.73% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n256                                                                           50.71n ±  2%                                                45.20n ±  2%  -10.88% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n257                                                                           50.63n ±  2%                                                44.68n ±  2%  -11.76% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n258                                                                           50.57n ±  2%                                                44.16n ±  4%  -12.69% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n512                                                                           78.65n ±  2%                                                69.09n ±  1%  -12.16% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n8192                                                                          1.009µ ±  2%                                                1.014µ ±  2%        ~ (p=0.324 n=20)
+SumUnrollFollowup/addr1/n262144                                                                        39.37µ ±  3%                                                35.01µ ±  1%  -11.06% (p=0.000 n=20)
+SumUnrollFollowup/addr1/n8388607                                                                       1.549m ± 11%                                                1.357m ± 19%  -12.36% (p=0.024 n=20)
+geomean                                                                                                115.9n                                                      108.2n         -6.65%
+
+                                 │ experiments/specialized-sum-unroll/results/followup/kernel-H-run1/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/kernel-H-run1/H-candidate.txt │
+                                 │                                       B/op                                       │                           B/op                            vs base                 │
+SumUnrollCompile/pressure0                                                                           25.46Ki ± 0%                                                 25.46Ki ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure12                                                                          25.68Ki ± 0%                                                 25.68Ki ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n0                                                                             0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8                                                                             0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n16                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n17                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n33                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n63                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n64                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n65                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n66                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n127                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n128                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n129                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n130                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n255                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n256                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n257                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n258                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n512                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8192                                                                          0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n262144                                                                        0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8388607                                                                       0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n0                                                                             0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8                                                                             0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n16                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n17                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n33                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n63                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n64                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n65                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n66                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n127                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n128                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n129                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n130                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n255                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n256                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n257                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n258                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n512                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8192                                                                          0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n262144                                                                        0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8388607                                                                       0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                           ²                                                             +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                 │ experiments/specialized-sum-unroll/results/followup/kernel-H-run1/H-baseline.txt │ experiments/specialized-sum-unroll/results/followup/kernel-H-run1/H-candidate.txt │
+                                 │                                    allocs/op                                     │                        allocs/op                          vs base                 │
+SumUnrollCompile/pressure0                                                                             29.00 ± 0%                                                   29.00 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure12                                                                            30.00 ± 0%                                                   30.00 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n0                                                                             0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8                                                                             0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n16                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n17                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n33                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n63                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n64                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n65                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n66                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n127                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n128                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n129                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n130                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n255                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n256                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n257                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n258                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n512                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8192                                                                          0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n262144                                                                        0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr0/n8388607                                                                       0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n0                                                                             0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8                                                                             0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n16                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n17                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n33                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n63                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n64                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n65                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n66                                                                            0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n127                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n128                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n129                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n130                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n255                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n256                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n257                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n258                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n512                                                                           0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8192                                                                          0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n262144                                                                        0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollFollowup/addr1/n8388607                                                                       0.000 ± 0%                                                   0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                           ²                                                             +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

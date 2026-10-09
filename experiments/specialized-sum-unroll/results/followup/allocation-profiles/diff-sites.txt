@@ -1,0 +1,307 @@
+Total: 102833
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleParallel in /home/jtenner/Projects/wago-sum-unroll/src/core/compiler/backend/railshot/amd64/compile.go
+      1003       1003 (flat, cum)  0.98% of Total
+         .          .   2167:func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, literalOffsets []uint32, allHints []funcHints, hintSidecar funcHintSidecar, immutableTables []immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts, moduleHasSIMD bool, importedFuncs int) (*amd64.CompiledModule, error) {
+         .          .   2168:	n := len(m.Code)
+         .          .   2169:	// Parallel codegen starts only after every module-wide decision is complete.
+         .          .   2170:	// Each function has a deterministic stats destination, and each worker owns all
+         .          .   2171:	// mutable compiler state plus an append-only arena for completed function code.
+         .          .   2172:	if diagnosticsEnabled && ms != nil {
+         .          .   2173:		for i := range m.Code {
+         .          .   2174:			ms.Funcs[i] = &CodegenStats{RecordAdapterUnwind: profileEnabled && opts.Profile && opts.UnwindMaps, RecordUnwind: profileEnabled && opts.Profile && opts.UnwindMaps, RecordSources: profileEnabled && opts.Profile && opts.SourceMaps, FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+         .          .   2175:		}
+         .          .   2176:	}
+         .          .   2177:	states := make([]workerState, workers)
+         .          .   2178:	arenaCap := (codeCap + workers - 1) / workers
+         .          .   2179:	if symbolicLocalSlotPackingPolicy(policy) {
+         .          .   2180:		arenaCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+         .          .   2181:	}
+         .          .   2182:	expandedLowering := expandedStackLowering(opts, policy)
+         .          .   2183:	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
+         .          .   2184:	ctrlCap := workerControlFrameCap(m, allHints)
+         .          .   2185:	localCap := parallelLocalScratchCapacity(allHints, inlineTargets, hostAdapters)
+         .          .   2186:	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
+         .          .   2187:	classifier := wasm.NewModuleInstructionClassifier(m, true)
+         .          .   2188:	var pressureBytes atomic.Int64
+         .          .   2189:	var pressureOnce sync.Once
+         .          .   2190:	for i := range states {
+         .          .   2191:		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
+         .          .   2192:		if regallocCheckEnabled {
+         .          .   2193:			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
+         .          .   2194:		}
+         .          .   2195:		states[i].scratch.amd64Features = opts.AMD64Features
+         .          .   2196:		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
+         .          .   2197:		states[i].scratch.policy = policy
+         .          .   2198:		states[i].scratch.classifier = classifier
+         .          .   2199:		states[i].scratch.moduleTypes = moduleTypes
+         .          .   2200:		states[i].scratch.reserveLocalScratch(localCap)
+         .          .   2201:		if ctrlCap != 0 {
+         .          .   2202:			states[i].scratch.reserveControlFrames(ctrlCap)
+         .          .   2203:		}
+         .          .   2204:	}
+         .          .   2205:	results := make([]funcResult, n)
+         .          .   2206:	var work struct {
+         .          .   2207:		next     atomic.Int64
+         .          .   2208:		failures shared.LowestIndexError
+         .          .   2209:	}
+         .          .   2210:	work.failures.Reset(n)
+         .          .   2211:	var wg sync.WaitGroup
+         .          .   2212:	wg.Add(workers)
+         .          .   2213:	// Capture the shared context once; each worker still owns its scratch.
+         .          .   2214:	runWorker := func(workerID int) {
+         .          .   2215:		defer wg.Done()
+         .          .   2216:		ws := &states[workerID]
+         .          .   2217:		defer func() {
+         .          .   2218:			ws.scratch.finishControlWorker()
+         .          .   2219:			ws.scratch.finishStackWorker()
+         .          .   2220:			ws.scratchStats = workerScratchStats(ws.scratch)
+         .          .   2221:			ws.scratch = nil
+         .          .   2222:		}()
+         .          .   2223:		if regallocCheckEnabled {
+         .          .   2224:			shared.SetSourceContext(&ws.scratch.scalar, codegen.SourceContextFor(opts.Codegen, m))
+         .          .   2225:		}
+         .          .   2226:		for {
+         .          .   2227:			i := int(work.next.Add(1) - 1)
+         .          .   2228:			if i >= n {
+         .          .   2229:				return
+         .          .   2230:			}
+         .          .   2231:			var st *CodegenStats
+         .          .   2232:			if diagnosticsEnabled && ms != nil {
+         .          .   2233:				st = ms.Funcs[i]
+         .          .   2234:			}
+         .          .   2235:			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+         .          .   2236:				st.peep("inline-dead-body")
+         .          .   2237:				results[i] = funcResult{layoutFlags: layoutOmitted}
+         .          .   2238:				continue
+         .          .   2239:			}
+         .          .   2240:			arenaTail := ws.arena[len(ws.arena):cap(ws.arena)]
+         .          .   2241:			ws.scratch.rel32TailBound = false
+         .          .   2242:			ws.scratch.localRefTailBound = false
+         .          .   2243:			if compactNativePolicy(policy) {
+         .          .   2244:				ws.scratch.asm.Rel32Sites = nil
+         .          .   2245:				n := amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
+         .          .   2246:				if len(arenaTail) >= n && ws.scratch.asm.BindRel32Storage(arenaTail[:n], finalizerRel32Limit(policy)) {
+         .          .   2247:					ws.scratch.rel32TailBound = true
+         .          .   2248:					arenaTail = arenaTail[n:]
+         .          .   2249:				}
+         .          .   2250:			}
+         .          .   2251:			if symbolicLocalSlotPackingPolicy(policy) {
+         .          .   2252:				ws.scratch.localRefs.Sites = nil
+         .          .   2253:				n := amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+         .          .   2254:				if len(arenaTail) >= n && ws.scratch.localRefs.BindStorage(arenaTail[:n], maxAMD64LocalRefSites) {
+         .          .   2255:					ws.scratch.localRefTailBound = true
+         .          .   2256:				}
+         .          .   2257:			}
+         .          .   2258:			hints := hintSidecar.viewAt(allHints[i], i)
+         .          .   2259:			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, moduleHasSIMD, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)
+         .          .   2260:			if err != nil {
+         .          .   2261:				work.failures.Record(i, err)
+         .          .   2262:				continue
+         .          .   2263:			}
+         .          .   2264:			start := len(ws.arena)
+         .          .   2265:			compactStart, compactEnd, codeOK := compactFuncResultRange(start, len(fnCode))
+         .          .   2266:			literalStart := len(ws.literals)
+         .          .   2267:			compactLiteralStart, compactLiteralEnd, literalOK := compactFuncResultRange(literalStart, len(ws.scratch.fnState.literalWords))
+         .          .   2268:			bodyBytes, bodyOK := compactFuncResultValue(len(m.Code[i].BodyBytes))
+         .          .   2269:			compactInternalOff, internalOK := compactFuncResultValue(internalOff)
+         .          .   2270:			if !codeOK || !literalOK || !bodyOK || !internalOK {
+         .          .   2271:				work.failures.Record(i, fmt.Errorf("amd64: parallel function metadata exceeds 32-bit range"))
+         .          .   2272:				continue
+         .          .   2273:			}
+         .          .   2274:			relocStart := len(ws.relocs)
+         .          .   2275:			compactRelocStart, compactRelocEnd, relocOK := compactFuncResultRange(relocStart, len(rl))
+         .          .   2276:			if !relocOK {
+         .          .   2277:				work.failures.Record(i, fmt.Errorf("amd64: parallel worker relocations exceed 32-bit range"))
+         .          .   2278:				continue
+         .          .   2279:			}
+         .          .   2280:			ws.relocs = append(ws.relocs, rl...)
+         .          .   2281:			ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
+         .          .   2282:			ws.usesBitCount |= ws.scratch.asm.BitCountState >> 4
+         .          .   2283:			ws.usedAMD64Features |= ws.scratch.usedAMD64Features
+         .          .   2284:			ws.arena = append(ws.arena, fnCode...)
+         .          .   2285:			flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
+         .          .   2286:				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
+         .          .   2287:				boolFlag(ws.scratch.directPrepared, layoutDirectPrepared) | boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
+         .          .   2288:			ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
+         .          .   2289:			result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
+         .          .   2290:			if policy.CompactNative {
+         .          .   2291:				if policy.EnabledOption(optSharedAdapters) {
+         .          .   2292:					info := ws.scratch.fnState.sharedAdapterInfo()
+         .          .   2293:					result.adapterOff, result.adapterEnd = info.dispOff, info.endOff
+         .          .   2294:				} else {
+         .          .   2295:					info := ws.scratch.fnState.adapterTailInfo()
+         .          .   2296:					result.adapterOff, result.adapterEnd = info.returnOff, info.endOff
+         .          .   2297:				}
+         .          .   2298:				if policy.EnabledOption(optSharedTrapBody) {
+         .          .   2299:					result.trapBody = ws.scratch.fnState.sharedTrapBodyInfoAMD64()
+         .          .   2300:				}
+         .          .   2301:			}
+         .          .   2302:			results[i] = result
+         .          .   2303:			if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
+         .          .   2304:				pressureOnce.Do(opts.MemoryPressure)
+         .          .   2305:			}
+         .          .   2306:		}
+         .          .   2307:	}
+         .          .   2308:	for workerID := range states {
+         .          .   2309:		go runWorker(workerID)
+         .          .   2310:	}
+         .          .   2311:	wg.Wait()
+         .          .   2312:
+         .          .   2313:	// Error selection is by function index, never by wall-clock completion order.
+         .          .   2314:	if i, err := work.failures.Result(); err != nil {
+         .          .   2315:		return nil, fmt.Errorf("amd64: function %d: %w", i, err)
+         .          .   2316:	}
+         .          .   2317:
+         .          .   2318:	// Join in original function order so layout, alignment, entry metadata, and
+         .          .   2319:	// relocation patching are byte-for-byte identical to the serial compiler.
+         .          .   2320:	if !policy.CompactNative {
+         .          .   2321:		// Worker bodies are complete. Do not reserve the original Wasm expansion
+         .          .   2322:		// estimate a second time when it substantially exceeds native output.
+         .          .   2323:		joinedBytes := 0
+         .          .   2324:		for i := range states {
+         .          .   2325:			if len(states[i].arena) > int(^uint(0)>>1)-joinedBytes {
+         .          .   2326:				joinedBytes = int(^uint(0) >> 1)
+         .          .   2327:				break
+         .          .   2328:			}
+         .          .   2329:			joinedBytes += len(states[i].arena)
+         .          .   2330:		}
+         .          .   2331:		codeCap = shared.JoinedModuleCodeCapacity(codeCap, joinedBytes, n)
+         .          .   2332:	}
+         .          .   2333:	code := make([]byte, 0, codeCap)
+         .          .   2334:	var literalWords []uint64
+         .          .   2335:	var directPrepared, directPreparedBounded []uint64
+         .          .   2336:	var adapterTails []adapterTailInfo
+         .          .   2337:	var adapters []sharedAdapterInfo
+         .          .   2338:	if policy.CompactNative {
+         .          .   2339:		if policy.EnabledOption(optSharedAdapters) {
+         .          .   2340:			adapters = make([]sharedAdapterInfo, 0, countHostAdaptersAMD64(hostAdapters))
+         .          .   2341:		} else {
+         .          .   2342:			adapterTails = make([]adapterTailInfo, 0, countHostAdaptersAMD64(hostAdapters))
+         .          .   2343:		}
+         .          .   2344:	}
+         .          .   2345:	var trapBodyCluster sharedTrapBodyClusterAMD64
+         .          .   2346:	for i := range results {
+         .          .   2347:		r := &results[i]
+         .          .   2348:		if r.layoutFlags&layoutOmitted != 0 {
+         .          .   2349:			if literalOffsets != nil {
+         .          .   2350:				literalOffsets[i+1] = uint32(len(literalWords))
+         .          .   2351:			}
+         .          .   2352:			continue
+         .          .   2353:		}
+         .          .   2354:		if pad := functionStartPaddingFlags(len(code), int(r.bodyBytes), r.layoutFlags, policy); pad != 0 {
+         .          .   2355:			code = append(code, alignPad[:pad]...)
+         .          .   2356:		}
+         .          .   2357:		entry[i] = len(code)
+         .          .   2358:		internalEntry[i] = len(code) + int(r.internalOff)
+         .          .   2359:		if r.layoutFlags&layoutDirectPrepared != 0 {
+         .          .   2360:			directPrepared = markDirectPrepared(directPrepared, n, i)
+         .          .   2361:		}
+         .          .   2362:		if r.layoutFlags&layoutDirectPreparedBounded != 0 {
+         .          .   2363:			directPreparedBounded = markDirectPrepared(directPreparedBounded, n, i)
+         .          .   2364:		}
+         .          .   2365:		if adapterTails != nil && r.adapterOff != 0 {
+         .          .   2366:			adapterTails = append(adapterTails, adapterTailInfo{function: uint32(i), returnOff: r.adapterOff, endOff: r.adapterEnd})
+         .          .   2367:		}
+         .          .   2368:		if adapters != nil && r.adapterEnd != 0 {
+         .          .   2369:			adapters = append(adapters, sharedAdapterInfo{function: uint32(i), dispOff: r.adapterOff, endOff: r.adapterEnd})
+         .          .   2370:		}
+         .          .   2371:		if literalOffsets != nil {
+         .          .   2372:			literalWords = append(literalWords, states[int(r.worker)].literals[int(r.literalStart):int(r.literalEnd)]...)
+         .          .   2373:			if uint64(len(literalWords)) > math.MaxUint32 {
+         .          .   2374:				return nil, fmt.Errorf("amd64: module literal metadata exceeds uint32")
+         .          .   2375:			}
+         .          .   2376:			literalOffsets[i+1] = uint32(len(literalWords))
+         .          .   2377:		}
+         .          .   2378:		fnCode := states[int(r.worker)].arena[int(r.start):int(r.end)]
+         .          .   2379:		relocs[i] = states[int(r.worker)].relocs[int(r.relocStart):int(r.relocEnd)]
+         .          .   2380:		if policy.EnabledOption(optSharedTrapBody) && policy.CompactNative {
+         .          .   2381:			var st *CodegenStats
+         .          .   2382:			if diagnosticsEnabled && ms != nil {
+         .          .   2383:				st = ms.Funcs[i]
+         .          .   2384:			}
+         .          .   2385:			fnCode = trapBodyCluster.shareFunction(r.layoutFlags&layoutHostAdapter != 0, code, fnCode, entry[i], r.trapBody, st)
+         .          .   2386:		}
+      1003       1003   2387:		code = append(code, fnCode...)
+         .          .   2388:	}
+         .          .   2389:	sharedAdapterBytes := 0
+         .          .   2390:	if adapters != nil {
+         .          .   2391:		var err error
+         .          .   2392:		code, sharedAdapterBytes, err = shareAdaptersAMD64(code, entry, internalEntry, relocs, literalWords, literalOffsets, adapters, opts.GCFrameRoots, ms)
+ROUTINE ======================== github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleParallel.func1 in /home/jtenner/Projects/wago-sum-unroll/src/core/compiler/backend/railshot/amd64/compile.go
+      1003       1003 (flat, cum)  0.98% of Total
+         .          .   2214:	runWorker := func(workerID int) {
+         .          .   2215:		defer wg.Done()
+         .          .   2216:		ws := &states[workerID]
+         .          .   2217:		defer func() {
+         .          .   2218:			ws.scratch.finishControlWorker()
+         .          .   2219:			ws.scratch.finishStackWorker()
+         .          .   2220:			ws.scratchStats = workerScratchStats(ws.scratch)
+         .          .   2221:			ws.scratch = nil
+         .          .   2222:		}()
+         .          .   2223:		if regallocCheckEnabled {
+         .          .   2224:			shared.SetSourceContext(&ws.scratch.scalar, codegen.SourceContextFor(opts.Codegen, m))
+         .          .   2225:		}
+         .          .   2226:		for {
+         .          .   2227:			i := int(work.next.Add(1) - 1)
+         .          .   2228:			if i >= n {
+         .          .   2229:				return
+         .          .   2230:			}
+         .          .   2231:			var st *CodegenStats
+         .          .   2232:			if diagnosticsEnabled && ms != nil {
+         .          .   2233:				st = ms.Funcs[i]
+         .          .   2234:			}
+         .          .   2235:			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+         .          .   2236:				st.peep("inline-dead-body")
+         .          .   2237:				results[i] = funcResult{layoutFlags: layoutOmitted}
+         .          .   2238:				continue
+         .          .   2239:			}
+         .          .   2240:			arenaTail := ws.arena[len(ws.arena):cap(ws.arena)]
+         .          .   2241:			ws.scratch.rel32TailBound = false
+         .          .   2242:			ws.scratch.localRefTailBound = false
+         .          .   2243:			if compactNativePolicy(policy) {
+         .          .   2244:				ws.scratch.asm.Rel32Sites = nil
+         .          .   2245:				n := amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
+         .          .   2246:				if len(arenaTail) >= n && ws.scratch.asm.BindRel32Storage(arenaTail[:n], finalizerRel32Limit(policy)) {
+         .          .   2247:					ws.scratch.rel32TailBound = true
+         .          .   2248:					arenaTail = arenaTail[n:]
+         .          .   2249:				}
+         .          .   2250:			}
+         .          .   2251:			if symbolicLocalSlotPackingPolicy(policy) {
+         .          .   2252:				ws.scratch.localRefs.Sites = nil
+         .          .   2253:				n := amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+         .          .   2254:				if len(arenaTail) >= n && ws.scratch.localRefs.BindStorage(arenaTail[:n], maxAMD64LocalRefSites) {
+         .          .   2255:					ws.scratch.localRefTailBound = true
+         .          .   2256:				}
+         .          .   2257:			}
+         .          .   2258:			hints := hintSidecar.viewAt(allHints[i], i)
+         .          .   2259:			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, moduleHasSIMD, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)
+         .          .   2260:			if err != nil {
+         .          .   2261:				work.failures.Record(i, err)
+         .          .   2262:				continue
+         .          .   2263:			}
+         .          .   2264:			start := len(ws.arena)
+         .          .   2265:			compactStart, compactEnd, codeOK := compactFuncResultRange(start, len(fnCode))
+         .          .   2266:			literalStart := len(ws.literals)
+         .          .   2267:			compactLiteralStart, compactLiteralEnd, literalOK := compactFuncResultRange(literalStart, len(ws.scratch.fnState.literalWords))
+         .          .   2268:			bodyBytes, bodyOK := compactFuncResultValue(len(m.Code[i].BodyBytes))
+         .          .   2269:			compactInternalOff, internalOK := compactFuncResultValue(internalOff)
+         .          .   2270:			if !codeOK || !literalOK || !bodyOK || !internalOK {
+         .          .   2271:				work.failures.Record(i, fmt.Errorf("amd64: parallel function metadata exceeds 32-bit range"))
+         .          .   2272:				continue
+         .          .   2273:			}
+         .          .   2274:			relocStart := len(ws.relocs)
+         .          .   2275:			compactRelocStart, compactRelocEnd, relocOK := compactFuncResultRange(relocStart, len(rl))
+         .          .   2276:			if !relocOK {
+         .          .   2277:				work.failures.Record(i, fmt.Errorf("amd64: parallel worker relocations exceed 32-bit range"))
+         .          .   2278:				continue
+         .          .   2279:			}
+         .          .   2280:			ws.relocs = append(ws.relocs, rl...)
+         .          .   2281:			ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
+         .          .   2282:			ws.usesBitCount |= ws.scratch.asm.BitCountState >> 4
+         .          .   2283:			ws.usedAMD64Features |= ws.scratch.usedAMD64Features
+      1003       1003   2284:			ws.arena = append(ws.arena, fnCode...)
+         .          .   2285:			flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
+         .          .   2286:				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
+         .          .   2287:				boolFlag(ws.scratch.directPrepared, layoutDirectPrepared) | boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
+         .          .   2288:			ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
+         .          .   2289:			result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}

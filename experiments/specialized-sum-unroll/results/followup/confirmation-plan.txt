@@ -1,0 +1,18 @@
+Frozen after complete H-run1 and all three threshold discovery sets, before repeats.
+Continue H without further emitter edits. Freeze T64 as the single threshold
+candidate for confirmation: it retains the earlier profitable middle counts
+and uses three fewer native bytes than T128/T256. Higher gates delay 16-group
+execution at128/256 and add no clear overall benefit. Do not tune another gate.
+Run H andT64 against normal Wago with the complete44-row follow-up matrix.
+Run H directly against uniformD for counts16,64,128,512,8192,262144,8388607
+at both addresses (20pairs). Preserve all adverse results.
+Repeat normal→D corpus qualification. Measure normal→H and normal→T64 corpus
+with the same23rows, then separately repeat a promising synthetic memory.sum
+result with its compile/full/lifecycle costs.
+Add same-tagged-binary baseline→D20pairs to distinguish selected-mode/compiler
+layout effects on controls. Use the same corpus filter; guest code must match
+for controls. This supplements the primary normal-Wago comparisons.
+No threshold-gated hybrid: H already broadens the short/middle input range,
+and there is no eligible real application to justify adding another design.
+All runs: GOMAXPROCS=1, CPU2, alternating20pairs,150ms benchmark duration.
+No further threshold/layout tuning. No application gain claim from memory.sum.

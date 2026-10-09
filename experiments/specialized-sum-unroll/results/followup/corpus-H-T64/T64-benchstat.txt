@@ -1,0 +1,112 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                           │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-candidate.txt │
+                           │                                      sec/op                                       │                           sec/op                            vs base                │
+Compile/memory                                                                                     15.39µ ± 4%                                                  15.66µ ± 2%   +1.75% (p=0.018 n=20)
+Compile/linked_list                                                                                15.68µ ± 3%                                                  15.54µ ± 5%        ~ (p=0.659 n=20)
+Compile/blake-as-simd                                                                              910.8µ ± 6%                                                  923.6µ ± 1%   +1.40% (p=0.024 n=20)
+Compile/utf-as-simd                                                                                441.6µ ± 3%                                                  446.5µ ± 1%        ~ (p=0.165 n=20)
+Compile/yyjson                                                                                     7.062m ± 1%                                                  7.104m ± 2%        ~ (p=0.883 n=20)
+Compile/xxhash                                                                                     109.0µ ± 3%                                                  110.2µ ± 2%        ~ (p=0.076 n=20)
+Compile/drwav                                                                                      1.936m ± 2%                                                  1.971m ± 4%        ~ (p=0.659 n=20)
+CompileFull/memory                                                                                 22.67µ ± 1%                                                  23.88µ ± 1%   +5.35% (p=0.000 n=20)
+CompileFull/linked_list                                                                            19.79µ ± 1%                                                  20.17µ ± 1%   +1.95% (p=0.004 n=20)
+CompileFull/blake-as-simd                                                                          1.176m ± 2%                                                  1.186m ± 2%        ~ (p=0.620 n=20)
+CompileFull/utf-as-simd                                                                            670.8µ ± 1%                                                  674.2µ ± 3%        ~ (p=0.327 n=20)
+CompileFull/yyjson                                                                                 9.186m ± 1%                                                  9.112m ± 1%        ~ (p=0.355 n=20)
+CompileFull/xxhash                                                                                 130.9µ ± 1%                                                  131.2µ ± 1%        ~ (p=0.989 n=20)
+CompileFull/drwav                                                                                  2.284m ± 3%                                                  2.312m ± 2%        ~ (p=0.265 n=20)
+Exec/memory.sum                                                                                    98.23n ± 2%                                                  87.22n ± 1%  -11.21% (p=0.000 n=20)
+Exec/linked_list.sum                                                                               7.829µ ± 3%                                                  7.820µ ± 1%        ~ (p=0.784 n=20)
+Exec/blake-as-simd.hashN                                                                           370.1µ ± 0%                                                  370.0µ ± 0%        ~ (p=0.620 n=20)
+Exec/utf-as-simd.convertN                                                                          54.28µ ± 1%                                                  54.24µ ± 1%        ~ (p=0.616 n=20)
+Exec/utf-as-simd.validateN                                                                         139.5µ ± 0%                                                  139.9µ ± 2%        ~ (p=0.355 n=20)
+Exec/yyjson.yyjson_run                                                                             853.8n ± 0%                                                  852.1n ± 1%        ~ (p=0.457 n=20)
+Exec/xxhash.xxhash_run                                                                             114.2µ ± 3%                                                  113.4µ ± 1%        ~ (p=0.114 n=20)
+Exec/drwav.drwav_run                                                                               7.575µ ± 2%                                                  7.497µ ± 1%   -1.02% (p=0.040 n=20)
+SumUnrollLifecycle/memory                                                                          55.14µ ± 2%                                                  56.10µ ± 1%   +1.73% (p=0.007 n=20)
+geomean                                                                                            100.9µ                                                       101.1µ        +0.18%
+
+                           │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-candidate.txt │
+                           │                                       B/op                                        │                           B/op                             vs base                 │
+Compile/memory                                                                                  10.95Ki ± 0%                                                  10.95Ki ± 0%       ~ (p=1.000 n=20) ¹
+Compile/linked_list                                                                             13.08Ki ± 0%                                                  13.08Ki ± 0%       ~ (p=1.000 n=20) ¹
+Compile/blake-as-simd                                                                           111.4Ki ± 0%                                                  111.4Ki ± 0%       ~ (p=1.000 n=20) ¹
+Compile/utf-as-simd                                                                             67.70Ki ± 0%                                                  67.70Ki ± 0%       ~ (p=1.000 n=20) ¹
+Compile/yyjson                                                                                  1.114Mi ± 0%                                                  1.114Mi ± 0%       ~ (p=0.661 n=20)
+Compile/xxhash                                                                                  64.57Ki ± 0%                                                  64.57Ki ± 0%       ~ (p=1.000 n=20)
+Compile/drwav                                                                                   181.6Ki ± 0%                                                  181.6Ki ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/memory                                                                              22.81Ki ± 0%                                                  24.56Ki ± 0%  +7.67% (p=0.000 n=20)
+CompileFull/linked_list                                                                         21.51Ki ± 0%                                                  21.51Ki ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/blake-as-simd                                                                       358.5Ki ± 0%                                                  358.5Ki ± 0%       ~ (p=1.000 n=20)
+CompileFull/utf-as-simd                                                                         305.5Ki ± 0%                                                  305.5Ki ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/yyjson                                                                              2.901Mi ± 0%                                                  2.901Mi ± 0%       ~ (p=0.297 n=20)
+CompileFull/xxhash                                                                              105.1Ki ± 0%                                                  105.1Ki ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/drwav                                                                               547.9Ki ± 0%                                                  547.9Ki ± 0%       ~ (p=1.000 n=20)
+Exec/memory.sum                                                                                   0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/linked_list.sum                                                                              0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/blake-as-simd.hashN                                                                          0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20)
+Exec/utf-as-simd.convertN                                                                         0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/utf-as-simd.validateN                                                                        0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/yyjson.yyjson_run                                                                            0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/xxhash.xxhash_run                                                                            0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/drwav.drwav_run                                                                              0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollLifecycle/memory                                                                       24.36Ki ± 0%                                                  26.11Ki ± 0%  +7.18% (p=0.000 n=20)
+geomean                                                                                                      ²                                                              +0.62%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                           │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-candidate.txt │
+                           │                                     allocs/op                                     │                         allocs/op                          vs base                 │
+Compile/memory                                                                                    29.00 ± 0%                                                    29.00 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/linked_list                                                                               31.00 ± 0%                                                    31.00 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/blake-as-simd                                                                             110.0 ± 0%                                                    110.0 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/utf-as-simd                                                                               102.0 ± 0%                                                    102.0 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/yyjson                                                                                    399.0 ± 0%                                                    399.0 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/xxhash                                                                                    58.00 ± 0%                                                    58.00 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/drwav                                                                                     289.0 ± 0%                                                    289.0 ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/memory                                                                                108.0 ± 0%                                                    110.0 ± 0%  +1.85% (p=0.000 n=20)
+CompileFull/linked_list                                                                           92.00 ± 0%                                                    92.00 ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/blake-as-simd                                                                         264.0 ± 0%                                                    264.0 ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/utf-as-simd                                                                           273.0 ± 0%                                                    273.0 ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/yyjson                                                                                665.0 ± 0%                                                    665.0 ± 0%       ~ (p=1.000 n=20)
+CompileFull/xxhash                                                                                145.0 ± 0%                                                    145.0 ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/drwav                                                                                 531.0 ± 0%                                                    531.0 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/memory.sum                                                                                   0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/linked_list.sum                                                                              0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/blake-as-simd.hashN                                                                          0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/utf-as-simd.convertN                                                                         0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/utf-as-simd.validateN                                                                        0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/yyjson.yyjson_run                                                                            0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/xxhash.xxhash_run                                                                            0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/drwav.drwav_run                                                                              0.000 ± 0%                                                    0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollLifecycle/memory                                                                         117.0 ± 0%                                                    119.0 ± 0%  +1.71% (p=0.000 n=20)
+geomean                                                                                                      ²                                                              +0.15%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                          │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-candidate.txt │
+                          │                                      code-B                                       │                          code-B                           vs base                  │
+CompileFull/memory                                                                                 472.0 ± 0%                                                 587.0 ± 0%  +24.36% (p=0.000 n=20)
+CompileFull/linked_list                                                                            268.0 ± 0%                                                 268.0 ± 0%        ~ (p=1.000 n=20) ¹
+CompileFull/blake-as-simd                                                                        36.56Ki ± 0%                                               36.56Ki ± 0%        ~ (p=1.000 n=20) ¹
+CompileFull/utf-as-simd                                                                          21.20Ki ± 0%                                               21.20Ki ± 0%        ~ (p=1.000 n=20) ¹
+CompileFull/yyjson                                                                               291.7Ki ± 0%                                               291.7Ki ± 0%        ~ (p=1.000 n=20) ¹
+CompileFull/xxhash                                                                               3.224Ki ± 0%                                               3.224Ki ± 0%        ~ (p=1.000 n=20) ¹
+CompileFull/drwav                                                                                87.48Ki ± 0%                                               87.48Ki ± 0%        ~ (p=1.000 n=20) ¹
+geomean                                                                                          9.632Ki                                                    9.936Ki        +3.16%
+¹ all samples are equal
+
+                           │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-baseline.txt │ experiments/specialized-sum-unroll/results/followup/corpus-H-T64/T64-candidate.txt │
+                           │                                    calls/batch                                    │                        calls/batch                          vs base                │
+Exec/memory.sum                                                                                    21.19k ± 1%                                                  23.74k ± 0%  +12.03% (p=0.000 n=20)
+Exec/linked_list.sum                                                                                266.5 ± 2%                                                   268.5 ± 3%        ~ (p=0.995 n=20)
+Exec/blake-as-simd.hashN                                                                            6.000 ± 0%                                                   6.000 ± 0%        ~ (p=1.000 n=20)
+Exec/utf-as-simd.convertN                                                                           40.00 ± 0%                                                   40.00 ± 0%        ~ (p=0.729 n=20)
+Exec/utf-as-simd.validateN                                                                          15.00 ± 0%                                                   14.00 ± 7%        ~ (p=0.098 n=20)
+Exec/yyjson.yyjson_run                                                                             2.474k ± 2%                                                  2.457k ± 1%        ~ (p=0.155 n=20)
+Exec/xxhash.xxhash_run                                                                              18.00 ± 6%                                                   18.00 ± 0%        ~ (p=0.377 n=20)
+Exec/drwav.drwav_run                                                                                277.0 ± 1%                                                   278.0 ± 0%        ~ (p=0.090 n=20)
+geomean                                                                                             149.6                                                        150.5        +0.61%

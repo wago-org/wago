@@ -1,0 +1,23 @@
+Independent hybrid first-run performance review
+Frozen source1a4c6e1eac8d26c34a48494d80ffc9b12fa9ce0c. Read-only; no builds or timings. Original uniform-candidate and corpus reviews remain unchanged as historical findings.
+
+Evidence checked: kernel-H-run1 raw samples, comparison CSV, benchstat, environment, order; current hybrid/threshold source; native-D/H/T64/T128/T256 pressure0 assembly and metrics.
+- Independently recomputed every cell in all44CSV rows from raw samples. Every row has20samples per side.40successful records alternate pair order correctly. CPU2 and GOMAXPROCS1. Recorded baseline/candidate hashes match frozen build.json.
+- Backend compile allocation metrics unchanged: pressure0=26072B/29allocs; pressure12=26296B/30allocs. Compile-time changes are nonsignificant in this run (p=.478/.678).
+- H aligned execution gains at512/8192/262144 are15.26/7.91/7.56%, all p<.001. Unaligned512/262144 gains are12.16/11.06%, p<.001. Unaligned8192 is+0.55%, p=.324. Alignedn8/n16 are+1.13/+0.22%, p=.825/.733. These are first-run observations only, not repeated evidence or equivalence proof.
+- Streaming ratios of medians are-5.94%aligned (p=.512) and-12.36%unaligned (p=.024). Corresponding median paired deltas are-1.12%/-4.37%. Raw variation and confidence intervals are large. No streaming-promotion claim is supported by this single run.
+
+Native-code interpretation:
+- Baseline/D/H pressure0 total sizes347/410/467bytes. Common adapter44bytes gives internal+trap303/366/423. H grows120bytes above baseline and57aboveD. Frame56bytes unchanged; no operand spills/reloads or stack memory operations in admitted group/tail loops.
+- H16group begins0xc9 instead ofD0xbf because it checks whether fewer than16remaining loads should enter four-group arm. Shared wrap dispatch precedes both arms. H four-group begins0x137. H scalar tail begins0x165.
+- After each16group, H checks whether4loads remain and optionally uses the four-group tail; at originaln512, peel leaves511, yielding31sixteen-groups,3four-groups,3scalarloads. UniformD instead executes31sixteen-groups and15scalarloads. The hybrid can reduce scalar remainder work, but group placement and dispatch also change. Attribute whole-candidate profitability, not pure remainder benefit, unless a layout control exists.
+- T64/T128/T256 choose the initial group arm using remaining count after peel. Originaln65/n129/n257 first admits16group. At originaln64/n128/n256 the gate takes four-group arm.
+- Threshold16arm keeps uniformDscalar tail; it skips four-group arm unconditionally after sixteen-groups. H uses four-groups after sixteen-groups. These are distinct policies and must keep distinct labels.
+- T64total462bytes/hot16group0xc9; T128/T256total465bytes/hot16group0xcc. Gate immediate grows3bytes at128/256. All frames56 and operand spill/reload counts0. Threshold performance differences therefore also include instruction-layout/encoding effects.
+
+Corpus control guidance:
+- Use the same tagged binary with baseline versusDselection for20interleaved pairs in addition to normal-Wago versusD repeat. Retain first run. This removes differences caused by distinct compiler Go binaries while preserving selected-mode differences.
+- A Dmode attempt can add compiler call/branch work for an ineligible loop even with unchanged guest code. A repeated linked_listcompile loss in the same-binary comparison can be actual experimental-selection overhead. Do not label the first3.55%publicloss a proven code-layout confound before control/repeat evidence.
+- Preserve all three lines of evidence in report: normal-Wago→D primary, its repeat, and same-tagged-binary modecontrol. Do not replace the critical normal-Wago comparison with modecontrol.
+
+Pending threshold discovery, threshold compilation costs, Hrepeat, repeated/public corpus controls, and updated report. No promotion or final follow-up sign-off.
