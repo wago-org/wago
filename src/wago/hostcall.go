@@ -772,6 +772,7 @@ func (in *Instance) ensurePluginState() *instancePluginState {
 	state := in.pluginState.Load()
 	if state == nil {
 		candidate := &instancePluginState{}
+		candidate.invokeMu.state.shared = &in.invocationState.word
 		if in.pluginState.CompareAndSwap(nil, candidate) {
 			state = candidate
 		} else {

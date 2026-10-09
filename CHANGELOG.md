@@ -16,6 +16,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
 
+- Reduce ordinary and prepared numeric host-to-Wasm call overhead by combining
+  instance lifetime and invocation-gate admission, preserving close, revocation,
+  and waiter handoff behavior.
 - Bound AMD64 compiler scratch growth by recycling operand arenas at proven-empty
   instruction boundaries, tracking control-frame eligibility in constant time
   and clearing only pointer slots written since the previous cleanup.

@@ -3826,35 +3826,33 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if in != nil && (!in.syncMode || in.executionFlags.Load()&executionFlagNativeScalarLeaf != 0 && in.c.boundedNativeScalarLeaf()) {
 		if in.rt == nil {
 			state := in.pluginState.Load()
-			if state != nil && in.invocationState.CompareAndSwap(0, 1) {
-				if state.invokeMu.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
-					ic := in.findInvokeCache(export)
-					privateRefStore := in.refStore == nil || in.refStore.private
-					isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
-					if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) && len(args) == int(ic.paramSlots) && privateRefStore && !in.guestStorageBorrowed() && in.preparedFastStateValid() {
-						var out []uint64
-						var err error
-						if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
-							entry := ic.directEntry
-							if ic.directIntFast && len(args) == 1 && ic.resultSlots <= 1 {
-								if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && ic.directIntBounded && ic.scalarWideMask == 0 && ic.resultSlots == 1 && !ic.scalarResultWide {
-									out, err = in.invokeCachedDirectI32ToI32(ic, args[0])
-								} else {
-									out, err = in.invokeCachedDirectInt1(ic, entry, args[0])
-								}
-							} else {
-								out, err = in.invokeCachedDirectNumeric(ic, entry, args)
-							}
-						} else {
-							out, err = in.invokeCachedNumericEntry(export, ic, args, true, false)
-						}
-						state.invokeMu.Unlock()
-						in.endDirectInvocation()
-						return out, err
-					}
-					state.invokeMu.Unlock()
+			if state != nil && state.invokeMu.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
+				// The common single-export hit avoids the cache-search call.
+				ic := &in.ic[0]
+				if !ic.valid || !sameExportName(ic.export, export) {
+					ic = in.findInvokeCache(export)
 				}
-				in.endDirectInvocation()
+				privateRefStore := in.refStore == nil || in.refStore.private
+				isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
+				if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) && len(args) == int(ic.paramSlots) && privateRefStore && state.guestStorageBorrow.Load() == 0 && in.preparedFastStateValid() {
+					var out []uint64
+					var err error
+					if ic.directI32Fast && len(args) == 1 {
+						out, err = in.invokeCachedDirectI32ToI32(ic, args[0])
+					} else if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
+						entry := ic.directEntry
+						if ic.directIntFast && len(args) == 1 && ic.resultSlots <= 1 {
+							out, err = in.invokeCachedDirectInt1(ic, entry, args[0])
+						} else {
+							out, err = in.invokeCachedDirectNumeric(ic, entry, args)
+						}
+					} else {
+						out, err = in.invokeCachedNumericEntry(export, ic, args, true, false)
+					}
+					in.endFastInvocation(state)
+					return out, err
+				}
+				in.endFastInvocation(state)
 			}
 		}
 	}
@@ -5092,6 +5090,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		export:            export,
 		valid:             true,
 		directIntFast:     directIntFast,
+		directI32Fast:     directIntFast && in.c.directPreparedBoundedAt(li) && paramSlots == 1 && resultSlots == 1 && scalarWideMask == 0 && !widths[paramSlots],
 		directFloatFast:   directFloatFast || directMixedFast,
 		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
