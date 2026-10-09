@@ -1,0 +1,8 @@
+=== RUN   TestOpcodeOnlyBaselineBlindSpots
+    baseline_test.go:12: constant: opcode-only projection cannot distinguish operands
+    baseline_test.go:12: zero-idiom-dependency: opcode-only projection cannot distinguish operands
+    baseline_test.go:12: spill-width: opcode-only projection cannot distinguish operands
+    baseline_test.go:12: stack-displacement: opcode-only projection cannot distinguish operands
+--- PASS: TestOpcodeOnlyBaselineBlindSpots (0.00s)
+PASS
+ok  	github.com/wago-org/wago/tests/tools/native-compare	0.001s
