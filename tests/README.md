@@ -601,3 +601,49 @@ counters do not include every worker allocation. Native ARM64 timing must be
 measured on ARM64 hardware. QEMU timing is only a bounded cost check for the
 emulated compiler. Shared admission is checked separately from profile builds,
 which use the established path and record source ranges.
+
+## Widening-multiply source experiment (#870)
+
+`TestSIMDExtmulSourcePairs` compares separate matching extensions and multiply
+with explicit `extmul` for all 12 width/sign/half combinations. Both sources run
+against an independent widened-integer full-vector oracle, including edge and
+seeded inputs, identical operands, observed source locals, and 24 live vectors.
+The observer checks input preservation, zero work, completed work, and rejects
+omitted execution, corrupt results, corrupt inputs, and corrupt live vectors.
+The existing source-pair harness logs source and loaded-native hashes; the
+`wago_codegenstats` build verifies the established compiler and reports native
+size, spill counter, and literals. AMD64 tests use SSE2 and available AVX2;
+ARM64 uses its existing native execution adapter.
+The ARM64 lowering capacity test also reserves 26 vector-local registers and
+one cached constant, leaving five transient registers for i64x2 multiply.
+The multiply reuses a dead low-half temporary and still writes the result last.
+
+`BenchmarkSIMDExtmul` compares 256-vector prepared native calls. Trap binding,
+memory-base lookup, argument setup, warm-up, and full-vector checks are outside
+timing. Results are checked before and after timing. `BenchmarkSIMDExtmulCompile`
+measures decode, validation, and code generation together, excluding WAT assembly,
+mapping, and execution. Neither benchmark measures retained heap or release size.
+These are synthetic source-form comparisons on one compiler, not compiler-patch
+speedups. Run alternating samples on a quiet host before drawing timing conclusions.
+
+The opt-in decoded census uses constant scratch and linear work per function:
+
+```sh
+WAGO_EXTMUL_CORPUS="$PWD/corpus/workloads" go test ./src/wago -run '^TestSIMDExtmulCorpusCensus$' -v -count=1
+go test -tags=wago_codegenstats,wago_regalloccheck ./src/wago -run '^TestSIMDExtmul' -v -count=1
+go test ./src/wago -run '^$' -bench '^BenchmarkSIMDExtmul' -benchmem
+```
+
+It admits validated modules, reports excluded files, module/function hashes and
+body offsets, and counts the exact `local.get; extend; local.get; extend; mul`
+window. Controls cover all 12 positive shapes, explicit extmul, mismatched
+width/sign/half, one extension, an intervening write, and retained intermediates.
+This observer does not infer dataflow across locals, calls, or control flow.
+
+On main `9196bdff`, the existing 121 workload modules (220,624 functions; no
+rejections) contained zero widening extensions, three vector multiplies, and
+five explicit extmul instructions. There was no candidate for this bounded
+matcher. Production recognition was not added. Native ARM64 selection and
+execution remain unmeasured; AMD64 synthetic code sizes do not establish ARM64
+profitability. This is a bounded negative applicability result, not proof that
+other corpora cannot benefit.
