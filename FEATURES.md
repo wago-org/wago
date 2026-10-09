@@ -86,8 +86,13 @@ stages closed scalar/SWAR modules with internal reference-valued functions after
 rechecking confinement and every emitted function mode. The image records a
 distinct selected ABI witness; bare nullable references do not require the typed
 call/control witnesses. Permission alone does not change numeric, imported or
-control-only modules. Public Wago source/artifact integration remains pending;
-its callable signatures remain numeric/vector-only. Standalone `ref.null` constants with bounded numeric
+control-only modules. Private Wago Runtime permission also admits source and
+trusted artifacts for these closed modules. The retained witness does not grant
+destination permission: default instances reject before executable publication.
+Null-only modules keep an anchor without indexed arenas; indexed owners preserve
+empty internal rows and numeric ordinals. Foreign numeric calls retain closed
+producers and size their internal transport from actual signatures. General
+reference-valued imports and exports remain unsupported. Standalone `ref.null` constants with bounded numeric
 function-type indices carry the typed witness, including unreachable uses,
 without allocating declared-call transport. Invocation
 scopes retain imported

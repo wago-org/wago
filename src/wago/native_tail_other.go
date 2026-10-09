@@ -7,11 +7,11 @@ type railshotTailCompiledState struct{}
 
 func railshotRecordMappedCodeBytes(*Compiled, int) {}
 
-func railshotStagedTailFeatures(*RuntimeConfig) CoreFeatures                           { return 0 }
-func railshotConfigureNativeTail(CoreFeatures, *railshotCompileOptions)                {}
-func railshotStoreNativeTail(*Compiled, *railshotCompiledModule, *RuntimeConfig) error { return nil }
-func railshotWriteNativeTail(*compiledWriter, *Compiled) error                         { return nil }
-func railshotReadNativeTail(*compiledReader, *Compiled) error                          { return nil }
+func railshotStagedTailFeatures(*RuntimeConfig) CoreFeatures                            { return 0 }
+func railshotConfigureNativeTail(CoreFeatures, *RuntimeConfig, *railshotCompileOptions) {}
+func railshotStoreNativeTail(*Compiled, *railshotCompiledModule, *RuntimeConfig) error  { return nil }
+func railshotWriteNativeTail(*compiledWriter, *Compiled) error                          { return nil }
+func railshotReadNativeTail(*compiledReader, *Compiled) error                           { return nil }
 func railshotPrepareNativeTail(*Instance, resolvedImports, uintptr, []int, map[uint32]uint64) error {
 	return nil
 }
@@ -28,3 +28,8 @@ func railshotInstanceTailPolicy(*RuntimeConfig) railshotInstantiateTailPolicy {
 	return railshotInstantiateTailPolicy{}
 }
 func railshotCaptureNativeTailPolicy(*Instance, InstantiateOptions, int) {}
+
+func railshotValidateReferenceFunctionInstance(c *Compiled, _ InstantiateOptions) error {
+	return railshotValidateReferenceCalls(c)
+}
+func railshotNonCallableFunction(*Compiled, int) bool { return false }

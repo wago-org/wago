@@ -34,12 +34,26 @@ func rv64NewNativeDefinedTailOwner(in *Instance, n, values int) (*railshot.Nativ
 	if err := railshot.NativeTailDefinedOwnerBudget(n, values); err != nil {
 		return nil, err
 	}
+	if in.c.nativeReferenceFunctionABI {
+		nonCallable := 0
+		for i := 0; i < n; i++ {
+			if railshotNonCallableFunction(in.c, i) {
+				nonCallable++
+			}
+		}
+		if _, err := railshot.NativeTailSparseDefinedOwnerBytes(n, nonCallable, values); err != nil {
+			return nil, err
+		}
+	}
 	image, err := railshot.NewNativeTailCodeImage(rv64TailCodeOwner{in})
 	if err != nil {
 		return nil, err
 	}
 	signatures := make([]wasm.CompType, n)
 	for i, sig := range in.c.Funcs[:n] {
+		if railshotNonCallableFunction(in.c, i) {
+			continue
+		}
 		params, err := rv64TailTypes(sig.Params)
 		if err != nil {
 			return nil, err
@@ -49,6 +63,15 @@ func rv64NewNativeDefinedTailOwner(in *Instance, n, values int) (*railshot.Nativ
 			return nil, err
 		}
 		signatures[i] = wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
+	}
+	if in.c.nativeReferenceFunctionABI {
+		callable := make([]*wasm.CompType, n)
+		for i := range signatures {
+			if !railshotNonCallableFunction(in.c, i) {
+				callable[i] = &signatures[i]
+			}
+		}
+		return railshot.NewNativeTailSparseDefinedOwner(image, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, in.ensurePluginState().railshotInvocation.tailTargets, in.c.Entry, callable)
 	}
 	owner, err := railshot.NewNativeTailDefinedOwner(image, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, in.ensurePluginState().railshotInvocation.tailTargets, in.c.Entry, signatures)
 	if err != nil {
@@ -66,7 +89,10 @@ func rv64NativeDefinedTailOwnerCounts(in *Instance) (int, int, error) {
 		return 0, 0, fmt.Errorf("%w: RV64 defined tail snapshot function arena", railshot.ErrUnsupported)
 	}
 	values := 0
-	for _, sig := range in.c.Funcs[:n] {
+	for i, sig := range in.c.Funcs[:n] {
+		if railshotNonCallableFunction(in.c, i) {
+			continue
+		}
 		if len(sig.Params) > 256 || len(sig.Results) > 256 {
 			return 0, 0, fmt.Errorf("%w: RV64 defined tail signature count", railshot.ErrUnsupported)
 		}

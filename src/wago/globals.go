@@ -1059,12 +1059,13 @@ type Compiled struct {
 	FuncTypeID          []uint64   // collision-resistant native signature key; legacy field name
 	NeedsFuncRefDescs   bool       // true when instantiation requires the canonical per-function descriptor arena
 	// RV64 flags share the descriptor flag's alignment padding.
-	nativeContextTrapABI      bool       // active-context identity and fresh cold-trap provenance
-	nativeReferenceCallABI    bool       // ordinary typed calls with retained owners and declared-type arenas
-	nativeReferenceControlABI bool       // full-width null checks/branches on retained internal function references
-	nativeTableContextABI     bool       // retained canonical table calls with framed context switching
-	nativeTableReferenceABI   bool       // full-width foreign table carriers and active writer/storage scopes
-	Elems                     []ElemInit // active element segments
+	nativeContextTrapABI       bool       // active-context identity and fresh cold-trap provenance
+	nativeReferenceCallABI     bool       // ordinary typed calls with retained owners and declared-type arenas
+	nativeReferenceControlABI  bool       // full-width null checks/branches on retained internal function references
+	nativeReferenceFunctionABI bool       // closed internal reference-valued functions; no public callable descriptors
+	nativeTableContextABI      bool       // retained canonical table calls with framed context switching
+	nativeTableReferenceABI    bool       // full-width foreign table carriers and active writer/storage scopes
+	Elems                      []ElemInit // active element segments
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 

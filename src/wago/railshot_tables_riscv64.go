@@ -169,6 +169,9 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 	}
 	var params, results [256]wasm.ValType
 	for i := range c.FuncTypeID {
+		if railshotNonCallableFunction(c, i) {
+			continue // Source-attested internal signature has no callable row.
+		}
 		var sig FuncSig
 		if i < c.NumImports {
 			sig = c.importFuncSigs[i]

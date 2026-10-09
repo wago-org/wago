@@ -66,7 +66,7 @@ func railshotFuncRefMatchesFunction(in *Instance, ref FuncRef, index uint32) boo
 	defer in.releaseResourceRoot()
 	in.lifeMu.Lock()
 	store := in.refStore
-	validCaller := !in.closed && !in.resourcesClosed && int(index) < len(in.c.FuncTypeID)
+	validCaller := !in.closed && !in.resourcesClosed && int(index) < len(in.c.FuncTypeID) && !railshotNonCallableFunction(in.c, int(index))
 	in.lifeMu.Unlock()
 	if store == nil || !validCaller {
 		return false

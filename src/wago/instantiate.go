@@ -167,6 +167,9 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if err := railshotValidateReferenceFunctionInstance(c, opts); err != nil {
+		return nil, err
+	}
 	if err := railshotValidateResolvedImports(c, imports, opts.store); err != nil {
 		return nil, err
 	}
@@ -1013,6 +1016,9 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			}
 		}
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
+			if railshotNonCallableFunction(c, fidx) {
+				continue
+			}
 			off := (fidx + 1) * runtime.FuncRefDescBytes
 			var code, home uint64
 			targetContext := uint64(nativeContextPtr)

@@ -12,10 +12,13 @@ import (
 
 // Runtime destination policy is captured per instance, never written into the
 // shared compiled image. Artifact bytes cannot supply allocation authority.
-type railshotInstantiateTailPolicy struct{ codeLimit uint64 }
+type railshotInstantiateTailPolicy struct {
+	codeLimit          uint64
+	referenceFunctions bool
+}
 
 func railshotInstanceTailPolicy(cfg *RuntimeConfig) railshotInstantiateTailPolicy {
-	return railshotInstantiateTailPolicy{codeLimit: cfg.maxNativeCodeBytes}
+	return railshotInstantiateTailPolicy{codeLimit: cfg.maxNativeCodeBytes, referenceFunctions: cfg.railshotState.tailProducts}
 }
 
 type rv64TailAllocationPolicy struct {

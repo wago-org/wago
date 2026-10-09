@@ -20,32 +20,33 @@ type railshotOptimizationSnapshot = optimization.Snapshot
 type railshotModuleStats struct{}
 
 type railshotCompileOptions struct {
-	NativeTailCalls        bool
-	NativeReferenceCalls   bool
-	SourceMaps             bool
-	UnwindMaps             bool
-	Profile                bool
-	BitCountFeatures       uint8
-	Optimizations          map[string]bool
-	OptimizationSnapshot   railshotOptimizationSnapshot
-	OptimizationDeltas     map[string]bool
-	Workers                int
-	DeferCodeMapping       bool
-	ElideBoundsChecks      bool
-	NoBoundsFacts          bool
-	ImportBindings         []railshotImportBinding
-	SyncHostCalls          bool
-	SyncHostSlots          int
-	Interruptible          bool
-	MemoryPressureAt       int
-	MemoryPressure         func()
-	GCTypeSubtypingRefTest bool
-	GCStructHelpers        bool
-	GCArrayHelpers         bool
-	GCFrameRoots           *shared.GCModuleFrameRootPlan
-	Codegen                codegen.Options
-	Stats                  *railshotModuleStats
-	CustomInstructions     map[uint32]railshot.CustomInstruction
+	NativeTailCalls          bool
+	NativeReferenceCalls     bool
+	NativeReferenceFunctions bool
+	SourceMaps               bool
+	UnwindMaps               bool
+	Profile                  bool
+	BitCountFeatures         uint8
+	Optimizations            map[string]bool
+	OptimizationSnapshot     railshotOptimizationSnapshot
+	OptimizationDeltas       map[string]bool
+	Workers                  int
+	DeferCodeMapping         bool
+	ElideBoundsChecks        bool
+	NoBoundsFacts            bool
+	ImportBindings           []railshotImportBinding
+	SyncHostCalls            bool
+	SyncHostSlots            int
+	Interruptible            bool
+	MemoryPressureAt         int
+	MemoryPressure           func()
+	GCTypeSubtypingRefTest   bool
+	GCStructHelpers          bool
+	GCArrayHelpers           bool
+	GCFrameRoots             *shared.GCModuleFrameRootPlan
+	Codegen                  codegen.Options
+	Stats                    *railshotModuleStats
+	CustomInstructions       map[uint32]railshot.CustomInstruction
 }
 
 func railshotOptKnobs() []railshotKnobInfo {

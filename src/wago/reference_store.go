@@ -3345,7 +3345,7 @@ func (in *Instance) funcrefDescriptorIndex(descriptor uint64) (int, bool) {
 		return 0, false
 	}
 	funcIndex := int(delta/coreruntime.FuncRefDescBytes) - 1
-	return funcIndex, funcIndex >= 0 && funcIndex < len(in.c.FuncTypeID)
+	return funcIndex, funcIndex >= 0 && funcIndex < len(in.c.FuncTypeID) && !railshotNonCallableFunction(in.c, funcIndex)
 }
 
 func (in *Instance) funcrefFunctionIdentity(descriptor uint64) (funcrefIdentity, bool) {
@@ -3411,7 +3411,7 @@ func (in *Instance) hostFuncRefForDescriptor(descriptor uint64) *HostFuncRef {
 
 func (in *Instance) localFuncrefDescriptor(localIdx int) (uint64, bool) {
 	fidx := in.c.NumImports + localIdx
-	if localIdx < 0 || fidx < in.c.NumImports || fidx >= len(in.c.FuncTypeID) || len(in.funcRefDescs) == 0 {
+	if localIdx < 0 || fidx < in.c.NumImports || fidx >= len(in.c.FuncTypeID) || len(in.funcRefDescs) == 0 || railshotNonCallableFunction(in.c, fidx) {
 		return 0, false
 	}
 	off := (fidx + 1) * coreruntime.FuncRefDescBytes

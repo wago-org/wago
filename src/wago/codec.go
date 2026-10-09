@@ -23,9 +23,10 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top fourteen bits avoids growing artifacts.
+	// low range; reserving the top fifteen bits avoids growing artifacts.
 	// Bit 50 originally witnessed ref.as_non_null. Branches share its retained
 	// internal-carrier ABI; old non-null artifacts keep the same bit and layout.
+	compiledRV64ReferenceFunctionABI      uint64 = 1 << 49
 	compiledRV64ReferenceControlABI       uint64 = 1 << 50
 	compiledRV64ReferenceCallABI          uint64 = 1 << 51
 	compiledRV64TableReferenceABI         uint64 = 1 << 52
@@ -45,7 +46,7 @@ const (
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
-	compiledCPUFeatures                   uint64 = 0x3ffff << 32
+	compiledCPUFeatures                   uint64 = 0x1ffff << 32
 	compiledGCExecutionMask                      = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 
 	// Import names are attacker-controlled artifact metadata. Bound the decoded
@@ -390,6 +391,9 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
+	if c.nativeReferenceFunctionABI {
+		required |= compiledRV64ReferenceFunctionABI
+	}
 	if c.nativeReferenceControlABI {
 		required |= compiledRV64ReferenceControlABI
 	}
@@ -1132,11 +1136,15 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		return err
 	}
 	gcExecution := required & compiledGCExecutionMask
+	c.nativeReferenceFunctionABI = required&compiledRV64ReferenceFunctionABI != 0
 	c.nativeReferenceControlABI = required&compiledRV64ReferenceControlABI != 0
 	c.nativeReferenceCallABI = required&compiledRV64ReferenceCallABI != 0
 	c.nativeContextTrapABI = required&compiledRV64ContextTrapABI != 0
 	c.nativeTableContextABI = required&compiledRV64TableContextABI != 0
 	c.nativeTableReferenceABI = required&compiledRV64TableReferenceABI != 0
+	if c.nativeReferenceFunctionABI && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&compiledRegisterABIDisabled == 0 || required&uint64(CoreFeatureReferenceTypes) == 0) {
+		return fmt.Errorf("RV64 closed reference function ABI requires framed retained reference contexts")
+	}
 	if (c.nativeReferenceCallABI || c.nativeReferenceControlABI) && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&uint64(CoreFeatureTypedFunctionReferences) == 0) {
 		return fmt.Errorf("RV64 typed-reference ABI requires typed retained native reference contexts")
 	}
@@ -1155,7 +1163,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
 	if err := railshotValidateReferenceCalls(c); err != nil {
 		return err
 	}

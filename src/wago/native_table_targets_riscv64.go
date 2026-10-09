@@ -290,7 +290,7 @@ func rv64PublishedDescriptor(owner *Instance, descriptor uint64) ([]byte, bool) 
 		return nil, false
 	}
 	function, ok := owner.funcrefDescriptorIndex(descriptor)
-	if !ok {
+	if !ok || railshotNonCallableFunction(owner.c, function) {
 		return nil, false
 	}
 	offset := (function + 1) * coreruntime.FuncRefDescBytes

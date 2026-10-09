@@ -84,10 +84,10 @@ func TestAMD64ArtifactCapabilityRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	for _, unknown := range []shared.AMD64Features{1 << 17, 1 << 18, 1 << 19} {
+	for _, unknown := range []shared.AMD64Features{1 << 16, 1 << 17, 1 << 18, 1 << 19} {
 		compiled.requiredAMD64Features = unknown
 		data, err := marshalCompiled(compiled)
-		if unknown >= 1<<18 {
+		if unknown >= 1<<17 {
 			if err == nil {
 				t.Fatal("CPU bit aliased an execution marker")
 			}
@@ -100,7 +100,7 @@ func TestAMD64ArtifactCapabilityRoundTrip(t *testing.T) {
 		if err := loaded.UnmarshalBinary(data); err == nil {
 			loaded.Close()
 			t.Fatal("unknown CPU requirement admitted", unknown)
-		} else if unknown == 1<<17 && !strings.Contains(err.Error(), "unknown AMD64 CPU requirements") {
+		} else if unknown == 1<<16 && !strings.Contains(err.Error(), "unknown AMD64 CPU requirements") {
 			t.Fatal("ordinary unknown CPU bit became a reference capability", err)
 		}
 	}

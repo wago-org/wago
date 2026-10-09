@@ -56,6 +56,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	if err := rv64ValidateNativeTail(c); err != nil {
 		return reject(err.Error())
 	}
+	if err := rv64ValidateReferenceFunctions(c); err != nil {
+		return reject(err.Error())
+	}
 	if m := rv64NativeTailModule(c); m != nil {
 		for _, p := range m.Plans {
 			if p.Kind > 2 {
@@ -147,7 +150,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) {
 					return reject("unsupported signature")
 				}
 			}

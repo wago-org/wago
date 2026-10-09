@@ -29,7 +29,17 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		return counts, 0, rv64TailGenerationError("indexed owner function arena")
 	}
 	counts.Owners, counts.Functions = 1, n
+	if c.nativeReferenceFunctionABI {
+		if c.NumImports != 0 {
+			return counts, 0, rv64TailGenerationError("closed reference owner cannot import functions")
+		}
+		counts.MaskSlots = n
+	}
 	for i := 0; i < n; i++ {
+		if railshotNonCallableFunction(c, i) {
+			counts.NonCallable++
+			continue
+		}
 		var sig FuncSig
 		if i < c.NumImports {
 			sig = c.importFuncSigs[i]
@@ -77,7 +87,11 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		}
 	}
 	if c.NumImports == 0 {
-		metadata, err = railshot.NativeTailDefinedOwnerBytes(n, counts.Values)
+		if c.nativeReferenceFunctionABI {
+			metadata, err = railshot.NativeTailSparseDefinedOwnerBytes(n, counts.NonCallable, counts.Values)
+		} else {
+			metadata, err = railshot.NativeTailDefinedOwnerBytes(n, counts.Values)
+		}
 	} else {
 		if counts.Proxies != 0 {
 			if _, err = (rv64TailThunkCodeOwner{in}).NativeTailCodeView(); err != nil {

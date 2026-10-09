@@ -96,10 +96,14 @@ now selects only actual reference-valued functions, rechecks closed source and
 all emitted modes, and records a distinct image witness. Scalar/SWAR direct calls
 and local proper tails retain framed ABI and bounded metadata. Bare nullable
 signatures keep baseline ReferenceTypes admission; ordinary modules and unused
-control declarations keep their existing witnesses. Public source/artifact
-wiring and destination permission before mapping remain the next boundary.
-Foreign parking/ownership and general reference-callable integration remain
-separate work. Mixed table/call_ref and private mutable-cell fixtures retain
+control declarations keep their existing witnesses. Private source and retained
+artifact integration now preserves that witness, checks the closed metadata
+allowlist, and requires destination permission before RW staging becomes RX.
+Sparse production owners retain internal frame spans without callable identities;
+ordinary entry checks every internal descriptor and target row is empty. Tiny
+numeric foreign exports can invoke wider internal reference/vector functions
+after logical producer closure. General reference-valued imports/exports and
+mutable reference ownership remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

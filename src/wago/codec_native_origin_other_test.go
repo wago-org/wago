@@ -5,6 +5,8 @@ package wago
 import (
 	"bytes"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
 func TestCompiledCodecRejectsForeignNativeOriginCapability(t *testing.T) {
@@ -87,5 +89,46 @@ func TestCompiledCodecRejectsForeignNativeOriginCapability(t *testing.T) {
 	}
 	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeReferenceControlABI || decoded.nativeReferenceCallABI || decoded.nativeContextTrapABI || decoded.nativeTableContextABI || decoded.nativeTableReferenceABI {
 		t.Fatal("reused decoder retained native origin capability", err)
+	}
+}
+
+func TestCompiledCodecReferenceFunctionCapability(t *testing.T) {
+	base := Compiled{Entry: []int{0}, InternalEntry: []int{0}, Funcs: []FuncSig{{}}}
+	plain, err := marshalCompiledMetadata(&base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Compiled
+	decoded.code = make([]byte, 16)
+	for _, complete := range []bool{false, true} {
+		c := base
+		c.nativeReferenceFunctionABI = true
+		c.nativeContextTrapABI, c.nativeTableContextABI, c.nativeTableReferenceABI, c.registerABIDisabled = complete, complete, complete, complete
+		c.requiredFeatures = CoreFeatureReferenceTypes
+		blob, err := marshalCompiledMetadata(&c)
+		if err != nil || len(blob) != len(plain) {
+			t.Fatal("function witness wire size", err)
+		}
+		if err := unmarshalCompiledMetadata(&decoded, blob); err == nil {
+			t.Fatal("foreign closed function witness accepted", complete)
+		}
+	}
+	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeReferenceFunctionABI {
+		t.Fatal("reused decoder retained function witness", err)
+	}
+	for _, bit := range []uint{17, 18, 31} {
+		c := base
+		c.requiredAMD64Features = shared.AMD64Features(1 << bit)
+		if _, err := marshalCompiledMetadata(&c); err == nil {
+			t.Fatal("CPU bit aliases native execution metadata", bit)
+		}
+	}
+	base.requiredAMD64Features = shared.AMD64Features(1 << 16)
+	unknown, err := marshalCompiledMetadata(&base)
+	if err != nil {
+		t.Fatal("in-field unknown CPU fixture", err)
+	}
+	if err := unmarshalCompiledMetadata(&decoded, unknown); err == nil || decoded.nativeReferenceFunctionABI {
+		t.Fatal("unknown CPU requirement became RV64 witness", err)
 	}
 }

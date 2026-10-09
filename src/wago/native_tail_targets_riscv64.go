@@ -25,6 +25,9 @@ func rv64QualifiedNativeTailTarget(target *InstanceExport) (entry, home, context
 		return
 	}
 	producer := target.inst
+	if railshotNonCallableFunction(producer.c, producer.c.NumImports+target.localIdx) {
+		return
+	}
 	code, err := (rv64TailCodeOwner{producer}).NativeTailCodeView()
 	if err != nil {
 		return
@@ -62,6 +65,9 @@ func rv64PrepareTailTargets(in *Instance, imports resolvedImports, sharedBase ui
 	binary.LittleEndian.PutUint64(directory[16:], uint64(offHeapSlicePtr(in.funcRefDescs)))
 	binary.LittleEndian.PutUint64(directory[24:], uint64(in.nativeContext))
 	for function := range in.c.FuncTypeID {
+		if railshotNonCallableFunction(in.c, function) {
+			continue
+		}
 		var entry, home, context, flags uint64
 		if local := function - in.c.NumImports; local >= 0 {
 			if local >= len(in.c.Entry) || local >= len(in.c.Funcs) {
@@ -124,6 +130,13 @@ func rv64ValidateTailTargets(in *Instance) error {
 	}
 	for function := range in.c.FuncTypeID {
 		row := d[abi.RV64TailTargetsHeaderBytes+function*abi.RV64TailTargetsRowBytes:]
+		if railshotNonCallableFunction(in.c, function) {
+			descriptor := in.funcRefDescs[(function+1)*coreruntime.FuncRefDescBytes:]
+			if !rv64EmptyTailTargetRow(row) || !rv64EmptyTailTargetRow(descriptor) || binary.LittleEndian.Uint64(descriptor[coreruntime.FuncRefContextOffset:]) != 0 {
+				return fmt.Errorf("RV64 internal reference descriptor and tail rows must be empty")
+			}
+			continue
+		}
 		entry, home, context, flags := binary.LittleEndian.Uint64(row), uint64(in.jm.LinMemBase()), uint64(in.nativeContext), uint64(0)
 		var expected uint64
 		if local := function - in.c.NumImports; local >= 0 {
