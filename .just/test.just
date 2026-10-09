@@ -92,8 +92,8 @@ tinygo compiler=env('TINYGO', 'tinygo') scheduler=env('TINYGO_SCHEDULER', 'tasks
     {{ compiler }} test -tags=wago_regalloccheck -v -scheduler='{{ scheduler }}' ./internal/regalloccheck ./src/core/encoder/amd64 ./src/core/encoder/arm64
     {{ compiler }} test -tags=wago_regalloccheck -v -scheduler='{{ scheduler }}' ./src/core/runtime/ ./src/wago/
 
-# Focused operand comparison controls and native AMD64 source capture checks.
+# Focused checked operand controls and native AMD64 source capture checks.
 native-compare:
-    GOMAXPROCS=1 go test -p=1 -count=1 ./tests/tools/native-compare
+    GOMAXPROCS=1 go test -p=1 -count=1 -tags=wago_regalloccheck ./tests/tools/native-compare
     GOMAXPROCS=1 go test -p=1 -count=1 -tags=wago_profile,wago_regalloccheck ./tests/tools/native-compare
     GOMAXPROCS=1 go vet -p=1 -tags=wago_profile,wago_regalloccheck ./tests/tools/native-compare

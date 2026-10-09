@@ -24,6 +24,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Add an opt-in operand-aware native comparison diagnostic with bounded Wasm
+  capture, source anchors, explicit opaque-byte coverage and focused test recipes.
+
 - Add mixed-scalar host-call checks across nested memory, global, and table
   changes, including nested traps and repeated resolved calls.
 - Bind corpus child completion to loaded input identity and exact invocation

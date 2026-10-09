@@ -224,7 +224,7 @@ func Compare(a, b Snapshot) (Report, error) {
 	}
 	compareRaw(a, b, &out)
 	if !out.RawComplete && (a.Capture != nil && a.Capture.RawCoverage || b.Capture != nil && b.Capture.RawCoverage) {
-		incomplete("raw region coverage/alignment incomplete")
+		incomplete("raw comparison incomplete")
 	}
 	if len(a.Regions) != len(b.Regions) {
 		incomplete("region count mismatch")
