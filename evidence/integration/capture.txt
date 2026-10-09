@@ -1,0 +1,4 @@
+GOMAXPROCS=1 go run -p=1 -tags=wago_profile -ldflags "-X main.compiledRevision=8dfea5eecfcd4b210d9b725a68f6b10f2d797a73+recipe-build" ./tests/tools/native-compare capture 'tests/fixtures/wasm/fib.wasm' 'evidence/integration/fib-before.json'
+captured amd64: native=105 mapped=51 unmapped=54 bytes; compiler=8dfea5eecfcd4b210d9b725a68f6b10f2d797a73+recipe-build; snapshot=evidence/integration/fib-before.json
+GOMAXPROCS=1 go run -p=1 -tags=wago_profile -ldflags "-X main.compiledRevision=8dfea5eecfcd4b210d9b725a68f6b10f2d797a73+recipe-build" ./tests/tools/native-compare capture 'tests/fixtures/wasm/fib.wasm' 'evidence/integration/fib-after.json'
+captured amd64: native=105 mapped=51 unmapped=54 bytes; compiler=8dfea5eecfcd4b210d9b725a68f6b10f2d797a73+recipe-build; snapshot=evidence/integration/fib-after.json

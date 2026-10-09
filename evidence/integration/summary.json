@@ -1,0 +1,214 @@
+{
+  "BenchmarkRailshotCompileSmallScalar": {
+    "after": [
+      {
+        "ns": 5949.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    4306\t      5949 ns/op\t    8757 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 5968.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    3614\t      5968 ns/op\t    8785 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6285.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    3890\t      6285 ns/op\t    8773 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6148.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    3925\t      6148 ns/op\t    8771 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6172.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    4032\t      6172 ns/op\t    8767 B/op\t      22 allocs/op"
+      }
+    ],
+    "before": [
+      {
+        "ns": 6046.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    4098\t      6046 ns/op\t    8848 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6216.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    4046\t      6216 ns/op\t    8851 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6149.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    3816\t      6149 ns/op\t    8776 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6124.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    3634\t      6124 ns/op\t    8784 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6052.0,
+        "line": "BenchmarkRailshotCompileSmallScalar   \t    3849\t      6052 ns/op\t    8775 B/op\t      22 allocs/op"
+      }
+    ],
+    "a1": [
+      {
+        "ns": 6121.0,
+        "line": "BenchmarkRailshotCompileSmallScalar \t    3399\t      6121 ns/op\t    8748 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 5899.0,
+        "line": "BenchmarkRailshotCompileSmallScalar \t    3711\t      5899 ns/op\t    8781 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6120.0,
+        "line": "BenchmarkRailshotCompileSmallScalar \t    3862\t      6120 ns/op\t    8774 B/op\t      22 allocs/op"
+      }
+    ],
+    "a2": [
+      {
+        "ns": 6057.0,
+        "line": "BenchmarkRailshotCompileSmallScalar \t    3758\t      6057 ns/op\t    8779 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 5958.0,
+        "line": "BenchmarkRailshotCompileSmallScalar \t    4004\t      5958 ns/op\t    8768 B/op\t      22 allocs/op"
+      },
+      {
+        "ns": 6093.0,
+        "line": "BenchmarkRailshotCompileSmallScalar \t    3997\t      6093 ns/op\t    8768 B/op\t      22 allocs/op"
+      }
+    ]
+  },
+  "BenchmarkRailshotCompileMediumControl": {
+    "after": [
+      {
+        "ns": 7535.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    4224\t      7535 ns/op\t   10699 B/op\t      21 allocs/op"
+      },
+      {
+        "ns": 7085.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    4202\t      7085 ns/op\t   10700 B/op\t      21 allocs/op"
+      },
+      {
+        "ns": 7432.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    4057\t      7432 ns/op\t   10705 B/op\t      21 allocs/op"
+      },
+      {
+        "ns": 7175.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    4053\t      7175 ns/op\t   10705 B/op\t      21 allocs/op"
+      },
+      {
+        "ns": 7276.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    3688\t      7276 ns/op\t   10721 B/op\t      21 allocs/op"
+      }
+    ],
+    "before": [
+      {
+        "ns": 7324.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    3246\t      7324 ns/op\t   10544 B/op\t      21 allocs/op"
+      },
+      {
+        "ns": 7318.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    4336\t      7318 ns/op\t   10544 B/op\t      21 allocs/op"
+      },
+      {
+        "ns": 6993.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    3188\t      6993 ns/op\t   10698 B/op\t      21 allocs/op"
+      },
+      {
+        "ns": 7148.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    4134\t      7148 ns/op\t   10702 B/op\t      21 allocs/op"
+      },
+      {
+        "ns": 7219.0,
+        "line": "BenchmarkRailshotCompileMediumControl \t    3249\t      7219 ns/op\t   10670 B/op\t      21 allocs/op"
+      }
+    ]
+  },
+  "BenchmarkRailshotCompileALUHeavy": {
+    "after": [
+      {
+        "ns": 23167.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t     997\t     23167 ns/op\t    9456 B/op\t      11 allocs/op"
+      },
+      {
+        "ns": 25001.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1134\t     25001 ns/op\t    9456 B/op\t      11 allocs/op"
+      },
+      {
+        "ns": 23420.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1101\t     23420 ns/op\t    9456 B/op\t      11 allocs/op"
+      },
+      {
+        "ns": 23355.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1137\t     23355 ns/op\t    9456 B/op\t      11 allocs/op"
+      },
+      {
+        "ns": 23510.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1141\t     23510 ns/op\t    9456 B/op\t      11 allocs/op"
+      }
+    ],
+    "before": [
+      {
+        "ns": 23626.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1132\t     23626 ns/op\t    9456 B/op\t      11 allocs/op"
+      },
+      {
+        "ns": 25061.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1078\t     25061 ns/op\t    9456 B/op\t      11 allocs/op"
+      },
+      {
+        "ns": 25933.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1146\t     25933 ns/op\t    9599 B/op\t      11 allocs/op"
+      },
+      {
+        "ns": 23277.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1083\t     23277 ns/op\t    9456 B/op\t      11 allocs/op"
+      },
+      {
+        "ns": 23571.0,
+        "line": "BenchmarkRailshotCompileALUHeavy      \t    1112\t     23571 ns/op\t    9603 B/op\t      11 allocs/op"
+      }
+    ]
+  },
+  "BenchmarkBoundsFactsExecute/sources=8/guard=false": {
+    "after": [
+      {
+        "ns": 35.46,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        35.46 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      },
+      {
+        "ns": 33.91,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        33.91 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      },
+      {
+        "ns": 34.93,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        34.93 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      },
+      {
+        "ns": 33.55,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        33.55 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      },
+      {
+        "ns": 33.61,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        33.61 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      }
+    ],
+    "before": [
+      {
+        "ns": 35.87,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        35.87 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      },
+      {
+        "ns": 33.64,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        33.64 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      },
+      {
+        "ns": 37.01,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        37.01 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      },
+      {
+        "ns": 33.74,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        33.74 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      },
+      {
+        "ns": 33.77,
+        "line": "BenchmarkBoundsFactsExecute/sources=8/guard=false         \t   10000\t        33.77 ns/op\t       811.0 native-B\t       0 B/op\t       0 allocs/op"
+      }
+    ]
+  }
+}

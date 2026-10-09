@@ -1,0 +1,4 @@
+f516e3bbb5dd810fa6c20a73b7b3129d149de60fe09755fd15a169f398572820  /tmp/wago815-integration-tool
+ffdba4c33bd4d04c9029422d7674685c0e36a8ff172a8ec1d53096acd5d42836  /tmp/wago815-integration-diagnostic.test
+8923852 /tmp/wago815-integration-tool
+15079419 /tmp/wago815-integration-diagnostic.test

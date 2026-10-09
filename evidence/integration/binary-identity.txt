@@ -1,0 +1,8 @@
+1b773c48629a11abcbc74548f982a494aaaf123e22c7a7f82cfabd0a229d82f1  /tmp/wago-815-integration-before
+1b773c48629a11abcbc74548f982a494aaaf123e22c7a7f82cfabd0a229d82f1  /tmp/wago-815-integration-after
+8d2675239af8599332655bbf1ede480060c8e1bf3525765f1cf62097f7687170  /tmp/wago-815-integration-before.test
+8d2675239af8599332655bbf1ede480060c8e1bf3525765f1cf62097f7687170  /tmp/wago-815-integration-after.test
+1624496 /tmp/wago-815-integration-before
+1624496 /tmp/wago-815-integration-after
+15223309 /tmp/wago-815-integration-before.test
+15223309 /tmp/wago-815-integration-after.test

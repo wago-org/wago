@@ -1,0 +1,3 @@
+GOMAXPROCS=1 go run -p=1 ./tests/tools/native-compare compare 'evidence/integration/fib-before.json' 'evidence/integration/fib-after.json'
+supplied regions: compared=12 supported=12 unknown=0 changes=0 complete=true limit=false
+image bytes outside supplied regions: before=54 after=54

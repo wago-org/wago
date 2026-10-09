@@ -1,0 +1,126 @@
+{
+  "capture": {
+    "native_sha256": "23884eaa206f055bd7862d2c03f2f0bbfeac39eadf7c02c80000c44af58e00ea",
+    "native_bytes": 105,
+    "mapped_bytes": 51,
+    "unmapped_bytes": 54
+  },
+  "architecture": "amd64",
+  "provenance": {
+    "compiler_revision": "60481522292483cf94a116b17a68c69a10a8c737",
+    "binary_sha256": "f516e3bbb5dd810fa6c20a73b7b3129d149de60fe09755fd15a169f398572820",
+    "input_sha256": "a7ae34ae8d77c812be235f7fdc690eeb2248b348bd5958e120dd755384e7c5f9",
+    "cpu_features": "configured-mask=00000000;optimizations=8615b90dc39ba3ea99f5b4e54f497fa18783170c764488f6ecabe5fe5a18683b",
+    "bounds": "explicit",
+    "build": "wago_profile",
+    "compiler_path": "established/direct-backend"
+  },
+  "regions": [
+    {
+      "id": "f0.pc5.0",
+      "function": 0,
+      "wasm_offset": 5,
+      "instructions": [
+        {
+          "offset": 46,
+          "hex": "41b901000000"
+        }
+      ]
+    },
+    {
+      "id": "f0.pc7.0",
+      "function": 0,
+      "wasm_offset": 7,
+      "instructions": [
+        {
+          "offset": 52,
+          "hex": "660f1f840000000000"
+        },
+        {
+          "offset": 61,
+          "hex": "0f1f00"
+        }
+      ]
+    },
+    {
+      "id": "f0.pc14.0",
+      "function": 0,
+      "wasm_offset": 14,
+      "instructions": [
+        {
+          "offset": 64,
+          "hex": "8b3c24"
+        },
+        {
+          "offset": 67,
+          "hex": "4439d7"
+        },
+        {
+          "offset": 70,
+          "hex": "0f8e12000000",
+          "relocation": "f0.pc40.0.i0"
+        }
+      ]
+    },
+    {
+      "id": "f0.pc23.0",
+      "function": 0,
+      "wasm_offset": 23,
+      "instructions": [
+        {
+          "offset": 76,
+          "hex": "4489df"
+        },
+        {
+          "offset": 79,
+          "hex": "4589cb"
+        }
+      ]
+    },
+    {
+      "id": "f0.pc20.0",
+      "function": 0,
+      "wasm_offset": 20,
+      "instructions": [
+        {
+          "offset": 82,
+          "hex": "4101f9"
+        }
+      ]
+    },
+    {
+      "id": "f0.pc31.0",
+      "function": 0,
+      "wasm_offset": 31,
+      "instructions": [
+        {
+          "offset": 85,
+          "hex": "4183c202"
+        }
+      ]
+    },
+    {
+      "id": "f0.pc34.0",
+      "function": 0,
+      "wasm_offset": 34,
+      "instructions": [
+        {
+          "offset": 89,
+          "hex": "e9e2ffffff",
+          "relocation": "f0.pc14.0.i0"
+        }
+      ]
+    },
+    {
+      "id": "f0.pc40.0",
+      "function": 0,
+      "wasm_offset": 40,
+      "instructions": [
+        {
+          "offset": 94,
+          "hex": "4489d8"
+        }
+      ]
+    }
+  ]
+}
