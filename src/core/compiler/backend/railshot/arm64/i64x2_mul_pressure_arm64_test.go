@@ -27,4 +27,17 @@ func TestI64x2MulFiveTransientRegisters(t *testing.T) {
 	if f.depth() != 1 || f.s.back().st.typ != mtV128 || len(f.a.B) == 0 {
 		t.Fatal("missing vector result")
 	}
+	if f.fpinned != 0 {
+		t.Fatalf("temporary pins remain: %x", f.fpinned)
+	}
+	result := f.s.back()
+	for r, owner := range f.fregUser {
+		if Reg(r) == result.st.reg {
+			if owner != result {
+				t.Fatalf("result register %d lost its owner", r)
+			}
+		} else if owner != nil {
+			t.Fatalf("temporary register %d retains an owner", r)
+		}
+	}
 }
