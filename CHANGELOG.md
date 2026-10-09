@@ -64,6 +64,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   before the Go-call argument setup. Preserve memory ordering for zero-count
   notify and keep matching dynamic waits on the synchronized helper path.
 
+
+### Added
+
+- Add an opt-in operand-aware native comparison diagnostic with bounded Wasm
+  capture, source anchors, explicit opaque-byte coverage and focused test recipes.
+
 ## [v0.1.0-beta.13] - 2026-10-15
 
 ### Changed

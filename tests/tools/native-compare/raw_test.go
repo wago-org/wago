@@ -127,3 +127,19 @@ func TestIdenticalFastPathIsConservative(t *testing.T) {
 		}
 	}
 }
+
+func TestOpaqueObservationsDoNotWaiveQualification(t *testing.T) {
+	a, b := rawFixture(), rawFixture()
+	b.Provenance.CPUFeatures = "different"
+	b.RawRegions[0].Hex = "5990"
+	r, err := Compare(a, b)
+	if err != nil || r.Complete || r.RawComplete || r.RawCompared != 2 || len(r.RawChanges) != 1 {
+		t.Fatal(r, err)
+	}
+	b.Provenance = a.Provenance
+	b.Regions[0].Instructions[0].Hex = "0f0b"
+	r, err = Compare(a, b)
+	if err != nil || r.Complete || !r.RawComplete || r.Unknown != 1 || len(r.RawChanges) != 1 {
+		t.Fatal(r, err)
+	}
+}

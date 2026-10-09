@@ -112,8 +112,9 @@ func validateRaw(s Snapshot) error {
 	return nil
 }
 func compareRaw(a, b Snapshot, out *Report) {
-	out.RawComplete = out.Complete && a.Capture != nil && b.Capture != nil && a.Capture.RawCoverage && b.Capture.RawCoverage
-	if !out.RawComplete {
+	hasCoverage := a.Capture != nil && b.Capture != nil && a.Capture.RawCoverage && b.Capture.RawCoverage
+	out.RawComplete = out.Complete && hasCoverage
+	if !hasCoverage {
 		return
 	}
 	if len(a.RawRegions) != len(b.RawRegions) {
