@@ -1,0 +1,38 @@
+{
+  "compiler_head": "b21f51545",
+  "corpus_binary_head": "38eff78fb",
+  "difference": "Only the seqtk catalog selector changed in test diagnostics. Kernel and compiler source unchanged.",
+  "flags": {
+    "timing": "GOFLAGS=-buildvcs=false; normal or -tags=wago_sumunroll; no diagnostics",
+    "validation": "-tags=wago_sumunroll,wago_codegenstats,wago_regalloccheck",
+    "samples": 20,
+    "benchtime": "100ms",
+    "GOMAXPROCS": 1,
+    "cpu": 2
+  },
+  "binary_sha256": {
+    "/tmp/wago-mitigation-corpus-diag.test": "d71e71171bf92b0df3ad11db9949163dbefbc76bc27a53f427d6784a6c558201",
+    "/tmp/wago-mitigation-corpus-all.test": "bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1",
+    "/tmp/wago-mitigation-corpus-normal.test": "3d97bc850df2961c0ca122d277240974a0a5c2e8d2c26b970326efe24c7b7d1e",
+    "/tmp/wago-mitigation-inline.test": "555a5cb5fc14815fec44c77023c191f6557732e2f1d1d10fbb98add1628a7e4c",
+    "/tmp/wago-mitigation-diag.test": "571012b355df9ba02ceedfa56311d54ec23a33838be26c7593022c35723d6fcf",
+    "/tmp/wago-mitigation-all.test": "c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236",
+    "/tmp/wago-mitigation-normal.test": "a2bcdbe662969f717bba3a825b99e3592485fcdaa4ecd9248b7f541a92a13911",
+    "/tmp/wago-followup-corpus-baseline.test": "b68d6505c358dc74b98e7f7f3c0bb6f2dee1a274ae68f6b66738a56f8fe29440"
+  },
+  "source_sha256": {
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_followup_bench_test.go": "f05ec094843e7921c77690f38f7c6aac28b7f975527f16abd37da9e64c5ba7fb",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_capacity_test.go": "6052da6f9f1b593b78e7ba676b45beb46ff1dde66f2355850a1ef1d3d2ad2357",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_selection_test.go": "2ac812d1ce9e16007a682f548cba2a54d39e8804c4e183d34263e1616a59b2f6",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_experimental_selection_test.go": "94336159ce798b5143ff19dbcf428f647f6d7eb7645bdf661fa0361c4662afa9",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_default.go": "89f75c3fa71d37888ca70f8e462eccf497b35caceab6e6bec585d856b0c0acb3",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_threshold_test.go": "340cb109bdd55f13cea89abf2a4d1a77b0b458f54d30bf0a8e32216a21e2767d",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_pair_test.go": "3f78230fb1120cfa2da79660fe8eb6c0572d96d0baac1b2cf74981fd6451d699",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_followup_emission_test.go": "571f69cb5ee120e7d90f850215015064c753b57fc8dc1ca75158aca52746ddee",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_experiment_test.go": "473d713706e48914f056b2f54a36316040ab2849ba1bfaa9227524023031745d",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_headroom_test.go": "a4e425e77e400d5e48af4a32c7d853df87fb5adc2a59f989cf90d2e3421915be",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_fallback_test.go": "22a67548af2ce95515dfa6a15fe14114e9111fa4647f749d06de11ce0560ec17",
+    "src/core/compiler/backend/railshot/amd64/sum_unroll_experimental.go": "249588bae1f14bbccfc60cbd53fbbc5b1ec50cff4b5281553935990d65cfb2d3",
+    "src/core/compiler/backend/railshot/amd64/compile.go": "3727ff5ee9f8e757c20c686e79b4ee2e0aa931a5ff203912e6e2c4dc556aa85c"
+  }
+}

@@ -1,0 +1,7 @@
+--- FAIL: TestSumUnrollPairEmission (0.00s)
+    sum_unroll_pair_test.go:23: pair tail not emitted: map[experimental-linear-sum:1]
+--- FAIL: TestSumUnrollPairBudgetFallback (0.00s)
+    sum_unroll_pair_test.go:49: fallback not selected: map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-linear-sum:1 frame-header-elide:1]
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.003s
+FAIL

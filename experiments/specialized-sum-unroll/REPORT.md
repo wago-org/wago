@@ -810,3 +810,302 @@ The two recorded follow-up ideas remain SIMD map emission without module
 cloning and broader reduction recognition supported by real coverage. Neither
 is implemented, and no additional PR is opened. PR #910 remains draft for
 human review. Do not merge or enable a new default from this experiment.
+
+## Phase 3: bounded mitigation study
+
+This study continues at `975247c4a`; it does not replace either earlier phase.
+The fixed plan is [MITIGATION-PLAN.md](MITIGATION-PLAN.md). Tests were committed
+first at `7cb15e21d`, followed by paired-tail emission at `2540e0c38`, bounded
+buffer reservation at `b21f51545`, and the corpus selector correction at
+`38eff78fb`. All implementations remain private, build-tagged experiments.
+
+### Designs and limits
+
+P keeps D's 16/4 main group. It changes only the remaining scalar work after
+Wago's first-iteration peel. An odd remainder enters the second half of a
+pair. Each load has native displacement zero and each address/count update
+uses 32-bit arithmetic. This preserves wrapping on the short-count dispatch
+that bypasses the main-group wrap check. The pair uses the original accumulator
+and one of the three existing partial sums, which the common exit combines
+once. It adds no temporary register, allocation, threshold, or four-load body.
+The conservative latch budget increases from 448 to 480 bytes.
+
+DR keeps D's native instructions and changes a bounded code-buffer estimate.
+It reuses function hints already available in the existing module body-size
+loop. A small (at most 2048 Wasm body bytes), i64-first-result function with
+memory and a loop can request 128 extra logical bytes. Calls, tail calls,
+SIMD and bulk memory disqualify the hint. Total headroom is at most 1024
+logical bytes per module. This is a sizing predictor, not exact recognition.
+It never enables an emitter or changes source Wasm. It is active only for
+one-worker, deferred, noncompact compilation. Effective WAGO_COMPACT and
+implicit memory-pressure callbacks disable it. Explicit callback thresholds
+are unchanged. Constant false/zero stubs inline in normal builds; see
+[default-inline-summary.txt](results/mitigation/default-inline-summary.txt).
+
+The cap is not a total allocated-byte bound. Worker and join buffers can each
+use the estimate; Go rounds allocation sizes, and large serial heap compilation
+can reduce its initial capacity. `memory.sum` changes the two initial size
+classes from 512 to 640 bytes, avoiding their later growth. Thus the expected
+cost relative to 4/4 is 256 bytes, while two reallocation objects disappear.
+PR combines P with the same reservation. No new threshold or layout search
+was performed.
+
+### Correctness, code and coverage
+
+All seven tested modes (baseline, D, P, DR, PR, H, T64) pass the selected native
+oracle, wrap, trap, exit-local, overflow, pressure, selection and fallback
+matrix with register checks. The 4 GiB tests execute; they are not skipped.
+P/PR tests require the paired-tail marker. Atomic register-pressure rejection
+and the 479-byte budget fallback are tested separately. The fallback is also
+executed against the independent oracle. Deferred reserved/unreserved modules
+have identical code and entries and execute against the oracle. Callback
+counts and bytes match at thresholds 0, 1 and 1024. Public allocation tests
+were first recorded failing before reservation, then passing after it.
+
+The assembly has an identical 100-byte main group/backedge in D and P. P's
+pair uses seven instructions for two loads instead of eight, but pays one
+extra parity test and branch at entry. Both address and count updates remain
+per-load. The tail has two accumulation chains rather than one. Any timing
+change must therefore be assessed against the parity cost and changed exit
+layout; fewer branches alone is not proof of a win. The pair adds 25 native
+bytes. Kernel sizes at pressure 0/4/12 are D=410/457/577 and P=435/482/602;
+frames remain 56/88/168. There are no new operand spills/reloads. The corpus
+sum function is 312 bytes for baseline, 375 for D/DR, and 400 for P/PR; its
+frame is 40 bytes in every mode. Whole memory-module sizes are 472/535/560.
+DR native bytes equal D; PR equals P.
+
+The eight negative controls have identical native SHA-256 values across all
+five modes and zero specialized-sum admissions. `seqtk-fastq-to-fasta` is a
+real module with a false-positive sizing hint: local function 5 requests
+128 logical bytes but no exact sum emitter runs. Its large serial heap path
+reduces that increment to about 96 requested bytes; allocation rounding can
+absorb it. It does not test a worst-case allocation-class boundary.
+
+The separate hint scan covers 121 checked-in `.wasm` files, with 120 decoded
+and one explicit disabled-exception-handling exclusion (MicroPython).
+Fourteen modules request headroom; thirteen are false positives relative to
+the earlier exact-recognizer corpus scan. Raw paths, hashes, local indices,
+base capacities and exclusions are in
+[headroom-corpus.json](results/mitigation/admission/headroom-corpus.json).
+This differs from the earlier catalog's 125 records: this scan counts files,
+not workload entries. There is still no eligible real application that proves
+an execution benefit. `memory.sum` remains a synthetic corpus kernel.
+
+### Measurement method
+
+All timing binaries were built before measurement. They have no diagnostic
+or register-check tags. Every decisive row has 20 serial interleaved pairs,
+with alternating order, GOMAXPROCS=1, CPU 2, and a 100 ms benchmark window.
+CPU is AMD Ryzen 7 8845HS; exact Go, OS, flags, affinity, environment, binary
+hashes and order are saved per run. Inputs and runtime options are unchanged.
+Kernel execution excludes compilation/setup. Public compile and the complete
+single-call lifecycle are separate. The old normal corpus binary is frozen
+from phase 2 for the disabled-experiment control. Its identity is retained in
+[build.json](results/mitigation/build.json).
+
+`benchstat` supplies unpaired significance; CSV/JSON also retain paired
+ratios. P-values are not adjusted for the multiple comparisons. Isolated small
+gains require independent repetition and a useful practical effect.
+Nonsignificance is not proof of equivalence. All adverse rows remain.
+A failed initial corpus selection used `seqtk` instead of its catalog ID;
+that attempt failed before a timing comparison and is retained separately.
+The corrected selector is `seqtk-fastq-to-fasta`. No sample was removed or
+replaced from a completed comparison.
+
+Normal-build machine code was checked separately. The original 58-byte
+body-size loop is byte-identical and contains no experimental branch or call.
+The complete compile function remains 18762 bytes with a 3360-byte frame,
+but its stack-slot and relocated data addresses differ. Do not infer whole
+function byte equality from the loop check. See
+[default-compiler-code.json](results/mitigation/default-compiler-code.json) and
+the compressed old/new assembly files. The disabled control compares normal
+binaries and finds no statistically significant time row or allocation-count
+change among 25 rows. Small B/op fluctuations remain; this is evidence of no
+detected regression, not a proof of equivalence.
+
+### Result and cost table
+
+Negative execution/compile percentages mean faster. A star means benchstat p<.05. The D row preserves phase 2 results; it is not a fresh simultaneous normal-to-D comparison. P public results are one 20-pair cost-qualification run, not a promotion repeat. All rows below concern the synthetic corpus `memory.sum` at 512 elements.
+
+| Candidate | Execution vs normal | Public compile vs normal | Public bytes / allocations | Sum native bytes | Decision |
+|---|---:|---:|---:|---:|---|
+| Existing 4/4 | Reference | Reference | 23360–23361 / 108 | 312 | Keep default |
+| Existing D 16/4, phase 2 | -9.91%* / -10.60%* | +5.04%* / +3.70%* | 25153 / 110 | 375 | Main-loop reference |
+| P: paired tail | -6.06%* | -0.04% | 25153 / 110 | 400 | Reject added tail complexity |
+| DR: 16/4 + reservation | -9.57%* / -10.12%* | +0.00% / +1.33%* | 23617 / 108 | 375 | Best mitigation; investigate further |
+
+PR (pair + reservation) passes correctness and byte-identity checks but is not timed. P did not earn a combined performance experiment under the frozen [confirmation rule](results/mitigation/confirmation-plan.txt). No new threshold was tested. Earlier H/T comparisons and all original evidence remain above.
+
+DR restores the baseline allocation count with 256 extra bytes (+1.10%) for public compilation. Relative to D, the measured public compilation reduction is 1536 bytes in the first run and 1537 in the repeat, with two fewer allocation objects in both. The repeat records 23616 B/op rather than 23617; this one-byte accounting variation is retained. Complete lifecycle allocations similarly fall from 119 to 117; execution stays at zero allocations. Its native instructions, frame and spills are exactly D's. The direct comparison isolates the allocation change:
+
+| D → DR | First run | Repeat |
+|---|---:|---:|
+| Compile/memory | -0.31% | +5.01% |
+| CompileFull/memory | -1.47% | +1.53% |
+| Exec/memory.sum | -0.02% | -0.55% |
+| SumUnrollLifecycle/memory | +0.69% | +3.31% |
+
+The first normal-to-DR public compilation difference is not significant. The repeat is +1.33% (p=.027); it must count as a measured cost. A faster full lifecycle is not established. The reduction of two allocation objects is exact; no compile-time reduction was established.
+
+Using each run's public-compile and execution medians, the added compilation time divided by the per-call saving gives the following rough recovery counts. These estimates are not statistically established break-even points; setup/lifecycle noise is much larger than a saved nanosecond per call.
+
+- corpus-DR-run1: added compile median 0.5 ns; execution saving 9.325 ns/call; arithmetic recovery 1 call.
+
+- corpus-DR-repeat: added compile median 305.0 ns; execution saving 9.820 ns/call; arithmetic recovery 32 calls.
+- corpus-memory-P: added compile median -9.0 ns; execution saving 5.850 ns/call; arithmetic recovery 0 calls.
+
+### Full paired-tail execution comparison
+
+All original boundary rows are retained. Dashes mark cases not included in the fixed 22-row confirmation, not discarded samples. Each populated cell represents 20 pairs. Both references are needed: normal-to-P measures total benefit, while D-to-P measures the tail's added value.
+
+| Address / count | 4/4 → P first | 4/4 → P repeat | D → P first | D → P repeat |
+|---|---:|---:|---:|---:|
+| addr0/n0 | -2.01% | -0.19% | -0.56% | +1.31% |
+| addr0/n8 | +0.35% | +0.59% | -0.45% | -0.02% |
+| addr0/n16 | +2.06%* | +2.35%* | -1.32%* | -0.42% |
+| addr0/n17 | -0.18% | -0.56% | +0.04% | -0.63% |
+| addr0/n33 | +0.40% | -1.92%* | -0.50% | -0.04% |
+| addr0/n63 | +1.40%* | — | — | — |
+| addr0/n64 | +1.91%* | -0.33% | +0.13% | +1.22% |
+| addr0/n65 | -4.86%* | — | — | — |
+| addr0/n66 | -5.44%* | — | — | — |
+| addr0/n127 | -5.70%* | — | — | — |
+| addr0/n128 | -4.76%* | -5.53%* | +0.75% | +1.08% |
+| addr0/n129 | -7.79%* | — | — | — |
+| addr0/n130 | -8.77%* | — | — | — |
+| addr0/n255 | -8.98%* | — | — | — |
+| addr0/n256 | -9.36%* | — | — | — |
+| addr0/n257 | -13.11%* | — | — | — |
+| addr0/n258 | -12.06%* | — | — | — |
+| addr0/n512 | -12.44%* | -13.35%* | -1.36%* | +2.42% |
+| addr0/n8192 | -5.65%* | -5.64%* | +0.59% | +0.42% |
+| addr0/n262144 | -7.53%* | -6.55%* | -1.29% | -0.16% |
+| addr0/n8388607 | -4.82%* | -3.52%* | -1.93% | +0.16% |
+| addr1/n0 | +0.44% | +0.34% | +0.38% | +0.29% |
+| addr1/n8 | -0.12% | +0.14% | +0.66% | +1.64%* |
+| addr1/n16 | +2.11%* | +1.75%* | +0.49% | -0.02% |
+| addr1/n17 | -0.49% | -0.94%* | -0.52% | -0.11% |
+| addr1/n33 | -1.34% | -1.19%* | -0.23% | +1.02% |
+| addr1/n63 | -0.16% | — | — | — |
+| addr1/n64 | +0.51% | +0.90%* | -0.04% | -0.18% |
+| addr1/n65 | -4.37%* | — | — | — |
+| addr1/n66 | -3.58%* | — | — | — |
+| addr1/n127 | -3.35%* | — | — | — |
+| addr1/n128 | -2.03%* | -4.15%* | -0.25% | -0.34% |
+| addr1/n129 | -7.78%* | — | — | — |
+| addr1/n130 | -8.09%* | — | — | — |
+| addr1/n255 | -7.00%* | — | — | — |
+| addr1/n256 | -6.13%* | — | — | — |
+| addr1/n257 | -8.64%* | — | — | — |
+| addr1/n258 | -8.83%* | — | — | — |
+| addr1/n512 | -9.41%* | -9.02%* | +0.10% | +1.31% |
+| addr1/n8192 | -1.85%* | -3.22%* | +0.86% | +1.21%* |
+| addr1/n262144 | -10.32%* | -8.87%* | -0.12% | +0.50% |
+| addr1/n8388607 | +1.22% | +2.17% | -0.09% | +2.05% |
+
+P still loses at count 16 in both alignments in both normal-Wago runs: aligned+2.06/+2.35%, unaligned+2.11/+1.75%, all significant. Aligned count 64 loses+1.91% in the first run; unaligned count 64 loses+.90% in the repeat. The initial aligned count 63 loss+1.40% is retained and not repeated. The main16/4 group gains remain at cache-resident sizes, but a parity check and per-load address/count updates limit the tail benefit. It does not achieve the requested short-loop recovery.
+
+Neither initial significant direct gain repeats: aligned count 16 becomes-0.42% (p=.337), and count 512 becomes+2.42% (p=.229). The repeat instead loses at unaligned count 8 (+1.64%, p=.037) and 8192 (+1.21%, p=.008). These results do not justify treating all larger-loop gains versus 4/4 as tail gains. The unchanged 16-element main loop explains most of them. Large 64 MiB streaming data are mixed by alignment; no repeatable 5% improvement there supports a promotion claim.
+
+P raw kernel compilation is measured only in the first full44-row set:
+
+| Kernel compile | Time vs4/4 | Baseline B / allocs | P B / allocs |
+|---|---:|---:|---:|
+| SumUnrollCompile/pressure0 | +1.90% | 26072 / 29 | 26072 / 29 |
+| SumUnrollCompile/pressure12 | -0.92% | 26296 / 30 | 26296 / 30 |
+
+### Complete corpus and disabled controls
+
+All 25 corpus/control rows are shown. `Compile` excludes decode/validation; `CompileFull` is the public pipeline. `seqtk` has no execution row here: it is a real-module compilation control, not a positive application result. The hint did not change its allocation count or measured size class. These results do not bound the worst possible false-positive byte cost.
+
+| Workload | 4/4 → DR first | 4/4 → DR repeat | D → DR first | Old normal → new normal |
+|---|---:|---:|---:|---:|
+| Compile/seqtk-fastq-to-fasta | -0.06% | -0.39% | +0.50% | -0.37% |
+| Compile/memory | -1.00% | -1.63%* | -0.31% | +3.64% |
+| Compile/linked_list | -1.71% | -1.83%* | +0.56% | +0.14% |
+| Compile/blake-as-simd | -0.02% | -1.35% | -5.29% | +6.14% |
+| Compile/utf-as-simd | -2.60% | -4.97%* | -1.85% | +3.16% |
+| Compile/yyjson | -1.63% | -2.04% | -0.70% | +0.04% |
+| Compile/xxhash | -0.41% | +0.40% | -0.04% | +1.16% |
+| Compile/drwav | +1.67% | +0.19% | +0.89% | +1.17% |
+| CompileFull/seqtk-fastq-to-fasta | +0.76% | -4.86% | +0.04% | +0.88% |
+| CompileFull/memory | +0.00% | +1.33%* | -1.47% | +0.75% |
+| CompileFull/linked_list | +3.52% | +0.20% | +1.66% | +0.57% |
+| CompileFull/blake-as-simd | +0.97% | -0.63% | -0.04% | +0.70% |
+| CompileFull/utf-as-simd | -0.94% | -1.13% | +0.05% | +2.32% |
+| CompileFull/yyjson | -2.31%* | -2.03% | -0.94% | -0.72% |
+| CompileFull/xxhash | +0.46% | -0.92% | -0.93% | +0.22% |
+| CompileFull/drwav | -0.91% | -1.43% | -0.57% | +0.96% |
+| Exec/memory.sum | -9.57%* | -10.12%* | -0.02% | +0.04% |
+| Exec/linked_list.sum | -1.24% | -0.67% | -0.18% | -0.66% |
+| Exec/blake-as-simd.hashN | +0.18% | -0.02% | -0.86% | -0.26% |
+| Exec/utf-as-simd.convertN | -1.26% | -0.69% | -0.60% | +0.03% |
+| Exec/utf-as-simd.validateN | -0.49% | -0.25% | -0.15% | -0.40% |
+| Exec/yyjson.yyjson_run | +1.14%* | +1.46%* | -0.36% | -0.44% |
+| Exec/xxhash.xxhash_run | -0.57% | +0.32% | +0.23% | +0.12% |
+| Exec/drwav.drwav_run | +1.02% | -0.07% | -0.52% | -1.39% |
+| SumUnrollLifecycle/memory | +0.30% | +0.47% | +0.69% | -1.20% |
+
+The zero-admission `yyjson` execution control loses+1.14% (p=.005) and+1.46% (p=.014) in the two normal-to-DR sets. Its guest code and sizing hint are unchanged. That rules out attribution to an emitted sum loop, but it does not erase the measured regression. Host-binary layout or another timing effect remains possible and unproved. The same-binary D-to-DR comparison and the disabled normal control have no significant timing row. Positive one-set control differences also remain unattributed. This evidence supports a bounded experimental allocation fix, not a claim that every adjacent workload is unaffected.
+
+All 218 comparison rows, allocation medians and paired deltas are in [all-comparisons.csv](results/mitigation/all-comparisons.csv). The [evidence index](results/mitigation/evidence-index.json) records every set/window/hash. Each set retains raw samples, order, environment, benchstat, CSV and JSON. No unfavorable sample or earlier-phase evidence was removed.
+
+### Decision
+
+**Investigate further.** Keep the existing 16/4 emitter as the main-loop candidate and use the bounded reservation as the best mitigation in this study. It removes the known extra allocation objects without changing native execution. Do not promote it to a production default: eligible real-application evidence is still absent, short-loop losses remain, the repeat has a small public compile cost, and an adjacent control has a repeated small loss.
+
+Reject the paired-tail change as the next optimization to adopt. It costs 25 extra native bytes without the required short-loop recovery or a broad, repeated advantage over plain 16/4. Keep its implementation and negative evidence opt-in for review. No further threshold, tail or layout tuning is included. A single fastest configuration does not exist across the measured sizes and alignments; the recommended tradeoff is D plus reservation, not a universal speed claim.
+
+The two earlier follow-up ideas remain direct SIMD map emission without rewritten-Wasm allocation and broader reduction recognition justified by real workload coverage. Neither is implemented. No new public option, production default, ARM64 emitter change, worktree, or additional PR is introduced.
+
+
+### Reviews, validation and reproduction
+
+Two independent read-only reviews checked the emitter, ownership and cleanup,
+wrap and trap paths, capacity bounds, callbacks, benchmarks, raw samples,
+assembly and statistical claims. Their register-pressure coverage, effective
+compact-mode gate, callback gate, corpus selector and unsupported-decoder
+findings were addressed. No blocking finding remains. See the
+[final correctness review](results/mitigation/correctness-final-review.txt)
+and [final performance review](results/mitigation/performance-final-review.txt).
+
+Passed local checks: full ordinary/checked unit suites, full checked bench
+suite, all seven selected native matrices, DR/PR public allocation assertions,
+legacy tagged AMD64 statistics suite, guard-page runtime/public API tests,
+`just lint`, documentation links, tagged vet, shellcheck, shell/Python syntax,
+and the checked ARM64 cross-build. See
+[check-status.txt](results/mitigation/check-status.txt).
+
+The full normal shared-scalar statistics suite still fails with exactly the
+same 86 test/subtest names as the saved baseline, with no new failures. The
+[comparison](results/mitigation/baseline-failure-comparison.json) and raw
+failure log are retained; unrelated compiler repairs are outside this study.
+The failed initial headroom decode scan is retained as a diagnostic-development
+limit in the review; the final scan records its unsupported module explicitly.
+The failed corpus selector attempt is retained with its raw output.
+
+The full native OS/architecture, race/fuzz and conformance CI matrix remains
+unrun under draft policy. ARM64 is a cross-build, not native execution. Hardware
+counters, another CPU, controlled host code layout, and eligible application
+speedups remain unvalidated. Draft smoke/CI status is checked on the final
+pushed head and linked from PR #910; the PR stays draft for human review.
+
+Claude Code was attempted with the requested read-only Opus command. It
+returned `Not logged in`; no Claude review occurred. The failure is retained
+in [claude.txt](results/mitigation/claude.txt).
+
+Reproduce the fixed study with a new output directory and an allowed CPU:
+
+```sh
+experiments/specialized-sum-unroll/mitigation.sh /tmp/wago-sum-mitigation-results 2
+```
+
+An optional third argument supplies the frozen earlier normal corpus binary
+for the disabled-experiment comparison. Without it, the script explicitly
+omits that historical control; it still builds current normal and tagged
+references and reproduces all candidate, direct and confirmation comparisons.
+The saved old binary hash identifies this study's control. The script builds
+and validates before timing, keeps all initial rows, and stops after the fixed
+confirmation. Separate [analyze.py](analyze.py) recomputes medians and paired
+ratios from raw files. The original run/followup scripts and their results are
+unchanged.

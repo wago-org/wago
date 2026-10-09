@@ -1,0 +1,48 @@
+Independent phase 3 correctness review
+Repository: /home/jtenner/Projects/wago-sum-unroll
+Scope: paired scalar remainder at commit 2540e0c38 and bounded capacity reservation at commit b21f51545; final source and tests.
+Method: read-only source, diff and saved test-log review. I did not build, run tests, execute generated code, or run timings.
+
+Decision: no blocking correctness finding. The implementation can proceed to measurement. This is not a performance promotion recommendation.
+
+Paired remainder
+- sum_unroll_experimental.go:177-201: the zero test skips all remainder loads. An odd remaining count branches to the second half and consumes one element. All subsequent visits consume two elements. Each load has native offset zero, each address increment uses 32-bit arithmetic, and each counter decrement uses 32-bit arithmetic. Thus each next load uses the memory32 wrapped address, including a wrapping range selected by the earlier dispatch.
+- The loop branch immediately follows the second counter subtraction. It does not use flags from the first subtraction or address increment. Odd and even counts therefore terminate with counter zero and the expected wrapped address.
+- sum_unroll_experimental.go:193-208: the second half adds into p1; the first half adds into the original accumulator. p1 includes any main-group partial sum and is combined exactly once. Addition modulo 2^64 permits this regrouping. The original range proof, scalar peel, main group, wrap dispatch, and live-local treatment are unchanged.
+- sum_unroll_experimental.go:78-101: pair emission is restricted to factor 16/chains 4 without a hybrid or threshold arm. Configuration, conservative byte budget, and availability of all temporary registers are checked before emission or pin mutation. Storage remains the fixed [8]Reg array. Cleanup is shared with the earlier emitter at :209-213. No new temporary register or heap object is introduced by the paired remainder.
+- sum_unroll_pair_test.go now directly verifies adequate-budget rejection with all allocatable registers reserved, including unchanged bytes and allocator ownership. This closes the earlier register-pressure coverage request. Budget fallback still executes the original path against the independent oracle.
+
+Capacity hint
+- compile.go:1917-1928: the hint is collected inside the existing totalBody loop. It changes only the capacity estimate passed to the existing buffers; it does not clone a module, scan instructions again, alter recognition, or alter Wasm instructions.
+- sum_unroll_experimental.go:228-248: activation requires the private reserve flag, factor 16, four chains, no hybrid or threshold, deferred mapping, one worker, and effective noncompact compilation (including WAGO_COMPACT). The caller also disables the hint when a memory-pressure callback uses the implicit threshold. Per-function headroom is 128 bytes, limited to 1024 bytes per module, and excludes empty/large bodies, non-i64-first-result functions, and missing loop/memory or call/tail/SIMD/bulk-memory hints. The used-limit checks and caller addition-overflow check bound arithmetic. LocalFuncType returns the existing module type; it does not allocate a new resolved type wrapper.
+- The broad existing hints are a sizing heuristic, not proof that the sum recognizer will admit a loop. False positives can increase allocated bytes within the stated bound. They cannot enable emission or change runtime instructions.
+- sum_unroll_default.go contains constant false/zero stubs. Normal builds remain on the original emitter. The new condition can be eliminated by normal Go inlining. A compiler optimization log or a disabled-experiment compile benchmark should verify the intended absence of measurable ordinary-compiler cost; I did not build a binary to check this.
+- sum_unroll_capacity_test.go:52 onward now compares reserved and nonreserved native bytes, Entry, InternalEntry, DirectPrepared, and PreparedIsolatedTables on the two-function deferred/one-worker path. It then executes the reserved compilation at an unaligned address against the oracle for zero, odd/even, group boundaries, and 512 elements. This directly covers the arena/join capacity intervention.
+- The public allocation test correctly switches factor to zero for the baseline while leaving mitigation flags unchanged. The factor gate disables the hint in that state. The tests-first failure records candidate 110 versus baseline 108 allocation objects; capacity-after.txt records the test passing after implementation. The passing log does not print the resulting absolute count, so only equality is independently established from that log.
+
+Final gate review
+- compile.go:1918 now passes compactNativePolicy(policy), so both explicit compact policy and WAGO_COMPACT environment compaction prevent reservation. The prior compact-gate discrepancy is resolved.
+- compile.go:1919 now requires MemoryPressure to be nil or MemoryPressureAt to be positive. Reservation cannot change an implicit default checkpoint when a callback is present. Positive explicit thresholds are independent of capacity; zero and negative thresholds follow the original unreserved capacity. The prior callback-timing note is resolved.
+- TestSumUnrollCapacityPreservesPressureCallback compares reservation off/on with thresholds 0, 1, and 1024, checking callback counts and native bytes. Compilation is synchronous with the worker join, so the count is read after worker completion. selectSumUnroll registers cleanup to restore all global experiment fields. I reviewed this new test source; no passing log for this new test was available at the time of this review.
+
+Corpus sizing diagnostic
+- sum_unroll_headroom_test.go records pinned input hashes, qualifying local function indexes, bounded logical headroom, and base capacity outside benchmark timing. It keeps sizing predictions separate from exact emitter admission, as required.
+- At commit b21f51545, decode failures are now recorded with path/error and scanning continues. The earlier exception-handling decode failure no longer aborts the diagnostic. This resolves the diagnostic issue reported in the preceding review.
+- I read results/mitigation/admission/headroom-corpus.json: 121 .wasm records, 120 decoded modules, one explicit decode exclusion (applications/micropython/micropython.wasm, unsupported exception handling tag section). The exclusion has an input hash and diagnostic; it is not silently omitted.
+- The artifact shows seqtk local function 5 receives 128 bytes of logical headroom, base capacity 613994. This provides a suitable sizing-hint false-positive control when paired with the existing exact-emitter admission evidence. I did not execute seqtk or independently verify fresh native admission in this final source review.
+- The artifact records at most 1024 bytes per module, including the larger application modules. It is a prediction artifact, not an assertion that every recorded function is an eligible reduction or receives actual capacity in every compile mode.
+
+Remaining useful validation
+- Measure allocated bytes as well as objects for DR and PR; equal object counts do not establish equal retained or allocated bytes.
+- The selected seqtk negative control should retain exact-emitter admission diagnostics plus code/allocated-byte comparisons with reservation disabled. This measures false-positive hint cost.
+- Keep WAGO_COMPACT and MemoryPressure settings recorded for measurements.
+
+Saved evidence inspected
+- experiments/specialized-sum-unroll/results/mitigation/capacity-before.txt: expected pre-implementation public allocation assertion failure, 110 versus 108.
+- .../capacity-after.txt: public allocation assertion PASS/ok.
+- .../PR-tests-final.txt: capacity equality/execution, oracle bounded and unbounded pressure cases, full 4GiB memory32, selected-path, bounded emission, atomic rejection, native fallbacks, pair emission and pair fallback PASS. Artifact test is skipped without its output setting, and follow-up-specific H/T test is skipped for PR. Those skips are expected for this run and do not independently validate fresh artifacts or H/T here.
+- Claude review was unavailable. The saved attempt exited 1; claude.txt says 'Not logged in · Please run /login'. I did not claim a Claude review occurred.
+
+Earlier correctness and corpus reports remain unchanged in /tmp.
+
+Final status at b21f51545: no blocking correctness finding. Both capacity gate notes and the corpus diagnostic failure are addressed. Fresh callback-test/build results were in progress and were not run by this reviewer. Performance evidence remains a separate review.

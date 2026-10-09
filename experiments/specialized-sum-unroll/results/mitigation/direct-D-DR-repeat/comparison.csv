@@ -1,0 +1,5 @@
+variant,benchmark,samples_each,baseline_ns,baseline_bytes,baseline_allocs,candidate_ns,candidate_bytes,candidate_allocs,time_delta_percent,median_paired_time_delta_percent
+DR,BenchmarkCompile/memory,20,15046.5,11216.0,29.0,15800.0,11216.0,29.0,5.007809125045681,2.011375974988383
+DR,BenchmarkCompileFull/memory,20,23415.0,25153.0,110.0,23773.0,23616.0,108.0,1.5289344437326546,-2.2556518150183114
+DR,BenchmarkExec/memory.sum,20,89.515,0.0,0.0,89.02000000000001,0.0,0.0,-0.5529799474948249,0.18228641009504498
+DR,BenchmarkSumUnrollLifecycle/memory,20,57096.5,26737.0,119.0,58989.0,25201.0,117.0,3.314563939996318,-1.062977269390042

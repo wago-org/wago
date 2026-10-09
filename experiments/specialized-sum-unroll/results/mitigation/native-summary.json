@@ -1,0 +1,104 @@
+{
+  "baseline": {
+    "module_bytes": 472,
+    "sum": {
+      "CodeBytes": 312,
+      "FrameBytes": 40,
+      "Spills": 0,
+      "Reloads": 0,
+      "Peephole": {
+        "addr-zext-elim": 1,
+        "br-pair-fold": 1,
+        "cmp-branch-fuse": 1,
+        "compact-i32-frame": 1,
+        "compact-loop-align32": 1,
+        "counted-loop-bounds-hoist": 1,
+        "counted-loop-latch": 1,
+        "frame-header-elide": 1,
+        "linear-sum-unroll4": 1
+      }
+    }
+  },
+  "D": {
+    "module_bytes": 535,
+    "sum": {
+      "CodeBytes": 375,
+      "FrameBytes": 40,
+      "Spills": 0,
+      "Reloads": 0,
+      "Peephole": {
+        "addr-zext-elim": 1,
+        "br-pair-fold": 1,
+        "cmp-branch-fuse": 1,
+        "compact-i32-frame": 1,
+        "compact-loop-align32": 1,
+        "counted-loop-bounds-hoist": 1,
+        "counted-loop-latch": 1,
+        "experimental-linear-sum": 1,
+        "frame-header-elide": 1
+      }
+    }
+  },
+  "P": {
+    "module_bytes": 560,
+    "sum": {
+      "CodeBytes": 400,
+      "FrameBytes": 40,
+      "Spills": 0,
+      "Reloads": 0,
+      "Peephole": {
+        "addr-zext-elim": 1,
+        "br-pair-fold": 1,
+        "cmp-branch-fuse": 1,
+        "compact-i32-frame": 1,
+        "compact-loop-align32": 1,
+        "counted-loop-bounds-hoist": 1,
+        "counted-loop-latch": 1,
+        "experimental-linear-sum": 1,
+        "experimental-linear-sum-pair-tail": 1,
+        "frame-header-elide": 1
+      }
+    }
+  },
+  "DR": {
+    "module_bytes": 535,
+    "sum": {
+      "CodeBytes": 375,
+      "FrameBytes": 40,
+      "Spills": 0,
+      "Reloads": 0,
+      "Peephole": {
+        "addr-zext-elim": 1,
+        "br-pair-fold": 1,
+        "cmp-branch-fuse": 1,
+        "compact-i32-frame": 1,
+        "compact-loop-align32": 1,
+        "counted-loop-bounds-hoist": 1,
+        "counted-loop-latch": 1,
+        "experimental-linear-sum": 1,
+        "frame-header-elide": 1
+      }
+    }
+  },
+  "PR": {
+    "module_bytes": 560,
+    "sum": {
+      "CodeBytes": 400,
+      "FrameBytes": 40,
+      "Spills": 0,
+      "Reloads": 0,
+      "Peephole": {
+        "addr-zext-elim": 1,
+        "br-pair-fold": 1,
+        "cmp-branch-fuse": 1,
+        "compact-i32-frame": 1,
+        "compact-loop-align32": 1,
+        "counted-loop-bounds-hoist": 1,
+        "counted-loop-latch": 1,
+        "experimental-linear-sum": 1,
+        "experimental-linear-sum-pair-tail": 1,
+        "frame-header-elide": 1
+      }
+    }
+  }
+}

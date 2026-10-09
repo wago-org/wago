@@ -1,0 +1,39 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                          │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-candidate.txt │
+                          │                                                           sec/op                                                            │                                                sec/op                                                  vs base               │
+Compile/memory                                                                                                                              14.92µ ± 1%                                                                                             14.80µ ± 5%       ~ (p=0.211 n=20)
+CompileFull/memory                                                                                                                          22.98µ ± 2%                                                                                             22.98µ ± 1%       ~ (p=0.383 n=20)
+Exec/memory.sum                                                                                                                             96.49n ± 2%                                                                                             90.64n ± 2%  -6.06% (p=0.000 n=20)
+SumUnrollLifecycle/memory                                                                                                                   56.90µ ± 5%                                                                                             56.60µ ± 2%       ~ (p=0.473 n=20)
+geomean                                                                                                                                     6.587µ                                                                                                  6.462µ       -1.89%
+
+                          │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-candidate.txt │
+                          │                                                            B/op                                                             │                                                B/op                                                  vs base                 │
+Compile/memory                                                                                                                           10.95Ki ± 0%                                                                                            10.95Ki ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/memory                                                                                                                       22.81Ki ± 0%                                                                                            24.56Ki ± 0%  +7.68% (p=0.000 n=20)
+Exec/memory.sum                                                                                                                            0.000 ± 0%                                                                                              0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollLifecycle/memory                                                                                                                24.36Ki ± 0%                                                                                            26.11Ki ± 0%  +7.18% (p=0.000 n=20)
+geomean                                                                                                                                               ²                                                                                                        +3.65%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                          │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-candidate.txt │
+                          │                                                          allocs/op                                                          │                                              allocs/op                                               vs base                 │
+Compile/memory                                                                                                                             29.00 ± 0%                                                                                              29.00 ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/memory                                                                                                                         108.0 ± 0%                                                                                              110.0 ± 0%  +1.85% (p=0.000 n=20)
+Exec/memory.sum                                                                                                                            0.000 ± 0%                                                                                              0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollLifecycle/memory                                                                                                                  117.0 ± 0%                                                                                              119.0 ± 0%  +1.71% (p=0.000 n=20)
+geomean                                                                                                                                               ²                                                                                                        +0.89%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                   │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-candidate.txt │
+                   │                                                           code-B                                                            │                                                code-B                                                 vs base                │
+CompileFull/memory                                                                                                                    472.0 ± 0%                                                                                             560.0 ± 0%  +18.64% (p=0.000 n=20)
+
+                │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/corpus-memory-P/P-candidate.txt │
+                │                                                         calls/batch                                                         │                                              calls/batch                                               vs base               │
+Exec/memory.sum                                                                                                                   21.21k ± 0%                                                                                             22.42k ± 1%  +5.71% (p=0.000 n=20)

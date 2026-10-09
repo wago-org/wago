@@ -1,0 +1,180 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9222	     16789 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4690	     25214 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      56	        89.80 ns/op	     22039 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1772	     65072 ns/op	   25200 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    8181	     16060 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4706	     24778 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      56	        89.76 ns/op	     22537 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1758	     62089 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    8653	     17510 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4447	     25347 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      58	        90.47 ns/op	     22452 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1820	     62132 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9069	     16329 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4548	     25748 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      54	        91.80 ns/op	     22497 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1786	     63129 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    7971	     16505 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4510	     25192 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      56	        90.35 ns/op	     21401 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1866	     62702 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9201	     16953 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4480	     25657 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      58	        89.18 ns/op	     23195 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1826	     60965 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    8474	     16498 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4608	     27940 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      57	        90.77 ns/op	     22424 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1648	     64857 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9236	     16633 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4752	     23882 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      57	        87.60 ns/op	     23376 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1918	     57281 ns/op	   25200 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9500	     14747 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5060	     24594 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      57	        87.63 ns/op	     23329 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1903	     57961 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    8752	     14495 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5139	     25257 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      60	        87.35 ns/op	     23431 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1800	     56542 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9196	     15107 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5083	     23055 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      58	        90.77 ns/op	     23506 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    2053	     56453 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9678	     14634 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5148	     22781 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      57	        88.51 ns/op	     22319 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1855	     56245 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9585	     16493 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    4944	     22765 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      58	        87.41 ns/op	     23553 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1915	     56135 ns/op	   25200 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9838	     15434 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5070	     23664 ns/op	       535.0 code-B	   23617 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      58	        88.90 ns/op	     22777 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1845	     62031 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    8840	     14971 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5124	     22681 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      56	        87.48 ns/op	     22787 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1880	     56102 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9493	     15914 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5080	     22804 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      57	        91.09 ns/op	     21774 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1951	     56073 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9519	     15686 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5011	     22850 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      56	        88.10 ns/op	     23289 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1762	     60017 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    8912	     14871 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5076	     22912 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      55	        86.71 ns/op	     23106 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    2013	     56428 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    9620	     14505 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5154	     22519 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      56	        89.14 ns/op	     23161 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1930	     60689 ns/op	   25201 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory     	    8688	     15173 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompileFull/memory 	    5086	     22562 ns/op	       535.0 code-B	   23616 B/op	     108 allocs/op
+BenchmarkExec/memory.sum    	      56	        86.74 ns/op	     23492 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory         	    1886	     56167 ns/op	   25201 B/op	     117 allocs/op
+PASS

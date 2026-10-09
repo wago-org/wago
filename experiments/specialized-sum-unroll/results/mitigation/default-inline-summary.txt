@@ -1,0 +1,4 @@
+src/core/compiler/backend/railshot/amd64/sum_unroll_default.go:13:6: can inline sumUnrollReserveEnabled
+src/core/compiler/backend/railshot/amd64/sum_unroll_default.go:14:6: can inline sumUnrollCodeHeadroom
+src/core/compiler/backend/railshot/amd64/compile.go:1918:39: inlining call to sumUnrollReserveEnabled
+src/core/compiler/backend/railshot/amd64/compile.go:1923:40: inlining call to sumUnrollCodeHeadroom

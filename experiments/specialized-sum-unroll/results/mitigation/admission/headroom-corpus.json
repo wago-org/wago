@@ -1,0 +1,1022 @@
+[
+  {
+    "Path": "applications/age/age-keygen.wasm",
+    "InputSHA256": "b99e027e56ebd36dabf89ea0d1607682f957cbae3b5ba253fa86c228f2b9a035",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      115
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 14146594
+  },
+  {
+    "Path": "applications/age/age.wasm",
+    "InputSHA256": "6e3249c90b12d821f993b8270176eb4624449b11796e0f29fb5b2bd80c15f6c8",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      126
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 24520241
+  },
+  {
+    "Path": "applications/brotli/brotli.wasm",
+    "InputSHA256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 1922610
+  },
+  {
+    "Path": "applications/clang/clang.wasm",
+    "InputSHA256": "d817b7af8c2cc851527d5872256f27079d6905750a755668683293ec8e36b584",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      5235,
+      11890,
+      11891,
+      19872,
+      23611,
+      32338,
+      37647,
+      49695
+    ],
+    "LogicalHeadroom": 1024,
+    "BaseCapacity": 117205228
+  },
+  {
+    "Path": "applications/coreutils/coreutils.wasm",
+    "InputSHA256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      1834,
+      2067,
+      4306,
+      4863,
+      5004
+    ],
+    "LogicalHeadroom": 640,
+    "BaseCapacity": 28400427
+  },
+  {
+    "Path": "applications/duktape/duk.wasm",
+    "InputSHA256": "ecf2293773686dd1bcbcb5bb8f7c7647d4726c4bdec8d1e2e04bfb6cf5fd3612",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 2572664
+  },
+  {
+    "Path": "applications/ecpbram/ecpbram.wasm",
+    "InputSHA256": "2d5fcf6b054eddf2d034fea174f6c158e35ae2ade81794bfa50bf86d6079c00a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 3086768
+  },
+  {
+    "Path": "applications/ecppack/ecppack.wasm",
+    "InputSHA256": "2a2ea3a2c706ccfe0ab26f28d5a4d9ae724fb80441ab3bf422ae5aa54d602709",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 3793128
+  },
+  {
+    "Path": "applications/ecppll/ecppll.wasm",
+    "InputSHA256": "a86ef23e6f447021fa26b9481d14c2d00fb097b58e8aa3cb246dbc53aa5c2900",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 2631066
+  },
+  {
+    "Path": "applications/ecpunpack/ecpunpack.wasm",
+    "InputSHA256": "d50205335eadfbe406599306251f3c9ea9016e1885dbc6578309b861410f83f8",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 3601367
+  },
+  {
+    "Path": "applications/embench/embench-crc32.wasm",
+    "InputSHA256": "7c953db27a26a0609cce081bc2ab75ce21ea07e155c490b636cc89b50548ee7c",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 996
+  },
+  {
+    "Path": "applications/embench/embench-huffbench.wasm",
+    "InputSHA256": "341b2db8256e90d327fc89d0a475faabfb9cbe8ad49b80c4f58b7d4f3bea1ea4",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 12741
+  },
+  {
+    "Path": "applications/embench/embench-matmult-int.wasm",
+    "InputSHA256": "e3e750f028bca8308788bdff1dbf2cfcb08bf1ab84cefea796c27476094ad4f2",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9591
+  },
+  {
+    "Path": "applications/embench/embench-nettle-aes.wasm",
+    "InputSHA256": "24105cfbcf32870c123703830717f90af5826b30989050b8f047e877fe5dc824",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 15076
+  },
+  {
+    "Path": "applications/embench/embench-nettle-sha256.wasm",
+    "InputSHA256": "85dc5aa7638d4da760cfc39c9b9c5832aebfb8b0a0e59ebf2cf51e8927a3a29e",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 22612
+  },
+  {
+    "Path": "applications/embench/embench-qrduino.wasm",
+    "InputSHA256": "83dfcc2d56cac22b9e772c911556afb3b61b3722a866ccfc1ce41f436cf2b07f",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 93036
+  },
+  {
+    "Path": "applications/esbuild/esbuild.wasm",
+    "InputSHA256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      78
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 65331943
+  },
+  {
+    "Path": "applications/fasttree/fasttree.wasm",
+    "InputSHA256": "780ce84c3a0ce8442fe259a5de0fe5db07f663430f2a8d1bc23187161de23387",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 1030773
+  },
+  {
+    "Path": "applications/gnu-coreutils/seq.wasm",
+    "InputSHA256": "bdbd39485bb579411c626deab515d5fde792cae1050d9481f0ecb95be713059a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 342700
+  },
+  {
+    "Path": "applications/gnu-coreutils/tr.wasm",
+    "InputSHA256": "47e7ad6a441d4de920e876abb9559d5936dbd6c280e79bbdb1274814e1b46384",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 303176
+  },
+  {
+    "Path": "applications/grain-stdlib/array.wasm",
+    "InputSHA256": "cffc1de88b1777739c8f004791f6bb16185b1113bed0b38bb8533635ca970c74",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 1287167
+  },
+  {
+    "Path": "applications/grain-stdlib/json-subset.wasm",
+    "InputSHA256": "48bc2e82d2eeec22b403732dfe4f1a48c1793f8ed72cacd92cb60a0cdbcc4c48",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 1400983
+  },
+  {
+    "Path": "applications/grain-stdlib/string.wasm",
+    "InputSHA256": "0eebeab44cdeb06d4dbc8698c6fe4eaf88e5df38d10c2572ab4d92952600bb91",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 1171597
+  },
+  {
+    "Path": "applications/icebram/icebram.wasm",
+    "InputSHA256": "2eb590a9e8e8a5dce32ab0b01b57558b290e7e4cd0f001036e054f3ff9b99deb",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 2417668
+  },
+  {
+    "Path": "applications/icemulti/icemulti.wasm",
+    "InputSHA256": "ac648e95ba42b44fc50fc6f3d6bb023e03063b6cace4dc6f4ffdefbe3a3820c2",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 2187925
+  },
+  {
+    "Path": "applications/icepack/icepack.wasm",
+    "InputSHA256": "079f96f2e21954af470ed085e2bc86f7c7fd4f95fb13324fcb9098e222934e3e",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 2611896
+  },
+  {
+    "Path": "applications/icepll/icepll.wasm",
+    "InputSHA256": "47dfc30f14b4b748d89b7370190abf840e2d20f07ee36463305df667e913ecfd",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 250280
+  },
+  {
+    "Path": "applications/jq/jq.wasm",
+    "InputSHA256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 2785179
+  },
+  {
+    "Path": "applications/json2csv/json2csv.wasm",
+    "InputSHA256": "f1aacfb105c7d69b19b4c7dfcec0ebd2ed14a29588cfecbb0ce35a7b99a6f6cc",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 1372418
+  },
+  {
+    "Path": "applications/lua/lua.wasm",
+    "InputSHA256": "51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 1336303
+  },
+  {
+    "Path": "applications/lzmadec/lzmadec.wasm",
+    "InputSHA256": "0383ef35939b458adbacbb64144d2f12a13e282488efe3387dff017880c6c245",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 258685
+  },
+  {
+    "Path": "applications/lzmainfo/lzmainfo.wasm",
+    "InputSHA256": "fa290176f4449c7e0ce581d988d026b7d2849a430310d9d2028a4840acacd3d8",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 184710
+  },
+  {
+    "Path": "applications/micropython/micropython.wasm",
+    "InputSHA256": "1c054a4d21d4a6589bc568821ebf562889988ddaaf8a17a2e2985a56cf228051",
+    "DecodeError": "unsupported exception handling tag section (exception-handling disabled) at tag section",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 0
+  },
+  {
+    "Path": "applications/php/php.wasm",
+    "InputSHA256": "5461eea8426378e2257f46c7eb1c734f607a89de9a921b72f8fc14c20ac3a33a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      241,
+      245,
+      1413,
+      9923,
+      10522,
+      11012,
+      11189,
+      11334
+    ],
+    "LogicalHeadroom": 1024,
+    "BaseCapacity": 46448008
+  },
+  {
+    "Path": "applications/quickjs/qjs.wasm",
+    "InputSHA256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 2940326
+  },
+  {
+    "Path": "applications/ripgrep/rg.wasm",
+    "InputSHA256": "bd3d27817f2f34d625a3d24029eb2d5b16746ee4bb097d01eed8c99be9b83263",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      4037,
+      4634,
+      6282
+    ],
+    "LogicalHeadroom": 384,
+    "BaseCapacity": 12579007
+  },
+  {
+    "Path": "applications/ruby/ruby.wasm",
+    "InputSHA256": "de598f394e398763d2b147e3e51a6eeadf048128598ac4a3f992a97204c192b0",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 22853277
+  },
+  {
+    "Path": "applications/sed/sed.wasm",
+    "InputSHA256": "f219fd9bb74d730d1df83242109ed3e17b05f52dec4fa06a1ed88d2ac0cd06be",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 836416
+  },
+  {
+    "Path": "applications/seq-align/lcs.wasm",
+    "InputSHA256": "11cb9d2ba8b02d2465988f44c2ae221f1bf43e6d4e745b71927d2263f7b10f6b",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 113382
+  },
+  {
+    "Path": "applications/seq-align/needleman_wunsch.wasm",
+    "InputSHA256": "0145e57676d9e2514c5683de4eee351590d57071b68ff6cb7a2ffee4c9d2ab02",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      128
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 462095
+  },
+  {
+    "Path": "applications/seq-align/smith_waterman.wasm",
+    "InputSHA256": "f033fe248a561e06f5cafebbe9cab86b1d31928a96f144730d10f74b073f11d7",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      98
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 472258
+  },
+  {
+    "Path": "applications/seqtk/seqtk.wasm",
+    "InputSHA256": "d0a899c3a17ad8245c6cc99cdad7c4bb30f189dab82609d233dad225384f9678",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      5
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 613994
+  },
+  {
+    "Path": "applications/sightglass/libsodium-hash/module.wasm",
+    "InputSHA256": "48c5c35bbe57abc6cb32be4ee5caa79f6a17021c04b73d0ed3d94ace1ae4daed",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 250351
+  },
+  {
+    "Path": "applications/sightglass/shootout-base64/module.wasm",
+    "InputSHA256": "8c0c50e8f8fb79255a307474136ac6be65d71ffee52a825839e852f8d6595e1c",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 128612
+  },
+  {
+    "Path": "applications/sqlite3/sqlite3.wasm",
+    "InputSHA256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      760
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 5862242
+  },
+  {
+    "Path": "applications/swift-format/swift-format.wasm",
+    "InputSHA256": "4f9c01a9569407766947c6fa6e9369dd9703f461f31dc9c79b49a6a6bcc5bc76",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      40022,
+      45947,
+      46367,
+      47874,
+      64609
+    ],
+    "LogicalHeadroom": 640,
+    "BaseCapacity": 65904253
+  },
+  {
+    "Path": "applications/tacle/bsort.wasm",
+    "InputSHA256": "625f345fb68018659984ed408a5c9ea1456b6bda09f02044f409e11676060028",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 2511
+  },
+  {
+    "Path": "applications/tree/ashell-tree.wasm",
+    "InputSHA256": "72ac9f09f35757a5714611f1922c325a8c33e8230e1a37ab7fc4104dbfbd2a64",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 857168
+  },
+  {
+    "Path": "applications/tree/tree.wasm",
+    "InputSHA256": "fbf2605dc5d03fcdce804b5e871d959951f7bc1e8c5ff3d0e74bfdb1ddbbd435",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 392944
+  },
+  {
+    "Path": "applications/xzdec/xzdec.wasm",
+    "InputSHA256": "83248ab482a8aa2e05b9be965f775af7c8218058d2501d93b18d967f04eea572",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 347565
+  },
+  {
+    "Path": "applications/yosys/yosys.wasm",
+    "InputSHA256": "7668d2963f8cc276ccd32980126dfddac961db1cd002cb93073506a694059493",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      4435
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 85381179
+  },
+  {
+    "Path": "assemblyscript/blake-as-simd.wasm",
+    "InputSHA256": "741e9c374db8d28e8b80b6f45498c54da648087319232e47322095401e5a33f4",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 116359
+  },
+  {
+    "Path": "assemblyscript/blake-as.wasm",
+    "InputSHA256": "9c6bed498081793fc9320c5729c1c9db0f8bec89c30a51f1a8f00d2b3620d33b",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 22531
+  },
+  {
+    "Path": "assemblyscript/json-as-simd.wasm",
+    "InputSHA256": "ca353a5601a88ad1912a7b041030da0d98604640cc25937f3d4b704a4dd9117c",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 93586
+  },
+  {
+    "Path": "assemblyscript/json-as.wasm",
+    "InputSHA256": "3b105acbd857f35d3916a59d363f0f928a50cc5071277c83d56d9b9e01ff205b",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 84008
+  },
+  {
+    "Path": "assemblyscript/utf-as-simd.wasm",
+    "InputSHA256": "8867205c0e7c3772b776bb495867378a587db972de47cfb4914a4fa55083b31a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 57270
+  },
+  {
+    "Path": "assemblyscript/utf-as.wasm",
+    "InputSHA256": "7d3ce0f0e0aa2dfd3335e4031106d6f8f2b57dc54855bc55e114418543d69e80",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 11448
+  },
+  {
+    "Path": "compute/fannkuch.wasm",
+    "InputSHA256": "31e05ae6968784b6d1078f70d4badb93ca8772a0b790559b724efefa64dfaf37",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 8436
+  },
+  {
+    "Path": "compute/linked_list.wasm",
+    "InputSHA256": "d3dfc4028519becbadc69f6878c0b8b4e32f3ce4713ffe0edbb3a2ac63c4bba1",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 596
+  },
+  {
+    "Path": "compute/matmul.wasm",
+    "InputSHA256": "f4b7a4ce25b1c8a9a77061a77672726a062dac4f0351bdc23b16271a0cd00ff8",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 3811
+  },
+  {
+    "Path": "compute/nbody.wasm",
+    "InputSHA256": "f441c05eeae3381875144b9ab17eccc833b02bba6776529f742be98fd99e585a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9871
+  },
+  {
+    "Path": "compute/raytrace.wasm",
+    "InputSHA256": "d5a226fa10efa31e193244858fdcb206edd7c935e3de794d7e39478538404c04",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 27536
+  },
+  {
+    "Path": "compute/sha256.wasm",
+    "InputSHA256": "0dbe8308751754ba91836fc546e7b805101851e301edc7b135fbb64aab46e384",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 6931
+  },
+  {
+    "Path": "polybench/2mm.wasm",
+    "InputSHA256": "89b9c80bcde4caba2bbb6831db31ed4dd3f8db2db86f633503109c58d233d8b6",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 10992
+  },
+  {
+    "Path": "polybench/3mm.wasm",
+    "InputSHA256": "a3294759cb52222d4b14a850b44ffd52ecd9ea1b8e7f16dcd748235d721c5891",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 13152
+  },
+  {
+    "Path": "polybench/adi.wasm",
+    "InputSHA256": "c014667facaebc17da35d3fa04a959ed52be98c0cc0869d3e95bb523158c4519",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 13947
+  },
+  {
+    "Path": "polybench/atax.wasm",
+    "InputSHA256": "5697d8c317f7e0aceb53621a79edef1aea51f3c45dc12e8307ce7a5fc6505f15",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 8082
+  },
+  {
+    "Path": "polybench/bicg.wasm",
+    "InputSHA256": "fe0e107639ea3e9c6bed2ead194de2f73d6c43da3fbef4086d618a2cb4cb9237",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 8627
+  },
+  {
+    "Path": "polybench/cholesky.wasm",
+    "InputSHA256": "32fa0520bc4ef20f36f5d9d374485ce8cd9dd505d57ce9cccc95c601a7f6557d",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 10902
+  },
+  {
+    "Path": "polybench/correlation.wasm",
+    "InputSHA256": "d82e216024b8b69c6eac4a731851e9db9c9a9be54fed0ea4c0e920786542df7c",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 10392
+  },
+  {
+    "Path": "polybench/covariance.wasm",
+    "InputSHA256": "8617430637a0269e124411c4e55233739ef9a78f12bb089e2487f0000ed9194a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9067
+  },
+  {
+    "Path": "polybench/deriche.wasm",
+    "InputSHA256": "fa1f06819b6a401427d034571199d6d4e055b466135b170f73fa83ec55736bef",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 12272
+  },
+  {
+    "Path": "polybench/doitgen.wasm",
+    "InputSHA256": "d0a3cad13d8f4cc732a38f6f4455c5090761892c811f810bec1950f906de48ae",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 13222
+  },
+  {
+    "Path": "polybench/durbin.wasm",
+    "InputSHA256": "c7731633a680988fe4dba32d8b2248630340226dc18f50537b630e500d783b58",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 7632
+  },
+  {
+    "Path": "polybench/fdtd-2d.wasm",
+    "InputSHA256": "330efa74054f9b909cd3f9bfa8a9f41fafaeea1854ab21537bdfc3d36ff6e04c",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 17492
+  },
+  {
+    "Path": "polybench/floyd-warshall.wasm",
+    "InputSHA256": "20766bf0b5e219d64759fcbae37b68c3f1a3e2c08e7722e7a3ac04e966a879fe",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 6242
+  },
+  {
+    "Path": "polybench/gemm.wasm",
+    "InputSHA256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9252
+  },
+  {
+    "Path": "polybench/gemver.wasm",
+    "InputSHA256": "5f6027eeccaafa4f330e75259ce07122f76567ed5aa9442143b073674ee9e8ee",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 12982
+  },
+  {
+    "Path": "polybench/gesummv.wasm",
+    "InputSHA256": "2bebb9d74f110824633022ff2d4981192295f3b466cdeb38cbc5342f36d720b1",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 7947
+  },
+  {
+    "Path": "polybench/gramschmidt.wasm",
+    "InputSHA256": "7454650c22f10bf57dd330ab00e553a81e20891025751cae5b78e50d494eee15",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9752
+  },
+  {
+    "Path": "polybench/heat-3d.wasm",
+    "InputSHA256": "d9dd40a6d35a87fecf2c5aea7d53948229a3a7d32f79e535c061ae9eb4e26c65",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 13027
+  },
+  {
+    "Path": "polybench/jacobi-1d.wasm",
+    "InputSHA256": "a53dec8850662d78ad36c5563a3998cb550bfe29de517b4689789d222d4e77b7",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 6357
+  },
+  {
+    "Path": "polybench/jacobi-2d.wasm",
+    "InputSHA256": "22bf77b0c5d1ef03d29d5a11aaffd704a6e3979c9e15ce3ae150ffcc0ca82bf1",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 7402
+  },
+  {
+    "Path": "polybench/lu.wasm",
+    "InputSHA256": "dd09f51afbfa45e88efef5248248483f8e33df484dec94157f7e6226fba9e269",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 10627
+  },
+  {
+    "Path": "polybench/ludcmp.wasm",
+    "InputSHA256": "15819eaa64025760a47988e579841a0cc1611febfa185227b4b19ce427eefe32",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 14776
+  },
+  {
+    "Path": "polybench/mvt.wasm",
+    "InputSHA256": "7cefc0d81ab2218fee9302226c0edc49b7f7838256331786eb3c89c6af6f77f7",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9622
+  },
+  {
+    "Path": "polybench/nussinov.wasm",
+    "InputSHA256": "d057968b40a33481a9f64c98365f1301450c627586bbeabe64f39d03901ebf44",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 7982
+  },
+  {
+    "Path": "polybench/seidel-2d.wasm",
+    "InputSHA256": "0c9025ce4ec0116c713e11c69e5c354bb39cdaef9c0045d3a120fedb58cb89c1",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 6336
+  },
+  {
+    "Path": "polybench/symm.wasm",
+    "InputSHA256": "679cc4876b25367e32a2e90479c58908e4478e982d444218884ae1a143716af2",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 11092
+  },
+  {
+    "Path": "polybench/syr2k.wasm",
+    "InputSHA256": "d121107ec1742784107be56c7a095804a61779644047fdca7599ce77d379ba5a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9176
+  },
+  {
+    "Path": "polybench/syrk.wasm",
+    "InputSHA256": "daf0a9df60bfb18de8515e73abd49f518d550b14ea8e87e1da5943604e1e51a0",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9047
+  },
+  {
+    "Path": "polybench/trisolv.wasm",
+    "InputSHA256": "9d9af505eb4c4accbd360a1805cf243fbb40e2519f3567d0ced756ebfad55578",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 7582
+  },
+  {
+    "Path": "polybench/trmm.wasm",
+    "InputSHA256": "e379eb762f2b827b1a5663a703c9d7e8e7bdff3072e4a4b007c02daa76639b20",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 9357
+  },
+  {
+    "Path": "semantic/blake3/blake3.wasm",
+    "InputSHA256": "903150890d2c96d4d8f0dd321c6d54e04f2ed1c033f9fbe87ec3dbc2e8bc96c6",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 62684
+  },
+  {
+    "Path": "semantic/cjson/cjson.wasm",
+    "InputSHA256": "47174a6a8e4890bcd078906eed9dd35eac0b80db1dde6c98c3cc8279a6fb6b16",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 209723
+  },
+  {
+    "Path": "semantic/coremark/coremark.wasm",
+    "InputSHA256": "dc98981b11142786c3e505e1c7a129bc5bb398ebabead2d8082072385954fb5a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 35096
+  },
+  {
+    "Path": "semantic/drwav/drwav.wasm",
+    "InputSHA256": "7f7625f9073f1f9de709b1682adc9c238989c39825e240570bc9870eb6630c56",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 139414
+  },
+  {
+    "Path": "semantic/fastfloat/fastfloat.wasm",
+    "InputSHA256": "6eb172b5da57c4d0a0ff194def7179f022847d09345fd975ba6dcdd827bd7265",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 91207
+  },
+  {
+    "Path": "semantic/kissfft/kissfft.wasm",
+    "InputSHA256": "95b236874a6a1e8218545ce703abd36195dcad39eecd3e3b318bbc2a53fd3a1d",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 77966
+  },
+  {
+    "Path": "semantic/libtommath/libtommath.wasm",
+    "InputSHA256": "a59c88869766c6f6fe1e35c9505b3fd9f83d347499e3b674b1c8abae15b59fd1",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 171048
+  },
+  {
+    "Path": "semantic/lodepng/lodepng.wasm",
+    "InputSHA256": "254cc3dd5d15369282ed3976d3ac6d5291a1fb91d3f19e8b7da65267d8f38190",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 439828
+  },
+  {
+    "Path": "semantic/lua/lua.wasm",
+    "InputSHA256": "fc83f0686ab492fbd2cf48cdba9341054f4e493cfd13a0ced43b98804da3934a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 886044
+  },
+  {
+    "Path": "semantic/lz4/lz4.wasm",
+    "InputSHA256": "00edcd94aa218054bff6926adb5469cdcbf764d72433908f5c9aafff191b63c9",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 12284
+  },
+  {
+    "Path": "semantic/miniz/miniz.wasm",
+    "InputSHA256": "eedb53d92c16882c20afd8dbb12e5402cbd61785dbb35cd23395587e1e8f5633",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 170284
+  },
+  {
+    "Path": "semantic/monocypher/monocypher.wasm",
+    "InputSHA256": "fa4356e1222b86387b5566f02c2ccd24404c5f9f044f697a14c164075dacf133",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 76588
+  },
+  {
+    "Path": "semantic/nanosvg/nanosvg.wasm",
+    "InputSHA256": "c80155bad149f7590195fa5f7fd9111d85aa2e8c5e3b283c0caa82826664b4b0",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 256872
+  },
+  {
+    "Path": "semantic/pcre2/pcre2.wasm",
+    "InputSHA256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 889800
+  },
+  {
+    "Path": "semantic/qoi/qoi.wasm",
+    "InputSHA256": "5f2e9bab7254dde3ae7488dee3ee82aafab26f0004ad3930a7b03a414758a5ea",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 12608
+  },
+  {
+    "Path": "semantic/tinyxml2/tinyxml2.wasm",
+    "InputSHA256": "68bde9e7af3167b5c95d524827f32db02232f428f764e44c0002d56a43429f31",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 213320
+  },
+  {
+    "Path": "semantic/utf8proc/utf8proc.wasm",
+    "InputSHA256": "1f1a3e18f5adee7732e3e338e3b455f147757ba35a1e6c49c5d5f6abbcd005e7",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 66358
+  },
+  {
+    "Path": "semantic/wren/wren.wasm",
+    "InputSHA256": "2b1647ba27936995e85892492c7389d114811496e5c276a2c4b2d44e8a455b41",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 636872
+  },
+  {
+    "Path": "semantic/xxhash/xxhash.wasm",
+    "InputSHA256": "3c3b114bc7cf36c3888d0a7053e4349598408e8579b64f6e5dd9314dfdd011aa",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 11720
+  },
+  {
+    "Path": "semantic/yyjson/yyjson.wasm",
+    "InputSHA256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 552074
+  },
+  {
+    "Path": "semantic/zlib/zlib.wasm",
+    "InputSHA256": "6d0c2a8cfb07c3b3cfef75d742a25cbd3f81a64b9786ac0e1cac6b58b5d7f92e",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 68582
+  },
+  {
+    "Path": "semantic/zstd/zstd.wasm",
+    "InputSHA256": "d59854de5e69e02b595ca57a2fd1a70417380ce6841b424c6205f5b882763a9f",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 275506
+  },
+  {
+    "Path": "synthetic/dispatch.wasm",
+    "InputSHA256": "29ac75e8a197b2564df8c92a59a17fb18f3474fa3d55d944ea12dea6cde88de9",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 315
+  },
+  {
+    "Path": "synthetic/fib_rec.wasm",
+    "InputSHA256": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 221
+  },
+  {
+    "Path": "synthetic/many_funcs.wasm",
+    "InputSHA256": "d3e33dac6c06b36b839936de79163453d52107a06e525886d98d5d8bef054fbd",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 15146
+  },
+  {
+    "Path": "synthetic/memory.wasm",
+    "InputSHA256": "61bc06924f4d51a179ebf19a1732002168b8899eb2cfa79886bdffdc9cbefabf",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": [
+      1
+    ],
+    "LogicalHeadroom": 128,
+    "BaseCapacity": 496
+  },
+  {
+    "Path": "synthetic/memory_tree.wasm",
+    "InputSHA256": "4f95f9b259641f241d9361b7e0aeb2740275314d1d69debcddd723efbbc129d5",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 787
+  },
+  {
+    "Path": "synthetic/tiny.wasm",
+    "InputSHA256": "b1db87bef75ea124f339b6331951ae1406581add804b44f6b6ccf696d0c3674a",
+    "DecodeError": "",
+    "QualifyingLocalFunctions": null,
+    "LogicalHeadroom": 0,
+    "BaseCapacity": 142
+  }
+]

@@ -1,0 +1,7 @@
+c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236  /tmp/wago-mitigation-all.test
+bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1  /tmp/wago-mitigation-corpus-all.test
+d71e71171bf92b0df3ad11db9949163dbefbc76bc27a53f427d6784a6c558201  /tmp/wago-mitigation-corpus-diag.test
+3d97bc850df2961c0ca122d277240974a0a5c2e8d2c26b970326efe24c7b7d1e  /tmp/wago-mitigation-corpus-normal.test
+571012b355df9ba02ceedfa56311d54ec23a33838be26c7593022c35723d6fcf  /tmp/wago-mitigation-diag.test
+555a5cb5fc14815fec44c77023c191f6557732e2f1d1d10fbb98add1628a7e4c  /tmp/wago-mitigation-inline.test
+a2bcdbe662969f717bba3a825b99e3592485fcdaa4ecd9248b7f541a92a13911  /tmp/wago-mitigation-normal.test

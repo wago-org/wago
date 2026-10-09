@@ -1,0 +1,25 @@
+{
+  "old": {
+    "binary": "/tmp/wago-followup-corpus-baseline.test",
+    "binary_sha256": "b68d6505c358dc74b98e7f7f3c0bb6f2dee1a274ae68f6b66738a56f8fe29440",
+    "function_bytes": 18762,
+    "frame_adjustment_bytes": 3360,
+    "function_sha256": "fcde704ea4758ecff525d1e081bf342c7b3da1834ccccdcc2675f577184b69a5",
+    "body_size_loop_start": "0x6dfe49",
+    "body_size_loop_end_exclusive": "0x6dfe83",
+    "body_size_loop_hex": "488b9424380e00004c8b82380100004c8b8a400100004531d24531dbeb0f496bc3684a8b4400584901c249ffc34d39cb7cec4c89942480040000",
+    "body_size_loop_sha256": "21898a50a269f38a0c9c656ed9376e8baf00b181014573feedb909dc29333c30"
+  },
+  "new": {
+    "binary": "/tmp/wago-mitigation-corpus-normal.test",
+    "binary_sha256": "3d97bc850df2961c0ca122d277240974a0a5c2e8d2c26b970326efe24c7b7d1e",
+    "function_bytes": 18762,
+    "frame_adjustment_bytes": 3360,
+    "function_sha256": "362f1743e7c37b65cc34e6bc9497abdc0b338aa4fa52e548c20f1f3b4f7604c2",
+    "body_size_loop_start": "0x6dfe49",
+    "body_size_loop_end_exclusive": "0x6dfe83",
+    "body_size_loop_hex": "488b9424380e00004c8b82380100004c8b8a400100004531d24531dbeb0f496bc3684a8b4400584901c249ffc34d39cb7cec4c89942480040000",
+    "body_size_loop_sha256": "21898a50a269f38a0c9c656ed9376e8baf00b181014573feedb909dc29333c30"
+  },
+  "conclusion": "The existing body-size loop is byte-identical and contains no experimental hint branch/call. The complete function is not byte-identical: stack slot and relocated data addresses differ. Function size and frame adjustment are unchanged; timings are separate evidence."
+}

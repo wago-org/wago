@@ -1,0 +1,125 @@
+{
+  "total_rows": 218,
+  "sets": [
+    {
+      "set": "corpus-DR-run1",
+      "rows": 25,
+      "samples_each": 20,
+      "started": "2026-10-09T11:00:42-0400",
+      "last_finished_unix": 1791558188.1418312,
+      "binary_sha256": {
+        "baseline": "3d97bc850df2961c0ca122d277240974a0a5c2e8d2c26b970326efe24c7b7d1e",
+        "candidate": "bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1"
+      },
+      "comparison_sha256": "114a9df1d91c3906b264198a6ca1a174179416e276f22529ec61a87105353bfc"
+    },
+    {
+      "set": "kernel-P-run1",
+      "rows": 44,
+      "samples_each": 20,
+      "started": "2026-10-09T11:03:08-0400",
+      "last_finished_unix": 1791558461.763894,
+      "binary_sha256": {
+        "baseline": "a2bcdbe662969f717bba3a825b99e3592485fcdaa4ecd9248b7f541a92a13911",
+        "candidate": "c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236"
+      },
+      "comparison_sha256": "38978932d42fad1228a261d6764e2fa97a9064b67ddd594c4dd5ce870e6ebb4b"
+    },
+    {
+      "set": "direct-D-P",
+      "rows": 22,
+      "samples_each": 20,
+      "started": "2026-10-09T11:07:41-0400",
+      "last_finished_unix": 1791558595.930309,
+      "binary_sha256": {
+        "baseline": "c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236",
+        "candidate": "c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236"
+      },
+      "comparison_sha256": "ba3060ca7d11091699c096fcea1a064460efbb598a01942f3ab3e446e0cdeab8"
+    },
+    {
+      "set": "direct-D-DR",
+      "rows": 25,
+      "samples_each": 20,
+      "started": "2026-10-09T11:09:56-0400",
+      "last_finished_unix": 1791558741.9490337,
+      "binary_sha256": {
+        "baseline": "bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1",
+        "candidate": "bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1"
+      },
+      "comparison_sha256": "eb0e20a86d43d85848b05fb72f9fe7e4a5c6517ba605ff1fe3e4bb084d06ebc1"
+    },
+    {
+      "set": "disabled-control",
+      "rows": 25,
+      "samples_each": 20,
+      "started": "2026-10-09T11:12:22-0400",
+      "last_finished_unix": 1791558888.2792802,
+      "binary_sha256": {
+        "baseline": "b68d6505c358dc74b98e7f7f3c0bb6f2dee1a274ae68f6b66738a56f8fe29440",
+        "candidate": "3d97bc850df2961c0ca122d277240974a0a5c2e8d2c26b970326efe24c7b7d1e"
+      },
+      "comparison_sha256": "6d0bc65d5032a99f8ec777a1783777939366c5df40b7ed42307c7081c7318221"
+    },
+    {
+      "set": "corpus-DR-repeat",
+      "rows": 25,
+      "samples_each": 20,
+      "started": "2026-10-09T11:15:00-0400",
+      "last_finished_unix": 1791559045.0458913,
+      "binary_sha256": {
+        "baseline": "3d97bc850df2961c0ca122d277240974a0a5c2e8d2c26b970326efe24c7b7d1e",
+        "candidate": "bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1"
+      },
+      "comparison_sha256": "5497488e8c0192285c848ed91597b8dd0b11b505238d4b149da39fa54d4166cb"
+    },
+    {
+      "set": "kernel-P-repeat",
+      "rows": 22,
+      "samples_each": 20,
+      "started": "2026-10-09T11:17:25-0400",
+      "last_finished_unix": 1791559178.6978092,
+      "binary_sha256": {
+        "baseline": "a2bcdbe662969f717bba3a825b99e3592485fcdaa4ecd9248b7f541a92a13911",
+        "candidate": "c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236"
+      },
+      "comparison_sha256": "da0e9885c2cd72881152cf5b154e866cd6cec78be50332d47412e5139c2ec7f5"
+    },
+    {
+      "set": "direct-D-P-repeat",
+      "rows": 22,
+      "samples_each": 20,
+      "started": "2026-10-09T11:19:38-0400",
+      "last_finished_unix": 1791559311.689077,
+      "binary_sha256": {
+        "baseline": "c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236",
+        "candidate": "c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236"
+      },
+      "comparison_sha256": "724aef2eec4e5733d9a06c39cfac7101d4b83db1a360f1af447436f96c30a4a7"
+    },
+    {
+      "set": "direct-D-DR-repeat",
+      "rows": 4,
+      "samples_each": 20,
+      "started": "2026-10-09T11:21:51-0400",
+      "last_finished_unix": 1791559336.126653,
+      "binary_sha256": {
+        "baseline": "bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1",
+        "candidate": "bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1"
+      },
+      "comparison_sha256": "e9c6a208659dd17fd835633b7b1a074397c106f773c2e6f2ccdac1e9aef42974"
+    },
+    {
+      "set": "corpus-memory-P",
+      "rows": 4,
+      "samples_each": 20,
+      "started": "2026-10-09T11:22:16-0400",
+      "last_finished_unix": 1791559360.2537932,
+      "binary_sha256": {
+        "baseline": "3d97bc850df2961c0ca122d277240974a0a5c2e8d2c26b970326efe24c7b7d1e",
+        "candidate": "bb73d93f54099c5f87b6a5bfa9dc99bf88fb5b6a156cc0bfe7993f415ee5f8b1"
+      },
+      "comparison_sha256": "41b0e885d672d6fb3358c34652a285a24f1e7cbd67a9cf1a4a8c4db63eb60f05"
+    }
+  ]
+}

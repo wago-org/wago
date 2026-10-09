@@ -1,0 +1,600 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8129057 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    9243	     14986 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    9601	     16466 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     130	    871637 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     262	    456966 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   8029318 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1188	    109555 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      63	   1905028 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  11755399 ns/op	    389221 code-B	 1455022 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    4582	     24595 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    5869	     19866 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1189582 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     177	    643689 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      14	   8939545 ns/op	    298661 code-B	 3042251 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     872	    133178 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      51	   2272091 ns/op	     89577 code-B	  561104 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      56	        99.55 ns/op	     21120 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      60	      7954 ns/op	       262.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    369763 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      60	     54251 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      54	    139253 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      57	       823.5 ns/op	      2506 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      62	    116788 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      7698 ns/op	       265.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1832	     56202 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8257083 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    9588	     14900 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    6774	     15091 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     140	    949347 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     262	    449613 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   6689426 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1212	    105430 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      69	   1970645 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  11832158 ns/op	    389221 code-B	 1455037 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5642	     22763 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    7900	     21627 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      98	   1233917 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     174	    660833 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   8577016 ns/op	    298661 code-B	 3042256 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     874	    132584 ns/op	      3301 code-B	  107605 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2267879 ns/op	     89577 code-B	  561103 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        96.16 ns/op	     21183 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      60	      8197 ns/op	       272.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      51	    368653 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     53857 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      58	    139905 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       823.6 ns/op	      2507 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      54	    113993 ns/op	        17.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      56	      7610 ns/op	       279.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1832	     59930 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8319380 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8995	     15277 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    7886	     15173 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     129	    919205 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     279	    495329 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7736291 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1189	    106646 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      67	   1837460 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  10517412 ns/op	    389221 code-B	 1455010 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5611	     22717 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    7879	     19890 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1182101 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     183	    708165 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   9146347 ns/op	    298661 code-B	 3042255 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     910	    133084 ns/op	      3301 code-B	  107605 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2354584 ns/op	     89577 code-B	  561100 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        96.24 ns/op	     21371 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      60	      7866 ns/op	       271.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    369146 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     55964 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      57	    139844 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      57	       827.0 ns/op	      2437 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      55	    113034 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      7578 ns/op	       279.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    2029	     55203 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      13	   8530880 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8740	     14923 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    7681	     14913 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     135	    924004 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     282	    434001 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7351306 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1110	    106143 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      62	   2055195 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	       8	  13200881 ns/op	    389221 code-B	 1455035 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5031	     25582 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    5434	     23358 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      98	   1237633 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     171	    726380 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   9931698 ns/op	    298661 code-B	 3042254 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     802	    149498 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      49	   2450625 ns/op	     89577 code-B	  561102 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      58	       100.7 ns/op	     20868 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      58	      8112 ns/op	       264.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    397687 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      57	     57881 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      51	    139477 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       831.5 ns/op	      2487 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      57	    116846 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      57	      7444 ns/op	       278.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1840	     55387 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8378336 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    9082	     15934 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    7857	     19536 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     100	   1012064 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     230	    487539 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      18	   7601673 ns/op	 1167889 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1200	    106648 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      67	   1839458 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  10707200 ns/op	    389221 code-B	 1455010 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    4867	     24796 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    5205	     20138 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1162417 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     181	    647107 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   8955936 ns/op	    298661 code-B	 3042255 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     847	    137186 ns/op	      3301 code-B	  107605 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      51	   2398538 ns/op	     89577 code-B	  561098 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        98.91 ns/op	     21310 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      60	      8083 ns/op	       255.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      52	    372146 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     54665 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      55	    139461 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      56	       827.2 ns/op	      2506 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      57	    114221 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      8049 ns/op	       278.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1758	     59110 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      13	   9288246 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8162	     18393 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    7197	     19539 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     112	    952700 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     273	    437390 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7312748 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1183	    105538 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      67	   1823330 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  10991782 ns/op	    389221 code-B	 1455025 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5370	     23016 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    5718	     22026 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      99	   1162388 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     184	    647825 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      12	   9254381 ns/op	    298661 code-B	 3042260 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     775	    139229 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2302994 ns/op	     89577 code-B	  561100 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        95.84 ns/op	     21201 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      55	      8188 ns/op	       271.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      52	    370306 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      56	     54109 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      55	    137563 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       824.2 ns/op	      2487 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      58	    114171 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      7641 ns/op	       278.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1929	     57169 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      13	   8814235 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8964	     14890 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    9592	     15239 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     135	    955065 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     284	    459453 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7058960 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1148	    113073 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      64	   1844751 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  10894131 ns/op	    389221 code-B	 1455024 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5091	     23172 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    5834	     22415 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1152055 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     181	    655936 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   9818722 ns/op	    298661 code-B	 3042270 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     801	    133813 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      50	   2367005 ns/op	     89577 code-B	  561099 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      58	        95.60 ns/op	     21120 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      60	      7743 ns/op	       271.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      55	    369808 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     54629 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      57	    142318 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      57	       842.4 ns/op	      2398 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      52	    113024 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      55	      7590 ns/op	       278.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1860	     57086 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8778465 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8833	     14838 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    8730	     15469 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     135	    906981 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     280	    437226 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7653604 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1188	    117734 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      66	   2102936 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  12233160 ns/op	    389221 code-B	 1455036 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5017	     23129 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    8028	     20171 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1168737 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     180	    641671 ns/op	     21707 code-B	  312784 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      12	   9352244 ns/op	    298661 code-B	 3042258 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     870	    131838 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2347643 ns/op	     89577 code-B	  561100 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        94.83 ns/op	     21097 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      55	      7844 ns/op	       273.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      55	    368602 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      60	     53730 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      52	    143127 ns/op	        14.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       843.4 ns/op	      2450 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      54	    115363 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      7528 ns/op	       278.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1970	     62087 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      13	   9165254 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8130	     17581 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    8121	     18070 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     126	    947885 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     254	    480295 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      18	   8632427 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1119	    113159 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      60	   2179034 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  13048824 ns/op	    389221 code-B	 1455037 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    4860	     25039 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    6446	     23155 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      96	   1246168 ns/op	     37439 code-B	  367085 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     168	    702146 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      12	   9839189 ns/op	    298661 code-B	 3042258 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     832	    150694 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      50	   2494366 ns/op	     89577 code-B	  561099 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        99.20 ns/op	     20431 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      78	      8064 ns/op	       263.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      52	    391645 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      57	     55590 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      52	    145861 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       855.3 ns/op	      2364 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      57	    116817 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      7807 ns/op	       265.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1776	     60509 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   9114078 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8692	     17715 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    7780	     17201 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     122	    956104 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     248	    475435 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      18	   7744198 ns/op	 1167889 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1098	    115327 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      62	   2116667 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	       9	  13288147 ns/op	    389221 code-B	 1455036 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    4272	     25172 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    6321	     24552 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      96	   1303155 ns/op	     37439 code-B	  367085 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     160	    731208 ns/op	     21707 code-B	  312784 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      12	  11987415 ns/op	    298661 code-B	 3042276 B/op	     665 allocs/op
+BenchmarkCompileFull/xxhash                   	     453	    254083 ns/op	      3301 code-B	  107605 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      32	   3533819 ns/op	     89577 code-B	  561101 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	       130.2 ns/op	     19235 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      84	      8253 ns/op	       254.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      50	    388288 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      50	     57080 ns/op	        37.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      52	    146696 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      57	       866.0 ns/op	      2393 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      55	    118504 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      8016 ns/op	       267.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1797	     62789 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8891215 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8455	     16765 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    8113	     16998 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     120	    875408 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     264	    469971 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      18	   8412079 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1081	    113159 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      64	   2186254 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  12674426 ns/op	    389221 code-B	 1455036 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5052	     25266 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    6628	     22492 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      97	   1248912 ns/op	     37439 code-B	  367085 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     164	    704728 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   9606092 ns/op	    298661 code-B	 3042255 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     820	    150519 ns/op	      3301 code-B	  107605 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      51	   2459920 ns/op	     89577 code-B	  561104 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        98.63 ns/op	     20555 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      54	      8098 ns/op	       265.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      51	    379720 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     54941 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      60	    142599 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       883.1 ns/op	      2458 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      58	    118333 ns/op	        17.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      8466 ns/op	       266.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1707	     64229 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8393573 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    9381	     14929 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    9375	     15898 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     135	    919755 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     285	    435645 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7265972 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1191	    106334 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      63	   1831105 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  11695460 ns/op	    389221 code-B	 1455037 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5301	     25944 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    7161	     21373 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      98	   1171022 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     177	    648988 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      12	   8999484 ns/op	    298661 code-B	 3042260 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     841	    133412 ns/op	      3301 code-B	  107605 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      51	   2356718 ns/op	     89577 code-B	  561098 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	       102.3 ns/op	     20519 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      66	      7948 ns/op	       258.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    369916 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     54912 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      52	    140257 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      60	       823.9 ns/op	      2478 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      54	    113277 ns/op	        17.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      60	      7738 ns/op	       278.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1891	     58221 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8351657 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    9213	     14905 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    9638	     15171 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     128	    854866 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     284	    442719 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7387910 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1206	    106067 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      68	   1896351 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  11826362 ns/op	    389221 code-B	 1455037 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5496	     22772 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    6020	     20380 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      96	   1211629 ns/op	     37439 code-B	  367085 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     180	    704708 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   9083364 ns/op	    298661 code-B	 3042256 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     841	    135173 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      51	   2345715 ns/op	     89577 code-B	  561098 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        94.83 ns/op	     21196 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      58	      7719 ns/op	       270.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    369663 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      56	     55710 ns/op	        39.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      55	    138591 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      60	       839.2 ns/op	      2512 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      57	    114215 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      60	      7460 ns/op	       277.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1934	     54827 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      13	   8462589 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    9025	     15053 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    8455	     15479 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     139	    921368 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     289	    457355 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   6975760 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1142	    115087 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      66	   1930195 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      12	  11924848 ns/op	    389221 code-B	 1455029 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5121	     22778 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    5163	     20150 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1157486 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     180	    651835 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   9722002 ns/op	    298661 code-B	 3042254 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     799	    130734 ns/op	      3301 code-B	  107605 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2341667 ns/op	     89577 code-B	  561103 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      58	        96.23 ns/op	     21225 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      55	      7695 ns/op	       271.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    369730 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     59524 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      57	    142789 ns/op	        14.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      60	       827.0 ns/op	      2439 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      58	    113190 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      7413 ns/op	       278.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1990	     54949 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8404031 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    9336	     15043 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    9181	     15142 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     121	    916644 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     205	    492685 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   6960292 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1256	    105888 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      64	   1937698 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  12393989 ns/op	    389221 code-B	 1455037 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5598	     24750 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    5670	     20204 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1154783 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     172	    724738 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	  10005905 ns/op	    298661 code-B	 3042270 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     789	    138339 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      50	   2594220 ns/op	     89577 code-B	  561104 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      58	       100.1 ns/op	     20849 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      60	      8291 ns/op	       254.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      51	    375384 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      56	     54367 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      52	    139496 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       825.7 ns/op	      2495 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      54	    113137 ns/op	        17.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      8548 ns/op	       278.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    2097	     54892 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8376168 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8814	     15174 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    9238	     15257 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     132	    921674 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     272	    464375 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   6738738 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1293	    104666 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      64	   1844559 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  10800395 ns/op	    389221 code-B	 1455022 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    4684	     22978 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    8050	     19963 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1220751 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     175	    647483 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      12	   9149685 ns/op	    298661 code-B	 3042276 B/op	     665 allocs/op
+BenchmarkCompileFull/xxhash                   	     867	    131515 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2291225 ns/op	     89577 code-B	  561100 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        95.61 ns/op	     21314 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      62	      7833 ns/op	       256.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    388428 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      56	     54857 ns/op	        39.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      52	    139888 ns/op	        14.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       820.1 ns/op	      2500 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      58	    113765 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      7454 ns/op	       262.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1981	     55692 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8503864 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8502	     16055 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    9260	     15328 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     129	    907142 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     282	    461323 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7006619 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1146	    106025 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      67	   2077589 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  12085555 ns/op	    389221 code-B	 1455037 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5474	     22746 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    6945	     19928 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1156521 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     177	    666967 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   9137656 ns/op	    298661 code-B	 3042254 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     871	    131653 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2339320 ns/op	     89577 code-B	  561100 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      57	        95.35 ns/op	     21243 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      60	      7862 ns/op	       272.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    368882 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     53917 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      57	    142658 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      60	       834.3 ns/op	      2416 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      58	    112831 ns/op	        19.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      56	      7477 ns/op	       280.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1920	     54678 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      13	   8783768 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    8599	     15921 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    7184	     17272 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     120	    995946 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     248	    486105 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      15	   7982306 ns/op	 1167890 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1120	    111669 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      67	   1878806 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  11915107 ns/op	    389221 code-B	 1455037 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    5416	     22689 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    7792	     20249 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1165936 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     177	    712572 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	  10453060 ns/op	    298661 code-B	 3042254 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     766	    152277 ns/op	      3301 code-B	  107605 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2423449 ns/op	     89577 code-B	  561103 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      58	        94.91 ns/op	     21196 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      56	      7703 ns/op	       270.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    370709 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      58	     54099 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      54	    145625 ns/op	        14.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       820.0 ns/op	      2437 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      58	    113482 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      57	      7488 ns/op	       279.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1972	     54648 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8504170 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    9096	     15159 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    8541	     16148 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     136	    949119 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     265	    445368 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7364043 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1189	    106967 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      67	   1823160 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      10	  12550033 ns/op	    389221 code-B	 1455037 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    4704	     24044 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    6387	     20066 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	      99	   1163582 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     182	    655905 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      13	   9003536 ns/op	    298661 code-B	 3042256 B/op	     664 allocs/op
+BenchmarkCompileFull/xxhash                   	     830	    133751 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      49	   2465368 ns/op	     89577 code-B	  561099 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      60	        98.90 ns/op	     21166 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      58	      7638 ns/op	       272.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    369689 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      60	     53138 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      56	    138866 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      57	       828.8 ns/op	      2489 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      57	    115765 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      58	      7679 ns/op	       263.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    1959	     54558 ns/op	   24945 B/op	     117 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/seqtk-fastq-to-fasta         	      14	   8399302 ns/op	  819809 B/op	     654 allocs/op
+BenchmarkCompile/memory                       	    7404	     15775 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/linked_list                  	    8962	     15860 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd                	     140	    964246 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd                  	     266	    444919 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkCompile/yyjson                       	      19	   7009302 ns/op	 1167888 B/op	     399 allocs/op
+BenchmarkCompile/xxhash                       	    1129	    105857 ns/op	   66120 B/op	      58 allocs/op
+BenchmarkCompile/drwav                        	      68	   1804108 ns/op	  185944 B/op	     289 allocs/op
+BenchmarkCompileFull/seqtk-fastq-to-fasta     	      12	  11255193 ns/op	    389221 code-B	 1455029 B/op	    1282 allocs/op
+BenchmarkCompileFull/memory                   	    4906	     22610 ns/op	       472.0 code-B	   23361 B/op	     108 allocs/op
+BenchmarkCompileFull/linked_list              	    7258	     21474 ns/op	       268.0 code-B	   22025 B/op	      92 allocs/op
+BenchmarkCompileFull/blake-as-simd            	     100	   1149935 ns/op	     37439 code-B	  367084 B/op	     264 allocs/op
+BenchmarkCompileFull/utf-as-simd              	     184	    662991 ns/op	     21707 code-B	  312783 B/op	     273 allocs/op
+BenchmarkCompileFull/yyjson                   	      12	   8966021 ns/op	    298661 code-B	 3042293 B/op	     665 allocs/op
+BenchmarkCompileFull/xxhash                   	     884	    133646 ns/op	      3301 code-B	  107604 B/op	     145 allocs/op
+BenchmarkCompileFull/drwav                    	      52	   2265998 ns/op	     89577 code-B	  561103 B/op	     531 allocs/op
+BenchmarkExec/memory.sum                      	      58	        99.40 ns/op	     21180 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum                 	      58	      7921 ns/op	       254.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN             	      54	    368189 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN            	      56	     53988 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN           	      57	    139710 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run               	      58	       819.6 ns/op	      2524 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/xxhash.xxhash_run               	      58	    114270 ns/op	        18.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/drwav.drwav_run                 	      56	      7548 ns/op	       277.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollLifecycle/memory            	    2024	     65587 ns/op	   24945 B/op	     117 allocs/op
+PASS

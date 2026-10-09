@@ -1,0 +1,21 @@
+Independent initial P evidence and confirmation-plan review
+Read-only; no builds or timings run.
+
+All 44 kernel-P-run1 rows and 22 direct-D-P rows were independently recomputed from raw Go output. Median ns/op,  bytes,  allocation count,  ratio-of-medians change,  and median paired change match the CSV. Each set has 40 successful order records, 20 samples per side, alternating order, CPU 2, GOMAXPROCS=1 and 100 ms. Normal reference binary a2bcdbe662969f717bba3a825b99e3592485fcdaa4ecd9248b7f541a92a13911 and candidate c871dc0f2f1fcff14b6fc05b454804aae5cb9d308a50a5adf59c36b6ef3af236 are recorded. Direct D/P uses that same candidate binary on both sides, with baseline mode D.
+
+P versus normal Wago,  first set only
+- n16 remains slower: aligned 22.28->22.74ns, +2.06%, p=.002;unaligned 22.315->22.785ns, +2.11%, p=.013.
+- aligned n63 is +1.40%, p=.039; n64 is+1.91%, p=.002. These adverse short/remainder rows must remain.
+- aligned n512 -12.44%, n8192 -5.65%, n262144 -7.53%, all p<.001. Unaligned counterparts -9.41%, -1.85%, -10.32%;first and last p<.001, n8192 p=.003. These gains include D's existing 16/4 benefit and do not establish an incremental benefit from paired tails.
+- aligned streaming -4.82%, p=.001;unaligned +1.22%, not significant. The paired unaligned change is -1.23%, which shows the limits of the noisy median ratio. No streaming repeat is available.
+- raw kernel compile pressure 0+1.90%, p=.758;pressure 12-.92%, p=.904. Allocation bytes/count are unchanged; no credible compile-speed claim follows.
+
+Direct D -> P,  first set only
+Only aligned n16 -1.32%(p=.014) and n512 -1.36%(p=.016) are significant. Median paired changes are smaller, -.60% and-.78%. All other direct rows are not significant. Unaligned n16 is +.49%, unaligned n512+.10%;unaligned n8192+.86%, aligned n8192+.59%. No equivalence claim follows from those nonsignificant results. The direct P experiment therefore has two isolated roughly 1% gains, not a useful broad or repeatable benefit yet. Normal-Wago short losses remain despite fewer tail branches.
+
+The proposed stopping rule is reasonable
+Repeat normal->DR's full 25 rows; repeat the fixed 22 directD/P rows; repeat the same 22 normal/P rows; repeatD/DR memory's four timers. This retains aligned/unaligned short, parity, cache, streaming and controls. Original n63 adverse evidence remains even though it is outside the reduced repeat. State which original rows are unrepeated; do not label the entire 44-row matrix confirmed. If a later promotion claim depends on excluded boundary rows or compile cost, repeat them before that claim.
+Freeze the confirmation count list and a practical-benefit criterion before sampling. A repeated lone 1% gain is not automatically sufficient to justify 25 extra native bytes and retained normal-Wago short losses. The user's 5% target is an initial guide, not an absolute gate; judge effect size, confidence, relevant coverage and costs together. No PR timing is required if P does not show a useful incremental benefit. Correctness wiring can remain as an opt-in reproducibility case without a combined performance claim. If DR confirms its allocation/time benefit independently and P fails, the evidence can support keeping DR and rejecting P/PR performance promotion. Do not force the combination because it already exists.
+
+Initial conclusion
+P has not proved a useful mitigation of D's short-loop costs. The bounded repeats are appropriate to check the two small direct gains and guard against an early rejection. DR's count mitigation has a clear byte cost and remains a separate experiment. Promotion remains unsupported before complete repeats, controls, validation and report review.

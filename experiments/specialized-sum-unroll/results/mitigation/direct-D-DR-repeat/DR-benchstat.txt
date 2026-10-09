@@ -1,0 +1,40 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                          │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-candidate.txt │
+                          │                                                             sec/op                                                              │                                                  sec/op                                                    vs base               │
+Compile/memory                                                                                                                                 15.05µ ±  7%                                                                                                 15.80µ ± 5%       ~ (p=0.149 n=20)
+CompileFull/memory                                                                                                                             23.42µ ± 13%                                                                                                 23.77µ ± 6%       ~ (p=0.108 n=20)
+Exec/memory.sum                                                                                                                                89.52n ±  2%                                                                                                 89.02n ± 2%       ~ (p=0.867 n=20)
+SumUnrollLifecycle/memory                                                                                                                      57.10µ ± 11%                                                                                                 58.99µ ± 5%       ~ (p=0.495 n=20)
+geomean                                                                                                                                        6.514µ                                                                                                       6.664µ       +2.30%
+
+                          │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-candidate.txt │
+                          │                                                              B/op                                                               │                                                  B/op                                                    vs base                 │
+Compile/memory                                                                                                                               10.95Ki ± 0%                                                                                                10.95Ki ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/memory                                                                                                                           24.56Ki ± 0%                                                                                                23.06Ki ± 0%  -6.11% (p=0.000 n=20)
+Exec/memory.sum                                                                                                                                0.000 ± 0%                                                                                                  0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollLifecycle/memory                                                                                                                    26.11Ki ± 0%                                                                                                24.61Ki ± 0%  -5.74% (p=0.000 n=20)
+geomean                                                                                                                                                   ²                                                                                                            -3.01%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                          │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-candidate.txt │
+                          │                                                            allocs/op                                                            │                                                allocs/op                                                 vs base                 │
+Compile/memory                                                                                                                                 29.00 ± 0%                                                                                                  29.00 ± 0%       ~ (p=1.000 n=20) ¹
+CompileFull/memory                                                                                                                             110.0 ± 0%                                                                                                  108.0 ± 0%  -1.82% (p=0.000 n=20)
+Exec/memory.sum                                                                                                                                0.000 ± 0%                                                                                                  0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollLifecycle/memory                                                                                                                      119.0 ± 0%                                                                                                  117.0 ± 0%  -1.68% (p=0.000 n=20)
+geomean                                                                                                                                                   ²                                                                                                            -0.88%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                   │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-candidate.txt │
+                   │                                                             code-B                                                              │                                                    code-B                                                     vs base            │
+CompileFull/memory                                                                                                                        535.0 ± 0%                                                                                                     535.0 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal
+
+                │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-baseline.txt │ /home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/results/mitigation/direct-D-DR-repeat/DR-candidate.txt │
+                │                                                           calls/batch                                                           │                                                  calls/batch                                                    vs base          │
+Exec/memory.sum                                                                                                                       23.14k ± 1%                                                                                                      22.95k ± 2%  ~ (p=0.799 n=20)

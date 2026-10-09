@@ -1,0 +1,10 @@
+--- FAIL: BenchmarkCompile
+    suite_test.go:117: corpus selector references unknown benchmark "seqtk"
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull        	1000000000	         0.0000001 ns/op
+BenchmarkExec               	1000000000	         0.0000002 ns/op
+BenchmarkSumUnrollLifecycle 	1000000000	         0.0000003 ns/op
+FAIL

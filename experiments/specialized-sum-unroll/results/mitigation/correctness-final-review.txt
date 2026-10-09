@@ -1,0 +1,42 @@
+Independent final mitigation correctness review
+Repository: /home/jtenner/Projects/wago-sum-unroll
+Source head: 38eff78fb (paired emitter 2540e0c38, capacity implementation b21f51545, test-only corpus selector correction 38eff78fb).
+Method: read-only source/diff, saved native test logs, artifact byte comparisons, and report/script inspection. No builds, test execution, native execution, or timings performed by this reviewer.
+
+Decision: no blocking correctness finding remains. This is correctness signoff for the experimental changes, not approval to enable a production default or proof of performance profitability.
+
+Source conclusions
+- P's zero remainder bypasses all loads. Odd counts enter the second half once, then consume pairs. Every load has native displacement zero; every address and count update uses 32-bit arithmetic. The backedge reads flags from the second count subtraction. This preserves memory32 wrapping, including short ranges that bypass the main-group wrap dispatch.
+- P reuses the original accumulator and one existing partial accumulator, combining each partial once. Modular i64 addition permits reassociation. It does not add a register or heap allocation. Configuration, byte budget and free-register admission occur before emitter/allocator mutation. The original range proof, scalar peel, main group, trap/fallback logic, pinned-local treatment and cleanup remain shared.
+- DR/PR reserve only bounded estimate headroom collected in the existing body-size loop. Per-function headroom is 128 logical bytes; module headroom is limited to 1024. This is a sizing predictor, not loop recognition. The implementation changes neither source Wasm nor native instructions and adds no instruction scan, module clone or public option.
+- Activation requires factor 16/chains 4, private reservation enabled, no hybrid/threshold, deferred mapping, one worker and effective noncompact policy. WAGO_COMPACT is included through compactNativePolicy. A callback with implicit MemoryPressureAt disables reserve; positive explicit callback thresholds are unchanged. Both gate findings from the prior review are resolved.
+- Normal-build constant false/zero stubs inline. The saved default-inline-summary.txt confirms inlining at both hook sites. default-compiler-code.json records equal 58-byte body-size loops with no experiment branch/call, unchanged 18762-byte enclosing function and 3360-byte frame. Full function bytes differ; the report correctly avoids claiming whole-function byte identity.
+
+Fresh saved validation
+I read results/mitigation/{baseline,D,P,DR,PR,H,T64}-tests-final.txt. All seven logs end PASS with no FAIL. Each TestSumUnrollFullMemory32 passes rather than skips. Oracle bounded/unbounded pressure cases, live exit values, wrapping, trap, overflow, selection, bounded emission, atomic rejection and native fallback checks pass in the saved matrices.
+- P/PR pair emission and 479-byte native fallback tests pass. Direct sufficient-budget/all-reserved rejection checks unchanged bytes and allocator ownership; this is separate from budget rejection.
+- DR/PR reserved/unreserved code+entry equality and actual deferred-native oracle execution pass.
+- DR/PR callback count and native-byte checks pass for thresholds 0, 1, 1024.
+- DR-public-capacity-final.txt and PR-public-capacity-final.txt pass the public same-process candidate/baseline allocation-object equality assertion. capacity-before.txt retains the expected 110-versus-108 tests-first failure. Timing allocation artifacts separately establish actual bytes/counts; the equality assertion alone does not establish equal allocated bytes.
+- Artifact, headroom and irrelevant candidate-specific tests are intentionally skipped in the selected native matrices. Fresh native artifacts and reserve-tests.txt separately provide those records. reserve-tests.txt is now ok; the earlier diagnostic failure is resolved through explicit decode-exclusion records.
+- Full affected CI/check status was still in progress at review time. check-status.txt was empty. This signoff does not assert that pending full checks or remote CI passed.
+
+Report and artifact claims checked
+- all-comparisons.csv contains 218 data rows, as stated in Phase 3. Statistical significance and promotion decisions belong to the separate performance evidence review; I did not recalculate those results here.
+- Direct byte comparisons of pressure 0/4/12 kernel artifacts and corpus memory.bin confirm D equals DR and P equals PR. This supports the reservation's unchanged-instruction claim.
+- native-summary.json confirms corpus sum bytes 312/375/400/375/400 for baseline/D/P/DR/PR, common 40-byte frame, zero recorded operand spills/reloads and module totals 472/535/560/535/560. The report does not equate zero operand spills with absence of all frame accesses.
+- control-hashes.json contains eight negative controls. All have a single native hash across five modes and zero baseline/candidate sum admissions. These controls provide no positive real-application coverage.
+- admission/headroom-corpus.json has 121 file records, 120 decoded modules, one explicit MicroPython exception-handling exclusion, 14 positive sizing predictions and bounded 4864 logical bytes across separate modules. Seqtk local function 5 requests 128 bytes while exact saved diagnostics select no sum latch. Its input hash matches the recorded predictor input. It is a false-positive compile control, not an eligible reduction or execution result.
+- The report distinguishes the logical reservation bound from total allocation bytes, acknowledges serial-path capacity reduction and rounding, retains the negative control losses, states PR was not timed, preserves earlier phases, and recommends investigation without promotion. These correctness/coverage statements agree with the reviewed source and artifacts.
+
+Reproduction review
+- experiments/specialized-sum-unroll/mitigation.sh is the Phase 3 entrypoint. It builds all binaries before samples, runs diagnostics separately, uses the correct seqtk-fastq-to-fasta selector, selects baseline/D/P/DR/PR/H/T64 for native matrices, preserves the D-versus-candidate same-binary comparisons, and calls sample.py and analyze.py with the intended result-directory names.
+- sample.py enforces at least 20 samples, serializes the baseline/candidate pair, reverses pair order on alternate samples, pins to the selected CPU, sets GOMAXPROCS=1, and retains output/order/environment/binary hashes. The fixed script passes 100 ms for Phase 3. No PR timing is claimed or attempted.
+- Test-log names written by a new script run use '-tests.txt' and '-public-capacity.txt'; committed final rerun logs use '-tests-final.txt' and '-public-capacity-final.txt'. This is an intentional retained-rerun naming difference, not a missing mode.
+- Suggested documentation addition before final delivery: name/link mitigation.sh and include its command with a new output directory and optional frozen old normal corpus binary. The current Phase 3 section explains method but does not explicitly name its reproduction entrypoint. This is nonblocking documentation work, not an emitter issue.
+
+Claude
+The saved independent Claude attempt exited 1 and reports 'Not logged in · Please run /login'. No Claude review occurred. Prior independent GPT correctness/performance reviews and this read-only review remain valid; do not claim Claude signoff.
+
+Final recommendation
+Leave the experiment opt-in and draft. Correctness evidence is sufficient for review of the experimental P and DR/PR implementations. Complete and report the pending applicable checks; retain the performance review and all unfavorable evidence. No production default should change on this correctness signoff.

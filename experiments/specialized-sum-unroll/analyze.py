@@ -46,7 +46,7 @@ for directory in a.directories:
             rows.append([variant, name, len(samples), *med, *cand, 100*(cand[0]/med[0]-1), statistics.median(100*(c[0]/b[0]-1) for b,c in zip(samples,candidate))])
     (out/"summary.json").write_text(json_rows(summary)+"\n")
     with (out/"comparison.csv").open("w") as f:
-        writer = csv.writer(f)
+        writer = csv.writer(f, lineterminator="\n")
         writer.writerow(["variant", "benchmark", "samples_each", "baseline_ns", "baseline_bytes", "baseline_allocs",
                          "candidate_ns", "candidate_bytes", "candidate_allocs", "time_delta_percent", "median_paired_time_delta_percent"])
         writer.writerows(rows)

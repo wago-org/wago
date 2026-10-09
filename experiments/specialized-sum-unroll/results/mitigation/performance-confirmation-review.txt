@@ -1,0 +1,20 @@
+Independent Phase 3 confirmation evidence review (interim)
+Read-only; no builds, tests or timings run.
+
+corpus-DR-repeat (25 rows) and kernel-P-repeat (22 rows) pass independent raw-data verification. Every median timing/byte/allocation cell and both percentage metrics agree with the CSV. Each set has 40 successful records, 20 samples per side, alternating order and CPU 2. P repeat is the stated reduced matrix. It does not repeat every original kernel row or the original compilation rows.
+
+DR versus normal Wago
+Memory execution repeats a -9.57%/-10.12% gain (p<.001 in both runs). Public memory compile is +.0022% in the first run (not significant) then +1.33% (p=.027). This is an adverse confirmation row, not a repeated zero-cost result or repeated compile regression. Raw memory compile repeats negative medians: -.996% (not significant) then -1.63% (p=.032); the lone significant result is not credible evidence of a compiler speedup from this experiment.
+Memory lifecycle is +.30% then +.47%, both not significant. Do not infer equivalence or a one-call gain. Public compile remains 23361 -> 23617 B, 108 -> 108 allocations; lifecycle remains 24945 -> 25201 B, 117 -> 117 allocations. DR restores object counts while adding 256 preallocated bytes. This mitigation remains distinct from unchanged public memory cost.
+
+The yyjson zero-admission control execution loss repeats: +1.14% (p=.005) then +1.46% (p=.014). Guest hashes are identical and its requested headroom is zero. A guest-code change is not the cause shown by these artifacts, but the adverse measurements remain relevant. Host layout, initialization, mapping or noise were not separated. Do not discard the loss or claim enabled corpus has no regressions.
+Other significant confirmation controls: raw linked_list compile -1.83% (p=.015), raw utf-as-simd compile -4.97% (p=.001). These gains have no specialized-sum admission and no hint and are not optimizer benefits. All rows must stay visible.
+Seqtk compile changes -.0556% raw and +.762% public in the first run, then -.388% raw and -4.856% public in confirmation; none is significant. Its public byte median changes 1455036 -> 1455026.5 in the repeat, versus 1455036 -> 1455037 first. Allocations remain 1282. Keep the actual byte values and qualify small accounting differences. This does not establish exact B/op equality or a general false-positive capacity benefit. No object increase is observed for this measured false positive.
+
+P versus normal Wago
+n16 losses repeat: aligned +2.06%/+2.35% (p=.002/.001); unaligned +2.11%/+1.75% (p=.013/.006). The paired tail does not repair these short-loop losses. Confirmation unaligned n64 is +.90% (p=.009); first unaligned n64 was not significant. Initial aligned n64 +1.91% (p=.002) does not reach significance in confirmation. Initial aligned n63 +1.40% (p=.039) is unrepeated and remains retained.
+P's inherited large-loop gains repeat against normal Wago: aligned n512 -12.44%/-13.35%, n8192 -5.65%/-5.64%, n262144 -7.53%/-6.55%; unaligned n512 -9.41%/-9.02%, n8192 -1.85%/-3.22%, n262144 -10.32%/-8.87%. These do not isolate an added P benefit over D. Direct confirmation is still pending.
+Aligned streaming changes -4.82%/-3.52% (both p=.001), below a repeated 5% gain. Unaligned streaming is +1.22%/+2.17%, neither significant. Do not turn a nonsignificant median increase into a proven regression, or infer equivalence.
+
+Current decision limits
+The fixed stopping rule is supported: P still has repeated short-loop losses, and two isolated initial roughly 1% direct gains cannot justify an automatic combination. Await direct D/P repeat before the final rejection assessment. DR's object-count mitigation is repeatable, but public memory bytes remain higher and the yyjson control regression repeats. Neither candidate supports promotion, and the absent positive real application remains a limit. Direct DR memory repeat and P public cost qualification remain pending. Final report sign-off will cover all completed evidence together.

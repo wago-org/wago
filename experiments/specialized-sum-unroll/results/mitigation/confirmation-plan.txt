@@ -1,0 +1,22 @@
+Frozen after initial normal-to-P and D-to-P results, before confirmation.
+Keep every initial row, including n63 which is absent from the smaller repeat.
+Repeat normal-to-DR over all25 corpus rows, including the adverse yyjson control.
+Repeat normal-to-P and D-to-P over the same fixed22 execution rows:
+addr0/1, counts0,8,16,17,33,64,128,512,8192,262144,8388607.
+Repeat D-to-DR on all4 memory rows to isolate the allocation/compile effect.
+
+Decision rule: isolated approximately1% aligned wins do not justify P's25
+extra bytes while normal-Wago short-loop regressions remain. A useful pair
+tail needs coherent short-loop recovery against normal4/4 and a consistent
+advantage over D, not just inherited D main-loop gains. The initial results
+fail that test. Confirmation checks stability; it is not another tuning pass.
+Do not time combined PR merely because one small row repeats. If the pair
+still lacks a useful advantage, retain its negative evidence and keep plain
+16/4 plus the reserve hint as the simpler mitigation candidate.
+The reserve hint must restore allocation counts and preserve D's guest code;
+report added bytes and all control/time regressions. Nonsignificant timing
+changes are not a proof of equivalence. No production promotion without real
+positive workload coverage and wider validation.
+Also measure normal-to-P over the4 public memory rows once, to report its
+public compilation/allocation cost. This is cost qualification, not a new
+combined candidate or a basis for promotion.
