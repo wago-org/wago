@@ -26,7 +26,7 @@ func TestSumUnrollCorpusAdmission(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	wanted := map[string]bool{"memory": true, "linked_list": true, "many_funcs": true, "blake-as-simd": true, "utf-as-simd": true, "yyjson": true, "xxhash": true, "drwav": true}
+	wanted := map[string]bool{"memory": true, "linked_list": true, "many_funcs": true, "blake-as-simd": true, "utf-as-simd": true, "yyjson": true, "xxhash": true, "drwav": true, "seqtk": true}
 	for _, entry := range loadCorpus(t) {
 		if !wanted[entry.ID] {
 			continue

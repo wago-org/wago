@@ -2,6 +2,8 @@
 
 package amd64
 
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
 // Experimental builds only. Tests set this value before serial compilation.
 // It is absent from normal builds and is not a production compiler option.
 var sumUnrollExperiment struct {
@@ -220,4 +222,28 @@ func (f *fn) tryLinearSumLatchMitigated(loop *ctrlFrame, counter int, factor, ch
 		f.stats.peep("experimental-linear-sum-threshold")
 	}
 	return true
+}
+
+// A bounded allocation hint only. It does not admit or rewrite a loop.
+func sumUnrollReserveEnabled(deferred bool, workers int, compact bool) bool {
+	c := sumUnrollExperiment
+	return c.reserve && c.factor == 16 && c.chains == 4 && !c.hybrid && c.threshold == 0 && deferred && workers == 1 && !compact
+}
+
+func sumUnrollCodeHeadroom(m *wasm.Module, hints []funcHints, i, used int) int {
+	const extra = 128
+	const limit = 1024
+	if used < 0 || used > limit-extra || i < 0 || i >= len(m.Code) || i >= len(hints) {
+		return 0
+	}
+	body := len(m.Code[i].BodyBytes)
+	flags := hints[i].flags
+	if body == 0 || body > 2<<10 || !flags.has(hintHasLoop) || !flags.has(hintTouchesMemory) || flags&(hintHasCall|hintHasTailCall|hintHasSIMD|hintUsesBulkMem) != 0 {
+		return 0
+	}
+	ft, ok := m.LocalFuncType(i)
+	if !ok || len(ft.Results) == 0 || ft.Results[0] != wasm.I64 {
+		return 0
+	}
+	return extra
 }

@@ -33,6 +33,19 @@ func TestSumUnrollPairEmission(t *testing.T) {
 			t.Fatal("temporary owner leaked")
 		}
 	}
+	// Sufficient byte budget must not hide a register-pressure rejection.
+	blocked := *f
+	blocked.a = &x86.Asm{B: []byte{0x90}}
+	for _, r := range gpAlloc {
+		blocked.reserved = blocked.reserved.add(r)
+	}
+	saved := blocked
+	if blocked.tryLinearSumLatchMitigated(nil, 1, 16, 4, 576, false, 0, true) {
+		t.Fatal("pair accepted unavailable registers")
+	}
+	if len(blocked.a.B) != 1 || blocked.a.B[0] != 0x90 || blocked.pinned != saved.pinned || blocked.reserved != saved.reserved || blocked.regUser != saved.regUser {
+		t.Fatal("pair rejection changed bytes or ownership")
+	}
 }
 
 func TestSumUnrollPairBudgetFallback(t *testing.T) {

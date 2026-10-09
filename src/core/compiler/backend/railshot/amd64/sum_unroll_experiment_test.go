@@ -51,7 +51,9 @@ func sumUnrollNative(t testing.TB, m *wasm.Module, opts CompileOptions) *sumNati
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { cm.CodeImage.Close() })
+	if cm.CodeImage != nil {
+		t.Cleanup(func() { cm.CodeImage.Close() })
+	}
 	eng, err := rt.NewEngine()
 	if err != nil {
 		t.Fatal(err)

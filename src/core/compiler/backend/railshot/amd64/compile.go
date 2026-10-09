@@ -1914,11 +1914,19 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// Without this the buffer grows geometrically, and each reallocation copies the
 	// whole accumulated code — on a 16 MB module that churns hundreds of MB of
 	// garbage. Under-estimating only costs a tail append; it is never incorrect.
-	totalBody := 0
+	totalBody, sumHeadroom := 0, 0
+	reserveSum := sumUnrollReserveEnabled(opts.DeferCodeMapping, workers, compactNativePolicy(policy)) &&
+		(opts.MemoryPressure == nil || opts.MemoryPressureAt > 0)
 	for i := range m.Code {
 		totalBody += len(m.Code[i].BodyBytes)
+		if reserveSum {
+			sumHeadroom += sumUnrollCodeHeadroom(m, allHints, i, sumHeadroom)
+		}
 	}
 	codeCap := moduleCodeCapacityAMD64(totalBody, n, policy)
+	if reserveSum && codeCap > 0 && sumHeadroom <= int(^uint(0)>>1)-codeCap {
+		codeCap += sumHeadroom
+	}
 	moduleTypes := buildModuleTypeCache(m, totalBody)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	// A one-worker join pays for a second arena and copy. It wins for large bodies,
