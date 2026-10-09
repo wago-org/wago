@@ -697,6 +697,10 @@ type NameSec struct {
 }
 
 type Module struct {
+	// ExperimentalInstructionOrigins maps compiler-generated expression bytes
+	// to original expression positions. Decoded source modules leave it nil.
+	ExperimentalInstructionOrigins [][]uint32
+
 	Customs           []CustomSec
 	NameSec           *NameSec
 	RawNameSecPayload []byte

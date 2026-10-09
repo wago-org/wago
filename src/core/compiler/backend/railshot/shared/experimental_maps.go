@@ -247,8 +247,10 @@ func RewriteVectorMaps(m *wasm.Module, fp, assertFast bool) (*wasm.Module, strin
 			out = &copy
 			out.Code = append([]wasm.Func(nil), m.Code...)
 			out.BranchHints = nil
+			out.ExperimentalInstructionOrigins = make([][]uint32, len(m.Code))
 		}
 		out.Code[i].BodyBytes = replacement
+		out.ExperimentalInstructionOrigins[i] = experimentOrigins(m, f.BodyBytes, replacement, &p.Loop, true)
 		out.Code[i].Body = wasm.Expr{}
 		out.Code[i].Locals.Runs = append(append([]wasm.LocalRun(nil), f.Locals.Runs...), wasm.LocalRun{Count: 1, Type: wasm.V128})
 		growth += delta

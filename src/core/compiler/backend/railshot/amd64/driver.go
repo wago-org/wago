@@ -57,6 +57,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			f.recycleEmptyOperandArena()
 		}
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
+		if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+			f.wasmPC = f.sourceInstructionPC(uint32(r.Offset()))
+		}
 		op, err := r.Byte()
 		if err != nil {
 			return err

@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -1580,6 +1581,7 @@ func CompileModule(m *wasm.Module) (*a64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
+	original := m
 	if opts.ExperimentalLoopMode != "" && !opts.Interruptible && len(opts.CustomInstructions) == 0 && !opts.Profile && !opts.SourceMaps && !opts.UnwindMaps {
 		var err error
 		m, _, err = shared.RewriteReplication(m, opts.ExperimentalLoopMode)
@@ -1608,6 +1610,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		compiled, err = compileSourceModuleWith(m, opts)
 	} else {
 		compiled, err = compileModuleWith(m, opts)
+	}
+	if m != original && (errors.Is(err, shared.ErrExperimentalNativeBudget) || err == nil && !shared.ExperimentalNativeModuleBudget(len(compiled.Code))) {
+		if compiled != nil && compiled.CodeImage != nil {
+			compiled.CodeImage.Close()
+		}
+		opts.ExperimentalLoopMode = ""
+		return CompileModuleWith(original, opts)
 	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
@@ -2982,6 +2991,13 @@ const minPreallocatedCallRelocs = 8
 // compileFunc compiles one function exactly once. Its target-derived transient
 // register floor prevents optional whole-function pins from forcing a retry.
 func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets inlineTargetTable, calleeHints []funcHints, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	if m.ExperimentalInstructionOrigins != nil {
+		defer func() {
+			if err == nil && !shared.ExperimentalNativeFunctionBudget(len(code)) {
+				err = shared.ErrExperimentalNativeBudget
+			}
+		}()
+	}
 	var compileStart time.Time
 	if diagnosticsEnabled && stats != nil {
 		stats.FunctionAttempts++

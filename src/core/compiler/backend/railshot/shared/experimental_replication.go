@@ -75,6 +75,9 @@ func experimentTail(body []byte, at int, counter uint32) (end int, ok bool) {
 // change to the caller's module. Function scanning is bounded as well as bodies.
 func InspectReplication(body []byte, m *wasm.Module, factor int, guarded, simd bool, p *ReplicationPlan) string {
 	*p = ReplicationPlan{Factor: factor, Guarded: guarded}
+	if len(body) > ExperimentMaxFunctionBytes {
+		return "function-budget"
+	}
 	if factor != 2 && factor != 4 {
 		return "factor"
 	}
@@ -243,6 +246,9 @@ func (p *ReplicationPlan) Emit(body []byte) []byte {
 // and the decoded module remain immutable. Allocation occurs only on accepted
 // loops. Validation and scratch-allocation costs are included in compile timing.
 func RewriteReplication(m *wasm.Module, mode string) (*wasm.Module, string, error) {
+	if m.ExperimentalInstructionOrigins != nil {
+		return m, "already-lowered", nil
+	}
 	if mode == "vector-f32" || mode == "vector-i32" || mode == "vector-f32-assert" || mode == "vector-i32-assert" {
 		return RewriteVectorMaps(m, mode == "vector-f32" || mode == "vector-f32-assert", mode == "vector-f32-assert" || mode == "vector-i32-assert")
 	}
@@ -293,8 +299,10 @@ func RewriteReplication(m *wasm.Module, mode string) (*wasm.Module, string, erro
 			out = &copy
 			out.Code = append([]wasm.Func(nil), m.Code...)
 			out.BranchHints = nil
+			out.ExperimentalInstructionOrigins = make([][]uint32, len(m.Code))
 		}
 		out.Code[i].BodyBytes = replacement
+		out.ExperimentalInstructionOrigins[i] = experimentOrigins(m, f.BodyBytes, replacement, &p, false)
 		out.Code[i].Body = wasm.Expr{}
 		growth += len(replacement) - len(f.BodyBytes)
 	}

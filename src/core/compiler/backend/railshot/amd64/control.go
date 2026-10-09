@@ -170,6 +170,9 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
 		return 0, 0, 0, false
 	}
 	loadPC = f.tracePCBase + uint32(r2.Offset())
+	if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+		loadPC = f.sourceInstructionPC(uint32(r2.Offset()))
+	}
 	width, loadOp, addOp, xorOp := 8, byte(0x29), byte(0x7c), byte(0x85)
 	if shared.ReductionForms && acc >= 0 && acc < len(f.localType) && f.localType[acc] == mtI32 {
 		width, loadOp, addOp, xorOp = 4, 0x28, 0x6a, 0x73
@@ -293,13 +296,13 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
 func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	if shared.ReductionForms && (f.sumExperimentOpcode == 0x73 || f.sumExperimentOpcode == 0x85 || f.sumExperimentOpcode == 0x6a) {
 		factor, chains, _ := shared.SumExperimentShape()
-		if shared.SumExperiment == "A" || factor == 1 {
+		if shared.SumExperiment == "A" || factor == 1 && shared.SumExperiment != "H" {
 			return false
 		}
 		return f.tryExperimentalSumLatch(counter, factor, chains)
 	}
 	if factor, accumulators, enabled := shared.SumExperimentShape(); enabled {
-		if factor == 1 {
+		if factor == 1 && shared.SumExperiment != "H" {
 			return false
 		}
 		return f.tryExperimentalSumLatch(counter, factor, accumulators)

@@ -5,6 +5,7 @@ package amd64
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/bits"
@@ -1724,6 +1725,7 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	original := m
 	if opts.ExperimentalLoopMode != "" && !opts.Interruptible && len(opts.CustomInstructions) == 0 && !opts.Profile && !opts.SourceMaps && !opts.UnwindMaps {
 		var err error
 		m, _, err = shared.RewriteReplication(m, opts.ExperimentalLoopMode)
@@ -1752,6 +1754,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		compiled, err = compileSourceModuleWith(m, opts)
 	} else {
 		compiled, err = compileModuleWith(m, opts)
+	}
+	if m != original && (errors.Is(err, shared.ErrExperimentalNativeBudget) || err == nil && !shared.ExperimentalNativeModuleBudget(len(compiled.Code))) {
+		if compiled != nil && compiled.CodeImage != nil {
+			compiled.CodeImage.Close()
+		}
+		opts.ExperimentalLoopMode = ""
+		return CompileModuleWith(original, opts)
 	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
@@ -3425,6 +3434,13 @@ const minPreallocatedCallRelocs = 8
 // compileFunc compiles one function exactly once. Optional local pins are
 // pressure-spillable inside the attempt, so emitted work is never discarded.
 func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	if m.ExperimentalInstructionOrigins != nil {
+		defer func() {
+			if err == nil && !shared.ExperimentalNativeFunctionBudget(len(code)) {
+				err = shared.ErrExperimentalNativeBudget
+			}
+		}()
+	}
 	var compileStart time.Time
 	if diagnosticsEnabled && stats != nil {
 		stats.FunctionAttempts++

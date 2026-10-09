@@ -8,7 +8,7 @@ var SumExperiment = os.Getenv("WAGO_LOOP_SUM_EXPERIMENT")
 
 func SumExperimentShape() (factor, accumulators int, enabled bool) {
 	switch SumExperiment {
-	case "A", "B":
+	case "A", "B", "H":
 		return 1, 1, true
 	case "C":
 		return 2, 1, true
