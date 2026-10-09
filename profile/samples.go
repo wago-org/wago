@@ -138,6 +138,9 @@ func ResolveWithLimits(events []jitprofile.Event, samples []Sample, unit string,
 	if len(samples) > limits.Samples {
 		return report, fmt.Errorf("profile sample limit exceeded")
 	}
+	if len(samples) == 0 {
+		return report, nil
+	}
 	events = append([]jitprofile.Event(nil), events...)
 	samples = append([]Sample(nil), samples...)
 	sort.SliceStable(events, func(i, j int) bool {
@@ -147,6 +150,8 @@ func ResolveWithLimits(events []jitprofile.Event, samples []Sample, unit string,
 		return events[i].Timestamp < events[j].Timestamp
 	})
 	sort.SliceStable(samples, func(i, j int) bool { return samples[i].Timestamp < samples[j].Timestamp })
+	lastSampleTime := samples[len(samples)-1].Timestamp
+	events = events[:sort.Search(len(events), func(i int) bool { return events[i].Timestamp > lastSampleTime })]
 	active := newLiveImages(events)
 	symbols := make(map[uint64]map[int]*jitprofile.Function)
 	var changedLoads []int

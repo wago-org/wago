@@ -24,7 +24,16 @@ func newLiveImages(events []jitprofile.Event) *liveImages {
 		base  uint64
 		event int
 	}
-	loads := make([]load, 0, len(events))
+	loadCount := 0
+	for _, event := range events {
+		if event.Kind == "load" && event.Image != nil {
+			loadCount++
+		}
+	}
+	if loadCount == 0 {
+		return &liveImages{}
+	}
+	loads := make([]load, 0, loadCount)
 	for i, event := range events {
 		if event.Kind == "load" && event.Image != nil {
 			loads = append(loads, load{event.Image.Base, i})
