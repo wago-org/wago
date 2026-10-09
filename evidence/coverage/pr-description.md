@@ -111,8 +111,9 @@ boundaries, stable entry/internal-call identities and stack/call/return implicit
 profile byte ownership alone is insufficient. Broader ISA, insertion alignment and
 hardware qualification are deliberately outside the initial subset.
 
-Draft CI runs limited Linux AMD64 CI smoke and GC draft smoke; it skips the full
-native/conformance/benchmark matrix. Draft smoke must not be reported as full CI.
+Draft CI runs limited Linux AMD64 CI smoke and skips the full native/conformance/
+benchmark matrix. The separate GC draft-smoke workflow is path-filtered to GC files
+and is not expected for this patch. Draft smoke must not be reported as full CI.
 No merge, issue closure, readiness change or manual full-CI dispatch is requested.
 
 **Checklist:**
