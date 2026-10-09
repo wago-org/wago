@@ -69,7 +69,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	privateRefs := floating && (state.ownedTable || state.importReferences)
 	functionRefs := state != nil && state.referenceFunctions
 	if functionRefs {
-		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls || !state.referenceCalls) {
+		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls) {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
 		if len(state.functions) > MaxFunctions {
@@ -746,7 +746,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 && (!(state.dynamicTailCalls || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				if heap != -16 && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -1010,7 +1010,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if e != nil {
 				return integerSummary{}, e
 			}
-			if state == nil || !state.production || !state.dynamicTailCalls || !state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls || !privateRefs || uint64(typeIndex) >= uint64(len(state.types)) {
+			if state == nil || !state.production || !state.dynamicTailCalls || !state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls || functionRefs && !state.referenceCalls || !privateRefs || uint64(typeIndex) >= uint64(len(state.types)) {
 				return integerSummary{}, unsupported("private dynamic typed tail profile required")
 			}
 			sig := state.types[typeIndex]
@@ -1059,9 +1059,6 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x11, 0x13:
-			if functionRefs && op == 0x13 {
-				return integerSummary{}, unsupported("private reference functions exclude indirect proper tails")
-			}
 			typeIndex, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -1084,8 +1081,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if !state.localTailCalls || state.dynamicTailCalls && (!state.importTailCalls || !state.foreignTableCalls) || !state.dynamicTailCalls && (state.foreignTableCalls || state.importedFunctions != 0) {
 					return integerSummary{}, unsupported("owned defined indirect tail profile required")
 				}
-				if e := admitLocalTailSignature(ft, sig.signature); e != nil {
-					return integerSummary{}, e
+				if functionRefs {
+					err = admitReferenceTailResults(ft, sig.signature)
+				} else {
+					err = admitLocalTailSignature(ft, sig.signature)
+				}
+				if err != nil {
+					return integerSummary{}, err
 				}
 				if state.dynamicTailCalls {
 					importTails++

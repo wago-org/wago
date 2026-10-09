@@ -36,8 +36,17 @@ func TestRV64PublicReferenceFunctionProperReferenceTailTargetParked(t *testing.T
 	rv64ReferenceFunctionNumericCallsParked(t, 4)
 	rv64ReferenceFunctionNumericCallsParked(t, 5)
 }
+func TestRV64PublicReferenceFunctionProperIndirectTailParked(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsParked(t, 6)
+}
+func TestRV64PublicReferenceFunctionProperIndirectTailTargetParked(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsParked(t, 7)
+	rv64ReferenceFunctionNumericCallsParked(t, 8)
+}
 func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 	ownedTable := tableStage > 0
+	activeTarget := tableStage == 4 || tableStage == 5 || tableStage == 7 || tableStage == 8
+	sharedTarget := tableStage == 5 || tableStage == 8
 	t.Helper()
 	product := "numeric-calls"
 	if ownedTable {
@@ -49,11 +58,14 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 	if tableStage >= 3 {
 		product = "proper-reference-tail"
 	}
+	if tableStage >= 6 {
+		product = "proper-indirect-tail"
+	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
 			for _, start := range []int{1, 2} {
 				for _, action := range []string{"resume", "cancel", "instance-close", "runtime-close", "host-trap"} {
-					t.Run(fmt.Sprintf("artifact%t-vector%t-start%d-%s-shared%t", artifact, vector, start, action, tableStage == 5), func(t *testing.T) {
+					t.Run(fmt.Sprintf("artifact%t-vector%t-start%d-%s-shared%t", artifact, vector, start, action, sharedTarget), func(t *testing.T) {
 						owners := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 						defer rv64HostCertificateCloseRuntime(t, owners)
 						rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
@@ -66,8 +78,14 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 							t.Fatal(err)
 						}
 						target, fixtureStage := 0, tableStage
-						if tableStage >= 4 {
-							target, fixtureStage = 2, 3
+						if tableStage >= 6 {
+							fixtureStage = 4
+						}
+						if activeTarget {
+							target = 2
+							if tableStage < 6 {
+								fixtureStage = 3
+							}
 						}
 						pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-v%t-ttrue-wtrue-s%d-target%d", product, vector, start, target), rv64ReferenceNumericCallsFixture(fixtureStage, false, vector, true, true, start, target), artifact)
 						ctx, cancel := context.WithCancel(context.Background())
@@ -104,7 +122,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 							view := rv64InvocationViewForTest(in)
 							beforeView, capability := bytes.Clone(view), rv64EntryCapability(in)
 							var generation *rv64NativeTailGeneration
-							if tableStage >= 4 {
+							if activeTarget {
 								state := &in.pluginState.Load().railshotInvocation
 								if state.tableDepth != 0 {
 									for _, candidate := range state.tableTargets[state.tableDepth-1].tailActive {
@@ -115,7 +133,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 								}
 							}
 							parkedCapability = capability
-							if tableStage >= 4 && (capability == 0 || in.pluginState.Load().railshotInvocation.tailGenerationBudget.count == 0) {
+							if activeTarget && (capability == 0 || in.pluginState.Load().railshotInvocation.tailGenerationBudget.count == 0) {
 								panic("active private reference tail lacks generation")
 							}
 							if _, err := in.InvokeFromHost(context.Background(), caller, "clear"); err != nil {
@@ -123,7 +141,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 							}
 							// The portal reactivates the outer capability when native
 							// serialization resumes; its factory stays retained here.
-							if tableStage >= 4 && (!bytes.Equal(view, beforeView) || generation == nil || !generation.reserved || !generation.ready) {
+							if activeTarget && (!bytes.Equal(view, beforeView) || generation == nil || !generation.reserved || !generation.ready) {
 								panic("tail target reentry lost parked context/factory")
 							}
 							entered <- caller
@@ -135,7 +153,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 						})
 						host, signature := any(probe), pc.importFuncSigs[1]
 						startBinding := any(nil)
-						if tableStage >= 4 {
+						if activeTarget {
 							host = CallerHostCallFunc(func(caller Caller, call HostCall) {
 								finishCalls++
 								if finishCalls == 1 {
@@ -154,10 +172,10 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 								}
 							})
 						}
-						owned := rv64DynamicHostBinding(t, rt, tableStage != 5, host, signature)
+						owned := rv64DynamicHostBinding(t, rt, !sharedTarget, host, signature)
 						gate := newPluginCallGate("rv64-local-cell-park")
 						rt.storeHooks(&hookRegistry{operationGates: []*pluginCallGate{gate}})
-						if tableStage >= 4 {
+						if activeTarget {
 							im.Function("env.calls", "unused.fn", nf).Function("env.calls", "start.fn", startBinding).Function("env.calls", "finish.fn", owned)
 						} else {
 							im.Function("env.calls", "unused.fn", nf).Function("env.calls", "start.fn", owned).Function("env.calls", "finish.fn", func(v int32) int32 { return v + 1 })
@@ -211,7 +229,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 						}
 						nc.Close()
 						pc.Close()
-						if native.resourcesClosed || provider.resourcesClosed || active.resourcesClosed || !caller.valid() || (tableStage != 5 && owned.(*HostFuncRef).Close() == nil) {
+						if native.resourcesClosed || provider.resourcesClosed || active.resourcesClosed || !caller.valid() || (!sharedTarget && owned.(*HostFuncRef).Close() == nil) {
 							t.Fatal("parked private cells lost physical owners")
 						}
 						switch action {
@@ -274,7 +292,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 							t.Fatal("private cell join retained scope/effects")
 						}
 						rv64ReferenceImportedStartRetired(t, native, nc)
-						if tableStage != 5 {
+						if !sharedTarget {
 							if err := owned.(*HostFuncRef).Close(); err != nil {
 								t.Fatal(err)
 							}
@@ -309,6 +327,9 @@ func TestRV64PublicReferenceFunctionTableBulkForeignOwners(t *testing.T) {
 func TestRV64PublicReferenceFunctionProperReferenceTailForeignOwners(t *testing.T) {
 	rv64ReferenceFunctionNumericCallsForeignOwners(t, 3)
 }
+func TestRV64PublicReferenceFunctionProperIndirectTailForeignOwners(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsForeignOwners(t, 4)
+}
 func rv64ReferenceFunctionNumericCallsForeignOwners(t *testing.T, tableStage int) {
 	ownedTable := tableStage > 0
 	t.Helper()
@@ -321,6 +342,9 @@ func rv64ReferenceFunctionNumericCallsForeignOwners(t *testing.T, tableStage int
 	}
 	if tableStage == 3 {
 		product = "proper-reference-tail"
+	}
+	if tableStage == 4 {
+		product = "proper-indirect-tail"
 	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {

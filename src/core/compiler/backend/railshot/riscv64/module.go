@@ -136,7 +136,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		return nil, fmt.Errorf("rv64: nil module")
 	}
 	if opts.referenceFunctions {
-		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.dynamicTailCalls && (!opts.NativeTailCalls || !opts.NativeReferenceCalls) || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
+		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.dynamicTailCalls && !opts.NativeTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
 			return nil, unsupported("closed reference module requires private cooperative production")
 		}
 		if err := admitClosedReferenceFunctionModule(m, false); err != nil {

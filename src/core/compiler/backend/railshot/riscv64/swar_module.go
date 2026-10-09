@@ -112,7 +112,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		return nil, unsupported("SWAR decoded module production/policy")
 	}
 	if mode.referenceFunctions {
-		if !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.dynamicTailCalls && (!mode.localTailCalls || !mode.importTailCalls || !mode.referenceCalls) || mode.profileMode != (profileMode{}) {
+		if !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.dynamicTailCalls && (!mode.localTailCalls || !mode.importTailCalls) || mode.profileMode != (profileMode{}) {
 			return nil, unsupported("closed reference SWAR module requires private cooperative production")
 		}
 		if err := admitClosedReferenceFunctionModule(m, true); err != nil {

@@ -133,8 +133,8 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 				if p.TypeIndex != 0 || p.ReferenceBase != 0 || uint64(p.ImportIndex) >= uint64(c.NumImports) {
 					return reject("canonical numeric direct imported-tail plan required")
 				}
-			} else if p.Kind != 2 || p.ImportIndex != 0 {
-				return reject("only numeric direct-import and reference-tail plans admitted")
+			} else if (p.Kind != 1 && p.Kind != 2) || p.ImportIndex != 0 {
+				return reject("only canonical numeric proper-tail plans admitted")
 			}
 		}
 		if err := rv64ValidateNativeTailPlans(c, m.Plans); err != nil {

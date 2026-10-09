@@ -27,7 +27,7 @@ func rv64ReferenceNumericCallsMaximumModule(vector, imported, call bool) ([]byte
 func rv64ReferenceNumericMaximumModule(vector, imported, call, ownedTable bool) ([]byte, []wasm.ValType) {
 	return rv64ReferenceMaximumModule(vector, imported, call, ownedTable, false)
 }
-func rv64ReferenceMaximumModule(vector, imported, call, ownedTable, properTail bool) ([]byte, []wasm.ValType) {
+func rv64ReferenceMaximumModule(vector, imported, call, ownedTable, properTail bool, indirect ...bool) ([]byte, []wasm.ValType) {
 	n, typ, stride := 256, wasm.I32, 4
 	if vector {
 		n, typ, stride = 128, wasm.V128, 16
@@ -55,6 +55,9 @@ func rv64ReferenceMaximumModule(vector, imported, call, ownedTable, properTail b
 	var tailBody []byte
 	if properTail {
 		tailBody = append(slices.Clone(body[2:]), 0xd2, 0, 0x15, 0, 0x0b)
+		if len(indirect) != 0 && indirect[0] {
+			tailBody = append(slices.Clone(body[2:]), 0x41, 0, 0x13, 0, 0, 0x0b)
+		}
 		// A distinct enclosing private frame keeps both a lower reference and
 		// its local alive while the private tail source discards its parameter.
 		body = []byte{0x20, 0, 0x20, 0, 0x10, 3}
@@ -145,8 +148,12 @@ func TestRV64PublicReferenceFunctionOwnedTableMaximum(t *testing.T) {
 func TestRV64PublicReferenceFunctionProperReferenceTailMaximum(t *testing.T) {
 	rv64ReferenceFunctionNumericCallsMaximum(t, false, true)
 }
+func TestRV64PublicReferenceFunctionProperIndirectTailMaximum(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsMaximum(t, true, true, true)
+}
 func rv64ReferenceFunctionNumericCallsMaximum(t *testing.T, ownedTable bool, proper ...bool) {
 	properTail := len(proper) != 0 && proper[0]
+	indirectTail := len(proper) > 1 && proper[1]
 	t.Helper()
 	product := "numeric-call"
 	if ownedTable {
@@ -155,13 +162,16 @@ func rv64ReferenceFunctionNumericCallsMaximum(t *testing.T, ownedTable bool, pro
 	if properTail {
 		product = "proper-reference-tail"
 	}
+	if indirectTail {
+		product = "proper-indirect-tail"
+	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
 			for _, imported := range []bool{false, true} {
 				t.Run(fmt.Sprintf("artifact%t-vector%t-imported%t", artifact, vector, imported), func(t *testing.T) {
 					rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 					defer rv64HostCertificateCloseRuntime(t, rt)
-					source, types := rv64ReferenceMaximumModule(vector, imported, true, ownedTable, properTail)
+					source, types := rv64ReferenceMaximumModule(vector, imported, true, ownedTable, properTail, indirectTail)
 					c := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-max-v%t-i%t", product, vector, imported), source, artifact)
 					im := NewImports()
 					var native *Instance
@@ -178,10 +188,10 @@ func rv64ReferenceFunctionNumericCallsMaximum(t *testing.T, ownedTable bool, pro
 					in := rv64NativeTokenInstantiate(t, rt, c, im)
 					p, r, err := railshotImportedCallSlots(c, 0, 1)
 					wantParams, wantResults := 256, 256
-					if properTail && !imported {
+					if properTail && !indirectTail && !imported {
 						wantParams, wantResults = 0, 1
 					}
-					if properTail && imported && !vector {
+					if properTail && !indirectTail && imported && !vector {
 						wantParams, wantResults = coreruntime.MaxHostArity, coreruntime.MaxHostArity
 					}
 					if err != nil || p != wantParams || r != wantResults {

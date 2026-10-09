@@ -75,9 +75,10 @@ type CompileOptions struct {
 	// Source production and private decoded adapters collect symbolic import sites.
 	importTailCalls  bool
 	dynamicTailCalls bool // declared-type indirect/reference source qualification
-	// A source typed-tail requirement must have a qualified emitted plan, even
-	// when all typed-tail instructions occur in unreachable code.
+	// Each actual private dynamic tail kind needs its own qualified emitted
+	// plan, including kinds whose instructions all occur in unreachable code.
 	referenceTailInstructions    bool
+	indirectTailInstructions     bool // actual private owned-table proper tails
 	referenceCallInstructions    bool
 	referenceControlInstructions bool
 	tailPlans                    *[]tailImportPlan

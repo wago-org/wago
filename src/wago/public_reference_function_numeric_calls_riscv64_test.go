@@ -17,6 +17,12 @@ import (
 )
 
 func rv64ReferenceNumericCallsFixture(tableStage int, importedInitializer, vector, tails, wide bool, start, target int) []byte {
+	if tableStage == 4 {
+		if importedInitializer {
+			return wasmtest.ClosedReferenceProperIndirectTailsImportedInitializer(vector, wide, start)
+		}
+		return wasmtest.ClosedReferenceProperIndirectTails(vector, wide, start, target)
+	}
 	if tableStage == 3 {
 		if importedInitializer {
 			return wasmtest.ClosedReferenceProperTailsImportedInitializer(vector, wide, start)
@@ -138,6 +144,9 @@ func TestRV64PublicReferenceFunctionTableBulkSourceArtifact(t *testing.T) {
 func TestRV64PublicReferenceFunctionProperReferenceTailSourceArtifact(t *testing.T) {
 	rv64ReferenceFunctionNumericCallsSourceArtifact(t, 3)
 }
+func TestRV64PublicReferenceFunctionProperIndirectTailSourceArtifact(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsSourceArtifact(t, 4)
+}
 func rv64ReferenceFunctionNumericCallsSourceArtifact(t *testing.T, tableStage int) {
 	ownedTable := tableStage > 0
 	t.Helper()
@@ -151,11 +160,14 @@ func rv64ReferenceFunctionNumericCallsSourceArtifact(t *testing.T, tableStage in
 	if tableStage == 3 {
 		product = "proper-reference-tail"
 	}
+	if tableStage == 4 {
+		product = "proper-indirect-tail"
+	}
 	for _, target := range []int{0, 1, 2} {
 		for _, artifact := range []bool{false, true} {
 			for _, vector := range []bool{false, true} {
 				for _, tails := range []bool{false, true} {
-					if tableStage == 3 && !tails {
+					if tableStage >= 3 && !tails {
 						continue
 					}
 					for _, wide := range []bool{false, true} {

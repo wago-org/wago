@@ -131,13 +131,23 @@ func TestReferenceFunctionProperTailDeadWitness(t *testing.T) {
 	}
 }
 
-func referenceProperTailCompile(t *testing.T, vector bool) (*Compiled, *wasm.Module, CompileOptions) {
+func referenceProperTailCompile(t *testing.T, vector bool, indirect ...bool) (*Compiled, *wasm.Module, CompileOptions) {
 	t.Helper()
 	m := referenceProperTailDecode(t, vector)
+	if len(indirect) != 0 && indirect[0] {
+		var err error
+		m, err = wasm.DecodeModule(wasmtest.ClosedReferenceProperIndirectTails(vector, true, 2, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	o := closedReferenceProductionOptions(true, true)
 	o.production, o.publicStarts, o.referenceFunctions = true, true, true
 	o.localTailCalls, o.importTailCalls, o.dynamicTailCalls = true, true, true
 	o.referenceTailInstructions, o.referenceCallInstructions, o.referenceControlInstructions = true, true, true
+	if len(indirect) != 0 && indirect[0] {
+		o.referenceTailInstructions, o.indirectTailInstructions = false, true
+	}
 	o.tailModule = m
 	var plans []tailImportPlan
 	o.tailPlans = &plans

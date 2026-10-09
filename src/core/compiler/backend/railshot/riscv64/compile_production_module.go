@@ -110,7 +110,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			}
 		}
 	}
-	referenceTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions)
+	referenceTails, indirectTails, referenceCalls, referenceControl, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions)
 	if err != nil {
 		return nil, err
 	}
@@ -118,10 +118,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, unsupported("typed control declarations require a defined code owner")
 	}
 	opts.referenceTailInstructions = referenceTails
+	opts.indirectTailInstructions = indirectTails
 	opts.referenceCallInstructions = referenceCalls
 	opts.referenceControlInstructions = referenceControl
 	if opts.referenceFunctions {
-		opts.dynamicTailCalls = referenceTails
+		opts.dynamicTailCalls = referenceTails || indirectTails
 		if err := admitClosedReferenceProductionOptions(opts); err != nil {
 			return nil, err
 		}
@@ -273,6 +274,17 @@ func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.Compi
 			return nil, unsupported("typed tails require a qualified reference plan")
 		}
 	}
+	if opts.referenceFunctions && opts.indirectTailInstructions {
+		qualified := false
+		if tail != nil {
+			for _, p := range tail.Plans {
+				qualified = qualified || p.Kind == enc.NativeTailIndirect
+			}
+		}
+		if !qualified {
+			return nil, unsupported("private indirect tails require a qualified indirect plan")
+		}
+	}
 	if err := c.prepareProfile(len(c.code)); err != nil {
 		return nil, err
 	}
@@ -307,20 +319,20 @@ func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.Compi
 // Ordinary references require their distinct retained normal-return protocol.
 // Reference control retains carriers without requiring declared-call transport.
 // Instruction bytes were bounded before this pass.
-func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, error) {
-	referenceTails, hasReferenceCall, hasReferenceControl := false, false, false
+func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, bool, error) {
+	referenceTails, indirectTails, hasReferenceCall, hasReferenceControl := false, false, false, false
 	types := internalReferenceTypes{decoded: m.Types, decodedSWAR: vector}
 	for _, group := range m.Types {
 		if len(group.SubTypes) != 1 {
-			return false, false, false, unsupported("control declaration group")
+			return false, false, false, false, unsupported("control declaration group")
 		}
 		sub := &group.SubTypes[0]
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
-			return false, false, false, unsupported("control declaration metadata")
+			return false, false, false, false, unsupported("control declaration metadata")
 		}
 		_, witness, err := admitDeclaredControlSignature(&sub.Comp, types, true, referenceCalls, vector)
 		if err != nil {
-			return false, false, false, err
+			return false, false, false, false, err
 		}
 		hasReferenceControl = hasReferenceControl || witness
 	}
@@ -329,7 +341,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 	for i := 0; i < m.FuncCount(); i++ {
 		sig, ok := m.FuncSignature(uint32(i))
 		if !ok {
-			return false, false, false, unsupported("function signature binding")
+			return false, false, false, false, unsupported("function signature binding")
 		}
 		var err error
 		if referenceFunctions {
@@ -340,7 +352,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 			err = integerNumericSignature(sig, true)
 		}
 		if err != nil {
-			return false, false, false, err
+			return false, false, false, false, err
 		}
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
@@ -348,7 +360,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 		for _, run := range fn.Locals.Runs {
 			if run.Type.Kind() == wasm.ValRef {
 				if !internalFunctionReferenceWithTypes(run.Type, referenceCalls, types) {
-					return false, false, false, unsupported("reference local requires an admitted retained function-reference type")
+					return false, false, false, false, unsupported("reference local requires an admitted retained function-reference type")
 				}
 				hasReferenceControl = hasReferenceControl || !run.Type.Ref().Nullable() || run.Type.Ref().Heap().Kind() == wasm.HeapTypeIndex
 			}
@@ -357,14 +369,14 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
-				return false, false, false, err
+				return false, false, false, false, err
 			}
 			if op == 0x02 || op == 0x03 || op == 0x04 {
 				if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
 					probe := r
 					witness, err := internalExplicitReferenceType(&probe, referenceCalls, types)
 					if err != nil {
-						return false, false, false, err
+						return false, false, false, false, err
 					}
 					hasReferenceControl = hasReferenceControl || witness
 				}
@@ -373,22 +385,22 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 				probe := r
 				count, err := probe.U32()
 				if err != nil {
-					return false, false, false, err
+					return false, false, false, false, err
 				}
 				if count != 1 {
-					return false, false, false, unsupported("typed select requires one value type")
+					return false, false, false, false, unsupported("typed select requires one value type")
 				}
 				if lead, ok := probe.Peek(); ok && (lead == 0x63 || lead == 0x64) {
 					witness, err := internalExplicitReferenceType(&probe, referenceCalls, types)
 					if err != nil {
-						return false, false, false, err
+						return false, false, false, false, err
 					}
 					hasReferenceControl = hasReferenceControl || witness
 				}
 			}
 			if op == 0x14 {
 				if !referenceCalls {
-					return false, false, false, unsupported("call_ref requires retained native reference protocol")
+					return false, false, false, false, unsupported("call_ref requires retained native reference protocol")
 				}
 				hasReferenceCall = true
 			}
@@ -396,11 +408,11 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 				probe := r
 				heap, err := probe.S33()
 				if err != nil {
-					return false, false, false, err
+					return false, false, false, false, err
 				}
 				if heap >= 0 {
-					if !(referenceCalls || dynamicTails) || !types.function(uint32(heap)) {
-						return false, false, false, unsupported("indexed ref.null requires retained typed-reference protocol and an in-range function type")
+					if !(referenceCalls || dynamicTails && !referenceFunctions) || !types.function(uint32(heap)) {
+						return false, false, false, false, unsupported("indexed ref.null requires retained typed-reference protocol and an in-range function type")
 					}
 					// A typed null still requires the persisted feature witness even
 					// without a reference call, or when its body is unreachable.
@@ -409,16 +421,17 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 			}
 			if op == 0xd4 || op == 0xd5 || op == 0xd6 {
 				if !referenceCalls {
-					return false, false, false, unsupported("reference control requires retained typed-reference protocol")
+					return false, false, false, false, unsupported("reference control requires retained typed-reference protocol")
 				}
 				hasReferenceControl = true
 			}
 			referenceTails = referenceTails || op == 0x15
+			indirectTails = indirectTails || op == 0x13
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
-				return false, false, false, err
+				return false, false, false, false, err
 			}
 		}
 	}
-	return referenceTails, hasReferenceCall, hasReferenceControl, nil
+	return referenceTails, indirectTails, hasReferenceCall, hasReferenceControl, nil
 }

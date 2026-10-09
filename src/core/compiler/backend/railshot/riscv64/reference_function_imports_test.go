@@ -162,7 +162,7 @@ func TestReferenceFunctionImportsStagingRechecks(t *testing.T) {
 			if err != nil {
 				t.Fatal("real imported private compilation", err)
 			}
-			_, _, control, err := admitProductionDynamicTails(m, true, false, false, true)
+			_, _, _, control, err := admitProductionDynamicTails(m, true, false, false, true)
 			if err != nil {
 				t.Fatal(err)
 			}

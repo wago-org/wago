@@ -35,10 +35,10 @@ func hasDefinedReferenceFunctions(m *wasm.Module) (bool, error) {
 }
 
 func admitClosedReferenceProductionOptions(opts CompileOptions) error {
-	if !opts.NativeReferenceFunctions || !opts.referenceFunctions || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls && !opts.localTailCalls || opts.dynamicTailCalls && (!opts.NativeTailCalls || !opts.importTailCalls || !opts.NativeReferenceCalls) || opts.localTailCalls != opts.NativeTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
+	if !opts.NativeReferenceFunctions || !opts.referenceFunctions || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls && !opts.localTailCalls || opts.dynamicTailCalls && (!opts.NativeTailCalls || !opts.importTailCalls) || opts.localTailCalls != opts.NativeTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
 		return unsupported("closed reference staging requires cooperative local-call production")
 	}
-	if opts.NativeTailCalls && opts.tailPlans == nil || !opts.importTailCalls && opts.tailPlans != nil && len(*opts.tailPlans) != 0 || opts.referenceTailInstructions != opts.dynamicTailCalls || opts.referenceCallInstructions && !opts.NativeReferenceCalls {
+	if opts.NativeTailCalls && opts.tailPlans == nil || !opts.importTailCalls && opts.tailPlans != nil && len(*opts.tailPlans) != 0 || (opts.referenceTailInstructions || opts.indirectTailInstructions) != opts.dynamicTailCalls || opts.referenceTailInstructions && !opts.NativeReferenceCalls || opts.referenceCallInstructions && !opts.NativeReferenceCalls {
 		return unsupported("closed reference staging requires exact tail/call protocols")
 	}
 	return nil
@@ -57,11 +57,11 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if opts.NativeTailCalls && opts.tailModule != m || !opts.NativeTailCalls && opts.tailModule != nil {
 		return nil, unsupported("closed reference staged source identity")
 	}
-	tails, calls, control, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, vector, true)
+	tails, indirect, calls, control, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, vector, true)
 	if err != nil {
 		return nil, err
 	}
-	if opts.referenceTailInstructions != tails || opts.dynamicTailCalls != tails || opts.referenceCallInstructions != calls || opts.referenceControlInstructions != control {
+	if opts.referenceTailInstructions != tails || opts.indirectTailInstructions != indirect || opts.dynamicTailCalls != (tails || indirect) || opts.referenceCallInstructions != calls || opts.referenceControlInstructions != control {
 		return nil, unsupported("closed reference staged call/control witness")
 	}
 	if c == nil || !c.state.referenceFunctions || c.state.importedFunctions != m.ImportedFuncCount() || len(c.functions) != len(m.Code) || len(c.code) == 0 || len(c.code) > MaxCodeBytes {
@@ -122,6 +122,12 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 			if !ok {
 				return unsupported("closed reference imported-tail target binding")
 			}
+		case enc.NativeTailIndirect:
+			if !opts.dynamicTailCalls || !opts.indirectTailInstructions || p.importIndex != 0 || len(m.Tables) != 1 || uint64(p.typeIndex) >= uint64(len(m.Types)) {
+				return unsupported("closed reference numeric indirect-tail binding")
+			}
+			target = &m.Types[p.typeIndex].SubTypes[0].Comp
+			opcode, immediate = 0x13, p.typeIndex
 		case enc.NativeTailReference:
 			if !opts.dynamicTailCalls || !opts.referenceTailInstructions || p.importIndex != 0 || uint64(p.typeIndex) >= uint64(len(m.Types)) {
 				return unsupported("closed reference numeric reference-tail binding")
@@ -154,6 +160,12 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 		if err != nil || targetIndex != immediate {
 			return unsupported("closed reference tail source immediate")
 		}
+		if p.kind == enc.NativeTailIndirect {
+			tableIndex, err := r.U32()
+			if err != nil || tableIndex != 0 {
+				return unsupported("closed reference tail source table immediate")
+			}
+		}
 		f := c.functions[local]
 		end := len(c.code)
 		if local+1 < len(c.functions) {
@@ -162,7 +174,7 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 		if f.Entry < 0 || end <= f.Entry || end > len(c.code) || f.FrameHeaderBytes != callFrameHeader || f.mode.functionIndex != p.functionIndex || f.FrameBytes < callFrameHeader || f.FrameBytes > MaxFrameBytes || f.FrameBytes&15 != 0 || p.sourceStride != 8 && p.sourceStride != 16 || (p.sourceStride == 16) != vector || p.sourceBase < callFrameHeader || p.sourceBase > f.FrameBytes || p.sourceBase&7 != 0 || len(target.Params) > (f.FrameBytes-p.sourceBase)/p.sourceStride {
 			return unsupported("closed reference imported-tail finalized source homes")
 		}
-		if p.kind == enc.NativeTailReference && (p.referenceBase < callFrameHeader || p.referenceBase&7 != 0 || p.referenceBase > f.FrameBytes-8 || p.referenceBase < p.sourceBase+len(target.Params)*p.sourceStride) {
+		if p.kind != enc.NativeTailDirectImport && (p.referenceBase < callFrameHeader || p.referenceBase&7 != 0 || p.referenceBase > f.FrameBytes-8 || p.referenceBase < p.sourceBase+len(target.Params)*p.sourceStride) {
 			return unsupported("closed reference tail full-width nonoverlapping target home")
 		}
 		frame, err := NativeFrameBytes(c.code[:end], f.Entry)

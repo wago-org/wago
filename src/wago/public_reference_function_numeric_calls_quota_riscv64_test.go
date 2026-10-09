@@ -24,6 +24,9 @@ func TestRV64PublicReferenceFunctionTableBulkQuota(t *testing.T) {
 func TestRV64PublicReferenceFunctionProperReferenceTailQuota(t *testing.T) {
 	rv64ReferenceFunctionNumericCallsQuota(t, 3)
 }
+func TestRV64PublicReferenceFunctionProperIndirectTailQuota(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsQuota(t, 4)
+}
 func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 	ownedTable := tableStage > 0
 	t.Helper()
@@ -34,8 +37,11 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 	if tableStage == 2 {
 		product = "table-bulk"
 	}
-	if tableStage == 3 {
+	if tableStage >= 3 {
 		product = "proper-reference-tail"
+	}
+	if tableStage == 4 {
+		product = "proper-indirect-tail"
 	}
 	for _, vector := range []bool{false, true} {
 		t.Run(fmt.Sprintf("vector%t", vector), func(t *testing.T) {
@@ -53,7 +59,7 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 				calls++
 				// This oracle isolates the fresh entry's exact generation charge.
 				// Nested generations during target reentry have separate coverage.
-				if tableStage == 3 {
+				if tableStage >= 3 {
 					return
 				}
 				if _, err := caller.in.InvokeFromHost(context.Background(), caller, "clear"); err != nil {
@@ -65,7 +71,7 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 			im.Function("env.calls", "unused.fn", nf).Function("env.calls", "finish.fn", func(v int32) int32 { return v + 1 }).Function("env.calls", "start.fn", owned)
 			metadata := uint64(view.arenaNeedForImports(im.bindings, true) + railshotNativeImportMetadataBytes(view, im.bindings))
 			code := railshotNativeCodeBytes(view)
-			if tableStage == 3 {
+			if tableStage >= 3 {
 				// Mixed direct/reference sites acquire one dynamic generation before
 				// the start can run. Charge its retained owner graph as well as the
 				// instance metadata; a competing static dispatcher is absent.
@@ -115,7 +121,7 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 					if err != nil || in == nil {
 						t.Fatal("exact start quota/retry", kind, err)
 					}
-					if tableStage == 3 {
+					if tableStage >= 3 {
 						if _, err := in.Invoke("clear"); err != nil {
 							t.Fatal("fresh generation after start", err)
 						}

@@ -46,7 +46,7 @@ func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.Com
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
 	// This i32 index home is eight bytes physically. Sd deliberately preserves
 	// every reference bit; a narrow Store would truncate the selected address.
-	f.a.Sd(enc.X14, enc.SP, int32(p.referenceBase))
+	f.Store(int32(p.referenceBase), 14, true)
 	*f.mode.tailPlans = append(*f.mode.tailPlans, p)
 	f.tailRAProofCall(p.site, sig, base, spill)
 }

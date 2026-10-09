@@ -125,7 +125,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 		return swarSummary{}, err
 	}
 	privateRefs := table != nil || foreignTableCalls
-	if referenceFunctions && (!privateRefs || dynamicTailCalls && !referenceCalls) {
+	if referenceFunctions && !privateRefs {
 		return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 	}
 	functionClass := func(typ wasm.ValType) swarClass {
@@ -471,7 +471,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 			}
 			// A typed descriptor belongs to the retained owner scope. Proper tails
 			// additionally authenticate it through the entry-owned factory.
-			if (tail && !dynamicTailCalls || !tail && !referenceCalls) || !foreignTableCalls || !privateRefs || uint64(typeIndex) >= uint64(len(types)) {
+			if (tail && (!dynamicTailCalls || referenceFunctions && !referenceCalls) || !tail && !referenceCalls) || !foreignTableCalls || !privateRefs || uint64(typeIndex) >= uint64(len(types)) {
 				return swarSummary{}, unsupported("SWAR typed call requires its retained reference profile")
 			}
 			sig := types[typeIndex]
@@ -546,9 +546,6 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 				}
 			}
 		case 0x11, 0x13:
-			if referenceFunctions && op == 0x13 {
-				return swarSummary{}, unsupported("private reference functions exclude indirect proper tails")
-			}
 			typeIndex, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -569,7 +566,12 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 				if !localTailCalls || !dynamicTailCalls && (foreignTableCalls || importedFunctions != 0) {
 					return swarSummary{}, unsupported("SWAR owned defined indirect tail profile required")
 				}
-				if err := admitSWARLocalTailSignature(ft, sig); err != nil {
+				if referenceFunctions {
+					err = admitReferenceTailResults(ft, sig)
+				} else {
+					err = admitSWARLocalTailSignature(ft, sig)
+				}
+				if err != nil {
 					return swarSummary{}, err
 				}
 				if dynamicTailCalls {
@@ -922,7 +924,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if heap != -16 && (!(dynamicTailCalls || referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				if heap != -16 && (!(dynamicTailCalls && !referenceFunctions || referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return swarSummary{}, unsupported("SWAR private nullable abstract funcref only")
 				}
 				if err := push(swarFuncRef); err != nil {

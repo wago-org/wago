@@ -242,8 +242,6 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			switch op {
 			case 0x1f:
 				return unsupported("closed reference module exception control is unsupported")
-			case 0x13:
-				return unsupported("closed reference module excludes indirect proper tails")
 			}
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
@@ -252,7 +250,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			if op == 0xd2 && !numericTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
 			}
-			if op == 0x11 && (len(m.Tables) != 1 || imm.Index2 != 0) {
+			if (op == 0x11 || op == 0x13) && (len(m.Tables) != 1 || imm.Index2 != 0) {
 				return unsupported("closed reference indirect call requires own table zero")
 			}
 			if (op == 0x25 || op == 0x26 || imm.Kind == wasm.InstrTableSize) && (len(m.Tables) != 1 || imm.Index != 0) {
@@ -273,7 +271,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 					}
 				}
 			}
-			if op == 0x14 || op == 0x15 || op == 0x11 {
+			if op == 0x14 || op == 0x15 || op == 0x11 || op == 0x13 {
 				// Check even dead sites: private functions never become callable
 				// descriptor targets, and the existing bridge transports numbers.
 				if uint64(imm.Index) >= uint64(len(m.Types)) {
@@ -287,7 +285,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 				} else if err := integerNumericSignature(sig, true); err != nil {
 					return err
 				}
-				if op == 0x15 {
+				if op == 0x15 || op == 0x13 {
 					source := &m.Types[m.FuncTypes[function].Index].SubTypes[0].Comp
 					if err := admitReferenceTailResults(source, sig); err != nil {
 						return err

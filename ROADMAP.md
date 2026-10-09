@@ -188,7 +188,15 @@ reentry, cancellation/Close joins and exact dynamic quota retries qualify this
 slice. Frozen actual keys and complete owner tuples authenticate targets before a
 genuine declared-signature mismatch traps. Old non-reference-tail fixture bytes
 are preserved, and cold root completion retires generations; only warm generation
-activation claims zero allocation. Private proper indirect tails remain gated.
+activation claims zero allocation. Proper numeric `return_call_indirect` now
+composes with the confined private owned table32 and the same factories. Separate
+actual reference/indirect witnesses require an emitted plan for each used kind;
+exact table/type/source/frame/home proofs preserve old no-indirect images. An
+untyped-only private indirect module needs no typed-reference permission. Canonical
+wrong-signature/null/bounds traps, distinct type/function/table ordinals, far
+full-width maximum homes, active target parking and exact dynamic quotas qualify
+source, retained artifacts and compiler-free execution. Broader table ingress and
+reference external signatures remain gated.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
