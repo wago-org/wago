@@ -41,7 +41,7 @@ func BenchmarkLinearSumNoWrapAMD64(b *testing.B) {
 	}
 	defer coreruntime.Unmap(code)
 	args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
-	for _, count := range []uint32{16, 512, 8192} {
+	for _, count := range []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 511, 512, 513, 8192} {
 		b.Run(fmt.Sprint(count), func(b *testing.B) {
 			binary.LittleEndian.PutUint32(args, count)
 			b.ReportAllocs()

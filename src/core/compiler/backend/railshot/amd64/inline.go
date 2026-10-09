@@ -1096,6 +1096,9 @@ func (f *fn) inlineBody(body []byte) error {
 	r := wasm.NewReader(body)
 	for {
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
+		if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+			f.wasmPC = f.sourceInstructionPC(uint32(r.Offset()))
+		}
 		op, err := r.Byte()
 		if err != nil {
 			return err

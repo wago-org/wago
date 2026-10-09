@@ -100,7 +100,7 @@ func TestLinearSumLoopBoundsHoistRejectsSharedMemoryAMD64(t *testing.T) {
 	}
 }
 
-func linearSumWrappingModuleAMD64(t *testing.T) *wasm.Module {
+func linearSumWrappingModuleAMD64(t testing.TB) *wasm.Module {
 	t.Helper()
 	body := []byte{
 		0x01, 0x01, 0x7e,

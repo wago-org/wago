@@ -1,0 +1,84 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalCorpusCompile/memory.wasm         	    7690	     16982 ns/op	   11152 B/op	      28 allocs/op
+BenchmarkExperimentalCorpusCompile/linked_list.wasm    	    8895	     15028 ns/op	   13328 B/op	      30 allocs/op
+BenchmarkExperimentalCorpusCompile/memory_tree.wasm    	    7048	     22109 ns/op	   15288 B/op	      43 allocs/op
+BenchmarkExperimentalCorpusCompile/many_funcs.wasm     	     322	    360604 ns/op	   69760 B/op	      34 allocs/op
+BenchmarkExperimentalCorpusCompile/jacobi-1d.wasm      	    1170	    104669 ns/op	   62688 B/op	      79 allocs/op
+BenchmarkExperimentalCorpusCompile/gemm.wasm           	     841	    130338 ns/op	   63360 B/op	      84 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as.wasm       	     398	    312453 ns/op	   85936 B/op	      87 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as-simd.wasm  	     126	    929145 ns/op	  113976 B/op	     109 allocs/op
+BenchmarkExperimentalCorpusCompile/utf-as-simd.wasm    	     217	    479356 ns/op	   69256 B/op	     101 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalCorpusCompile/memory.wasm         	    8656	     14874 ns/op	   11152 B/op	      28 allocs/op
+BenchmarkExperimentalCorpusCompile/linked_list.wasm    	    7317	     15714 ns/op	   13328 B/op	      30 allocs/op
+BenchmarkExperimentalCorpusCompile/memory_tree.wasm    	    6000	     23938 ns/op	   15288 B/op	      43 allocs/op
+BenchmarkExperimentalCorpusCompile/many_funcs.wasm     	     320	    368870 ns/op	   69760 B/op	      34 allocs/op
+BenchmarkExperimentalCorpusCompile/jacobi-1d.wasm      	    1125	    108010 ns/op	   62688 B/op	      79 allocs/op
+BenchmarkExperimentalCorpusCompile/gemm.wasm           	     864	    130907 ns/op	   63360 B/op	      84 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as.wasm       	     404	    307503 ns/op	   85936 B/op	      87 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as-simd.wasm  	     128	    882816 ns/op	  113976 B/op	     109 allocs/op
+BenchmarkExperimentalCorpusCompile/utf-as-simd.wasm    	     297	    486563 ns/op	   69256 B/op	     101 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalCorpusCompile/memory.wasm         	    4131	     38536 ns/op	   11152 B/op	      28 allocs/op
+BenchmarkExperimentalCorpusCompile/linked_list.wasm    	    4414	     33505 ns/op	   13328 B/op	      30 allocs/op
+BenchmarkExperimentalCorpusCompile/memory_tree.wasm    	    2529	     51648 ns/op	   15290 B/op	      43 allocs/op
+BenchmarkExperimentalCorpusCompile/many_funcs.wasm     	     158	    862599 ns/op	   69760 B/op	      34 allocs/op
+BenchmarkExperimentalCorpusCompile/jacobi-1d.wasm      	     800	    225739 ns/op	   62688 B/op	      79 allocs/op
+BenchmarkExperimentalCorpusCompile/gemm.wasm           	     460	    321082 ns/op	   63360 B/op	      84 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as.wasm       	     178	    673608 ns/op	   85936 B/op	      87 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as-simd.wasm  	      68	   1714510 ns/op	  113976 B/op	     109 allocs/op
+BenchmarkExperimentalCorpusCompile/utf-as-simd.wasm    	     121	    982777 ns/op	   69256 B/op	     101 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalCorpusCompile/memory.wasm         	    7479	     14433 ns/op	   11152 B/op	      28 allocs/op
+BenchmarkExperimentalCorpusCompile/linked_list.wasm    	    9342	     14361 ns/op	   13328 B/op	      30 allocs/op
+BenchmarkExperimentalCorpusCompile/memory_tree.wasm    	    6984	     22471 ns/op	   15288 B/op	      43 allocs/op
+BenchmarkExperimentalCorpusCompile/many_funcs.wasm     	     321	    353124 ns/op	   69760 B/op	      34 allocs/op
+BenchmarkExperimentalCorpusCompile/jacobi-1d.wasm      	    1207	    103583 ns/op	   62688 B/op	      79 allocs/op
+BenchmarkExperimentalCorpusCompile/gemm.wasm           	     902	    128687 ns/op	   63360 B/op	      84 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as.wasm       	     405	    307218 ns/op	   85936 B/op	      87 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as-simd.wasm  	     133	    781245 ns/op	  113976 B/op	     109 allocs/op
+BenchmarkExperimentalCorpusCompile/utf-as-simd.wasm    	     315	    387683 ns/op	   69256 B/op	     101 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalCorpusCompile/memory.wasm         	    7856	     14315 ns/op	   11152 B/op	      28 allocs/op
+BenchmarkExperimentalCorpusCompile/linked_list.wasm    	    9135	     16038 ns/op	   13328 B/op	      30 allocs/op
+BenchmarkExperimentalCorpusCompile/memory_tree.wasm    	    5984	     25293 ns/op	   15288 B/op	      43 allocs/op
+BenchmarkExperimentalCorpusCompile/many_funcs.wasm     	     300	    368709 ns/op	   69760 B/op	      34 allocs/op
+BenchmarkExperimentalCorpusCompile/jacobi-1d.wasm      	    1197	    106028 ns/op	   62688 B/op	      79 allocs/op
+BenchmarkExperimentalCorpusCompile/gemm.wasm           	     789	    135558 ns/op	   63360 B/op	      84 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as.wasm       	     412	    301602 ns/op	   85936 B/op	      87 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as-simd.wasm  	     146	    843591 ns/op	  113976 B/op	     109 allocs/op
+BenchmarkExperimentalCorpusCompile/utf-as-simd.wasm    	     266	    466870 ns/op	   69256 B/op	     101 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalCorpusCompile/memory.wasm         	    7148	     16311 ns/op	   11152 B/op	      28 allocs/op
+BenchmarkExperimentalCorpusCompile/linked_list.wasm    	    7454	     18283 ns/op	   13328 B/op	      30 allocs/op
+BenchmarkExperimentalCorpusCompile/memory_tree.wasm    	    5836	     25467 ns/op	   15288 B/op	      43 allocs/op
+BenchmarkExperimentalCorpusCompile/many_funcs.wasm     	     307	    396305 ns/op	   69760 B/op	      34 allocs/op
+BenchmarkExperimentalCorpusCompile/jacobi-1d.wasm      	    1094	    113196 ns/op	   62688 B/op	      79 allocs/op
+BenchmarkExperimentalCorpusCompile/gemm.wasm           	     798	    243882 ns/op	   63360 B/op	      84 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as.wasm       	     192	    765282 ns/op	   85936 B/op	      87 allocs/op
+BenchmarkExperimentalCorpusCompile/blake-as-simd.wasm  	      99	   1866915 ns/op	  113976 B/op	     109 allocs/op
+BenchmarkExperimentalCorpusCompile/utf-as-simd.wasm    	     129	   1035935 ns/op	   69256 B/op	     101 allocs/op
+PASS

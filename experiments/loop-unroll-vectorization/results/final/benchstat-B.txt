@@ -1,0 +1,289 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                                 │ experiments/loop-unroll-vectorization/results/final/B-0.txt │ experiments/loop-unroll-vectorization/results/final/B-1.txt │
+                                                 │                           sec/op                            │                sec/op                 vs base               │
+ExperimentalReduction/i32/compile                                                                11.21µ ±   6%                          11.47µ ±   9%        ~ (p=0.818 n=6)
+ExperimentalReduction/xor/compile                                                                11.70µ ±  11%                          11.91µ ±  10%        ~ (p=0.485 n=6)
+ExperimentalReduction/add-minus-one/compile                                                      11.43µ ±  10%                          11.99µ ±   9%        ~ (p=0.394 n=6)
+ExperimentalReduction/tee-drop/compile                                                           11.53µ ±   8%                          11.77µ ±   8%        ~ (p=0.818 n=6)
+ExperimentalReduction/header-eq/compile                                                          11.27µ ±   8%                          11.17µ ±  14%        ~ (p=0.937 n=6)
+ExperimentalReduction/i32/execute/0                                                              20.38n ±  11%                          20.40n ±   9%        ~ (p=0.974 n=6)
+ExperimentalReduction/i32/execute/1                                                              20.64n ±   7%                          21.03n ±   7%        ~ (p=0.240 n=6)
+ExperimentalReduction/i32/execute/2                                                              20.83n ±   4%                          20.95n ±   5%        ~ (p=0.416 n=6)
+ExperimentalReduction/i32/execute/3                                                              20.81n ±   1%                          21.09n ±  30%        ~ (p=0.589 n=6)
+ExperimentalReduction/i32/execute/4                                                              21.05n ±  16%                          21.12n ±  35%        ~ (p=0.699 n=6)
+ExperimentalReduction/i32/execute/5                                                              20.63n ±   4%                          21.03n ±  97%        ~ (p=0.093 n=6)
+ExperimentalReduction/i32/execute/6                                                              20.88n ±   2%                          21.38n ±   3%        ~ (p=0.132 n=6)
+ExperimentalReduction/i32/execute/7                                                              21.38n ±  11%                          21.02n ±  16%        ~ (p=0.732 n=6)
+ExperimentalReduction/i32/execute/8                                                              21.30n ±   7%                          21.02n ±  19%        ~ (p=0.394 n=6)
+ExperimentalReduction/i32/execute/9                                                              21.33n ±   6%                          21.39n ±  10%        ~ (p=0.972 n=6)
+ExperimentalReduction/i32/execute/15                                                             22.97n ±   9%                          21.71n ±   3%   -5.53% (p=0.002 n=6)
+ExperimentalReduction/i32/execute/16                                                             23.45n ±   5%                          21.84n ±   6%   -6.84% (p=0.004 n=6)
+ExperimentalReduction/i32/execute/17                                                             23.70n ±  11%                          21.79n ±  14%   -8.04% (p=0.041 n=6)
+ExperimentalReduction/i32/execute/511                                                           211.35n ±  11%                          75.39n ±   2%  -64.33% (p=0.002 n=6)
+ExperimentalReduction/i32/execute/512                                                           211.30n ±   5%                          75.72n ±   2%  -64.16% (p=0.002 n=6)
+ExperimentalReduction/i32/execute/513                                                           210.70n ±   7%                          75.29n ±   3%  -64.27% (p=0.002 n=6)
+ExperimentalReduction/i32/execute/8192                                                          3130.5n ±   5%                          957.1n ±   6%  -69.43% (p=0.002 n=6)
+ExperimentalReduction/xor/execute/0                                                              20.18n ±   6%                          20.76n ±  22%        ~ (p=0.240 n=6)
+ExperimentalReduction/xor/execute/1                                                              20.64n ±  10%                          21.30n ±  23%        ~ (p=0.180 n=6)
+ExperimentalReduction/xor/execute/2                                                              20.59n ±   3%                          21.07n ±  45%        ~ (p=0.065 n=6)
+ExperimentalReduction/xor/execute/3                                                              20.67n ±   6%                          21.10n ±  11%        ~ (p=0.310 n=6)
+ExperimentalReduction/xor/execute/4                                                              20.74n ±   7%                          21.07n ±   6%        ~ (p=1.000 n=6)
+ExperimentalReduction/xor/execute/5                                                              21.11n ±   3%                          20.91n ±  10%        ~ (p=1.000 n=6)
+ExperimentalReduction/xor/execute/6                                                              20.87n ±   6%                          21.04n ±   3%        ~ (p=0.734 n=6)
+ExperimentalReduction/xor/execute/7                                                              21.22n ±   8%                          20.86n ±  54%        ~ (p=0.195 n=6)
+ExperimentalReduction/xor/execute/8                                                              21.11n ±   9%                          21.28n ±   4%        ~ (p=0.818 n=6)
+ExperimentalReduction/xor/execute/9                                                              21.41n ±   4%                          21.06n ±   5%        ~ (p=0.180 n=6)
+ExperimentalReduction/xor/execute/15                                                             22.97n ±   2%                          21.55n ±   7%   -6.18% (p=0.041 n=6)
+ExperimentalReduction/xor/execute/16                                                             23.80n ±   7%                          22.17n ±  24%        ~ (p=0.310 n=6)
+ExperimentalReduction/xor/execute/17                                                             24.13n ±   5%                          21.80n ±  17%        ~ (p=0.065 n=6)
+ExperimentalReduction/xor/execute/511                                                           209.05n ±   5%                          76.16n ±  24%  -63.57% (p=0.002 n=6)
+ExperimentalReduction/xor/execute/512                                                           209.80n ±   3%                          76.70n ±  15%  -63.44% (p=0.002 n=6)
+ExperimentalReduction/xor/execute/513                                                           210.45n ±   4%                          75.67n ±  39%  -64.04% (p=0.002 n=6)
+ExperimentalReduction/xor/execute/8192                                                           3.109µ ±   3%                          1.126µ ±  12%  -63.80% (p=0.002 n=6)
+ExperimentalReduction/add-minus-one/execute/0                                                    20.31n ±   2%                          20.68n ±  23%        ~ (p=0.394 n=6)
+ExperimentalReduction/add-minus-one/execute/1                                                    20.79n ±   6%                          20.86n ±  14%        ~ (p=0.699 n=6)
+ExperimentalReduction/add-minus-one/execute/2                                                    20.93n ±  12%                          20.73n ±  38%        ~ (p=0.734 n=6)
+ExperimentalReduction/add-minus-one/execute/3                                                    21.00n ±  11%                          22.02n ± 134%        ~ (p=0.065 n=6)
+ExperimentalReduction/add-minus-one/execute/4                                                    20.77n ±  36%                          21.64n ±  26%        ~ (p=0.240 n=6)
+ExperimentalReduction/add-minus-one/execute/5                                                    21.22n ±  90%                          20.90n ±  29%        ~ (p=0.513 n=6)
+ExperimentalReduction/add-minus-one/execute/6                                                    21.14n ±  44%                          20.91n ±  15%        ~ (p=0.240 n=6)
+ExperimentalReduction/add-minus-one/execute/7                                                    21.46n ± 112%                          21.61n ±  12%        ~ (p=0.699 n=6)
+ExperimentalReduction/add-minus-one/execute/8                                                    22.17n ±  98%                          21.18n ±  36%        ~ (p=0.065 n=6)
+ExperimentalReduction/add-minus-one/execute/9                                                    22.39n ± 152%                          21.30n ± 150%        ~ (p=0.093 n=6)
+ExperimentalReduction/add-minus-one/execute/15                                                   24.46n ±  95%                          21.73n ± 584%        ~ (p=0.061 n=6)
+ExperimentalReduction/add-minus-one/execute/16                                                   24.93n ±  60%                          21.92n ± 450%        ~ (p=0.065 n=6)
+ExperimentalReduction/add-minus-one/execute/17                                                   25.32n ±   8%                          21.98n ± 513%        ~ (p=0.065 n=6)
+ExperimentalReduction/add-minus-one/execute/511                                                 233.70n ±  13%                          77.39n ± 107%  -66.88% (p=0.002 n=6)
+ExperimentalReduction/add-minus-one/execute/512                                                 230.35n ±  26%                          86.67n ±  82%  -62.37% (p=0.002 n=6)
+ExperimentalReduction/add-minus-one/execute/513                                                 236.60n ±  15%                          84.90n ±  29%  -64.12% (p=0.002 n=6)
+ExperimentalReduction/add-minus-one/execute/8192                                                 3.465µ ±  17%                          1.122µ ±  27%  -67.61% (p=0.002 n=6)
+ExperimentalReduction/tee-drop/execute/0                                                         20.13n ±  17%                          21.22n ±  18%        ~ (p=0.093 n=6)
+ExperimentalReduction/tee-drop/execute/1                                                         20.86n ±  14%                          21.07n ±  11%        ~ (p=0.509 n=6)
+ExperimentalReduction/tee-drop/execute/2                                                         20.61n ±  49%                          21.03n ±  12%        ~ (p=0.699 n=6)
+ExperimentalReduction/tee-drop/execute/3                                                         20.69n ±  99%                          21.25n ±   2%        ~ (p=0.180 n=6)
+ExperimentalReduction/tee-drop/execute/4                                                         20.61n ± 201%                          20.94n ±   3%        ~ (p=0.457 n=6)
+ExperimentalReduction/tee-drop/execute/5                                                         21.61n ± 144%                          21.04n ±  14%        ~ (p=0.394 n=6)
+ExperimentalReduction/tee-drop/execute/6                                                         21.27n ±  17%                          21.14n ±   5%        ~ (p=0.699 n=6)
+ExperimentalReduction/tee-drop/execute/7                                                         21.50n ±  15%                          21.60n ±   4%        ~ (p=1.000 n=6)
+ExperimentalReduction/tee-drop/execute/8                                                         21.71n ±  18%                          21.05n ±  10%   -3.02% (p=0.041 n=6)
+ExperimentalReduction/tee-drop/execute/9                                                         21.95n ±  22%                          21.01n ±   4%   -4.24% (p=0.004 n=6)
+ExperimentalReduction/tee-drop/execute/15                                                        24.18n ± 228%                          21.92n ±   7%   -9.37% (p=0.002 n=6)
+ExperimentalReduction/tee-drop/execute/16                                                        24.43n ±  29%                          21.82n ±  11%  -10.66% (p=0.004 n=6)
+ExperimentalReduction/tee-drop/execute/17                                                        25.00n ±  34%                          21.64n ±  16%  -13.44% (p=0.026 n=6)
+ExperimentalReduction/tee-drop/execute/511                                                      235.85n ±  14%                          74.90n ±   5%  -68.24% (p=0.002 n=6)
+ExperimentalReduction/tee-drop/execute/512                                                      229.60n ±  14%                          75.22n ±   9%  -67.24% (p=0.002 n=6)
+ExperimentalReduction/tee-drop/execute/513                                                      233.85n ±  10%                          76.49n ±  40%  -67.29% (p=0.002 n=6)
+ExperimentalReduction/tee-drop/execute/8192                                                      3.487µ ±   7%                          1.114µ ±  16%  -68.07% (p=0.002 n=6)
+ExperimentalReduction/header-eq/execute/0                                                        20.94n ±   4%                          20.21n ±   8%        ~ (p=0.288 n=6)
+ExperimentalReduction/header-eq/execute/1                                                        20.27n ±   6%                          20.63n ±   4%        ~ (p=0.193 n=6)
+ExperimentalReduction/header-eq/execute/2                                                        21.21n ±   4%                          20.80n ±   2%        ~ (p=0.132 n=6)
+ExperimentalReduction/header-eq/execute/3                                                        21.20n ±   3%                          20.79n ±   4%        ~ (p=0.394 n=6)
+ExperimentalReduction/header-eq/execute/4                                                        21.38n ±   4%                          20.80n ±   5%        ~ (p=0.240 n=6)
+ExperimentalReduction/header-eq/execute/5                                                        21.07n ±   1%                          21.32n ±   3%        ~ (p=0.368 n=6)
+ExperimentalReduction/header-eq/execute/6                                                        21.29n ±   2%                          21.01n ±   7%        ~ (p=0.394 n=6)
+ExperimentalReduction/header-eq/execute/7                                                        21.86n ±   1%                          21.67n ±   8%        ~ (p=0.589 n=6)
+ExperimentalReduction/header-eq/execute/8                                                        22.05n ±   3%                          22.16n ±   6%        ~ (p=0.970 n=6)
+ExperimentalReduction/header-eq/execute/9                                                        22.57n ±   1%                          22.13n ±   2%   -1.91% (p=0.026 n=6)
+ExperimentalReduction/header-eq/execute/15                                                       24.33n ±   8%                          24.25n ±   4%        ~ (p=0.732 n=6)
+ExperimentalReduction/header-eq/execute/16                                                       24.95n ±  17%                          24.41n ±   3%        ~ (p=0.093 n=6)
+ExperimentalReduction/header-eq/execute/17                                                       25.37n ±  21%                          24.95n ±   5%        ~ (p=0.331 n=6)
+ExperimentalReduction/header-eq/execute/511                                                      237.7n ±   5%                          236.3n ±   5%        ~ (p=0.485 n=6)
+ExperimentalReduction/header-eq/execute/512                                                      236.3n ±   5%                          232.6n ±   2%        ~ (p=0.132 n=6)
+ExperimentalReduction/header-eq/execute/513                                                      236.5n ±  10%                          235.1n ±   6%        ~ (p=0.589 n=6)
+ExperimentalReduction/header-eq/execute/8192                                                     3.557µ ±   4%                          3.454µ ±   8%        ~ (p=0.240 n=6)
+geomean                                                                                          60.18n                                 49.15n         -18.33%
+
+                                                 │ experiments/loop-unroll-vectorization/results/final/B-0.txt │ experiments/loop-unroll-vectorization/results/final/B-1.txt │
+                                                 │                            B/op                             │                B/op                  vs base                │
+ExperimentalReduction/i32/compile                                                               10.77Ki ± 0%                            10.79Ki ± 0%  +0.22% (p=0.002 n=6)
+ExperimentalReduction/xor/compile                                                               10.77Ki ± 0%                            10.79Ki ± 0%  +0.22% (p=0.002 n=6)
+ExperimentalReduction/add-minus-one/compile                                                     10.77Ki ± 0%                            10.79Ki ± 0%  +0.22% (p=0.002 n=6)
+ExperimentalReduction/tee-drop/compile                                                          10.77Ki ± 0%                            10.79Ki ± 0%  +0.22% (p=0.002 n=6)
+ExperimentalReduction/header-eq/compile                                                         10.89Ki ± 0%                            10.89Ki ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/0                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/1                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/2                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/3                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/4                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/5                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/6                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/7                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/8                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/9                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/15                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/16                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/17                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/511                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/512                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/513                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/8192                                                            0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/0                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/1                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/2                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/3                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/4                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/5                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/6                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/7                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/8                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/9                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/15                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/16                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/17                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/511                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/512                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/513                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/8192                                                            0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/0                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/1                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/2                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/3                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/4                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/5                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/6                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/7                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/8                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/9                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/15                                                    0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/16                                                    0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/17                                                    0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/511                                                   0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/512                                                   0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/513                                                   0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/8192                                                  0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/0                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/1                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/2                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/3                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/4                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/5                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/6                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/7                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/8                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/9                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/15                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/16                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/17                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/511                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/512                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/513                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/8192                                                       0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/0                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/1                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/2                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/3                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/4                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/5                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/6                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/7                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/8                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/9                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/15                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/16                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/17                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/511                                                       0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/512                                                       0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/513                                                       0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/8192                                                      0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                                      ²                                        +0.01%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                                 │ experiments/loop-unroll-vectorization/results/final/B-0.txt │ experiments/loop-unroll-vectorization/results/final/B-1.txt │
+                                                 │                          allocs/op                          │              allocs/op               vs base                │
+ExperimentalReduction/i32/compile                                                                 26.00 ± 0%                              27.00 ± 0%  +3.85% (p=0.002 n=6)
+ExperimentalReduction/xor/compile                                                                 26.00 ± 0%                              27.00 ± 0%  +3.85% (p=0.002 n=6)
+ExperimentalReduction/add-minus-one/compile                                                       26.00 ± 0%                              27.00 ± 0%  +3.85% (p=0.002 n=6)
+ExperimentalReduction/tee-drop/compile                                                            26.00 ± 0%                              27.00 ± 0%  +3.85% (p=0.002 n=6)
+ExperimentalReduction/header-eq/compile                                                           26.00 ± 0%                              26.00 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/0                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/1                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/2                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/3                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/4                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/5                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/6                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/7                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/8                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/9                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/15                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/16                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/17                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/511                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/512                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/513                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/i32/execute/8192                                                            0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/0                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/1                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/2                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/3                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/4                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/5                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/6                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/7                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/8                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/9                                                               0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/15                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/16                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/17                                                              0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/511                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/512                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/513                                                             0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/xor/execute/8192                                                            0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/0                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/1                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/2                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/3                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/4                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/5                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/6                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/7                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/8                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/9                                                     0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/15                                                    0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/16                                                    0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/17                                                    0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/511                                                   0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/512                                                   0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/513                                                   0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/add-minus-one/execute/8192                                                  0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/0                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/1                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/2                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/3                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/4                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/5                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/6                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/7                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/8                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/9                                                          0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/15                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/16                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/17                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/511                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/512                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/513                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/tee-drop/execute/8192                                                       0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/0                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/1                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/2                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/3                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/4                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/5                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/6                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/7                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/8                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/9                                                         0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/15                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/16                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/17                                                        0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/511                                                       0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/512                                                       0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/513                                                       0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExperimentalReduction/header-eq/execute/8192                                                      0.000 ± 0%                              0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                                      ²                                        +0.17%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

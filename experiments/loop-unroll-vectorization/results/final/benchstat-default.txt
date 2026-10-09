@@ -1,0 +1,73 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                          │ experiments/loop-unroll-vectorization/results/final/default-baseline.txt │ experiments/loop-unroll-vectorization/results/final/default-final.txt │
+                          │                                  sec/op                                  │                     sec/op                       vs base              │
+LinearSumNoWrapAMD64/0                                                                 20.65n ±  95%                                      20.78n ± 14%       ~ (p=0.937 n=6)
+LinearSumNoWrapAMD64/1                                                                 20.88n ± 132%                                      20.60n ± 17%       ~ (p=0.558 n=6)
+LinearSumNoWrapAMD64/2                                                                 21.14n ± 102%                                      21.11n ±  3%       ~ (p=0.818 n=6)
+LinearSumNoWrapAMD64/3                                                                 20.94n ±   7%                                      20.69n ±  4%       ~ (p=0.485 n=6)
+LinearSumNoWrapAMD64/4                                                                 20.95n ±   4%                                      20.78n ±  8%       ~ (p=0.859 n=6)
+LinearSumNoWrapAMD64/5                                                                 20.78n ±  21%                                      21.00n ±  2%       ~ (p=0.513 n=6)
+LinearSumNoWrapAMD64/6                                                                 21.28n ±  11%                                      21.14n ±  3%       ~ (p=0.818 n=6)
+LinearSumNoWrapAMD64/7                                                                 20.94n ±  17%                                      21.02n ±  9%       ~ (p=0.699 n=6)
+LinearSumNoWrapAMD64/8                                                                 20.95n ±  17%                                      20.91n ± 15%       ~ (p=0.937 n=6)
+LinearSumNoWrapAMD64/9                                                                 21.36n ±  13%                                      21.08n ± 10%       ~ (p=0.937 n=6)
+LinearSumNoWrapAMD64/15                                                                21.73n ±   4%                                      21.46n ±  8%       ~ (p=0.818 n=6)
+LinearSumNoWrapAMD64/16                                                                22.28n ±  18%                                      21.46n ±  8%       ~ (p=0.331 n=6)
+LinearSumNoWrapAMD64/17                                                                21.97n ±  15%                                      21.70n ± 22%       ~ (p=0.818 n=6)
+LinearSumNoWrapAMD64/511                                                               79.38n ±  15%                                      77.26n ±  4%       ~ (p=0.310 n=6)
+LinearSumNoWrapAMD64/512                                                               77.17n ±   8%                                      76.65n ±  5%       ~ (p=0.853 n=6)
+LinearSumNoWrapAMD64/513                                                               76.09n ±   3%                                      76.33n ± 47%       ~ (p=1.000 n=6)
+LinearSumNoWrapAMD64/8192                                                              952.2n ±   5%                                      933.0n ± 30%       ~ (p=0.589 n=6)
+CompileLinearSumAMD64                                                                  11.15µ ±  23%                                      11.08µ ±  8%       ~ (p=0.818 n=6)
+geomean                                                                                46.07n                                             45.67n        -0.86%
+
+                          │ experiments/loop-unroll-vectorization/results/final/default-baseline.txt │ experiments/loop-unroll-vectorization/results/final/default-final.txt │
+                          │                                   B/op                                   │                     B/op                       vs base                │
+LinearSumNoWrapAMD64/0                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/1                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/2                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/3                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/4                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/5                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/6                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/7                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/8                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/9                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/15                                                                 0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/16                                                                 0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/17                                                                 0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/511                                                                0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/512                                                                0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/513                                                                0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/8192                                                               0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+CompileLinearSumAMD64                                                                 10.79Ki ± 0%                                      10.79Ki ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                            ²                                                  +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                          │ experiments/loop-unroll-vectorization/results/final/default-baseline.txt │ experiments/loop-unroll-vectorization/results/final/default-final.txt │
+                          │                                allocs/op                                 │                   allocs/op                    vs base                │
+LinearSumNoWrapAMD64/0                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/1                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/2                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/3                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/4                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/5                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/6                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/7                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/8                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/9                                                                  0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/15                                                                 0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/16                                                                 0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/17                                                                 0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/511                                                                0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/512                                                                0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/513                                                                0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+LinearSumNoWrapAMD64/8192                                                               0.000 ± 0%                                        0.000 ± 0%       ~ (p=1.000 n=6) ¹
+CompileLinearSumAMD64                                                                   27.00 ± 0%                                        27.00 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                            ²                                                  +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

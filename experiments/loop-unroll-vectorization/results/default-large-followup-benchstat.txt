@@ -1,0 +1,17 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                  │ experiments/loop-unroll-vectorization/results/default-large-base-followup.txt │ experiments/loop-unroll-vectorization/results/default-large-new-followup.txt │
+                                  │                                    sec/op                                     │                        sec/op                          vs base               │
+ExperimentalRejectedCompile/large                                                                     26.06µ ± 0%                                             26.62µ ± 1%  +2.16% (p=0.000 n=12)
+
+                                  │ experiments/loop-unroll-vectorization/results/default-large-base-followup.txt │ experiments/loop-unroll-vectorization/results/default-large-new-followup.txt │
+                                  │                                     B/op                                      │                           B/op                            vs base            │
+ExperimentalRejectedCompile/large                                                                    9.234Ki ± 0%                                               9.234Ki ± 0%  ~ (p=1.000 n=12) ¹
+¹ all samples are equal
+
+                                  │ experiments/loop-unroll-vectorization/results/default-large-base-followup.txt │ experiments/loop-unroll-vectorization/results/default-large-new-followup.txt │
+                                  │                                   allocs/op                                   │                        allocs/op                          vs base            │
+ExperimentalRejectedCompile/large                                                                      11.00 ± 0%                                                 11.00 ± 0%  ~ (p=1.000 n=12) ¹
+¹ all samples are equal

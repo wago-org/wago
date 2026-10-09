@@ -1,0 +1,41 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkRailshotCompileSmallScalar 	   23329	      8833 ns/op	    8776 B/op	      22 allocs/op
+BenchmarkRailshotCompileSmallScalar 	   19750	      9234 ns/op	    8873 B/op	      22 allocs/op
+BenchmarkRailshotCompileSmallScalar 	   20787	      8941 ns/op	    8608 B/op	      22 allocs/op
+BenchmarkRailshotCompileSmallScalar 	   18870	      9191 ns/op	    9151 B/op	      22 allocs/op
+BenchmarkRailshotCompileSmallScalar 	   20246	      8841 ns/op	    8608 B/op	      22 allocs/op
+BenchmarkRailshotCompileSmallScalar 	   19054	      9055 ns/op	    8608 B/op	      22 allocs/op
+BenchmarkRailshotCompileALUHeavy    	    7612	     29078 ns/op	    9456 B/op	      11 allocs/op
+BenchmarkRailshotCompileALUHeavy    	    6596	     28884 ns/op	    9456 B/op	      11 allocs/op
+BenchmarkRailshotCompileALUHeavy    	    6232	     27887 ns/op	    9456 B/op	      11 allocs/op
+BenchmarkRailshotCompileALUHeavy    	    7731	     26398 ns/op	    9499 B/op	      11 allocs/op
+BenchmarkRailshotCompileALUHeavy    	    7987	     26475 ns/op	    9620 B/op	      11 allocs/op
+BenchmarkRailshotCompileALUHeavy    	    7758	     28530 ns/op	   10280 B/op	      11 allocs/op
+BenchmarkLinearSumNoWrapAMD64/16    	 6829548	        22.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/16    	 8240796	        22.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/16    	 8224551	        21.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/16    	 8331399	        21.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/16    	 8290952	        22.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/16    	 8260893	        21.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/512   	 2309810	        78.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/512   	 2287262	        77.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/512   	 2178248	        80.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/512   	 2254010	        76.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/512   	 2150528	        83.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/512   	 2303074	        76.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/8192  	  194638	       948.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/8192  	  193107	       932.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/8192  	  193317	       978.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/8192  	  178225	       978.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/8192  	  170128	       970.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinearSumNoWrapAMD64/8192  	  181503	      1011 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompileLinearSumAMD64      	   10000	     15538 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkCompileLinearSumAMD64      	   10000	     16016 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkCompileLinearSumAMD64      	   10000	     17558 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkCompileLinearSumAMD64      	   10000	     17601 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkCompileLinearSumAMD64      	   10000	     17007 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkCompileLinearSumAMD64      	   10000	     16540 ns/op	   11048 B/op	      27 allocs/op
+PASS

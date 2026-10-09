@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func adjacentLoopFixture(t *testing.T, op byte) *wasm.Module {
+func adjacentLoopFixture(t testing.TB, op byte) *wasm.Module {
 	body := []byte{1, 2, 0x7c, 0x03, 0x40}
 	for lane := byte(0); lane < 2; lane++ {
 		body = append(body, 0x20, 0, 0x20, 1, 0x2b, 0, lane*8, 0x20, 2, 0x2b, 0, lane*8, op, 0x22, 5+lane, 0x39, 0, lane*8)

@@ -483,6 +483,9 @@ func (e *regionLoopEmitter) body() {
 			at := event & 0x7f
 			s := p.stores[at]
 			f.wasmPC = f.tracePCBase + s.pos
+			if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+				f.wasmPC = f.sourceInstructionPC(s.pos)
+			}
 			previous := f.enterProfileInstruction()
 			var ea Reg
 			if !p.scalar || p.reductionLoad[at] == 0 {
@@ -510,6 +513,9 @@ func (e *regionLoopEmitter) body() {
 			continue
 		}
 		f.wasmPC = f.tracePCBase + n.pos
+		if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+			f.wasmPC = f.sourceInstructionPC(n.pos)
+		}
 		previous := f.enterProfileInstruction()
 		switch n.op {
 		case 0x44:

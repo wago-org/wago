@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    5241	     27487 ns/op	   29944 B/op	      50 allocs/op
+BenchmarkExperimentalReplication/dependent-i32/compile   	    5034	     26527 ns/op	   29824 B/op	      49 allocs/op
+BenchmarkExperimentalReplication/dependent-f64/compile   	    4975	     25416 ns/op	   29824 B/op	      49 allocs/op
+BenchmarkExperimentalReplication/pointer/compile         	    5342	     22343 ns/op	   29424 B/op	      48 allocs/op
+BenchmarkExperimentalReplication/map-f32/compile         	    4440	     26682 ns/op	   29944 B/op	      50 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    4869	     26439 ns/op	   29944 B/op	      50 allocs/op
+BenchmarkExperimentalReplication/dependent-i32/compile   	    4676	     24935 ns/op	   29824 B/op	      49 allocs/op
+BenchmarkExperimentalReplication/dependent-f64/compile   	    4646	     26889 ns/op	   29824 B/op	      49 allocs/op
+BenchmarkExperimentalReplication/pointer/compile         	    6470	     22690 ns/op	   29424 B/op	      48 allocs/op
+BenchmarkExperimentalReplication/map-f32/compile         	    5019	     26499 ns/op	   29944 B/op	      50 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    5079	     24691 ns/op	   29944 B/op	      50 allocs/op
+BenchmarkExperimentalReplication/dependent-i32/compile   	    4359	     26598 ns/op	   29824 B/op	      49 allocs/op
+BenchmarkExperimentalReplication/dependent-f64/compile   	    4830	     25234 ns/op	   29824 B/op	      49 allocs/op
+BenchmarkExperimentalReplication/pointer/compile         	    6031	     21180 ns/op	   29424 B/op	      48 allocs/op
+BenchmarkExperimentalReplication/map-f32/compile         	    5707	     25427 ns/op	   29944 B/op	      50 allocs/op
+PASS

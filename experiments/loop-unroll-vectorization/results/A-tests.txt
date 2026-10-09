@@ -1,0 +1,30 @@
+=== RUN   TestExperimentalSumMatrix
+=== RUN   TestExperimentalSumMatrix/A
+=== RUN   TestExperimentalSumMatrix/B
+=== RUN   TestExperimentalSumMatrix/C
+=== RUN   TestExperimentalSumMatrix/D
+=== RUN   TestExperimentalSumMatrix/E
+=== RUN   TestExperimentalSumMatrix/F
+=== RUN   TestExperimentalSumMatrix/G
+--- PASS: TestExperimentalSumMatrix (0.11s)
+    --- PASS: TestExperimentalSumMatrix/A (0.02s)
+    --- PASS: TestExperimentalSumMatrix/B (0.02s)
+    --- PASS: TestExperimentalSumMatrix/C (0.02s)
+    --- PASS: TestExperimentalSumMatrix/D (0.02s)
+    --- PASS: TestExperimentalSumMatrix/E (0.02s)
+    --- PASS: TestExperimentalSumMatrix/F (0.01s)
+    --- PASS: TestExperimentalSumMatrix/G (0.02s)
+=== RUN   TestExperimentalSumGroupedFullMemoryWrap
+--- PASS: TestExperimentalSumGroupedFullMemoryWrap (0.00s)
+=== RUN   TestExperimentalSumSizes
+    experimental_sum_test.go:111: variant="" module=312 function=312 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 frame-header-elide:1 linear-sum-unroll4:1]
+    experimental_sum_test.go:111: variant="A" module=165 function=165 spills=0 reloads=0 frame=40 labels=map[br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-latch:1 frame-header-elide:1]
+    experimental_sum_test.go:111: variant="B" module=198 function=198 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 frame-header-elide:1]
+    experimental_sum_test.go:111: variant="C" module=282 function=282 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:111: variant="D" module=292 function=292 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:111: variant="E" module=287 function=287 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:111: variant="F" module=307 function=307 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:111: variant="G" module=297 function=297 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+--- PASS: TestExperimentalSumSizes (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.113s

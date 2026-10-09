@@ -24,6 +24,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Add opt-in loop-unrolling and 128-bit `f32`/`i32` vector-map experiments,
+  with correctness tests, fixed-base measurements, and ARM64 cross-compilation
+  checks. Native ARM64 validation remains incomplete.
 - Add mixed-scalar host-call checks across nested memory, global, and table
   changes, including nested traps and repeated resolved calls.
 - Bind corpus child completion to loaded input identity and exact invocation

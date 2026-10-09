@@ -1,0 +1,210 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    9638	     12131 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5861540	        20.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 5605227	        21.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5730315	        22.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 5468013	        21.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5097744	        22.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 5390473	        22.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 5287382	        23.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 5263732	        23.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 5128538	        24.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4316730	        26.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4552935	        27.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4356882	        27.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  495510	       260.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   31747	      4189 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/compile            	    8169	     14176 ns/op	   11096 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/1          	 5680322	        22.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/2          	 5609358	        22.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/3          	 5345817	        23.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/4          	 5180580	        24.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/5          	 5006853	        24.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/6          	 4820557	        24.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/7          	 4653040	        26.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8          	 4503700	        26.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/9          	 4370476	        27.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/15         	 3586365	        33.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/16         	 3337436	        33.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/17         	 3484531	        34.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/512        	  260180	       510.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8192       	   15621	      7873 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    9392	     12101 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5499498	        20.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 5512462	        20.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5525605	        22.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 5481468	        23.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5428555	        22.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 5380287	        22.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 5295290	        22.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 5210690	        23.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 5133601	        23.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4628079	        26.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4366192	        26.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4445337	        27.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  483823	       254.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   32371	      3713 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/compile            	    8180	     12519 ns/op	   11096 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/1          	 5593737	        20.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/2          	 5718654	        21.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/3          	 5351907	        22.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/4          	 5318800	        22.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/5          	 5124268	        23.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/6          	 4975659	        24.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/7          	 4807094	        25.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8          	 4651257	        26.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/9          	 4483932	        28.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/15         	 3703018	        32.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/16         	 3651723	        32.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/17         	 3573096	        33.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/512        	  260348	       468.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8192       	   16832	      7176 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    9452	     11947 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5696737	        20.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 5802630	        21.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5485899	        21.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 5657913	        22.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5324346	        22.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 5427368	        22.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 5150420	        23.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 5226099	        23.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 5142583	        24.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4395441	        26.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4394600	        26.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4387861	        27.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  483828	       265.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   31627	      3855 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/compile            	    8145	     12572 ns/op	   11096 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/1          	 5801185	        22.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/2          	 5677246	        21.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/3          	 5524162	        22.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/4          	 5222798	        22.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/5          	 5179671	        23.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/6          	 4976526	        24.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/7          	 4802390	        25.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8          	 4197630	        27.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/9          	 4337488	        27.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/15         	 3665170	        32.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/16         	 3670656	        33.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/17         	 3498474	        33.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/512        	  258326	       492.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8192       	   15704	      7788 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    8391	     13029 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5646697	        20.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 5802662	        20.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5720055	        21.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 5645937	        21.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5499820	        22.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 5407526	        22.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 5115222	        23.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 5202580	        23.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 5135066	        23.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4611609	        26.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4544725	        26.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4451922	        27.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  483681	       262.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   31012	      3945 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/compile            	    9274	     12827 ns/op	   11096 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/1          	 5504749	        21.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/2          	 5204238	        21.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/3          	 5468522	        22.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/4          	 5126841	        23.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/5          	 5005008	        24.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/6          	 4807756	        24.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/7          	 4804380	        25.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8          	 4650225	        26.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/9          	 4405438	        27.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/15         	 3616227	        33.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/16         	 3501988	        35.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/17         	 3478273	        34.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/512        	  260559	       490.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8192       	   16100	      7460 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    9322	     12953 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5547380	        20.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 5624530	        21.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5579839	        21.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 5499816	        21.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5354823	        23.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 4844197	        24.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 5100486	        23.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 5058427	        24.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 4979139	        24.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4485529	        28.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4171900	        28.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4313088	        28.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  480505	       303.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   26835	      4457 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/compile            	    7532	     20360 ns/op	   11096 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/1          	 5066149	        25.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/2          	 4591838	        27.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/3          	 5007592	        25.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/4          	 4912044	        26.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/5          	 4866196	        24.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/6          	 4711896	        26.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/7          	 4507100	        25.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8          	 4397788	        31.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/9          	 3980935	        30.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/15         	 2514156	        48.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/16         	 3313508	        39.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/17         	 2885602	        43.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/512        	  160194	       649.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8192       	   13666	      9566 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    6464	     26644 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 2487088	        52.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 2808548	        57.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 3081536	        40.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 2867008	        38.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 1386704	        84.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 2285958	        50.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 2441040	        47.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 4404093	        32.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 2418399	        47.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 2715177	        60.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4249454	        29.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4195227	        29.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  466005	       310.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   28360	      4137 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/compile            	    5522	     18730 ns/op	   11096 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/1          	 4846212	        34.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/2          	 5376037	        25.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/3          	 4961326	        24.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/4          	 4840749	        26.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/5          	 4606238	        27.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/6          	 3878427	        26.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/7          	 4391769	        26.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8          	 3949701	        34.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/9          	 4021576	        31.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/15         	 3069880	        42.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/16         	 2695560	        39.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/17         	 3249964	        38.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/512        	  238162	       522.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/adjacent/execute/8192       	   15240	     10123 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,33 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    6780	     15110 ns/op	   26160 B/op	      30 allocs/op
+BenchmarkExperimentalReplication/dependent-i32/compile   	    9306	     14444 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkExperimentalReplication/dependent-f64/compile   	    8137	     13928 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkExperimentalReplication/pointer/compile         	    8824	     13699 ns/op	   26048 B/op	      28 allocs/op
+BenchmarkExperimentalReplication/simd-i32/compile        	    9549	     14924 ns/op	   26160 B/op	      30 allocs/op
+BenchmarkExperimentalReplication/map-f32/compile         	    7747	     14355 ns/op	   26160 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    9075	     14427 ns/op	   26160 B/op	      30 allocs/op
+BenchmarkExperimentalReplication/dependent-i32/compile   	    9225	     14014 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkExperimentalReplication/dependent-f64/compile   	    8583	     14399 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkExperimentalReplication/pointer/compile         	    9292	     13199 ns/op	   26048 B/op	      28 allocs/op
+BenchmarkExperimentalReplication/simd-i32/compile        	   10000	     15096 ns/op	   26160 B/op	      30 allocs/op
+BenchmarkExperimentalReplication/map-f32/compile         	   10000	     14184 ns/op	   26160 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    8859	     13831 ns/op	   26160 B/op	      30 allocs/op
+BenchmarkExperimentalReplication/dependent-i32/compile   	    9078	     13938 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkExperimentalReplication/dependent-f64/compile   	    8937	     13935 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkExperimentalReplication/pointer/compile         	    9805	     12569 ns/op	   26048 B/op	      28 allocs/op
+BenchmarkExperimentalReplication/simd-i32/compile        	    8698	     14268 ns/op	   26160 B/op	      30 allocs/op
+BenchmarkExperimentalReplication/map-f32/compile         	    8918	     13572 ns/op	   26160 B/op	      30 allocs/op
+PASS

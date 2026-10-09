@@ -1,0 +1,15 @@
+4747c3966caa353d98f488f00f0a9172dfb8ebd0 experiment(E): compare matched modern and conservative map features
+2af569ead7b01281c57b700eac3da3e2a1091d08 experiment: check widened trip ranges and unaligned exit locals
+b9b87978bce874b4958b1d6f52576496bafd67af experiment: support direct test-binary corpus paths and resume samples
+904ab4bfda1da3a6df76cd41f55cc37f5c49a5a2 experiment(C): retain real sum as an optimized negative control
+f40cd86c6a3971acee5128d6e305b9f59dcd0654 experiment: compare no-loop and corpus compilation with fixed base
+60d34cbadc6eb14fa00878713a33c53db85ede0b experiment: measure scalar and SIMD corpus commands
+eb3bb20b5cc9c466c006eceda4388cd5ad115ff6 experiment: add reproducible serial measurement runners
+648bc06db2f0d895589f0e5e79c77037d80f6bb8 experiment: qualify wrap, live state, scalar controls, and corpus coverage
+9bf0cd8d630370f588a8ee71806c96cb9df5b43e experiment(F): add native ARM64 qualification and timing harness
+a7ecd8d29ce7a18d693938a77f3c597c3b13bd86 experiment: preserve trap positions and bound native growth
+eb72a5bd9ebd9f10b538bd400b270d6b2f3a2ede experiment(E): add separate guarded 128-bit f32 and i32 map plans
+2527ab235e8fd4ba46e7fadb7ebc55aa93ef9a40 experiment(D): qualify replication with fixed 128-bit Wasm SIMD
+a7138fb0db1a2967d4e64b9b7c6bbc55880df5ad experiment(C): replay bounded scalar plans in original iteration order
+224e167977091ca265ce269648a8772835173020 experiment(B): admit bounded i32, xor, and equivalent countdown forms
+5232db45a5f2996835ec6040a6992504448f370c experiment(A): separate sum proof, grouping, and accumulator controls

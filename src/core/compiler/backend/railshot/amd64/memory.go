@@ -313,7 +313,20 @@ func (f *fn) emitTrapStubs() {
 			}
 			common := f.a.Len()
 			if len(group) != 1 {
-				f.a.MovImm32(RAX, -1)
+				pc := uint32(^uint32(0))
+				if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+					same := true
+					for _, site := range group {
+						if site.pc != first.pc {
+							same = false
+							break
+						}
+					}
+					if same {
+						pc = first.pc
+					}
+				}
+				f.a.MovImm32(RAX, int32(pc))
 				for _, site := range group {
 					f.a.PatchRel32(int(site.branch), common)
 				}
@@ -346,7 +359,17 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 			first := group[0]
 			pos := f.a.Len()
 			pc := int32(-1)
-			if len(group) == 1 {
+			samePC := len(group) == 1
+			if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+				samePC = true
+				for _, site := range group {
+					if site.pc != first.pc {
+						samePC = false
+						break
+					}
+				}
+			}
+			if samePC {
 				pc = int32(first.pc)
 			}
 			f.a.MovImm32(RAX, pc)

@@ -1,0 +1,1 @@
+{"compile_allocs":202,"compile_bytes":121424,"compile_ns":533192,"execute_ns":135755,"export":"polybench_run","instantiate_ns":265939,"remaining_allocs":20,"remaining_bytes":3400,"repeat":1,"result":139987702,"wasm":"corpus/workloads/polybench/jacobi-1d.wasm"}

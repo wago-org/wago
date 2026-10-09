@@ -1,0 +1,545 @@
+go build ./...
+go build -tags wago_runtime ./cli/...
+go test -count=1 ./...
+ok  	github.com/wago-org/wago	1.475s
+ok  	github.com/wago-org/wago/cli/installer	1.117s
+ok  	github.com/wago-org/wago/cli/internal/automation	0.009s
+ok  	github.com/wago-org/wago/cli/internal/command	0.008s
+ok  	github.com/wago-org/wago/cli/internal/handoff	0.005s
+?   	github.com/wago-org/wago/cli/internal/parallel	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/pluginmenu	0.005s
+ok  	github.com/wago-org/wago/cli/internal/profiling	0.010s
+ok  	github.com/wago-org/wago/cli/internal/project	7.699s
+ok  	github.com/wago-org/wago/cli/internal/settings	0.254s
+?   	github.com/wago-org/wago/cli/internal/settings/cmd/genschema	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/tui	0.004s
+?   	github.com/wago-org/wago/cli/internal/ui	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/wasmcall	0.002s
+ok  	github.com/wago-org/wago/cli/internal/watchsupervisor	1.269s
+ok  	github.com/wago-org/wago/cli/manager	3.906s
+ok  	github.com/wago-org/wago/cli/manager/commands/auth	0.003s
+ok  	github.com/wago-org/wago/cli/manager/commands/auth/login	0.004s
+?   	github.com/wago-org/wago/cli/manager/commands/auth/logout	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/auth/whoami	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/cache	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/cache/clean	0.004s
+?   	github.com/wago-org/wago/cli/manager/commands/cache/dir	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/cache/options	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/cache/prune	0.004s
+?   	github.com/wago-org/wago/cli/manager/commands/cache/size	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/compile	0.030s
+ok  	github.com/wago-org/wago/cli/manager/commands/config	0.004s
+?   	github.com/wago-org/wago/cli/manager/commands/config/completions	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/diff	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/get	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/list	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/options	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/reset	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/set	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/init	0.005s
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin	0.003s
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/add	0.007s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/catalog	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/config	0.004s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/deprecate	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/grant	0.004s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/outdated	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/publish	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/rebuild	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/remove	0.006s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/tree	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/unpublish	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/update	0.003s
+?   	github.com/wago-org/wago/cli/manager/commands/self	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/self/uninstall	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/self/update	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/status	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/update	0.007s
+ok  	github.com/wago-org/wago/cli/manager/commands/version	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/current	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/install	0.003s
+?   	github.com/wago-org/wago/cli/manager/commands/version/list	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/switch	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/uninstall	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/update	0.004s
+?   	github.com/wago-org/wago/cli/manager/commands/version/which	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/internal/cache	0.269s
+ok  	github.com/wago-org/wago/cli/manager/internal/config	0.012s
+ok  	github.com/wago-org/wago/cli/manager/internal/plugin	20.237s
+ok  	github.com/wago-org/wago/cli/manager/internal/plugin/build	4.790s
+ok  	github.com/wago-org/wago/cli/manager/internal/plugin/gocommand	1.453s
+ok  	github.com/wago-org/wago/cli/manager/internal/progress	0.305s
+ok  	github.com/wago-org/wago/cli/manager/internal/registry	4.605s
+ok  	github.com/wago-org/wago/cli/manager/internal/self	0.152s
+?   	github.com/wago-org/wago/cli/manager/internal/self/replace	[no test files]
+--- FAIL: TestBuildTinyGoEmbedsArtifactWithoutCompiler (0.31s)
+    build_test.go:147: tinygo build: exit status 1
+        error obtaining VCS status: exit status 128
+        	Use -buildvcs=false to disable VCS stamping.
+--- FAIL: TestBuildTinyGoStripsByDefault (0.32s)
+    build_test.go:205: tinygo build: exit status 1
+        error obtaining VCS status: exit status 128
+        	Use -buildvcs=false to disable VCS stamping.
+FAIL
+FAIL	github.com/wago-org/wago/cli/manager/internal/standalone	36.819s
+ok  	github.com/wago-org/wago/cli/manager/internal/status	0.020s
+ok  	github.com/wago-org/wago/cli/manager/internal/version	10.620s
+ok  	github.com/wago-org/wago/cli/runtime	0.019s
+ok  	github.com/wago-org/wago/cli/runtime/commands	0.003s
+ok  	github.com/wago-org/wago/cli/runtime/commands/build	0.387s
+?   	github.com/wago-org/wago/cli/runtime/commands/module	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/module/capabilities	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/commands/module/exports	0.002s
+?   	github.com/wago-org/wago/cli/runtime/commands/module/imports	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/plugin	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/inspect	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/list	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/commands/run	3.016s
+ok  	github.com/wago-org/wago/cli/runtime/commands/validate	0.006s
+ok  	github.com/wago-org/wago/cli/runtime/internal/artifactcache	0.101s
+ok  	github.com/wago-org/wago/cli/runtime/internal/module	0.003s
+ok  	github.com/wago-org/wago/cli/runtime/internal/modulefile	0.003s
+ok  	github.com/wago-org/wago/cli/runtime/internal/plugin	0.003s
+?   	github.com/wago-org/wago/cli/runtime/internal/profile	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/internal/version	0.003s
+ok  	github.com/wago-org/wago/cli/standalone	0.212s
+ok  	github.com/wago-org/wago/cli/wago	1.070s
+?   	github.com/wago-org/wago/codegen	[no test files]
+?   	github.com/wago-org/wago/codegen/amd64	[no test files]
+?   	github.com/wago-org/wago/codegen/arm64	[no test files]
+ok  	github.com/wago-org/wago/examples/01-hello	0.005s
+ok  	github.com/wago-org/wago/examples/02-runtime-typed	0.004s
+ok  	github.com/wago-org/wago/examples/03-host-import	0.006s
+ok  	github.com/wago-org/wago/examples/04-memory	0.006s
+ok  	github.com/wago-org/wago/examples/05-globals	0.010s
+ok  	github.com/wago-org/wago/examples/06-runtime-service	0.005s
+ok  	github.com/wago-org/wago/examples/07-runtime-limits	0.010s
+ok  	github.com/wago-org/wago/examples/08-custom-plugin	0.008s
+ok  	github.com/wago-org/wago/examples/09-plugin-config-lifecycle	0.003s
+ok  	github.com/wago-org/wago/examples/10-hooks	0.010s
+ok  	github.com/wago-org/wago/examples/11-source-transform	0.003s
+ok  	github.com/wago-org/wago/examples/12-caller-context	0.015s
+ok  	github.com/wago-org/wago/examples/13-plugin-contracts	0.006s
+ok  	github.com/wago-org/wago/examples/14-handles	0.003s
+ok  	github.com/wago-org/wago/examples/15-config	0.004s
+ok  	github.com/wago-org/wago/examples/16-serialize	0.020s
+ok  	github.com/wago-org/wago/examples/17-managed-instances	0.010s
+ok  	github.com/wago-org/wago/examples/18-custom-instruction	0.009s
+ok  	github.com/wago-org/wago/examples/19-custom-type	0.007s
+ok  	github.com/wago-org/wago/examples/20-core-handles	0.007s
+ok  	github.com/wago-org/wago/examples/21-guest-storage	0.006s
+ok  	github.com/wago-org/wago/examples/22-language-guests	0.015s
+ok  	github.com/wago-org/wago/examples/23-public-api	0.009s
+ok  	github.com/wago-org/wago/examples/internal/exampleplugin	0.003s
+ok  	github.com/wago-org/wago/examples/internal/mods	0.010s
+?   	github.com/wago-org/wago/experiments/loop-unroll-vectorization/cmd/workload	[no test files]
+?   	github.com/wago-org/wago/experiments/signed-immediate-830/inspect	[no test files]
+ok  	github.com/wago-org/wago/internal/actionartifact	0.015s
+ok  	github.com/wago-org/wago/internal/atomicfile	0.024s
+ok  	github.com/wago-org/wago/internal/filelock	0.056s
+ok  	github.com/wago-org/wago/internal/functionworkers	0.003s
+ok  	github.com/wago-org/wago/internal/genfacade	0.062s
+ok  	github.com/wago-org/wago/internal/httpclient	0.178s
+ok  	github.com/wago-org/wago/internal/installbootstrap	0.005s
+ok  	github.com/wago-org/wago/internal/jitprofile	0.004s
+ok  	github.com/wago-org/wago/internal/jsonstrict	0.007s
+ok  	github.com/wago-org/wago/internal/managedrelease	0.221s
+ok  	github.com/wago-org/wago/internal/namecheck	0.184s
+ok  	github.com/wago-org/wago/internal/profcapture	0.233s
+?   	github.com/wago-org/wago/internal/profilecmd	[no test files]
+ok  	github.com/wago-org/wago/internal/regalloccheck	0.005s
+ok  	github.com/wago-org/wago/internal/regularfile	0.005s
+?   	github.com/wago-org/wago/internal/runtimebridge	[no test files]
+ok  	github.com/wago-org/wago/internal/sourcearchive	0.061s
+ok  	github.com/wago-org/wago/internal/wagopaths	0.003s
+ok  	github.com/wago-org/wago/plugin	0.005s
+ok  	github.com/wago-org/wago/profile	0.348s
+?   	github.com/wago-org/wago/scripts/compilemem	[no test files]
+?   	github.com/wago-org/wago/src/core/codeimage	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.218s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	4.854s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.046s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.044s
+ok  	github.com/wago-org/wago/src/core/compiler/codegen	0.044s
+ok  	github.com/wago-org/wago/src/core/compiler/frontend	0.063s
+ok  	github.com/wago-org/wago/src/core/compiler/ir	0.044s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.044s
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	0.305s
+?   	github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames	[no test files]
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.052s
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.068s
+ok  	github.com/wago-org/wago/src/core/nativeabi	0.047s
+ok  	github.com/wago-org/wago/src/core/plugins	0.047s
+ok  	github.com/wago-org/wago/src/core/runtime	0.483s
+ok  	github.com/wago-org/wago/src/core/runtime/abi	0.003s
+ok  	github.com/wago-org/wago/src/core/runtime/gc	0.003s
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	0.946s
+ok  	github.com/wago-org/wago/src/core/runtime/hostthunk	0.012s
+ok  	github.com/wago-org/wago/src/core/semver	0.006s
+--- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.01s)
+    --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-tag (0.00s)
+        exception_handling_official_amd64_test.go:917: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-throw (0.00s)
+        exception_handling_official_amd64_test.go:917: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-throw_ref (0.00s)
+        exception_handling_official_amd64_test.go:917: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-try_table (0.00s)
+        exception_handling_official_amd64_test.go:917: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/ref_null (0.00s)
+        exception_handling_official_amd64_test.go:917: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    exception_handling_official_amd64_test.go:958: staged exception-handling accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": null,
+          "totals": {
+            "commands": 0,
+            "modules_passed": 0,
+            "assertions_passed": 0,
+            "expected_invalid": 0,
+            "expected_unlinkable": 0,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+    gc_array_bulk_official_amd64_test.go:387: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayBulkProductBoundary (0.00s)
+    --- FAIL: TestStagedGCArrayBulkProductBoundary/gc/array_fill (0.00s)
+        gc_array_bulk_product_amd64_test.go:46: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedGCArrayBulkProductBoundary/gc/array_copy (0.00s)
+        gc_array_bulk_product_amd64_test.go:46: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    gc_array_bulk_product_amd64_test.go:104: bulk array layouts: Compiled=784 Instance=896 codeCache=64 memoryDir=136 arrayGlobal=40 plugin=304 collector=1136
+--- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+    gc_array_bulk_product_amd64_test.go:108: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+    gc_array_init_official_amd64_test.go:396: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayInitDataProductBoundary (0.00s)
+    --- FAIL: TestStagedGCArrayInitDataProductBoundary/array_init_data.2.wasm (0.00s)
+        gc_array_init_product_amd64_test.go:47: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedGCArrayInitDataProductBoundary/array_init_data.3.wasm (0.00s)
+        gc_array_init_product_amd64_test.go:47: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    gc_array_init_product_amd64_test.go:129: array-init layouts: Compiled=784 Instance=896 codeCache=64 memoryDir=136 arrayGlobal=40 plugin=304 collector=1136
+--- FAIL: TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle (0.00s)
+    gc_array_init_product_amd64_test.go:133: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+    gc_array_init_product_amd64_test.go:274: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+    gc_array_init_product_amd64_test.go:326: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+    gc_array_official_amd64_test.go:374: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+    gc_br_on_cast_official_amd64_test.go:459: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCBrOnCastProductBoundaryLifecycle (0.00s)
+    gc_br_on_cast_product_amd64_test.go:85: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCExternAccounting (0.02s)
+    gc_extern_official_amd64_test.go:345: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCExternProductBoundaryLifecycle (0.00s)
+    gc_extern_product_amd64_test.go:41: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+    gc_i31_official_amd64_test.go:348: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+    gc_ref_cast_official_amd64_test.go:338: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCRefCastProductBoundaryLifecycle (0.00s)
+    gc_ref_cast_product_amd64_test.go:63: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+    gc_ref_eq_official_amd64_test.go:304: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCRefEqProductBoundaryLifecycle (0.00s)
+    gc_ref_eq_product_amd64_test.go:50: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedGCRefTestAbstractMixedTableLifecycle (0.00s)
+    gc_ref_test_abstract_amd64_test.go:41: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+    gc_ref_test_official_amd64_test.go:409: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+    gc_struct_official_amd64_test.go:309: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+    gc_type_subtyping_official_amd64_test.go:551: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.02s)
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/address64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/align64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/binary_leb128_64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/bulk64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/call_indirect64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/endianness64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/float_memory64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/load64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory_copy64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory_fill64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory_grow64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory_init64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory_redundancy64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory_trap64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory64-imports (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory64 (0.00s)
+        memory64_official_amd64_test.go:327: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    memory64_official_amd64_test.go:359: staged memory64 accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": null,
+          "totals": {
+            "commands": 0,
+            "modules_passed": 0,
+            "assertions_passed": 0,
+            "expected_invalid": 0,
+            "expected_unlinkable": 0,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+--- FAIL: TestStagedOfficialMultiMemoryLinkingStoreSemantics (0.01s)
+    --- FAIL: TestStagedOfficialMultiMemoryLinkingStoreSemantics/linking0_unknown_import_atomic_and_prior_table_writes_persist (0.00s)
+        multi_memory_official_amd64_test.go:26: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryLinkingStoreSemantics/linking1_safe_memory_consumers_execute_and_mixed_contexts_fail_closed (0.00s)
+        multi_memory_official_amd64_test.go:26: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryLinkingStoreSemantics/linking2_imported_growth_respects_producer_maximum (0.00s)
+        multi_memory_official_amd64_test.go:26: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryLinkingStoreSemantics/linking3_memory_ordering_and_trapped_start_persist (0.00s)
+        multi_memory_official_amd64_test.go:26: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute (0.00s)
+    --- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute/memory_size_import (0.00s)
+        multi_memory_official_amd64_test.go:26: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryCompactImportsExecute/memory_grow (0.00s)
+        multi_memory_official_amd64_test.go:26: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix (0.17s)
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/address0 (0.01s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/address1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/align0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/binary0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/data0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/data1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/data_drop0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/exports0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/float_exprs0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/float_exprs1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/float_memory0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/imports0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/imports1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/imports2 (0.01s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/imports3 (0.01s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/imports4 (0.01s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/linking0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/linking1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/linking2 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/linking3 (0.01s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/load0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/load1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/load2 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory-multi (0.01s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_copy0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_copy1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_fill0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_grow (0.01s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_init0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_size0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_size1 (0.01s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_size2 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_size3 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_size_import (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_trap0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/memory_trap1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/start0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/store0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/store1 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/store2 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/multi-memory/traps0 (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialMultiMemoryFamilyMatrix/simd/simd_memory-multi (0.00s)
+        multi_memory_staged_spec_amd64_test.go:421: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    multi_memory_staged_spec_amd64_test.go:450: staged multi-memory delta changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact command accounting
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": null,
+          "totals": {
+            "commands": 0,
+            "modules_passed": 0,
+            "assertions_passed": 0,
+            "expected_invalid": 0,
+            "expected_unlinkable": 0,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+--- FAIL: TestStagedOfficialTable64FamilyAccounting (0.02s)
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table64 (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table_copy64 (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table_copy_mixed (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table_fill64 (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table_get64 (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table_grow64 (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table_init64 (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table_set64 (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table_size64 (0.00s)
+        table64_official_amd64_test.go:497: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    table64_official_amd64_test.go:525: staged table64 accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": null,
+          "totals": {
+            "commands": 0,
+            "modules_passed": 0,
+            "assertions_passed": 0,
+            "expected_invalid": 0,
+            "expected_unlinkable": 0,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+--- FAIL: TestStagedOfficialReturnCallIndirect (0.00s)
+    tail_call_indirect_official_amd64_test.go:22: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialReturnCall (0.00s)
+    tail_call_official_amd64_test.go:35: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+--- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.03s)
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/br_on_non_null (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/br_on_null (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/call_ref (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/ref (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/ref_as_non_null (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/ref_func (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/ref_is_null (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/ref_null (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/select (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-canon (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-equivalence (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-rec (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/unreached-valid (0.00s)
+        typed_reference_official_amd64_test.go:461: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+    typed_reference_official_amd64_test.go:493: staged typed-reference accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": null,
+          "totals": {
+            "commands": 0,
+            "modules_passed": 0,
+            "assertions_passed": 0,
+            "expected_invalid": 0,
+            "expected_unlinkable": 0,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+--- FAIL: TestStagedOfficialReturnCallRef (0.00s)
+    typed_tail_official_amd64_test.go:28: wast2json version = "1.0.42", <nil>; want pinned 1.0.41
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	12.898s
+ok  	github.com/wago-org/wago/tests/conformance/spectest	0.121s
+ok  	github.com/wago-org/wago/tests/conformance/wasmtime	0.032s
+ok  	github.com/wago-org/wago/tests/fuzz/engine/oracle	0.009s
+?   	github.com/wago-org/wago/tests/fuzz/engine/worker	[no test files]
+ok  	github.com/wago-org/wago/tests/integration/cipolicy	0.008s
+ok  	github.com/wago-org/wago/tests/integration/runtimeconcurrency	0.240s
+ok  	github.com/wago-org/wago/tests/support/compilerpair	0.158s
+ok  	github.com/wago-org/wago/tests/support/regressioncorpus	0.005s
+ok  	github.com/wago-org/wago/tests/support/regressiontest	0.009s
+ok  	github.com/wago-org/wago/tests/support/ruleguide	0.003s
+?   	github.com/wago-org/wago/tests/support/summaryfixtures	[no test files]
+ok  	github.com/wago-org/wago/tests/support/wasmtest	0.002s
+?   	github.com/wago-org/wago/tests/tools/amd64-sse2-check	[no test files]
+ok  	github.com/wago-org/wago/tests/tools/ci-plan	0.115s
+ok  	github.com/wago-org/wago/tests/tools/docs-check	0.005s
+ok  	github.com/wago-org/wago/tests/tools/regression-corpus	0.104s
+?   	github.com/wago-org/wago/tests/tools/release-qualification	[no test files]
+ok  	github.com/wago-org/wago/tests/tools/staticcheck-baseline	0.003s
+ok  	github.com/wago-org/wago/tests/tools/tinygo-cache	0.011s
+FAIL
+error: recipe `unit` failed on line 16 with exit code 1

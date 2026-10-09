@@ -328,7 +328,20 @@ func (f *fn) emitTrapStubs() {
 			}
 			common := f.a.Len()
 			if len(group) != 1 {
-				f.a.MovImm64(X17, uint64(^uint32(0)))
+				pc := uint32(^uint32(0))
+				if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+					same := true
+					for _, site := range group {
+						if site.pc != first.pc {
+							same = false
+							break
+						}
+					}
+					if same {
+						pc = first.pc
+					}
+				}
+				f.a.MovImm64(X17, uint64(pc))
 				for _, site := range group {
 					if site.branch&1 != 0 {
 						f.patchBranch26(int(site.branch&^1), common)
@@ -382,7 +395,17 @@ func (f *fn) emitSharedTrapStubs() {
 			first := group[0]
 			pos := f.a.Len()
 			pc := uint64(^uint32(0))
-			if len(group) == 1 {
+			samePC := len(group) == 1
+			if f.m != nil && f.m.ExperimentalInstructionOrigins != nil {
+				samePC = true
+				for _, site := range group {
+					if site.pc != first.pc {
+						samePC = false
+						break
+					}
+				}
+			}
+			if samePC {
 				pc = uint64(first.pc)
 			}
 			f.a.MovImm64(X17, pc)

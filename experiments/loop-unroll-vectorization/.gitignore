@@ -1,0 +1,7 @@
+results/*.test
+results/*.out
+results/*.wasm
+results/workload
+results/**/*.test
+results/workload-baseline
+results/original-checkout-final-status.txt

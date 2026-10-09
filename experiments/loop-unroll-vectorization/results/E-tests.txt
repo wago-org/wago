@@ -1,0 +1,12 @@
+=== RUN   TestExperimentalMaps
+=== RUN   TestExperimentalMaps/map-f32
+    experimental_maps_test.go:70: mode= module=256 function=256 spills=0 reloads=0 frame=104
+    experimental_maps_test.go:70: mode=vector-f32 module=713 function=713 spills=0 reloads=0 frame=120
+=== RUN   TestExperimentalMaps/map-i32
+    experimental_maps_test.go:70: mode= module=254 function=254 spills=0 reloads=0 frame=72
+    experimental_maps_test.go:70: mode=vector-i32 module=831 function=831 spills=0 reloads=0 frame=136
+--- PASS: TestExperimentalMaps (0.01s)
+    --- PASS: TestExperimentalMaps/map-f32 (0.00s)
+    --- PASS: TestExperimentalMaps/map-i32 (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.011s

@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	   10000	     12692 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	    9272	     13131 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	   10000	     13254 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	   10000	     13962 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	    9237	     12856 ns/op	   11152 B/op	      26 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	    9429	     11983 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	   10000	     12055 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	   10000	     12005 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	    8026	     12862 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	   10000	     12025 ns/op	   11152 B/op	      26 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	    9284	     12466 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	   10000	     12676 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	    8587	     12047 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	   10000	     12638 ns/op	   11048 B/op	      27 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	    8418	     12177 ns/op	   11152 B/op	      26 allocs/op
+PASS

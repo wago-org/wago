@@ -1,0 +1,19 @@
+=== RUN   TestExperimentalReductionForms
+=== RUN   TestExperimentalReductionForms/i32
+    experimental_reduction_test.go:67: i32 map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+=== RUN   TestExperimentalReductionForms/xor
+    experimental_reduction_test.go:67: xor map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+=== RUN   TestExperimentalReductionForms/add-minus-one
+    experimental_reduction_test.go:67: add-minus-one map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 frame-header-elide:1 linear-sum-unroll4:1]
+=== RUN   TestExperimentalReductionForms/tee-drop
+    experimental_reduction_test.go:67: tee-drop map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 frame-header-elide:1 linear-sum-unroll4:1]
+=== RUN   TestExperimentalReductionForms/header-eq
+    experimental_reduction_test.go:67: header-eq map[br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 frame-header-elide:1]
+--- PASS: TestExperimentalReductionForms (0.03s)
+    --- PASS: TestExperimentalReductionForms/i32 (0.00s)
+    --- PASS: TestExperimentalReductionForms/xor (0.01s)
+    --- PASS: TestExperimentalReductionForms/add-minus-one (0.01s)
+    --- PASS: TestExperimentalReductionForms/tee-drop (0.00s)
+    --- PASS: TestExperimentalReductionForms/header-eq (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.029s

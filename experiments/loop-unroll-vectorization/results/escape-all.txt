@@ -1,0 +1,1321 @@
+# github.com/wago-org/wago/src/core/compiler/backend/railshot/shared
+src/core/compiler/backend/railshot/shared/amd64_features.go:29:6: can inline AMD64Features.Has
+src/core/compiler/backend/railshot/shared/amd64_features.go:32:6: can inline AMD64Features.BitCountCapabilities
+src/core/compiler/backend/railshot/shared/amd64_features.go:44:6: can inline AMD64BitCountRequirements
+src/core/compiler/backend/railshot/shared/capacity.go:31:6: can inline NativeFrameFitsStackFence
+src/core/compiler/backend/railshot/shared/capacity.go:40:6: can inline StackArenaCapacity
+src/core/compiler/backend/railshot/shared/capacity.go:58:6: can inline ModuleCodeCapacity
+src/core/compiler/backend/railshot/shared/capacity.go:75:6: can inline JoinedModuleCodeCapacity
+src/core/compiler/backend/railshot/shared/compile_resources.go:67:6: can inline (*CompileResourceStats).AddWorkerScratch
+src/core/compiler/backend/railshot/shared/eh_payload.go:58:6: can inline EHPayloadLane
+src/core/compiler/backend/railshot/shared/eh_payload.go:66:6: can inline TagType
+src/core/compiler/backend/railshot/shared/experimental_maps.go:17:6: can inline mapOpcode
+src/core/compiler/backend/railshot/shared/experimental_replication.go:188:6: can inline experimentPlain
+src/core/compiler/backend/railshot/shared/experimental_replication.go:199:6: can inline experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:137:6: can inline mapSIMD
+src/core/compiler/backend/railshot/shared/experimental_replication.go:206:6: can inline experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:138:6: can inline mapExtended
+src/core/compiler/backend/railshot/shared/experimental_maps.go:144:6: can inline mapLimit
+src/core/compiler/backend/railshot/shared/experimental_replication.go:207:6: can inline experimentSet
+src/core/compiler/backend/railshot/shared/experimental_replication.go:216:6: can inline (*ReplicationPlan).zeroExit
+src/core/compiler/backend/railshot/shared/experimental_native_budget.go:16:6: can inline ExperimentalNativeFunctionBudget
+src/core/compiler/backend/railshot/shared/experimental_native_budget.go:19:6: can inline ExperimentalNativeModuleBudget
+src/core/compiler/backend/railshot/shared/finalizer.go:144:6: can inline (*OffsetMap).FinalLen
+src/core/compiler/backend/railshot/shared/finalizer.go:145:6: can inline (*WideOffsetMap).FinalLen
+src/core/compiler/backend/railshot/shared/finalizer.go:216:6: can inline fillOffsetMap
+src/core/compiler/backend/railshot/shared/finalizer.go:156:6: can inline NewOffsetMap
+src/core/compiler/backend/railshot/shared/finalizer.go:178:6: can inline NewWideOffsetMap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:39:6: can inline EncodeGCDispatch
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:46:6: can inline DecodeGCDispatch
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:85:6: can inline (*GCFrameRootPlan).SetFixedOffsets
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:96:6: can inline (*GCFrameRootPlan).FixedOffsets
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:103:6: can inline (*GCFrameRootPlan).HasFixedOffsets
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:118:6: can inline GCFrameCallsite.ReturnOffset
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:119:6: can inline GCFrameCallsite.SetReturnOffset
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:120:6: can inline GCFrameCallsite.StackAdjust
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:121:6: can inline GCFrameCallsite.Offsets
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:123:6: can inline (*GCFrameRootPlan).ResetCallsites
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:131:6: can inline (*GCFrameRootPlan).AppendCallsite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:142:6: can inline (*GCFrameRootPlan).RecordCallsite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:148:6: can inline (*GCFrameRootPlan).CallsiteCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:154:24: can inline (*GCFrameRootPlan).Callsite.func1
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:190:25: can inline (*GCFrameRootPlan).ShiftCallsiteReturnOffsets.func1
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:209:6: can inline (*GCFrameRootPlan).ResetSafepoints
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:230:6: can inline (*GCFrameRootPlan).BeginSafepoint
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:236:6: can inline (*GCFrameSafepointBuilder).AppendOffset
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:242:6: can inline (*GCFrameSafepointBuilder).Offsets
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:249:6: can inline (*GCFrameSafepointBuilder).Commit
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:264:6: can inline (*GCFrameSafepointBuilder).Abort
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:271:6: can inline (*GCFrameRootPlan).SafepointCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:318:34: can inline (*GCFrameRootPlan).TracksLocal.func1
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:335:6: can inline NewGCModuleFrameRootPlan
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:346:6: can inline (*GCModuleFrameRootPlan).MarkFunction
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:356:6: can inline (*GCModuleFrameRootPlan).FunctionPending
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:361:6: can inline (*GCModuleFrameRootPlan).ReserveFunctions
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:372:6: can inline (*GCModuleFrameRootPlan).BeginFunction
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:383:6: can inline (*GCModuleFrameRootPlan).FunctionCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:390:6: can inline (*GCFrameRootPlan).rootMaskWordsPerSite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:398:6: can inline (*GCFrameRootPlan).AllocationMaskCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:407:6: can inline (*GCFrameRootPlan).CallMaskCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:431:6: can inline (*GCFrameRootPlan).ValidLiveMasks
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:439:6: can inline rootMaskContains
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:483:15: can inline (*GCFrameRootPlan).VisitLiveLocals.func1
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:507:6: can inline (*GCModuleFrameRootPlan).Function
+src/core/compiler/backend/railshot/shared/gc_telemetry.go:21:6: can inline (*GCNativeCodeBytes).Add
+src/core/compiler/backend/railshot/shared/global_hints.go:11:6: can inline GlobalHintCapacity
+src/core/compiler/backend/railshot/shared/global_hints.go:61:6: can inline (*GlobalHintAccumulator).Reset
+src/core/compiler/backend/railshot/shared/global_hints.go:76:6: can inline (*GlobalHintAccumulator).touch
+src/core/compiler/backend/railshot/shared/global_hints.go:105:6: can inline (*GlobalHintAccumulator).MarkEligible
+../../../../.local/share/mise/installs/go/1.27.1/src/cmp/cmp.go:63:6: can inline cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/cmp/cmp.go:28:6: can inline cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:300:6: can inline slices.order2Ordered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:317:6: can inline slices.medianAdjacentOrdered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:321:6: can inline slices.reverseRangeOrdered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/sort.go:16:6: can inline slices.Sort[go.shape.[]uint32,go.shape.uint32]
+src/core/compiler/backend/railshot/shared/global_hints.go:123:17: can inline (*GlobalHintAccumulator).AppendTo.func1
+src/core/compiler/backend/railshot/shared/host_adapters.go:17:10: can inline HostAdapterSet.func1
+src/core/compiler/backend/railshot/shared/host_segments.go:112:11: can inline boundedScalarHostCFG.func1.1
+src/core/compiler/backend/railshot/shared/host_segments.go:100:10: can inline boundedScalarHostCFG.func1
+src/core/compiler/backend/railshot/shared/host_segments.go:11:6: can inline BoundedHostSegments
+src/core/compiler/backend/railshot/shared/host_segments.go:18:6: can inline BoundedNativeHostBody
+src/core/compiler/backend/railshot/shared/inline.go:9:6: can inline InstructionNeedsInlineBoundary
+src/core/compiler/backend/railshot/shared/inline.go:40:6: can inline InstructionNeedsEHFrame
+src/core/compiler/backend/railshot/shared/intfold.go:113:6: can inline Foldable
+src/core/compiler/backend/railshot/shared/local_event.go:52:6: can inline (*LocalEventTape).Reset
+src/core/compiler/backend/railshot/shared/local_event.go:58:6: can inline (*LocalEventTape).Append
+src/core/compiler/backend/railshot/shared/local_event.go:73:6: can inline FindLocalEventMeta
+src/core/compiler/backend/railshot/shared/loop_experiment.go:9:6: can inline SumExperimentShape
+src/core/compiler/backend/railshot/shared/merge_next_use.go:92:6: can inline addActiveMergeCandidates
+src/core/compiler/backend/railshot/shared/native_segment.go:40:10: can inline AnalyzeNativeSegment.func1
+src/core/compiler/backend/railshot/shared/native_size.go:33:6: can inline NativeFunctionSizeReport.DeadReservationBytes
+src/core/compiler/backend/railshot/shared/native_size.go:90:6: can inline AdapterShapeHash
+src/core/compiler/backend/railshot/shared/native_size.go:106:6: can inline NativeSizeReport.AccountedBytes
+src/core/compiler/backend/railshot/shared/native_size.go:112:6: can inline NativeSizeReport.DeadReservationBytes
+src/core/compiler/backend/railshot/shared/native_size.go:117:6: can inline (*NativeSizeReport).AddFunction
+src/core/compiler/backend/railshot/shared/orchestration.go:10:6: can inline ResolveWorkers
+src/core/compiler/backend/railshot/shared/orchestration.go:28:6: can inline PressureThreshold
+src/core/compiler/backend/railshot/shared/orchestration.go:38:6: can inline ModuleEntries
+src/core/compiler/backend/railshot/shared/orchestration.go:59:6: can inline (*LowestIndexError).Reset
+src/core/compiler/backend/railshot/shared/orchestration.go:66:6: can inline (*LowestIndexError).ShouldStart
+src/core/compiler/backend/railshot/shared/policy.go:26:6: can inline CodegenPolicy.Enabled
+src/core/compiler/backend/railshot/shared/policy.go:27:6: can inline CodegenPolicy.EnabledOption
+src/core/compiler/backend/railshot/shared/policy.go:30:6: can inline CodegenPolicy.EnabledResolvedOption
+src/core/compiler/backend/railshot/shared/policy.go:33:6: can inline CodegenPolicy.Valid
+src/core/compiler/backend/railshot/shared/policy.go:36:6: can inline DefaultCodegenPolicy
+src/core/compiler/backend/railshot/shared/policy.go:42:6: can inline CompactCodegenPolicy
+src/core/compiler/backend/railshot/shared/profile.go:18:9: can inline ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile_emission.go:50:6: can inline appendSourceRange
+src/core/compiler/backend/railshot/shared/profile_emission.go:48:6: can inline (*SourceEmission).Ranges
+src/core/compiler/backend/railshot/shared/profile_emission.go:74:13: can inline OverlayNativeSources.func1
+src/core/compiler/backend/railshot/shared/profile_sites.go:15:6: can inline (*CodeSites).Add
+src/core/compiler/backend/railshot/shared/profile_sites.go:25:6: can inline (*CodeSites).Rewind
+src/core/compiler/backend/railshot/shared/profile_sites.go:39:6: can inline (*CodeSites).Ranges
+src/core/compiler/backend/railshot/shared/residency_shadow.go:29:6: can inline ResidencyShadowSummary.Active
+src/core/compiler/backend/railshot/shared/residency_shadow.go:378:6: can inline saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:374:6: can inline betterShadowCandidate
+src/core/compiler/backend/railshot/shared/residency_shadow.go:385:6: can inline saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:135:14: can inline planResidencyShadow.func1
+src/core/compiler/backend/railshot/shared/residency_shadow.go:169:14: can inline planResidencyShadow.func2
+src/core/compiler/backend/railshot/shared/residency_shadow.go:177:10: can inline planResidencyShadow.func3
+src/core/compiler/backend/railshot/shared/residency_shadow.go:68:6: can inline PlanResidencyShadow
+src/core/compiler/backend/railshot/shared/residency_shadow.go:75:6: can inline PlanResidencyTransitionShadow
+src/core/compiler/backend/railshot/shared/residency_shadow.go:358:6: can inline FindResidencyShadow
+src/core/compiler/backend/railshot/shared/scalar.go:232:6: can inline scalarCompare
+src/core/compiler/backend/railshot/shared/scalar.go:234:6: can inline scalarCommutative
+src/core/compiler/backend/railshot/shared/scalar.go:339:6: can inline (*ScalarState).Memory
+src/core/compiler/backend/railshot/shared/scalar.go:342:6: can inline (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:384:6: can inline (*ScalarState).retain
+src/core/compiler/backend/railshot/shared/scalar.go:420:6: can inline (*ScalarState).pop
+src/core/compiler/backend/railshot/shared/scalar.go:437:6: can inline (*ScalarState).slot
+src/core/compiler/backend/railshot/shared/scalar.go:711:13: can inline (*ScalarState).canonicalize.func1
+src/core/compiler/backend/railshot/shared/scalar.go:774:6: can inline (*ScalarState).resultLocal
+src/core/compiler/backend/railshot/shared/scalar.go:1076:6: can inline (*ScalarState).FinishWorker
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:15:6: can inline checkGraphBegin
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:16:6: can inline checkGraphComplete
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:17:6: can inline checkGraphEnd
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:18:6: can inline checkGraphAdd
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:19:6: can inline checkGraphSeed
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:20:6: can inline checkGraphUse
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:21:6: can inline checkGraphInputs
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:22:6: can inline checkGraphDefine
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:23:6: can inline checkGraphResult
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:24:6: can inline checkGraphElse
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:25:6: can inline checkGraphRestoreCarrier
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:26:6: can inline checkGraphRestore
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:29:6: can inline checkGraphRestored
+src/core/compiler/backend/railshot/shared/source_context_disabled.go:12:6: can inline PrepareSourceWorker
+src/core/compiler/backend/railshot/shared/source_context_disabled.go:14:6: can inline SetSourceContext
+src/core/compiler/backend/railshot/shared/source_context_disabled.go:15:6: can inline SetSourceWorkerContext
+src/core/compiler/backend/railshot/shared/source_context_disabled.go:16:6: can inline BeginSourceAttempt
+src/core/compiler/backend/railshot/shared/source_context_disabled.go:17:6: can inline EndSourceAttempt
+src/core/compiler/backend/railshot/shared/source_context_disabled.go:18:6: can inline finishSourceWorker
+src/core/compiler/backend/railshot/shared/experimental_native_budget.go:10:45: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/amd64_features.go:33:10: inlining call to AMD64Features.Has
+src/core/compiler/backend/railshot/shared/amd64_features.go:36:10: inlining call to AMD64Features.Has
+src/core/compiler/backend/railshot/shared/amd64_features.go:39:10: inlining call to AMD64Features.Has
+src/core/compiler/backend/railshot/shared/atomic.go:64:23: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/atomic.go:69:31: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/atomic.go:75:30: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/atomic.go:82:30: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/atomic.go:69:31: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/atomic.go:75:30: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/atomic.go:82:30: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/eh_frame.go:29:21: inlining call to wasm.NewReader
+src/core/compiler/backend/railshot/shared/eh_frame.go:31:15: inlining call to wasm.(*Reader).HasNext
+src/core/compiler/backend/railshot/shared/eh_frame.go:32:20: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/eh_frame.go:38:22: inlining call to wasm.(*Reader).S33
+src/core/compiler/backend/railshot/shared/eh_frame.go:54:22: inlining call to wasm.(*Reader).S33
+src/core/compiler/backend/railshot/shared/eh_frame.go:62:28: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/eh_frame.go:86:36: inlining call to wasm.ModuleInstructionClassifier.ClassifyInto
+src/core/compiler/backend/railshot/shared/eh_frame.go:91:27: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/eh_frame.go:31:15: inlining call to wasm.(*Reader).BytesLeft
+src/core/compiler/backend/railshot/shared/eh_frame.go:91:27: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/eh_payload.go:16:13: inlining call to wasm.ValType.Kind
+src/core/compiler/backend/railshot/shared/eh_payload.go:19:17: inlining call to wasm.ValType.Ref
+src/core/compiler/backend/railshot/shared/eh_payload.go:19:24: inlining call to wasm.RefType.Heap
+src/core/compiler/backend/railshot/shared/eh_payload.go:20:18: inlining call to wasm.HeapType.Kind
+src/core/compiler/backend/railshot/shared/eh_payload.go:22:18: inlining call to wasm.HeapType.Abs
+src/core/compiler/backend/railshot/shared/eh_payload.go:32:33: inlining call to wasm.HeapType.Type
+src/core/compiler/backend/railshot/shared/eh_payload.go:37:37: inlining call to wasm.HeapType.DefCompKind
+src/core/compiler/backend/railshot/shared/eh_payload.go:73:26: inlining call to wasm.ExternType.TagType
+src/core/compiler/backend/railshot/shared/experimental_replication.go:41:22: inlining call to wasm.ReaderFrom
+src/core/compiler/backend/railshot/shared/experimental_replication.go:42:13: inlining call to wasm.(*Reader).JumpTo
+src/core/compiler/backend/railshot/shared/experimental_replication.go:45:17: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/experimental_replication.go:54:19: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/experimental_replication.go:64:19: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/experimental_replication.go:69:17: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_replication.go:84:22: inlining call to wasm.ReaderFrom
+src/core/compiler/backend/railshot/shared/experimental_replication.go:85:49: inlining call to wasm.NewModuleInstructionClassifier
+src/core/compiler/backend/railshot/shared/experimental_replication.go:86:32: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_replication.go:87:17: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_replication.go:88:20: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/experimental_replication.go:94:21: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/experimental_replication.go:104:21: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/experimental_replication.go:109:50: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_replication.go:112:22: inlining call to experimentPlain
+src/core/compiler/backend/railshot/shared/experimental_replication.go:116:27: inlining call to wasm.ModuleInstructionClassifier.ClassifyInto
+src/core/compiler/backend/railshot/shared/experimental_replication.go:123:56: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_replication.go:124:17: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_replication.go:133:20: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/experimental_replication.go:138:27: inlining call to wasm.ModuleInstructionClassifier.ClassifyInto
+src/core/compiler/backend/railshot/shared/experimental_replication.go:141:22: inlining call to experimentPlain
+src/core/compiler/backend/railshot/shared/experimental_replication.go:144:81: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_maps.go:130:22: inlining call to wasm.ReaderFrom
+src/core/compiler/backend/railshot/shared/experimental_maps.go:131:13: inlining call to wasm.(*Reader).JumpTo
+src/core/compiler/backend/railshot/shared/experimental_maps.go:65:49: inlining call to mapOpcode
+src/core/compiler/backend/railshot/shared/experimental_maps.go:65:79: inlining call to mapOpcode
+src/core/compiler/backend/railshot/shared/experimental_maps.go:137:71: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_replication.go:206:73: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:138:78: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:138:78: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:140:19: inlining call to mapExtended
+src/core/compiler/backend/railshot/shared/experimental_maps.go:141:19: inlining call to mapExtended
+src/core/compiler/backend/railshot/shared/experimental_maps.go:140:19: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:141:19: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:140:19: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:141:19: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:150:17: inlining call to mapLimit
+src/core/compiler/backend/railshot/shared/experimental_maps.go:160:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:161:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:164:19: inlining call to mapExtended
+src/core/compiler/backend/railshot/shared/experimental_maps.go:167:19: inlining call to mapExtended
+src/core/compiler/backend/railshot/shared/experimental_maps.go:160:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:161:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:164:19: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:167:19: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:164:19: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:167:19: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_replication.go:207:73: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:172:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:173:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:174:15: inlining call to mapSIMD
+src/core/compiler/backend/railshot/shared/experimental_maps.go:180:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:181:15: inlining call to mapSIMD
+src/core/compiler/backend/railshot/shared/experimental_maps.go:182:15: inlining call to mapSIMD
+src/core/compiler/backend/railshot/shared/experimental_maps.go:183:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:184:15: inlining call to mapSIMD
+src/core/compiler/backend/railshot/shared/experimental_maps.go:185:15: inlining call to mapSIMD
+src/core/compiler/backend/railshot/shared/experimental_maps.go:186:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:187:15: inlining call to mapSIMD
+src/core/compiler/backend/railshot/shared/experimental_maps.go:189:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:190:15: inlining call to mapSIMD
+src/core/compiler/backend/railshot/shared/experimental_maps.go:192:21: inlining call to experimentSet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:194:22: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:196:22: inlining call to experimentSet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:198:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:200:22: inlining call to experimentSet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:172:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:173:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:174:15: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:180:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:181:15: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:182:15: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:183:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:184:15: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:185:15: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:187:15: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:189:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:190:15: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:192:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:194:22: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:196:22: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:198:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:200:22: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_replication.go:217:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_replication.go:217:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_replication.go:212:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_replication.go:214:22: inlining call to experimentSet
+src/core/compiler/backend/railshot/shared/experimental_replication.go:212:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_replication.go:214:22: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:208:21: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:212:23: inlining call to (*ReplicationPlan).zeroExit
+src/core/compiler/backend/railshot/shared/experimental_maps.go:208:21: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_maps.go:212:23: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_maps.go:212:23: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_origins.go:26:22: inlining call to wasm.ReaderFrom
+src/core/compiler/backend/railshot/shared/experimental_origins.go:27:49: inlining call to wasm.NewModuleInstructionClassifier
+src/core/compiler/backend/railshot/shared/experimental_origins.go:37:17: inlining call to wasm.(*Reader).BytesLeft
+src/core/compiler/backend/railshot/shared/experimental_origins.go:38:17: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_origins.go:40:20: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/experimental_origins.go:45:27: inlining call to wasm.ModuleInstructionClassifier.ClassifyInto
+src/core/compiler/backend/railshot/shared/experimental_origins.go:53:29: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/experimental_origins.go:62:66: inlining call to bytes.Equal
+src/core/compiler/backend/railshot/shared/experimental_maps.go:261:31: inlining call to wasm.ValidateModule
+src/core/compiler/backend/railshot/shared/experimental_maps.go:261:31: inlining call to wasm.validateModuleWithWorkersFeaturesAndLimits
+src/core/compiler/backend/railshot/shared/experimental_replication.go:226:20: inlining call to (*ReplicationPlan).zeroExit
+src/core/compiler/backend/railshot/shared/experimental_replication.go:232:22: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_replication.go:238:19: inlining call to (*ReplicationPlan).zeroExit
+src/core/compiler/backend/railshot/shared/experimental_replication.go:226:20: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_replication.go:232:22: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_replication.go:238:19: inlining call to experimentGet
+src/core/compiler/backend/railshot/shared/experimental_replication.go:226:20: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_replication.go:238:19: inlining call to experimentU32
+src/core/compiler/backend/railshot/shared/experimental_replication.go:294:17: inlining call to bytes.Equal
+src/core/compiler/backend/railshot/shared/experimental_replication.go:312:31: inlining call to wasm.ValidateModule
+src/core/compiler/backend/railshot/shared/experimental_replication.go:312:31: inlining call to wasm.validateModuleWithWorkersFeaturesAndLimits
+src/core/compiler/backend/railshot/shared/finalizer.go:199:20: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/finalizer.go:202:20: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/finalizer.go:209:21: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/finalizer.go:199:20: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/finalizer.go:202:20: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/finalizer.go:209:21: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/finalizer.go:173:28: inlining call to fillOffsetMap
+src/core/compiler/backend/railshot/shared/finalizer.go:193:28: inlining call to fillOffsetMap
+src/core/compiler/backend/railshot/shared/finalizer.go:268:20: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/finalizer.go:268:20: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/finalizer.go:238:38: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/finalizer.go:242:39: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/finalizer.go:247:39: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/finalizer.go:252:39: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/finalizer.go:255:30: inlining call to NewOffsetMap
+src/core/compiler/backend/railshot/shared/finalizer.go:238:38: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/finalizer.go:242:39: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/finalizer.go:247:39: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/finalizer.go:252:39: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:143:22: inlining call to (*GCFrameRootPlan).AppendCallsite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:151:42: inlining call to (*GCFrameRootPlan).CallsiteCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:191:31: inlining call to GCFrameCallsite.ReturnOffset
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:198:27: inlining call to GCFrameCallsite.SetReturnOffset
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:276:23: inlining call to (*GCFrameRootPlan).BeginSafepoint
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:278:17: inlining call to (*GCFrameSafepointBuilder).AppendOffset
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:280:14: inlining call to (*GCFrameSafepointBuilder).Commit
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:281:10: inlining call to (*GCFrameSafepointBuilder).Abort
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:318:18: inlining call to sort.Search
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:318:18: inlining call to (*GCFrameRootPlan).TracksLocal.func1
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:420:84: inlining call to (*GCFrameRootPlan).rootMaskWordsPerSite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:436:44: inlining call to (*GCFrameRootPlan).rootMaskWordsPerSite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:450:101: inlining call to (*GCFrameRootPlan).rootMaskWordsPerSite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:450:126: inlining call to (*GCFrameRootPlan).AllocationMaskCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:450:61: inlining call to rootMaskContains
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:458:40: inlining call to (*GCFrameRootPlan).rootMaskWordsPerSite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:459:32: inlining call to (*GCFrameRootPlan).AllocationMaskCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:463:80: inlining call to (*GCFrameRootPlan).CallMaskCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:463:25: inlining call to rootMaskContains
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:473:40: inlining call to (*GCFrameRootPlan).rootMaskWordsPerSite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:474:36: inlining call to (*GCFrameRootPlan).AllocationMaskCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:477:30: inlining call to (*GCFrameRootPlan).CallMaskCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:478:32: inlining call to (*GCFrameRootPlan).AllocationMaskCount
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:500:16: inlining call to (*GCFrameRootPlan).VisitLiveLocals.func1
+src/core/compiler/backend/railshot/shared/global_hints.go:58:9: inlining call to (*GlobalHintAccumulator).Reset
+src/core/compiler/backend/railshot/shared/global_hints.go:94:27: inlining call to (*GlobalHintAccumulator).touch
+src/core/compiler/backend/railshot/shared/global_hints.go:106:12: inlining call to (*GlobalHintAccumulator).touch
+../../../../.local/share/mise/installs/go/1.27.1/src/cmp/cmp.go:29:15: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/cmp/cmp.go:29:28: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:14:32: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:14:32: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:14:32: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:29:30: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:32:15: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:29:30: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:29:30: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:32:15: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:32:15: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:246:28: inlining call to slices.nextPowerOfTwo
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:249:33: inlining call to slices.(*xorshift).Next
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:301:13: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:301:13: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:301:13: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:310:22: inlining call to slices.order2Ordered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:311:22: inlining call to slices.order2Ordered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:312:22: inlining call to slices.order2Ordered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:310:22: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:311:22: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:312:22: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:310:22: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:310:22: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:311:22: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:311:22: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:312:22: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:312:22: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:281:29: inlining call to slices.medianAdjacentOrdered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:282:29: inlining call to slices.medianAdjacentOrdered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:283:29: inlining call to slices.medianAdjacentOrdered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:204:25: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:221:17: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:230:17: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:204:25: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:204:25: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:221:17: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:221:17: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:230:17: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:230:17: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:180:26: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:183:25: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:180:26: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:180:26: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:183:25: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:183:25: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:141:24: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:144:25: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:156:25: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:159:26: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:141:24: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:141:24: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:144:25: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:144:25: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:156:25: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:156:25: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:159:26: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:159:26: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:93:23: inlining call to slices.reverseRangeOrdered[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:110:24: inlining call to cmp.Less[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:110:24: inlining call to cmp.isNaN[go.shape.uint32]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:110:24: inlining call to cmp.isNaN[go.shape.uint32]
+src/core/compiler/backend/railshot/shared/global_hints.go:116:59: inlining call to GlobalHintCapacity
+src/core/compiler/backend/railshot/shared/global_hints.go:121:13: inlining call to slices.Sort[go.shape.[]uint32,go.shape.uint32]
+src/core/compiler/backend/railshot/shared/global_hints.go:122:13: inlining call to slices.Sort[go.shape.[]uint32,go.shape.uint32]
+src/core/compiler/backend/railshot/shared/global_hints.go:129:15: inlining call to (*GlobalHintAccumulator).AppendTo.func1
+src/core/compiler/backend/railshot/shared/global_hints.go:132:15: inlining call to (*GlobalHintAccumulator).AppendTo.func1
+src/core/compiler/backend/railshot/shared/global_hints.go:137:14: inlining call to (*GlobalHintAccumulator).AppendTo.func1
+src/core/compiler/backend/railshot/shared/global_hints.go:140:14: inlining call to (*GlobalHintAccumulator).AppendTo.func1
+src/core/compiler/backend/railshot/shared/host_adapters.go:81:21: inlining call to wasm.NewReader
+src/core/compiler/backend/railshot/shared/host_adapters.go:82:17: inlining call to wasm.(*Reader).BytesLeft
+src/core/compiler/backend/railshot/shared/host_adapters.go:83:20: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/host_adapters.go:88:18: inlining call to wasm.(*Reader).BytesLeft
+src/core/compiler/backend/railshot/shared/host_adapters.go:89:22: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/host_adapters.go:101:19: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/host_adapters.go:89:22: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/host_adapters.go:101:19: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/host_adapters.go:16:32: inlining call to wasm.(*Module).ImportedFuncCount
+src/core/compiler/backend/railshot/shared/host_adapters.go:25:8: inlining call to HostAdapterSet.func1
+src/core/compiler/backend/railshot/shared/host_adapters.go:29:7: inlining call to HostAdapterSet.func1
+src/core/compiler/backend/railshot/shared/host_adapters.go:34:27: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/host_adapters.go:40:26: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/host_adapters.go:47:9: inlining call to HostAdapterSet.func1
+src/core/compiler/backend/railshot/shared/host_adapters.go:53:27: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/host_adapters.go:34:27: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/host_adapters.go:40:26: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/host_adapters.go:53:27: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/host_segments.go:38:22: inlining call to wasm.ReaderFrom
+src/core/compiler/backend/railshot/shared/host_segments.go:39:15: inlining call to wasm.(*Reader).HasNext
+src/core/compiler/backend/railshot/shared/host_segments.go:40:20: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/host_segments.go:58:50: inlining call to wasm.ClassifyInstructionImmediateInto
+src/core/compiler/backend/railshot/shared/host_segments.go:39:15: inlining call to wasm.(*Reader).BytesLeft
+src/core/compiler/backend/railshot/shared/host_segments.go:116:24: inlining call to boundedScalarHostCFG.func1.1
+src/core/compiler/backend/railshot/shared/host_segments.go:125:12: inlining call to boundedScalarHostCFG.func1.1
+src/core/compiler/backend/railshot/shared/host_segments.go:125:26: inlining call to boundedScalarHostCFG.func1.1
+src/core/compiler/backend/railshot/shared/host_segments.go:129:12: inlining call to boundedScalarHostCFG.func1.1
+src/core/compiler/backend/railshot/shared/host_segments.go:139:13: inlining call to boundedScalarHostCFG.func1.1
+src/core/compiler/backend/railshot/shared/host_segments.go:143:28: inlining call to boundedScalarHostCFG.func1.1
+src/core/compiler/backend/railshot/shared/host_segments.go:147:12: inlining call to boundedScalarHostCFG.func1.1
+src/core/compiler/backend/railshot/shared/merge_next_use.go:36:23: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/merge_next_use.go:42:45: inlining call to addActiveMergeCandidates
+src/core/compiler/backend/railshot/shared/merge_next_use.go:45:39: inlining call to wasm.(*Reader).BytesLeft
+src/core/compiler/backend/railshot/shared/merge_next_use.go:46:46: inlining call to addActiveMergeCandidates
+src/core/compiler/backend/railshot/shared/merge_next_use.go:51:36: inlining call to InstructionNeedsInlineBoundary
+src/core/compiler/backend/railshot/shared/merge_next_use.go:51:86: inlining call to InstructionNeedsEHFrame
+src/core/compiler/backend/railshot/shared/merge_next_use.go:84:43: inlining call to wasm.SkipInstructionImmediate
+src/core/compiler/backend/railshot/shared/merge_next_use.go:84:43: inlining call to wasm.SkipInstructionImmediateWithMemarg64
+src/core/compiler/backend/railshot/shared/native_size.go:77:28: inlining call to os.Getpagesize
+src/core/compiler/backend/railshot/shared/orchestration.go:61:15: inlining call to atomic.(*Int64).Store
+src/core/compiler/backend/railshot/shared/orchestration.go:67:36: inlining call to atomic.(*Int64).Load
+src/core/compiler/backend/railshot/shared/orchestration.go:75:11: inlining call to sync.(*Mutex).Lock
+src/core/compiler/backend/railshot/shared/orchestration.go:78:16: inlining call to atomic.(*Int64).Store
+src/core/compiler/backend/railshot/shared/orchestration.go:80:13: inlining call to sync.(*Mutex).Unlock
+src/core/compiler/backend/railshot/shared/orchestration.go:75:11: inlining call to sync.(*Mutex).Lock
+src/core/compiler/backend/railshot/shared/orchestration.go:80:13: inlining call to sync.(*Mutex).Unlock
+src/core/compiler/backend/railshot/shared/orchestration.go:85:11: inlining call to sync.(*Mutex).Lock
+src/core/compiler/backend/railshot/shared/orchestration.go:87:13: inlining call to sync.(*Mutex).Unlock
+src/core/compiler/backend/railshot/shared/orchestration.go:85:11: inlining call to sync.(*Mutex).Lock
+src/core/compiler/backend/railshot/shared/orchestration.go:87:13: inlining call to sync.(*Mutex).Unlock
+src/core/compiler/backend/railshot/shared/policy.go:26:78: inlining call to optimization.Selection.Enabled
+src/core/compiler/backend/railshot/shared/policy.go:26:78: inlining call to optimization.(*Bindings).indexOf
+src/core/compiler/backend/railshot/shared/policy.go:28:34: inlining call to optimization.Selection.EnabledOption
+src/core/compiler/backend/railshot/shared/policy.go:31:42: inlining call to optimization.Selection.EnabledResolvedOption
+src/core/compiler/backend/railshot/shared/policy.go:33:63: inlining call to optimization.Selection.Valid
+src/core/compiler/backend/railshot/shared/profile.go:29:6: inlining call to ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile.go:31:6: inlining call to ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile.go:33:6: inlining call to ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile.go:36:6: inlining call to ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile.go:38:6: inlining call to ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile.go:40:6: inlining call to ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile.go:44:6: inlining call to ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile.go:48:5: inlining call to ProfileRegions.func1
+src/core/compiler/backend/railshot/shared/profile_emission.go:31:31: inlining call to appendSourceRange
+src/core/compiler/backend/railshot/shared/profile_emission.go:24:31: inlining call to appendSourceRange
+src/core/compiler/backend/railshot/shared/profile_emission.go:82:27: inlining call to appendSourceRange
+src/core/compiler/backend/railshot/shared/profile_emission.go:83:11: inlining call to OverlayNativeSources.func1
+src/core/compiler/backend/railshot/shared/profile_emission.go:88:27: inlining call to appendSourceRange
+src/core/compiler/backend/railshot/shared/profile_emission.go:92:26: inlining call to appendSourceRange
+src/core/compiler/backend/railshot/shared/profile_emission.go:95:11: inlining call to OverlayNativeSources.func1
+src/core/compiler/backend/railshot/shared/profile_emission.go:103:26: inlining call to appendSourceRange
+src/core/compiler/backend/railshot/shared/profile_emission.go:104:10: inlining call to OverlayNativeSources.func1
+src/core/compiler/backend/railshot/shared/profile_map.go:69:26: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/profile_map.go:74:26: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/profile_map.go:83:27: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/profile_map.go:69:26: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/profile_map.go:74:26: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/profile_map.go:83:27: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/profile_sites.go:51:26: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/profile_sites.go:55:26: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/profile_sites.go:51:26: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/profile_sites.go:55:26: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/profile_unwind.go:19:26: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/profile_unwind.go:23:26: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/profile_unwind.go:32:27: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/profile_unwind.go:19:26: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/profile_unwind.go:23:26: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/profile_unwind.go:32:27: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/residency_shadow.go:313:38: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:315:40: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:321:38: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:323:36: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:93:40: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:95:42: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:109:29: inlining call to betterShadowCandidate
+src/core/compiler/backend/railshot/shared/residency_shadow.go:115:38: inlining call to betterShadowCandidate
+src/core/compiler/backend/railshot/shared/residency_shadow.go:201:14: inlining call to planResidencyShadow.func3
+src/core/compiler/backend/railshot/shared/residency_shadow.go:205:30: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:206:32: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:208:17: inlining call to planResidencyShadow.func1
+src/core/compiler/backend/railshot/shared/residency_shadow.go:211:14: inlining call to planResidencyShadow.func3
+src/core/compiler/backend/railshot/shared/residency_shadow.go:216:34: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:223:52: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:229:55: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:233:16: inlining call to planResidencyShadow.func2
+src/core/compiler/backend/railshot/shared/residency_shadow.go:238:16: inlining call to planResidencyShadow.func2
+src/core/compiler/backend/railshot/shared/residency_shadow.go:244:38: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:247:14: inlining call to planResidencyShadow.func2
+src/core/compiler/backend/railshot/shared/residency_shadow.go:201:14: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:208:17: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:208:17: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:208:17: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:208:17: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:208:17: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:208:17: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:211:14: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:145:29: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:147:26: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:148:25: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:149:37: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:150:33: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:151:37: inlining call to saturatingAdd16
+src/core/compiler/backend/railshot/shared/residency_shadow.go:188:34: inlining call to saturatingInc16
+src/core/compiler/backend/railshot/shared/residency_stats.go:23:85: inlining call to ResidencyShadowSummary.Active
+src/core/compiler/backend/railshot/shared/scalar.go:43:26: inlining call to wasm.EqualValType
+src/core/compiler/backend/railshot/shared/scalar.go:43:60: inlining call to wasm.EqualValType
+src/core/compiler/backend/railshot/shared/scalar.go:97:22: inlining call to wasm.ReaderFrom
+src/core/compiler/backend/railshot/shared/scalar.go:99:18: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/scalar.go:117:19: inlining call to wasm.(*Reader).I64
+src/core/compiler/backend/railshot/shared/scalar.go:135:18: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/scalar.go:178:29: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/scalar.go:178:63: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/scalar.go:195:13: inlining call to wasm.(*Reader).Offset
+src/core/compiler/backend/railshot/shared/scalar.go:32:24: inlining call to wasm.EqualValType
+src/core/compiler/backend/railshot/shared/scalar.go:60:24: inlining call to wasm.EqualValType
+src/core/compiler/backend/railshot/shared/scalar.go:356:28: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:385:13: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:395:13: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:427:13: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:453:13: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:462:16: inlining call to (*ScalarState).slot
+src/core/compiler/backend/railshot/shared/scalar.go:485:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:510:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:534:8: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:535:8: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:536:8: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:537:8: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:601:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:603:19: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:605:20: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:609:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:609:55: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:623:17: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:636:22: inlining call to scalarCommutative
+src/core/compiler/backend/railshot/shared/scalar.go:637:24: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:637:40: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:650:11: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:666:17: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:595:11: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:595:52: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:559:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:570:16: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:579:29: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:677:15: inlining call to (*ScalarState).pop
+src/core/compiler/backend/railshot/shared/scalar.go:677:24: inlining call to (*ScalarState).pop
+src/core/compiler/backend/railshot/shared/scalar.go:678:17: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:678:29: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:679:38: inlining call to scalarCompare
+src/core/compiler/backend/railshot/shared/scalar.go:682:19: inlining call to scalarCompare
+src/core/compiler/backend/railshot/shared/scalar.go:694:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:698:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:804:17: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:718:10: inlining call to (*ScalarState).canonicalize.func1
+src/core/compiler/backend/railshot/shared/scalar.go:721:10: inlining call to (*ScalarState).canonicalize.func1
+src/core/compiler/backend/railshot/shared/scalar.go:724:12: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:729:12: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:734:12: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:738:52: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:752:38: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:755:54: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:766:9: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:767:9: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:718:10: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:721:10: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:712:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:787:10: inlining call to (*ScalarState).retain
+src/core/compiler/backend/railshot/shared/scalar.go:790:8: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:787:10: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:819:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:820:46: inlining call to scalarCompare
+src/core/compiler/backend/railshot/shared/scalar.go:842:23: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/scalar.go:848:17: inlining call to (*ScalarState).Memory
+src/core/compiler/backend/railshot/shared/scalar.go:851:32: inlining call to (*ScalarState).Memory
+src/core/compiler/backend/railshot/shared/scalar.go:925:12: inlining call to (*ScalarState).retain
+src/core/compiler/backend/railshot/shared/scalar.go:929:22: inlining call to wasm.ReaderFrom
+src/core/compiler/backend/railshot/shared/scalar.go:932:20: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/scalar.go:945:17: inlining call to wasm.(*Reader).I64
+src/core/compiler/backend/railshot/shared/scalar.go:957:13: inlining call to (*ScalarState).retain
+src/core/compiler/backend/railshot/shared/scalar.go:960:16: inlining call to (*ScalarState).pop
+src/core/compiler/backend/railshot/shared/scalar.go:965:27: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:968:12: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:974:14: inlining call to (*ScalarState).retain
+src/core/compiler/backend/railshot/shared/scalar.go:979:19: inlining call to (*ScalarState).pop
+src/core/compiler/backend/railshot/shared/scalar.go:981:18: inlining call to wasm.(*Reader).Byte
+src/core/compiler/backend/railshot/shared/scalar.go:992:17: inlining call to (*ScalarState).pop
+src/core/compiler/backend/railshot/shared/scalar.go:993:17: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:994:49: inlining call to scalarCompare
+src/core/compiler/backend/railshot/shared/scalar.go:1013:35: inlining call to (*ScalarState).resultLocal
+src/core/compiler/backend/railshot/shared/scalar.go:1028:17: inlining call to (*ScalarState).pop
+src/core/compiler/backend/railshot/shared/scalar.go:1033:21: inlining call to (*ScalarState).Memory
+src/core/compiler/backend/railshot/shared/scalar.go:1062:15: inlining call to (*ScalarState).pop
+src/core/compiler/backend/railshot/shared/scalar.go:1068:25: inlining call to fmt.Errorf
+src/core/compiler/backend/railshot/shared/scalar.go:842:23: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/scalar.go:925:12: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:957:13: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:974:14: inlining call to (*ScalarState).node
+src/core/compiler/backend/railshot/shared/scalar.go:1068:25: inlining call to errors.New
+src/core/compiler/backend/railshot/shared/scalar.go:1080:25: inlining call to (*ScalarState).Memory
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/sort.go:16:6: inlining call to slices.Sort[go.shape.[]uint32,go.shape.uint32]
+<autogenerated>:1: inlining call to AMD64Features.BitCountCapabilities
+<autogenerated>:1: inlining call to AMD64Features.Has
+<autogenerated>:1: inlining call to AMD64Features.Has
+<autogenerated>:1: inlining call to AMD64Features.Has
+<autogenerated>:1: inlining call to AMD64Features.Has
+<autogenerated>:1: inlining call to GCFrameCallsite.Offsets
+<autogenerated>:1: inlining call to GCFrameCallsite.ReturnOffset
+<autogenerated>:1: inlining call to GCFrameCallsite.SetReturnOffset
+<autogenerated>:1: inlining call to GCFrameCallsite.StackAdjust
+<autogenerated>:1: inlining call to NativeFunctionSizeReport.DeadReservationBytes
+<autogenerated>:1: inlining call to NativeSizeReport.AccountedBytes
+<autogenerated>:1: inlining call to NativeSizeReport.DeadReservationBytes
+<autogenerated>:1: inlining call to CodegenPolicy.Enabled
+<autogenerated>:1: inlining call to optimization.Selection.Enabled
+<autogenerated>:1: inlining call to optimization.(*Bindings).indexOf
+<autogenerated>:1: inlining call to CodegenPolicy.EnabledOption
+<autogenerated>:1: inlining call to optimization.Selection.EnabledOption
+<autogenerated>:1: inlining call to CodegenPolicy.EnabledResolvedOption
+<autogenerated>:1: inlining call to optimization.Selection.EnabledResolvedOption
+<autogenerated>:1: inlining call to CodegenPolicy.Valid
+<autogenerated>:1: inlining call to optimization.Selection.Valid
+<autogenerated>:1: inlining call to ResidencyShadowSummary.Active
+src/core/compiler/backend/railshot/shared/atomic.go:57:19: r does not escape
+src/core/compiler/backend/railshot/shared/atomic.go:64:23: &wasm.DecodeError{...} escapes to heap
+src/core/compiler/backend/railshot/shared/atomic.go:69:31: ... argument does not escape
+src/core/compiler/backend/railshot/shared/atomic.go:69:75: order escapes to heap
+src/core/compiler/backend/railshot/shared/atomic.go:69:31: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/atomic.go:75:30: ... argument does not escape
+src/core/compiler/backend/railshot/shared/atomic.go:75:63: sub escapes to heap
+src/core/compiler/backend/railshot/shared/atomic.go:75:30: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/atomic.go:82:30: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/atomic.go:144:35: []AtomicOperation{...} does not escape
+src/core/compiler/backend/railshot/shared/compile_resources.go:67:7: s does not escape
+src/core/compiler/backend/railshot/shared/eh_frame.go:24:23: classifier does not escape
+src/core/compiler/backend/railshot/shared/eh_frame.go:24:69: body does not escape
+src/core/compiler/backend/railshot/shared/eh_frame.go:27:17: make([]bool, 0, 16) does not escape
+src/core/compiler/backend/railshot/shared/eh_frame.go:29:21: &wasm.Reader{...} does not escape
+src/core/compiler/backend/railshot/shared/eh_frame.go:32:20: &wasm.DecodeError{...} escapes to heap
+src/core/compiler/backend/railshot/shared/eh_frame.go:41:20: append does not escape
+src/core/compiler/backend/railshot/shared/eh_frame.go:62:28: &wasm.DecodeError{...} escapes to heap
+src/core/compiler/backend/railshot/shared/eh_frame.go:79:20: append does not escape
+src/core/compiler/backend/railshot/shared/eh_frame.go:91:27: ... argument does not escape
+src/core/compiler/backend/railshot/shared/eh_frame.go:91:107: shape.TryRecords escapes to heap
+src/core/compiler/backend/railshot/shared/eh_frame.go:91:125: shape.RootRecords escapes to heap
+src/core/compiler/backend/railshot/shared/eh_frame.go:91:139: 1024 escapes to heap
+src/core/compiler/backend/railshot/shared/eh_frame.go:91:27: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/eh_payload.go:15:24: leaking param content: m
+src/core/compiler/backend/railshot/shared/eh_payload.go:58:20: leaking param content: m
+src/core/compiler/backend/railshot/shared/eh_payload.go:66:14: m does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:40:21: body does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:42:13: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:45:17: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:53:29: []byte{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:54:19: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:63:29: []byte{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:64:19: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:76:25: body does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:76:38: m does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:76:86: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:88:20: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:93:31: []byte{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:94:21: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:103:31: []byte{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:104:21: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:133:20: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:129:18: body does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:129:31: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:131:13: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:44:17: leaking param content: m
+src/core/compiler/backend/railshot/shared/experimental_maps.go:44:56: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:73:25: []int{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:110:28: []uint32{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:115:28: []uint32{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:121:28: []uint32{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:137:14: leaking param: out to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_maps.go:137:78: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:137:71: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:137:71: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:138:18: leaking param: out to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_maps.go:138:78: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:138:78: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:138:78: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:138:64: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:139:7: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:139:30: leaking param: out to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_maps.go:140:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:140:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:140:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:140:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:141:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:141:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:141:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:141:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:142:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:144:15: leaking param: out to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_maps.go:144:49: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:145:7: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:145:25: leaking param: out to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_maps.go:148:30: []uint32{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:150:17: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:151:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:153:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:155:16: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:160:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:160:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:160:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:161:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:161:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:161:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:162:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:164:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:164:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:164:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:164:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:165:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:167:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:167:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:167:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:167:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:168:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:171:7: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:171:30: leaking param: out to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_maps.go:172:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:172:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:172:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:173:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:173:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:173:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:174:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:174:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:174:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:175:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:180:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:180:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:180:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:181:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:181:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:181:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:182:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:182:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:182:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:183:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:183:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:183:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:184:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:184:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:184:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:185:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:185:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:185:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:186:28: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:186:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:186:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:187:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:187:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:187:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:188:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:189:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:189:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:189:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:190:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:190:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:190:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:191:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:192:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:192:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:192:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:193:30: []uint32{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:194:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:194:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:194:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:195:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:196:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:196:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:196:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:198:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:198:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:198:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:199:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:200:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:200:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:200:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:208:7: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:208:34: leaking param: out to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_replication.go:208:39: body does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:210:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:212:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:212:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:212:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:213:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:214:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:214:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:214:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:202:7: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:202:24: body does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:203:13: make([]byte, 0, len(body) + 1024) escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:204:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:206:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:207:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:208:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:208:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:208:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:209:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:211:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:212:23: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:212:23: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:212:23: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:212:23: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:214:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:216:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:218:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:219:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:220:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_origins.go:13:24: m does not escape
+src/core/compiler/backend/railshot/shared/experimental_origins.go:13:40: body does not escape
+src/core/compiler/backend/railshot/shared/experimental_origins.go:13:46: out does not escape
+src/core/compiler/backend/railshot/shared/experimental_origins.go:13:58: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_origins.go:14:17: make([]uint32, len(out)) escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_origins.go:40:20: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/experimental_origins.go:62:66: string(bytes.a) does not escape
+src/core/compiler/backend/railshot/shared/experimental_origins.go:62:66: string(bytes.b) does not escape
+src/core/compiler/backend/railshot/shared/experimental_maps.go:222:24: leaking param content: m
+src/core/compiler/backend/railshot/shared/experimental_maps.go:222:24: leaking param: m to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_maps.go:246:4: moved to heap: copy
+src/core/compiler/backend/railshot/shared/experimental_maps.go:248:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:250:45: make([][]uint32, len(m.Code)) escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:255:42: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_maps.go:255:35: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:199:20: leaking param: dst to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_replication.go:201:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:204:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:206:20: leaking param: dst to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_replication.go:206:80: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:206:73: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:206:73: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:207:20: leaking param: dst to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_replication.go:207:80: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:207:73: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:207:73: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:216:7: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:216:36: leaking param: out to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_replication.go:217:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:217:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:217:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:218:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:220:7: p does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:220:32: body does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:221:13: make([]byte, 0, len(body) + p.EstimatedGrowth) escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:222:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:224:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:226:20: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:226:20: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:226:20: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:226:20: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:229:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:231:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:232:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:232:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:232:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:233:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:237:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:238:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:238:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:238:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:238:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:240:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:242:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:248:25: leaking param content: m
+src/core/compiler/backend/railshot/shared/experimental_replication.go:248:25: leaking param: m to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/experimental_replication.go:248:41: mode does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:298:4: moved to heap: copy
+src/core/compiler/backend/railshot/shared/experimental_replication.go:294:17: string(bytes.a) does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:294:17: string(bytes.b) does not escape
+src/core/compiler/backend/railshot/shared/experimental_replication.go:300:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/experimental_replication.go:302:45: make([][]uint32, len(m.Code)) escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:106:31: deletionOff does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:106:44: deleted does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:98:7: m does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:102:7: m does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:144:7: m does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:145:7: m does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:197:36: deletions does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:199:20: ... argument does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:199:67: oldLen escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:199:20: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:202:20: ... argument does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:202:74: len(deletions) escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:202:87: maxDeletions escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:202:20: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:209:21: ... argument does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:209:86: i escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:209:97: deletion.Off escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:209:111: deletion.Len escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:209:117: oldLen escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:209:21: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:167:7: m does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:167:39: deletions does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:156:31: deletions does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:187:7: m does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:187:43: deletions does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:178:35: deletions does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:216:32: deletions does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:216:58: deletionOff does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:216:71: deletedPrefix does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:268:20: ... argument does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:268:83: site.Off escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:268:93: site.LongLen escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:268:107: site.ShortLen escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:268:118: codeLen escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:268:20: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:235:23: leaking param: code to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/finalizer.go:235:36: sites does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:235:55: labels does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:235:75: marks does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:238:38: ... argument does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:238:101: len(code) escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:238:38: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:242:39: ... argument does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:242:80: i escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:242:39: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:247:39: ... argument does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:247:94: i escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:247:102: label.Off escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:247:111: len(code) escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:247:39: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:252:39: ... argument does not escape
+src/core/compiler/backend/railshot/shared/finalizer.go:252:93: i escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:252:100: mark.Off escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:252:109: len(code) escapes to heap
+src/core/compiler/backend/railshot/shared/finalizer.go:252:39: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:85:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:85:43: leaking param: offsets
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:96:7: leaking param: p to result ~r0 level=1
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:103:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:118:7: c does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:119:7: c does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:120:7: c does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:121:7: leaking param: c to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:124:17: (*GCFrameRootPlan).ResetCallsites ignoring self-assignment in p.CallsiteData = p.CallsiteData[:0]
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:123:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:131:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:131:76: offsets does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:135:25: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:136:25: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:142:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:142:76: offsets does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:143:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:143:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:148:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:168:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:168:42: visit does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:150:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:154:36: leaking param: callsite
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:154:24: func literal does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:189:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:190:37: callsite does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:190:25: func literal does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:215:19: (*GCFrameRootPlan).ResetSafepoints ignoring self-assignment in p.SafepointData = p.SafepointData[:p.fixedOffsetCount]
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:209:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:230:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:230:7: leaking param: p to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:232:26: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:236:7: leaking param content: b
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:238:32: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:242:7: leaking param: b to result ~r0 level=2
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:249:7: b does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:264:7: leaking param content: b
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:271:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:275:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:275:43: offsets does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:276:23: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:278:17: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:288:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:288:43: visit does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:314:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:339:9: &GCModuleFrameRootPlan{...} escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:339:57: make([]uint32, functionCount) escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:346:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:356:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:361:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:365:20: make([]GCFrameRootPlan, 0, count) escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:372:7: leaking param content: p
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:376:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:383:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:390:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:398:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:407:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:415:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:415:40: leaking param: words
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:431:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:439:23: words does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:449:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:454:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:469:7: p does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:469:64: visit does not escape
+src/core/compiler/backend/railshot/shared/gc_frame_roots.go:507:7: leaking param: p to result ~r0 level=1
+src/core/compiler/backend/railshot/shared/gc_telemetry.go:21:7: s does not escape
+src/core/compiler/backend/railshot/shared/global_hints.go:58:9: (*GlobalHintAccumulator).ResetWithScratch ignoring self-assignment in a.touchedExtra = a.touchedExtra[:0]
+src/core/compiler/backend/railshot/shared/global_hints.go:51:7: a does not escape
+src/core/compiler/backend/railshot/shared/global_hints.go:51:64: leaking param: scratch
+src/core/compiler/backend/railshot/shared/global_hints.go:58:9: make([]uint32, 2 * nGlobals) escapes to heap
+src/core/compiler/backend/railshot/shared/global_hints.go:73:17: (*GlobalHintAccumulator).Reset ignoring self-assignment in a.touchedExtra = a.touchedExtra[:0]
+src/core/compiler/backend/railshot/shared/global_hints.go:61:7: a does not escape
+src/core/compiler/backend/railshot/shared/global_hints.go:63:16: make([]uint32, 2 * nGlobals) escapes to heap
+src/core/compiler/backend/railshot/shared/global_hints.go:76:7: leaking param content: a
+src/core/compiler/backend/railshot/shared/global_hints.go:87:27: append escapes to heap
+src/core/compiler/backend/railshot/shared/global_hints.go:93:7: leaking param content: a
+src/core/compiler/backend/railshot/shared/global_hints.go:94:27: append escapes to heap
+src/core/compiler/backend/railshot/shared/global_hints.go:105:7: leaking param content: a
+src/core/compiler/backend/railshot/shared/global_hints.go:106:12: append escapes to heap
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:15:23: slices.insertionSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.j - 1] = slices.data[slices.j - 1], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:15:23: slices.insertionSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.j - 1] = slices.data[slices.j - 1], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:35:39: slices.siftDownOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.first + slices.root], slices.data[slices.first + slices.child] = slices.data[slices.first + slices.child], slices.data[slices.first + slices.root]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:35:39: slices.siftDownOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.first + slices.root], slices.data[slices.first + slices.child] = slices.data[slices.first + slices.child], slices.data[slices.first + slices.root]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:52:30: slices.heapSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.first], slices.data[slices.first + slices.i] = slices.data[slices.first + slices.i], slices.data[slices.first]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:52:30: slices.heapSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.first], slices.data[slices.first + slices.i] = slices.data[slices.first + slices.i], slices.data[slices.first]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:253:29: slices.breakPatternsOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.idx], slices.data[slices.a + slices.other] = slices.data[slices.a + slices.other], slices.data[slices.idx]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:253:29: slices.breakPatternsOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.idx], slices.data[slices.a + slices.other] = slices.data[slices.a + slices.other], slices.data[slices.idx]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:216:22: slices.partialInsertionSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.i - 1] = slices.data[slices.i - 1], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:216:22: slices.partialInsertionSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.i - 1] = slices.data[slices.i - 1], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:224:24: slices.partialInsertionSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.j - 1] = slices.data[slices.j - 1], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:224:24: slices.partialInsertionSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.j - 1] = slices.data[slices.j - 1], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:233:24: slices.partialInsertionSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.j - 1] = slices.data[slices.j - 1], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:233:24: slices.partialInsertionSortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.j - 1] = slices.data[slices.j - 1], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:176:23: slices.partitionEqualOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.a], slices.data[slices.pivot] = slices.data[slices.pivot], slices.data[slices.a]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:176:23: slices.partitionEqualOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.a], slices.data[slices.pivot] = slices.data[slices.pivot], slices.data[slices.a]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:189:20: slices.partitionEqualOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:189:20: slices.partitionEqualOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:138:23: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.a], slices.data[slices.pivot] = slices.data[slices.pivot], slices.data[slices.a]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:138:23: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.a], slices.data[slices.pivot] = slices.data[slices.pivot], slices.data[slices.a]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:148:20: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.a] = slices.data[slices.a], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:148:20: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.a] = slices.data[slices.a], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:151:19: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:151:19: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:165:20: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:165:20: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:169:19: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.a] = slices.data[slices.a], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:169:19: slices.partitionOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.j], slices.data[slices.a] = slices.data[slices.a], slices.data[slices.j]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:93:23: slices.pdqsortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:93:23: slices.pdqsortOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+src/core/compiler/backend/railshot/shared/global_hints.go:113:7: a does not escape
+src/core/compiler/backend/railshot/shared/global_hints.go:113:42: leaking param: dst to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/global_hints.go:116:16: make([]GlobalHint, len(dst), ~r0) escapes to heap
+src/core/compiler/backend/railshot/shared/global_hints.go:129:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/global_hints.go:132:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/global_hints.go:137:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/global_hints.go:140:14: append escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:72:24: expr does not escape
+src/core/compiler/backend/railshot/shared/host_adapters.go:72:40: mark does not escape
+src/core/compiler/backend/railshot/shared/host_adapters.go:81:21: &wasm.Reader{...} does not escape
+src/core/compiler/backend/railshot/shared/host_adapters.go:83:20: &wasm.DecodeError{...} escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:89:22: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:101:19: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:14:21: leaking param content: m
+src/core/compiler/backend/railshot/shared/host_adapters.go:15:13: make([]bool, len(m.Code)) escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:17:10: func literal does not escape
+src/core/compiler/backend/railshot/shared/host_adapters.go:34:27: ... argument does not escape
+src/core/compiler/backend/railshot/shared/host_adapters.go:34:56: i escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:34:27: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:40:26: ... argument does not escape
+src/core/compiler/backend/railshot/shared/host_adapters.go:40:56: i escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:40:26: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:53:27: ... argument does not escape
+src/core/compiler/backend/railshot/shared/host_adapters.go:53:60: i escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:53:63: j escapes to heap
+src/core/compiler/backend/railshot/shared/host_adapters.go:53:27: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/host_segments.go:22:27: body does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:35:19: []frame{...} does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:36:16: []int{...} does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:37:15: make([]node, 0, len(body)) does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:40:20: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:56:23: append escapes to heap
+src/core/compiler/backend/railshot/shared/host_segments.go:64:19: append does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:65:18: append does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:80:21: []int{...} escapes to heap
+src/core/compiler/backend/railshot/shared/host_segments.go:91:17: append does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:98:15: make([]uint8, len(nodes)) does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:100:10: func literal does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:11:26: body does not escape
+src/core/compiler/backend/railshot/shared/host_segments.go:18:28: body does not escape
+src/core/compiler/backend/railshot/shared/intfold.go:109:8: "shared: FoldI64 unsupported op" escapes to heap
+src/core/compiler/backend/railshot/shared/intfold.go:78:8: "shared: FoldI32 unsupported op" escapes to heap
+src/core/compiler/backend/railshot/shared/intfold.go:151:10: "shared: FoldCompare unsupported op" escapes to heap
+src/core/compiler/backend/railshot/shared/intfold.go:178:10: "shared: FoldCompare unsupported op" escapes to heap
+src/core/compiler/backend/railshot/shared/local_event.go:53:11: (*LocalEventTape).Reset ignoring self-assignment in t.Events = t.Events[:0]
+src/core/compiler/backend/railshot/shared/local_event.go:52:7: t does not escape
+src/core/compiler/backend/railshot/shared/local_event.go:58:7: leaking param content: t
+src/core/compiler/backend/railshot/shared/local_event.go:68:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/local_event.go:73:25: pairs does not escape
+src/core/compiler/backend/railshot/shared/merge_next_use.go:20:33: r does not escape
+src/core/compiler/backend/railshot/shared/merge_next_use.go:20:64: candidates does not escape
+src/core/compiler/backend/railshot/shared/merge_next_use.go:36:23: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/merge_next_use.go:92:62: candidates does not escape
+src/core/compiler/backend/railshot/shared/native_segment.go:26:27: nodes does not escape
+src/core/compiler/backend/railshot/shared/native_segment.go:37:15: make([]uint8, len(nodes)) does not escape
+src/core/compiler/backend/railshot/shared/native_segment.go:38:14: make([]uint32, len(nodes)) does not escape
+src/core/compiler/backend/railshot/shared/native_segment.go:40:10: func literal does not escape
+src/core/compiler/backend/railshot/shared/native_size.go:73:7: r does not escape
+src/core/compiler/backend/railshot/shared/native_size.go:90:23: code does not escape
+src/core/compiler/backend/railshot/shared/native_size.go:117:7: r does not escape
+src/core/compiler/backend/railshot/shared/orchestration.go:42:14: make([]int, functions) escapes to heap
+src/core/compiler/backend/railshot/shared/orchestration.go:42:38: make([]int, functions) escapes to heap
+src/core/compiler/backend/railshot/shared/orchestration.go:44:17: make([]int, 2 * functions) escapes to heap
+src/core/compiler/backend/railshot/shared/orchestration.go:59:7: e does not escape
+src/core/compiler/backend/railshot/shared/orchestration.go:66:7: e does not escape
+src/core/compiler/backend/railshot/shared/orchestration.go:71:7: leaking param: e
+src/core/compiler/backend/railshot/shared/orchestration.go:71:46: leaking param: err
+src/core/compiler/backend/railshot/shared/orchestration.go:84:7: leaking param: e
+src/core/compiler/backend/railshot/shared/policy.go:26:7: p does not escape
+src/core/compiler/backend/railshot/shared/policy.go:26:32: name does not escape
+src/core/compiler/backend/railshot/shared/policy.go:27:7: p does not escape
+src/core/compiler/backend/railshot/shared/policy.go:27:38: option does not escape
+src/core/compiler/backend/railshot/shared/policy.go:30:7: p does not escape
+src/core/compiler/backend/railshot/shared/policy.go:30:46: option does not escape
+src/core/compiler/backend/railshot/shared/policy.go:33:7: p does not escape
+src/core/compiler/backend/railshot/shared/policy.go:46:20: leaking param: selection to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/policy.go:36:27: leaking param: selection to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/policy.go:42:27: leaking param: selection to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/profile.go:15:21: leaking param content: functions
+src/core/compiler/backend/railshot/shared/profile.go:15:56: leaking param content: islands
+src/core/compiler/backend/railshot/shared/profile.go:29:6: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile.go:31:6: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile.go:33:6: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile.go:36:6: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile.go:38:6: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile.go:40:6: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile.go:44:6: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile.go:45:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile.go:48:5: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_emission.go:36:13: (*SourceEmission).Rewind ignoring self-assignment in e.ranges = e.ranges[:len(e.ranges) - 1]
+src/core/compiler/backend/railshot/shared/profile_emission.go:29:7: leaking param content: e
+src/core/compiler/backend/railshot/shared/profile_emission.go:31:31: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_emission.go:19:7: leaking param content: e
+src/core/compiler/backend/railshot/shared/profile_emission.go:24:31: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_emission.go:48:7: leaking param: e to result ~r0 level=1
+src/core/compiler/backend/railshot/shared/profile_emission.go:50:24: leaking param: dst to result ~r0 level=0
+src/core/compiler/backend/railshot/shared/profile_emission.go:61:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_emission.go:67:27: base does not escape
+src/core/compiler/backend/railshot/shared/profile_emission.go:67:33: checks does not escape
+src/core/compiler/backend/railshot/shared/profile_emission.go:68:13: make([]jitprofile.SourceRange, 0, len(base) + len(checks)) escapes to heap
+src/core/compiler/backend/railshot/shared/profile_emission.go:82:27: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_emission.go:88:27: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_emission.go:92:26: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_emission.go:103:26: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_map.go:31:24: offsets does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:31:33: deleted does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:25:36: offsets does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:25:45: deleted does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:19:7: m does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:22:7: m does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:63:25: source does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:63:53: leaking param: mapper
+src/core/compiler/backend/railshot/shared/profile_map.go:64:13: make([]jitprofile.SourceRange, 0, len(source)) escapes to heap
+src/core/compiler/backend/railshot/shared/profile_map.go:69:26: ... argument does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:69:61: i escapes to heap
+src/core/compiler/backend/railshot/shared/profile_map.go:69:26: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/profile_map.go:74:26: ... argument does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:74:64: i escapes to heap
+src/core/compiler/backend/railshot/shared/profile_map.go:74:26: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/profile_map.go:83:27: ... argument does not escape
+src/core/compiler/backend/railshot/shared/profile_map.go:83:75: i escapes to heap
+src/core/compiler/backend/railshot/shared/profile_map.go:83:27: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/profile_map.go:90:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_sites.go:15:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/profile_sites.go:15:41: leaking param: kind
+src/core/compiler/backend/railshot/shared/profile_sites.go:20:9: "invalid compiler code-site emission" escapes to heap
+src/core/compiler/backend/railshot/shared/profile_sites.go:22:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_sites.go:29:13: (*CodeSites).Rewind ignoring self-assignment in s.ranges = s.ranges[:len(s.ranges) - 1]
+src/core/compiler/backend/railshot/shared/profile_sites.go:25:7: s does not escape
+src/core/compiler/backend/railshot/shared/profile_sites.go:39:7: leaking param: s to result ~r0 level=1
+src/core/compiler/backend/railshot/shared/profile_sites.go:43:27: leaking param content: sites
+src/core/compiler/backend/railshot/shared/profile_sites.go:43:51: leaking param: mapper
+src/core/compiler/backend/railshot/shared/profile_sites.go:47:13: make([]jitprofile.CodeSite, 0, len(sites)) escapes to heap
+src/core/compiler/backend/railshot/shared/profile_sites.go:51:26: ... argument does not escape
+src/core/compiler/backend/railshot/shared/profile_sites.go:51:76: i escapes to heap
+src/core/compiler/backend/railshot/shared/profile_sites.go:51:26: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/profile_sites.go:55:26: ... argument does not escape
+src/core/compiler/backend/railshot/shared/profile_sites.go:55:65: i escapes to heap
+src/core/compiler/backend/railshot/shared/profile_sites.go:55:26: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/profile_sites.go:59:16: append escapes to heap
+src/core/compiler/backend/railshot/shared/profile_unwind.go:11:24: ranges does not escape
+src/core/compiler/backend/railshot/shared/profile_unwind.go:11:57: leaking param: mapper
+src/core/compiler/backend/railshot/shared/profile_unwind.go:15:13: make([]jitprofile.UnwindRange, 0, len(ranges)) escapes to heap
+src/core/compiler/backend/railshot/shared/profile_unwind.go:19:26: ... argument does not escape
+src/core/compiler/backend/railshot/shared/profile_unwind.go:19:84: i escapes to heap
+src/core/compiler/backend/railshot/shared/profile_unwind.go:19:26: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/profile_unwind.go:23:26: ... argument does not escape
+src/core/compiler/backend/railshot/shared/profile_unwind.go:23:64: i escapes to heap
+src/core/compiler/backend/railshot/shared/profile_unwind.go:23:26: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/profile_unwind.go:32:27: ... argument does not escape
+src/core/compiler/backend/railshot/shared/profile_unwind.go:32:75: i escapes to heap
+src/core/compiler/backend/railshot/shared/profile_unwind.go:32:27: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/profile_unwind.go:39:15: append escapes to heap
+src/core/compiler/backend/railshot/shared/residency_shadow.go:261:28: events does not escape
+src/core/compiler/backend/railshot/shared/residency_shadow.go:261:49: segments does not escape
+src/core/compiler/backend/railshot/shared/residency_shadow.go:261:75: candidates does not escape
+src/core/compiler/backend/railshot/shared/residency_shadow.go:261:120: out does not escape
+src/core/compiler/backend/railshot/shared/residency_shadow.go:117:16: planResidencyShadow ignoring self-assignment in ranked[at] = ranked[at - 1]
+src/core/compiler/backend/railshot/shared/residency_shadow.go:79:26: events does not escape
+src/core/compiler/backend/railshot/shared/residency_shadow.go:135:14: func literal does not escape
+src/core/compiler/backend/railshot/shared/residency_shadow.go:68:26: events does not escape
+src/core/compiler/backend/railshot/shared/residency_shadow.go:75:36: events does not escape
+src/core/compiler/backend/railshot/shared/residency_shadow.go:358:26: entries does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:218:17: []IntOp{...} does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:220:17: []IntOp{...} does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:222:17: []IntOp{...} does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:224:17: []IntOp{...} does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:226:17: []IntOp{...} does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:228:17: []IntOp{...} does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:70:18: code does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:70:31: ft does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:99:18: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:135:18: &wasm.DecodeError{...} does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:22:18: code does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:22:31: ft does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:22:50: localTypes does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:48:26: c does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:48:40: ft does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:339:7: s does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:342:7: leaking param: s to result ~r0 level=1
+src/core/compiler/backend/railshot/shared/scalar.go:343:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:366:16: make([]scalarNode, len(s.nodes), capacity) escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:371:18: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:384:7: s does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:391:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:408:24: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:423:10: (*ScalarState).pop ignoring self-assignment in s.stack = s.stack[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:420:7: s does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:426:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:442:15: (*ScalarState).slot ignoring self-assignment in s.freeSlots = s.freeSlots[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:437:7: s does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:462:16: (*ScalarState).spill ignoring self-assignment in s.freeSlots = s.freeSlots[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:452:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:469:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:500:8: "shared scalar: physical register constraints exhausted" escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:502:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:642:20: (*ScalarState).expression ignoring self-assignment in n.left, n.right = n.right, n.left
+src/core/compiler/backend/railshot/shared/scalar.go:642:20: (*ScalarState).expression ignoring self-assignment in n.left, n.right = n.right, n.left
+src/core/compiler/backend/railshot/shared/scalar.go:509:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:600:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:582:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:531:24: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:549:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:677:15: (*ScalarState).binary ignoring self-assignment in s.stack = s.stack[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:677:24: (*ScalarState).binary ignoring self-assignment in s.stack = s.stack[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:676:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:689:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:705:18: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:810:10: (*ScalarState).restore ignoring self-assignment in s.stack = s.stack[:depth]
+src/core/compiler/backend/railshot/shared/scalar.go:793:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:710:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:774:7: s does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:784:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:818:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:859:10: (*ScalarState).CompileScalar ignoring self-assignment in s.nodes = s.nodes[:0]
+src/core/compiler/backend/railshot/shared/scalar.go:867:10: (*ScalarState).CompileScalar ignoring self-assignment in s.stack = s.stack[:0]
+src/core/compiler/backend/railshot/shared/scalar.go:868:11: (*ScalarState).CompileScalar ignoring self-assignment in s.locals = s.locals[:0]
+src/core/compiler/backend/railshot/shared/scalar.go:875:13: (*ScalarState).CompileScalar ignoring self-assignment in s.controls = s.controls[:0]
+src/core/compiler/backend/railshot/shared/scalar.go:876:14: (*ScalarState).CompileScalar ignoring self-assignment in s.freeSlots = s.freeSlots[:0]
+src/core/compiler/backend/railshot/shared/scalar.go:886:13: (*ScalarState).CompileScalar ignoring self-assignment in s.nextSlot = s.tempBase
+src/core/compiler/backend/railshot/shared/scalar.go:960:16: (*ScalarState).CompileScalar ignoring self-assignment in s.stack = s.stack[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:979:19: (*ScalarState).CompileScalar ignoring self-assignment in s.stack = s.stack[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:992:17: (*ScalarState).CompileScalar ignoring self-assignment in s.stack = s.stack[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:1028:17: (*ScalarState).CompileScalar ignoring self-assignment in s.stack = s.stack[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:1060:15: (*ScalarState).CompileScalar ignoring self-assignment in s.controls = s.controls[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:1062:15: (*ScalarState).CompileScalar ignoring self-assignment in s.stack = s.stack[:i]
+src/core/compiler/backend/railshot/shared/scalar.go:840:7: leaking param content: s
+src/core/compiler/backend/railshot/shared/scalar.go:840:37: code does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:840:73: localWide does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:840:104: leaking param: target
+src/core/compiler/backend/railshot/shared/scalar.go:842:23: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:857:17: make([]scalarNode, 0, needed) escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:862:17: make([]scalarID, 0, summary.MaxStack) escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:865:18: make([]scalarID, 0, len(localWide)) escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:869:19: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:873:20: make([]scalarControl, 0, capacity) escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:907:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:927:20: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:932:20: &wasm.DecodeError{...} escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:943:20: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:949:20: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:958:21: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:975:22: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:981:18: &wasm.DecodeError{...} escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:1008:23: append escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:1068:25: ... argument does not escape
+src/core/compiler/backend/railshot/shared/scalar.go:1068:72: op escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:1068:25: &errors.errorString{...} escapes to heap
+src/core/compiler/backend/railshot/shared/scalar.go:1076:7: s does not escape
+src/core/compiler/backend/railshot/shared/scalar_graph_disabled.go:15:38: leaking param: t to result ~r0 level=0
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:325:20: slices.reverseRangeOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]
+../../../../.local/share/mise/installs/go/1.27.1/src/slices/zsortordered.go:325:20: slices.reverseRangeOrdered[go.shape.uint32] ignoring self-assignment in slices.data[slices.i], slices.data[slices.j] = slices.data[slices.j], slices.data[slices.i]

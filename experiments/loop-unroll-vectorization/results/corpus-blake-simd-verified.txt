@@ -1,0 +1,1 @@
+{"compile_allocs":281,"compile_bytes":381504,"compile_ns":1357478,"execute_ns":380083,"export":"hashN","instantiate_ns":174017,"remaining_allocs":42,"remaining_bytes":4416,"repeat":1,"result":26497025,"wasm":"corpus/workloads/assemblyscript/blake-as-simd.wasm"}
