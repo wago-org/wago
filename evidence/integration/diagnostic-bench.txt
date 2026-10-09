@@ -1,0 +1,20 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/tests/tools/native-compare
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkCompareCapturedFib   	     100	      2269 ns/op	      96 B/op	       8 allocs/op
+BenchmarkCompareCapturedFib   	     100	      2289 ns/op	      96 B/op	       8 allocs/op
+BenchmarkCompareCapturedFib   	     100	      2238 ns/op	      96 B/op	       8 allocs/op
+BenchmarkCompareScalarRegions/16         	     100	      2295 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareScalarRegions/16         	     100	      2282 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareScalarRegions/16         	     100	      2456 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareScalarRegions/256        	     100	     34462 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareScalarRegions/256        	     100	     35178 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareScalarRegions/256        	     100	     34258 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareScalarRegions/4096       	     100	    545197 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareScalarRegions/4096       	     100	    536119 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareScalarRegions/4096       	     100	    540075 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompareChangedMemory            	     100	      6835 ns/op	   32192 B/op	       6 allocs/op
+BenchmarkCompareChangedMemory            	     100	      5545 ns/op	   32192 B/op	       6 allocs/op
+BenchmarkCompareChangedMemory            	     100	      5084 ns/op	   32192 B/op	       6 allocs/op
+PASS

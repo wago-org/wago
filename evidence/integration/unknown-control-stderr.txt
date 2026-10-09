@@ -1,0 +1,2 @@
+supplied regions: compared=12 supported=11 unknown=1 changes=1 complete=false limit=false
+image bytes outside supplied regions: before=54 after=54
