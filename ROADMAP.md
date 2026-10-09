@@ -228,9 +228,10 @@ preserve aliases and host-only counts, and hold consumer resources through
 concurrent transfers and producer callbacks. Table rows preserve the acquired store,
 actual storage owner, host topology and unconsumed counter obligations; acquisition
 precedes native construction and adoption follows construction-lease release.
-Frozen descriptor and other container acquisitions still require receipt integration,
-followed by scalable complete registration and cycle collection. Feature admission
-is unchanged.
+Frozen immutable-global descriptors now have separate actual-owner receipts,
+with guarded registration, alias sharing, builder rollback and terminal cleanup.
+Mutable-container acquisitions still require receipt integration, followed by
+scalable complete registration and cycle collection. Feature admission is unchanged.
 Remaining work
 includes reference-global imports combined with instance-owned imported tables,
 general mutable reference imports/exports, reference

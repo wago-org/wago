@@ -61,7 +61,11 @@ Table rows record the acquired store and actual storage owner before native
 construction, then adopt storage receipts after releasing that construction lease.
 They preserve host topology and failed counter obligations through physical cleanup,
 separately from descriptors installed in the table.
-Frozen function-reference descriptor roots retain their separate owners.
+Frozen immutable-global descriptor receipts separately retain each actual
+descriptor owner, including an owner logically closed under a physical guard.
+Aliases share one acquisition; null descriptors add no producer edge. Builder
+rollback and physical cleanup preserve failed claims and finish callbacks before
+retiring graph members.
 This is accounting for future ownership work; it does not
 enable cycle collection or broaden feature admission. The bounded prototype
 registry preserves exact anonymous roots when metadata fills and still requires
