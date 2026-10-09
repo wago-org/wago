@@ -126,7 +126,8 @@ func (d *importDedup[T]) reset() {
 }
 
 type functionImportAttachments struct {
-	set importDedup[*Instance]
+	dependencies functionDependencyAttachments // empty on existing targets; not trailing
+	set          importDedup[*Instance]
 }
 
 func (a *functionImportAttachments) attach(export *InstanceExport) error {
@@ -137,18 +138,24 @@ func (a *functionImportAttachments) attach(export *InstanceExport) error {
 	if a.set.contains(producer) {
 		return nil
 	}
-	if !producer.retainResourceRoot() {
-		return fmt.Errorf("producer instance is closed")
+	if err := railshotAcquireFunctionDependency(a, producer); err != nil {
+		return err
 	}
 	a.set.push(producer)
 	return nil
 }
 
 func (a *functionImportAttachments) detachAll() {
+	if railshotDrainBuilderFunctionDependencies(a) {
+		return
+	}
 	a.set.drain((*Instance).releaseResourceRoot)
 }
 
 func detachImportedFunctions(in *Instance) {
+	if railshotDrainInstanceFunctionDependencies(in) {
+		return
+	}
 	if in == nil || in.c == nil {
 		return
 	}

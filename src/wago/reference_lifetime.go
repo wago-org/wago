@@ -72,6 +72,9 @@ func (lifetime referenceLifetime) finalize() {
 	if finalizers != nil && finalizers.physical != nil {
 		cleanup.run(finalizers.physical)
 	}
+	// resourcesClosed was only the claim. Registration retirement must wait for
+	// native teardown and the complete physical callback journal, including panic.
+	railshotFunctionDependencyCleanupCompleted(in)
 	cleanup.finish()
 }
 

@@ -13,7 +13,8 @@ type referenceRootLedger struct {
 // Keep Instance unchanged and allocate the node only on successful acquisition.
 // Reuse its zero-count state so warmed scope/root traffic allocates nothing.
 type referenceRootAccounting struct {
-	ledger *referenceRootLedger // protected by the owning Instance's lifeMu
+	ledger       *referenceRootLedger             // protected by the owning Instance's lifeMu
+	dependencies *rv64FunctionDependencyOwnership // cold native-function attachment records
 }
 
 // Called after resourceRefs increments, with lifeMu held.

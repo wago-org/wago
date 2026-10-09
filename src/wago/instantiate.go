@@ -1924,7 +1924,8 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		}
 		in.endConstruction()
 	}
-	if opts.runtime == nil && c.nativeTableContextABI && c.tableImportCount() != 0 {
+	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments)
+	if opts.runtime == nil && (c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
 		in.beginConstruction(opts.operationReservation)
 		defer finishConstruction()
 	}
@@ -1937,6 +1938,9 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 		// Runtime construction stays active through terminal observers and rollback.
 		defer finishConstruction()
 	}
+	// Transfer concrete acquisition records only after normal Close owns terminal
+	// rollback. Graph adoption waits until the construction native lease is gone.
+	railshotInstallFunctionDependencies(in, &b.functionAttachments)
 	if opts.store != nil {
 		if err := opts.store.registerInstance(in); err != nil {
 			return nil, err
@@ -1967,7 +1971,7 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 			return nil, err
 		}
 	}
-	if opts.runtime == nil && c.HasStart && !(c.nativeTableContextABI && c.tableImportCount() != 0) {
+	if opts.runtime == nil && c.HasStart && !(c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
 		// Only transfer direct-start cleanup after reference-store and conversion
 		// ownership is established. Callbacks can close this instance, so keep its
 		// resources alive until start execution and construction have unwound.
@@ -1992,7 +1996,11 @@ func (b *instanceBuilder) instantiate(mappingOwner *Compiled) (result *Instance,
 	if initErr != nil {
 		return nil, initErr
 	}
+	if err := railshotAdoptFunctionDependencies(in, finishMemoryContext == nil); err != nil {
+		return nil, err
+	}
 	if opts.afterCreate != nil {
+		// Function receipts are already adopted before any callback can expose in.
 		if err := opts.afterCreate(in); err != nil {
 			return nil, err
 		}

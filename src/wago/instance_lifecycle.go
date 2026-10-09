@@ -482,7 +482,7 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	// release. A table/global/token or downstream function importer may keep this
 	// instance's native code and context callable after logical Close.
 	railshotReleaseNativeTail(in)
-	detachImportedFunctions(in)
+	cleanup.run(func() { detachImportedFunctions(in) })
 	detachImportedHostFuncRefs(in)
 	detachImportedGlobals(in)
 	railshotReleaseGlobalReferences(in.importGlobalReferences())

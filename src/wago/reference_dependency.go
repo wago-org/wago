@@ -8,11 +8,10 @@ import (
 	"sync/atomic"
 )
 
-// This explicit graph is a receipt prerequisite, not production registration or
-// a collector. Its classifications do not change the anonymous root shadow.
-// The eventual Instance holder must supply one authoritative member per owner.
-// The unreferenced primitive is host-testable; future production hooks remain
-// architecture-specific and do not follow from this file's availability.
+// This explicit graph is a receipt prerequisite, not a collector. Its
+// classifications do not change the anonymous root shadow. RV64 native-function
+// attachments install authoritative members through a lazy architecture holder;
+// other acquisitions and the host-testable explicit graphs stay independent.
 const dependencyReceiptSlotBits = 12
 const maxDependencyPrimitiveCapacity = 1 << dependencyReceiptSlotBits
 const maxDependencyReceiptGeneration = (uint64(1) << (64 - dependencyReceiptSlotBits)) - 1
@@ -93,6 +92,9 @@ type dependencyGraph struct {
 	// only after real physical release.
 	// There is no replaceable retain or decrement operation.
 	afterRelease func(*Instance)
+	// Production retirement runs after the releasing record has cleared, outside
+	// graph/lifetime locks. Installed before any operations on this graph.
+	afterReceiptRelease func(*dependencyMember, *dependencyMember)
 }
 
 func newDependencyGraph(nodeCap, receiptCap int) (*dependencyGraph, error) {
@@ -358,7 +360,6 @@ func (r dependencyReceipt) release() bool {
 	g.mu.Unlock()
 	defer func() {
 		g.mu.Lock()
-		defer g.mu.Unlock()
 		// A releasing slot cannot be recycled while this physical call runs.
 		target.external--
 		target.receipts--
@@ -372,6 +373,10 @@ func (r dependencyReceipt) release() bool {
 		// publish Released before allowing that graph to retire the consumer.
 		if consumer != nil {
 			consumer.outgoing.Add(^uint32(0))
+		}
+		g.mu.Unlock()
+		if g.afterReceiptRelease != nil {
+			g.afterReceiptRelease(target, consumer)
 		}
 	}()
 	target.owner.releaseResourceRoot()

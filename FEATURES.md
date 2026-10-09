@@ -51,6 +51,12 @@ descriptor owners after writers return or close. Reference imports combined with
 instance-owned imported tables, general mutable reference imports/exports,
 broader reference signatures/equality, GC/EH,
 threads and table64 remain unavailable.
+Native function-import acquisition receipts now track each distinct producer
+Instance, including producers that share memory, through construction rollback
+and physical teardown. This is accounting for future ownership work; it does not
+enable cycle collection or broaden feature admission. The bounded prototype
+registry preserves exact anonymous roots when metadata fills and still requires
+complete growable registration before collection can be enabled.
 A private qualification profile additionally exercises proper local,
 native-import, indirect and typed-reference tail calls, ordinary `call_ref`, and
 synchronous scalar Go/owned-host targets. Its numeric/vector guest signatures
