@@ -62,10 +62,17 @@ with a fixed batch. It checks completed calls, excludes deliberate setup
 allocations, and verifies both zero-allocation and 64-byte allocating controls.
 `BenchmarkExecBatchAccounting` keeps those controls available for comparing the
 measurement harness itself; they are synthetic, not guest workloads.
+`BenchmarkExecBatchBoundary` uses a fixed batch and reports untimed reporting
+cost per trial, including timer transitions. On Go 1.27.1 the corrected boundary
+performs five memory-stat reads versus two previously: the two explicit snapshots
+and one additional read from the changed timer sequence. Boundary bytes and
+allocations include the full helper, while the guest metrics remain per operation.
+These process-wide observations can include background traffic.
 
 ```sh
 go test ./bench/suite -run '^TestExecBatchAllocationUnits$'
 go test ./bench/suite -run '^$' -bench '^BenchmarkExecBatchAccounting$' -benchmem
+go test ./bench/suite -run '^$' -bench '^BenchmarkExecBatchBoundary$' -benchtime=64x -benchmem
 ```
 
 ## Workload profiling

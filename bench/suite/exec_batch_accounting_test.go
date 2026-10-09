@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -94,4 +95,30 @@ func BenchmarkExecBatchAccounting(b *testing.B) {
 			return nil
 		})
 	})
+}
+
+// This fixed-batch control exposes reporting costs outside the guest timer.
+// Use -benchtime=64x for paired boundary measurements on the same toolchain.
+func BenchmarkExecBatchBoundary(b *testing.B) {
+	const batch = 32
+	invoke := func() error {
+		execBatchWork++
+		return nil
+	}
+	beforeWork := execBatchWork
+	var memory runtime.MemStats
+	runtime.ReadMemStats(&memory)
+	beforeAllocs, beforeBytes := memory.Mallocs, memory.TotalAlloc
+	started := time.Now()
+	benchmarkExecBatch(b, invoke, batch)
+	wall := time.Since(started)
+	runtime.ReadMemStats(&memory)
+	if execBatchWork-beforeWork != uint64(b.N)*batch {
+		b.Fatal("fixed batch did not complete")
+	}
+	// These units are per benchmark trial, not per guest operation. The outer
+	// memory snapshots are outside wall time and use the same process counters.
+	b.ReportMetric(float64((wall - b.Elapsed()).Nanoseconds()), "boundary-ns/trial")
+	b.ReportMetric(float64(memory.TotalAlloc-beforeBytes), "boundary-B/trial")
+	b.ReportMetric(float64(memory.Mallocs-beforeAllocs), "boundary-allocs/trial")
 }
