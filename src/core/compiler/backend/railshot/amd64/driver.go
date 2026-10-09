@@ -881,6 +881,9 @@ func (f *fn) emitSelect() {
 	// branch. Force earlier traps before either select path evaluates cond;
 	// otherwise a condition's divide-by-zero can hide a branch's overflow.
 	f.materializeTrapsBefore(f.s.back())
+	if f.tryPureExpensiveSelect() {
+		return
+	}
 	// Flags-select: when the condition is a deferred relational/eqz compare and both
 	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
 	// — skipping the SETcc + MOVZX + TEST that materializing the boolean costs. The
@@ -961,19 +964,34 @@ func (f *fn) emitSelect() {
 	// cond's register. The second materialize(b) reloads a displaced b; cond is
 	// recovered last. At that point only plain values remain, so allocator pins
 	// protect a and b while a reload obtains the condition's final register.
-	f.materialize(b)
+	savedReserved, savedPinned := f.reserved, f.pinned
+	bReg, bOwned := regNone, true
+	if selectCmovReadBorrowEnabled && selectReadBorrowEnabled && selectReadBorrowable(b) {
+		bReg, bOwned = f.materializeSelectReadBranch(b, bt)
+		// Reserve the borrowed arm before a's deferred work can reclaim its
+		// register. Fixed-role registers are excluded from this admission.
+		f.reserved = f.reserved.add(bReg)
+		f.pinned = f.pinned.add(bReg)
+		f.stats.peep("select-cmov-read-borrow")
+	} else {
+		f.materialize(b)
+	}
 	aReg := f.materialize(a)
 	f.pinned = f.pinned.add(aReg)
-	bReg := f.materialize(b)
+	if bOwned {
+		bReg = f.materialize(b)
+	}
 	f.pinned = f.pinned.add(bReg)
 	condReg := f.materialize(cond)
 	f.stats.peep("select-cmov")
 	f.a.TestSelf(condReg, false)
 	f.a.Cmovcc(condE, aReg, bReg, w) // cond == 0 → a = b
-	f.pinned = f.pinned.remove(aReg)
-	f.pinned = f.pinned.remove(bReg)
+	f.pinned = savedPinned
+	f.reserved = savedReserved
 	f.release(condReg)
-	f.release(bReg)
+	if bOwned {
+		f.release(bReg)
+	}
 	f.erase(cond)
 	f.erase(b)
 	f.erase(a)
@@ -1041,11 +1059,18 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 // Default only on the platform qualified with native corpus measurements.
 var selectReadBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SELECT_READ_BORROW") != "0"
 
+// Keep ordinary CMOV borrowing independently reversible during qualification.
+var selectCmovReadBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_SELECT_CMOV_READ_BORROW") != "0"
+
+func selectReadBorrowable(e *elem) bool {
+	return e.isValue() && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) &&
+		e.st.reg != RAX && e.st.reg != RDX && e.st.reg != RCX
+}
+
 // CMOV reads its alternative without modifying it. A borrowed source must
 // survive predicate lowering, including nested fixed-register operations.
 func (f *fn) materializeSelectReadBranch(e *elem, typ machineType) (Reg, bool) {
-	if selectReadBorrowEnabled && e.isValue() && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) &&
-		e.st.reg != RAX && e.st.reg != RDX && e.st.reg != RCX {
+	if selectReadBorrowEnabled && selectReadBorrowable(e) {
 		f.stats.peep("select-read-borrow")
 		return e.st.reg, false
 	}
