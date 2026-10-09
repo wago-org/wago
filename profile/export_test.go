@@ -81,6 +81,32 @@ func TestExportErrorsAndAddressReuse(t *testing.T) {
 		t.Fatal("accepted missing code")
 	}
 }
+
+func TestPerfMapEscapesAllSymbolFields(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*jitprofile.Image)
+		want   string
+	}{
+		{"module", func(im *jitprofile.Image) { im.ModuleID = "mod\npart" }, "wago:mod_part:variant:g7:f3:r0:guest-body:duplicate_name"},
+		{"artifact", func(im *jitprofile.Image) { im.ArtifactID = "variant\npart" }, "wago:mod:variant_part:g7:f3:r0:guest-body:duplicate_name"},
+		{"region kind", func(im *jitprofile.Image) { im.Regions[0].Kind = "guest\nbody" }, "wago:mod:variant:g7:f3:r0:guest_body:duplicate_name"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			events := fixture()
+			tc.mutate(events[0].Image)
+			var out bytes.Buffer
+			if err := NewPerfMap(&out).Write(events); err != nil {
+				t.Fatal(err)
+			}
+			want := "1000 2 " + tc.want + "\n"
+			if got := out.String(); got != want {
+				t.Fatalf("perf-map record = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestTemporalResolutionAndRegionBoundaries(t *testing.T) {
 	events := fixture()
 	events = append(events, jitprofile.Event{Sequence: 2, Timestamp: 20, Kind: "retire", ImageID: 7})
