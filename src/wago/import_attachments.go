@@ -766,8 +766,13 @@ func (in *Instance) reconcileFuncrefRoots() {
 		return
 	}
 	imports := in.funcrefImportContainers()
-	imports.globals.each((*Global).pruneRetainedInstances)
-	imports.tables.each((*Table).pruneRetainedInstances)
+	var cleanup resourceCleanup
+	imports.globals.each(func(global *Global) {
+		cleanup.run(global.pruneRetainedInstances)
+	})
+	imports.tables.each(func(table *Table) {
+		cleanup.run(table.pruneRetainedInstances)
+	})
 	// Walk the local export-handle chain one link at a time under lifeMu, but
 	// reconcile only after releasing it. pruneRetainedInstances may drop a
 	// producer's final root and synchronously finalize that producer; its scan can
@@ -781,12 +786,13 @@ func (in *Instance) reconcileFuncrefRoots() {
 	var localTables importDedup[*Table]
 	for table != nil {
 		if table.owner != nil && table.owner.elementType == ValFuncRef && !imports.tables.contains(table) && localTables.add(table) {
-			table.pruneRetainedInstances()
+			cleanup.run(table.pruneRetainedInstances)
 		}
 		in.lifeMu.Lock()
 		table = table.next
 		in.lifeMu.Unlock()
 	}
+	cleanup.finish()
 }
 
 func (in *Instance) tableDescriptor(index int) []byte {

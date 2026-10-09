@@ -376,6 +376,10 @@ func (g *Global) pruneRetainedInstances() {
 	}
 	o := g.owner
 	var release []*Instance
+	// Guest writes and public reference setters share this native-state gate.
+	// Claim stale rows while their mapped cell is stable, then release every
+	// physical root after both native state and the container are unlocked.
+	nativeExecutionMu.Lock()
 	o.mu.Lock()
 	if !o.closed && len(g.cell) >= 8 && o.typ == ValFuncRef {
 		descriptor := readGlobalObject(g, ValFuncRef)
@@ -393,9 +397,8 @@ func (g *Global) pruneRetainedInstances() {
 		}
 	}
 	o.mu.Unlock()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	nativeExecutionMu.Unlock()
+	releaseRetainedResourceRoots(release)
 }
 
 func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, error) {

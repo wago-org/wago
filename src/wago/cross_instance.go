@@ -1004,7 +1004,7 @@ func (t *Table) pruneRetainedInstances() {
 	railshotLockNativeTableScan()
 	var release []*Instance
 	t.mu.Lock()
-	if !t.closed && len(t.desc) >= 8 {
+	if !t.closed && len(t.desc) >= 8 && len(t.retained) != 0 {
 		current := t.funcrefDescriptorsLocked()
 		for root, state := range t.retained {
 			state.precise = false
