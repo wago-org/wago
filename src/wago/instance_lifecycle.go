@@ -485,7 +485,7 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	cleanup.run(func() { detachImportedFunctions(in) })
 	cleanup.run(func() { detachImportedHostFuncRefs(in) })
 	cleanup.run(func() { detachImportedGlobals(in) })
-	cleanup.run(func() { railshotReleaseGlobalReferences(in.importGlobalReferences()) })
+	cleanup.run(func() { railshotReleaseInstanceGlobalReferences(in) })
 	cleanup.run(func() { detachImportedTables(in) })
 	cleanup.run(func() { detachImportedTags(in) })
 	if in.gc != nil {

@@ -352,7 +352,9 @@ func TestRV64PublicReferenceImportAuthenticationAndRollback(t *testing.T) {
 				}
 			}
 			roots := producer.referenceLifetime().snapshot().ResourceRoots
-			entries, err := railshotFreezeGlobalReferences(&Compiled{GlobalImports: []GlobalImportDef{{Type: ValFuncRef}, {Type: ValFuncRef}}}, []*resolvedGlobalImport{{global: g}, {global: &Global{Type: ValFuncRef}}}, rt.refStore)
+			var cleanup resourceCleanup
+			entries, err := railshotFreezeGlobalReferences(&Compiled{GlobalImports: []GlobalImportDef{{Type: ValFuncRef}, {Type: ValFuncRef}}}, []*resolvedGlobalImport{{global: g}, {global: &Global{Type: ValFuncRef}}}, rt.refStore, &cleanup)
+			cleanup.finish()
 			if err == nil || entries != nil || producer.referenceLifetime().snapshot().ResourceRoots != roots {
 				t.Fatal("partial frozen-root rollback", err)
 			}

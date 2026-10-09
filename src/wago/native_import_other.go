@@ -57,10 +57,16 @@ func railshotCanonicalHostFuncref(*referenceStore, *Instance, *HostFuncRef, int,
 
 type importGlobalReference struct{}
 
-func railshotFreezeGlobalReferences(*Compiled, []*resolvedGlobalImport, *referenceStore) ([]importGlobalReference, error) {
+func railshotFreezeGlobalReferences(*Compiled, []*resolvedGlobalImport, *referenceStore, *resourceCleanup) ([]importGlobalReference, error) {
 	return nil, nil
 }
 func railshotReleaseGlobalReferences([]importGlobalReference) {}
+func railshotReleaseInstanceGlobalReferences(in *Instance) {
+	railshotReleaseGlobalReferences(in.importGlobalReferences())
+}
+func railshotHasFrozenGlobalDependencies([]importGlobalReference) bool           { return false }
+func railshotInstallFrozenGlobalDependencies(*Instance, []importGlobalReference) {}
+func railshotAdoptFrozenGlobalDependencies(*Instance, bool) error                { return nil }
 func railshotImportedGlobalValue(*Instance, *Global) (Value, bool, error) {
 	return Value{}, false, nil
 }

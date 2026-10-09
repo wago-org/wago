@@ -8,6 +8,7 @@ type importGlobalReference struct {
 	global     *Global
 	owner      *Instance
 	descriptor uint64
+	dependency *rv64FrozenGlobalDependencyRow
 }
 
 // The caller holds a normal global import attachment. Snapshot the container
@@ -80,6 +81,10 @@ func rv64RetainGlobalDescriptor(global *Global, store *referenceStore) (importGl
 func railshotReleaseGlobalReferences(entries []importGlobalReference) {
 	var cleanup resourceCleanup
 	for i := range entries {
+		if row := entries[i].dependency; row != nil {
+			cleanup.run(func() { row.holder.release(row) })
+			continue
+		}
 		owner := entries[i].owner // Reread after recursive drains of this list.
 		entries[i] = importGlobalReference{}
 		if owner == nil {
@@ -95,7 +100,14 @@ func railshotReleaseGlobalReferences(entries []importGlobalReference) {
 	cleanup.finish()
 }
 
-func railshotFreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, store *referenceStore) (entries []importGlobalReference, err error) {
+func railshotFreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, store *referenceStore, cleanup *resourceCleanup) ([]importGlobalReference, error) {
+	return rv64FreezeGlobalReferences(c, globals, store, nil, cleanup)
+}
+
+func rv64FreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, store *referenceStore, graph *dependencyGraph, cleanup *resourceCleanup) (entries []importGlobalReference, err error) {
+	if cleanup.panicked {
+		return nil, ErrCallbackPanic
+	}
 	count := 0
 	for _, imp := range c.GlobalImports {
 		if imp.Type == ValFuncRef {
@@ -106,12 +118,18 @@ func railshotFreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport
 		return nil, nil
 	}
 	entries = make([]importGlobalReference, 0, count)
+	completed := false
 	defer func() {
-		if err != nil {
-			railshotReleaseGlobalReferences(entries)
-			entries = nil
+		if !completed {
+			// Use the outer constructor's journal: rollback must not replace an
+			// established primary error or the first body/cleanup panic.
+			cleanup.run(func() { railshotReleaseGlobalReferences(entries) })
+			if !railshotHasFrozenGlobalDependencies(entries) {
+				entries = nil
+			}
 		}
 	}()
+	var holder *rv64FrozenGlobalDependencyRows
 	for i, imp := range c.GlobalImports {
 		if imp.Type != ValFuncRef {
 			continue
@@ -128,22 +146,50 @@ func railshotFreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport
 		if err != nil {
 			return entries, err
 		}
-		shared := false
+		var row *rv64FrozenGlobalDependencyRow
 		for _, prior := range entries {
 			if entry.owner != nil && entry.owner == prior.owner {
-				entry.owner.releaseResourceRoot() // Existing entry still pins it.
-				shared = true
+				cleanup.run(entry.owner.releaseResourceRoot) // Existing row still pins it.
+				row = prior.dependency
 				break
 			}
 		}
-		if entry.owner != nil && !shared {
+		if cleanup.panicked {
+			return entries, ErrCallbackPanic
+		}
+		newOwner := entry.owner != nil && row == nil
+		exchangeBootstrap := false
+		if newOwner {
+			root, exchange, acquireErr := rv64AcquireFrozenGlobalDependency(entry.owner, graph, cleanup)
+			if acquireErr != nil {
+				return entries, acquireErr
+			}
+			if holder == nil {
+				holder = &rv64FrozenGlobalDependencyRows{}
+			}
+			row = &rv64FrozenGlobalDependencyRow{holder: holder, root: root}
+			holder.rows.push(row)
+			exchangeBootstrap = exchange
+		}
+		entry.dependency = row
+		entries = append(entries, entry)
+		if holder != nil {
+			holder.entries = entries
+		}
+		if exchangeBootstrap {
+			cleanup.run(entry.owner.releaseResourceRoot)
+			if cleanup.panicked {
+				return entries, ErrCallbackPanic
+			}
+		}
+		if newOwner {
 			// A token-created host global need not have exported a GlobalObject.
 			// Quiesce its owner before native cross-instance reachability, outside
 			// all store, container and native execution locks.
 			entry.owner.markNativeControlShared()
 		}
-		entries = append(entries, entry)
 	}
+	completed = true
 	return entries, nil
 }
 

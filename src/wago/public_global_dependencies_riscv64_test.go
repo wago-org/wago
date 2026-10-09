@@ -70,13 +70,17 @@ func TestRV64PublicGlobalDependenciesFrozenOwnerSeparation(t *testing.T) {
 				}
 				rows := rv64ExistingGlobalDependencyRows(consumer)
 				frozen := consumer.importGlobalReferences()
-				if rows == nil || rows.rows.n != want || len(frozen) != want || a.resourceRefs != beforeA+want || b.resourceRefs != beforeB+1 || int(rv64ExistingFunctionDependencyOwnership(consumer).member.outgoing.Load()) != want {
+				if rows == nil || rows.rows.n != want || len(frozen) != want || a.resourceRefs != beforeA+want || b.resourceRefs != beforeB+1 || int(rv64ExistingFunctionDependencyOwnership(consumer).member.outgoing.Load()) != want+1 {
 					t.Fatal("counted A cells and separately deduplicated B roots were conflated")
 				}
 				for _, entry := range frozen {
-					if entry.owner != b || entry.owner == a || entry.descriptor == 0 {
+					if entry.owner != b || entry.owner == a || entry.descriptor == 0 || entry.dependency == nil || entry.dependency.root.producer != b {
 						t.Fatal("frozen descriptor does not name its real B owner")
 					}
+					frozenDependencyTestState(t, entry.dependency, dependencyTyped, consumer)
+				}
+				if rv64ExistingFrozenGlobalDependencyRows(consumer).rows.n != 1 {
+					t.Fatal("distinct/aliased A cells acquired multiple B descriptor units")
 				}
 				rows.rows.each(func(row *rv64GlobalDependencyRow) {
 					if row.root.producer != a || row.global.instanceOwner() != a {

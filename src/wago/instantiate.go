@@ -526,15 +526,16 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	if err := railshotPrepareTableDependencies(b, &cleanup.resourceCleanup); err != nil {
 		return nil, err
 	}
-	globalRefs, err := railshotFreezeGlobalReferences(c, importGlobals, opts.store)
-	if err != nil {
-		return nil, err
-	}
+	var globalRefs []importGlobalReference
 	defer func() {
 		if !b.success {
 			cleanup.run(func() { railshotReleaseGlobalReferences(globalRefs) })
 		}
 	}()
+	globalRefs, err = railshotFreezeGlobalReferences(c, importGlobals, opts.store, &cleanup.resourceCleanup)
+	if err != nil {
+		return nil, err
+	}
 	stackBytes := opts.nativeStackBytes
 	if stackBytes == 0 {
 		stackBytes = c.nativeStackBytes()
@@ -1926,7 +1927,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 		cleanup.run(in.endConstruction)
 	}
-	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments) || railshotHasBuilderMemoryDependencies(&memoryAttachments) || railshotHasBuilderGlobalDependencies(&b.globalAttachments) || railshotHasBuilderTableDependencies(&b.tableAttachments)
+	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments) || railshotHasBuilderMemoryDependencies(&memoryAttachments) || railshotHasBuilderGlobalDependencies(&b.globalAttachments) || railshotHasBuilderTableDependencies(&b.tableAttachments) || railshotHasFrozenGlobalDependencies(globalRefs)
 	if opts.runtime == nil && (c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
 		in.beginConstruction(opts.operationReservation)
 		defer finishConstruction()
@@ -1946,6 +1947,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	railshotInstallMemoryDependencies(in, &memoryAttachments)
 	railshotInstallGlobalDependencies(in, &b.globalAttachments)
 	railshotInstallTableDependencies(in, &b.tableAttachments)
+	railshotInstallFrozenGlobalDependencies(in, globalRefs)
 	if opts.store != nil {
 		if err := opts.store.registerInstance(in); err != nil {
 			return nil, err
@@ -2011,6 +2013,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		return nil, err
 	}
 	if err := railshotAdoptTableDependencies(in, finishMemoryContext == nil); err != nil {
+		return nil, err
+	}
+	if err := railshotAdoptFrozenGlobalDependencies(in, finishMemoryContext == nil); err != nil {
 		return nil, err
 	}
 	if opts.afterCreate != nil {

@@ -64,6 +64,7 @@ type rv64FunctionDependencyOwnership struct {
 	memories         atomic.Pointer[rv64MemoryDependencyRows]
 	globals          atomic.Pointer[rv64GlobalDependencyRows]
 	tables           atomic.Pointer[rv64TableDependencyRows]
+	frozenGlobals    atomic.Pointer[rv64FrozenGlobalDependencyRows]
 	managed          bool        // remains true after drain; a reentrant call never rescans imports
 	cleanupCompleted atomic.Bool // resourcesClosed alone is only a cleanup claim
 }
@@ -198,6 +199,9 @@ func railshotFunctionDependencyCleanupCompleted(in *Instance) {
 			return
 		}
 		if rows := ownership.tables.Load(); rows != nil && !rows.complete() {
+			return
+		}
+		if rows := ownership.frozenGlobals.Load(); rows != nil && !rows.complete() {
 			return
 		}
 		ownership.cleanupCompleted.Store(true)
