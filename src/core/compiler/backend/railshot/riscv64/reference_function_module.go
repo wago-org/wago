@@ -12,10 +12,13 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
 		return unsupported("closed reference module directory bound")
 	}
-	if len(m.Imports) != 0 || m.UsesCompactImports || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tables) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
+	if len(m.Imports) != 0 || m.UsesCompactImports || len(m.Tables) != 0 || m.Start != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
 		return unsupported("closed reference module external state")
 	}
 	remaining := MaxModuleBytes
+	if err := admitClosedReferenceNumericState(m, vector, &remaining); err != nil {
+		return err
+	}
 	consume := func(n int) bool {
 		if n > remaining {
 			return false
@@ -119,7 +122,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	if err := admitSWARDecodedMetadataBudget(m, &remaining); err != nil {
 		return err
 	}
-	classifier := wasm.NewModuleInstructionClassifier(m, false)
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for _, fn := range m.Code {
 		r := wasm.ReaderFrom(fn.BodyBytes)
 		budget, depth := 0, 0

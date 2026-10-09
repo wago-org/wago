@@ -136,7 +136,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		if err := admitClosedReferenceFunctionModule(m, false); err != nil {
 			return nil, err
 		}
-		if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+		if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{ExtendedConstGlobals: opts.publicStarts, MultiMemory: opts.publicStarts}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
 			return nil, err
 		}
 	}

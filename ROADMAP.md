@@ -102,8 +102,14 @@ allowlist, and requires destination permission before RW staging becomes RX.
 Sparse production owners retain internal frame spans without callable identities;
 ordinary entry checks every internal descriptor and target row is empty. Tiny
 numeric foreign exports can invoke wider internal reference/vector functions
-after logical producer closure. General reference-valued imports/exports and
-mutable reference ownership remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
+after logical producer closure. Closed internal reference functions also compose
+with owned numeric globals, unshared memory32/64, multiple memories and bulk data.
+Source and retained admission bound state and types together; exact export maps
+and canonical initializer forms preserve confinement. Scalar/SWAR tests cover
+stateful calls and local tails, high-bit initializer bounds, failed stores without
+partial writes, exact generation quotas and all-memory retirement after foreign
+callers close. Resource imports/exports in this closed mode, general
+reference-valued imports/exports and mutable reference ownership remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

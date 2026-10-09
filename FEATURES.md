@@ -91,8 +91,14 @@ trusted artifacts for these closed modules. The retained witness does not grant
 destination permission: default instances reject before executable publication.
 Null-only modules keep an anchor without indexed arenas; indexed owners preserve
 empty internal rows and numeric ordinals. Foreign numeric calls retain closed
-producers and size their internal transport from actual signatures. General
-reference-valued imports and exports remain unsupported. Standalone `ref.null` constants with bounded numeric
+producers and size their internal transport from actual signatures. These closed
+modules also compose with bounded owned numeric globals, unshared memory32/64,
+multiple memories and active/passive data. References remain internal across
+growth, bulk memory operations and local proper tails; resource imports/exports
+and reference-valued imports/exports remain unsupported in this mode. Initializer
+programs and data share the aggregate admission budget, and exact memory exports
+prevent legacy name fallback. Foreign numeric callers retain all producer memories
+through final attachment retirement. Standalone `ref.null` constants with bounded numeric
 function-type indices carry the typed witness, including unreachable uses,
 without allocating declared-call transport. Invocation
 scopes retain imported

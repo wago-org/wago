@@ -201,6 +201,11 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		}
 		g := GlobalDef{Type: abiType, ValueTypeIndex: valueTypes.internCompiled(c, exact), HasValueType: true, Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
+		if c.nativeReferenceFunctionABI && len(g.InitExpr) != 0 {
+			// This closed profile retains only the authoritative initializer form.
+			// Numeric evaluation with unresolved globals produces placeholder bits.
+			g.Bits, g.V128 = 0, V128{}
+		}
 		c.Globals = append(c.Globals, g)
 	}
 	for i := range m.Exports {
@@ -545,6 +550,9 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			}
 		} else {
 			applyDataOffset(&init, off.Init())
+			if c.nativeReferenceFunctionABI && len(init.Offset.Expr) != 0 {
+				init.Offset.Base = 0
+			}
 		}
 		c.Data = append(c.Data, init)
 	}

@@ -186,7 +186,7 @@ func TestReferenceFunctionProductionAdmissionBeforeStaging(t *testing.T) {
 			{"reference-call", func(m *wasm.Module, o *CompileOptions) { m.Code[1].BodyBytes = []byte{0x00, 0x14, 0, 0x0b} }},
 			{"indirect-tail", func(m *wasm.Module, o *CompileOptions) { m.Code[1].BodyBytes = []byte{0x00, 0x13, 0, 0, 0x0b} }},
 			{"reference-tail", func(m *wasm.Module, o *CompileOptions) { m.Code[1].BodyBytes = []byte{0x00, 0x15, 0, 0x0b} }},
-			{"memory", func(m *wasm.Module, o *CompileOptions) { m.Memories = []wasm.MemType{{}} }},
+			{"shared-memory", func(m *wasm.Module, o *CompileOptions) { m.Memories = []wasm.MemType{{Shared: true}} }},
 			{"late-invalid-binding", func(m *wasm.Module, o *CompileOptions) { m.FuncTypes[4].Index = 999 }},
 			{"late-reference-import", func(m *wasm.Module, o *CompileOptions) {
 				m.Imports = []wasm.Import{{Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 2})}}

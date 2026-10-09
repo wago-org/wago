@@ -125,7 +125,7 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 			"inactive-imported-start":   func(v *Compiled) { v.StartImportIdx = 1 },
 			"inactive-start-kind":       func(v *Compiled) { v.StartIsImport = true },
 			"inactive-memory":           func(v *Compiled) { v.MemMinPages = 1 },
-			"memory":                    func(v *Compiled) { v.HasMemory = true },
+			"imported-memory":           func(v *Compiled) { v.HasMemory = true; v.memoryImport = "env.memory" },
 			"table":                     func(v *Compiled) { v.HasTable = true },
 			"inactive-table-type":       func(v *Compiled) { v.TableValueTypeIndex = 1 },
 			"inactive-table-exact":      func(v *Compiled) { v.TableHasValueType = true },
@@ -168,7 +168,7 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 		// Persisted malformed shape must also fail loading. Inactive union fields
 		// and inferred feature bits have canonicalizing writers, so test those
 		// directly above instead of assuming the codec preserves them.
-		for _, name := range []string{"missing-witness", "missing-control-witness", "missing-frame", "missing-context", "missing-table-context", "missing-table-reference", "reference-call-witness", "bad-type-index", "wrong-binding", "wrong-abi-carrier", "reference-export", "dynamic-imports", "dynamic-escape", "start", "memory", "table", "value-pool", "type-fields", "type-array", "recursive-group", "recursive-heap", "exact-reference", "passive-element", "element-values"} {
+		for _, name := range []string{"missing-witness", "missing-control-witness", "missing-frame", "missing-context", "missing-table-context", "missing-table-reference", "reference-call-witness", "bad-type-index", "wrong-binding", "wrong-abi-carrier", "reference-export", "dynamic-imports", "dynamic-escape", "start", "imported-memory", "table", "value-pool", "type-fields", "type-array", "recursive-group", "recursive-heap", "exact-reference", "passive-element", "element-values"} {
 			t.Run(fmt.Sprintf("vector%t-codec-%s", vector, name), func(t *testing.T) {
 				copy := *c.executionView()
 				copy.Types = cloneDefinedTypeDescriptors(copy.Types)
