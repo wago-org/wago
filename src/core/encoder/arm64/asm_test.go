@@ -475,6 +475,9 @@ func TestStoreImmIdxAddressAndValueOrder(t *testing.T) {
 }
 
 func TestStoreImmIdxDenseFallbackMaterializesValueOnce(t *testing.T) {
+	old := foldIdxDispEnabled
+	foldIdxDispEnabled = true
+	defer func() { foldIdxDispEnabled = old }()
 	for _, tc := range []struct {
 		name string
 		disp int32
@@ -482,6 +485,7 @@ func TestStoreImmIdxDenseFallbackMaterializesValueOnce(t *testing.T) {
 		{"unaligned", 3},
 		{"beyond scaled range", 16384},
 		{"large unaligned", 0x12345},
+		{"negative", -16384},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			const val int32 = 0x12345678
