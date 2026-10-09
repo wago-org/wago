@@ -90,6 +90,48 @@ func TestGCNativeFrameRootsARM64FrameRecordWalk(t *testing.T) {
 	runtime.KeepAlive(code)
 }
 
+func TestGCNativeFrameRootsDeepInBoundsChain(t *testing.T) {
+	const frames = 4098
+	const frameStride = 32 + shared.ARM64FrameRecordBytes
+	frame := make([]byte, frames*frameStride)
+	code := make([]byte, 256)
+	base := uintptr(unsafe.Pointer(&frame[0]))
+	codeBase := uintptr(unsafe.Pointer(&code[0]))
+	for i := 0; i < frames; i++ {
+		binary.LittleEndian.PutUint64(frame[i*frameStride+16:], 1)
+		returnPC := codeBase + 100
+		if i == frames-1 {
+			returnPC = codeBase + 200
+		}
+		binary.LittleEndian.PutUint64(frame[i*frameStride+32+shared.ARM64SavedLROffset:], uint64(returnPC))
+	}
+	roots := gcNativeFrameRoots{
+		base:                 base,
+		offsets:              []uint32{16},
+		frameBytes:           32,
+		frameLayout:          gcNativeFrameLayoutARM64,
+		codeBase:             codeBase,
+		codeBytes:            uintptr(len(code)),
+		adapterReturnOffsets: []uint32{200},
+		callsites:            []compiledGCFrameCallsite{{returnOffset: 100, frameBytes: 32, offsets: []uint32{16}}},
+	}
+	defer runtime.KeepAlive(frame)
+	defer runtime.KeepAlive(code)
+	defer func() {
+		if failure := recover(); failure != nil {
+			t.Errorf("in-bounds frame chain panicked: %v", failure)
+		}
+	}()
+	seen := 0
+	roots.RangeRoots(func(gc.RootSlot) bool {
+		seen++
+		return true
+	})
+	if seen != frames {
+		t.Fatalf("root count = %d, want %d", seen, frames)
+	}
+}
+
 func TestGCNativeFrameRootsARM64ForeignWrapperStackAdjustment(t *testing.T) {
 	frame := make([]byte, 256)
 	code := make([]byte, 256)
