@@ -243,6 +243,21 @@ func TestRV64MemoryDependenciesReleaseBlocksAdoptionAndRecycle(t *testing.T) {
 	state := memory.state.Load()
 	state.mu.Lock() // release must claim the graph before it can consume the counter
 	done := make(chan struct{})
+	callbackEntered, callbackResume := make(chan struct{}), make(chan struct{})
+	joined, resumed := false, false
+	g.afterRelease = func(*Instance) { close(callbackEntered); <-callbackResume }
+	defer func() {
+		if !resumed {
+			close(callbackResume)
+		}
+		if !joined {
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				t.Error("committed callback cleanup join timed out")
+			}
+		}
+	}()
 	go func() { rows.release(row, true, false); close(done) }()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -260,13 +275,29 @@ func TestRV64MemoryDependenciesReleaseBlocksAdoptionAndRecycle(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	_, err = receipt.adopt(member, dependencyMemory)
-	if !errors.Is(err, errDependencyState) || !rows.adoptionReleaseWon(row, receipt, err) || producer.resourceRefs != 1 {
+	if !errors.Is(err, errDependencyState) || rows.adoptionReleaseWon(row, receipt, err) || producer.resourceRefs != 1 {
 		state.mu.Unlock()
 		t.Fatal("releasing counter was adopted or lost its physical root", err)
 	}
 	state.mu.Unlock()
 	select {
+	case <-callbackEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("committed physical callback did not start")
+	}
+	rows.mu.Lock()
+	committed := row.state == rv64MemoryDependencyReleasing && row.counterCommitted
+	rows.mu.Unlock()
+	_, err = receipt.adopt(member, dependencyMemory)
+	if !committed || !errors.Is(err, errDependencyState) || !rows.adoptionReleaseWon(row, receipt, err) {
+		t.Fatal("committed but incomplete physical callback did not establish release-won", err)
+	}
+	close(callbackResume)
+	resumed = true
+	select {
 	case <-done:
+		joined = true
+		g.afterRelease = nil
 	case <-time.After(3 * time.Second):
 		t.Fatal("blocked release failed to complete")
 	}

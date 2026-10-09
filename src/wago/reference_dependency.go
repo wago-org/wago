@@ -342,6 +342,54 @@ func (r dependencyReceipt) commit(consumer *dependencyMember, kind dependencyKin
 // if actual finalization or the after-decrement test callback propagates panic.
 func (r dependencyReceipt) release() bool { return r.releaseWithCleanup(nil) }
 
+// releaseWithCounter permits physical release only after an exact counter-only
+// claim commits. The claim must have no user callback or failure after its
+// decrement. False or a pre-consumption panic restores this receipt, including
+// its original classification, and keeps the same physical root for retry.
+func (r dependencyReceipt) releaseWithCounter(consume func() bool) bool {
+	if r.graph == nil || consume == nil {
+		return false
+	}
+	g := r.graph
+	g.mu.Lock()
+	record, slot := g.recordLocked(r.identity)
+	if record == nil || record.state != dependencyPending && record.state != dependencyTyped && record.state != dependencyExternal {
+		g.mu.Unlock()
+		return false
+	}
+	target, consumer, previous := record.target, record.consumer, record.state
+	if previous == dependencyTyped {
+		target.incoming--
+		target.external++
+	}
+	record.state = dependencyReleasing
+	g.mu.Unlock()
+	var cleanup resourceCleanup
+	consumed := false
+	cleanup.run(func() { consumed = consume() })
+	if !consumed {
+		g.mu.Lock()
+		// Other acquisitions may append and relocate records while unlocked.
+		// Reacquire by generation identity; a Releasing slot cannot be reused.
+		current, currentSlot := g.recordLocked(r.identity)
+		if current == nil || currentSlot != slot || current.state != dependencyReleasing {
+			g.mu.Unlock()
+			cleanup.run(func() { panic("dependency counter release lost its claim") })
+			cleanup.finish()
+			return false
+		}
+		current.state = previous
+		if previous == dependencyTyped {
+			target.incoming++
+			target.external--
+		}
+		g.mu.Unlock()
+		cleanup.finish()
+		return false
+	}
+	return r.releaseClaimed(slot, target, consumer, nil)
+}
+
 // A storage receipt must become non-adoptable before its counter obligation is
 // consumed. The optional prerequisite runs after the exact graph release claim,
 // outside graph/lifetime locks, before the real physical root decrement. Both
@@ -364,6 +412,13 @@ func (r dependencyReceipt) releaseWithCleanup(before func()) bool {
 	}
 	record.state = dependencyReleasing
 	g.mu.Unlock()
+	return r.releaseClaimed(slot, target, consumer, before)
+}
+
+// The counter commit (when present) has already happened. This path is
+// irreversible: finalization completes even after a physical callback panic.
+func (r dependencyReceipt) releaseClaimed(slot uint16, target, consumer *dependencyMember, before func()) bool {
+	g := r.graph
 	defer func() {
 		g.mu.Lock()
 		// A releasing slot cannot be recycled while this physical call runs.

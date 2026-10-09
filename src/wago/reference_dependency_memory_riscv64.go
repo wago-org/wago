@@ -25,11 +25,12 @@ const (
 // Released rows retain only the handle/transfer marker; reentry never rescans
 // imports or recreates an entry in transferredImportAttachments.
 type rv64MemoryDependencyRow struct {
-	memory          *Memory
-	root            functionDependencyRoot
-	state           rv64MemoryDependencyState
-	transferred     bool
-	receiptIdentity uint64 // immutable acquisition generation, retained after drain
+	memory           *Memory
+	root             functionDependencyRoot
+	state            rv64MemoryDependencyState
+	transferred      bool
+	counterCommitted bool   // Releasing is reversible until the exact counter commits
+	receiptIdentity  uint64 // immutable acquisition generation, retained after drain
 }
 
 type rv64MemoryDependencyRows struct {
@@ -126,9 +127,13 @@ func railshotDrainBuilderMemoryDependencies(a *memoryImportAttachments) bool {
 	if rows == nil {
 		return false
 	}
-	a.dependencies.rows = nil
-	a.set.reset()
-	rows.drain()
+	var cleanup resourceCleanup
+	cleanup.run(rows.drain)
+	if rows.complete() {
+		a.dependencies.rows = nil
+		a.set.reset()
+	}
+	cleanup.finish()
 	return true
 }
 
@@ -193,7 +198,7 @@ func (rows *rv64MemoryDependencyRows) adoptionReleaseWon(row *rv64MemoryDependen
 	}
 	rows.mu.Lock()
 	defer rows.mu.Unlock()
-	return row.state != rv64MemoryDependencyAttached && row.receiptIdentity == receipt.identity
+	return (row.state == rv64MemoryDependencyReleased || row.counterCommitted) && row.receiptIdentity == receipt.identity
 }
 
 // The terminal owner already holds the resourcesClosed claim; builder cleanup
@@ -219,22 +224,28 @@ func (rows *rv64MemoryDependencyRows) release(row *rv64MemoryDependencyRow, term
 	root := row.root
 	rows.mu.Unlock()
 	counterConsumed := false
-	consumeCounter := func() {
-		owner, consumed := row.memory.detachImporterCounter()
-		counterConsumed = consumed
-		if !consumed || owner != root.producer {
-			panic("memory dependency lost its exact importer-counter obligation")
+	consumeCounter := func() bool {
+		counterConsumed = row.memory.consumeImporterCounter(root.producer)
+		if counterConsumed {
+			rows.mu.Lock()
+			row.counterCommitted = true
+			rows.mu.Unlock()
 		}
+		return counterConsumed
 	}
 	if root.receipt.graph != nil {
 		cleanup.run(func() {
-			if !root.receipt.releaseWithCleanup(consumeCounter) {
+			if !root.receipt.releaseWithCounter(consumeCounter) {
 				panic("memory dependency lost its exact producer receipt")
 			}
 		})
 	} else {
-		cleanup.run(consumeCounter)
-		if root.producer != nil {
+		cleanup.run(func() {
+			if !consumeCounter() {
+				panic("memory dependency lost its exact importer-counter obligation")
+			}
+		})
+		if counterConsumed && root.producer != nil {
 			cleanup.run(root.release)
 		}
 	}

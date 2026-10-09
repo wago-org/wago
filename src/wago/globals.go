@@ -1660,13 +1660,22 @@ func (o *globalOwner) validateImporterCountLocked() error {
 // detachImporterCounter consumes one count without releasing its producer root.
 // A host-owned global still consumes a count even though its producer is nil.
 func (g *Global) detachImporterCounter() (*Instance, bool) {
+	return g.detachImporterCounterMatching(nil, false)
+}
+
+func (g *Global) consumeImporterCounter(expected *Instance) bool {
+	_, consumed := g.detachImporterCounterMatching(expected, true)
+	return consumed
+}
+
+func (g *Global) detachImporterCounterMatching(expected *Instance, checkExpected bool) (*Instance, bool) {
 	if g == nil || g.owner == nil {
 		return nil, false
 	}
 	o := g.owner
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.importers <= 0 {
+	if o.importers <= 0 || checkExpected && (g.owner != o || o.instance != expected) {
 		return nil, false
 	}
 	o.importers--

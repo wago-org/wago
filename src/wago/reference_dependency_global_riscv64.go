@@ -24,11 +24,12 @@ const (
 // move from builder to terminal owner without changing acquisition identities.
 // Released rows retain their handle and transfer marker to prevent legacy scans.
 type rv64GlobalDependencyRow struct {
-	global          *Global
-	root            functionDependencyRoot
-	state           rv64GlobalDependencyState
-	transferred     bool
-	receiptIdentity uint64
+	global           *Global
+	root             functionDependencyRoot
+	state            rv64GlobalDependencyState
+	transferred      bool
+	counterCommitted bool // Releasing is reversible until the exact counter commits
+	receiptIdentity  uint64
 }
 
 type rv64GlobalDependencyRows struct {
@@ -159,9 +160,13 @@ func railshotDrainBuilderGlobalDependencies(a *globalImportAttachments) bool {
 	if rows == nil {
 		return false
 	}
-	a.dependencies.rows = nil
-	a.set.reset()
-	rows.drain()
+	var cleanup resourceCleanup
+	cleanup.run(rows.drain)
+	if rows.complete() {
+		a.dependencies.rows = nil
+		a.set.reset()
+	}
+	cleanup.finish()
 	return true
 }
 
@@ -226,7 +231,7 @@ func (rows *rv64GlobalDependencyRows) adoptionReleaseWon(row *rv64GlobalDependen
 	}
 	rows.mu.Lock()
 	defer rows.mu.Unlock()
-	return row.state != rv64GlobalDependencyAttached && row.receiptIdentity == receipt.identity
+	return (row.state == rv64GlobalDependencyReleased || row.counterCommitted) && row.receiptIdentity == receipt.identity
 }
 
 // The terminal owner already holds the resourcesClosed claim; builder cleanup
@@ -252,22 +257,28 @@ func (rows *rv64GlobalDependencyRows) release(row *rv64GlobalDependencyRow, term
 	root := row.root
 	rows.mu.Unlock()
 	counterConsumed := false
-	consumeCounter := func() {
-		owner, consumed := row.global.detachImporterCounter()
-		counterConsumed = consumed
-		if !consumed || owner != root.producer {
-			panic("global dependency lost its exact importer-counter obligation")
+	consumeCounter := func() bool {
+		counterConsumed = row.global.consumeImporterCounter(root.producer)
+		if counterConsumed {
+			rows.mu.Lock()
+			row.counterCommitted = true
+			rows.mu.Unlock()
 		}
+		return counterConsumed
 	}
 	if root.receipt.graph != nil {
 		cleanup.run(func() {
-			if !root.receipt.releaseWithCleanup(consumeCounter) {
+			if !root.receipt.releaseWithCounter(consumeCounter) {
 				panic("global dependency lost its exact producer receipt")
 			}
 		})
 	} else {
-		cleanup.run(consumeCounter)
-		if root.producer != nil {
+		cleanup.run(func() {
+			if !consumeCounter() {
+				panic("global dependency lost its exact importer-counter obligation")
+			}
+		})
+		if counterConsumed && root.producer != nil {
 			cleanup.run(root.release)
 		}
 	}

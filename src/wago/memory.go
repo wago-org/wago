@@ -327,6 +327,17 @@ func (m *Memory) detachImporter() {
 // root release themselves; ordinary detachImporter retains the existing path.
 // The bool distinguishes a consumed host-only unit from an empty counter.
 func (m *Memory) detachImporterCounter() (*Instance, bool) {
+	return m.detachImporterCounterMatching(nil, false)
+}
+
+// Managed receipts validate the expected producer before the counter commits.
+// A mismatch consumes nothing and leaves the same physical acquisition owned.
+func (m *Memory) consumeImporterCounter(expected *Instance) bool {
+	_, consumed := m.detachImporterCounterMatching(expected, true)
+	return consumed
+}
+
+func (m *Memory) detachImporterCounterMatching(expected *Instance, checkExpected bool) (*Instance, bool) {
 	if m == nil {
 		return nil, false
 	}
@@ -335,6 +346,10 @@ func (m *Memory) detachImporterCounter() (*Instance, bool) {
 		return nil, false
 	}
 	s.mu.Lock()
+	if checkExpected && (m.state.Load() != s || s.owner != expected) {
+		s.mu.Unlock()
+		return nil, false
+	}
 	if count := s.importerCount(); count > 0 {
 		s.setImporterCount(count - 1)
 		owner := s.owner
