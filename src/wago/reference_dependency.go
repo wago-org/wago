@@ -107,11 +107,33 @@ func newDependencyGraph(nodeCap, receiptCap int) (*dependencyGraph, error) {
 // Registration accepts a caller-owned unique member, not an unauthenticated raw
 // descriptor. No global registry is installed by this standalone primitive.
 func (g *dependencyGraph) register(member *dependencyMember) error {
+	return g.registerWithRetainedRoot(member, false)
+}
+
+// registerRetained requires the caller to own a concrete physical root on this
+// producer throughout registration. Frozen descriptors can legitimately reach
+// a logically closed producer through such a guard. Registration acquires no
+// root; even active-member reuse must verify that storage is still pinned.
+func (g *dependencyGraph) registerRetained(member *dependencyMember) error {
+	return g.registerWithRetainedRoot(member, true)
+}
+
+func (g *dependencyGraph) registerWithRetainedRoot(member *dependencyMember, retained bool) error {
 	if g == nil || member == nil || member.owner == nil {
 		return errDependencyMember
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if retained {
+		member.owner.lifeMu.Lock()
+		defer member.owner.lifeMu.Unlock()
+		if member.owner.resourcesClosed || member.owner.resourceRefs <= 0 {
+			return errDependencyClosed
+		}
+		if g.authoritativeLocked(member) {
+			return nil
+		}
+	}
 	if member.graph.Load() != nil || g.owners[member.owner] != nil {
 		return errDependencyMember
 	}
@@ -121,10 +143,12 @@ func (g *dependencyGraph) register(member *dependencyMember) error {
 	if g.nextIdentity == 0 {
 		return errDependencyIdentity
 	}
-	member.owner.lifeMu.Lock()
-	defer member.owner.lifeMu.Unlock()
-	if dependencyConsumerClosedLocked(member.owner) {
-		return errDependencyClosed
+	if !retained {
+		member.owner.lifeMu.Lock()
+		defer member.owner.lifeMu.Unlock()
+		if dependencyConsumerClosedLocked(member.owner) {
+			return errDependencyClosed
+		}
 	}
 	// A concurrent registration through a different graph may use this same
 	// member object. A failed CAS acquires neither membership nor a root.
