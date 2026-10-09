@@ -643,7 +643,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 	f.emitTailFrameRelease()
 	adapterPC := f.a.Adr(X16)
 	f.recordPCRelative(adapterPC)
-	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	f.patchAdr(adapterPC, f.adapterReturnOff)
 	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}
@@ -759,7 +759,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 	// wrapper record as well, preserving the outer LR/results destination.
 	adapterPC := f.a.Adr(X16)
 	f.recordPCRelative(adapterPC)
-	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	f.patchAdr(adapterPC, f.adapterReturnOff)
 	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}
@@ -1050,7 +1050,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 	f.emitTailFrameRelease()
 	adapterPC := f.a.Adr(X16)
 	f.recordPCRelative(adapterPC)
-	f.a.PatchAdr(adapterPC, f.adapterReturnOff)
+	f.patchAdr(adapterPC, f.adapterReturnOff)
 	if f.policy.CompactNative {
 		f.adapterReturnReferenced = true
 	}

@@ -166,6 +166,7 @@ const (
 	functionRepresentationFrameEnd
 	functionRepresentationCallReloc
 	functionRepresentationBranchRange
+	functionRepresentationADRRange
 )
 
 // fn holds the per-function code-generation state — the port's equivalent of
