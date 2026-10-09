@@ -191,14 +191,16 @@ func TestExperimentalReplicationRejects(t *testing.T) {
 
 func BenchmarkExperimentalReplication(b *testing.B) {
 	mode := os.Getenv("WAGO_LOOP_REPLICATION")
-	for _, name := range []string{"map-i32", "dependent-i32", "dependent-f64", "pointer", "simd-i32"} {
+	for _, name := range []string{"map-i32", "dependent-i32", "dependent-f64", "pointer", "simd-i32", "map-f32"} {
 		if name == "simd-i32" && mode != "" && mode != "simd2" && mode != "simd4" {
 			continue
 		}
 		if name != "simd-i32" && (mode == "simd2" || mode == "simd4") {
 			continue
 		}
-
+		if mode == "vector-f32" && name != "map-f32" || mode == "vector-i32" && name != "map-i32" {
+			continue
+		}
 		m := loopExperimentModule(b, name)
 		opts := CompileOptions{ExperimentalLoopMode: mode, AMD64FeaturesSet: true}
 		b.Run(name+"/compile", func(b *testing.B) {

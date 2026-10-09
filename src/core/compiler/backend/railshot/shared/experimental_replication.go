@@ -243,7 +243,9 @@ func (p *ReplicationPlan) Emit(body []byte) []byte {
 // and the decoded module remain immutable. Allocation occurs only on accepted
 // loops. Validation and scratch-allocation costs are included in compile timing.
 func RewriteReplication(m *wasm.Module, mode string) (*wasm.Module, string, error) {
-
+	if mode == "vector-f32" || mode == "vector-i32" || mode == "vector-f32-assert" || mode == "vector-i32-assert" {
+		return RewriteVectorMaps(m, mode == "vector-f32" || mode == "vector-f32-assert", mode == "vector-f32-assert" || mode == "vector-i32-assert")
+	}
 	if mode == "" || mode == "count1" || mode == "simd1" {
 		return m, "disabled", nil
 	}
