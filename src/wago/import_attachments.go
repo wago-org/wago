@@ -253,6 +253,9 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 	}
 	retained := false
 	var seen importDedup[*Global]
+	// The imported source roots need one snapshot for this retention pass.
+	var roots []*Instance
+	rootsLoaded := false
 	for i, imp := range in.c.GlobalImports {
 		if imp.Type != ValFuncRef {
 			continue
@@ -276,7 +279,11 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 				rooted = true
 			}
 		}
-		for _, producer := range importedFuncrefProducerRoots(in) {
+		if !rootsLoaded {
+			roots = importedFuncrefProducerRoots(in)
+			rootsLoaded = true
+		}
+		for _, producer := range roots {
 			if finalization {
 				if provided.Global.retainProducerInstanceForFinalization(producer) {
 					rooted = true
@@ -378,6 +385,10 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		return false
 	}
 	retained := false
+	// Each table handles the writer directly; source roots can be reused.
+	var roots []*Instance
+	rootsLoaded := false
+	var transferredOwners importDedup[*Instance]
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if !ok || table == nil {
@@ -399,7 +410,11 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		// a public token need not occur in the writer's own funcRefDescs. Carry
 		// forward every source container's actual producer roots, while the store
 		// resolver above covers still-live token and canonical descriptor owners.
-		for _, producer := range importedFuncrefProducerRoots(in) {
+		if !rootsLoaded {
+			roots = importedFuncrefProducerRoots(in)
+			rootsLoaded = true
+		}
+		for _, producer := range roots {
 			if finalization {
 				if table.retainProducerInstanceForFinalization(producer) {
 					rooted = true
@@ -410,7 +425,9 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		}
 		if rooted {
 			in.transferImportedTableAttachment(table)
-			in.transferImportedAttachmentsFromOwner(table.instanceOwner())
+			if owner := table.instanceOwner(); owner != nil && transferredOwners.add(owner) {
+				in.transferImportedAttachmentsFromOwner(owner)
+			}
 			retained = true
 		}
 	}
