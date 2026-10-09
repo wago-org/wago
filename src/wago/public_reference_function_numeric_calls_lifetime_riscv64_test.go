@@ -45,8 +45,8 @@ func TestRV64PublicReferenceFunctionProperIndirectTailTargetParked(t *testing.T)
 }
 func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 	ownedTable := tableStage > 0
-	activeTarget := tableStage == 4 || tableStage == 5 || tableStage == 7 || tableStage == 8 || tableStage == 10 || tableStage == 11
-	sharedTarget := tableStage == 5 || tableStage == 8 || tableStage == 11
+	activeTarget := tableStage == 4 || tableStage == 5 || tableStage == 7 || tableStage == 8 || tableStage == 10 || tableStage == 11 || tableStage == 13 || tableStage == 14
+	sharedTarget := tableStage == 5 || tableStage == 8 || tableStage == 11 || tableStage == 14
 	t.Helper()
 	product := "numeric-calls"
 	if ownedTable {
@@ -63,6 +63,9 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 	}
 	if tableStage >= 9 {
 		product = "expression-elements"
+	}
+	if tableStage >= 12 {
+		product = "immutable-cells"
 	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
@@ -86,6 +89,9 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 						}
 						if tableStage >= 9 {
 							fixtureStage = 5
+						}
+						if tableStage >= 12 {
+							fixtureStage = 6
 						}
 						if activeTarget {
 							target = 2
@@ -354,6 +360,9 @@ func rv64ReferenceFunctionNumericCallsForeignOwners(t *testing.T, tableStage int
 	}
 	if tableStage == 5 {
 		product = "expression-elements"
+	}
+	if tableStage == 6 {
+		product = "immutable-cells"
 	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {

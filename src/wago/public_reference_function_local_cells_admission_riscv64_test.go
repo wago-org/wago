@@ -19,7 +19,11 @@ func TestRV64PublicReferenceFunctionLocalCellsAdmission(t *testing.T) {
 		c := rv64NativeTailCompile(t, "reference-local-cells-admission", wasmtest.ClosedReferenceLocalCells(vector, true, true, 1), false)
 		refIndex := c.Globals[2].ValueTypeIndex
 		for name, change := range map[string]func(*Compiled){
-			"immutable":                func(v *Compiled) { v.Globals[2].Mutable = false },
+			"immutable-private-target": func(v *Compiled) {
+				v.Globals[2].Mutable = false
+				v.Globals[2].HasInitFunc = true
+				v.Globals[2].InitFunc = 4
+			},
 			"export":                   func(v *Compiled) { v.GlobalExports["cell"] = 2 },
 			"private-initializer":      func(v *Compiled) { v.Globals[3].InitFunc = 4 },
 			"late-private-initializer": func(v *Compiled) { v.Globals[3].InitFunc = 9 },

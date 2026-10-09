@@ -9,7 +9,7 @@ import (
 )
 
 // Retained numeric state uses the ordinary exact metadata representation. The
-// closed witness confines mutable reference cells to own numeric descriptors;
+// closed witness confines reference cells to own numeric descriptors;
 // imported storage and signatures remain numeric.
 // Shared validators subsequently check limits, initializer types and indices.
 func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
@@ -69,8 +69,8 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		}
 		used |= 1 << g.ValueTypeIndex
 		if g.Type == ValFuncRef {
-			if index < len(c.GlobalImports) || !g.Mutable || c.ValueTypes[g.ValueTypeIndex] != plainReference || g.HasInitGlobal || g.InitGlobal != 0 || len(g.InitExpr) != 0 || g.Bits != 0 || g.V128 != (V128{}) || !g.HasInitFunc && g.InitFunc != 0 || g.HasInitFunc && (uint64(g.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(g.InitFunc))) {
-				return reject("private mutable reference cell literal/target confinement")
+			if index < len(c.GlobalImports) || c.ValueTypes[g.ValueTypeIndex] != plainReference || g.HasInitGlobal || g.InitGlobal != 0 || len(g.InitExpr) != 0 || g.Bits != 0 || g.V128 != (V128{}) || !g.HasInitFunc && g.InitFunc != 0 || g.HasInitFunc && (uint64(g.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(g.InitFunc))) {
+				return reject("private reference cell literal/target confinement")
 			}
 			if !consume(18) {
 				return reject("reference cell initializer bytes")

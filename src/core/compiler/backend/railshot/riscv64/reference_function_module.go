@@ -238,6 +238,12 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return err
 			}
+			if op == 0x24 && uint64(imm.Index) >= uint64(counts.globals) {
+				owned := uint64(imm.Index) - uint64(counts.globals)
+				if owned >= uint64(len(m.Globals)) || !m.Globals[owned].Type.Mutable {
+					return unsupported("closed reference immutable owned global set")
+				}
+			}
 			if op == 0xd2 && !numericTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
 			}

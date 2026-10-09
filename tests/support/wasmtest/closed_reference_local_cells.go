@@ -63,6 +63,7 @@ func ClosedReferenceProperIndirectTailsImportedInitializer(vector, wide bool, st
 }
 
 func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer byte, target int, ownedTable, tableBulk, referenceTail, indirectTail bool, expressionMode ...bool) []byte {
+	immutable := len(expressionMode) > 1 && expressionMode[1]
 	typ, typeByte := wasm.F64, byte(0x7c)
 	if vector {
 		typ, typeByte = wasm.V128, 0x7b
@@ -154,7 +155,16 @@ func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer 
 		// wrapper replaces entry0 and snapshots the exact table.get descriptor.
 		extra[1] = Code([]byte{0x41, 0, 0x20, 0, 0x26, 0, 0x41, 0, 0x25, 0, 0x24, 14,
 			0xfc, 16, 0, 0x1a, 0x20, 1, 0x41, 0, 0x11, 0, 0, 0x0b})
-		body := []byte{3, 1, 0x70, 1, 0x7f, 1, typeByte, 0x20, 0, 0x21, 3, 0x23, 2, 0xd2, index, 0x20, 1, 0x10, 12,
+		parameterIndex := index
+		if immutable {
+			// Dispatch must read immutable global16, not accidentally reuse the
+			// wrapper's valid but different reference parameter.
+			parameterIndex = 11
+			if target == 1 {
+				parameterIndex = 0
+			}
+		}
+		body := []byte{3, 1, 0x70, 1, 0x7f, 1, typeByte, 0x20, 0, 0x21, 3, 0x23, 2, 0xd2, parameterIndex, 0x20, 1, 0x10, 12,
 			0x22, 4, 0xad, 0x24, 11, 0x20, 4, 0x20, 2, 0x41, 1, 0xd2, 1, 0x26, 0, 0x41, 1, 0x11, 1, 0,
 			0x21, 5, 0x21, 4, 0x20, 3, 0x10, 9, 0x21, 3, 0x23, 4, 0xd1, 0x24, 10, 0x20, 5, 0x20, 4, 0x20, 3, 0x0b}
 		leaf = append(ULEB(uint32(len(body))), body...)
@@ -179,20 +189,40 @@ func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer 
 		elements = []byte{3, 0, 0x41, 0, 0x0b, 3, index, 1, 7, 3, 0, 6, 0, 1, 2, 3, 7, 11, 1, 0, 3, index, 1, 7}
 	}
 
+	if immutable {
+		index := byte(0)
+		if target == 1 {
+			index = 11
+		} else if target == 2 {
+			index = 2
+		}
+		globals = append(globals, GlobalEntry(wasm.FuncRef, false, []byte{0xd2, index, 0x0b})) // private immutable target,16
+	}
+
 	if referenceTail || indirectTail {
 		// Preserve the bulk effects and descriptor snapshot. The target comes from
 		// the indexed parameter or the complete copied table row.
-		body := []byte{0x20, 0, 0x41, 1, 0xfc, 15, 0, 0xad, 0x24, 15,
+		body := []byte{0x20, 0}
+		if immutable {
+			body = []byte{0x23, 16}
+		}
+		body = append(body, 0x41, 1, 0xfc, 15, 0, 0xad, 0x24, 15,
 			0x23, 15, 0x42, 3, 0x51, 0x04, 0x40, 0x41, 0, 0x41, 0, 0x41, 3, 0xfc, 12, 2, 0,
-			0x05, 0x41, 0, 0x41, 0, 0x41, 0, 0xfc, 12, 2, 0, 0x0b, 0xfc, 13, 2, 0xfc, 13, 2}
+			0x05, 0x41, 0, 0x41, 0, 0x41, 0, 0xfc, 12, 2, 0, 0x0b, 0xfc, 13, 2, 0xfc, 13, 2)
 		expression := len(expressionMode) != 0 && expressionMode[0]
-		if expression {
+		if expression && !immutable {
 			// First dispatch must consume the untouched expression-installed row.
 			// On later invocations the dropped payload is empty, so refill row0.
 			body = append(body, 0x23, 15, 0x42, 3, 0x52, 0x04, 0x40)
 		}
-		body = append(body, 0x41, 0, 0x20, 0, 0x41, 1, 0xfc, 17, 0)
-		if expression {
+		body = append(body, 0x41, 0)
+		if immutable {
+			body = append(body, 0x23, 16)
+		} else {
+			body = append(body, 0x20, 0)
+		}
+		body = append(body, 0x41, 1, 0xfc, 17, 0)
+		if expression && !immutable {
 			body = append(body, 0x0b)
 		}
 		body = append(body, 0x41, 3, 0x41, 0, 0x41, 1, 0xfc, 14, 0, 0,

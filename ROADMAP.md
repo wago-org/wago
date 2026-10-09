@@ -157,6 +157,13 @@ callback clearing, start and foreign reentry, parked retirement/Close joins,
 aggregate and physical quotas, compiler-free execution and zero-allocation warm
 local calls qualify the bounded composition. No mutable foreign-owner edge or
 cycle collector is introduced.
+Own immutable plain nullable funcref cells also compose with private scalar/SWAR
+functions, with exact null/numeric literals and preserved mutability. Complete
+source and retained bounds, table-free null headers/full numeric directories,
+dead/nested immutable-write rejection, real cell-produced indirect tails,
+native/Go imports, parked callbacks, retirement, quotas and compiler-free
+artifacts qualify this slice. Immutable cells remain instance-owned storage;
+general reference imports/exports still require the separate ownership work.
 Ordinary numeric `call_ref` now composes with the selected scalar/SWAR private
 frames and own mutable cells. Numeric own/native/Go targets stay canonical; private
 reference-bearing rows remain noncallable. Dead target confinement, frontend-backed

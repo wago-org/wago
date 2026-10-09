@@ -136,7 +136,13 @@ preserve distinct full-width references across cell clearing, reentry and parks;
 foreign numeric attachments retain storage and code through logical retirement.
 Null-only cells keep only the context header when instructions do not require
 descriptors; reference initializers allocate the full directory without creating typed-call/control permission. Reference-valued
-imports/exports remain unsupported in this mode. Ordinary numeric `call_ref` now
+imports/exports remain unsupported in this mode. Own immutable plain nullable
+funcref cells also compose with private scalar/SWAR functions using exact
+null/numeric literal initializers. Tests check preserved mutability, exact
+header/directory identity, complete source/retained bounds and immutable-write
+rejection in dead and nested code. Cell-produced indirect tails, imported
+native/Go targets, parks, retirement and compiler-free artifacts are covered;
+immutable cells remain live instance-owned storage throughout those checks. Ordinary numeric `call_ref` now
 composes with these private frames and cells through the existing retained-owner
 bridge. Indexed numeric targets include own functions, imported native functions
 and scalar shared/owned Go wrappers; private functions remain noncallable descriptor

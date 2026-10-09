@@ -65,6 +65,9 @@ func rv64ReferenceFunctionNumericCallsRetiredRelays(t *testing.T, tableStage int
 	if tableStage == 5 {
 		product = "expression-elements"
 	}
+	if tableStage == 6 {
+		product = "immutable-cells"
+	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
 			for _, route := range []string{"ordinary", "static-tail", "reference-call", "reference-tail", "reexport"} {

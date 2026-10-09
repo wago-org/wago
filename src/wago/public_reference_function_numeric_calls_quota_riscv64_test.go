@@ -46,6 +46,9 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 	if tableStage == 5 {
 		product = "expression-elements"
 	}
+	if tableStage == 6 {
+		product = "immutable-cells"
+	}
 	for _, vector := range []bool{false, true} {
 		t.Run(fmt.Sprintf("vector%t", vector), func(t *testing.T) {
 			owners := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))

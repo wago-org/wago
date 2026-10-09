@@ -17,6 +17,12 @@ import (
 )
 
 func rv64ReferenceNumericCallsFixture(tableStage int, importedInitializer, vector, tails, wide bool, start, target int) []byte {
+	if tableStage == 6 {
+		if importedInitializer {
+			return wasmtest.ClosedReferenceImmutableCellsImportedInitializer(vector, wide, start)
+		}
+		return wasmtest.ClosedReferenceImmutableCells(vector, wide, start, target)
+	}
 	if tableStage == 5 {
 		if importedInitializer {
 			return wasmtest.ClosedReferenceExpressionElementsImportedInitializer(vector, wide, start)
@@ -78,6 +84,7 @@ func rv64ReferenceNumericCallsCheck(t *testing.T, in *Instance, vector bool, wan
 		indexWant, resultWant = 2, 0xfffffffe
 	}
 	value := readGlobalObject(in.globalCells[14], ValFuncRef)
+	rv64ReferenceImmutableCellCheck(t, in, value)
 	if index, ok := in.funcrefDescriptorIndex(value); !ok || index != indexWant || value>>32 == 0 || readGlobalObject(in.globalCells[11], ValI64) != resultWant {
 		t.Fatal("indexed numeric call_ref target identity/result", value, index, ok, readGlobalObject(in.globalCells[11], ValI64), resultWant)
 	}
@@ -92,7 +99,7 @@ func rv64ReferenceNumericCallsCheck(t *testing.T, in *Instance, vector bool, wan
 	if in.c.tableCount() != 0 {
 		table := privateTableBytes(in)
 		size, cleared := uint32(3), 2
-		if len(in.c.Globals) == 16 {
+		if len(in.c.Globals) >= 16 {
 			size, cleared = 4, 4
 			wantGrow := uint64(3)
 			if readGlobalObject(in.globalCells[6], ValI32) > 1 {
@@ -171,6 +178,9 @@ func rv64ReferenceFunctionNumericCallsSourceArtifact(t *testing.T, tableStage in
 	}
 	if tableStage == 5 {
 		product = "expression-elements"
+	}
+	if tableStage == 6 {
+		product = "immutable-cells"
 	}
 	for _, target := range []int{0, 1, 2} {
 		for _, artifact := range []bool{false, true} {

@@ -31,7 +31,7 @@ func countClosedReferenceImports(m *wasm.Module) (closedReferenceImports, error)
 	return counts, nil
 }
 
-// Imported storage remains numeric; owned mutable reference cells contain only
+// Imported storage remains numeric; owned reference cells contain only
 // null or this instance's numeric descriptor slots. Their
 // initializers and payloads share the closed module's aggregate byte budget,
 // before validation, copying data, or allocating derived state directories.
@@ -92,9 +92,9 @@ func admitClosedReferenceNumericStateWithImports(m *wasm.Module, vector bool, re
 	}
 	for _, global := range m.Globals {
 		typ := global.Type.Type
-		reference := wasm.EqualValType(typ, wasm.FuncRef) && global.Type.Mutable
+		reference := wasm.EqualValType(typ, wasm.FuncRef)
 		if !reference && (typ.Kind() == wasm.ValRef || !scalarType(typ, true) && !(vector && wasm.EqualValType(typ, wasm.V128))) {
-			return unsupported("closed reference owned numeric or private mutable funcref globals only")
+			return unsupported("closed reference owned numeric or private funcref globals only")
 		}
 		if reference {
 			// This parser is bounded and never calls the local-mutable helper:
