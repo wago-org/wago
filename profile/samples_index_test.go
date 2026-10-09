@@ -51,6 +51,18 @@ func TestResolveZeroSizeImageAtLiveBase(t *testing.T) {
 	}
 }
 
+func TestResolveZeroSizeImageInsideLiveRange(t *testing.T) {
+	events := []jitprofile.Event{
+		{Timestamp: 1, Kind: "load", ImageID: 1, Image: &jitprofile.Image{ID: 1, Base: 0x1000, Size: 32,
+			Regions: []jitprofile.Region{{Size: 32, Kind: "guest-body", Function: 0}}}},
+		{Timestamp: 2, Kind: "load", ImageID: 2, Image: &jitprofile.Image{ID: 2, Base: 0x1010}},
+	}
+	report, err := Resolve(events, []Sample{{Timestamp: 2, PC: 0x1011, Period: 1}}, "observations")
+	if err != nil || report.Samples != 1 || report.UnknownSamples != 0 || len(report.Rows) != 1 {
+		t.Fatalf("report=%+v, err=%v", report, err)
+	}
+}
+
 // BenchmarkResolveInterleavedLoads measures the lifecycle join when each load
 // has a sample before the next load. Address order varies while all three
 // cases have the same report size.
