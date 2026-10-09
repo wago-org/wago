@@ -308,13 +308,14 @@ func (t *Table) Close() error {
 	t.mu.Unlock()
 	o.mu.Unlock()
 
-	for _, root := range roots {
-		root.releaseResourceRoot()
-	}
-	err := arena.Close()
+	var cleanup resourceCleanup
+	cleanup.run(func() { releaseRetainedResourceRoots(roots) })
+	var err error
+	cleanup.run(func() { err = arena.Close() })
 	if store != nil {
-		store.storeObjectClosed()
+		cleanup.run(store.storeObjectClosed)
 	}
+	cleanup.finish()
 	return err
 }
 
