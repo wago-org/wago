@@ -120,8 +120,13 @@ starts also compose with private reference functions, numeric imports and local
 or imported proper tails. Source and retained admission check the exact defined
 binding, canonical selector and actual framed entry before publication. Existing
 construction leases protect callbacks, nested reentry and rollback; initialized
-imported effects remain visible after a start trap. Imported starts remain gated
-in this private-reference mode. Reference-valued
+imported effects remain visible after a start trap. Canonical numeric imported
+`() -> ()` starts also compose with this private-reference mode. Interleaved
+resource imports preserve the function ordinal. Shared/owned Go starts retain
+scoped callback authority and construction reservations through guest reentry;
+native starts retain the actual producer and full-width framed transport.
+Linking failures reject before publication, and joined rollback releases physical
+owners and executable code. Reference-valued
 imports/exports remain unsupported in this mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories

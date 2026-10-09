@@ -135,14 +135,14 @@ func TestReferenceFunctionDefinedStartOtherOrdinals(t *testing.T) {
 	}
 }
 
-func TestReferenceFunctionDefinedStartRejectsVoidImportedStart(t *testing.T) {
+func TestReferenceFunctionDefinedStartVoidImportedStart(t *testing.T) {
 	for _, start := range []bool{false, true} {
 		m, err := wasm.DecodeModule(wasmtest.ClosedReferenceImportedVoidStart(start))
 		if err != nil {
 			t.Fatal(err)
 		}
 		err = admitClosedReferenceFunctionModule(m, false)
-		if (err == nil) != (!start) {
+		if err != nil {
 			t.Fatal("selected void imported start gate", start, err)
 		}
 	}

@@ -132,12 +132,17 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
 	if m.Start != nil {
 		index := uint64(*m.Start)
-		if index < uint64(imported) || index >= uint64(imported+len(m.Code)) || !numericTarget(uint32(index)) || !consume(5) {
-			return unsupported("closed reference start requires a bounded defined numeric function")
+		if index >= uint64(imported+len(m.Code)) || !numericTarget(uint32(index)) || !consume(5) {
+			return unsupported("closed reference start requires a bounded numeric function")
 		}
-		ft := &m.Types[m.FuncTypes[int(index)-imported].Index].SubTypes[0].Comp
+		var ft *wasm.CompType
+		if index < uint64(imported) {
+			ft = importSignatures[index]
+		} else {
+			ft = &m.Types[m.FuncTypes[int(index)-imported].Index].SubTypes[0].Comp
+		}
 		if len(ft.Params) != 0 || len(ft.Results) != 0 {
-			return unsupported("closed reference defined start requires a void signature")
+			return unsupported("closed reference start requires a void signature")
 		}
 	}
 	for _, ex := range m.Exports {

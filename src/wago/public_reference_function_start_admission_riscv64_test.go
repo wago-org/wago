@@ -119,12 +119,12 @@ func TestRV64PublicReferenceFunctionDefinedStartRetainedAdmission(t *testing.T) 
 	}
 }
 
-func TestRV64PublicReferenceFunctionDefinedStartRejectsVoidImportedStart(t *testing.T) {
+func TestRV64PublicReferenceFunctionDefinedStartVoidImportedStart(t *testing.T) {
 	c := rv64NativeTailCompile(t, "reference-start-void-import-admission", wasmtest.ClosedReferenceImportedVoidStart(false), false)
 	v := cloneCompiledMetadata(c.executionView())
 	v.HasStart = true
 	v.StartIsImport = true
-	if err := rv64ValidateReferenceFunctions(v); err == nil || !strings.Contains(err.Error(), "external state or callable escape") {
-		t.Fatal("selected void imported start admitted", err)
+	if err := rv64ValidateReferenceFunctions(v); err != nil {
+		t.Fatal("selected void imported start rejected", err)
 	}
 }

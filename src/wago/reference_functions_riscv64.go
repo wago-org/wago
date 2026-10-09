@@ -56,13 +56,15 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeReferenceCallABI || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions-c.NumImports || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return reject("bounded framed function ABI required")
 	}
-	if c.dynamicFuncrefEscape || c.StartIsImport || c.StartImportIdx != 0 || !c.HasStart && c.StartLocalFunc != 0 || c.tableCount() != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.Elems) != 0 || len(c.customInstructions) != 0 {
+	if c.dynamicFuncrefEscape || !c.HasStart && c.StartIsImport || (!c.HasStart || c.StartIsImport) && c.StartLocalFunc != 0 || (!c.HasStart || !c.StartIsImport) && c.StartImportIdx != 0 || c.tableCount() != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.Elems) != 0 || len(c.customInstructions) != 0 {
 		return reject("external state or callable escape")
 	}
 	if c.HasStart {
 		if _, err := compiledStartIndex(c); err != nil {
 			return err
 		}
+	}
+	if c.HasStart && !c.StartIsImport {
 		local := c.StartLocalFunc
 		entry, end := c.Entry[local], len(c.code)
 		if local+1 < len(c.Entry) {

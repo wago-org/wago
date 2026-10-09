@@ -140,7 +140,14 @@ metadata accounting. Construction, callback scope, nonnil operation reservations
 physical owners and static capabilities survive nested reentry and parked growth.
 Start-once, nonzero/final ordinals, trap/panic/initializer rollback, cancellation,
 Close joins and exact quota rejection/retry have focused source/artifact coverage.
-Imported starts remain excluded from this selected mode. Mixed table/call_ref and private mutable-cell fixtures retain
+Canonical numeric imported void starts now compose with the selected mode,
+preserving separate import namespaces and the defined-start frame proof. Shared
+and owned Go callbacks use scoped construction authority without a fabricated
+native outer frame; native callbacks identify the original producer, including
+reexports, and retain full-width transport. Start-once, nested private guest
+entry, cancellation/Close joins, genuine native traps, code retirement, linking
+before publication and exact quota retries have source/artifact coverage.
+Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains
