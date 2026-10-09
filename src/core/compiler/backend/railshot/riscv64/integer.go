@@ -69,13 +69,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	privateRefs := floating && (state.ownedTable || state.importReferences)
 	functionRefs := state != nil && state.referenceFunctions
 	if functionRefs {
-		if !privateRefs || state.importedFunctions != 0 || state.importTailCalls || state.dynamicTailCalls {
+		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.importTailCalls || state.dynamicTailCalls {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
 		if len(state.functions) > MaxFunctions {
 			return integerSummary{}, unsupported("private reference function directory bound")
 		}
-		for _, sig := range state.functions {
+		for i, sig := range state.functions {
+			if i < state.importedFunctions {
+				if err := integerNumericSignature(sig.signature, floating); err != nil {
+					return integerSummary{}, err
+				}
+			}
 			if _, _, err := admitDeclaredControlSignature(sig.signature, referenceTypes, true, state.referenceCalls, false); err != nil {
 				return integerSummary{}, err
 			}

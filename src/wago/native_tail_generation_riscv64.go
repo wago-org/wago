@@ -108,6 +108,7 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		counts.HostSlots += actual.HostSlots
 		counts.MaskSlots += actual.MaskSlots
 		counts.NonCallable += actual.NonCallable
+		counts.TargetNonCallable += actual.TargetNonCallable
 		view, err := (rv64TailCodeOwner{owner}).nativeOwnerCodeView(true)
 		if err != nil {
 			return nil, err

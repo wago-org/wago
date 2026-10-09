@@ -10,21 +10,30 @@ import (
 // operate on owned numeric globals, two mixed-width memories and bulk data.
 // Only numeric functions are exported. Function ordinals 2 and 3 are internal.
 func ClosedReferenceState(vector, tails, wideFirst bool) []byte {
-	return closedReferenceState(vector, tails, wideFirst, 32, false)
+	return closedReferenceState(vector, tails, wideFirst, 32, false, false)
 }
 
 // ClosedReferenceStateOffset varies the full memory64 active initializer address.
 func ClosedReferenceStateOffset(vector bool, offset uint64) []byte {
-	return closedReferenceState(vector, false, true, offset, false)
+	return closedReferenceState(vector, false, true, offset, false, false)
 }
 
 // ClosedReferenceResources exports owned numeric resources and contains no grow
 // instruction: exported reservations must still support growth by borrowers.
 func ClosedReferenceResources(vector, tails, wideFirst bool) []byte {
-	return closedReferenceState(vector, tails, wideFirst, 32, true)
+	return closedReferenceState(vector, tails, wideFirst, 32, true, false)
 }
 
-func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, resources bool) []byte {
+// ClosedReferenceImports keeps a reference in a local and below a numeric/SWAR
+// operand across three ordinary numeric imports, then exercises owned state.
+// The third root argument chooses local (0), null (1), or imports (2..4).
+// The exported local-null global independently reports the saved local after callbacks, before it is overwritten by the
+// lower operand. Imports env.native/shared/owned all have (i32)->i32 type.
+func ClosedReferenceImports(vector, tails, wideFirst bool) []byte {
+	return closedReferenceState(vector, tails, wideFirst, 32, false, true)
+}
+
+func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, resources, imported bool) []byte {
 	typ := wasm.F64
 	load, store := []byte{0x2b}, []byte{0x39}
 	zero := []byte{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b}
@@ -54,8 +63,13 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 		return append(out, 0x40, byte(index), 0)
 	}
 	var types, functions, codes, exports [][]byte
+	prefix := byte(0)
+	if imported {
+		prefix = 3
+		types = append(types, FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
+	}
 	add := func(params, results []wasm.ValType, body []byte, name string, local bool) {
-		index := uint32(len(functions))
+		index := uint32(len(functions)) + uint32(prefix)
 		functions = append(functions, ULEB(uint32(len(types))))
 		types = append(types, FuncType(params, results))
 		code := Code(body)
@@ -68,15 +82,25 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 			exports = append(exports, ExportEntry(name, 0, index))
 		}
 	}
-	root := []byte{0xd2, 1, 0x20, 0, 0x20, 1, 0x10, 2, 0xd1, 0x0b}
-	add([]wasm.ValType{wasm.I32, typ}, []wasm.ValType{typ, wasm.I32, wasm.I32}, root, "run", false)
+	root := []byte{0xd2, 1 + prefix, 0x20, 0, 0x20, 1, 0x10, 2 + prefix, 0xd1, 0x0b}
+	rootParams := []wasm.ValType{wasm.I32, typ}
+	if imported {
+		rootParams = append(rootParams, wasm.I32)
+		choice := []byte{0x20, 2, 0x41, 1, 0x46, 0x04, 0x70, 0xd0, 0x70, 0x05}
+		for i := byte(0); i < 3; i++ {
+			choice = append(choice, 0x20, 2, 0x41, i+2, 0x46, 0x04, 0x70, 0xd2, i, 0x05)
+		}
+		choice = append(choice, 0xd2, 1+prefix, 0x0b, 0x0b, 0x0b, 0x0b)
+		root = append(choice, root[2:]...)
+	}
+	add(rootParams, []wasm.ValType{typ, wasm.I32, wasm.I32}, root, "run", false)
 	add(nil, nil, []byte{0x0b}, "", false)
 	params, results := []wasm.ValType{wasm.FuncRef, wasm.I32, typ}, []wasm.ValType{typ, wasm.I32, wasm.FuncRef}
 	call := byte(0x10)
 	if tails {
 		call = 0x12
 	}
-	add(params, results, []byte{0x20, 0, 0x20, 1, 0x20, 2, call, 3, 0x0b}, "", false)
+	add(params, results, []byte{0x20, 0, 0x20, 1, 0x20, 2, call, 3 + prefix, 0x0b}, "", false)
 	// Keep the reference as an operand across numeric side effects, then save
 	// and reload it through a reference local after the last bulk operation.
 	leaf := []byte{0x20, 0, 0x20, 1}
@@ -84,6 +108,9 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 		leaf = append(leaf, 0x23, 1, 0x6a)
 	}
 	leaf = append(leaf, 0x23, 0, 0x6a, 0x24, 1, 0x20, 2, 0x24, 2)
+	if imported {
+		leaf = []byte{0x20, 0, 0x22, 3, 0x20, 2, 0x20, 1, 0x10, 0, 0x10, 1, 0x10, 2, 0x23, 0, 0x6a, 0x24, 1, 0x24, 2}
+	}
 	for i := 0; i < 2; i++ {
 		if !resources {
 			leaf = append(leaf, constant(i, 1)...)
@@ -98,6 +125,9 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 	leaf = append(leaf, constant(0, 48)...)
 	leaf = append(leaf, constant(1, 48)...)
 	leaf = append(leaf, 0x41, 4, 0xfc, 10, 0, 1)
+	if imported {
+		leaf = append(leaf, 0x20, 3, 0xd1, 0x24, 3)
+	}
 	leaf = append(leaf, 0x21, 3, 0x23, 2, 0x23, 1, 0x20, 3, 0x0b)
 	add(params, results, leaf, "", true)
 	for i := 0; i < 2; i++ {
@@ -135,5 +165,21 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 	}
 	data = append(data, []byte{1, 4, 0x12, 0x34, 0x56, 0x78})
 	globals := [][]byte{GlobalEntry(wasm.I32, false, []byte{0x41, 7, 0x41, 2, 0x6a, 0x0b}), GlobalEntry(wasm.I32, true, []byte{0x23, 0, 0x41, 2, 0x6a, 0x0b}), GlobalEntry(typ, true, zero)}
-	return Module(Section(1, Vec(types...)), Section(3, Vec(functions...)), Section(5, Vec(memories...)), Section(6, Vec(globals...)), Section(7, Vec(exports...)), Section(9, []byte{1, 3, 0, 1, 1}), Section(12, []byte{3}), Section(10, Vec(codes...)), Section(11, Vec(data...)))
+	sections := [][]byte{Section(1, Vec(types...))}
+	if imported {
+		var imports [][]byte
+		for _, name := range []string{"native", "shared", "owned"} {
+			im := append(Name("env"), Name(name)...)
+			imports = append(imports, append(im, 0, 0))
+		}
+		sections = append(sections, Section(2, Vec(imports...)))
+		globals = append(globals, GlobalEntry(wasm.I32, true, []byte{0x41, 0, 0x0b}))
+		exports = append(exports, ExportEntry("local-null", 3, 3), ExportEntry("memory0", 2, 0))
+	}
+	element := []byte{1, 3, 0, 1, 1 + prefix}
+	if imported {
+		element = []byte{1, 3, 0, 4, 0, 1, 2, 1 + prefix}
+	}
+	sections = append(sections, Section(3, Vec(functions...)), Section(5, Vec(memories...)), Section(6, Vec(globals...)), Section(7, Vec(exports...)), Section(9, element), Section(12, []byte{3}), Section(10, Vec(codes...)), Section(11, Vec(data...)))
+	return Module(sections...)
 }

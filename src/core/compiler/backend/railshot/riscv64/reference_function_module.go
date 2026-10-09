@@ -9,10 +9,10 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // It does not authorize production staging or general reference ownership.
 // Every bound precedes frontend validation and derived carrier allocation.
 func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
-	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
+	if m == nil || len(m.Imports) > MaxHostFunctionImports || len(m.Code) == 0 || len(m.Code) > MaxFunctions-len(m.Imports) || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
 		return unsupported("closed reference module directory bound")
 	}
-	if len(m.Imports) != 0 || m.UsesCompactImports || len(m.Tables) != 0 || m.Start != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
+	if m.UsesCompactImports || len(m.Tables) != 0 || m.Start != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
 		return unsupported("closed reference module external state")
 	}
 	remaining := MaxModuleBytes
@@ -47,6 +47,27 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		}
 	}
 	var references [MaxFunctions]bool
+	// The imported prefix is numeric. Internal reference carriers never cross
+	// an imported signature, including an unused import or unreachable call.
+	imported := len(m.Imports)
+	for _, im := range m.Imports {
+		if im.Type.Kind != wasm.ExternFunc {
+			return unsupported("closed reference numeric function imports only")
+		}
+		// Include the separator in the retained "module.name" binding.
+		index := im.Type.FuncType()
+		if index.Rec || uint64(index.Index) >= uint64(len(m.Types)) || !consume(6) {
+			return unsupported("closed reference imported function binding")
+		}
+		sig := &m.Types[index.Index].SubTypes[0].Comp
+		if vector {
+			if err := swarImportSignature(sig); err != nil {
+				return err
+			}
+		} else if err := integerNumericSignature(sig, true); err != nil {
+			return err
+		}
+	}
 	hasReferenceFunction := false
 	for i, index := range m.FuncTypes {
 		if index.Rec || uint64(index.Index) >= uint64(len(m.Types)) {
@@ -57,7 +78,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		if err != nil {
 			return err
 		}
-		references[i] = reference
+		references[imported+i] = reference
 		hasReferenceFunction = hasReferenceFunction || reference
 		fn := &m.Code[i]
 		if len(fn.BodyBytes) == 0 || len(fn.BodyBytes) > 64<<10 || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || len(fn.Locals.Runs) > limit || fn.LocalDeclBytes > MaxModuleBytes || !consume(len(fn.BodyBytes)) {
@@ -96,7 +117,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	if !hasReferenceFunction {
 		return unsupported("closed reference module requires internal reference functions")
 	}
-	numericTarget := func(index uint32) bool { return uint64(index) < uint64(len(m.Code)) && !references[index] }
+	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
 	for _, ex := range m.Exports {
 		switch ex.Index.Kind {
 		case wasm.ExternFunc:
@@ -180,6 +201,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			}
 			if op == 0xd2 && !numericTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
+			}
+			if op == 0x12 && uint64(imm.Index) < uint64(imported) {
+				return unsupported("closed reference imported proper tails are unsupported")
 			}
 		}
 	}

@@ -73,10 +73,10 @@ are bounded before validation. Private same-image direct-call lowering
 preserves function-reference arguments/results, mixed compact cells and
 reference root joins. Its separately enabled cooperative proper tails require
 exact reference result types and reuse the checked frame protocol. This private
-mode rejects imports and indirect/reference calls or tails; legacy production
+mode rejects reference-valued imports and indirect/reference calls or tails; legacy production
 staging routes reject the mode. Private decoded whole-module compilation also
 checks numeric exports and descriptor targets, bounded declarations/code and
-inert metadata before validation. It excludes imported state and prevents
+inert metadata before validation. It excludes imported resources and prevents
 reference-bearing functions from escaping; legacy isolated instantiation rejects
 the mode before allocation. Private sparse owner snapshots retain every physical
 function frame while leaving internal-only descriptor and target rows empty.
@@ -96,7 +96,13 @@ modules also compose with bounded owned numeric globals, unshared memory32/64,
 multiple memories and active/passive data. References remain internal across
 growth, bulk memory operations and local proper tails. Owned numeric memories
 and globals may be exported with exact names and aliases; export counts and name
-bytes share the module budget. Resource imports and reference-valued imports/exports
+bytes share the module budget. Bounded ordinary numeric function imports also
+compose with private references in locals and lower operands. Native imports and
+scalar Go/owned callbacks preserve dirty-i32 normalization and scalar/SWAR payloads;
+local proper tails remain available. Sparse imported owners retain numeric target
+identities and empty internal rows through foreign entry and callback interruption.
+Go/owned signatures remain scalar with at most 64 arguments/results. Imported
+proper tails, resource imports and reference-valued imports/exports
 remain unsupported in this mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories

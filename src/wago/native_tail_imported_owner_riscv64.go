@@ -30,9 +30,6 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 	}
 	counts.Owners, counts.Functions = 1, n
 	if c.nativeReferenceFunctionABI {
-		if c.NumImports != 0 {
-			return counts, 0, rv64TailGenerationError("closed reference owner cannot import functions")
-		}
 		counts.MaskSlots = n
 	}
 	for i := 0; i < n; i++ {
@@ -100,8 +97,13 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 			metadata += int(unsafe.Sizeof(rv64TailThunkCodeOwner{}))
 		}
 		counts.Targets, counts.TargetValues, counts.ProxySlots = n, counts.Values, n
+		counts.TargetNonCallable = counts.NonCallable
 		var bytes int
-		if counts.HostSlots != 0 {
+		if c.nativeReferenceFunctionABI && counts.HostSlots != 0 {
+			bytes, err = railshot.NativeTailSparseHostOwnerBytes(n, c.NumImports, counts.NonCallable, counts.Values)
+		} else if c.nativeReferenceFunctionABI {
+			bytes, err = railshot.NativeTailSparseImportedOwnerBytes(n, c.NumImports, counts.NonCallable, counts.Values)
+		} else if counts.HostSlots != 0 {
 			bytes, err = railshot.NativeTailHostOwnerBytes(n, c.NumImports, counts.Values)
 		} else {
 			bytes, err = railshot.NativeTailImportedOwnerBytes(n, c.NumImports, counts.Values)
@@ -168,6 +170,9 @@ func rv64NewNativeTailOwner(in *Instance, counts railshot.NativeTailOwnerCounts)
 	signatures := make([]wasm.CompType, counts.Functions)
 	imports := make([]railshot.NativeTailImport, in.c.NumImports)
 	for i := range signatures {
+		if railshotNonCallableFunction(in.c, i) {
+			continue
+		}
 		var sig FuncSig
 		if i < in.c.NumImports {
 			sig = in.c.importFuncSigs[i]
@@ -225,6 +230,15 @@ func rv64NewNativeTailOwner(in *Instance, counts railshot.NativeTailOwnerCounts)
 	trampoline, err := coreruntime.HostCallTrampolinePointer()
 	if err != nil {
 		return nil, err
+	}
+	if in.c.nativeReferenceFunctionABI {
+		callable := make([]*wasm.CompType, len(signatures))
+		for i := range signatures {
+			if !railshotNonCallableFunction(in.c, i) {
+				callable[i] = &signatures[i]
+			}
+		}
+		return railshot.NewNativeTailSparseImportedOwner(image, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, state.tailTargets, in.c.Entry, callable, imports, trampoline)
 	}
 	return railshot.NewNativeTailImportedOwner(image, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, state.tailTargets, in.c.Entry, signatures, imports, trampoline)
 }

@@ -85,7 +85,7 @@ Separately enabled local proper tails preserve exact reference result types,
 original return addresses, constant entry SP, and cooperative cancellation across
 mixed reference/vector transfers. Private decoded scalar/SWAR module adapters
 now require a bounded closed-module proof: numeric exports and descriptor targets,
-no imported state, and no indirect/reference calls. They retain actual function
+numeric function imports only, and no indirect/reference calls. They retain actual function
 indices across descriptor-directory holes. Legacy production staging routes and
 legacy isolated instantiation reject that mode before allocation. A private
 sparse owner constructor now retains full physical function spans with explicit
@@ -113,7 +113,14 @@ validation, aggregate name/count budgets and alias sharing. Borrowers can grow a
 exported memory even when the producer contains no growth instructions. Independent
 memory-only/global-only borrowers retain all storage after function callers close;
 late imports and host state access through a closed producer reject. Resource
-imports in this closed mode, general reference-valued imports/exports and mutable reference ownership remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
+imports in this closed mode, general reference-valued imports/exports and mutable
+reference ownership remain separate work. Ordinary numeric function imports now
+compose with private references across native calls and scalar Go/owned callbacks.
+The imported prefix preserves physical ordinals, exact numeric bindings and
+paired internal descriptor holes; sparse generations retain native reexports and
+host identities through producer retirement. Exact limits, interrupted callback
+cleanup and compiler-free artifacts qualify this bounded path. Imported proper
+tails and V128 host signatures still require separate qualification. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

@@ -396,12 +396,13 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 		}
 	}
 	if referencesAllowed {
+		imported := m.ImportedFuncCount()
 		for i := 0; i < m.FuncCount(); i++ {
 			ft, ok := m.FuncSignature(uint32(i))
 			if !ok {
 				return unsupported("numeric function binding")
 			}
-			if referenceFunctions {
+			if referenceFunctions && i >= imported {
 				if _, _, err := admitDeclaredControlSignature(ft, internalReferenceTypes{decoded: m.Types}, true, typed, false); err != nil {
 					return err
 				}

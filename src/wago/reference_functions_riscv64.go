@@ -50,10 +50,13 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 		return nil
 	}
 	reject := func(detail string) error { return fmt.Errorf("RV64 closed reference functions: %s", detail) }
-	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeReferenceCallABI || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions || len(c.FuncTypeID) != len(c.Funcs) {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports > 0) {
+		return reject("bounded numeric import directory required")
+	}
+	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeReferenceCallABI || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions-c.NumImports || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return reject("bounded framed function ABI required")
 	}
-	if c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || c.dynamicImports || c.dynamicFuncrefEscape || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.memoryImport != "" || c.tableCount() != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.GlobalImports) != 0 || len(c.tableExports) != 0 || len(c.Elems) != 0 || len(c.customInstructions) != 0 {
+	if c.dynamicFuncrefEscape || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.memoryImport != "" || c.tableCount() != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.GlobalImports) != 0 || len(c.tableExports) != 0 || len(c.Elems) != 0 || len(c.customInstructions) != 0 {
 		return reject("external state or callable escape")
 	}
 	if m := rv64NativeTailModule(c); m != nil && len(m.Plans) != 0 {
@@ -74,6 +77,21 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	}
 	if err := rv64ValidateReferenceFunctionExports(c, &remaining); err != nil {
 		return err
+	}
+	for i, sig := range c.importFuncSigs {
+		if !sig.HasTypeIndex || uint64(sig.TypeIndex) >= uint64(len(c.Types)) {
+			return reject("exact imported function type binding required")
+		}
+		if err := validateFuncSignature(sig, c.Types); err != nil {
+			return err
+		}
+		if _, err := rv64NativeTailSignatureValues(sig); err != nil {
+			return err
+		}
+		if remaining < 5 || len(c.Imports[i]) > remaining-5 {
+			return reject("import binding/name byte bound")
+		}
+		remaining -= 5 + len(c.Imports[i])
 	}
 	for _, typ := range c.Types {
 		if typ.Describes != 0 || typ.Descriptor != 0 {
@@ -99,13 +117,13 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 		if err := validateFuncSignature(sig, c.Types); err != nil {
 			return err
 		}
-		hasReferences = hasReferences || railshotNonCallableFunction(c, i)
+		hasReferences = hasReferences || railshotNonCallableFunction(c, c.NumImports+i)
 	}
 	if !hasReferences {
 		return reject("witness without a reference-valued function")
 	}
 	for _, index := range c.Exports {
-		if index < 0 || index >= len(c.Funcs) || railshotNonCallableFunction(c, index) {
+		if index < 0 || index >= c.NumImports+len(c.Funcs) || railshotNonCallableFunction(c, index) {
 			return reject("numeric exports only")
 		}
 	}
