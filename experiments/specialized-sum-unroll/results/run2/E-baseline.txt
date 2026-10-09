@@ -1,0 +1,460 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8499469	        21.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8006241	        21.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7891296	        22.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 6564691	        24.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2322909	        77.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  192925	       964.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5851	     34020 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     100	   1534806 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8219082	        21.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8128638	        22.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7752240	        23.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7364017	        24.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2278603	        79.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  185305	       994.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5077	     39416 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     116	   1544944 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   12974	     14337 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10534	     16697 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8459023	        21.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8197970	        22.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7982905	        22.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7341832	        24.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2329569	        78.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  189457	       966.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5929	     35458 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     123	   1439461 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8310220	        21.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8252325	        22.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7741884	        23.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7346986	        24.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2305784	        78.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  183763	      1034 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4993	     38902 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     115	   1531972 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   13240	     14240 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     17049 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8403450	        21.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 7383519	        22.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7813627	        23.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7373918	        24.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2306035	        78.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  190520	       978.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5626	     33019 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     122	   1451612 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8271201	        21.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8255542	        22.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7014020	        23.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7042554	        25.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2220697	        79.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  184204	      1003 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4606	     39936 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     100	   1532183 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   12937	     14277 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     17042 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8471403	        22.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8188465	        22.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7817656	        22.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7519584	        23.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2376050	        76.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  196149	       966.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5919	     32645 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     136	   1299009 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8503867	        20.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8187622	        21.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7828474	        22.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7537908	        24.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2337430	        76.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  186411	       976.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5049	     39196 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     129	   1368898 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   14380	     12393 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     15622 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8612328	        21.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8527854	        21.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 8133877	        22.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7604487	        23.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2381301	        77.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  187888	       947.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    6124	     33087 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     136	   1303016 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8413774	        20.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8239062	        22.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 8059822	        22.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7490972	        23.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2348043	        76.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  189896	       992.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4903	     39249 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     124	   1381806 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   14149	     12350 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     16794 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8741745	        20.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8469946	        21.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 8057394	        22.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7574275	        24.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2309251	        76.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  198808	       938.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5906	     32644 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     134	   1316704 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 7767234	        21.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8371591	        21.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7919409	        22.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7491302	        24.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2314491	        78.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  186126	       979.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4976	     39385 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     130	   1388783 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   14031	     13295 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     15338 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8691018	        20.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8371681	        21.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 8095642	        22.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7633885	        24.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2374824	        76.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  196341	       934.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    6046	     32464 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     135	   1461676 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8062510	        21.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8255499	        21.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7868131	        22.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7515711	        24.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2358400	        78.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  191121	       988.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5004	     38226 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     130	   1364297 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   13850	     12867 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   11438	     15303 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8744692	        20.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8375372	        21.86 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 8041975	        22.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7561930	        23.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2384216	        75.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  197967	       946.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    6097	     34225 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     130	   1387408 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8649273	        20.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8411928	        21.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7984448	        22.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7485844	        23.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2359796	        76.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  190251	       974.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5191	     37689 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     121	   1361185 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   14318	     12545 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     15725 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8672701	        21.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8230030	        21.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 8120998	        22.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7634666	        23.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2395131	        75.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  198022	       970.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5988	     32374 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     134	   1376953 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8501106	        20.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8288860	        21.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7780412	        22.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7551331	        23.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2358589	        76.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  189939	       982.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5133	     38828 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     129	   1372295 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   14253	     12663 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     15222 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8809284	        20.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8499835	        21.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 8141485	        22.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7650476	        23.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2282024	        76.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  195508	       932.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    6151	     32509 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     136	   1296676 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8601026	        21.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8364474	        21.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7992679	        22.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7480233	        24.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2347672	        80.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  172134	       990.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5101	     38638 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     123	   1368505 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   14370	     13333 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     15442 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8789911	        20.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8469111	        21.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 8114575	        22.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 6773880	        23.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2397658	        75.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  198316	       937.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5901	     32073 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     134	   1405107 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8621167	        20.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8407398	        21.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7984800	        22.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7572181	        24.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2239998	        77.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  191776	       975.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5076	     39300 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     116	   1592182 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   12894	     13517 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10590	     16513 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8462642	        21.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8269041	        22.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7874662	        22.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7426144	        24.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2248324	        80.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  191914	       979.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5583	     33373 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     100	   1521218 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8120305	        21.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8214748	        22.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7788466	        23.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7217984	        24.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2207780	        81.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  182398	      1017 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4939	     40653 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	      92	   1632062 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   12661	     14481 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10064	     17592 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8163793	        21.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8029532	        22.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7699660	        23.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7302664	        24.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2285880	        78.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  189494	       995.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5432	     33761 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     100	   1507899 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8085700	        21.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8074148	        22.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7716645	        23.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7250376	        24.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2244308	        79.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  182154	      1019 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4993	     40049 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	      97	   1635673 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   13134	     13981 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     17057 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8415565	        21.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 7981760	        22.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7840390	        23.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7223865	        24.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2273829	        77.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  189414	       960.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5914	     33711 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     100	   1504439 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8507671	        21.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8242800	        21.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7741214	        23.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7291784	        24.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2236810	        78.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  182432	       998.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5024	     39091 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     100	   1519442 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   13054	     14341 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     16854 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8565142	        21.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8208592	        21.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7852862	        22.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7426320	        24.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2306274	        78.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  191323	       963.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5923	     32912 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     123	   1486428 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8297212	        21.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8042354	        22.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7746112	        23.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7228425	        24.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2284867	        80.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  185598	      1002 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4902	     39142 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     100	   1516674 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   12978	     14201 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     16992 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8405583	        21.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8128538	        22.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7768728	        22.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7474309	        24.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2303145	        78.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  191304	       966.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5653	     33208 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     122	   1483371 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8045844	        21.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8146701	        22.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7748595	        23.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7316598	        24.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2287700	        79.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  186242	      1007 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    5084	     39396 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	      97	   1551265 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   12968	     14297 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	    9579	     19821 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8533918	        21.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8252365	        21.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7890235	        22.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7450254	        24.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2294562	        77.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  192594	       959.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5510	     33964 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     118	   1485285 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8263226	        21.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 7971342	        22.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7840756	        22.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7397619	        24.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2295351	        79.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  186535	      1003 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4972	     39220 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     116	   1550015 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   12476	     14738 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     17064 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 5198103	        30.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8240332	        21.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7866702	        23.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7317206	        24.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2337466	        77.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  190209	       974.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5817	     50660 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	      96	   1811236 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 5447094	        29.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 5796220	        32.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 6236124	        32.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 5120346	        35.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 1446417	       110.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  104061	      1634 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4748	     49188 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     117	   1438582 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   10000	     16117 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	    9998	     23417 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 5825012	        29.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 5571655	        30.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 5701053	        32.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7395478	        33.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 1647234	       128.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  144336	      1173 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    3490	     55566 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	      92	   1863874 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 5850428	        29.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 6087916	        31.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 8002215	        22.86 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7386007	        30.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 1453129	       111.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  134936	      1426 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    3060	     53261 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	      86	   1855500 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   10000	     19809 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10000	     25378 ns/op	   26296 B/op	      30 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSumUnrollExecute/addr0/n0         	 8627674	        21.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8         	 8158647	        22.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n16        	 7888305	        23.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n33        	 7268782	        24.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n512       	 2303644	        78.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8192      	  192015	       973.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n262144    	    5750	     33750 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr0/n8388607   	     121	   1436993 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n0         	 8166045	        21.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8         	 8082502	        22.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n16        	 7701475	        22.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n33        	 7213105	        24.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n512       	 2305964	        78.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8192      	  185104	      1013 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n262144    	    4995	     39245 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollExecute/addr1/n8388607   	     100	   1511628 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSumUnrollCompile/pressure0        	   13206	     14304 ns/op	   26072 B/op	      29 allocs/op
+BenchmarkSumUnrollCompile/pressure12       	   10706	     16713 ns/op	   26296 B/op	      30 allocs/op
+PASS

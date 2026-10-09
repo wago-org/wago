@@ -1,0 +1,8 @@
+{
+  "src/core/compiler/backend/railshot/amd64/control.go": "aa0f7b27e5d92f2cb525de9f17ffbaa0f9c97c0f8513788fe5a50da02607e03b",
+  "src/core/compiler/backend/railshot/amd64/sum_unroll_experimental.go": "867cb5b1f967ad3ad3998f8e94d7f6116f9b57b880e45bb68ffc4b1208672bd4",
+  "src/core/compiler/backend/railshot/amd64/sum_unroll_default.go": "6ff5b40a0bee1f85946c305ae663d234ee27979b543580df045b4aa9a742f63c",
+  "src/core/compiler/backend/railshot/amd64/sum_unroll_experiment_test.go": "8b74116afb25c172c94ba5765d68bb128267fcdcae2a1dd5b729706753f0b531",
+  "src/core/compiler/backend/railshot/amd64/sum_unroll_experimental_selection_test.go": "fab050b4d6e2723a10623518c142c2465696161396edba4c6f52d953971ced1a",
+  "src/core/compiler/backend/railshot/amd64/sum_unroll_threshold_test.go": "e009d2bd5efbb24655d48816ff24a59d5b195f6e1d4ce92acad7ada56b6ab00d"
+}

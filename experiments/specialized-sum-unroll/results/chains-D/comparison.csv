@@ -1,0 +1,5 @@
+variant,benchmark,samples_each,baseline_ns,baseline_bytes,baseline_allocs,candidate_ns,candidate_bytes,candidate_allocs,time_delta_percent,median_paired_time_delta_percent
+E,BenchmarkSumUnrollExecute/addr0/n8192,20,908.7,0.0,0.0,907.2,0.0,0.0,-0.16507098052161995,-0.06062693348331538
+E,BenchmarkSumUnrollExecute/addr0/n262144,20,31726.5,0.0,0.0,31284.0,0.0,0.0,-1.3947331095456428,-0.3907981437112129
+E,BenchmarkSumUnrollExecute/addr1/n8192,20,971.3499999999999,0.0,0.0,1017.0,0.0,0.0,4.699644824213722,4.919249969097638
+E,BenchmarkSumUnrollExecute/addr1/n262144,20,35631.0,0.0,0.0,35143.5,0.0,0.0,-1.3681906205270655,-1.8341564615323658

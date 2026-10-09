@@ -1,0 +1,31 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                               │ experiments/specialized-sum-unroll/results/chains-A/B-baseline.txt │ experiments/specialized-sum-unroll/results/chains-A/B-candidate.txt │
+                               │                               sec/op                               │                    sec/op                     vs base               │
+SumUnrollExecute/addr0/n8192                                                            946.8n ± 1%                                    952.1n ± 0%       ~ (p=0.185 n=20)
+SumUnrollExecute/addr0/n262144                                                          32.39µ ± 1%                                    32.41µ ± 1%       ~ (p=0.718 n=20)
+SumUnrollExecute/addr1/n8192                                                            1.045µ ± 1%                                    1.039µ ± 1%       ~ (p=0.424 n=20)
+SumUnrollExecute/addr1/n262144                                                          35.87µ ± 1%                                    35.67µ ± 1%       ~ (p=0.121 n=20)
+geomean                                                                                 5.822µ                                         5.815µ       -0.11%
+
+                               │ experiments/specialized-sum-unroll/results/chains-A/B-baseline.txt │ experiments/specialized-sum-unroll/results/chains-A/B-candidate.txt │
+                               │                                B/op                                │                    B/op                     vs base                 │
+SumUnrollExecute/addr0/n8192                                                           0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n262144                                                         0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n8192                                                           0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n262144                                                         0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=20)
+geomean                                                                                           ²                                               +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                               │ experiments/specialized-sum-unroll/results/chains-A/B-baseline.txt │ experiments/specialized-sum-unroll/results/chains-A/B-candidate.txt │
+                               │                             allocs/op                              │                 allocs/op                   vs base                 │
+SumUnrollExecute/addr0/n8192                                                           0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n262144                                                         0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n8192                                                           0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n262144                                                         0.000 ± 0%                                     0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                           ²                                               +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

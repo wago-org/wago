@@ -1,0 +1,3 @@
+*.bin binary
+# Preserve raw tool output, including CPU-name spaces and final blank lines.
+results/** -whitespace

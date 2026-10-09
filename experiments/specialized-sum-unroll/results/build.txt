@@ -1,0 +1,18 @@
+Base: 2286d676facdfa1cabe2d1c61072e505438ca7f2
+Tests-first commit: ec0f965ea
+Implementation commit: 052b248bb
+First baseline: go test -c -o /tmp/wago-sum-baseline.test ./src/core/compiler/backend/railshot/amd64 at ec0f965ea.
+Run1-AB candidate: go test -c -tags=wago_sumunroll -o /tmp/wago-sum-experiment.test ./src/core/compiler/backend/railshot/amd64 before coverage extensions were added.
+The run1-AB candidate binary hash was not saved before rebuilding. Its emitter and benchmark function sources were unchanged by the rebuild. Native artifacts for baseline/A/B were saved before the rebuild.
+All later candidates: the same build command, with the full 052b248bb source tree.
+Normal current: go test -c -o /tmp/wago-sum-normal.test ./src/core/compiler/backend/railshot/amd64 at 052b248bb.
+Corpus current: go test -c -o /tmp/wago-sum-corpus-normal.test ./bench/suite at 052b248bb.
+Corpus baseline: git archive ec0f965ea into /tmp/wago-sum-baseline-src; go test -c -o /tmp/wago-sum-corpus-baseline.test ./bench/suite there.
+Timing builds have no codegen statistics or register-check tags. All builds use Go 1.27.1 linux/amd64.
+Artifact builds: -tags=wago_sumunroll,wago_codegenstats,wago_regalloccheck.
+No build/test runs overlap decisive timing processes. Source reviews and light file operations occur during timing.
+Threshold extension: copied only sum_unroll_threshold_test.go into the tests-first archive; compiler sources stay unchanged.
+Threshold baseline: GOFLAGS=-buildvcs=false go test -c -o /tmp/wago-sum-threshold-baseline.test ./src/core/compiler/backend/railshot/amd64 in that archive.
+Threshold experiment: GOFLAGS=-buildvcs=false go test -c -tags=wago_sumunroll -o /tmp/wago-sum-threshold-experiment.test ./src/core/compiler/backend/railshot/amd64 in the experiment worktree.
+No timed compiler or native emitter source changed after 052b248bb.
+WAGO_SHARED_SCALAR=0 is used only for additional legacy diagnostic tests, never timing.

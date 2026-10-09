@@ -1,0 +1,14 @@
+unit 1
+bench-full 0
+tagged-amd64 1
+guard 0
+lint 0
+docs 0
+script-syntax 0
+shellcheck 0
+python-syntax 0
+arm64-build 0
+unit-with-fixtures 0
+legacy-amd64 0
+default-stats-baseline 1
+final-source-checks 0

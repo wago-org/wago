@@ -1,0 +1,67 @@
+=== RUN   TestLinearSumLoopBoundsHoistAndUnrollAMD64
+--- PASS: TestLinearSumLoopBoundsHoistAndUnrollAMD64 (0.00s)
+=== RUN   TestLinearSumLoopOptimizationCanBeDisabledAMD64
+--- PASS: TestLinearSumLoopOptimizationCanBeDisabledAMD64 (0.00s)
+=== RUN   TestLinearSumLoopBoundsHoistRejectsSharedMemoryAMD64
+--- PASS: TestLinearSumLoopBoundsHoistRejectsSharedMemoryAMD64 (0.00s)
+=== RUN   TestLinearSumLoopPreservesMemory32WraparoundAMD64
+--- PASS: TestLinearSumLoopPreservesMemory32WraparoundAMD64 (0.00s)
+=== RUN   TestLinearSumWrappingGroupsUseScalarTailAMD64
+=== RUN   TestLinearSumWrappingGroupsUseScalarTailAMD64/unbounded
+=== RUN   TestLinearSumWrappingGroupsUseScalarTailAMD64/full
+=== RUN   TestLinearSumWrappingGroupsUseScalarTailAMD64/small
+--- PASS: TestLinearSumWrappingGroupsUseScalarTailAMD64 (0.00s)
+    --- PASS: TestLinearSumWrappingGroupsUseScalarTailAMD64/unbounded (0.00s)
+    --- PASS: TestLinearSumWrappingGroupsUseScalarTailAMD64/full (0.00s)
+    --- PASS: TestLinearSumWrappingGroupsUseScalarTailAMD64/small (0.00s)
+=== RUN   TestSumUnrollOracle
+=== RUN   TestSumUnrollOracle/pressure0/boundedfalse
+=== RUN   TestSumUnrollOracle/pressure0/boundedtrue
+=== RUN   TestSumUnrollOracle/pressure4/boundedfalse
+=== RUN   TestSumUnrollOracle/pressure4/boundedtrue
+=== RUN   TestSumUnrollOracle/pressure12/boundedfalse
+=== RUN   TestSumUnrollOracle/pressure12/boundedtrue
+--- PASS: TestSumUnrollOracle (0.03s)
+    --- PASS: TestSumUnrollOracle/pressure0/boundedfalse (0.01s)
+    --- PASS: TestSumUnrollOracle/pressure0/boundedtrue (0.00s)
+    --- PASS: TestSumUnrollOracle/pressure4/boundedfalse (0.00s)
+    --- PASS: TestSumUnrollOracle/pressure4/boundedtrue (0.00s)
+    --- PASS: TestSumUnrollOracle/pressure12/boundedfalse (0.00s)
+    --- PASS: TestSumUnrollOracle/pressure12/boundedtrue (0.00s)
+=== RUN   TestSumUnrollFullMemory32
+--- PASS: TestSumUnrollFullMemory32 (0.00s)
+=== RUN   TestSumUnrollArtifacts
+    sum_unroll_experiment_test.go:275: set WAGO_SUM_ARTIFACT_DIR
+--- SKIP: TestSumUnrollArtifacts (0.00s)
+=== RUN   TestSumUnrollSelectedPath
+--- PASS: TestSumUnrollSelectedPath (0.00s)
+=== RUN   TestSumUnrollBoundedEmission
+=== RUN   TestSumUnrollBoundedEmission/[2_2]
+=== RUN   TestSumUnrollBoundedEmission/[8_4]
+=== RUN   TestSumUnrollBoundedEmission/[8_8]
+=== RUN   TestSumUnrollBoundedEmission/[16_4]
+=== RUN   TestSumUnrollBoundedEmission/[16_8]
+--- PASS: TestSumUnrollBoundedEmission (0.00s)
+    --- PASS: TestSumUnrollBoundedEmission/[2_2] (0.00s)
+    --- PASS: TestSumUnrollBoundedEmission/[8_4] (0.00s)
+    --- PASS: TestSumUnrollBoundedEmission/[8_8] (0.00s)
+    --- PASS: TestSumUnrollBoundedEmission/[16_4] (0.00s)
+    --- PASS: TestSumUnrollBoundedEmission/[16_8] (0.00s)
+=== RUN   TestSumUnrollEmissionRejectIsAtomic
+=== RUN   TestSumUnrollEmissionRejectIsAtomic/budget
+=== RUN   TestSumUnrollEmissionRejectIsAtomic/pressure
+=== RUN   TestSumUnrollEmissionRejectIsAtomic/factor
+=== RUN   TestSumUnrollEmissionRejectIsAtomic/chains
+--- PASS: TestSumUnrollEmissionRejectIsAtomic (0.00s)
+    --- PASS: TestSumUnrollEmissionRejectIsAtomic/budget (0.00s)
+    --- PASS: TestSumUnrollEmissionRejectIsAtomic/pressure (0.00s)
+    --- PASS: TestSumUnrollEmissionRejectIsAtomic/factor (0.00s)
+    --- PASS: TestSumUnrollEmissionRejectIsAtomic/chains (0.00s)
+=== RUN   TestSumUnrollNativeFallback
+=== RUN   TestSumUnrollNativeFallback/budget
+=== RUN   TestSumUnrollNativeFallback/pressure
+--- PASS: TestSumUnrollNativeFallback (0.00s)
+    --- PASS: TestSumUnrollNativeFallback/budget (0.00s)
+    --- PASS: TestSumUnrollNativeFallback/pressure (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.043s

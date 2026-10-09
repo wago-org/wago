@@ -1,0 +1,73 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                                │ experiments/specialized-sum-unroll/results/run2/B-baseline.txt │ experiments/specialized-sum-unroll/results/run2/B-candidate.txt │
+                                │                             sec/op                             │                  sec/op                   vs base               │
+SumUnrollExecute/addr0/n0                                                            20.81n ± 1%                               21.18n ±  2%       ~ (p=0.229 n=20)
+SumUnrollExecute/addr0/n8                                                            21.45n ± 2%                               21.77n ±  2%  +1.52% (p=0.010 n=20)
+SumUnrollExecute/addr0/n16                                                           22.48n ± 2%                               22.95n ±  2%  +2.09% (p=0.022 n=20)
+SumUnrollExecute/addr0/n33                                                           23.81n ± 2%                               23.70n ±  2%       ~ (p=0.062 n=20)
+SumUnrollExecute/addr0/n512                                                          76.42n ± 2%                               69.63n ±  2%  -8.88% (p=0.000 n=20)
+SumUnrollExecute/addr0/n8192                                                         942.2n ± 2%                               924.1n ±  2%  -1.92% (p=0.006 n=20)
+SumUnrollExecute/addr0/n262144                                                       32.83µ ± 2%                               31.53µ ±  2%  -3.95% (p=0.000 n=20)
+SumUnrollExecute/addr0/n8388607                                                      1.323m ± 2%                               1.300m ± 11%       ~ (p=0.081 n=20)
+SumUnrollExecute/addr1/n0                                                            20.89n ± 2%                               20.97n ±  2%       ~ (p=0.867 n=20)
+SumUnrollExecute/addr1/n8                                                            21.62n ± 2%                               22.02n ±  2%       ~ (p=0.073 n=20)
+SumUnrollExecute/addr1/n16                                                           22.61n ± 2%                               22.75n ±  2%  +0.60% (p=0.050 n=20)
+SumUnrollExecute/addr1/n33                                                           24.50n ± 2%                               23.93n ±  2%  -2.33% (p=0.039 n=20)
+SumUnrollExecute/addr1/n512                                                          76.82n ± 1%                               70.94n ±  2%  -7.64% (p=0.000 n=20)
+SumUnrollExecute/addr1/n8192                                                         980.9n ± 1%                              1010.0n ±  1%  +2.97% (p=0.000 n=20)
+SumUnrollExecute/addr1/n262144                                                       38.31µ ± 2%                               34.48µ ±  3%  -9.99% (p=0.000 n=20)
+SumUnrollExecute/addr1/n8388607                                                      1.408m ± 6%                               1.360m ±  4%  -3.40% (p=0.017 n=20)
+SumUnrollCompile/pressure0                                                           12.71µ ± 5%                               12.71µ ±  4%       ~ (p=0.910 n=20)
+SumUnrollCompile/pressure12                                                          15.59µ ± 4%                               15.62µ ±  7%       ~ (p=0.883 n=20)
+geomean                                                                              613.3n                                    602.9n        -1.69%
+
+                                │ experiments/specialized-sum-unroll/results/run2/B-baseline.txt │ experiments/specialized-sum-unroll/results/run2/B-candidate.txt │
+                                │                              B/op                              │                  B/op                   vs base                 │
+SumUnrollExecute/addr0/n0                                                           0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n8                                                           0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n16                                                          0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n33                                                          0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n512                                                         0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n8192                                                        0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n262144                                                      0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n8388607                                                     0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n0                                                           0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n8                                                           0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n16                                                          0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n33                                                          0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n512                                                         0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n8192                                                        0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n262144                                                      0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n8388607                                                     0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure0                                                        25.46Ki ± 0%                               25.46Ki ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure12                                                       25.68Ki ± 0%                               25.68Ki ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                        ²                                           +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                │ experiments/specialized-sum-unroll/results/run2/B-baseline.txt │ experiments/specialized-sum-unroll/results/run2/B-candidate.txt │
+                                │                           allocs/op                            │               allocs/op                 vs base                 │
+SumUnrollExecute/addr0/n0                                                           0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n8                                                           0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n16                                                          0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n33                                                          0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n512                                                         0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n8192                                                        0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n262144                                                      0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr0/n8388607                                                     0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n0                                                           0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n8                                                           0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n16                                                          0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n33                                                          0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n512                                                         0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n8192                                                        0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n262144                                                      0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollExecute/addr1/n8388607                                                     0.000 ± 0%                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure0                                                          29.00 ± 0%                                 29.00 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollCompile/pressure12                                                         30.00 ± 0%                                 30.00 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                        ²                                           +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

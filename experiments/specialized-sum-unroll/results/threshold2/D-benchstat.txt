@@ -1,0 +1,55 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                               │ experiments/specialized-sum-unroll/results/threshold2/D-baseline.txt │ experiments/specialized-sum-unroll/results/threshold2/D-candidate.txt │
+                               │                                sec/op                                │                    sec/op                      vs base                │
+SumUnrollThreshold/addr0/n64                                                              27.03n ± 1%                                     27.34n ± 2%   +1.17% (p=0.001 n=20)
+SumUnrollThreshold/addr0/n128                                                             35.13n ± 1%                                     33.29n ± 1%   -5.27% (p=0.000 n=20)
+SumUnrollThreshold/addr0/n256                                                             48.68n ± 2%                                     44.16n ± 2%   -9.29% (p=0.000 n=20)
+SumUnrollThreshold/addr0/n1024                                                            130.2n ± 2%                                     109.5n ± 2%  -15.94% (p=0.000 n=20)
+SumUnrollThreshold/addr0/n2048                                                            243.2n ± 1%                                     197.4n ± 1%  -18.85% (p=0.000 n=20)
+SumUnrollThreshold/addr0/n4096                                                            488.5n ± 2%                                     447.6n ± 2%   -8.37% (p=0.000 n=20)
+SumUnrollThreshold/addr1/n64                                                              27.29n ± 2%                                     27.92n ± 1%   +2.33% (p=0.000 n=20)
+SumUnrollThreshold/addr1/n128                                                             35.22n ± 2%                                     33.77n ± 0%   -4.13% (p=0.000 n=20)
+SumUnrollThreshold/addr1/n256                                                             49.70n ± 2%                                     45.60n ± 2%   -8.26% (p=0.000 n=20)
+SumUnrollThreshold/addr1/n1024                                                            132.5n ± 2%                                     117.9n ± 2%  -11.02% (p=0.000 n=20)
+SumUnrollThreshold/addr1/n2048                                                            246.9n ± 1%                                     211.6n ± 2%  -14.32% (p=0.000 n=20)
+SumUnrollThreshold/addr1/n4096                                                            500.5n ± 1%                                     470.3n ± 1%   -6.03% (p=0.000 n=20)
+geomean                                                                                   95.28n                                          87.30n        -8.37%
+
+                               │ experiments/specialized-sum-unroll/results/threshold2/D-baseline.txt │ experiments/specialized-sum-unroll/results/threshold2/D-candidate.txt │
+                               │                                 B/op                                 │                     B/op                      vs base                 │
+SumUnrollThreshold/addr0/n64                                                             0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n128                                                            0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n256                                                            0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n1024                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n2048                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n4096                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n64                                                             0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n128                                                            0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n256                                                            0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n1024                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n2048                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n4096                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                             ²                                                 +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                               │ experiments/specialized-sum-unroll/results/threshold2/D-baseline.txt │ experiments/specialized-sum-unroll/results/threshold2/D-candidate.txt │
+                               │                              allocs/op                               │                  allocs/op                    vs base                 │
+SumUnrollThreshold/addr0/n64                                                             0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n128                                                            0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n256                                                            0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n1024                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n2048                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr0/n4096                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n64                                                             0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n128                                                            0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n256                                                            0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n1024                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n2048                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+SumUnrollThreshold/addr1/n4096                                                           0.000 ± 0%                                       0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                             ²                                                 +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

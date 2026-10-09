@@ -1,0 +1,4 @@
+src/core/compiler/backend/railshot/amd64/sum_unroll_default.go:6:6: can inline (*fn).trySelectedLinearSumLatch
+src/core/compiler/backend/railshot/amd64/control.go:413:32: inlining call to (*fn).trySelectedLinearSumLatch
+src/core/compiler/backend/railshot/amd64/sum_unroll_default.go:6:7: leaking param content: f
+src/core/compiler/backend/railshot/amd64/sum_unroll_default.go:6:40: loop does not escape

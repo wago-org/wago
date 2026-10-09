@@ -1,0 +1,38 @@
+{
+  "baseline": {
+    "adapter_bytes": 44,
+    "internal_plus_trap_bytes": 303,
+    "total_bytes": 347,
+    "binary_sha256": "dd6b77cb9faf1908ddc68f4ebe78994f7c7b451392365ddde1914ac95f38dcc0"
+  },
+  "A": {
+    "adapter_bytes": 44,
+    "internal_plus_trap_bytes": 323,
+    "total_bytes": 367,
+    "binary_sha256": "5969ff240fa1e6b1a3bfb7637176da768afedeca9924de50f7c9e54c2774c4f0"
+  },
+  "B": {
+    "adapter_bytes": 44,
+    "internal_plus_trap_bytes": 346,
+    "total_bytes": 390,
+    "binary_sha256": "65b77b53109cf0e8ffd3dc35912792aeb4bc471e2b768bb4ba1fd0ed74bee12e"
+  },
+  "C": {
+    "adapter_bytes": 44,
+    "internal_plus_trap_bytes": 283,
+    "total_bytes": 327,
+    "binary_sha256": "5225766ae758ab7f3b6ceb1f7be55de0eeeac78397deffcfa5c048e905559f1f"
+  },
+  "D": {
+    "adapter_bytes": 44,
+    "internal_plus_trap_bytes": 366,
+    "total_bytes": 410,
+    "binary_sha256": "fae56f24e3a4e94e4c7e5c78f83db0ecc2efebe2941198bb0d96a4fdbd25709b"
+  },
+  "E": {
+    "adapter_bytes": 44,
+    "internal_plus_trap_bytes": 389,
+    "total_bytes": 433,
+    "binary_sha256": "eccf325e1aa9e441fd8a2217c4ff06a3c99210c312e8b234d398bde811103862"
+  }
+}

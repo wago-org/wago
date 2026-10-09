@@ -19,6 +19,7 @@ p.add_argument("--cpu", type=int, default=min(os.sched_getaffinity(0)))
 p.add_argument("--benchtime", default="150ms")
 p.add_argument("--bench", default="^BenchmarkSumUnroll")
 p.add_argument("--cwd", default=os.getcwd())
+p.add_argument("--corpus")
 a = p.parse_args()
 if a.samples < 20:
     p.error("decisive comparisons require at least 20 samples")
@@ -42,6 +43,8 @@ with (out / "order.jsonl").open("w") as order:
                 cmd = ["taskset", "-c", str(a.cpu), str(Path(binary).resolve()),
                        "-test.run", "^$", "-test.bench", a.bench,
                        "-test.benchtime", a.benchtime, "-test.count", "1"]
+                if a.corpus:
+                    cmd += ["-wago.corpus", a.corpus]
                 started = time.time()
                 r = subprocess.run(cmd, env=local_env, cwd=a.cwd, text=True,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

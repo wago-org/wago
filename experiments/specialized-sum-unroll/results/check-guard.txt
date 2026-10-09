@@ -1,0 +1,2 @@
+ok  	github.com/wago-org/wago/src/core/runtime	0.479s
+ok  	github.com/wago-org/wago/src/wago	10.446s

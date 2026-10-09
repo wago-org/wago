@@ -1,0 +1,61 @@
+{
+  "run1-AB": {
+    "comparisons": 36,
+    "samples_each": 20,
+    "successful_processes": 80,
+    "failures": 0
+  },
+  "run1-CDE": {
+    "comparisons": 54,
+    "samples_each": 20,
+    "successful_processes": 120,
+    "failures": 0
+  },
+  "run2": {
+    "comparisons": 72,
+    "samples_each": 20,
+    "successful_processes": 160,
+    "failures": 0
+  },
+  "chains-A": {
+    "comparisons": 4,
+    "samples_each": 20,
+    "successful_processes": 40,
+    "failures": 0
+  },
+  "chains-D": {
+    "comparisons": 4,
+    "samples_each": 20,
+    "successful_processes": 40,
+    "failures": 0
+  },
+  "default-sum": {
+    "comparisons": 18,
+    "samples_each": 20,
+    "successful_processes": 40,
+    "failures": 0
+  },
+  "default-corpus": {
+    "comparisons": 11,
+    "samples_each": 20,
+    "successful_processes": 40,
+    "failures": 0
+  },
+  "threshold1": {
+    "comparisons": 24,
+    "samples_each": 20,
+    "successful_processes": 80,
+    "failures": 0
+  },
+  "threshold2": {
+    "comparisons": 24,
+    "samples_each": 20,
+    "successful_processes": 80,
+    "failures": 0
+  },
+  "totals": {
+    "comparisons": 247,
+    "raw_benchmark_samples": 9880,
+    "successful_processes": 680
+  }
+}

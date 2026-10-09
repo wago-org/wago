@@ -1,0 +1,7 @@
+aeae3078e12ff698a27604f76964df75ddf71aeefb13419139097cb6910677b0  /tmp/wago-sum-baseline.test
+2488489bd513891002196aed212248a4e8ca8440d63f50b1c36474deb20ed4f4  /tmp/wago-sum-normal.test
+ec204b1e68e4f63e72d3d6ededca33172de950c24b04d89f1114d660a9080724  /tmp/wago-sum-experiment.test
+6f017360c86a2d85acf6d873f28b5283a6ebd701f853771469d83c662b146dfe  /tmp/wago-sum-corpus-normal.test
+09ef88d11285bf0894990fcd770bb30e439c91132304d113158ed938fc16e0e9  /tmp/wago-sum-corpus-baseline.test
+3043c682bd0b801f7a056746e20fd68625cad5150b9be9fa726a95fe3880e217  /tmp/wago-sum-threshold-baseline.test
+a2cedbbf798c1fef2edbeef7578a9e74dac3f81119d217c7f72b861f9bf03985  /tmp/wago-sum-threshold-experiment.test

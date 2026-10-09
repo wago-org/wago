@@ -1,0 +1,27 @@
+Independent initial performance evidence review
+Reviewer: performance_review; read-only review, no builds or test executions.
+Repository: /home/jtenner/Projects/wago-sum-unroll
+Evidence reviewed: sample.py, analyze.py, sum_unroll_experiment_test.go, selection and emitter files, run1-AB raw files/environment/order/benchstat, native baseline/A/B artifacts for pressure0/4/12.
+
+Confirmed:
+- Baseline assembly has the existing four memory-add operations and four independent accumulator registers. Linear-sum optimization remains enabled. The comparison is against normal Wago, not a scalar replacement.
+- All 18 benchmark rows have 20 baseline and 20 candidate samples per A/B. order.jsonl has 80 successful entries, correct alternating order, taskset CPU 2, GOMAXPROCS=1.
+- Execution benchmark ResetTimer at sum_unroll_experiment_test.go:239 excludes compilation, 64 MiB memory creation/fill, independent oracle, argument setup, and preflight. Calls use identical Wasm and input data. Native engine call overhead is included; n0 is approximately 21 ns.
+- Compile benchmark allocates module input outside timer and measures CompileModule and CodeImage.Close (lines 258-266). Both sides show 29/30 allocations and 25.46/25.68 KiB for pressure0/12 respectively.
+- A/B low-pressure hot groups have no stack accesses. Frames remain 56/88/168 bytes for pressure0/4/12. B pressure12 selects the existing fallback; A pressure12 selects its experiment.
+- CPU metadata records Ryzen 7 8845HS, Go 1.27.1, Linux, hardware flags, cache sizes, and turbo enabled.
+
+Findings / needed report corrections:
+1. Medium: Missing binary provenance in first run metadata. run1-AB/environment.json has HEAD ec0f965 but implementation is uncommitted and this run predates sample.py:30 binary_sha256 capture. HEAD alone does not identify measured compiler. Save hashes of original binaries before rebuild and exact original go test -c commands, tags, flags, and source revision/diff. Existing observations are credible, but not fully reproducible from environment.json alone.
+2. Medium: Native-size label must distinguish total and internal bytes. Artifact line 294 writes stats.CodeBytes; compile.go:4138-4140 defines it as total including adapter. pressure0 ASM adapter is 44 bytes. Baseline/A/B total sizes 347/367/390 imply internal sizes 303/323/346. Report both or clearly state total includes adapter.
+3. Medium: Do not call zero spills/reloads zero stack traffic. Counters exclude local-frame transfers (profile_sites_test.go:15-25). ASM has result stores/loads and pressure locals in frame. Report operand spills/reloads plus whether hot group has stack operations.
+4. Medium: Do not attribute A versus B differences solely to accumulator count. pressure0 hot group begins at offset 0xbf for baseline/A but 0xca for B because of four extra zeroing instructions. Extra chains also add four combine operations and change branch addresses. This is inherent to candidate code, but causal claims require layout controls or explicit uncertainty. Existing paired baseline comparisons can decide candidate profitability without proving the hardware cause.
+5. Medium: All execution evidence is pressure0 (sum_unroll_experiment_test.go:216). pressure12 compile rows for B measure fallback, not its eight-chain emitter. Label fallback clearly. Consider execution measurements under live-local pressure if adoption is proposed; do not generalize low-pressure throughput to all recognized loops.
+6. Low: n8 gives zero full groups for A/B because existing scalar peel leaves seven (emitter:63-67). Counts that are powers of two give baseline/A remainders of three/seven. Large-count comparisons are valid total-call comparisons but do not isolate pure group throughput. Explain remainder overhead and avoid calling n8 a single eight-element group.
+7. Low: analyze.py:32-34 reports ratio of independent medians, not median of paired ratios, despite docstring saying complete paired comparison. benchstat is a suitable unpaired significance check for alternated samples; describe statistical method accurately and optionally retain paired deltas for order/drift diagnostics.
+8. Pending: Separate repeat, C/D/E results, real corpus disabled-experiment negative controls, complete report, and exact build/diagnostic settings are not yet present. No promotion decision is supported by one synthetic run.
+
+Initial result interpretation:
+A has approximately 7-8% n512 gains, 4.45% aligned 2 MiB gain, 9.10% unaligned 2 MiB gain, but a 2.69% regression for unaligned 64 KiB and no clear aligned 64 MiB gain. B has comparable n512 gains, a 10.24% unaligned 2 MiB gain, a 2.53% unaligned 64 KiB regression, and no clear 64 MiB gain. Execution gains depend on memory regime and alignment. More chains do not show a uniform advantage. Compilation-time differences are not significant in this first run; lack of significance is not proof of equivalence. The baseline/candidate allocation counts and bytes are unchanged in this measurement.
+
+No blocking harness correctness error found in the reviewed evidence. This is an initial review only. It does not approve performance claims or promotion. The final review must inspect completed measurements and report.

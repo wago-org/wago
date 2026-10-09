@@ -1,0 +1,7 @@
+Read-only reference: wago-org/wago PR #909.
+Head at read: 28832779031eea033cd3195228221a8524bfc978.
+Fetched refs/pull/909/head; read experiments/loop-unroll-vectorization/REPORT.md.
+The PR and its worktree were not modified.
+Its main baseline and this experiment both use 2286d676facdfa1cabe2d1c61072e505438ca7f2.
+Its sum matrix ends at factor four; generic copying regresses the specialized sum.
+Its six-sample results are background, not decisive data for this experiment.

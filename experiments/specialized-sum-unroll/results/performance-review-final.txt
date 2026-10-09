@@ -1,0 +1,42 @@
+Independent performance evidence review — final findings
+Date: 2026-10-09
+Reviewer: performance_review. No builds, tests, native execution, or file edits in repository during review.
+
+Reviewed files: completed REPORT.md; sample.py; analyze.py; run.sh; execution, compile, and threshold benchmark sources; build.txt; binary/source hashes; native-analysis.txt and baseline/A–E native artifacts; all completed raw samples, order files, environments, CSVs, and benchstat output for run1-AB, run1-CDE, run2, chains-A, chains-D, default-sum, default-corpus, threshold1, and all of threshold2.
+
+No blocking measurement or analysis defect found in the completed evidence.
+
+Addressed finding:
+REPORT.md:199–200 previously calculated some accumulator-table values from rounded benchstat display values instead of the raw medians. The report now uses the raw CSV values: +0.57%, +0.06%, -0.53%, -0.56% for chains-A, and -1.39% for chains-D aligned262144. Significance and conclusions are unchanged.
+
+Verified directly:
+- Recomputed every numerical CSV cell for run1-AB, run1-CDE, run2, chains-A, chains-D, default-sum, and default-corpus from raw output. Medians, allocation data, ratio-of-medians deltas, and median paired deltas agree exactly.
+- Every completed pair set has 20 samples per row, correct alternating order, successful exits, taskset CPU 2, and GOMAXPROCS=1. Matrices have 18 rows, chain comparisons 4 rows, corpus controls 11 rows, threshold comparisons 12 rows.
+- Baseline native code is the existing four-load/four-chain optimized Wago path. Same Wasm, memory pattern, input counts/addresses, native-call boundary, feature defaults, and compile options are used. No scalar weakening is used for timing.
+- ResetTimer excludes compile, data setup, oracle, argument fill, and preflight. End-of-run result check is outside timer. Short-loop measurements include the common approximately 21 ns engine-call boundary.
+- Compiler benchmark measures CompileModule plus CodeImage.Close. Allocation bytes and counts are unchanged in all candidate and default-control sample sets; pressure0 is 26072 B/29 allocations, pressure12 26296 B/30 allocations.
+- Source SHA-256 values match current files. Native artifact SHA-256 values and total sizes match binary files. Later process binaries have saved hashes. The missing original run1-AB candidate hash is clearly recorded. Repeated A/B findings have complete binary provenance.
+- Report total/internal code labels match native artifacts: baseline 347/303 bytes, A 367/323, B 390/346, C 327/283, D 410/366, E 433/389. Common pressure0 adapter is 44 bytes.
+- No admitted hot group or scalar tail has stack memory operations. Report correctly distinguishes operand spill/reload counters from ABI and local-frame transfers. Frames remain 56/88/168 bytes for pressure0/4/12. B/E pressure12 safely use the baseline path and are labelled fallback in performance evidence.
+- The first sweep, repeat tables, corpus values, significant repeated D gains, unaligned 8192 losses for A/B, short count16 losses for D/E, and nonsignificant compiler/default-control differences match raw results and benchstat.
+- D break-even estimates match run2 raw medians: added median compile+close cost 374 ns; aligned execution savings 10.64 ns at 512, 64.35 ns at 8192, and 2371 ns at 262144 give ceilings 36, 6, and 1 calls. Report correctly labels the compile difference nonsignificant/noisy; these are estimates, not guaranteed repayment bounds.
+- Native group instruction counts and branch frequency match assembly. Comparisons of chain count hold factor fixed and correctly state setup, final combination, and group-address layout also change.
+
+Limits that must stay in the report and recommendation:
+1. One CPU, with turbo enabled, powersave governor, active desktop, and sibling CPU 3 not isolated. Interleaving and separate repeats reduce drift risk but do not prove a portable architecture result.
+2. Execution fixtures use zero extra live parameters. High-pressure cases prove correctness, selection, and fallback, not high-pressure throughput.
+3. Repeated calls use the same input buffer. Larger than L3 covers streaming traffic, but no hardware-counter measurement proves the exact cause of losses/gains.
+4. Scalar first iteration and 3/7/15-element remainders are measured. Gains are total-function gains, not isolated branch or dependency measurements.
+5. Eight-chain setup shifts group address from 0xbf to 0xca. The evidence cannot attribute changes solely to independent accumulators. Whole-candidate profit comparisons remain valid.
+6. Default corpus controls verify the normal compiler with experiments disabled. They do not show real corpus speedups or adjacent corpus behavior with D enabled. The report already states this.
+7. C is rejected after a large, consistent first-run loss; it does not require repeat for promotion because it is not proposed. A/B/D/E gains have separate repeated process samples. D is the strongest balanced candidate, not uniformly fastest for every count/alignment.
+8. Nonsignificant compiler timing changes do not prove zero added compile cost. Unchanged measured allocations are a stronger, directly observed result.
+
+Final update:
+- Independently recomputed all threshold1/threshold2 CSV cells from raw samples. Both have 80 successful alternating order entries, 20 baseline/candidate samples for each of 12 rows per variant, CPU 2, and GOMAXPROCS=1.
+- Complete threshold table matches raw results. D reaches repeated 5% improvement at tested aligned count128 (-5.09/-5.27%) and tested unaligned count256 (-7.24/-8.26%). A reaches that target at count256 for both addresses; its aligned count128 repeat is -4.92%. These are tested sizes, not universal cutoffs. D loses at count64 and count16.
+- Completed validation status matches saved successful logs and recorded baseline failures. The baseline comparison contains the same 86 failed test/subtest entries; it includes parent entries and should not be described as 86 independent assertion failures. Full OS/architecture CI, native ARM64 execution, hardware counters, enabled-candidate corpus timing, and live-parameter execution timing are explicitly incomplete.
+- Completed recommendation is supported: investigate factor16/four-chain candidate D further, preserve production default, and do not promote in this PR. It reports approximately 13% aligned512, 20% aligned2048, 6.6% aligned8192, and 6–7% aligned262144 gains with unchanged measured allocation and frame costs; 63 bytes of code growth and noisy 374 ns median compile+close difference remain clear. More accumulators have no consistent useful gain.
+- One minor wording issue remains at report line344: D uses the largest tested group, so “Smaller groups” should be “Fixed-size groups” or “Bounded groups.” This does not affect evidence or recommendation.
+
+Sign-off: The performance evidence and investigate-further recommendation are suitable for a draft experimental PR. No blocking performance-evidence finding remains. This sign-off does not approve promotion or a default change. The stated measurement limits must remain. The minor wording corrections above were sent to the parent agent.

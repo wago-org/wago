@@ -1,0 +1,63 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                           │ experiments/specialized-sum-unroll/results/default-corpus/default-baseline.txt │ experiments/specialized-sum-unroll/results/default-corpus/default-candidate.txt │
+                           │                                     sec/op                                     │                          sec/op                           vs base               │
+Compile/memory                                                                                  14.55µ ± 4%                                                14.58µ ± 3%       ~ (p=0.867 n=20)
+Compile/many_funcs                                                                              325.9µ ± 2%                                                323.4µ ± 1%       ~ (p=0.478 n=20)
+Compile/linked_list                                                                             14.86µ ± 2%                                                14.86µ ± 2%       ~ (p=0.878 n=20)
+Compile/blake-as-simd                                                                           782.0µ ± 2%                                                786.4µ ± 1%       ~ (p=0.678 n=20)
+Compile/utf-as-simd                                                                             375.7µ ± 2%                                                377.0µ ± 1%       ~ (p=0.529 n=20)
+Exec/memory.sum                                                                                 98.88n ± 1%                                                98.59n ± 0%       ~ (p=0.344 n=20)
+Exec/many_funcs.run                                                                             14.57n ± 2%                                                14.57n ± 1%       ~ (p=0.888 n=20)
+Exec/linked_list.sum                                                                            8.155µ ± 1%                                                8.174µ ± 2%       ~ (p=0.578 n=20)
+Exec/blake-as-simd.hashN                                                                        387.1µ ± 0%                                                387.8µ ± 1%       ~ (p=0.383 n=20)
+Exec/utf-as-simd.convertN                                                                       56.71µ ± 1%                                                56.67µ ± 1%       ~ (p=0.602 n=20)
+Exec/utf-as-simd.validateN                                                                      144.3µ ± 1%                                                144.5µ ± 1%       ~ (p=0.883 n=20)
+geomean                                                                                         22.56µ                                                     22.57µ       +0.05%
+
+                           │ experiments/specialized-sum-unroll/results/default-corpus/default-baseline.txt │ experiments/specialized-sum-unroll/results/default-corpus/default-candidate.txt │
+                           │                                      B/op                                      │                          B/op                           vs base                 │
+Compile/memory                                                                               10.95Ki ± 0%                                               10.95Ki ± 0%       ~ (p=1.000 n=20) ¹
+Compile/many_funcs                                                                           68.19Ki ± 0%                                               68.19Ki ± 0%       ~ (p=1.000 n=20) ¹
+Compile/linked_list                                                                          13.08Ki ± 0%                                               13.08Ki ± 0%       ~ (p=1.000 n=20) ¹
+Compile/blake-as-simd                                                                        111.4Ki ± 0%                                               111.4Ki ± 0%       ~ (p=1.000 n=20) ¹
+Compile/utf-as-simd                                                                          67.70Ki ± 0%                                               67.70Ki ± 0%       ~ (p=1.000 n=20)
+Exec/memory.sum                                                                                0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/many_funcs.run                                                                            0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/linked_list.sum                                                                           0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/blake-as-simd.hashN                                                                       0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/utf-as-simd.convertN                                                                      0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/utf-as-simd.validateN                                                                     0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                   ²                                                           +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                           │ experiments/specialized-sum-unroll/results/default-corpus/default-baseline.txt │ experiments/specialized-sum-unroll/results/default-corpus/default-candidate.txt │
+                           │                                   allocs/op                                    │                       allocs/op                         vs base                 │
+Compile/memory                                                                                 29.00 ± 0%                                                 29.00 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/many_funcs                                                                             35.00 ± 0%                                                 35.00 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/linked_list                                                                            31.00 ± 0%                                                 31.00 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/blake-as-simd                                                                          110.0 ± 0%                                                 110.0 ± 0%       ~ (p=1.000 n=20) ¹
+Compile/utf-as-simd                                                                            102.0 ± 0%                                                 102.0 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/memory.sum                                                                                0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/many_funcs.run                                                                            0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/linked_list.sum                                                                           0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/blake-as-simd.hashN                                                                       0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/utf-as-simd.convertN                                                                      0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/utf-as-simd.validateN                                                                     0.000 ± 0%                                                 0.000 ± 0%       ~ (p=1.000 n=20) ¹
+geomean                                                                                                   ²                                                           +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                           │ experiments/specialized-sum-unroll/results/default-corpus/default-baseline.txt │ experiments/specialized-sum-unroll/results/default-corpus/default-candidate.txt │
+                           │                                  calls/batch                                   │                      calls/batch                        vs base                 │
+Exec/memory.sum                                                                                 20.69k ± 1%                                              20.35k ± 2%       ~ (p=0.069 n=20)
+Exec/many_funcs.run                                                                             138.5k ± 1%                                              138.6k ± 1%       ~ (p=1.000 n=20)
+Exec/linked_list.sum                                                                             260.0 ± 0%                                               260.0 ± 0%       ~ (p=0.748 n=20)
+Exec/blake-as-simd.hashN                                                                         6.000 ± 0%                                               6.000 ± 0%       ~ (p=1.000 n=20) ¹
+Exec/utf-as-simd.convertN                                                                        38.00 ± 0%                                               38.00 ± 0%       ~ (p=0.447 n=20)
+Exec/utf-as-simd.validateN                                                                       14.00 ± 0%                                               15.00 ± 7%       ~ (p=0.105 n=20)
+geomean                                                                                          365.3                                                    368.6       +0.90%
+¹ all samples are equal

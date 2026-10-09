@@ -1,0 +1,16 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/memory         	    4664	     12963 ns/op	   11216 B/op	      29 allocs/op
+BenchmarkCompile/many_funcs     	     187	    344442 ns/op	   69824 B/op	      35 allocs/op
+BenchmarkCompile/linked_list    	    4311	     15057 ns/op	   13392 B/op	      31 allocs/op
+BenchmarkCompile/blake-as-simd  	      70	    787938 ns/op	  114040 B/op	     110 allocs/op
+BenchmarkCompile/utf-as-simd    	     169	    353906 ns/op	   69320 B/op	     102 allocs/op
+BenchmarkExec/memory.sum        	      28	        95.49 ns/op	     21141 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/many_funcs.run    	      28	        13.98 ns/op	    144989 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/linked_list.sum   	      30	      7812 ns/op	       270.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN         	      26	    371887 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN        	      27	     54852 ns/op	        40.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN       	      26	    140010 ns/op	        15.00 calls/batch	       0 B/op	       0 allocs/op
+PASS

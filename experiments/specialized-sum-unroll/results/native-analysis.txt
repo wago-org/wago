@@ -1,0 +1,25 @@
+Scope: pressure0 native artifacts. All use the same original scalar peel.
+Variant   factor/chains   group start   static group instructions   branches/element
+baseline  4/4             0xbf          8                           1/4
+A         8/4             0xbf          12                          1/8
+B         8/8             0xca          12                          1/8
+C         2/2             0xbb          6                           1/2
+D         16/4            0xbf          20                          1/16
+E         16/8            0xca          20                          1/16
+
+Each group has factor memory-add instructions, then address add, count subtract,
+count compare, and a backward JAE. Each element still reads 8 bytes.
+All group and scalar-tail loops have no stack memory instructions.
+A/D reuse four chains. B/E use eight, with four more zeroing instructions and
+four more final combine instructions. They also consume four more registers.
+C has two chains, twice the branch frequency, and three static instructions per
+element versus two for baseline. Lower code size does not establish profitability.
+16-element groups advance the address by 128, using a wider immediate encoding.
+Tail and wrap paths remain scalar, with i32 address updates and no native group
+access across memory32 wrap. ABI result transfers and pressure parameters use
+the existing frame. Spill/reload counters do not count all such traffic.
+
+The eight-chain setup moves the group start from 0xbf to 0xca. Comparison at the
+same factor measures the whole candidate, including setup, combination, registers,
+and layout. It does not establish a pure hardware benefit from extra chains.
+No instruction-layout control or hardware counter measurement is claimed.

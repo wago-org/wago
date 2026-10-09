@@ -1,0 +1,36 @@
+Final independent correctness review
+Worktree: /home/jtenner/Projects/wago-sum-unroll
+Base: 2286d676facdfa1cabe2d1c61072e505438ca7f2
+Method: independent read-only source review. No tests or builds were run during this review, because timing measurements were active.
+
+Result: No blocking correctness finding remains in the reviewed code.
+
+Initial coverage gaps are addressed:
+1. Successful candidate execution now has direct baseline-result comparison. TestSumUnrollOracle compares all four baseline values with the independent oracle in the regular matrix and boundary cases. TestSumUnrollFullMemory32 also checks baseline success values against the oracle.
+2. TestSumUnrollOracle now executes each pressure fixture with both unbounded memory and a declared maximum of 48 pages. Its runtime memory is 3 MiB, equal to 48 pages. The bounded case exercises the experimental emitter branch that omits the wrapping dispatch, including successful groups, scalar tails, exit values, and out-of-bounds traps.
+3. TestSumUnrollSelectedPath checks actual experimental emission for pressure 0. It also checks the intended 8-chain fallback under pressure 12. This prevents a selected candidate from silently passing correctness validation solely through default fallback.
+
+Additional reviewed tests:
+- TestSumUnrollBoundedEmission emits every requested experimental factor/chain combination, verifies the conservative code-size bound, and checks that transient pins and owners do not leak.
+- TestSumUnrollEmissionRejectIsAtomic checks budget, register-pressure, factor, and chain rejection; it verifies that native bytes and register bookkeeping remain unchanged.
+- TestSumUnrollNativeFallback checks diagnostic selection of the existing four-element path after budget or pressure rejection, then executes the generated native function against the independent oracle. It checks sum, address, counter, live-parameter checksum, and source-byte preservation.
+- TestSumUnrollOracle now checks source-byte preservation after compilation and execution. It retains memory-content preservation checks, independent scalar comparison, alignment tests, count/remainder matrix, integer overflow seeds, exit locals, and trap-metadata comparison.
+
+Emitter review conclusion:
+The candidate is gated by the unchanged exact recognizer and bounds proof. It selects only free registers outside all owner, pin, local-pin, and reserved masks. All rejection paths precede emission and state mutation. The bounded stack register array adds no heap allocation. Counter and address updates retain 32-bit semantics. Wrapping ranges retain the existing scalar dispatch and per-load address increment. Extra accumulators begin at zero, are combined modulo 2^64, and are released after combination. The existing branch convergence and local dirty-state protocol are retained. No production default is changed.
+
+Validation limit:
+This is a source review, not a statement that tests pass. The parent agent must use its test records to report executed validation, including selected configurations and whether the 4 GiB mapping test ran or skipped.
+
+Independent Claude review:
+The requested read-only Claude command was attempted from the repository root. It exited with status 1: Not logged in · Please run /login. No Claude review occurred. Saved files: /tmp/wago-sum-review-claude.txt, /tmp/wago-sum-review-claude.stderr, /tmp/wago-sum-review-claude.status.
+
+Tagged-suite follow-up review:
+The missing legacy peephole diagnostics have a concrete baseline explanation. amd64/scalar.go:12 defaults sharedScalarEnabled on unless WAGO_SHARED_SCALAR=0. This same file and default exist at base 2286d676facdfa1cabe2d1c61072e505438ca7f2. compile.go:3692 admits eligible nontrapping integer functions and disables pinned locals for those functions. runBody selects scalarBody when that summary is eligible. The separate shared scalar compiler bypasses the old peepholes whose hit counts the legacy tests assert. The cited CommuteSelfUpdate, ConstFoldPackPeep compare cases, EntryArgPinFires, IfPrefixRematExecution, and IntervalRegionDynamicReuse fixtures are nontrapping integer bodies that meet shared scalar admission. Shared scalar admission allows numeric ifs and up to 256 locals, so the IfPrefixRemat fixture with 65 extra locals is still eligible.
+
+The sum experiment tests do not change sharedScalarEnabled or any existing optimizer knob. Their only per-compile optimizer override disables linear-sum-loop for the scalar oracle. optimization/catalog.go:213 ResolveSnapshot reads current globals and constructs an immutable selection bitset; it does not install or mutate overrides. All sum experiment selection writes are to the isolated sumUnrollExperiment value and are restored after each serial test. I found no optimizer-state leak from the new tests.
+
+Safest validation: compare the same full tagged suite and environment against the tests-first baseline, as the parent agent is doing. Record matching pre-existing failures explicitly. Run WAGO_SHARED_SCALAR=0 as a separate additional legacy-peephole validation if useful; do not use that changed setting to replace normal default measurements. Do not claim that every suite failure is explained until baseline comparison is complete.
+
+Threshold benchmark source review:
+BenchmarkSumUnrollThreshold matches the matrix benchmark timing protocol. Module creation, memory allocation and initialization, and native compilation happen outside the child benchmark timers. Each child computes its oracle and performs preflight execution before ResetTimer. The measured loop performs only native engine calls and error checks. StopTimer precedes the final result comparison. Memory bounds are valid for both addresses and all requested counts. No timer-correctness blocker was found.

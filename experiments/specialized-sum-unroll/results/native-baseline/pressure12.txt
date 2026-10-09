@@ -1,0 +1,1 @@
+code=514 frame=168 spills=0 reloads=0 peepholes=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 late-frame-commute:7 linear-sum-unroll4:1 tree-order:10 tree-order-candidate:10]

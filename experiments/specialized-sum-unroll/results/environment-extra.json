@@ -1,0 +1,6 @@
+{
+  "/sys/devices/system/cpu/cpu2/cpufreq/scaling_governor": "powersave",
+  "/sys/devices/system/cpu/cpufreq/boost": "1",
+  "/proc/sys/kernel/perf_event_paranoid": "3",
+  "/sys/devices/system/cpu/cpu2/topology/thread_siblings_list": "2-3"
+}
