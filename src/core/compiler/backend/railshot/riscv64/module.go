@@ -68,6 +68,9 @@ func compile(data []byte, regs []uint8) (*Compiled, error) {
 	return compileOptions(data, regs, CompileOptions{})
 }
 func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, error) {
+	if opts.referenceFunctions {
+		return nil, unsupported("private reference functions require decoded closed-module admission")
+	}
 	if opts.NativeReferenceCalls && (!opts.production || !opts.InvocationContext || !opts.Interruptible || !opts.ForeignTableCalls) {
 		return nil, unsupported("call_ref requires retained cooperative production ABI")
 	}
@@ -126,8 +129,19 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
+	if opts.referenceFunctions {
+		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.NativeReferenceCalls || !opts.InvocationContext || opts.importTailCalls || opts.dynamicTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
+			return nil, unsupported("closed reference module requires private cooperative production")
+		}
+		if err := admitClosedReferenceFunctionModule(m, false); err != nil {
+			return nil, err
+		}
+		if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+			return nil, err
+		}
+	}
 	var err error
-	if err = admitShapeProfileReferences(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls); err != nil {
+	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls, opts.referenceFunctions); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
@@ -139,6 +153,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.importTailCalls = opts.importTailCalls
 	state.dynamicTailCalls = opts.dynamicTailCalls
 	state.referenceCalls = opts.NativeReferenceCalls
+	state.referenceFunctions = opts.referenceFunctions
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	importTailCount := 0
 	integerSummaries := make([]integerSummary, len(m.Code))
@@ -146,7 +161,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	for i := range m.Code {
 		ft, _ := m.LocalFuncType(i)
 		summaries[i] = shared.AdmitScalarFunction(&m.Code[i], ft)
-		fallback[i] = opts.ForceFallback || !summaries[i].Eligible
+		fallback[i] = opts.ForceFallback || opts.referenceFunctions || !summaries[i].Eligible
 		if fallback[i] {
 			integerSummaries[i], err = walkInteger(&m.Code[i], ft, &state, nil)
 			if err != nil {
@@ -167,7 +182,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}
+		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}
 		if opts.production {
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
@@ -331,6 +346,9 @@ func admitShapeProfile(m *wasm.Module, floating, publicStarts bool) error {
 	return admitShapeProfileReferences(m, floating, publicStarts, false, false)
 }
 func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referencesAllowed, typed bool) error {
+	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
+}
+func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
 	// Public modules may contain only state. Import-only modules execute through
 	// instance-owned bridges; neither shape needs placeholder instructions.
 	if len(m.Code) > MaxFunctions || len(m.Code) == 0 && (!floating || !publicStarts) {
@@ -383,7 +401,11 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 			if !ok {
 				return unsupported("numeric function binding")
 			}
-			if err := integerNumericSignature(ft, floating); err != nil {
+			if referenceFunctions {
+				if _, _, err := admitDeclaredControlSignature(ft, internalReferenceTypes{decoded: m.Types}, true, typed, false); err != nil {
+					return err
+				}
+			} else if err := integerNumericSignature(ft, floating); err != nil {
 				return err
 			}
 		}
@@ -568,6 +590,9 @@ func (c *Compiled) Instantiate(stackBytes int) (*Instance, error) {
 func (c *Compiled) InstantiateWithOptions(stackBytes int, opts InstantiateOptions) (*Instance, error) {
 	if c == nil || len(c.code) == 0 {
 		return nil, fmt.Errorf("rv64: empty compiled module")
+	}
+	if err := admitProductionFunctionABI(c); err != nil {
+		return nil, err
 	}
 	i := &Instance{compiled: c}
 	var err error

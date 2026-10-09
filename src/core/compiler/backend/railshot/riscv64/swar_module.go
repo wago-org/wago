@@ -59,7 +59,7 @@ func compileSWARHostModule(data []byte, mode emissionMode) (*swarModuleImage, er
 }
 
 func compileSWARModulePolicy(data []byte, mode emissionMode, policy swarModulePolicy) (*swarModuleImage, error) {
-	if !mode.production || len(data) > MaxModuleBytes || policy > swarModuleHosts {
+	if mode.referenceFunctions || !mode.production || len(data) > MaxModuleBytes || policy > swarModuleHosts {
 		return nil, unsupported("SWAR module production/source bound")
 	}
 	owned := append([]byte(nil), data...)
@@ -107,6 +107,14 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	}
 	if m == nil || !mode.production || policy > swarModuleHosts {
 		return nil, unsupported("SWAR decoded module production/policy")
+	}
+	if mode.referenceFunctions {
+		if !mode.interruptible || !mode.foreignTableCalls || !mode.referenceCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.importTailCalls || mode.dynamicTailCalls || mode.profileMode != (profileMode{}) {
+			return nil, unsupported("closed reference SWAR module requires private cooperative production")
+		}
+		if err := admitClosedReferenceFunctionModule(m, true); err != nil {
+			return nil, err
+		}
 	}
 	if err := admitSWARDecodedBudgetReferences(m, state.publicStarts, state.publicStarts, mode.referenceCalls); err != nil {
 		return nil, err
@@ -294,7 +302,14 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	}
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
-		if !ok || swarCallSignature(ft) != nil {
+		if !ok {
+			return nil, unsupported("SWAR module function binding")
+		}
+		if mode.referenceFunctions {
+			if err := admitSWARControlSignature(ft, internalReferenceTypes{swar: types}, true, mode.referenceCalls); err != nil {
+				return nil, err
+			}
+		} else if err := swarCallSignature(ft); err != nil {
 			return nil, unsupported("SWAR module function type")
 		}
 		functions[imported+i] = ft
@@ -319,7 +334,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	bound := 0
 	importTailCount := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithTypedCallMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, nil)
+		summaries[i], err = walkSWARPairsWithReferenceFunctionMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}

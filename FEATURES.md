@@ -74,7 +74,11 @@ preserves function-reference arguments/results, mixed compact cells and
 reference root joins. Its separately enabled cooperative proper tails require
 exact reference result types and reuse the checked frame protocol. This private
 mode rejects imports and indirect/reference calls or tails; both production
-staging routes reject the mode; source/artifact callable signatures remain numeric/vector-only. Standalone `ref.null` constants with bounded numeric
+staging routes reject the mode. Private decoded whole-module compilation also
+checks numeric exports and descriptor targets, bounded declarations/code and
+inert metadata before validation. It excludes external state and prevents
+reference-bearing functions from escaping; legacy isolated instantiation rejects
+the mode before allocation. Source/artifact callable signatures remain numeric/vector-only. Standalone `ref.null` constants with bounded numeric
 function-type indices carry the typed witness, including unreachable uses,
 without allocating declared-call transport. Invocation
 scopes retain imported

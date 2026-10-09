@@ -62,6 +62,8 @@ type CompileOptions struct {
 	production          bool
 	publicStarts        bool
 	hostImports         bool
+	// Private decoded closed-module prerequisite; never production staging.
+	referenceFunctions bool
 	// Public TailCall remains gated until the whole instruction/target family.
 	tailModule     *wasm.Module
 	localTailCalls bool

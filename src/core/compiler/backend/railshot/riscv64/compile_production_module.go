@@ -35,6 +35,9 @@ func AdmitProductionSource(data []byte) error {
 // The public integration also calls AdmitProductionSource. Current bounded
 // admission is deliberately retained until the complete port is qualified.
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule, error) {
+	if opts.referenceFunctions {
+		return nil, unsupported("private reference function modules cannot be staged")
+	}
 	if opts.dynamicTailCalls {
 		return nil, unsupported("private dynamic source plans have no public artifact/runtime contract")
 	}

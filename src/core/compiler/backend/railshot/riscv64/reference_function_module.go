@@ -1,0 +1,170 @@
+//go:build linux && !tinygo
+
+package riscv64
+
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
+// This private decoded-module prerequisite proves that reference-bearing
+// functions cannot escape through an export, descriptor, import or resource.
+// It does not authorize production staging or general reference ownership.
+// Every bound precedes frontend validation and derived carrier allocation.
+func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
+	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
+		return unsupported("closed reference module directory bound")
+	}
+	if len(m.Imports) != 0 || m.UsesCompactImports || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tables) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
+		return unsupported("closed reference module external state")
+	}
+	remaining := MaxModuleBytes
+	consume := func(n int) bool {
+		if n > remaining {
+			return false
+		}
+		remaining -= n
+		return true
+	}
+	if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
+		return err
+	}
+	types := internalReferenceTypes{decoded: m.Types, decodedSWAR: vector}
+	limit := 256
+	if vector {
+		limit = maxSWARLocals
+	}
+	for _, group := range m.Types {
+		if len(group.SubTypes) != 1 {
+			return unsupported("closed reference module recursive group")
+		}
+		sub := &group.SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || len(sub.Comp.Fields) != 0 || sub.Comp.Array != (wasm.FieldType{}) {
+			return unsupported("closed reference module plain function type")
+		}
+		if _, _, err := admitDeclaredControlSignature(&sub.Comp, types, true, true, vector); err != nil {
+			return err
+		}
+	}
+	var references [MaxFunctions]bool
+	hasReferenceFunction := false
+	for i, index := range m.FuncTypes {
+		if index.Rec || uint64(index.Index) >= uint64(len(m.Types)) {
+			return unsupported("closed reference module function binding")
+		}
+		ft := &m.Types[index.Index].SubTypes[0].Comp
+		reference, _, err := admitDeclaredControlSignature(ft, types, true, true, vector)
+		if err != nil {
+			return err
+		}
+		references[i] = reference
+		hasReferenceFunction = hasReferenceFunction || reference
+		fn := &m.Code[i]
+		if len(fn.BodyBytes) == 0 || len(fn.BodyBytes) > 64<<10 || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || len(fn.Locals.Runs) > limit || fn.LocalDeclBytes > MaxModuleBytes || !consume(len(fn.BodyBytes)) {
+			return unsupported("closed reference module byte-backed function bound")
+		}
+		locals := len(ft.Params)
+		// LocalDeclBytes is a source offset, not authority for hand-built
+		// run storage. Charge at least the derived encoding, even zero runs.
+		localBytes := 1
+		if len(fn.Locals.Runs) >= 128 {
+			localBytes++
+		}
+		for _, run := range fn.Locals.Runs {
+			if uint64(run.Count) > uint64(limit-locals) {
+				return unsupported("closed reference module local bound")
+			}
+			locals += int(run.Count)
+			localBytes += 2 // count and numeric value type
+			if run.Count >= 128 {
+				localBytes++
+			}
+			if run.Type.Kind() == wasm.ValRef {
+				localBytes += 5
+			}
+			if !vector && scalarType(run.Type, true) || vector && swarCarrierType(run.Type) {
+				continue
+			}
+			if !internalFunctionReferenceWithTypes(run.Type, true, types) {
+				return unsupported("closed reference module local carrier")
+			}
+		}
+		if !consume(max(localBytes, int(fn.LocalDeclBytes))) {
+			return unsupported("closed reference module local declaration byte bound")
+		}
+	}
+	if !hasReferenceFunction {
+		return unsupported("closed reference module requires internal reference functions")
+	}
+	numericTarget := func(index uint32) bool { return uint64(index) < uint64(len(m.Code)) && !references[index] }
+	for _, ex := range m.Exports {
+		if ex.Index.Kind != wasm.ExternFunc || !numericTarget(ex.Index.Index) {
+			return unsupported("closed reference module numeric exports only")
+		}
+	}
+	elements := 0
+	for _, e := range m.Elements {
+		if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || len(e.Mode.Offset.BodyBytes) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Exprs) != 0 || len(e.Kind.Funcs) > MaxOwnedTableEntries-elements || !consume(4*len(e.Kind.Funcs)) {
+			return unsupported("closed reference module numeric declarative elements only")
+		}
+		elements += len(e.Kind.Funcs)
+		for _, idx := range e.Kind.Funcs {
+			if !numericTarget(uint32(idx)) {
+				return unsupported("closed reference module descriptor escape")
+			}
+		}
+	}
+	for _, custom := range m.Customs {
+		if custom.Name == "metadata.code.branch_hint" {
+			return unsupported("closed reference module branch metadata")
+		}
+	}
+	if err := admitSWARDecodedMetadataBudget(m, &remaining); err != nil {
+		return err
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, false)
+	for _, fn := range m.Code {
+		r := wasm.ReaderFrom(fn.BodyBytes)
+		budget, depth := 0, 0
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return err
+			}
+			budget++
+			switch op {
+			case 0x02, 0x03, 0x04:
+				depth++
+				if depth > maxControlNesting {
+					return unsupported("closed reference module control depth")
+				}
+			case 0x0b:
+				depth--
+			case 0x1c, 0x0e:
+				probe := r
+				count, err := probe.U32()
+				if err != nil {
+					return err
+				}
+				if op == 0x1c && count != 1 || op == 0x0e && count > maxTableEntries {
+					return unsupported("closed reference module immediate count")
+				}
+				budget += int(count)
+			}
+			if budget > integerBudget {
+				return unsupported("closed reference module instruction/immediate budget")
+			}
+			switch op {
+			case 0x1f:
+				return unsupported("closed reference module exception control is unsupported")
+			case 0x11, 0x13, 0x14, 0x15:
+				return unsupported("closed reference module direct calls only")
+			}
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
+				return err
+			}
+			if op == 0xd2 && !numericTarget(imm.Index) {
+				return unsupported("closed reference module ref.func escape")
+			}
+		}
+	}
+	return nil
+}
