@@ -27,7 +27,14 @@ func HasHeapObjectTypes(descs []TypeDesc) bool {
 // acyclic. Inherited field indexes/offsets and element storage must retain the
 // same representation; references may only narrow nullability within a family.
 func ValidateTypeDescs(descs []TypeDesc) error {
-	for i, d := range descs {
+	return validateTypeDescsFrom(descs, 0)
+}
+
+// Existing descriptors have already passed validation. Check only appended
+// descriptors, including their edges to the existing table.
+func validateTypeDescsFrom(descs []TypeDesc, start int) error {
+	for i := start; i < len(descs); i++ {
+		d := descs[i]
 		if d.ID != TypeID(i) {
 			return fmt.Errorf("gc: descriptor %d has id %d", i, d.ID)
 		}
@@ -66,7 +73,7 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 			return fmt.Errorf("gc: descriptor %d has unknown kind %d", i, d.Kind)
 		}
 	}
-	if err := validateSuperRelations(descs); err != nil {
+	if err := validateSuperRelationsFrom(descs, start); err != nil {
 		return err
 	}
 	return nil
@@ -166,9 +173,14 @@ func siftFieldOrder(order []uint16, fields []FieldDesc, root int) {
 }
 
 func validateSuperRelations(descs []TypeDesc) error {
+	return validateSuperRelationsFrom(descs, 0)
+}
+
+func validateSuperRelationsFrom(descs []TypeDesc, start int) error {
 	// All descriptors have passed structural validation, including forward supers.
 	// Checking every direct edge is transitive and independent of table order.
-	for i, d := range descs {
+	for i := start; i < len(descs); i++ {
+		d := descs[i]
 		if !d.HasSuper {
 			continue
 		}
@@ -198,7 +210,7 @@ func validateSuperRelations(descs []TypeDesc) error {
 			return errors.New("gc: incompatible subtype layout")
 		}
 	}
-	return validateSuperAcyclic(descs)
+	return validateSuperAcyclicFrom(descs, start)
 }
 
 // referenceStorageCompatible takes (destination, source): child values must fit
@@ -209,33 +221,55 @@ func inheritedStorageCompatible(actual, inherited StorageKind) bool {
 }
 
 func validateSuperAcyclic(descs []TypeDesc) error {
+	return validateSuperAcyclicFrom(descs, 0)
+}
+
+func validateSuperAcyclicFrom(descs []TypeDesc, start int) error {
+	// Existing edges cannot lead back into the appended suffix. A suffix with
+	// no internal super edges therefore cannot contain a cycle.
+	internalEdge := false
+	for i := start; i < len(descs); i++ {
+		if descs[i].HasSuper && int(descs[i].Super) >= start {
+			internalEdge = true
+			break
+		}
+	}
+	if !internalEdge {
+		return nil
+	}
 	const (
 		white uint8 = iota
 		gray
 		black
 	)
-	state := make([]uint8, len(descs))
-	path := make([]int, 0, len(descs))
-	for i := range descs {
-		if state[i] != white {
+	state := make([]uint8, len(descs)-start)
+	path := make([]int, 0, len(descs)-start)
+	for i := start; i < len(descs); i++ {
+		if state[i-start] != white {
 			continue
 		}
 		path = path[:0]
 		for cur := i; ; cur = int(descs[cur].Super) {
-			switch state[cur] {
+			if cur < start {
+				for _, p := range path {
+					state[p-start] = black
+				}
+				goto next
+			}
+			switch state[cur-start] {
 			case black:
 				for _, p := range path {
-					state[p] = black
+					state[p-start] = black
 				}
 				goto next
 			case gray:
 				return errors.New("gc: cyclic super chain")
 			}
-			state[cur] = gray
+			state[cur-start] = gray
 			path = append(path, cur)
 			if !descs[cur].HasSuper {
 				for _, p := range path {
-					state[p] = black
+					state[p-start] = black
 				}
 				goto next
 			}
