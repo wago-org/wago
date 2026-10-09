@@ -11,6 +11,7 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"math"
 	"os"
+	"strconv"
 	"testing"
 )
 
@@ -84,6 +85,11 @@ func loopExperimentSetup(mem []byte, name string) {
 	if name == "pointer" {
 		for i := 0; i < len(mem)/16; i++ {
 			binary.LittleEndian.PutUint32(mem[i*16:], uint32(((i+1)*16)%len(mem)))
+		}
+	}
+	if name == "map-f32" {
+		for i := 0; i+4 <= len(mem); i += 4 {
+			binary.LittleEndian.PutUint32(mem[i:], math.Float32bits(float32((i/4)%2048)*0.125))
 		}
 	}
 	if name == "dependent-f64" {
@@ -213,15 +219,35 @@ func BenchmarkExperimentalReplication(b *testing.B) {
 				cm.CodeImage.Close()
 			}
 		})
-		for _, n := range []uint64{9, 16, 512, 8192, 262144} {
+		streamN := uint64(4194304)
+		if name == "dependent-f64" {
+			streamN = 2097152
+		}
+		if name == "simd-i32" {
+			streamN = 1048576
+		}
+		if name == "pointer" {
+			streamN = 2097152
+		}
+		for _, n := range []uint64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 511, 512, 513, 8192, 262144, streamN} {
 			b.Run(name+"/execute/"+fmtExperimentCount(n), func(b *testing.B) {
-				r := newLoopExperimentRun(b, m, opts, 16<<20)
+				size, destination := uint64(16<<20), uint64(8<<20)
+				if n == streamN {
+					size, destination = 64<<20, 32<<20
+				}
+				r := newLoopExperimentRun(b, m, opts, size)
 				loopExperimentSetup(r.jm.CurrentBytes(), name)
-				args := []uint64{8 << 20, 128, n, 3, 7}
+				args := []uint64{destination, 128, n, 3, 7}
+				if name == "map-f32" {
+					args[3], args[4] = uint64(math.Float32bits(3)), uint64(math.Float32bits(7))
+				}
+				if name == "dependent-f64" {
+					args[3] = math.Float64bits(3)
+				}
 				if name == "pointer" {
 					args = []uint64{0, n, 0}
 				}
-				ref := newLoopExperimentRun(b, m, CompileOptions{AMD64FeaturesSet: true}, 16<<20)
+				ref := newLoopExperimentRun(b, m, CompileOptions{AMD64FeaturesSet: true}, size)
 				copy(ref.jm.CurrentBytes(), r.jm.CurrentBytes())
 				if err := ref.call(args...); err != nil {
 					b.Fatal(err)
@@ -251,18 +277,135 @@ func BenchmarkExperimentalReplication(b *testing.B) {
 		}
 	}
 }
-func fmtExperimentCount(n uint64) string {
-	switch n {
-	case 9:
-		return "9"
-	case 16:
-		return "16"
-	case 512:
-		return "512"
-	case 8192:
-		return "8192"
-	case 262144:
-		return "262144"
+func fmtExperimentCount(n uint64) string { return strconv.FormatUint(n, 10) }
+
+func TestExperimentalWritingMemory32Wrap(t *testing.T) {
+	for _, name := range []string{"map-i32", "map-f32", "dependent-f64", "simd-i32"} {
+		modes := []string{"count2", "count4", "guard2"}
+		if name == "simd-i32" {
+			modes = []string{"simd2", "simd4"}
+		}
+		if name == "map-f32" {
+			modes = append(modes, "vector-f32")
+		}
+		if name == "map-i32" {
+			modes = append(modes, "vector-i32")
+		}
+		for _, mode := range modes {
+			t.Run(name+"/"+mode, func(t *testing.T) {
+				m := loopExperimentModule(t, name)
+				m.Memories[0].Limits.Max = 65536
+				ref := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true}, 1<<32)
+				got := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: mode}, 1<<32)
+				for _, n := range []uint64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9} {
+					for _, pair := range [][2]uint64{{256, 0xfffffff0}, {0xfffffff0, 256}, {0xfffffff0, 0xfffffff0}, {256, 0xfffffff9}, {0xfffffff9, 256}} {
+						for _, r := range []*loopExperimentRun{ref, got} {
+							mem := r.jm.CurrentBytes()
+							for _, start := range []uint64{0, 256, (1 << 32) - 128} {
+								for i := uint64(0); i < 128; i++ {
+									mem[start+i] = byte(i*19 + 7)
+								}
+							}
+						}
+						args := []uint64{pair[0], pair[1], n, math.Float64bits(1), math.Float64bits(2)}
+						if name == "map-f32" {
+							args[3], args[4] = uint64(math.Float32bits(1)), uint64(math.Float32bits(2))
+						}
+						a, b := ref.call(args...), got.call(args...)
+						if (a != nil) != (b != nil) || a == nil && !bytes.Equal(ref.out, got.out) {
+							t.Fatalf("n=%d pair=%v err=%v/%v outputs=%x/%x", n, pair, a, b, ref.out[:40], got.out[:40])
+						}
+						for _, start := range []uint64{0, 256, (1 << 32) - 128} {
+							if !bytes.Equal(ref.jm.CurrentBytes()[start:start+128], got.jm.CurrentBytes()[start:start+128]) {
+								t.Fatal("effects before trap differ", n, pair)
+							}
+						}
+					}
+				}
+			})
+		}
 	}
-	return "unknown"
+}
+
+func BenchmarkExperimentalRejectedCompile(b *testing.B) {
+	mode := os.Getenv("WAGO_LOOP_REPLICATION")
+	for _, name := range []string{"small", "large", "many-functions"} {
+		var m *wasm.Module
+		switch name {
+		case "small":
+			m = benchSmallScalarModule(b)
+		case "large":
+			m = benchALUHeavyModule(b)
+		case "many-functions":
+			base := benchSmallScalarModule(b)
+			copyM := *base
+			m = &copyM
+			m.Code = make([]wasm.Func, 512)
+			m.FuncTypes = make([]wasm.TypeIdx, 512)
+			for i := range m.Code {
+				m.Code[i] = base.Code[0]
+				m.FuncTypes[i] = base.FuncTypes[0]
+			}
+		}
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				cm, err := CompileModuleWith(m, CompileOptions{ExperimentalLoopMode: mode, Workers: 1})
+				if err != nil {
+					b.Fatal(err)
+				}
+				cm.CodeImage.Close()
+			}
+		})
+	}
+}
+
+func BenchmarkExperimentalReduction(b *testing.B) {
+	for _, kind := range []string{"i32", "xor", "add-minus-one", "tee-drop", "header-eq"} {
+		m := experimentalReductionModule(b, kind)
+		b.Run(kind+"/compile", func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				cm, err := CompileModule(m)
+				if err != nil {
+					b.Fatal(err)
+				}
+				cm.CodeImage.Close()
+			}
+		})
+		for _, n := range []uint64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 511, 512, 513, 8192} {
+			b.Run(kind+"/execute/"+fmtExperimentCount(n), func(b *testing.B) {
+				r := newLoopExperimentRun(b, m, CompileOptions{}, 131072)
+				for i := range r.jm.CurrentBytes() {
+					r.jm.CurrentBytes()[i] = byte(i*19 + 7)
+				}
+				saved := shared.ReductionForms
+				shared.ReductionForms = false
+				ref := newLoopExperimentRun(b, m, CompileOptions{}, 131072)
+				shared.ReductionForms = saved
+				copy(ref.jm.CurrentBytes(), r.jm.CurrentBytes())
+				args := []uint64{1, n}
+				if err := ref.call(args...); err != nil {
+					b.Fatal(err)
+				}
+				if err := r.call(args...); err != nil {
+					b.Fatal(err)
+				}
+				if !bytes.Equal(ref.out, r.out) {
+					b.Fatal("incorrect reduction")
+				}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if err := r.eng.Call(r.entry, r.args, r.jm.LinearMemory(), r.trap, r.out); err != nil {
+						b.Fatal(err)
+					}
+				}
+				b.StopTimer()
+				if !bytes.Equal(ref.out, r.out) {
+					b.Fatal("final result differs")
+				}
+			})
+		}
+	}
 }

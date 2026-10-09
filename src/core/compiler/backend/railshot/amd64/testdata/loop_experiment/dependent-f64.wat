@@ -1,4 +1,4 @@
-(module (memory 1 256) (func (export "f") (param $dst i32) (param $src i32) (param $n i32) (param $sum f64) (result i32 i32 i32 f64)
+(module (memory 1 1024) (func (export "f") (param $dst i32) (param $src i32) (param $n i32) (param $sum f64) (result i32 i32 i32 f64)
 (block $exit (loop $loop
 (local.get $n) i32.eqz br_if $exit
 (local.get $dst) (local.get $sum) (local.get $src) f64.load f64.add (local.tee $sum) f64.store

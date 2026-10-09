@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func wideIndependentFixture(t *testing.T, arithmetic byte, zeroCounter bool) *wasm.Module {
+func wideIndependentFixture(t testing.TB, arithmetic byte, zeroCounter bool) *wasm.Module {
 	body := []byte{1, 1, 0x7c, 0x20, 4, 0x21, 6, 0x03, 0x40,
 		0x20, 0, 0x20, 1, 0x2b, 0, 0, 0x20, 4, arithmetic, 0x20, 5, 0xa0, 0x22, 6, 0x39, 0, 0,
 		0x20, 0, 0x41, 8, 0x6a, 0x21, 0, 0x20, 1, 0x41, 8, 0x6a, 0x21, 1,
