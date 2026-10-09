@@ -23,3 +23,6 @@ func SumExperimentShape() (factor, accumulators int, enabled bool) {
 	}
 	return 4, 4, false
 }
+
+// ReductionForms enables only the bounded additional integer-reduction forms.
+var ReductionForms = os.Getenv("WAGO_LOOP_REDUCTION_FORMS") == "1"

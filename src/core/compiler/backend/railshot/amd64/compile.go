@@ -410,6 +410,7 @@ type fn struct {
 	bmi2Rorx                bool   // use non-destructive rotates below the dense-code crossover
 	linearSumLoop           uint32 // packed +1 address/accumulator locals for one exact active loop
 	linearSumLoopDepth      uint16 // control depth owning linearSumLoop; zero when inactive
+	sumExperimentOpcode     byte   // bounded opt-in reduction operation
 	canonicalI32Uses        uint8  // saturated eligible uses; first two retain conservative code
 	hasJumpTableData        bool   // typed embedded data is remapped, but branches retain fixed widths
 
@@ -1719,6 +1720,7 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+
 	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
 		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
 	}

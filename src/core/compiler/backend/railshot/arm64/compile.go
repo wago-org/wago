@@ -443,8 +443,9 @@ type fn struct {
 	threadedMemory0 bool
 	// linearSumLoop encodes the exact reduction's address and accumulator locals;
 	// its depth limits the state to the loop whose top test established it.
-	linearSumLoop      uint32
-	linearSumLoopDepth uint16
+	linearSumLoop       uint32
+	linearSumLoopDepth  uint16
+	sumExperimentOpcode byte // bounded opt-in reduction operation
 }
 
 func (f *fn) opt(option optimization.Option) bool {
@@ -1575,6 +1576,7 @@ func CompileModule(m *wasm.Module) (*a64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
+
 	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
 		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
 	}
