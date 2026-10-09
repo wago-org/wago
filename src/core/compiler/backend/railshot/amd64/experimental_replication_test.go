@@ -297,8 +297,14 @@ func TestExperimentalWritingMemory32Wrap(t *testing.T) {
 				m.Memories[0].Limits.Max = 65536
 				ref := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true}, 1<<32)
 				got := newLoopExperimentRun(t, m, CompileOptions{AMD64FeaturesSet: true, ExperimentalLoopMode: mode}, 1<<32)
-				for _, n := range []uint64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9} {
+				for _, n := range []uint64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x40000000, 0xffffffff} {
 					for _, pair := range [][2]uint64{{256, 0xfffffff0}, {0xfffffff0, 256}, {0xfffffff0, 0xfffffff0}, {256, 0xfffffff9}, {0xfffffff9, 256}} {
+						// Large counts use a boundary access that traps within two
+						// iterations. They check widened range multiplication without
+						// executing billions of otherwise valid wrapped accesses.
+						if n > 9 && pair[0] != 0xfffffff9 && pair[1] != 0xfffffff9 {
+							continue
+						}
 						for _, r := range []*loopExperimentRun{ref, got} {
 							mem := r.jm.CurrentBytes()
 							for _, start := range []uint64{0, 256, (1 << 32) - 128} {
