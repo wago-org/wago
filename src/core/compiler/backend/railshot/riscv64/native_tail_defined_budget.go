@@ -46,15 +46,16 @@ type NativeTailOwnerCounts struct {
 	Targets, TargetValues     int
 	ProxySlots, Proxies       int
 	HostSlots                 int
-	MaskSlots, NonCallable    int // sparse defined rows; signature storage excludes holes
+	MaskSlots, NonCallable    int // physical source rows; signature storage excludes holes
+	TargetNonCallable         int // paired target holes exist only on imported owners
 }
 
 func NativeTailFactoryCountsBudget(sites, values, continuations int, counts NativeTailOwnerCounts, guestCodeBytes int) (metadata, code int, err error) {
 	c := counts
-	if c.Owners <= 0 || c.Owners > tailRAMaxRanges || c.Functions < c.Owners || c.Functions > MaxFunctions || c.MaskSlots < 0 || c.MaskSlots > c.Functions || c.NonCallable < 0 || c.NonCallable > c.MaskSlots || c.Values < 0 || c.Values > 512*(c.Functions-c.NonCallable) || c.Targets < 0 || c.Targets > c.Functions || c.TargetValues < 0 || c.TargetValues > 512*c.Targets || c.ProxySlots < 0 || c.ProxySlots > c.Targets || c.Proxies < 0 || c.Proxies > c.ProxySlots || c.HostSlots < 0 || c.HostSlots > c.Functions {
+	if c.Owners <= 0 || c.Owners > tailRAMaxRanges || c.Functions < c.Owners || c.Functions > MaxFunctions || c.MaskSlots < 0 || c.MaskSlots > c.Functions || c.NonCallable < 0 || c.NonCallable > c.MaskSlots || c.Values < 0 || c.Values > 512*(c.Functions-c.NonCallable) || c.Targets < 0 || c.Targets > c.Functions || c.TargetNonCallable < 0 || c.TargetNonCallable > c.Targets || c.TargetNonCallable > c.NonCallable || c.TargetValues < 0 || c.TargetValues > 512*(c.Targets-c.TargetNonCallable) || c.ProxySlots < 0 || c.ProxySlots > c.Targets || c.Proxies < 0 || c.Proxies > c.ProxySlots || c.Proxies > c.Targets-c.TargetNonCallable || c.HostSlots < 0 || c.HostSlots > c.Functions {
 		return 0, 0, unsupported("native factory aggregate owner counts")
 	}
-	dynamicMetadata := int(unsafe.Sizeof(tailRADynamicSite{})) + c.Owners*int(unsafe.Sizeof(tailRADynamicOwner{})) + (c.Functions+c.Targets)*int(unsafe.Sizeof(tailRAFunction{})) + (c.Functions-c.NonCallable+c.Targets)*int(unsafe.Sizeof(wasm.CompType{})) + c.Functions*8 + c.MaskSlots*int(unsafe.Sizeof(false)) + (c.Values+c.TargetValues)*int(unsafe.Sizeof(wasm.ValType{})) + c.ProxySlots*int(unsafe.Sizeof((*tailRADynamicProxy)(nil))) + c.Proxies*int(unsafe.Sizeof(tailRADynamicProxy{})) + c.HostSlots*int(unsafe.Sizeof((*NativeTailHostFunction)(nil)))
+	dynamicMetadata := int(unsafe.Sizeof(tailRADynamicSite{})) + c.Owners*int(unsafe.Sizeof(tailRADynamicOwner{})) + (c.Functions+c.Targets)*int(unsafe.Sizeof(tailRAFunction{})) + (c.Functions-c.NonCallable+c.Targets-c.TargetNonCallable)*int(unsafe.Sizeof(wasm.CompType{})) + c.Functions*8 + c.MaskSlots*int(unsafe.Sizeof(false)) + (c.Values+c.TargetValues)*int(unsafe.Sizeof(wasm.ValType{})) + c.ProxySlots*int(unsafe.Sizeof((*tailRADynamicProxy)(nil))) + c.Proxies*int(unsafe.Sizeof(tailRADynamicProxy{})) + c.HostSlots*int(unsafe.Sizeof((*NativeTailHostFunction)(nil)))
 	dynamicCode := 2048 + 1024*(c.Owners+c.Functions)
 	if dynamicMetadata > MaxModuleBytes || dynamicCode > MaxCodeBytes {
 		return 0, 0, unsupported("native factory aggregate owner bytes")

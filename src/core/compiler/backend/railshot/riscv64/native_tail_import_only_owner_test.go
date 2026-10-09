@@ -15,8 +15,9 @@ import (
 )
 
 func TestNativeTailImportOnlyOwnerCertifiedIdentity(t *testing.T) {
-	for _, host := range []bool{false, true} {
-		t.Run(fmt.Sprintf("host%t", host), func(t *testing.T) {
+	for _, mode := range [][2]bool{{false, false}, {true, false}, {false, true}, {true, true}} {
+		host, sparse := mode[0], mode[1]
+		t.Run(fmt.Sprintf("host%t-sparse%t", host, sparse), func(t *testing.T) {
 			sig := wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, wasm.F64}, Results: []wasm.ValType{wasm.I32, wasm.F64}}
 			storage := tailRAProofFunctionFixture(t, &sig, abi.RV64InstanceContextBytes)
 			trampoline, err := coreruntime.HostCallTrampolinePointer()
@@ -73,7 +74,13 @@ func TestNativeTailImportOnlyOwnerCertifiedIdentity(t *testing.T) {
 				binary.LittleEndian.PutUint64(row[16:], uint64(tailRAPointer(f.context)))
 				counts.Proxies = 1
 			}
+			if sparse {
+				counts.MaskSlots = 1
+			}
 			build := func(image *NativeTailCodeImage, entries []int) (*NativeTailOwner, error) {
+				if sparse {
+					return NewNativeTailSparseImportedOwner(image, storage.job, o.context, o.descriptors, o.directory, entries, []*wasm.CompType{&sig}, []NativeTailImport{importRow}, trampoline)
+				}
 				return NewNativeTailImportedOwner(image, storage.job, o.context, o.descriptors, o.directory, entries, []wasm.CompType{sig}, []NativeTailImport{importRow}, trampoline)
 			}
 			owner, err := build(nil, nil)

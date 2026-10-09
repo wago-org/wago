@@ -148,7 +148,10 @@ func TestNativeTailSparseDefinedOwnerRejectsCallableHoles(t *testing.T) {
 		{"signature", func(o *tailRADynamicOwner) { o.functions[0].signature = &wasm.CompType{} }},
 		{"params", func(o *tailRADynamicOwner) { o.functions[0].info.Params = 1 }},
 		{"results", func(o *tailRADynamicOwner) { o.functions[0].info.Results = 1 }},
-		{"targets", func(o *tailRADynamicOwner) { o.targets = append([]tailRAFunction(nil), o.functions...) }},
+		{"targets", func(o *tailRADynamicOwner) {
+			o.targets = append([]tailRAFunction(nil), o.functions...)
+			o.targets[0].info.FrameBytes += 16
+		}},
 		{"proxies", func(o *tailRADynamicOwner) { o.proxies = make([]*tailRADynamicProxy, 3) }},
 		{"hosts", func(o *tailRADynamicOwner) { o.hosts = make([]*NativeTailHostFunction, 3) }},
 		{"job", func(o *tailRADynamicOwner) { o.functions[0].job = nil }},

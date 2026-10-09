@@ -64,9 +64,7 @@ func nativeTailPublishedFunction(image *NativeTailCodeImage, job *coreruntime.Jo
 }
 
 func nativeTailCloneSignature(sig wasm.CompType) *wasm.CompType {
-	sig.Params = append([]wasm.ValType(nil), sig.Params...)
-	sig.Results = append([]wasm.ValType(nil), sig.Results...)
-	return &sig
+	return &wasm.CompType{Kind: wasm.CompFunc, Params: append([]wasm.ValType(nil), sig.Params...), Results: append([]wasm.ValType(nil), sig.Results...)}
 }
 
 // NativeTailImport describes an importer-owned ordinary bridge issued by the
@@ -116,7 +114,47 @@ func NativeTailHostOwnerBytes(count, imports, values int) (int, error) {
 // An import-only owner has no guest image or entries. Its certified import images
 // authenticate the physical owner before any borrowed context is inspected.
 func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, descriptors, directory []byte, entries []int, signatures []wasm.CompType, imports []NativeTailImport, trampoline uintptr) (*NativeTailOwner, error) {
-	n, ni := len(signatures), len(imports)
+	return newNativeTailImportedOwner(image, job, context, descriptors, directory, entries, len(signatures), func(i int) *wasm.CompType { return &signatures[i] }, imports, trampoline, false)
+}
+
+// NewNativeTailSparseImportedOwner retains the full imported+defined namespace.
+// Only a defined signature may be nil, marking an internal physical frame with
+// no callable descriptor identity. Every imported signature remains numeric.
+func NewNativeTailSparseImportedOwner(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, descriptors, directory []byte, entries []int, signatures []*wasm.CompType, imports []NativeTailImport, trampoline uintptr) (*NativeTailOwner, error) {
+	return newNativeTailImportedOwner(image, job, context, descriptors, directory, entries, len(signatures), func(i int) *wasm.CompType { return signatures[i] }, imports, trampoline, true)
+}
+
+func NativeTailSparseImportedOwnerBytes(count, imports, nonCallable, values int) (int, error) {
+	return nativeTailSparseImportedOwnerBytes(count, imports, nonCallable, values, false)
+}
+
+func NativeTailSparseHostOwnerBytes(count, imports, nonCallable, values int) (int, error) {
+	return nativeTailSparseImportedOwnerBytes(count, imports, nonCallable, values, true)
+}
+
+// Full source/target arrays remain charged. Add pointer staging and the retained
+// mask; only callable signatures consume type storage. Hosts retain a full
+// optional pointer directory, including nil entries at every internal hole.
+func nativeTailSparseImportedOwnerBytes(count, imports, nonCallable, values int, hosts bool) (int, error) {
+	if count <= 0 || count > MaxFunctions || imports <= 0 || imports > count || nonCallable < 0 || nonCallable > count-imports || values < 0 || values > 512*(count-nonCallable) {
+		return 0, unsupported("native sparse imported owner counts")
+	}
+	size, err := NativeTailImportedOwnerBytes(count, imports, values)
+	if err != nil {
+		return 0, err
+	}
+	size += count * (int(unsafe.Sizeof((*wasm.CompType)(nil))) + int(unsafe.Sizeof(false)))
+	if hosts {
+		size += count * int(unsafe.Sizeof((*NativeTailHostFunction)(nil)))
+	}
+	if size > MaxModuleBytes {
+		return 0, unsupported("native sparse imported owner metadata bound")
+	}
+	return size, nil
+}
+
+func newNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, descriptors, directory []byte, entries []int, n int, signature func(int) *wasm.CompType, imports []NativeTailImport, trampoline uintptr, sparse bool) (*NativeTailOwner, error) {
+	ni := len(imports)
 	if _, err := NativeTailImportedOwnerBytes(n, ni, 0); err != nil {
 		return nil, err
 	}
@@ -142,16 +180,30 @@ func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 	if hasHosts {
 		budget = NativeTailHostOwnerBytes
 	}
-	values := 0
-	for i := range signatures {
-		sig := &signatures[i]
+	values, nonCallable := 0, 0
+	for i := 0; i < n; i++ {
+		sig := signature(i)
+		if sparse && sig == nil && i >= ni {
+			nonCallable++
+			continue
+		}
 		if err := tailRASignature(sig); err != nil {
 			return nil, err
 		}
+		if len(sig.Fields) != 0 || sig.Array != (wasm.FieldType{}) {
+			return nil, unsupported("native imported inactive signature metadata")
+		}
 		values += len(sig.Params) + len(sig.Results)
-		if _, err := budget(n, ni, values); err != nil {
+	}
+	if sparse {
+		if _, err := nativeTailSparseImportedOwnerBytes(n, ni, nonCallable, values, hasHosts); err != nil {
 			return nil, err
 		}
+	} else if _, err := budget(n, ni, values); err != nil {
+		return nil, err
+	}
+	for i := 0; i < n; i++ {
+		sig := signature(i)
 		if i < ni {
 			p := &imports[i]
 			if p.Host != nil {
@@ -186,7 +238,7 @@ func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 			if local+1 < len(entries) {
 				end = entries[local+1]
 			}
-			if _, err := nativeTailPublishedFunction(image, job, context, descriptors, entries[local], end, uint32(i), sig); err != nil {
+			if _, err := nativeTailImportedLocal(image, job, context, descriptors, entries[local], end, uint32(i), sig); err != nil {
 				return nil, err
 			}
 		}
@@ -195,9 +247,17 @@ func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 	if hasHosts {
 		o.owner.hosts = make([]*NativeTailHostFunction, n)
 	}
-	for i, sig := range signatures {
-		frozen := nativeTailCloneSignature(sig)
-		o.owner.signatureKeys[i] = wasm.StructuralFuncTypeKey(frozen)
+	if sparse {
+		o.owner.uncallable = make([]bool, n)
+	}
+	for i := 0; i < n; i++ {
+		var frozen *wasm.CompType
+		if sig := signature(i); sig != nil {
+			frozen = nativeTailCloneSignature(*sig)
+			o.owner.signatureKeys[i] = wasm.StructuralFuncTypeKey(frozen)
+		} else {
+			o.owner.uncallable[i] = true
+		}
 		if i < ni {
 			p := &imports[i]
 			if p.Host != nil {
@@ -213,7 +273,7 @@ func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 			if local+1 < len(entries) {
 				end = entries[local+1]
 			}
-			f, err := nativeTailPublishedFunction(image, job, context, descriptors, entries[local], end, uint32(i), frozen)
+			f, err := nativeTailImportedLocal(image, job, context, descriptors, entries[local], end, uint32(i), frozen)
 			if err != nil {
 				return nil, err
 			}
@@ -224,4 +284,34 @@ func NewNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 		return nil, err
 	}
 	return o, nil
+}
+
+// Internal local frames carry no invented numeric signature. Their real image,
+// span and frame remain authenticated just like their callable neighbors.
+func nativeTailImportedLocal(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, anchor []byte, entry, end int, index uint32, signature *wasm.CompType) (tailRAFunction, error) {
+	if signature != nil {
+		return nativeTailPublishedFunction(image, job, context, anchor, entry, end, index, signature)
+	}
+	if image == nil || job == nil || len(context) != abi.RV64InstanceContextBytes || len(anchor) < 40 {
+		return tailRAFunction{}, unsupported("native internal imported-owner extent")
+	}
+	if err := image.Validate(); err != nil {
+		return tailRAFunction{}, err
+	}
+	code := image.Bytes()
+	if entry < 0 || entry&15 != 0 || end <= entry || end > len(code) || end&3 != 0 {
+		return tailRAFunction{}, unsupported("native internal imported-owner span")
+	}
+	frame, err := NativeFrameBytes(code[:end], entry)
+	if err != nil {
+		return tailRAFunction{}, err
+	}
+	f := tailRAFunction{published: image, snapshot: code, job: job, context: context, directory: anchor, info: FunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, mode: emissionMode{production: true, interruptible: true, invocationContext: true, functionIndex: index}}}
+	if err := f.validateFrame(true); err != nil {
+		return tailRAFunction{}, err
+	}
+	if binary.LittleEndian.Uint64(anchor[16:]) != uint64(job.LinMemBase()) {
+		return tailRAFunction{}, unsupported("native internal imported-owner home")
+	}
+	return f, nil
 }

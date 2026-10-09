@@ -22,7 +22,7 @@ type tailRADynamicOwner struct {
 	// Only the opaque runtime constructor supplies keys, after cloning and
 	// validating signatures. Private mutable proof inputs leave this nil.
 	signatureKeys []uint64
-	// Nil retains the legacy all-callable contract. Sparse defined owners keep
+	// Nil retains the legacy all-callable contract. Sparse owners keep
 	// every physical ordinal but expose no descriptor or target for true bits.
 	uncallable []bool
 	// Optional parallel producer/proxy metadata. Nil targets selects the source
@@ -96,8 +96,8 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 		if len(o.functions) == 0 || len(o.functions) > MaxFunctions-count || o.signatureKeys != nil && len(o.signatureKeys) != len(o.functions) || o.targets != nil && len(o.targets) != len(o.functions) || o.proxies != nil && (len(o.proxies) != len(o.functions) || o.targets == nil) || o.hosts != nil && len(o.hosts) != len(o.functions) || len(o.descriptors) != 40*(len(o.functions)+1) || len(o.context) != abi.RV64InstanceContextBytes || len(o.directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*len(o.functions) {
 			return 0, 0, unsupported("dynamic tail retained owner extent")
 		}
-		if o.uncallable != nil && (len(o.uncallable) != len(o.functions) || o.signatureKeys == nil || o.targets != nil || o.proxies != nil || o.hosts != nil) {
-			return 0, 0, unsupported("dynamic tail sparse defined owner extent")
+		if o.uncallable != nil && (len(o.uncallable) != len(o.functions) || o.signatureKeys == nil || o.hosts != nil && o.targets == nil) {
+			return 0, 0, unsupported("dynamic tail sparse owner extent")
 		}
 		count += len(o.functions)
 		metadata += (len(o.functions)+len(o.targets))*int(unsafe.Sizeof(tailRAFunction{})) + len(o.proxies)*int(unsafe.Sizeof((*tailRADynamicProxy)(nil))) + len(o.signatureKeys)*8 + len(o.hosts)*int(unsafe.Sizeof((*NativeTailHostFunction)(nil)))
@@ -109,13 +109,20 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 		}
 		for i := 0; i < len(o.functions)+len(o.targets); i++ {
 			f := o.retainedFunction(i)
-			if o.uncallable != nil && o.uncallable[i] {
-				if f.signature != nil || o.signatureKeys[i] != 0 || f.info.Params != 0 || f.info.Results != 0 || f.published == nil {
+			ordinal := i
+			if ordinal >= len(o.functions) {
+				ordinal -= len(o.functions)
+			}
+			if o.uncallable != nil && o.uncallable[ordinal] {
+				if f.signature != nil || o.signatureKeys[ordinal] != 0 || f.info.Params != 0 || f.info.Results != 0 || f.published == nil || o.proxy(ordinal) != nil || o.host(ordinal) != nil {
 					return 0, 0, unsupported("dynamic tail noncallable signature metadata")
+				}
+				if i >= len(o.functions) && !sameNativeTailPhysicalFunction(f, o.functions[ordinal]) {
+					return 0, 0, unsupported("dynamic tail noncallable target differs from source")
 				}
 				continue
 			}
-			if f.signature == nil || len(f.signature.Params) > 256 || len(f.signature.Results) > 256 {
+			if f.signature == nil || len(f.signature.Params) > 256 || len(f.signature.Results) > 256 || len(f.signature.Fields) != 0 || f.signature.Array != (wasm.FieldType{}) {
 				return 0, 0, unsupported("dynamic tail frozen signature extent")
 			}
 			metadata += int(unsafe.Sizeof(wasm.CompType{})) + (len(f.signature.Params)+len(f.signature.Results))*int(unsafe.Sizeof(wasm.ValType{}))
@@ -126,6 +133,16 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 		}
 	}
 	return metadata, code, nil
+}
+
+// Hole targets mirror their physical source exactly. Comparing identities and
+// extents here does not dereference borrowed native storage; Validate checks
+// every particular published lease before reading any context or live row.
+func sameNativeTailPhysicalFunction(a, b tailRAFunction) bool {
+	return a.code == b.code && a.published == b.published && a.info == b.info && a.signature == b.signature && a.job == b.job &&
+		len(a.snapshot) == len(b.snapshot) && tailRAPointer(a.snapshot) == tailRAPointer(b.snapshot) &&
+		len(a.context) == len(b.context) && tailRAPointer(a.context) == tailRAPointer(b.context) &&
+		len(a.directory) == len(b.directory) && tailRAPointer(a.directory) == tailRAPointer(b.directory)
 }
 
 func (d *tailRADynamicSite) validate(s *tailRAProofSite) error {
@@ -265,10 +282,7 @@ func tailRADynamicFreezeFunctions(functions []tailRAFunction) []tailRAFunction {
 		if frozen[n].signature == nil {
 			continue // Only explicitly masked rows pass the preceding budget check.
 		}
-		sig := *frozen[n].signature
-		sig.Params = append([]wasm.ValType(nil), sig.Params...)
-		sig.Results = append([]wasm.ValType(nil), sig.Results...)
-		frozen[n].signature = &sig
+		frozen[n].signature = nativeTailCloneSignature(*frozen[n].signature)
 	}
 	return frozen
 }

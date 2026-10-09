@@ -18,9 +18,10 @@ import (
 
 func TestNativeTailHostRV64DynamicTargetParkReentry(t *testing.T) {
 	for _, shared := range []bool{false, true} {
-		for _, owned := range []bool{false, true} {
+		for _, mode := range [][2]bool{{false, false}, {true, false}, {false, true}, {true, true}} {
+			owned, sparse := mode[0], mode[1]
 			for _, counts := range [][2]int{{0, 0}, {0, 1}, {1, 0}, {4, 4}, {64, 64}} {
-				t.Run(fmt.Sprintf("shared%t-owned%t-params%d-results%d", shared, owned, counts[0], counts[1]), func(t *testing.T) {
+				t.Run(fmt.Sprintf("sparse%t-shared%t-owned%t-params%d-results%d", sparse, shared, owned, counts[0], counts[1]), func(t *testing.T) {
 					scalar := []wasm.ValType{wasm.I32, wasm.F32, wasm.I64, wasm.F64}
 					sig := wasm.CompType{Kind: wasm.CompFunc, Params: make([]wasm.ValType, counts[0]), Results: make([]wasm.ValType, counts[1])}
 					for i := range sig.Params {
@@ -80,7 +81,15 @@ func TestNativeTailHostRV64DynamicTargetParkReentry(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					target, err := NewNativeTailImportedOwner(leaf.published, f.b, f.cb, ob.descriptors, ob.directory, []int{0}, []wasm.CompType{sig, empty}, []NativeTailImport{{Image: host.published, CodeBytes: len(code), Host: hostTarget}}, trampoline)
+					imports := []NativeTailImport{{Image: host.published, CodeBytes: len(code), Host: hostTarget}}
+					var target *NativeTailOwner
+					if sparse {
+						clear(ob.descriptors[80:120])
+						clear(ob.directory[64:96])
+						target, err = NewNativeTailSparseImportedOwner(leaf.published, f.b, f.cb, ob.descriptors, ob.directory, []int{0}, []*wasm.CompType{&sig, nil}, imports, trampoline)
+					} else {
+						target, err = NewNativeTailImportedOwner(leaf.published, f.b, f.cb, ob.descriptors, ob.directory, []int{0}, []wasm.CompType{sig, empty}, imports, trampoline)
+					}
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -232,6 +241,36 @@ func TestNativeTailHostRV64DynamicTargetParkReentry(t *testing.T) {
 						t.Fatal("dynamic host row classification guard", err, calls)
 					}
 					binary.LittleEndian.PutUint64(ob.directory[32+24:], abi.RV64TailTargetsHost)
+					if sparse {
+						for _, rewritten := range []bool{false, true} {
+							beforeCalls := calls
+							desc, row := ob.descriptors[80:120], ob.directory[64:96]
+							if rewritten {
+								copy(desc, ob.descriptors[40:80])
+								copy(row, ob.directory[32:64])
+								binary.LittleEndian.PutUint64(desc[24:], uint64(tailRAPointer(desc)))
+							}
+							binary.LittleEndian.PutUint64(f.witness[224:], uint64(tailRAPointer(desc)))
+							prepare()
+							beforeArgs, beforeResults := bytes.Clone(f.args), bytes.Clone(f.results)
+							err = f.e.CallWithHostBase(root.Base(), f.args, f.a.LinMemBase(), f.trap, f.results, f.ctrl, callback)
+							clear(desc)
+							clear(row)
+							if !errors.As(err, &trap) || trap.Code != coreruntime.TrapCalledFnNotLinked || calls != beforeCalls || !bytes.Equal(f.args, beforeArgs) || !bytes.Equal(f.results, beforeResults) {
+								t.Fatal("internal frame selected as host", rewritten, err, calls)
+							}
+							f.assertCanaries(t)
+							binary.LittleEndian.PutUint64(f.witness[224:], uint64(tailRAPointer(ob.descriptors)+40))
+							prepare()
+							if err := f.e.CallWithHostBase(root.Base(), f.args, f.a.LinMemBase(), f.trap, f.results, f.ctrl, callback); err != nil {
+								t.Fatal("host reuse after rejected hole", err)
+							}
+							f.assertReturned(t)
+							if calls != beforeCalls+1 {
+								t.Fatal("callback reuse count", calls, beforeCalls)
+							}
+						}
+					}
 				})
 			}
 		}
