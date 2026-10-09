@@ -12,10 +12,14 @@ import (
 func TestSIMDOutputBorrowWithLiveVectorPressure(t *testing.T) {
 	previous := simdOutputBorrowEnabled
 	defer func() { simdOutputBorrowEnabled = previous }()
-	for _, features := range []shared.AMD64Features{0, shared.AMD64ModernBaseline} {
+	for _, features := range []shared.AMD64Features{0, shared.AMD64SSSE3, shared.AMD64ModernBaseline} {
 		for _, compact := range []bool{false, true} {
-			for _, sub := range []uint32{77, 171, 251, 13} {
-				t.Run(fmt.Sprintf("features=%x/compact=%v/op=%d", features, compact, sub), func(t *testing.T) {
+			for _, op := range []struct {
+				sub   uint32
+				align bool
+			}{{sub: 77}, {sub: 171}, {sub: 251}, {sub: 13}, {sub: 13, align: true}} {
+				sub := op.sub
+				t.Run(fmt.Sprintf("features=%x/compact=%v/op=%d/align=%v", features, compact, sub, op.align), func(t *testing.T) {
 					// Seventeen vectors plus one error accumulator; parameter 0 is unused.
 					body := []byte{2, 17, 0x7b, 1, 0x7f}
 					var vectors [16][16]byte
@@ -42,7 +46,13 @@ func TestSIMDOutputBorrowWithLiveVectorPressure(t *testing.T) {
 					}
 					body = append(body, simdOp(sub)...)
 					if sub == 13 {
-						body = append(body, []byte{0, 17, 2, 19, 4, 21, 6, 23, 8, 25, 10, 27, 12, 29, 14, 31}...)
+						if op.align {
+							for lane := byte(14); lane < 30; lane++ {
+								body = append(body, lane)
+							}
+						} else {
+							body = append(body, []byte{0, 17, 2, 19, 4, 21, 6, 23, 8, 25, 10, 27, 12, 29, 14, 31}...)
+						}
 					}
 					body = append(body, 0x21, 17)
 					addMismatch := func(v [16]byte) {
@@ -90,7 +100,7 @@ func TestSIMDOutputBorrowWithLiveVectorPressure(t *testing.T) {
 					if vectorSpills == 0 {
 						t.Fatal("fixture did not create register pressure")
 					}
-					if fs.Peephole["simd-output-borrow"]+fs.Peephole["simd-shuffle-output-borrow"]+fs.Peephole["simd-convert-input-borrow"] == 0 {
+					if fs.Peephole["simd-output-borrow"]+fs.Peephole["simd-shuffle-output-borrow"]+fs.Peephole["simd-convert-input-borrow"]+fs.Peephole["simd-shuffle-align"] == 0 {
 						t.Fatal("pressure fixture did not select borrowing")
 					}
 				})
