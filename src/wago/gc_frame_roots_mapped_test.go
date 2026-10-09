@@ -76,8 +76,30 @@ func TestGCNativeFrameRootsDeepMappedStack(t *testing.T) {
 	}
 }
 
+func TestGCNativeFrameRootsMappedStackBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		frameBytes uint32
+		want       string
+	}{
+		{name: "frame", frameBytes: 32 + shared.ARM64FrameRecordBytes + 1, want: "generic GC native frame exceeds stack bounds"},
+		{name: "return word", frameBytes: 33, want: "generic GC native return address exceeds stack bounds"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			roots := mappedFrameChain(t, 1)
+			roots.frameBytes = tc.frameBytes
+			defer func() {
+				if got := recover(); got == nil || fmt.Sprint(got) != tc.want {
+					t.Errorf("panic = %v, want %q", got, tc.want)
+				}
+			}()
+			roots.RangeRoots(func(gc.RootSlot) bool { return true })
+		})
+	}
+}
+
 func BenchmarkGCNativeFrameRootsMappedStack(b *testing.B) {
-	for _, frames := range []int{1, 64} {
+	for _, frames := range []int{1, 64, 4098} {
 		b.Run(fmt.Sprintf("frames=%d", frames), func(b *testing.B) {
 			roots := mappedFrameChain(b, frames)
 			sink := new(gcCountingRootRefSink)
