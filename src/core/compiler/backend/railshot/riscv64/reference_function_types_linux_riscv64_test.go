@@ -134,6 +134,15 @@ func TestReferenceFunctionRV64RecursiveStackTrapAndReuse(t *testing.T) {
 }
 
 func TestReferenceFunctionRV64MaximumCompactCells(t *testing.T) {
+	testReferenceFunctionMaximumCompactCells(t, false)
+}
+
+func TestReferenceTailRV64MaximumCompactCells(t *testing.T) {
+	testReferenceFunctionMaximumCompactCells(t, true)
+}
+
+func testReferenceFunctionMaximumCompactCells(t *testing.T, tails bool) {
+	t.Helper()
 	for _, vector := range []bool{false, true} {
 		for _, dense := range []bool{false, true} {
 			if dense && !vector {
@@ -171,10 +180,14 @@ func TestReferenceFunctionRV64MaximumCompactCells(t *testing.T) {
 				for i := n - 1; i >= 0; i-- {
 					want = append(want, groups[i]...)
 				}
-				caller = append(caller, 0x10, 1, 0x0b)
+				op := byte(0x10)
+				if tails {
+					op = 0x12
+				}
+				caller = append(caller, op, 1, 0x0b)
 				leaf = append(leaf, 0x0b)
 				m := referenceFunctionModule([]*wasm.CompType{sig}, []uint32{0, 0}, [][]byte{caller, leaf})
-				code, infos := referenceFunctionImage(t, m, vector)
+				code, infos := referenceFunctionImageWithTails(t, m, vector, tails)
 				wantSlots := 256
 				if vector {
 					wantSlots = 192

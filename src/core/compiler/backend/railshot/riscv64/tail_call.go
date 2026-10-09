@@ -76,6 +76,21 @@ func admitSWARLocalTailSignature(caller, callee *wasm.CompType) error {
 	return nil
 }
 
+// Only the private same-image function mode uses this check, after both
+// signatures have passed its bounded directory admission. Preserve exact heap
+// and nullability identity even though all function refs share one carrier.
+func admitReferenceTailResults(caller, callee *wasm.CompType) error {
+	if caller == nil || callee == nil || caller.Kind != wasm.CompFunc || callee.Kind != wasm.CompFunc || len(caller.Results) > 256 || len(caller.Results) != len(callee.Results) {
+		return unsupported("private reference tail result shape/bound")
+	}
+	for i, typ := range caller.Results {
+		if !wasm.EqualValType(typ, callee.Results[i]) {
+			return unsupported("private reference tail exact results required")
+		}
+	}
+	return nil
+}
+
 func (f *integerEmitter) admitLocalTailFrame() bool {
 	if f.err != nil || f.a.Err() != nil {
 		return false

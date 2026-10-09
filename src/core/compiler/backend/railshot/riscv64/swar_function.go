@@ -125,8 +125,8 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 		return swarSummary{}, err
 	}
 	privateRefs := table != nil || foreignTableCalls
-	if referenceFunctions && (!privateRefs || importedFunctions != 0 || localTailCalls || importTailCalls || dynamicTailCalls) {
-		return swarSummary{}, unsupported("private reference functions require same-image ordinary calls")
+	if referenceFunctions && (!privateRefs || importedFunctions != 0 || importTailCalls || dynamicTailCalls) {
+		return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 	}
 	functionClass := func(typ wasm.ValType) swarClass {
 		if referenceFunctions {
@@ -405,9 +405,6 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 				}
 			}
 		case 0x12:
-			if referenceFunctions {
-				return swarSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
-			}
 			index, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -423,7 +420,11 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 					return swarSummary{}, err
 				}
 			}
-			if err := admitSWARLocalTailSignature(ft, sig); err != nil {
+			if referenceFunctions {
+				if err := admitReferenceTailResults(ft, sig); err != nil {
+					return swarSummary{}, err
+				}
+			} else if err := admitSWARLocalTailSignature(ft, sig); err != nil {
 				return swarSummary{}, err
 			}
 			calls++
@@ -437,7 +438,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 			}
 			var params [maxSWARLocals]swarClass
 			for i, typ := range sig.Params {
-				params[i] = swarClassOf(typ)
+				params[i] = functionClass(typ)
 			}
 			if err := flow.prepareDead(params[:len(sig.Params)]...); err != nil {
 				return swarSummary{}, err
@@ -464,7 +465,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 			h = flow.floor()
 		case 0x14, 0x15:
 			if referenceFunctions {
-				return swarSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
+				return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 			}
 			tail := op == 0x15
 			typeIndex, err := r.U32()
@@ -542,7 +543,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 			}
 		case 0x11, 0x13:
 			if referenceFunctions {
-				return swarSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
+				return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 			}
 			typeIndex, err := r.U32()
 			if err != nil {

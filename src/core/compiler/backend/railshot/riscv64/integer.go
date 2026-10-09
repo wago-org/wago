@@ -69,8 +69,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	privateRefs := floating && (state.ownedTable || state.importReferences)
 	functionRefs := state != nil && state.referenceFunctions
 	if functionRefs {
-		if !privateRefs || state.importedFunctions != 0 || state.localTailCalls || state.importTailCalls || state.dynamicTailCalls {
-			return integerSummary{}, unsupported("private reference functions require same-image ordinary calls")
+		if !privateRefs || state.importedFunctions != 0 || state.importTailCalls || state.dynamicTailCalls {
+			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
 		if len(state.functions) > MaxFunctions {
 			return integerSummary{}, unsupported("private reference function directory bound")
@@ -881,9 +881,6 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				stackRefs[h-1] = len(resultRefs) != 0 && resultRefs[i]
 			}
 		case 0x12:
-			if functionRefs {
-				return integerSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
-			}
 			idx, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -892,24 +889,44 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("defined local tail target required")
 			}
 			sig := state.functions[idx]
-			if err = integerCallable(sig, floating); err != nil {
-				return integerSummary{}, err
-			}
 			importedTail := idx < uint32(state.importedFunctions)
 			if importedTail {
 				importTails++
 			}
-			if e := admitLocalTailSignature(ft, sig.signature); e != nil {
-				return integerSummary{}, e
-			}
 			callCount++
-			budget += len(sig.params) + len(sig.results)
-			if callCount > maxDirectCalls || budget > integerBudget {
+			if callCount > maxDirectCalls {
 				return integerSummary{}, unsupported("local tail count/slot budget")
 			}
-			for j := len(sig.params) - 1; j >= 0; j-- {
-				if err = popWidth(sig.params[j]); err != nil {
+			if functionRefs {
+				// The private directory already admits both signatures. Carrier
+				// classes alone cannot establish exact heap/nullability results.
+				if err = admitReferenceTailResults(ft, sig.signature); err != nil {
 					return integerSummary{}, err
+				}
+				var paramRefs []bool
+				sig.params, sig.results, paramRefs, _, err = integerControlSignature(sig, referenceTypes, true, state.referenceCalls, floating, &budget)
+				if err != nil {
+					return integerSummary{}, err
+				}
+				if err = match(sig.params, paramRefs, false, true); err != nil {
+					return integerSummary{}, err
+				}
+				h -= len(sig.params)
+			} else {
+				if err = integerCallable(sig, floating); err != nil {
+					return integerSummary{}, err
+				}
+				if err = admitLocalTailSignature(ft, sig.signature); err != nil {
+					return integerSummary{}, err
+				}
+				budget += len(sig.params) + len(sig.results)
+				if budget > integerBudget {
+					return integerSummary{}, unsupported("local tail count/slot budget")
+				}
+				for j := len(sig.params) - 1; j >= 0; j-- {
+					if err = popWidth(sig.params[j]); err != nil {
+						return integerSummary{}, err
+					}
 				}
 			}
 			if live && emit != nil {
@@ -924,7 +941,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			h = ctrl[depth-1].base
 		case 0x14:
 			if functionRefs {
-				return integerSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
+				return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 			}
 			typeIndex, e := r.U32()
 			if e != nil {
@@ -963,7 +980,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 
 		case 0x15:
 			if functionRefs {
-				return integerSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
+				return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 			}
 			typeIndex, e := r.U32()
 			if e != nil {
@@ -1002,7 +1019,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			h = ctrl[depth-1].base
 		case 0x11, 0x13:
 			if functionRefs {
-				return integerSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
+				return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 			}
 			typeIndex, e := r.U32()
 			if e != nil {
@@ -1605,7 +1622,7 @@ func (f *integerEmitter) operation(op shared.IntOp, w, unary, resultWide bool) {
 
 func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, summary integerSummary, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
 	functionRefs := state != nil && state.referenceFunctions
-	if functionRefs != mode.referenceFunctions || functionRefs && !mode.production {
+	if functionRefs != mode.referenceFunctions || functionRefs && (!mode.production || state.localTailCalls != mode.localTailCalls) {
 		return nil, FunctionInfo{}, nil, unsupported("reference function admission/emission mode mismatch")
 	}
 

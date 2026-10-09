@@ -38,7 +38,7 @@ type emissionMode struct {
 	importTailCalls  bool
 	dynamicTailCalls bool
 	referenceCalls   bool
-	// Private same-image ordinary calls only; never source/artifact admission.
+	// Private same-image direct calls only; never source/artifact admission.
 	referenceFunctions     bool
 	tailPlans              *[]tailImportPlan
 	tailSiteBase           uint32

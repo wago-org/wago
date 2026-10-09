@@ -26,6 +26,10 @@ func referenceFunctionModule(signatures []*wasm.CompType, bindings []uint32, bod
 }
 
 func referenceFunctionWalk(m *wasm.Module, local int, vector, enabled bool) error {
+	return referenceFunctionWalkWithTails(m, local, vector, enabled, false)
+}
+
+func referenceFunctionWalkWithTails(m *wasm.Module, local int, vector, enabled, tails bool) error {
 	types, specs := referenceControlDirectory(m)
 	functions := make([]*wasm.CompType, len(m.FuncTypes))
 	fs := make([]functionSpec, len(functions))
@@ -35,15 +39,20 @@ func referenceFunctionWalk(m *wasm.Module, local int, vector, enabled bool) erro
 	}
 	ft := functions[local]
 	if vector {
-		_, err := walkSWARPairsWithReferenceFunctionMode(&m.Code[local], ft, memoryProfile{}, types, functions, nil, 0, nil, nil, 0, 0, true, false, false, false, false, false, true, enabled, nil)
+		_, err := walkSWARPairsWithReferenceFunctionMode(&m.Code[local], ft, memoryProfile{}, types, functions, nil, 0, nil, nil, 0, 0, true, false, tails, false, false, false, true, enabled, nil)
 		return err
 	}
-	state := moduleState{production: true, importReferences: true, referenceCalls: true, referenceFunctions: enabled, types: specs, functions: fs}
+	state := moduleState{production: true, importReferences: true, referenceCalls: true, referenceFunctions: enabled, localTailCalls: tails, types: specs, functions: fs}
 	_, err := walkInteger(&m.Code[local], ft, &state, nil)
 	return err
 }
 
 func referenceFunctionImage(t *testing.T, m *wasm.Module, vector bool) ([]byte, []FunctionInfo) {
+	t.Helper()
+	return referenceFunctionImageWithTails(t, m, vector, false)
+}
+
+func referenceFunctionImageWithTails(t *testing.T, m *wasm.Module, vector, tails bool) ([]byte, []FunctionInfo) {
 	t.Helper()
 	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
 		t.Fatal("reference function frontend proof", err)
@@ -55,8 +64,8 @@ func referenceFunctionImage(t *testing.T, m *wasm.Module, vector bool) ([]byte, 
 		functions[i] = types[index.Index]
 		fs[i] = specs[index.Index]
 	}
-	state := moduleState{production: true, importReferences: true, referenceCalls: true, referenceFunctions: true, types: specs, functions: fs}
-	mode := emissionMode{production: true, interruptible: true, foreignTableCalls: true, referenceCalls: true, referenceFunctions: true}
+	state := moduleState{production: true, importReferences: true, referenceCalls: true, referenceFunctions: true, localTailCalls: tails, types: specs, functions: fs}
+	mode := emissionMode{production: true, interruptible: true, foreignTableCalls: true, referenceCalls: true, referenceFunctions: true, localTailCalls: tails}
 	var image []byte
 	infos := make([]FunctionInfo, len(m.Code))
 	var relocs []directCall
