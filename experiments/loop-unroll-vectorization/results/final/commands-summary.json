@@ -1,0 +1,382 @@
+{
+  "memory.wasm/1/baseline": {
+    "wall_ns": 2926099.5,
+    "compile_ns": 215084.0,
+    "instantiate_ns": 70277.0,
+    "execute_ns": 4639.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/default": {
+    "wall_ns": 3208310.0,
+    "compile_ns": 229666.5,
+    "instantiate_ns": 67992.0,
+    "execute_ns": 3381.5,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/A": {
+    "wall_ns": 2913537.0,
+    "compile_ns": 158041.5,
+    "instantiate_ns": 55665.0,
+    "execute_ns": 4479.0,
+    "compile_bytes": 35104.0,
+    "compile_allocs": 122.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/B": {
+    "wall_ns": 3007638.0,
+    "compile_ns": 152737.0,
+    "instantiate_ns": 54046.5,
+    "execute_ns": 2715.0,
+    "compile_bytes": 35128.0,
+    "compile_allocs": 123.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/H": {
+    "wall_ns": 2944220.0,
+    "compile_ns": 146771.0,
+    "instantiate_ns": 51672.5,
+    "execute_ns": 4854.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/C": {
+    "wall_ns": 2640915.0,
+    "compile_ns": 173425.5,
+    "instantiate_ns": 51386.5,
+    "execute_ns": 2875.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/D": {
+    "wall_ns": 2566249.5,
+    "compile_ns": 152301.5,
+    "instantiate_ns": 52719.0,
+    "execute_ns": 4298.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/E": {
+    "wall_ns": 2770698.5,
+    "compile_ns": 162946.0,
+    "instantiate_ns": 52173.0,
+    "execute_ns": 2414.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/G": {
+    "wall_ns": 2931646.0,
+    "compile_ns": 149180.5,
+    "instantiate_ns": 51832.0,
+    "execute_ns": 2154.5,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1/F": {
+    "wall_ns": 2560123.0,
+    "compile_ns": 175083.5,
+    "instantiate_ns": 60764.5,
+    "execute_ns": 1969.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/baseline": {
+    "wall_ns": 4373558.5,
+    "compile_ns": 285376.0,
+    "instantiate_ns": 74019.0,
+    "execute_ns": 1126686.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/default": {
+    "wall_ns": 4267824.5,
+    "compile_ns": 202976.0,
+    "instantiate_ns": 64180.0,
+    "execute_ns": 923940.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/A": {
+    "wall_ns": 6747742.5,
+    "compile_ns": 169823.5,
+    "instantiate_ns": 53430.5,
+    "execute_ns": 3427271.5,
+    "compile_bytes": 35104.0,
+    "compile_allocs": 122.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/B": {
+    "wall_ns": 5175434.5,
+    "compile_ns": 153613.5,
+    "instantiate_ns": 52052.5,
+    "execute_ns": 2427924.5,
+    "compile_bytes": 35128.0,
+    "compile_allocs": 123.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/H": {
+    "wall_ns": 5565938.0,
+    "compile_ns": 192857.5,
+    "instantiate_ns": 57122.0,
+    "execute_ns": 2316270.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/C": {
+    "wall_ns": 4798635.5,
+    "compile_ns": 147928.5,
+    "instantiate_ns": 53199.5,
+    "execute_ns": 2154635.5,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/D": {
+    "wall_ns": 5386035.5,
+    "compile_ns": 224416.5,
+    "instantiate_ns": 56126.0,
+    "execute_ns": 1769032.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/E": {
+    "wall_ns": 4535733.0,
+    "compile_ns": 293626.5,
+    "instantiate_ns": 77019.5,
+    "execute_ns": 1308312.0,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/G": {
+    "wall_ns": 4226973.5,
+    "compile_ns": 159870.0,
+    "instantiate_ns": 51827.5,
+    "execute_ns": 1032453.5,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "memory.wasm/1000/F": {
+    "wall_ns": 4018531.0,
+    "compile_ns": 221696.0,
+    "instantiate_ns": 66109.5,
+    "execute_ns": 890858.5,
+    "compile_bytes": 35608.0,
+    "compile_allocs": 124.0,
+    "remaining_bytes": 4208.0,
+    "remaining_allocs": 25.0
+  },
+  "jacobi-1d.wasm/1/baseline": {
+    "wall_ns": 3413741.5,
+    "compile_ns": 446849.5,
+    "instantiate_ns": 172148.5,
+    "execute_ns": 104276.0,
+    "compile_bytes": 119208.0,
+    "compile_allocs": 200.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "jacobi-1d.wasm/1/default": {
+    "wall_ns": 3479058.5,
+    "compile_ns": 592322.5,
+    "instantiate_ns": 151820.5,
+    "execute_ns": 97197.5,
+    "compile_bytes": 119208.0,
+    "compile_allocs": 200.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "jacobi-1d.wasm/1/scalar": {
+    "wall_ns": 3128375.0,
+    "compile_ns": 349396.5,
+    "instantiate_ns": 152877.5,
+    "execute_ns": 105393.0,
+    "compile_bytes": 109608.0,
+    "compile_allocs": 197.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "jacobi-1d.wasm/20/baseline": {
+    "wall_ns": 3735875.5,
+    "compile_ns": 398293.0,
+    "instantiate_ns": 166217.0,
+    "execute_ns": 158487.5,
+    "compile_bytes": 119208.0,
+    "compile_allocs": 200.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "jacobi-1d.wasm/20/default": {
+    "wall_ns": 3626846.0,
+    "compile_ns": 429442.0,
+    "instantiate_ns": 149501.0,
+    "execute_ns": 164975.0,
+    "compile_bytes": 119208.0,
+    "compile_allocs": 200.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "jacobi-1d.wasm/20/scalar": {
+    "wall_ns": 3478668.5,
+    "compile_ns": 361574.0,
+    "instantiate_ns": 162460.0,
+    "execute_ns": 262328.0,
+    "compile_bytes": 109608.0,
+    "compile_allocs": 197.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "gemm.wasm/1/baseline": {
+    "wall_ns": 3697499.0,
+    "compile_ns": 437972.5,
+    "instantiate_ns": 170039.0,
+    "execute_ns": 211522.0,
+    "compile_bytes": 119368.0,
+    "compile_allocs": 203.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "gemm.wasm/1/default": {
+    "wall_ns": 3590573.0,
+    "compile_ns": 423771.0,
+    "instantiate_ns": 157481.0,
+    "execute_ns": 216361.5,
+    "compile_bytes": 119368.0,
+    "compile_allocs": 203.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "gemm.wasm/1/scalar": {
+    "wall_ns": 3676710.0,
+    "compile_ns": 378375.5,
+    "instantiate_ns": 153909.0,
+    "execute_ns": 345804.5,
+    "compile_bytes": 119368.0,
+    "compile_allocs": 203.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "gemm.wasm/20/baseline": {
+    "wall_ns": 7408468.0,
+    "compile_ns": 494483.5,
+    "instantiate_ns": 168632.0,
+    "execute_ns": 3759450.5,
+    "compile_bytes": 119368.0,
+    "compile_allocs": 203.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "gemm.wasm/20/default": {
+    "wall_ns": 6514184.0,
+    "compile_ns": 429377.0,
+    "instantiate_ns": 148519.5,
+    "execute_ns": 3124192.0,
+    "compile_bytes": 119368.0,
+    "compile_allocs": 203.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "gemm.wasm/20/scalar": {
+    "wall_ns": 9441606.0,
+    "compile_ns": 671692.0,
+    "instantiate_ns": 239309.5,
+    "execute_ns": 5491628.0,
+    "compile_bytes": 119368.0,
+    "compile_allocs": 203.0,
+    "remaining_bytes": 4296.0,
+    "remaining_allocs": 28.0
+  },
+  "linked_list.wasm/1/baseline": {
+    "wall_ns": 3338830.0,
+    "compile_ns": 212745.0,
+    "instantiate_ns": 67567.0,
+    "execute_ns": 114655.0,
+    "compile_bytes": 33792.0,
+    "compile_allocs": 107.0,
+    "remaining_bytes": 4192.0,
+    "remaining_allocs": 23.0
+  },
+  "linked_list.wasm/1/default": {
+    "wall_ns": 3307180.5,
+    "compile_ns": 229877.5,
+    "instantiate_ns": 65022.0,
+    "execute_ns": 124378.5,
+    "compile_bytes": 33792.0,
+    "compile_allocs": 107.0,
+    "remaining_bytes": 4192.0,
+    "remaining_allocs": 23.0
+  },
+  "blake-as-simd.wasm/1/baseline": {
+    "wall_ns": 5108659.5,
+    "compile_ns": 1640646.0,
+    "instantiate_ns": 183164.5,
+    "execute_ns": 368252.0,
+    "compile_bytes": 379328.0,
+    "compile_allocs": 281.0,
+    "remaining_bytes": 5312.0,
+    "remaining_allocs": 50.0
+  },
+  "blake-as-simd.wasm/1/default": {
+    "wall_ns": 5107412.0,
+    "compile_ns": 1392881.0,
+    "instantiate_ns": 176316.5,
+    "execute_ns": 379012.0,
+    "compile_bytes": 379328.0,
+    "compile_allocs": 281.0,
+    "remaining_bytes": 5312.0,
+    "remaining_allocs": 50.0
+  },
+  "utf-as-simd.wasm/1/baseline": {
+    "wall_ns": 4293303.0,
+    "compile_ns": 960659.0,
+    "instantiate_ns": 198593.0,
+    "execute_ns": 53265.0,
+    "compile_bytes": 325016.0,
+    "compile_allocs": 289.0,
+    "remaining_bytes": 5536.0,
+    "remaining_allocs": 61.0
+  },
+  "utf-as-simd.wasm/1/default": {
+    "wall_ns": 4518410.5,
+    "compile_ns": 991191.5,
+    "instantiate_ns": 184626.5,
+    "execute_ns": 51922.5,
+    "compile_bytes": 325016.0,
+    "compile_allocs": 289.0,
+    "remaining_bytes": 5536.0,
+    "remaining_allocs": 61.0
+  }
+}

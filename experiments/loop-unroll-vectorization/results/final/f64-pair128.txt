@@ -1,0 +1,120 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    7147	     15350 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5249850	        21.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 4832184	        25.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5366851	        22.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 4796390	        25.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5190559	        23.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 4736624	        25.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 4992830	        23.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 4430920	        25.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 4957927	        24.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4452614	        27.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4696273	        25.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4344067	        27.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  975688	       125.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   69974	      1731 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    7761	     15438 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5660611	        21.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 4951412	        24.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5517084	        21.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 4913990	        24.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5328204	        23.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 4772434	        24.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 5156961	        24.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 4874174	        25.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 4975268	        24.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4480128	        27.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4727672	        25.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4345620	        28.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  958609	       129.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   68188	      1765 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    6974	     15316 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5555842	        21.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 4950158	        25.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5289177	        22.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 4921346	        24.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5151076	        22.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 4427329	        25.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 5034567	        24.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 4892274	        25.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 4827950	        24.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4380349	        27.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4540956	        26.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4339454	        29.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  921746	       133.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   70629	      1803 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    7737	     15942 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5510846	        22.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 4665422	        25.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5505908	        22.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 4691475	        25.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5312678	        23.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 4614990	        24.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 5139508	        23.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 4751984	        26.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 4960987	        24.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4488171	        26.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4721683	        25.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4347010	        27.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  977823	       125.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   70141	      1756 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    5886	     19569 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 5246772	        23.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 4507664	        26.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 4607858	        23.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 4460529	        28.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 4250924	        29.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 3955930	        32.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 4681646	        26.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 4032063	        34.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 4214329	        28.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 3717810	        29.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 4240226	        29.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 4092613	        28.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  953595	       153.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   63264	      2001 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalExistingF64/independent/compile         	    7987	     18154 ns/op	   10712 B/op	      29 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/1       	 4716057	        23.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/2       	 4081018	        30.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/3       	 5085202	        24.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/4       	 4004371	        26.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/5       	 5003871	        23.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/6       	 4626812	        26.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/7       	 4819454	        31.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8       	 4535661	        27.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/9       	 4324514	        26.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/15      	 4014454	        36.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/16      	 3057435	        59.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/17      	 2762083	        54.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/512     	  631762	       334.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalExistingF64/independent/execute/8192    	   48217	      3649 ns/op	       0 B/op	       0 allocs/op
+PASS

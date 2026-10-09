@@ -1,0 +1,180 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    2751	     39142 ns/op	   32632 B/op	      55 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/execute/0         	 2664560	        22.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/1         	 2613430	        24.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/2         	 2600343	        23.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/3         	 2547151	        23.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4         	 2272974	        26.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/5         	 2187501	        27.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/6         	 2113027	        29.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/7         	 2043380	        29.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8         	 1794355	        32.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/9         	 1824924	        32.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/15        	 1485128	        39.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/16        	 1302177	        44.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/17        	 1312494	        46.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/511       	   76261	       866.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/512       	   65401	       823.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/513       	   67954	       824.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8192      	    3903	     14332 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/262144    	     151	    400391 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4194304   	       8	   6296097 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    2954	     39044 ns/op	   32632 B/op	      55 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/execute/0         	 2725586	        22.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/1         	 2544745	        22.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/2         	 2556322	        22.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/3         	 2524898	        24.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4         	 2319994	        26.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/5         	 2228217	        29.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/6         	 2118289	        28.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/7         	 2113096	        28.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8         	 1860555	        31.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/9         	 1871154	        31.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/15        	 1537656	        38.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/16        	 1389874	        45.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/17        	 1310672	        49.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/511       	   64981	       852.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/512       	   75541	       841.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/513       	   77780	       819.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8192      	    4930	     13461 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/262144    	     154	    393191 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4194304   	       9	   6229963 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    3361	     40151 ns/op	   32632 B/op	      55 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/execute/0         	 2576029	        23.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/1         	 2653051	        22.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/2         	 2632561	        23.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/3         	 2583836	        24.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4         	 2310300	        26.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/5         	 2179552	        27.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/6         	 2146000	        27.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/7         	 2006750	        29.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8         	 1883191	        32.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/9         	 1888536	        32.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/15        	 1519071	        40.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/16        	 1353752	        44.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/17        	 1368974	        44.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/511       	   71482	       814.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/512       	   77520	       886.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/513       	   74118	       837.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8192      	    4972	     13271 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/262144    	     154	    400315 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4194304   	       9	   6158567 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    3418	     39577 ns/op	   32632 B/op	      55 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/execute/0         	 2543868	        23.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/1         	 2475026	        22.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/2         	 2647646	        23.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/3         	 2364492	        23.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4         	 2311035	        26.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/5         	 2005676	        27.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/6         	 2133702	        28.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/7         	 2016620	        28.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8         	 1892076	        32.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/9         	 1782304	        32.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/15        	 1502215	        49.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/16        	 1361268	        43.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/17        	 1384378	        44.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/511       	   78214	       844.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/512       	   77044	       840.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/513       	   69272	       810.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8192      	    4562	     12430 ns/op	       1 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/262144    	     154	    434842 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4194304   	       9	   6177798 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    2997	     41264 ns/op	   32632 B/op	      55 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/execute/0         	 2689405	        22.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/1         	 2636179	        23.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/2         	 2604656	        24.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/3         	 2523865	        23.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4         	 1981976	        29.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/5         	 2160142	        28.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/6         	 2134771	        29.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/7         	 2033730	        29.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8         	 1670702	        35.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/9         	 1882830	        33.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/15        	 1492315	        40.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/16        	 1336285	        47.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/17        	 1356387	        44.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/511       	   66014	       764.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/512       	   77667	       769.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/513       	   77248	       771.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8192      	    4896	     12800 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/262144    	     154	    388590 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4194304   	       9	   6332400 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/compile         	    2638	     52097 ns/op	   32632 B/op	      55 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/map-i32/execute/0         	 2650603	        23.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/1         	 2570804	        24.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/2         	 2501563	        23.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/3         	 2539351	        24.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4         	 2135709	        26.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/5         	 1984086	        28.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/6         	 2036178	        29.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/7         	 2083627	        29.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8         	 1881788	        32.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/9         	 1719038	        33.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/15        	 1567092	        39.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/16        	 1292437	        44.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/17        	 1343396	        45.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/511       	   77398	       799.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/512       	   66625	       823.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/513       	   64248	       857.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/8192      	    4755	     14224 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/262144    	     135	    401892 ns/op	      39 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/map-i32/execute/4194304   	       8	   6436907 ns/op	       0 B/op	       0 allocs/op
+PASS

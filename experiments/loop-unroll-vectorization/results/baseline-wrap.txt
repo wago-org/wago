@@ -1,0 +1,3 @@
+=== RUN   TestLinearSumLoopPreservesMemory32WraparoundAMD64
+--- PASS: TestLinearSumLoopPreservesMemory32WraparoundAMD64 (0.00s)
+PASS

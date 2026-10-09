@@ -1,0 +1,20 @@
+=== RUN   TestExperimentalExistingF64Paths
+=== RUN   TestExperimentalExistingF64Paths/pair128
+    experimental_f64_test.go:59: scalar module=296 labels=map[addr-zext-elim:3 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:1 fcommute_mem:1 float-local-sink:1 float-store-borrow:1 frame-header-elide:1]
+    experimental_f64_test.go:74: mode=pair128 module=891 function=891 spills=0 reloads=0 frame=280 labels=map[addr-zext-elim:3 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:1 fcommute_mem:1 float-local-sink:1 float-store-borrow:1 frame-header-elide:1 region-loop-all-addresses-cached:1 region-loop-fast:1]
+=== RUN   TestExperimentalExistingF64Paths/wide256
+    experimental_f64_test.go:59: scalar module=296 labels=map[addr-zext-elim:3 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:1 fcommute_mem:1 float-local-sink:1 float-store-borrow:1 frame-header-elide:1]
+    experimental_f64_test.go:74: mode=wide256 module=945 function=945 spills=0 reloads=0 frame=296 labels=map[addr-zext-elim:3 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:1 fcommute_mem:1 float-local-sink:1 float-store-borrow:1 frame-header-elide:1 region-loop-all-addresses-cached:1 region-loop-fast:1 region-loop-wide-checked-tail:1 region-loop-wide-independent:1 region-loop-wide-memory-broadcast:2]
+=== RUN   TestExperimentalExistingF64Paths/adjacent128
+    experimental_f64_test.go:59: scalar module=310 labels=map[addr-zext-elim:4 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:2 float-local-sink:2 float-store-borrow:2 frame-header-elide:1 shift-owned-destination:1]
+    experimental_f64_test.go:74: mode=adjacent128 module=1139 function=1139 spills=0 reloads=0 frame=280 labels=map[addr-zext-elim:4 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:2 float-local-sink:2 float-store-borrow:2 frame-header-elide:1 region-loop-all-addresses-cached:1 region-loop-fast:1 region-loop-fold-load:1 shift-owned-destination:1]
+=== RUN   TestExperimentalExistingF64Paths/adjacent256
+    experimental_f64_test.go:59: scalar module=310 labels=map[addr-zext-elim:4 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:2 float-local-sink:2 float-store-borrow:2 frame-header-elide:1 shift-owned-destination:1]
+    experimental_f64_test.go:74: mode=adjacent256 module=1193 function=1193 spills=0 reloads=0 frame=296 labels=map[addr-zext-elim:4 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:2 float-local-sink:2 float-store-borrow:2 frame-header-elide:1 region-loop-all-addresses-cached:1 region-loop-fast:1 region-loop-fold-load:1 region-loop-wide-adjacent:1 region-loop-wide-checked-tail:1 shift-owned-destination:1]
+--- PASS: TestExperimentalExistingF64Paths (0.00s)
+    --- PASS: TestExperimentalExistingF64Paths/pair128 (0.00s)
+    --- PASS: TestExperimentalExistingF64Paths/wide256 (0.00s)
+    --- PASS: TestExperimentalExistingF64Paths/adjacent128 (0.00s)
+    --- PASS: TestExperimentalExistingF64Paths/adjacent256 (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.006s

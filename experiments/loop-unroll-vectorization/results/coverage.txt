@@ -1,0 +1,83 @@
+=== RUN   TestExperimentalCoverage
+=== RUN   TestExperimentalCoverage/memory.wasm
+    experimental_evidence_test.go:50: accepted-native function=1 label=linear-sum-unroll4 function-bytes=312
+    experimental_evidence_test.go:68: accepted-plan mode=count2 function=1
+    experimental_evidence_test.go:73: plan mode=count2 accepted=1 rejected=map[counter-read:1]
+    experimental_evidence_test.go:68: accepted-plan mode=simd2 function=1
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=1 rejected=map[counter-read:1]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[counter-read:1 map-operation-count:1]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[counter-read:1 map-operation-count:1]
+    experimental_evidence_test.go:96: module functions=2 loops=2 simd-instructions=0 native-bytes=472 labels=map[linear-sum-unroll4:1]
+=== RUN   TestExperimentalCoverage/linked_list.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[header:1]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[header:1]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[header:1]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[header:1]
+    experimental_evidence_test.go:96: module functions=1 loops=2 simd-instructions=0 native-bytes=268 labels=map[]
+=== RUN   TestExperimentalCoverage/memory_tree.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:96: module functions=2 loops=1 simd-instructions=0 native-bytes=534 labels=map[]
+=== RUN   TestExperimentalCoverage/many_funcs.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:301]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:301]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:301]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:301]
+    experimental_evidence_test.go:96: module functions=301 loops=0 simd-instructions=0 native-bytes=8363 labels=map[]
+=== RUN   TestExperimentalCoverage/jacobi-1d.wasm
+    experimental_evidence_test.go:50: accepted-native function=1 label=region-loop-wide-adjacent function-bytes=4634
+    experimental_evidence_test.go:50: accepted-native function=1 label=region-loop-fast function-bytes=4634
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:96: module functions=2 loops=7 simd-instructions=0 native-bytes=5898 labels=map[region-loop-fast:2 region-loop-wide-adjacent:2]
+=== RUN   TestExperimentalCoverage/gemm.wasm
+    experimental_evidence_test.go:50: accepted-native function=1 label=region-loop-wide-adjacent function-bytes=4307
+    experimental_evidence_test.go:50: accepted-native function=1 label=region-loop-fast function-bytes=4307
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:96: module functions=2 loops=14 simd-instructions=0 native-bytes=5571 labels=map[region-loop-fast:1 region-loop-wide-adjacent:1]
+=== RUN   TestExperimentalCoverage/blake-as.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:6]
+    experimental_evidence_test.go:96: module functions=6 loops=5 simd-instructions=0 native-bytes=10315 labels=map[]
+=== RUN   TestExperimentalCoverage/blake-as-simd.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[function-budget:2 header:1 prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[function-budget:2 header:1 prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[function-budget:2 header:1 prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[function-budget:2 header:1 prefix-control-or-operation:6]
+    experimental_evidence_test.go:96: module functions=9 loops=11 simd-instructions=2192 native-bytes=39679 labels=map[]
+=== RUN   TestExperimentalCoverage/utf-as-simd.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[function-budget:1 header:1 prefix-control-or-operation:8]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[function-budget:1 header:1 prefix-control-or-operation:8]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[function-budget:1 header:1 prefix-control-or-operation:8]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[function-budget:1 header:1 prefix-control-or-operation:8]
+    experimental_evidence_test.go:96: module functions=10 loops=21 simd-instructions=674 native-bytes=22227 labels=map[]
+--- PASS: TestExperimentalCoverage (0.01s)
+    --- PASS: TestExperimentalCoverage/memory.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/linked_list.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/memory_tree.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/many_funcs.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/jacobi-1d.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/gemm.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/blake-as.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/blake-as-simd.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/utf-as-simd.wasm (0.00s)
+=== RUN   TestExperimentalNativeArtifacts
+    experimental_evidence_test.go:104: set WAGO_EXPERIMENT_ARTIFACT_DIR to save evidence
+--- SKIP: TestExperimentalNativeArtifacts (0.00s)
+=== RUN   TestExperimentalPressure
+    experimental_evidence_test.go:188: mode=count2 frame=200 spills=0 reloads=0 native=644
+    experimental_evidence_test.go:188: mode=count4 frame=200 spills=0 reloads=0 native=756
+    experimental_evidence_test.go:188: mode=guard2 frame=200 spills=0 reloads=0 native=574
+    experimental_evidence_test.go:188: mode=vector-i32 frame=216 spills=0 reloads=0 native=1095
+--- PASS: TestExperimentalPressure (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.010s

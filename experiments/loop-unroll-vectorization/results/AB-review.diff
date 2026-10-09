@@ -1,0 +1,700 @@
+diff --git a/experiments/loop-unroll-vectorization/.gitignore b/experiments/loop-unroll-vectorization/.gitignore
+new file mode 100644
+index 000000000..8cf802b36
+--- /dev/null
++++ b/experiments/loop-unroll-vectorization/.gitignore
+@@ -0,0 +1,3 @@
++results/*.test
++results/*.out
++results/*.wasm
+diff --git a/experiments/loop-unroll-vectorization/base.txt b/experiments/loop-unroll-vectorization/base.txt
+new file mode 100644
+index 000000000..19f80ff03
+--- /dev/null
++++ b/experiments/loop-unroll-vectorization/base.txt
+@@ -0,0 +1 @@
++2286d676facdfa1cabe2d1c61072e505438ca7f2
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index c429c81bd..fa77ccd32 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -410,6 +410,7 @@ type fn struct {
+ 	bmi2Rorx                bool   // use non-destructive rotates below the dense-code crossover
+ 	linearSumLoop           uint32 // packed +1 address/accumulator locals for one exact active loop
+ 	linearSumLoopDepth      uint16 // control depth owning linearSumLoop; zero when inactive
++	sumExperimentOpcode     byte   // bounded opt-in reduction operation
+ 	canonicalI32Uses        uint8  // saturated eligible uses; first two retain conservative code
+ 	hasJumpTableData        bool   // typed embedded data is remapped, but branches retain fixed widths
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index 239d731db..ee793980b 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -170,11 +170,16 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
+ 		return 0, 0, 0, false
+ 	}
+ 	loadPC = f.tracePCBase + uint32(r2.Offset())
+-	if !readOp(0x29) { // i64.load
++	width, loadOp, addOp, xorOp := 8, byte(0x29), byte(0x7c), byte(0x85)
++	if shared.ReductionForms && acc >= 0 && acc < len(f.localType) && f.localType[acc] == mtI32 {
++		width, loadOp, addOp, xorOp = 4, 0x28, 0x6a, 0x73
++	}
++	if !readOp(loadOp) {
+ 		return 0, 0, 0, false
+ 	}
+ 	memoryIndex, off, err := f.readMemArg(&r2)
+-	if err != nil || memoryIndex != 0 || off != 0 || !readOp(0x7c) { // i64.add
++	reduceOp, reduceErr := r2.Byte()
++	if err != nil || reduceErr != nil || memoryIndex != 0 || off != 0 || (reduceOp != addOp && !(shared.ReductionForms && reduceOp == xorOp)) {
+ 		return 0, 0, 0, false
+ 	}
+ 	setAcc, yes := readLocal(0x21)
+@@ -186,7 +191,7 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
+ 		return 0, 0, 0, false
+ 	}
+ 	stride, err := r2.I32()
+-	if err != nil || stride != 8 || !readOp(0x6a) { // i32.add
++	if err != nil || stride != int32(width) || !readOp(0x6a) { // i32.add
+ 		return 0, 0, 0, false
+ 	}
+ 	setAddr, yes := readLocal(0x21)
+@@ -198,10 +203,19 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
+ 		return 0, 0, 0, false
+ 	}
+ 	one, err := r2.I32()
+-	if err != nil || one != 1 || !readOp(0x6b) { // i32.sub
++	update, updateErr := r2.Byte()
++	if err != nil || updateErr != nil || !(one == 1 && update == 0x6b || shared.ReductionForms && one == -1 && update == 0x6a) {
++		return 0, 0, 0, false
++	}
++	setOp, setErr := r2.Byte()
++	if setErr != nil || !(setOp == 0x21 || shared.ReductionForms && setOp == 0x22) {
++		return 0, 0, 0, false
++	}
++	setIndex, setErr := r2.U32()
++	setCounter, yes := int(setIndex)+f.localBase, setErr == nil
++	if setOp == 0x22 && !readOp(0x1a) {
+ 		return 0, 0, 0, false
+ 	}
+-	setCounter, yes := readLocal(0x21)
+ 	if !yes || setCounter != counter || !readOp(0x0c) {
+ 		return 0, 0, 0, false
+ 	}
+@@ -209,22 +223,27 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
+ 	if err != nil || label != 0 || !readOp(0x0b) || !readOp(0x0b) {
+ 		return 0, 0, 0, false
+ 	}
+-	if acc < 0 || acc >= len(f.localType) || f.localType[acc] != mtI64 ||
++	if acc < 0 || acc >= len(f.localType) || (f.localType[acc] != mtI64 && !(shared.ReductionForms && f.localType[acc] == mtI32)) ||
+ 		addr < 0 || addr >= len(f.localType) || f.localType[addr] != mtI32 || addr == counter ||
+ 		addr >= 1<<16-1 || acc >= 1<<16-1 {
+ 		return 0, 0, 0, false
+ 	}
++	f.sumExperimentOpcode = reduceOp
+ 	return addr, acc, loadPC, true
+ }
+ 
+ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFrame) {
+-	if !f.opt(optLinearSumLoop) || f.guardMode && !linearSumSignalsEnabled || f.threadedMemory0 || f.memoryAddr64(0) || !f.guardMode && f.memSizeReg == regNone {
++	if shared.SumExperiment == "A" || !f.opt(optLinearSumLoop) || f.guardMode && !linearSumSignalsEnabled || f.threadedMemory0 || f.memoryAddr64(0) || !f.guardMode && f.memSizeReg == regNone {
+ 		return
+ 	}
+ 	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
+ 	if !ok {
+ 		return
+ 	}
++	shift, mask := uint8(3), uint32(7)
++	if f.localType[acc] == mtI32 {
++		shift, mask = 2, 3
++	}
+ 	counterReg, counterFloat, counterPinned := f.pinReg(counter)
+ 	addrReg, addrFloat, addrPinned := f.pinReg(addr)
+ 	if !counterPinned || counterFloat || !addrPinned || addrFloat {
+@@ -235,7 +254,7 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
+ 	// bounds, every visited address is in bounds and memory32 cannot wrap first.
+ 	t := f.allocReg(0)
+ 	f.a.MovRegReg32(t, counterReg)
+-	f.a.ShiftImm(4, t, 3, true)
++	f.a.ShiftImm(4, t, shift, true)
+ 	f.a.MovRegReg32(addrReg, addrReg)
+ 	f.a.Add64(t, addrReg)
+ 	f.compareLinearSumSize(t)
+@@ -253,7 +272,7 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
+ 		f.a.MovImm64(t, 1<<32)
+ 		f.compareLinearSumSize(t) // equality is independent of comparison direction
+ 		f.trapIf(condNE, trapMemOOB)
+-		f.a.TestImm(addrReg, 7, false)
++		f.a.TestImm(addrReg, mask, false)
+ 		f.trapIf(condNE, trapMemOOB)
+ 		f.a.PatchRel32(inBounds, f.a.Len())
+ 	}
+@@ -272,6 +291,19 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFram
+ // not change Wasm results, while independent dependency chains let AMD64 retire
+ // the four loads at load-port throughput instead of add latency.
+ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
++	if shared.ReductionForms && (f.sumExperimentOpcode == 0x73 || f.sumExperimentOpcode == 0x85 || f.sumExperimentOpcode == 0x6a) {
++		factor, chains, _ := shared.SumExperimentShape()
++		if shared.SumExperiment == "A" || factor == 1 {
++			return false
++		}
++		return f.tryExperimentalSumLatch(counter, factor, chains)
++	}
++	if factor, accumulators, enabled := shared.SumExperimentShape(); enabled {
++		if factor == 1 {
++			return false
++		}
++		return f.tryExperimentalSumLatch(counter, factor, accumulators)
++	}
+ 	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
+ 		return false
+ 	}
+@@ -377,19 +409,27 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
+ 		return false, nil
+ 	}
+ 	one, err := r2.I32()
+-	if err != nil || one != 1 {
++	if err != nil {
+ 		return false, nil
+ 	}
+-	for _, want := range []byte{0x6b, 0x21} { // i32.sub; local.set
+-		op, err = r2.Byte()
+-		if err != nil || op != want {
+-			return false, nil
+-		}
++	update, err := r2.Byte()
++	if err != nil || !(one == 1 && update == 0x6b || shared.ReductionForms && one == -1 && update == 0x6a) {
++		return false, nil
++	}
++	setOp, err := r2.Byte()
++	if err != nil || !(setOp == 0x21 || shared.ReductionForms && setOp == 0x22) {
++		return false, nil
+ 	}
+ 	set, err := r2.U32()
+ 	if err != nil || int(set) != x {
+ 		return false, nil
+ 	}
++	if setOp == 0x22 {
++		drop, err := r2.Byte()
++		if err != nil || drop != 0x1a {
++			return false, nil
++		}
++	}
+ 	op, err = r2.Byte()
+ 	if err != nil || op != 0x0c {
+ 		return false, nil
+diff --git a/src/core/compiler/backend/railshot/amd64/experimental_sum.go b/src/core/compiler/backend/railshot/amd64/experimental_sum.go
+new file mode 100644
+index 000000000..782e827e7
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/experimental_sum.go
+@@ -0,0 +1,84 @@
++//go:build amd64
++
++package amd64
++
++// This emitter keeps the original scalar peel, register allocator and range
++// proof. Its only choices are the group size and number of dependency chains.
++func (f *fn) tryExperimentalSumLatch(counter, factor, chains int) bool {
++	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
++		return false
++	}
++	addr, acc := int(uint16(f.linearSumLoop)-1), int(uint16(f.linearSumLoop>>16)-1)
++	cr, cf, cp := f.pinReg(counter)
++	ar, af, ap := f.pinReg(addr)
++	sr, sf, sp := f.pinReg(acc)
++	if !cp || cf || !ap || af || !sp || sf {
++		return false
++	}
++	wide, width, shift := f.localType[acc] != mtI32, 8, uint8(3)
++	if !wide {
++		width, shift = 4, 2
++	}
++	xor := f.sumExperimentOpcode == 0x73 || f.sumExperimentOpcode == 0x85
++	var regs [4]Reg
++	regs[0] = sr
++	for i := 1; i < chains; i++ {
++		regs[i] = f.allocReg(0)
++		f.pinned = f.pinned.add(regs[i])
++		f.a.Xor32(regs[i], regs[i])
++	}
++	// A separate scratch register leaves the one-chain case comparable. It has
++	// the same allocation policy in every experimental group shape.
++	scratch := f.allocReg(0)
++	f.pinned = f.pinned.add(scratch)
++	f.a.AluRI(aluTable[opSub].digit, cr, 1, false)
++	first := f.a.JccPlaceholder(condE)
++	f.a.AluRI(cmpDigit, cr, int32(factor), false)
++	short := f.a.JccPlaceholder(condB)
++	wrap := -1
++	mt, _ := f.m.MemoryType(0)
++	if !mt.Limits.HasMax || mt.Limits.Max >= 65536 {
++		f.a.MovRegReg32(scratch, cr)
++		f.a.ShiftImm(4, scratch, shift, true)
++		f.a.Add64(scratch, ar)
++		f.a.ShiftImm(5, scratch, 32, true)
++		wrap = f.a.JccPlaceholder(condNE)
++	}
++	operation := opAdd
++	if xor {
++		operation = opXor
++	}
++	group := f.a.Len()
++	for i := 0; i < factor; i++ {
++		f.a.AluIdx(aluTable[operation].rm, regs[i%chains], RBX, ar, int32(i*width), wide)
++	}
++	f.a.AluRI(aluTable[opAdd].digit, ar, int32(factor*width), false)
++	f.a.AluRI(aluTable[opSub].digit, cr, int32(factor), false)
++	f.a.AluRI(cmpDigit, cr, int32(factor), false)
++	back := f.a.JccPlaceholder(condAE)
++	f.a.PatchRel32(back, group)
++	f.a.PatchRel32(short, f.a.Len())
++	if wrap >= 0 {
++		f.a.PatchRel32(wrap, f.a.Len())
++	}
++	f.a.TestSelf(cr, false)
++	empty := f.a.JccPlaceholder(condE)
++	tail := f.a.Len()
++	f.a.AluIdx(aluTable[operation].rm, sr, RBX, ar, 0, wide)
++	f.a.AluRI(aluTable[opAdd].digit, ar, int32(width), false)
++	f.a.AluRI(aluTable[opSub].digit, cr, 1, false)
++	back = f.a.JccPlaceholder(condNE)
++	f.a.PatchRel32(back, tail)
++	f.a.PatchRel32(first, f.a.Len())
++	f.a.PatchRel32(empty, f.a.Len())
++	for i := 1; i < chains; i++ {
++		f.a.AluRR(aluTable[operation].rr, sr, regs[i], wide)
++		f.pinned = f.pinned.remove(regs[i])
++		f.release(regs[i])
++	}
++	f.pinned = f.pinned.remove(scratch)
++	f.release(scratch)
++	f.markLocalDirty(counter)
++	f.stats.peep("experimental-sum-group")
++	return true
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/experimental_sum_test.go b/src/core/compiler/backend/railshot/amd64/experimental_sum_test.go
+new file mode 100644
+index 000000000..46ca959f0
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/experimental_sum_test.go
+@@ -0,0 +1,114 @@
++//go:build linux && amd64
++
++package amd64
++
++import (
++	"encoding/binary"
++	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
++	coreruntime "github.com/wago-org/wago/src/core/runtime"
++	"testing"
++)
++
++func TestExperimentalSumMatrix(t *testing.T) {
++	saved := shared.SumExperiment
++	defer func() { shared.SumExperiment = saved }()
++	for _, variant := range []string{"A", "B", "C", "D", "E", "F", "G"} {
++		t.Run(variant, func(t *testing.T) {
++			shared.SumExperiment = variant
++			m := linearSumWrappingModuleAMD64(t)
++			for _, start := range []uint64{0, 1, 8, 127, 65528} {
++				for _, count := range []uint64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 511, 512, 513} {
++					init := func(mem []byte) {
++						for i := range mem {
++							mem[i] = byte(i*19 + 7)
++						}
++					}
++					want := uint64(0)
++					raw := make([]byte, 65536)
++					init(raw)
++					trap := start+count*8 > 65536
++					if !trap {
++						for i := uint64(0); i < count; i++ {
++							want += binary.LittleEndian.Uint64(raw[start+8*i:])
++						}
++					}
++					got, _, err := runMemAmd64(t, m, init, start, count)
++					if (err != nil) != trap || !trap && got != want {
++						t.Fatalf("start=%d count=%d got=%x want=%x err=%v", start, count, got, want, err)
++					}
++				}
++			}
++		})
++	}
++}
++
++func TestExperimentalSumGroupedFullMemoryWrap(t *testing.T) {
++	saved := shared.SumExperiment
++	defer func() { shared.SumExperiment = saved }()
++	jm, err := coreruntime.NewJobMemory(1 << 32)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	eng, err := coreruntime.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	arena, err := coreruntime.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer arena.Close()
++	args, out, trap := arena.Alloc(16), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
++	for _, variant := range []string{"A", "B", "C", "D", "E", "F", "G"} {
++		shared.SumExperiment = variant
++		cm, err := CompileModule(linearSumWrappingModuleAMD64(t))
++		if err != nil {
++			t.Fatal(err)
++		}
++		code, entry, err := coreruntime.MapCode(cm.Code)
++		if err != nil {
++			t.Fatal(err)
++		}
++		mem := jm.CurrentBytes()
++		for i := uint32(0); i < 16; i++ {
++			at := uint32(0xfffffff0 + i*8)
++			binary.LittleEndian.PutUint64(mem[uint64(at):], uint64(i+1))
++		}
++		for _, count := range []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16} {
++			binary.LittleEndian.PutUint32(args, 0xfffffff0)
++			binary.LittleEndian.PutUint32(args[8:], count)
++			if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, out); err != nil {
++				t.Fatal(variant, count, err)
++			}
++			if got, want := binary.LittleEndian.Uint64(out), uint64(count)*uint64(count+1)/2; got != want {
++				t.Fatal(variant, count, got, want)
++			}
++		}
++		binary.LittleEndian.PutUint32(args, 0xfffffff9)
++		binary.LittleEndian.PutUint32(args[8:], 5)
++		if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, out); err == nil {
++			t.Fatal("boundary access did not trap", variant)
++		}
++		coreruntime.Unmap(code)
++		cm.CodeImage.Close()
++	}
++}
++
++func TestExperimentalSumSizes(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	saved := shared.SumExperiment
++	defer func() { shared.SumExperiment = saved }()
++	for _, variant := range []string{"", "A", "B", "C", "D", "E", "F", "G"} {
++		shared.SumExperiment = variant
++		var stats ModuleStats
++		cm, err := CompileModuleWith(linearSumLoopModuleAMD64(t), CompileOptions{Stats: &stats})
++		if err != nil {
++			t.Fatal(err)
++		}
++		s := stats.Funcs[0]
++		t.Logf("variant=%q module=%d function=%d spills=%d reloads=%d frame=%d labels=%v", variant, len(cm.Code), s.CodeBytes, s.Spills, s.Reloads, s.FrameBytes, s.Peephole)
++		cm.CodeImage.Close()
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/arm64/compile.go b/src/core/compiler/backend/railshot/arm64/compile.go
+index eb9c3124c..a6d3cfd02 100644
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -443,8 +443,9 @@ type fn struct {
+ 	threadedMemory0 bool
+ 	// linearSumLoop encodes the exact reduction's address and accumulator locals;
+ 	// its depth limits the state to the loop whose top test established it.
+-	linearSumLoop      uint32
+-	linearSumLoopDepth uint16
++	linearSumLoop       uint32
++	linearSumLoopDepth  uint16
++	sumExperimentOpcode byte // bounded opt-in reduction operation
+ }
+ 
+ func (f *fn) opt(option optimization.Option) bool {
+diff --git a/src/core/compiler/backend/railshot/arm64/control.go b/src/core/compiler/backend/railshot/arm64/control.go
+index af906716c..ac422e214 100644
+--- a/src/core/compiler/backend/railshot/arm64/control.go
++++ b/src/core/compiler/backend/railshot/arm64/control.go
+@@ -188,11 +188,16 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
+ 		return 0, 0, 0, false
+ 	}
+ 	loadPC = f.tracePCBase + uint32(r2.Offset())
+-	if !readOp(0x29) { // i64.load
++	width, loadOp, addOp, xorOp := 8, byte(0x29), byte(0x7c), byte(0x85)
++	if shared.ReductionForms && acc >= 0 && acc < len(f.localType) && f.localType[acc] == mtI32 {
++		width, loadOp, addOp, xorOp = 4, 0x28, 0x6a, 0x73
++	}
++	if !readOp(loadOp) {
+ 		return 0, 0, 0, false
+ 	}
+ 	memoryIndex, off, err := f.readMemArg(&r2)
+-	if err != nil || memoryIndex != 0 || off != 0 || !readOp(0x7c) { // i64.add
++	reduceOp, reduceErr := r2.Byte()
++	if err != nil || reduceErr != nil || memoryIndex != 0 || off != 0 || (reduceOp != addOp && !(shared.ReductionForms && reduceOp == xorOp)) {
+ 		return 0, 0, 0, false
+ 	}
+ 	setAcc, yes := readLocal(0x21)
+@@ -204,7 +209,7 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
+ 		return 0, 0, 0, false
+ 	}
+ 	stride, err := r2.I32()
+-	if err != nil || stride != 8 || !readOp(0x6a) { // i32.add
++	if err != nil || stride != int32(width) || !readOp(0x6a) { // i32.add
+ 		return 0, 0, 0, false
+ 	}
+ 	setAddr, yes := readLocal(0x21)
+@@ -216,10 +221,19 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
+ 		return 0, 0, 0, false
+ 	}
+ 	one, err := r2.I32()
+-	if err != nil || one != 1 || !readOp(0x6b) { // i32.sub
++	update, updateErr := r2.Byte()
++	if err != nil || updateErr != nil || !(one == 1 && update == 0x6b || shared.ReductionForms && one == -1 && update == 0x6a) {
++		return 0, 0, 0, false
++	}
++	setOp, setErr := r2.Byte()
++	if setErr != nil || !(setOp == 0x21 || shared.ReductionForms && setOp == 0x22) {
++		return 0, 0, 0, false
++	}
++	setIndex, setErr := r2.U32()
++	setCounter, yes := int(setIndex)+f.localBase, setErr == nil
++	if setOp == 0x22 && !readOp(0x1a) {
+ 		return 0, 0, 0, false
+ 	}
+-	setCounter, yes := readLocal(0x21)
+ 	if !yes || setCounter != counter || !readOp(0x0c) {
+ 		return 0, 0, 0, false
+ 	}
+@@ -227,22 +241,27 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
+ 	if err != nil || label != 0 || !readOp(0x0b) || !readOp(0x0b) {
+ 		return 0, 0, 0, false
+ 	}
+-	if acc < 0 || acc >= len(f.localType) || f.localType[acc] != mtI64 ||
++	if acc < 0 || acc >= len(f.localType) || (f.localType[acc] != mtI64 && !(shared.ReductionForms && f.localType[acc] == mtI32)) ||
+ 		addr < 0 || addr >= len(f.localType) || f.localType[addr] != mtI32 || addr == counter ||
+ 		addr >= 1<<16-1 || acc >= 1<<16-1 {
+ 		return 0, 0, 0, false
+ 	}
++	f.sumExperimentOpcode = reduceOp
+ 	return addr, acc, loadPC, true
+ }
+ 
+ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
+-	if !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
++	if shared.SumExperiment == "A" || !f.opt(optLinearSumLoop) || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.memSizeReg == regNone {
+ 		return
+ 	}
+ 	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
+ 	if !ok {
+ 		return
+ 	}
++	shift, mask := uint8(3), uint32(7)
++	if f.localType[acc] == mtI32 {
++		shift, mask = 2, 3
++	}
+ 	counterReg, counterFloat, counterPinned := f.pinReg(counter)
+ 	addrReg, addrFloat, addrPinned := f.pinReg(addr)
+ 	if !counterPinned || counterFloat || !addrPinned || addrFloat {
+@@ -252,7 +271,7 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
+ 	// counter*8 cannot overflow uint64, and a bounded end proves every load.
+ 	t := f.allocReg(0)
+ 	f.a.MovReg32(t, counterReg)
+-	f.a.LslImm(t, t, 3, false)
++	f.a.LslImm(t, t, shift, false)
+ 	f.a.MovReg32(addrReg, addrReg)
+ 	f.a.Add64(t, t, addrReg)
+ 	f.cmpRR(t, f.memSizeReg, true)
+@@ -269,7 +288,7 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
+ 		f.a.MovImm64(t, 1<<32)
+ 		f.cmpRR(f.memSizeReg, t, true)
+ 		f.trapIf(condNE, trapMemOOB)
+-		if !f.a.TstImm32(addrReg, 7) {
++		if !f.a.TstImm32(addrReg, mask) {
+ 			panic("arm64: i32 alignment mask is not encodable")
+ 		}
+ 		f.trapIf(condNE, trapMemOOB)
+@@ -286,6 +305,19 @@ func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int) {
+ // accumulators. Addition is associative modulo 2^64, so regrouping preserves
+ // Wasm semantics while exposing independent load/add chains to the CPU.
+ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
++	if shared.ReductionForms && (f.sumExperimentOpcode == 0x73 || f.sumExperimentOpcode == 0x85 || f.sumExperimentOpcode == 0x6a) {
++		factor, chains, _ := shared.SumExperimentShape()
++		if shared.SumExperiment == "A" || factor == 1 {
++			return false
++		}
++		return f.tryExperimentalSumLatch(counter, factor, chains)
++	}
++	if factor, accumulators, enabled := shared.SumExperimentShape(); enabled {
++		if factor == 1 {
++			return false
++		}
++		return f.tryExperimentalSumLatch(counter, factor, accumulators)
++	}
+ 	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
+ 		return false
+ 	}
+@@ -400,19 +432,27 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
+ 		return false, nil
+ 	}
+ 	one, err := r2.I32()
+-	if err != nil || one != 1 {
++	if err != nil {
+ 		return false, nil
+ 	}
+-	for _, want := range []byte{0x6b, 0x21} { // i32.sub; local.set
+-		op, err = r2.Byte()
+-		if err != nil || op != want {
+-			return false, nil
+-		}
++	update, err := r2.Byte()
++	if err != nil || !(one == 1 && update == 0x6b || shared.ReductionForms && one == -1 && update == 0x6a) {
++		return false, nil
++	}
++	setOp, err := r2.Byte()
++	if err != nil || !(setOp == 0x21 || shared.ReductionForms && setOp == 0x22) {
++		return false, nil
+ 	}
+ 	set, err := r2.U32()
+ 	if err != nil || int(set) != x {
+ 		return false, nil
+ 	}
++	if setOp == 0x22 {
++		drop, err := r2.Byte()
++		if err != nil || drop != 0x1a {
++			return false, nil
++		}
++	}
+ 	op, err = r2.Byte()
+ 	if err != nil || op != 0x0c {
+ 		return false, nil
+diff --git a/src/core/compiler/backend/railshot/arm64/experimental_sum.go b/src/core/compiler/backend/railshot/arm64/experimental_sum.go
+new file mode 100644
+index 000000000..0aafea946
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/experimental_sum.go
+@@ -0,0 +1,94 @@
++//go:build arm64
++
++package arm64
++
++// The legality proof is shared with the original sum. ARM64 keeps X16 as its
++// reserved address/load scratch; accumulator allocation is target-specific.
++func (f *fn) tryExperimentalSumLatch(counter, factor, chains int) bool {
++	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
++		return false
++	}
++	addr, acc := int(uint16(f.linearSumLoop)-1), int(uint16(f.linearSumLoop>>16)-1)
++	cr, cf, cp := f.pinReg(counter)
++	ar, af, ap := f.pinReg(addr)
++	sr, sf, sp := f.pinReg(acc)
++	if !cp || cf || !ap || af || !sp || sf {
++		return false
++	}
++	wide, width, shift := f.localType[acc] != mtI32, 8, uint8(3)
++	if !wide {
++		width, shift = 4, 2
++	}
++	xor := f.sumExperimentOpcode == 0x73 || f.sumExperimentOpcode == 0x85
++	var regs [4]Reg
++	regs[0] = sr
++	for i := 1; i < chains; i++ {
++		regs[i] = f.allocReg(0)
++		f.pinned = f.pinned.add(regs[i])
++		f.a.MovImm64(regs[i], 0)
++	}
++	f.a.SubsImm32(cr, cr, 1)
++	first := f.a.Bcond(condE)
++	f.a.CmpImm32(cr, uint32(factor))
++	short := f.a.Bcond(condB)
++	wrap := -1
++	mt, _ := f.m.MemoryType(0)
++	if !mt.Limits.HasMax || mt.Limits.Max >= 65536 {
++		f.a.MovReg32(X16, cr)
++		f.a.LslImm(X16, X16, shift, false)
++		f.a.Add64(X16, X16, ar)
++		f.a.LsrImm(X16, X16, 32, false)
++		wrap = f.a.Cbnz64(X16)
++	}
++	group := f.a.Len()
++	for i := 0; i < factor; i++ {
++		f.a.LoadIdx(X16, linMemReg, ar, int32(i*width), width, false, true)
++		f.experimentalReduce(regs[i%chains], X16, wide, xor)
++	}
++	f.a.AddImm32(ar, ar, uint32(factor*width))
++	f.a.SubImm32(cr, cr, uint32(factor))
++	f.a.CmpImm32(cr, uint32(factor))
++	back := f.a.Bcond(condAE)
++	f.patchBranch19(back, group)
++	f.patchBranch19(short, f.a.Len())
++	if wrap >= 0 {
++		f.patchBranch19(wrap, f.a.Len())
++	}
++	empty := f.a.Cbz32(cr)
++	tail := f.a.Len()
++	f.a.LoadIdx(X16, linMemReg, ar, 0, width, false, true)
++	f.experimentalReduce(sr, X16, wide, xor)
++	f.a.AddImm32(ar, ar, uint32(width))
++	f.a.SubsImm32(cr, cr, 1)
++	back = f.a.Bcond(condNE)
++	f.patchBranch19(back, tail)
++	f.patchBranch19(first, f.a.Len())
++	f.patchBranch19(empty, f.a.Len())
++	for i := 1; i < chains; i++ {
++		f.experimentalReduce(sr, regs[i], wide, xor)
++		f.pinned = f.pinned.remove(regs[i])
++		f.release(regs[i])
++	}
++	f.markLocalDirty(counter)
++	f.markLocalDirty(addr)
++	f.markLocalDirty(acc)
++	f.setFactsForLocal(counter, 0)
++	f.linearSumLoop = 0
++	f.linearSumLoopDepth = 0
++	f.stats.peep("experimental-sum-group")
++	return true
++}
++
++func (f *fn) experimentalReduce(dst, src Reg, wide, xor bool) {
++	if xor {
++		if wide {
++			f.a.Eor64(dst, dst, src)
++		} else {
++			f.a.Eor32(dst, dst, src)
++		}
++	} else if wide {
++		f.a.Add64(dst, dst, src)
++	} else {
++		f.a.Add32(dst, dst, src)
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/shared/loop_experiment.go b/src/core/compiler/backend/railshot/shared/loop_experiment.go
+new file mode 100644
+index 000000000..d09f3a219
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/shared/loop_experiment.go
+@@ -0,0 +1,28 @@
++package shared
++
++import "os"
++
++// SumExperiment is a process-wide, opt-in control for the fixed-base experiment.
++// Empty or invalid values retain the existing implementation byte for byte.
++var SumExperiment = os.Getenv("WAGO_LOOP_SUM_EXPERIMENT")
++
++func SumExperimentShape() (factor, accumulators int, enabled bool) {
++	switch SumExperiment {
++	case "A", "B":
++		return 1, 1, true
++	case "C":
++		return 2, 1, true
++	case "D":
++		return 4, 1, true
++	case "E":
++		return 2, 2, true
++	case "F":
++		return 4, 4, true
++	case "G":
++		return 4, 2, true
++	}
++	return 4, 4, false
++}
++
++// ReductionForms enables only the bounded additional integer-reduction forms.
++var ReductionForms = os.Getenv("WAGO_LOOP_REDUCTION_FORMS") == "1"

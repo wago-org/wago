@@ -1,0 +1,1 @@
+{"compile_allocs":107,"compile_bytes":35968,"compile_ns":255610,"execute_ns":119444,"export":"sum","instantiate_ns":73869,"remaining_allocs":15,"remaining_bytes":3296,"repeat":1,"result":8386560,"wasm":"corpus/workloads/compute/linked_list.wasm"}

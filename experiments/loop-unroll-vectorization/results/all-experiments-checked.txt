@@ -1,0 +1,268 @@
+=== RUN   TestExperimentalCoverage
+=== RUN   TestExperimentalCoverage/memory.wasm
+    experimental_evidence_test.go:50: accepted-native function=1 label=linear-sum-unroll4 function-bytes=312
+    experimental_evidence_test.go:68: accepted-plan mode=count2 function=1
+    experimental_evidence_test.go:73: plan mode=count2 accepted=1 rejected=map[counter-read:1]
+    experimental_evidence_test.go:68: accepted-plan mode=simd2 function=1
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=1 rejected=map[counter-read:1]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[counter-read:1 map-operation-count:1]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[counter-read:1 map-operation-count:1]
+    experimental_evidence_test.go:96: module functions=2 loops=2 simd-instructions=0 native-bytes=472 labels=map[linear-sum-unroll4:1]
+=== RUN   TestExperimentalCoverage/linked_list.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[header:1]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[header:1]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[header:1]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[header:1]
+    experimental_evidence_test.go:96: module functions=1 loops=2 simd-instructions=0 native-bytes=268 labels=map[]
+=== RUN   TestExperimentalCoverage/memory_tree.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:96: module functions=2 loops=1 simd-instructions=0 native-bytes=534 labels=map[]
+=== RUN   TestExperimentalCoverage/many_funcs.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:301]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:301]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:301]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:301]
+    experimental_evidence_test.go:96: module functions=301 loops=0 simd-instructions=0 native-bytes=8363 labels=map[]
+=== RUN   TestExperimentalCoverage/jacobi-1d.wasm
+    experimental_evidence_test.go:50: accepted-native function=1 label=region-loop-wide-adjacent function-bytes=4634
+    experimental_evidence_test.go:50: accepted-native function=1 label=region-loop-fast function-bytes=4634
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:96: module functions=2 loops=7 simd-instructions=0 native-bytes=5898 labels=map[region-loop-fast:2 region-loop-wide-adjacent:2]
+=== RUN   TestExperimentalCoverage/gemm.wasm
+    experimental_evidence_test.go:50: accepted-native function=1 label=region-loop-wide-adjacent function-bytes=4307
+    experimental_evidence_test.go:50: accepted-native function=1 label=region-loop-fast function-bytes=4307
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:2]
+    experimental_evidence_test.go:96: module functions=2 loops=14 simd-instructions=0 native-bytes=5571 labels=map[region-loop-fast:1 region-loop-wide-adjacent:1]
+=== RUN   TestExperimentalCoverage/blake-as.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[prefix-control-or-operation:6]
+    experimental_evidence_test.go:96: module functions=6 loops=5 simd-instructions=0 native-bytes=10315 labels=map[]
+=== RUN   TestExperimentalCoverage/blake-as-simd.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[function-budget:2 header:1 prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[function-budget:2 header:1 prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[function-budget:2 header:1 prefix-control-or-operation:6]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[function-budget:2 header:1 prefix-control-or-operation:6]
+    experimental_evidence_test.go:96: module functions=9 loops=11 simd-instructions=2192 native-bytes=39679 labels=map[]
+=== RUN   TestExperimentalCoverage/utf-as-simd.wasm
+    experimental_evidence_test.go:73: plan mode=count2 accepted=0 rejected=map[function-budget:1 header:1 prefix-control-or-operation:8]
+    experimental_evidence_test.go:73: plan mode=simd2 accepted=0 rejected=map[function-budget:1 header:1 prefix-control-or-operation:8]
+    experimental_evidence_test.go:73: plan mode=vector-f32 accepted=0 rejected=map[function-budget:1 header:1 prefix-control-or-operation:8]
+    experimental_evidence_test.go:73: plan mode=vector-i32 accepted=0 rejected=map[function-budget:1 header:1 prefix-control-or-operation:8]
+    experimental_evidence_test.go:96: module functions=10 loops=21 simd-instructions=674 native-bytes=22227 labels=map[]
+--- PASS: TestExperimentalCoverage (0.01s)
+    --- PASS: TestExperimentalCoverage/memory.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/linked_list.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/memory_tree.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/many_funcs.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/jacobi-1d.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/gemm.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/blake-as.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/blake-as-simd.wasm (0.00s)
+    --- PASS: TestExperimentalCoverage/utf-as-simd.wasm (0.00s)
+=== RUN   TestExperimentalNativeArtifacts
+    experimental_evidence_test.go:104: set WAGO_EXPERIMENT_ARTIFACT_DIR to save evidence
+--- SKIP: TestExperimentalNativeArtifacts (0.00s)
+=== RUN   TestExperimentalPressure
+    experimental_evidence_test.go:188: mode=count2 frame=200 spills=0 reloads=0 native=644
+    experimental_evidence_test.go:188: mode=count4 frame=200 spills=0 reloads=0 native=756
+    experimental_evidence_test.go:188: mode=guard2 frame=200 spills=0 reloads=0 native=574
+    experimental_evidence_test.go:188: mode=vector-i32 frame=216 spills=0 reloads=0 native=1095
+--- PASS: TestExperimentalPressure (0.00s)
+=== RUN   TestExperimentalSettings
+    experimental_evidence_test.go:213: WAGO_AMD64_VECTOR_MAP_ASSERT_FAST=""
+    experimental_evidence_test.go:213: WAGO_LOOP_F64_MODE=""
+    experimental_evidence_test.go:213: WAGO_LOOP_REDUCTION_FORMS=""
+    experimental_evidence_test.go:213: WAGO_LOOP_REPLICATION=""
+    experimental_evidence_test.go:213: WAGO_LOOP_SUM_EXPERIMENT=""
+--- PASS: TestExperimentalSettings (0.00s)
+=== RUN   TestExperimentalExistingF64Paths
+=== RUN   TestExperimentalExistingF64Paths/pair128
+    experimental_f64_test.go:59: scalar module=296 labels=map[addr-zext-elim:3 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:1 fcommute_mem:1 float-local-sink:1 float-store-borrow:1 frame-header-elide:1]
+    experimental_f64_test.go:74: mode=pair128 module=891 function=891 spills=0 reloads=0 frame=280 labels=map[addr-zext-elim:3 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:1 fcommute_mem:1 float-local-sink:1 float-store-borrow:1 frame-header-elide:1 region-loop-all-addresses-cached:1 region-loop-fast:1]
+=== RUN   TestExperimentalExistingF64Paths/wide256
+    experimental_f64_test.go:59: scalar module=296 labels=map[addr-zext-elim:3 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:1 fcommute_mem:1 float-local-sink:1 float-store-borrow:1 frame-header-elide:1]
+    experimental_f64_test.go:74: mode=wide256 module=945 function=945 spills=0 reloads=0 frame=296 labels=map[addr-zext-elim:3 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:1 fcommute_mem:1 float-local-sink:1 float-store-borrow:1 frame-header-elide:1 region-loop-all-addresses-cached:1 region-loop-fast:1 region-loop-wide-checked-tail:1 region-loop-wide-independent:1 region-loop-wide-memory-broadcast:2]
+=== RUN   TestExperimentalExistingF64Paths/adjacent128
+    experimental_f64_test.go:59: scalar module=310 labels=map[addr-zext-elim:4 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:2 float-local-sink:2 float-store-borrow:2 frame-header-elide:1 shift-owned-destination:1]
+    experimental_f64_test.go:74: mode=adjacent128 module=1139 function=1139 spills=0 reloads=0 frame=280 labels=map[addr-zext-elim:4 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:2 float-local-sink:2 float-store-borrow:2 frame-header-elide:1 region-loop-all-addresses-cached:1 region-loop-fast:1 region-loop-fold-load:1 shift-owned-destination:1]
+=== RUN   TestExperimentalExistingF64Paths/adjacent256
+    experimental_f64_test.go:59: scalar module=310 labels=map[addr-zext-elim:4 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:2 float-local-sink:2 float-store-borrow:2 frame-header-elide:1 shift-owned-destination:1]
+    experimental_f64_test.go:74: mode=adjacent256 module=1193 function=1193 spills=0 reloads=0 frame=296 labels=map[addr-zext-elim:4 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 entry-arg-local-pin:2 float-local-sink:2 float-store-borrow:2 frame-header-elide:1 region-loop-all-addresses-cached:1 region-loop-fast:1 region-loop-fold-load:1 region-loop-wide-adjacent:1 region-loop-wide-checked-tail:1 shift-owned-destination:1]
+--- PASS: TestExperimentalExistingF64Paths (0.00s)
+    --- PASS: TestExperimentalExistingF64Paths/pair128 (0.00s)
+    --- PASS: TestExperimentalExistingF64Paths/wide256 (0.00s)
+    --- PASS: TestExperimentalExistingF64Paths/adjacent128 (0.00s)
+    --- PASS: TestExperimentalExistingF64Paths/adjacent256 (0.00s)
+=== RUN   TestExperimentalMaps
+=== RUN   TestExperimentalMaps/map-f32
+    experimental_maps_test.go:73: mode= module=256 function=256 spills=0 reloads=0 frame=104
+    experimental_maps_test.go:73: mode=vector-f32 module=713 function=713 spills=0 reloads=0 frame=120
+=== RUN   TestExperimentalMaps/map-i32
+    experimental_maps_test.go:73: mode= module=254 function=254 spills=0 reloads=0 frame=72
+    experimental_maps_test.go:73: mode=vector-i32 module=831 function=831 spills=0 reloads=0 frame=136
+--- PASS: TestExperimentalMaps (0.01s)
+    --- PASS: TestExperimentalMaps/map-f32 (0.00s)
+    --- PASS: TestExperimentalMaps/map-i32 (0.00s)
+=== RUN   TestExperimentalTrapOrigins
+--- PASS: TestExperimentalTrapOrigins (0.00s)
+=== RUN   TestExperimentalMapOperationsAndImmediateOffsets
+--- PASS: TestExperimentalMapOperationsAndImmediateOffsets (0.04s)
+=== RUN   TestExperimentalSuffixOrigins
+--- PASS: TestExperimentalSuffixOrigins (0.00s)
+=== RUN   TestExperimentalReductionForms
+=== RUN   TestExperimentalReductionForms/i32
+    experimental_reduction_test.go:67: i32 map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+=== RUN   TestExperimentalReductionForms/xor
+    experimental_reduction_test.go:67: xor map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+=== RUN   TestExperimentalReductionForms/add-minus-one
+    experimental_reduction_test.go:67: add-minus-one map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 frame-header-elide:1 linear-sum-unroll4:1]
+=== RUN   TestExperimentalReductionForms/tee-drop
+    experimental_reduction_test.go:67: tee-drop map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 frame-header-elide:1 linear-sum-unroll4:1]
+=== RUN   TestExperimentalReductionForms/header-eq
+    experimental_reduction_test.go:67: header-eq map[br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 frame-header-elide:1]
+--- PASS: TestExperimentalReductionForms (0.03s)
+    --- PASS: TestExperimentalReductionForms/i32 (0.00s)
+    --- PASS: TestExperimentalReductionForms/xor (0.01s)
+    --- PASS: TestExperimentalReductionForms/add-minus-one (0.01s)
+    --- PASS: TestExperimentalReductionForms/tee-drop (0.01s)
+    --- PASS: TestExperimentalReductionForms/header-eq (0.01s)
+=== RUN   TestExperimentalReplication
+=== RUN   TestExperimentalReplication/map-i32/count2
+    experimental_replication_test.go:145: module=376 function=376 frame=72 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/map-i32/count4
+    experimental_replication_test.go:145: module=512 function=512 frame=72 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/map-i32/guard2
+    experimental_replication_test.go:145: module=306 function=306 frame=72 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-i32/count2
+    experimental_replication_test.go:145: module=353 function=353 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-i32/count4
+    experimental_replication_test.go:145: module=449 function=449 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-i32/guard2
+    experimental_replication_test.go:145: module=292 function=292 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-f64/count2
+    experimental_replication_test.go:145: module=347 function=347 frame=88 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-f64/count4
+    experimental_replication_test.go:145: module=459 function=459 frame=88 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-f64/guard2
+    experimental_replication_test.go:145: module=290 function=290 frame=88 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/pointer/count2
+    experimental_replication_test.go:145: module=284 function=284 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/pointer/count4
+    experimental_replication_test.go:145: module=324 function=324 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/pointer/guard2
+    experimental_replication_test.go:145: module=236 function=236 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/simd-i32/simd2
+    experimental_replication_test.go:145: module=400 function=400 frame=120 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/simd-i32/simd4
+    experimental_replication_test.go:145: module=544 function=544 frame=120 spills=0 reloads=0
+--- PASS: TestExperimentalReplication (0.06s)
+    --- PASS: TestExperimentalReplication/map-i32/count2 (0.00s)
+    --- PASS: TestExperimentalReplication/map-i32/count4 (0.00s)
+    --- PASS: TestExperimentalReplication/map-i32/guard2 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-i32/count2 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-i32/count4 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-i32/guard2 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-f64/count2 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-f64/count4 (0.01s)
+    --- PASS: TestExperimentalReplication/dependent-f64/guard2 (0.01s)
+    --- PASS: TestExperimentalReplication/pointer/count2 (0.00s)
+    --- PASS: TestExperimentalReplication/pointer/count4 (0.00s)
+    --- PASS: TestExperimentalReplication/pointer/guard2 (0.00s)
+    --- PASS: TestExperimentalReplication/simd-i32/simd2 (0.00s)
+    --- PASS: TestExperimentalReplication/simd-i32/simd4 (0.00s)
+=== RUN   TestExperimentalReplicationRejects
+=== RUN   TestExperimentalReplicationRejects/call
+=== RUN   TestExperimentalReplicationRejects/nested
+=== RUN   TestExperimentalReplicationRejects/extra-exit
+=== RUN   TestExperimentalReplicationRejects/growth
+=== RUN   TestExperimentalReplicationRejects/memory-grow
+=== RUN   TestExperimentalReplicationRejects/atomic
+=== RUN   TestExperimentalReplicationRejects/reference
+=== RUN   TestExperimentalReplicationRejects/shared
+=== RUN   TestExperimentalReplicationRejects/memory64
+=== RUN   TestExperimentalReplicationRejects/interruptible
+--- PASS: TestExperimentalReplicationRejects (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/call (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/nested (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/extra-exit (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/growth (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/memory-grow (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/atomic (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/reference (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/shared (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/memory64 (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/interruptible (0.00s)
+=== RUN   TestExperimentalWritingMemory32Wrap
+=== RUN   TestExperimentalWritingMemory32Wrap/map-i32/count2
+=== RUN   TestExperimentalWritingMemory32Wrap/map-i32/count4
+=== RUN   TestExperimentalWritingMemory32Wrap/map-i32/guard2
+=== RUN   TestExperimentalWritingMemory32Wrap/map-i32/vector-i32
+=== RUN   TestExperimentalWritingMemory32Wrap/map-f32/count2
+=== RUN   TestExperimentalWritingMemory32Wrap/map-f32/count4
+=== RUN   TestExperimentalWritingMemory32Wrap/map-f32/guard2
+=== RUN   TestExperimentalWritingMemory32Wrap/map-f32/vector-f32
+=== RUN   TestExperimentalWritingMemory32Wrap/dependent-f64/count2
+=== RUN   TestExperimentalWritingMemory32Wrap/dependent-f64/count4
+=== RUN   TestExperimentalWritingMemory32Wrap/dependent-f64/guard2
+=== RUN   TestExperimentalWritingMemory32Wrap/simd-i32/simd2
+=== RUN   TestExperimentalWritingMemory32Wrap/simd-i32/simd4
+--- PASS: TestExperimentalWritingMemory32Wrap (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/map-i32/count2 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/map-i32/count4 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/map-i32/guard2 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/map-i32/vector-i32 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/map-f32/count2 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/map-f32/count4 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/map-f32/guard2 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/map-f32/vector-f32 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/dependent-f64/count2 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/dependent-f64/count4 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/dependent-f64/guard2 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/simd-i32/simd2 (0.00s)
+    --- PASS: TestExperimentalWritingMemory32Wrap/simd-i32/simd4 (0.00s)
+=== RUN   TestExperimentalSumMatrix
+=== RUN   TestExperimentalSumMatrix/A
+=== RUN   TestExperimentalSumMatrix/B
+=== RUN   TestExperimentalSumMatrix/C
+=== RUN   TestExperimentalSumMatrix/D
+=== RUN   TestExperimentalSumMatrix/E
+=== RUN   TestExperimentalSumMatrix/F
+=== RUN   TestExperimentalSumMatrix/G
+=== RUN   TestExperimentalSumMatrix/H
+--- PASS: TestExperimentalSumMatrix (0.12s)
+    --- PASS: TestExperimentalSumMatrix/A (0.01s)
+    --- PASS: TestExperimentalSumMatrix/B (0.01s)
+    --- PASS: TestExperimentalSumMatrix/C (0.01s)
+    --- PASS: TestExperimentalSumMatrix/D (0.01s)
+    --- PASS: TestExperimentalSumMatrix/E (0.01s)
+    --- PASS: TestExperimentalSumMatrix/F (0.02s)
+    --- PASS: TestExperimentalSumMatrix/G (0.02s)
+    --- PASS: TestExperimentalSumMatrix/H (0.01s)
+=== RUN   TestExperimentalSumGroupedFullMemoryWrap
+--- PASS: TestExperimentalSumGroupedFullMemoryWrap (0.00s)
+=== RUN   TestExperimentalSumSizes
+    experimental_sum_test.go:112: variant="" module=312 function=312 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 frame-header-elide:1 linear-sum-unroll4:1]
+    experimental_sum_test.go:112: variant="A" module=165 function=165 spills=0 reloads=0 frame=40 labels=map[br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-latch:1 frame-header-elide:1]
+    experimental_sum_test.go:112: variant="B" module=198 function=198 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 frame-header-elide:1]
+    experimental_sum_test.go:112: variant="C" module=282 function=282 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:112: variant="D" module=292 function=292 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:112: variant="E" module=287 function=287 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:112: variant="F" module=307 function=307 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:112: variant="G" module=297 function=297 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+    experimental_sum_test.go:112: variant="H" module=277 function=277 spills=0 reloads=0 frame=40 labels=map[addr-zext-elim:1 br-pair-fold:1 cmp-branch-fuse:1 compact-i32-frame:1 compact-loop-align32:1 counted-loop-bounds-hoist:1 counted-loop-latch:1 experimental-sum-group:1 frame-header-elide:1]
+--- PASS: TestExperimentalSumSizes (0.00s)
+=== RUN   TestExperimentalSumLiveExitLocals
+--- PASS: TestExperimentalSumLiveExitLocals (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.280s

@@ -1,0 +1,180 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/compile         	    5376	     24794 ns/op	   29928 B/op	      50 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/execute/0         	 2795932	        21.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1         	 2478987	        21.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/2         	 2856657	        21.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/3         	 2699127	        21.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/4         	 2600216	        23.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/5         	 2713614	        22.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/6         	 2608876	        25.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/7         	 2562734	        23.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8         	 2375394	        25.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/9         	 2364506	        25.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/15        	 2030816	        27.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/16        	 2020234	        27.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/17        	 1961290	        29.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/511       	  219326	       289.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/512       	  222655	       305.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/513       	  216687	       288.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8192      	   13310	      4514 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/262144    	     428	    141214 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1048576   	      67	   1016038 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/compile         	    5524	     24832 ns/op	   29928 B/op	      50 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/execute/0         	 2951882	        20.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1         	 2943734	        20.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/2         	 2933402	        21.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/3         	 2849568	        21.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/4         	 2809290	        22.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/5         	 2731021	        22.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/6         	 2662748	        22.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/7         	 2621222	        23.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8         	 2585383	        23.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/9         	 2554363	        24.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/15        	 2226490	        26.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/16        	 2245482	        27.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/17        	 2194183	        27.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/511       	  225570	       276.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/512       	  225986	       277.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/513       	  219914	       277.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8192      	   14516	      4138 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/262144    	     440	    145878 ns/op	      12 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1048576   	      72	    865436 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/compile         	    5242	     23291 ns/op	   29928 B/op	      50 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/execute/0         	 2974321	        20.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1         	 2711970	        20.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/2         	 2901000	        22.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/3         	 2764506	        21.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/4         	 2850510	        21.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/5         	 2742985	        21.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/6         	 2707959	        23.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/7         	 2478073	        23.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8         	 2608036	        23.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/9         	 2491634	        24.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/15        	 2248312	        27.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/16        	 2183846	        26.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/17        	 2206148	        28.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/511       	  225488	       276.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/512       	  222103	       286.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/513       	  219330	       272.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8192      	   14528	      4352 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/262144    	     360	    150056 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1048576   	      75	    889548 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/compile         	    5120	     27105 ns/op	   29928 B/op	      50 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/execute/0         	 2968513	        20.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1         	 2940273	        21.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/2         	 2932086	        21.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/3         	 2905104	        20.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/4         	 2844672	        22.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/5         	 2776878	        22.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/6         	 2721022	        24.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/7         	 2615920	        23.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8         	 2621344	        23.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/9         	 2573160	        23.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/15        	 2294058	        26.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/16        	 2174485	        27.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/17        	 2178933	        27.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/511       	  228717	       273.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/512       	  215144	       280.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/513       	  221566	       273.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8192      	   13962	      4129 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/262144    	     438	    139574 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1048576   	      67	    873450 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/compile         	    3922	     31123 ns/op	   29928 B/op	      50 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/execute/0         	 2786100	        22.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1         	 2694434	        22.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/2         	 2562938	        21.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/3         	 2883404	        21.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/4         	 2717239	        21.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/5         	 2699682	        22.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/6         	 2634070	        22.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/7         	 2470280	        23.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8         	 2544207	        23.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/9         	 2566382	        23.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/15        	 2296045	        26.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/16        	 2243224	        27.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/17        	 2186785	        27.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/511       	  222376	       275.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/512       	  221965	       286.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/513       	  208321	       278.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8192      	   14521	      4127 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/262144    	     433	    164254 ns/op	      12 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1048576   	      75	    925506 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/compile         	    5256	     25902 ns/op	   29928 B/op	      50 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReplication/simd-i32/execute/0         	 2952025	        20.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1         	 2678928	        21.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/2         	 2759310	        20.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/3         	 2875191	        21.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/4         	 2737716	        22.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/5         	 2662869	        21.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/6         	 2684251	        23.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/7         	 2615902	        22.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8         	 2541817	        24.86 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/9         	 2274920	        29.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/15        	 2055781	        29.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/16        	 1996822	        27.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/17        	 2139333	        34.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/511       	  217306	       308.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/512       	  220885	       281.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/513       	  222336	       280.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/8192      	   12198	      4481 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/262144    	     370	    166288 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReplication/simd-i32/execute/1048576   	      66	    910892 ns/op	      80 B/op	       0 allocs/op
+PASS

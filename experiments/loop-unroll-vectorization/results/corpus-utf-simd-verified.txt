@@ -1,0 +1,1 @@
+{"compile_allocs":289,"compile_bytes":327192,"compile_ns":921951,"execute_ns":54322,"export":"convertN","instantiate_ns":221005,"remaining_allocs":61,"remaining_bytes":5536,"repeat":1,"result":710400,"wasm":"corpus/workloads/assemblyscript/utf-as-simd.wasm"}

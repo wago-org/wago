@@ -1,0 +1,3 @@
+--- FAIL: BenchmarkExperimentalCorpusCompile
+    experimental_evidence_test.go:19: open ../../../../../../corpus/workloads/synthetic/memory.wasm: no such file or directory
+FAIL

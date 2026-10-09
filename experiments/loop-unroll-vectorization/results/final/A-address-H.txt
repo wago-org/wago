@@ -1,0 +1,66 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalSumAddress/1/512         	  519106	       239.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/8192        	   33163	      3417 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/4194304     	      67	   1772052 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/512       	  520736	       232.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/8192      	   35118	      3494 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/4194304   	      64	   1999022 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalSumAddress/1/512         	  525704	       238.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/8192        	   33708	      3521 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/4194304     	      70	   1880074 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/512       	  509602	       231.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/8192      	   34274	      3499 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/4194304   	      69	   1719499 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalSumAddress/1/512         	  515154	       234.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/8192        	   34584	      3446 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/4194304     	      70	   1715347 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/512       	  541123	       229.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/8192      	   31569	      3462 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/4194304   	      69	   1715278 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalSumAddress/1/512         	  541123	       223.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/8192        	   36566	      3336 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/4194304     	      69	   1735283 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/512       	  539458	       249.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/8192      	   33907	      3481 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/4194304   	      69	   1720668 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalSumAddress/1/512         	  386628	       274.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/8192        	   31070	      3455 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/4194304     	      69	   1722148 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/512       	  540045	       240.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/8192      	   34172	      3665 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/4194304   	      68	   1721799 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalSumAddress/1/512         	  538442	       244.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/8192        	   35130	      3554 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/1/4194304     	      66	   1792676 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/512       	  508633	       242.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/8192      	   32940	      3762 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalSumAddress/128/4194304   	      66	   1801467 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,4 @@
+# Preserve captured tool output, including its original whitespace.
+*.txt -whitespace
+*.asm -whitespace
+*.diff -whitespace

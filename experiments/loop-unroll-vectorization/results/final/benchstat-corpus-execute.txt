@@ -1,0 +1,17 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                          │ experiments/loop-unroll-vectorization/results/final/corpus-execute-scalar.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-count2.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-count4.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-guard2.txt │
+                          │                                    sec/op                                     │                        sec/op                          vs base                │                        sec/op                          vs base                │                        sec/op                          vs base                │
+ExperimentalCorpusExecute                                                                     958.1n ± 5%                                            2840.0n ± 5%  +196.42% (p=0.002 n=6)                                            3000.0n ± 6%  +213.12% (p=0.002 n=6)                                            3183.0n ± 3%  +232.22% (p=0.002 n=6)
+
+                          │ experiments/loop-unroll-vectorization/results/final/corpus-execute-scalar.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-count2.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-count4.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-guard2.txt │
+                          │                                     B/op                                      │                            B/op                             vs base           │                            B/op                             vs base           │                            B/op                             vs base           │
+ExperimentalCorpusExecute                                                                      0.000 ± 0%                                                   0.000 ± 0%  ~ (p=1.000 n=6) ¹                                                   0.000 ± 0%  ~ (p=1.000 n=6) ¹                                                   0.000 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal
+
+                          │ experiments/loop-unroll-vectorization/results/final/corpus-execute-scalar.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-count2.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-count4.txt │ experiments/loop-unroll-vectorization/results/final/corpus-execute-guard2.txt │
+                          │                                   allocs/op                                   │                         allocs/op                           vs base           │                         allocs/op                           vs base           │                         allocs/op                           vs base           │
+ExperimentalCorpusExecute                                                                      0.000 ± 0%                                                   0.000 ± 0%  ~ (p=1.000 n=6) ¹                                                   0.000 ± 0%  ~ (p=1.000 n=6) ¹                                                   0.000 ± 0%  ~ (p=1.000 n=6) ¹
+¹ all samples are equal

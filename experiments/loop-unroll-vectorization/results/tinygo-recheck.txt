@@ -1,0 +1,6 @@
+=== RUN   TestBuildTinyGoEmbedsArtifactWithoutCompiler
+--- PASS: TestBuildTinyGoEmbedsArtifactWithoutCompiler (44.72s)
+=== RUN   TestBuildTinyGoStripsByDefault
+--- PASS: TestBuildTinyGoStripsByDefault (40.75s)
+PASS
+ok  	github.com/wago-org/wago/cli/manager/internal/standalone	85.473s

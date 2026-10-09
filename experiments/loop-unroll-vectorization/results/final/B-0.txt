@@ -1,0 +1,600 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	   10000	     10566 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	   10000	     10431 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	   10000	     10749 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	   10000	     10765 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	   10000	     10824 ns/op	   11152 B/op	      26 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/execute/0         	 5626213	        20.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/1         	 5903788	        20.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/2         	 5900628	        20.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/3         	 5863444	        20.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/4         	 5838988	        20.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/5         	 5851820	        20.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/6         	 5820898	        20.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/7         	 5776153	        20.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8         	 5730010	        21.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/9         	 5670057	        21.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/15        	 5274824	        22.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/16        	 5190424	        23.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/17        	 5102906	        23.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/511       	  570232	       205.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/512       	  586408	       206.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/513       	  580050	       206.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8192      	   39982	      2999 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/0         	 6065890	        20.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/1         	 5927431	        20.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/2         	 5917746	        20.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/3         	 5835134	        20.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/4         	 5827573	        20.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/5         	 5848440	        20.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/6         	 5786246	        20.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/7         	 5771017	        20.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8         	 5727985	        21.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/9         	 5657096	        21.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/15        	 5279518	        22.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/16        	 5178439	        23.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/17        	 5084707	        23.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/511       	  571891	       206.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/512       	  584134	       215.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/513       	  571250	       206.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8192      	   39855	      3011 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/0         	 5871556	        19.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/1         	 5936223	        20.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/2         	 5663390	        20.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/3         	 5899782	        20.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/4         	 5841303	        20.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/5         	 5776988	        20.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/6         	 5745513	        20.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/7         	 5657392	        21.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8         	 5562630	        21.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/9         	 5506159	        21.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/15        	 5047006	        23.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/16        	 4962128	        25.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/17        	 4847313	        24.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/511       	  522043	       227.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/512       	  533377	       227.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/513       	  528666	       228.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8192      	   36055	      3331 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/0              	 6035446	        20.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/1              	 5977837	        21.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/2              	 5787386	        20.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/3              	 5841195	        20.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/4              	 5858973	        20.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/5              	 5792113	        20.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/6              	 5605094	        21.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/7              	 5593485	        21.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8              	 5528930	        21.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/9              	 5486562	        21.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/15             	 5015818	        24.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/16             	 4936929	        24.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/17             	 4856145	        24.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/511            	  511320	       227.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/512            	  533474	       227.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/513            	  530112	       228.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8192           	   35955	      3349 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/0             	 6018148	        20.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/1             	 5909392	        20.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/2             	 5793138	        20.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/3             	 5808723	        21.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/4             	 5684524	        21.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/5             	 5641801	        21.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/6             	 5464832	        21.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/7             	 5642202	        21.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8             	 5549395	        22.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/9             	 5379907	        22.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/15            	 4984912	        24.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/16            	 4951546	        26.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/17            	 4822610	        25.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/511           	  529393	       237.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/512           	  537258	       236.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/513           	  533367	       236.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8192          	   34582	      3515 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	   10509	     10812 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	   10000	     11002 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	   10000	     10999 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	   10000	     11305 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	   10000	     11150 ns/op	   11152 B/op	      26 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/execute/0         	 6072973	        20.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/1         	 5868708	        20.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/2         	 5867295	        21.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/3         	 5777204	        20.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/4         	 5780545	        21.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/5         	 5570060	        20.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/6         	 5798350	        21.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/7         	 5616273	        21.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8         	 5567046	        21.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/9         	 5690976	        22.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/15        	 5273607	        23.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/16        	 5198252	        23.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/17        	 5116585	        24.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/511       	  586046	       211.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/512       	  591460	       211.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/513       	  589876	       208.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8192      	   38151	      3284 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/0         	 5864472	        20.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/1         	 5718342	        20.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/2         	 5910330	        20.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/3         	 5635048	        20.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/4         	 5916423	        20.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/5         	 5834238	        20.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/6         	 5824705	        22.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/7         	 5745572	        21.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8         	 5673366	        21.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/9         	 5679099	        21.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/15        	 5268662	        23.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/16        	 5164657	        23.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/17        	 5024577	        24.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/511       	  534848	       218.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/512       	  579312	       209.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/513       	  584222	       215.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8192      	   39468	      3123 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/0         	 6041295	        20.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/1         	 5975217	        21.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/2         	 5726505	        20.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/3         	 5083681	        21.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/4         	 5666547	        20.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/5         	 5821489	        21.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/6         	 5462896	        21.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/7         	 5461404	        23.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8         	 5063808	        23.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/9         	 5018748	        22.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/15        	 4262650	        24.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/16        	 4883089	        39.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/17        	 4366232	        27.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/511       	  511316	       245.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/512       	  505303	       233.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/513       	  519012	       246.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8192      	   34582	      3445 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/0              	 6056301	        20.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/1              	 5993252	        20.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/2              	 5892948	        20.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/3              	 5742679	        20.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/4              	 5869062	        20.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/5              	 4975863	        21.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/6              	 5735733	        21.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/7              	 5583080	        21.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8              	 5388507	        21.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/9              	 5470141	        21.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/15             	 5043265	        24.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/16             	 4627510	        25.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/17             	 4519092	        25.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/511            	  499232	       233.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/512            	  527996	       227.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/513            	  533172	       228.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8192           	   35893	      3321 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/0             	 6044985	        20.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/1             	 5734544	        20.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/2             	 5884855	        21.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/3             	 5882584	        20.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/4             	 5752330	        21.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/5             	 5796130	        21.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/6             	 5727054	        20.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/7             	 5667554	        21.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8             	 5610842	        22.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/9             	 5230803	        22.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/15            	 4983127	        24.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/16            	 4783948	        24.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/17            	 4822239	        24.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/511           	  529027	       235.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/512           	  521077	       235.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/513           	  537667	       236.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8192          	   30752	      3627 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	   10071	     11776 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	    8534	     11981 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	   10000	     12061 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	   10000	     12446 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	    9876	     12222 ns/op	   11152 B/op	      26 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/execute/0         	 5995809	        22.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/1         	 5823728	        20.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/2         	 5901640	        20.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/3         	 5862009	        20.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/4         	 5898982	        20.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/5         	 5488675	        20.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/6         	 5881350	        21.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/7         	 5813566	        21.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8         	 5722492	        21.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/9         	 5479401	        21.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/15        	 5294008	        23.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/16        	 5186167	        23.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/17        	 5108091	        23.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/511       	  568015	       203.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/512       	  600771	       217.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/513       	  578120	       205.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8192      	   39978	      2998 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/0         	 5969043	        19.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/1         	 5910523	        20.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/2         	 5889734	        20.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/3         	 5674051	        20.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/4         	 5865888	        21.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/5         	 5841718	        20.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/6         	 5829012	        20.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/7         	 5861505	        21.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8         	 5343806	        21.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/9         	 5642946	        21.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/15        	 5257784	        22.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/16        	 4613684	        24.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/17        	 5082691	        23.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/511       	  581553	       207.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/512       	  590554	       205.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/513       	  591172	       205.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8192      	   39967	      3014 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/0         	 6063265	        20.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/1         	 5967050	        20.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/2         	 5884635	        21.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/3         	 5905275	        20.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/4         	 5867742	        21.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/5         	 5811800	        20.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/6         	 5772705	        20.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/7         	 5490254	        21.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8         	 5598261	        22.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/9         	 5490070	        21.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/15        	 5048920	        23.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/16        	 4965919	        24.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/17        	 4880343	        24.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/511       	  514508	       225.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/512       	  535171	       225.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/513       	  532335	       237.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8192      	   35443	      3312 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/0              	 6035036	        19.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/1              	 5958549	        20.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/2              	 5766763	        20.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/3              	 5916243	        20.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/4              	 5870914	        20.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/5              	 5805631	        21.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/6              	 5725332	        20.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/7              	 5673186	        21.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8              	 5599944	        21.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/9              	 5534419	        21.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/15             	 5045490	        23.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/16             	 4955362	        24.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/17             	 4438107	        25.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/511            	  514508	       230.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/512            	  531535	       231.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/513            	  534487	       234.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8192           	   34430	      3550 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/0             	 5612416	        21.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/1             	 5940097	        20.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/2             	 5898834	        22.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/3             	 5839785	        21.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/4             	 5879109	        21.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/5             	 5815514	        20.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/6             	 5461492	        21.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/7             	 5680089	        21.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8             	 5608424	        22.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/9             	 5283675	        22.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/15            	 4931529	        23.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/16            	 4935877	        24.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/17            	 4892964	        24.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/511           	  518646	       234.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/512           	  535599	       233.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/513           	  529054	       233.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8192          	   31347	      3599 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	   10000	     11501 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	   10000	     11416 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	   10000	     11468 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	   10000	     11174 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	   10000	     11393 ns/op	   11152 B/op	      26 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/execute/0         	 5374177	        20.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/1         	 5929972	        20.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/2         	 5843968	        20.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/3         	 5654664	        20.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/4         	 5894050	        20.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/5         	 5890192	        20.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/6         	 5820398	        20.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/7         	 5727777	        23.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8         	 5419606	        22.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/9         	 5721726	        21.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/15        	 5156311	        22.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/16        	 5031223	        23.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/17        	 5107190	        23.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/511       	  588670	       211.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/512       	  590836	       211.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/513       	  588410	       225.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8192      	   37960	      3129 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/0         	 5823961	        20.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/1         	 5937392	        20.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/2         	 5688772	        20.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/3         	 5702895	        20.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/4         	 5691118	        20.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/5         	 5736678	        21.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/6         	 5562901	        20.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/7         	 5789084	        21.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8         	 5699262	        21.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/9         	 5687875	        21.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/15        	 5273607	        22.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/16        	 5047453	        23.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/17        	 5109740	        24.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/511       	  568870	       206.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/512       	  588870	       206.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/513       	  587827	       207.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8192      	   39600	      3135 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/0         	 5872873	        20.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/1         	 5665078	        20.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/2         	 5687011	        21.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/3         	 5837202	        21.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/4         	 5647930	        20.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/5         	 5789445	        21.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/6         	 5771212	        21.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/7         	 5694006	        21.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8         	 5576931	        21.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/9         	 5349130	        23.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/15        	 4902056	        24.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/16        	 4758543	        24.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/17        	 4890294	        24.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/511       	  512248	       230.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/512       	  532084	       227.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/513       	  533106	       228.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8192      	   36127	      3484 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/0              	 6021184	        19.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/1              	 5935783	        20.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/2              	 5930892	        20.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/3              	 5907624	        20.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/4              	 5865843	        20.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/5              	 5642056	        20.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/6              	 5638526	        21.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/7              	 5549262	        21.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8              	 5564014	        21.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/9              	 5499567	        21.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/15             	 5007985	        23.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/16             	 4961250	        24.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/17             	 4875091	        24.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/511            	  515409	       237.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/512            	  518016	       227.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/513            	  531525	       233.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8192           	   34461	      3455 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/0             	 5670267	        21.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/1             	 5487964	        20.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/2             	 5901345	        21.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/3             	 5764341	        21.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/4             	 5897901	        20.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/5             	 5795389	        21.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/6             	 5758629	        21.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/7             	 5699030	        22.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8             	 5593360	        21.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/9             	 5547504	        22.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/15            	 4467296	        24.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/16            	 4960398	        25.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/17            	 4879054	        25.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/511           	  533833	       240.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/512           	  535489	       232.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/513           	  529483	       233.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8192          	   35936	      3455 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	   10000	     11861 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	   10000	     12714 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	   10000	     12556 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	   10000	     11973 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	   10000	     11782 ns/op	   11152 B/op	      26 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/execute/0         	 5805812	        20.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/1         	 5801203	        21.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/2         	 5912775	        20.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/3         	 5817302	        20.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/4         	 5852470	        21.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/5         	 5695700	        20.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/6         	 5820712	        20.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/7         	 5633602	        20.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8         	 5738492	        21.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/9         	 5575657	        21.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/15        	 5283406	        22.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/16        	 5192584	        23.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/17        	 5037081	        23.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/511       	  564087	       211.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/512       	  592755	       211.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/513       	  592192	       213.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8192      	   38907	      3132 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/0         	 6040014	        20.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/1         	 5900058	        21.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/2         	 5837037	        20.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/3         	 5796681	        20.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/4         	 5581728	        20.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/5         	 5640152	        21.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/6         	 5823814	        20.86 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/7         	 5570940	        20.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8         	 5501422	        21.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/9         	 5553853	        21.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/15        	 5108970	        23.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/16        	 5078625	        23.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/17        	 5041864	        23.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/511       	  566092	       211.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/512       	  587490	       210.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/513       	  586248	       218.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8192      	   37570	      3120 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/0         	 5957130	        20.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/1         	 5989209	        20.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/2         	 5827524	        20.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/3         	 5895910	        20.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/4         	 5595903	        20.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/5         	 5520432	        21.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/6         	 5594102	        21.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/7         	 5525154	        21.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8         	 5494558	        21.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/9         	 5541765	        22.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/15        	 5043328	        24.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/16        	 4828906	        24.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/17        	 4859325	        25.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/511       	  508672	       237.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/512       	  534387	       233.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/513       	  531990	       236.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8192      	   35415	      3503 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/0              	 6053428	        20.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/1              	 5616730	        21.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/2              	 5655892	        22.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/3              	 5801462	        20.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/4              	 5795575	        21.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/5              	 5838664	        24.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/6              	 5332174	        21.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/7              	 5547769	        21.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8              	 5559529	        22.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/9              	 5509201	        23.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/15             	 5071623	        24.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/16             	 4945711	        24.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/17             	 4789495	        24.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/511            	  527330	       243.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/512            	  514713	       235.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/513            	  535255	       238.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8192           	   33747	      3722 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/0             	 5770074	        20.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/1             	 5952237	        20.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/2             	 5373843	        20.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/3             	 5857244	        21.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/4             	 5752948	        21.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/5             	 5759914	        21.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/6             	 5604114	        21.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/7             	 5594512	        21.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8             	 5569108	        21.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/9             	 5495677	        22.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/15            	 4975515	        24.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/16            	 4871643	        24.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/17            	 4291858	        26.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/511           	  516656	       237.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/512           	  535257	       239.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/513           	  522852	       239.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8192          	   35008	      3491 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/compile         	   10000	     10912 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/xor/compile         	   10000	     12521 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/compile         	   10000	     11382 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/tee-drop/compile              	   10000	     11745 ns/op	   11024 B/op	      26 allocs/op
+BenchmarkExperimentalReduction/header-eq/compile             	   10000	     10830 ns/op	   11152 B/op	      26 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExperimentalReduction/i32/execute/0         	 5932248	        20.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/1         	 5858364	        22.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/2         	 5866290	        21.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/3         	 5434092	        20.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/4         	 5570080	        24.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/5         	 5839428	        21.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/6         	 5603700	        21.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/7         	 5625366	        21.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8         	 5261402	        22.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/9         	 5379721	        22.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/15        	 4476291	        25.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/16        	 4649462	        24.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/17        	 4870286	        26.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/511       	  567646	       233.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/512       	  571296	       221.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/513       	  534032	       217.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/i32/execute/8192      	   37230	      3302 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/0         	 5826098	        21.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/1         	 5676926	        22.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/2         	 5638570	        21.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/3         	 5650257	        22.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/4         	 5297278	        22.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/5         	 5618647	        21.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/6         	 5569114	        21.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/7         	 5247843	        22.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8         	 5244061	        23.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/9         	 5011504	        22.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/15        	 5131384	        23.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/16        	 5042396	        25.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/17        	 4954033	        25.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/511       	  564570	       211.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/512       	  555249	       214.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/513       	  565692	       213.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/xor/execute/8192      	   38319	      3098 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/0         	 5842228	        20.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/1         	 5328974	        22.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/2         	 5188264	        23.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/3         	 4869247	        23.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/4         	 5260587	        28.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/5         	 3508274	        40.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/6         	 3548140	        30.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/7         	 4987089	        45.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8         	 2504181	        43.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/9         	 2145946	        56.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/15        	 3317419	        47.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/16        	 3855381	        29.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/17        	 4030725	        26.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/511       	  486362	       264.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/512       	  509180	       290.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/513       	  465546	       272.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/add-minus-one/execute/8192      	   30615	      4041 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/0              	 5305767	        23.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/1              	 5489992	        23.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/2              	 5672815	        30.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/3              	 2987617	        41.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/4              	 2985338	        62.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/5              	 2195338	        52.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/6              	 4942971	        24.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/7              	 5259919	        24.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8              	 4710309	        25.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/9              	 5190616	        26.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/15             	 2502122	        79.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/16             	 4391679	        31.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/17             	 3954816	        33.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/511            	  466213	       267.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/512            	  488473	       262.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/513            	  500846	       256.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/tee-drop/execute/8192           	   31597	      3519 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/0             	 5804347	        21.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/1             	 5736070	        21.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/2             	 5695102	        21.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/3             	 5712271	        21.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/4             	 5633512	        21.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/5             	 5660565	        21.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/6             	 5551024	        21.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/7             	 5555931	        22.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8             	 5381631	        22.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/9             	 5369622	        22.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/15            	 4864038	        26.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/16            	 4099656	        29.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/17            	 3346339	        30.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/511           	  456741	       248.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/512           	  458018	       248.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/513           	  488018	       260.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkExperimentalReduction/header-eq/execute/8192          	   33290	      3686 ns/op	       0 B/op	       0 allocs/op
+PASS

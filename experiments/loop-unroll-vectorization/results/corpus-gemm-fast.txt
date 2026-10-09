@@ -1,0 +1,1 @@
+{"compile_allocs":204,"compile_bytes":121560,"compile_ns":499368,"execute_ns":220575,"export":"polybench_run","instantiate_ns":152857,"remaining_allocs":20,"remaining_bytes":3400,"repeat":1,"result":122535361,"wasm":"corpus/workloads/polybench/gemm.wasm"}

@@ -1,0 +1,68 @@
+=== RUN   TestExperimentalReplication
+=== RUN   TestExperimentalReplication/map-i32/count2
+    experimental_replication_test.go:139: module=376 function=376 frame=72 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/map-i32/count4
+    experimental_replication_test.go:139: module=512 function=512 frame=72 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/map-i32/guard2
+    experimental_replication_test.go:139: module=306 function=306 frame=72 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-i32/count2
+    experimental_replication_test.go:139: module=353 function=353 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-i32/count4
+    experimental_replication_test.go:139: module=449 function=449 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-i32/guard2
+    experimental_replication_test.go:139: module=292 function=292 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-f64/count2
+    experimental_replication_test.go:139: module=347 function=347 frame=88 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-f64/count4
+    experimental_replication_test.go:139: module=459 function=459 frame=88 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/dependent-f64/guard2
+    experimental_replication_test.go:139: module=290 function=290 frame=88 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/pointer/count2
+    experimental_replication_test.go:139: module=284 function=284 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/pointer/count4
+    experimental_replication_test.go:139: module=324 function=324 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/pointer/guard2
+    experimental_replication_test.go:139: module=236 function=236 frame=56 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/simd-i32/simd2
+    experimental_replication_test.go:139: module=400 function=400 frame=120 spills=0 reloads=0
+=== RUN   TestExperimentalReplication/simd-i32/simd4
+    experimental_replication_test.go:139: module=544 function=544 frame=120 spills=0 reloads=0
+--- PASS: TestExperimentalReplication (0.07s)
+    --- PASS: TestExperimentalReplication/map-i32/count2 (0.00s)
+    --- PASS: TestExperimentalReplication/map-i32/count4 (0.00s)
+    --- PASS: TestExperimentalReplication/map-i32/guard2 (0.01s)
+    --- PASS: TestExperimentalReplication/dependent-i32/count2 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-i32/count4 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-i32/guard2 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-f64/count2 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-f64/count4 (0.00s)
+    --- PASS: TestExperimentalReplication/dependent-f64/guard2 (0.01s)
+    --- PASS: TestExperimentalReplication/pointer/count2 (0.00s)
+    --- PASS: TestExperimentalReplication/pointer/count4 (0.00s)
+    --- PASS: TestExperimentalReplication/pointer/guard2 (0.00s)
+    --- PASS: TestExperimentalReplication/simd-i32/simd2 (0.00s)
+    --- PASS: TestExperimentalReplication/simd-i32/simd4 (0.00s)
+=== RUN   TestExperimentalReplicationRejects
+=== RUN   TestExperimentalReplicationRejects/call
+=== RUN   TestExperimentalReplicationRejects/nested
+=== RUN   TestExperimentalReplicationRejects/extra-exit
+=== RUN   TestExperimentalReplicationRejects/growth
+=== RUN   TestExperimentalReplicationRejects/memory-grow
+=== RUN   TestExperimentalReplicationRejects/atomic
+=== RUN   TestExperimentalReplicationRejects/reference
+=== RUN   TestExperimentalReplicationRejects/shared
+=== RUN   TestExperimentalReplicationRejects/memory64
+=== RUN   TestExperimentalReplicationRejects/interruptible
+--- PASS: TestExperimentalReplicationRejects (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/call (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/nested (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/extra-exit (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/growth (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/memory-grow (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/atomic (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/reference (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/shared (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/memory64 (0.00s)
+    --- PASS: TestExperimentalReplicationRejects/interruptible (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.069s

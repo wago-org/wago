@@ -1,0 +1,11 @@
+go generate ./...
+genfacade: wrote wago.go
+git diff --exit-code -- wago.go schema.json || { echo "::error::Generated files are stale. Run 'go generate ./...' and commit the result."; exit 1; }
+go vet ./...
+go vet -tags wago_runtime ./cli/...
+new Staticcheck finding: src/core/compiler/backend/railshot/amd64/experimental_evidence_test.go:213: should use t.Logf(...) instead of t.Log(fmt.Sprintf(...)) (S1038)
+new Staticcheck finding: src/core/compiler/backend/railshot/amd64/experimental_evidence_test.go:213: should use t.Logf(...) instead of t.Log(fmt.Sprintf(...)) (S1038)
+new Staticcheck finding: src/core/compiler/backend/railshot/amd64/experimental_evidence_test.go:213: should use t.Logf(...) instead of t.Log(fmt.Sprintf(...)) (S1038)
+staticcheck-baseline: staticcheck reported 3 finding(s) outside the reviewed baseline
+exit status 1
+error: recipe `staticcheck` failed with exit code 1
