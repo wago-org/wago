@@ -77,16 +77,6 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 			return reject("defined start actual frame packet")
 		}
 	}
-	if m := rv64NativeTailModule(c); m != nil {
-		for _, p := range m.Plans {
-			if p.Kind != 0 || p.TypeIndex != 0 || p.ReferenceBase != 0 || uint64(p.ImportIndex) >= uint64(c.NumImports) {
-				return reject("only numeric direct imported-tail plans are admitted")
-			}
-		}
-		if err := rv64ValidateNativeTailPlans(c, m.Plans); err != nil {
-			return err
-		}
-	}
 	if d := c.memoryDir; d != nil && (len(d.ehTags) != 0 || len(d.ehTagExports) != 0 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil) {
 		return reject("resource initializer metadata")
 	}
@@ -132,6 +122,22 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 			return err
 		}
 		if _, err := rv64NativeTailSignatureValues(sig); err != nil {
+			return err
+		}
+	}
+	// Exact declared/actual signatures are bounded before selected plans can
+	// consult sparse source rows or compare their numeric result contracts.
+	if m := rv64NativeTailModule(c); m != nil {
+		for _, p := range m.Plans {
+			if p.Kind == 0 {
+				if p.TypeIndex != 0 || p.ReferenceBase != 0 || uint64(p.ImportIndex) >= uint64(c.NumImports) {
+					return reject("canonical numeric direct imported-tail plan required")
+				}
+			} else if p.Kind != 2 || p.ImportIndex != 0 {
+				return reject("only numeric direct-import and reference-tail plans admitted")
+			}
+		}
+		if err := rv64ValidateNativeTailPlans(c, m.Plans); err != nil {
 			return err
 		}
 	}

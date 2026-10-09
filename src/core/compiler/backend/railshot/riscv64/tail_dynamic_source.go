@@ -69,7 +69,9 @@ func (f *integerEmitter) dynamicReferenceTailCall(typeIndex uint32, sig *wasm.Co
 		f.err = unsupported("private dynamic typed reference/argument homes")
 		return
 	}
-	f.a.Ld(enc.X14, enc.SP, int32(p.referenceBase))
+	// Maximum numeric transport can put this full-width home beyond the
+	// instruction's signed 12-bit offset. Use the bounded frame address helper.
+	f.Load(14, int32(p.referenceBase), true)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
 	*f.mode.tailPlans = append(*f.mode.tailPlans, p)
 	f.tailRAProofCall(p.site, sig, base, spill)

@@ -10,40 +10,49 @@ import (
 // exact lower operand and saved local after a callback clears the live cells.
 // Start0 is absent, start1 defined, start2 imported; imports are interleaved.
 func ClosedReferenceLocalCells(vector, tails, wide bool, start int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 3, -1, false, false)
+	return closedReferenceLocalCells(vector, tails, wide, start, 3, -1, false, false, false)
 }
 
 func ClosedReferenceLocalCellsImportedInitializer(vector, tails, wide bool, start int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 0, -1, false, false)
+	return closedReferenceLocalCells(vector, tails, wide, start, 0, -1, false, false, false)
 }
 
 // ClosedReferenceNumericCalls preserves unrelated full-width cell carriers while
 // calling a numeric target through an indexed private parameter. Target0 names
 // an imported native wrapper, target1 an own identity, target2 a Go wrapper.
 func ClosedReferenceNumericCalls(vector, tails, wide bool, start, target int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 3, target, false, false)
+	return closedReferenceLocalCells(vector, tails, wide, start, 3, target, false, false, false)
 }
 func ClosedReferenceNumericCallsImportedInitializer(vector, tails, wide bool, start int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0, false, false)
+	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0, false, false, false)
 }
 
 // ClosedReferenceOwnedTable uses a private own table while preserving private
 // lower/local descriptors across callbacks that clear its live entries.
 func ClosedReferenceOwnedTable(vector, tails, wide bool, start, target int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 3, target, true, false)
+	return closedReferenceLocalCells(vector, tails, wide, start, 3, target, true, false, false)
 }
 func ClosedReferenceOwnedTableImportedInitializer(vector, tails, wide bool, start int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0, true, false)
+	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0, true, false, false)
 }
 
 func ClosedReferenceTableBulk(vector, tails, wide bool, start, target int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 3, target, true, true)
+	return closedReferenceLocalCells(vector, tails, wide, start, 3, target, true, true, false)
 }
 func ClosedReferenceTableBulkImportedInitializer(vector, tails, wide bool, start int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0, true, true)
+	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0, true, true, false)
 }
 
-func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer byte, target int, ownedTable, tableBulk bool) []byte {
+// ClosedReferenceProperTails composes a private numeric return_call_ref with
+// the existing direct imported tail and confined bulk table state.
+func ClosedReferenceProperTails(vector, wide bool, start, target int) []byte {
+	return closedReferenceLocalCells(vector, true, wide, start, 3, target, true, true, true)
+}
+func ClosedReferenceProperTailsImportedInitializer(vector, wide bool, start int) []byte {
+	return closedReferenceLocalCells(vector, true, wide, start, 0, 0, true, true, true)
+}
+
+func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer byte, target int, ownedTable, tableBulk, referenceTail bool) []byte {
 	typ, typeByte := wasm.F64, byte(0x7c)
 	if vector {
 		typ, typeByte = wasm.V128, 0x7b
@@ -158,6 +167,17 @@ func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer 
 			0x41, 3, 0x25, 0, 0x24, 14, 0x20, 1, 0x41, 3, 0x11, 0, 0, 0x0b})
 		clear = []byte{0xd0, 0x70, 0x24, 2, 0xd0, 0x70, 0x24, 3, 0x41, 0, 0xd0, 0x70, 0xfc, 16, 0, 0xfc, 17, 0, 0x0b}
 		elements = []byte{3, 0, 0x41, 0, 0x0b, 3, index, 1, 7, 3, 0, 6, 0, 1, 2, 3, 7, 11, 1, 0, 3, index, 1, 7}
+	}
+
+	if referenceTail {
+		// Preserve the bulk effects and descriptor snapshot. Tail through the exact
+		// indexed parameter, whose identity matches the copied table entry.
+		body := []byte{0x20, 0, 0x41, 1, 0xfc, 15, 0, 0xad, 0x24, 15,
+			0x23, 15, 0x42, 3, 0x51, 0x04, 0x40, 0x41, 0, 0x41, 0, 0x41, 3, 0xfc, 12, 2, 0,
+			0x05, 0x41, 0, 0x41, 0, 0x41, 0, 0xfc, 12, 2, 0, 0x0b, 0xfc, 13, 2, 0xfc, 13, 2,
+			0x41, 0, 0x20, 0, 0x41, 1, 0xfc, 17, 0, 0x41, 3, 0x41, 0, 0x41, 1, 0xfc, 14, 0, 0,
+			0x41, 3, 0x25, 0, 0x24, 14, 0x20, 1, 0x20, 0, 0x15, 0, 0x0b}
+		extra[1] = Code(body)
 	}
 
 	sections := [][]byte{Section(1, Vec(types...)), Section(2, Vec(imports...)), Section(3, functionTypes)}

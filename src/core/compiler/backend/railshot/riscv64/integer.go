@@ -69,7 +69,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	privateRefs := floating && (state.ownedTable || state.importReferences)
 	functionRefs := state != nil && state.referenceFunctions
 	if functionRefs {
-		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls {
+		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls || !state.referenceCalls) {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
 		if len(state.functions) > MaxFunctions {
@@ -1006,9 +1006,6 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 
 		case 0x15:
-			if functionRefs {
-				return integerSummary{}, unsupported("private reference functions require same-image direct calls")
-			}
 			typeIndex, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -1020,8 +1017,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = integerCallable(sig, floating); err != nil {
 				return integerSummary{}, err
 			}
-			if e := admitLocalTailSignature(ft, sig.signature); e != nil {
-				return integerSummary{}, e
+			if functionRefs {
+				err = admitReferenceTailResults(ft, sig.signature)
+			} else {
+				err = admitLocalTailSignature(ft, sig.signature)
+			}
+			if err != nil {
+				return integerSummary{}, err
 			}
 			importTails++
 			callCount++
@@ -1029,13 +1031,25 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("typed reference tail count/slot budget")
 			}
-			if _, err = popClass(true); err != nil {
+			if functionRefs {
+				if err = match(inlineResults[1][:], inlineReference[:], false, true); err != nil {
+					return integerSummary{}, err
+				}
+				h--
+			} else if _, err = popClass(true); err != nil {
 				return integerSummary{}, err
 			}
 			referenceSlot := h
-			for j := len(sig.params) - 1; j >= 0; j-- {
-				if err = popWidth(sig.params[j]); err != nil {
+			if functionRefs {
+				if err = match(sig.params, nil, false, true); err != nil {
 					return integerSummary{}, err
+				}
+				h -= len(sig.params)
+			} else {
+				for j := len(sig.params) - 1; j >= 0; j-- {
+					if err = popWidth(sig.params[j]); err != nil {
+						return integerSummary{}, err
+					}
 				}
 			}
 			if live && emit != nil {

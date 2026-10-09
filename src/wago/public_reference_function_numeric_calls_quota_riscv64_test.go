@@ -21,6 +21,9 @@ func TestRV64PublicReferenceFunctionOwnedTableQuota(t *testing.T) {
 func TestRV64PublicReferenceFunctionTableBulkQuota(t *testing.T) {
 	rv64ReferenceFunctionNumericCallsQuota(t, 2)
 }
+func TestRV64PublicReferenceFunctionProperReferenceTailQuota(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsQuota(t, 3)
+}
 func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 	ownedTable := tableStage > 0
 	t.Helper()
@@ -30,6 +33,9 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 	}
 	if tableStage == 2 {
 		product = "table-bulk"
+	}
+	if tableStage == 3 {
+		product = "proper-reference-tail"
 	}
 	for _, vector := range []bool{false, true} {
 		t.Run(fmt.Sprintf("vector%t", vector), func(t *testing.T) {
@@ -45,6 +51,11 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 			calls := 0
 			start := CallerHostCallFunc(func(caller Caller, _ HostCall) {
 				calls++
+				// This oracle isolates the fresh entry's exact generation charge.
+				// Nested generations during target reentry have separate coverage.
+				if tableStage == 3 {
+					return
+				}
 				if _, err := caller.in.InvokeFromHost(context.Background(), caller, "clear"); err != nil {
 					panic(err)
 				}
@@ -54,7 +65,22 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 			im.Function("env.calls", "unused.fn", nf).Function("env.calls", "finish.fn", func(v int32) int32 { return v + 1 }).Function("env.calls", "start.fn", owned)
 			metadata := uint64(view.arenaNeedForImports(im.bindings, true) + railshotNativeImportMetadataBytes(view, im.bindings))
 			code := railshotNativeCodeBytes(view)
-			if metadata == 0 || code <= uint64(len(view.code)) {
+			if tableStage == 3 {
+				// Mixed direct/reference sites acquire one dynamic generation before
+				// the start can run. Charge its retained owner graph as well as the
+				// instance metadata; a competing static dispatcher is absent.
+				if code != uint64(len(view.code)) || rv64StaticTailPlanCount(rv64NativeTailModule(view)) != 0 {
+					t.Fatal("mixed start acquired static dispatcher")
+				}
+				probe := rv64NativeTokenInstantiate(t, owners, pc, im)
+				generationCode, generationMetadata, instanceMetadata := rv64DynamicTailCharge(t, probe)
+				if instanceMetadata != metadata || uint64(generationCode) <= code || generationMetadata == 0 {
+					t.Fatal("unaccounted mixed start generation", generationCode, generationMetadata, instanceMetadata, code, metadata)
+				}
+				code, metadata = uint64(generationCode), instanceMetadata+uint64(generationMetadata)
+				probe.Close()
+				calls = 0
+			} else if metadata == 0 || code <= uint64(len(view.code)) {
 				t.Fatal("unaccounted static start factory")
 			}
 			owned.(*HostFuncRef).Close()
@@ -88,6 +114,14 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 				if kind == "exact" || kind == "exact-retry" {
 					if err != nil || in == nil {
 						t.Fatal("exact start quota/retry", kind, err)
+					}
+					if tableStage == 3 {
+						if _, err := in.Invoke("clear"); err != nil {
+							t.Fatal("fresh generation after start", err)
+						}
+						if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != 0 {
+							t.Fatal("start quota generation refund")
+						}
 					}
 					rv64ReferenceNumericCallsCheck(t, in, vector, 3)
 					if readGlobalObject(provider.globalCells[1], ValI32) != before+1 || calls != (map[string]int{"exact": 1, "exact-retry": 2}[kind]) {

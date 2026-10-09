@@ -359,6 +359,10 @@ func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
 // X19/20/21 are owner cursors. X26/27 remain reserved for Go's CTXT/g registers.
 func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 	a := &e.a
+	frozenKeys := true
+	for _, o := range d.owners {
+		frozenKeys = frozenKeys && o.signatureKeys != nil
+	}
 	tailRAAddress(a, enc.X14, enc.SP, d.referenceBase)
 	a.Ld(enc.X14, enc.X14, 0)
 	var selected []int
@@ -388,9 +392,11 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 	a.Addi(enc.X15, enc.X15, -1)
 	a.Ld(enc.X29, enc.X14, 24)
 	e.fail(enc.NE, enc.X29, enc.X14)
-	a.Ld(enc.X29, enc.X14, 8)
-	a.Constant64(enc.Scratch0, int64(d.key))
-	e.fail(enc.NE, enc.X29, enc.Scratch0)
+	if !frozenKeys {
+		a.Ld(enc.X29, enc.X14, 8)
+		a.Constant64(enc.Scratch0, int64(d.key))
+		e.fail(enc.NE, enc.X29, enc.Scratch0)
+	}
 	a.Ld(enc.X29, enc.X14, 32)
 	e.fail(enc.NE, enc.X29, enc.X20)
 	a.Ld(enc.X29, enc.X19, 32)
@@ -433,7 +439,8 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 			}
 			t := o.target(i)
 			// A live key cannot relabel a genuine function of another signature.
-			if wasm.StructuralFuncTypeKey(f.signature) != d.key || wasm.StructuralFuncTypeKey(t.signature) != d.key {
+			matching := wasm.StructuralFuncTypeKey(f.signature) == d.key && wasm.StructuralFuncTypeKey(t.signature) == d.key
+			if !matching && !frozenKeys {
 				continue
 			}
 			a.Constant64(enc.X29, int64(tailRAPointer(o.descriptors)+uintptr(40*(i+1))))
@@ -462,6 +469,19 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 			e.fail(enc.NE, enc.Scratch0, enc.X18)
 			a.Ld(enc.Scratch0, enc.X29, 16)
 			e.fail(enc.NE, enc.Scratch0, enc.X17)
+			if frozenKeys {
+				// Distinguish an authentic function with another declared type
+				// from corrupted metadata. Authenticate its complete frozen
+				// tuple and actual key before reporting a guest signature trap.
+				a.Ld(enc.Scratch0, enc.X14, 8)
+				a.Constant64(enc.X29, int64(o.signatureKeys[i]))
+				e.fail(enc.NE, enc.Scratch0, enc.X29)
+				if !matching {
+					e.signature = append(e.signature, a.BranchLong(enc.EQ, enc.Zero, enc.Zero))
+					e.patch(next)
+					continue
+				}
+			}
 			genuine = append(genuine, a.JumpLong(false))
 			e.patch(next)
 		}

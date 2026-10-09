@@ -178,7 +178,7 @@ func TestReferenceFunctionImportedTailDeadAdmission(t *testing.T) {
 					t.Fatal(err)
 				}
 				body := []byte{op, 0}
-				if op == 0x14 {
+				if op == 0x14 || op == 0x15 {
 					body[1] = 3
 				} // Numeric ordinary references are now admitted; private targets stay closed.
 				if op == 0x11 || op == 0x13 {

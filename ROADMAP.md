@@ -177,7 +177,18 @@ per-instance drops. Active/passive payloads share the 1024-value and aggregate
 byte budgets. Strict scalar/SWAR operand floors, complete range guards, overlap,
 growth-before-length publication, exact private trap/reuse and interruption
 checks qualify this slice. No-max growth requires minimum<=512 with at most 1024
-reserved entries. Indirect/reference proper tails remain separately gated.
+reserved entries. Proper numeric `return_call_ref` now composes with this
+private scalar/SWAR profile using canonical own/native/scalar Go targets and
+empty private descriptor rows. Actual instruction witnesses select one dynamic
+factory for mixed direct/reference sites; complete finalized and retained proofs
+bound declared results, actual frames, argument spans and full-width target homes.
+Maximum scalar256/vector128 transport, repeated private-frame cycles on the minimum
+stack, authentic null/signature traps and reuse, active target parking with nested
+reentry, cancellation/Close joins and exact dynamic quota retries qualify this
+slice. Frozen actual keys and complete owner tuples authenticate targets before a
+genuine declared-signature mismatch traps. Old non-reference-tail fixture bytes
+are preserved, and cold root completion retires generations; only warm generation
+activation claims zero allocation. Private proper indirect tails remain gated.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt

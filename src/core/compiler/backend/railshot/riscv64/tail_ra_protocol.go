@@ -159,10 +159,10 @@ func (s *tailRAProofSite) validate() error {
 
 // All veneers use X31. Persistent cursors/results use other fixed temporaries.
 type tailRAEmitter struct {
-	invocationContext bool
-	a                 enc.Asm
-	bad, stack        []int
-	functionIndex, pc uint32
+	invocationContext     bool
+	a                     enc.Asm
+	bad, stack, signature []int
+	functionIndex, pc     uint32
 }
 
 func (e *tailRAEmitter) fail(c enc.Cond, l, r enc.Reg) {
@@ -177,10 +177,17 @@ func (e *tailRAEmitter) patch(site int) {
 	}
 }
 func (e *tailRAEmitter) finish() ([]byte, error) {
-	for _, sites := range []struct {
+	traps := []struct {
 		sites []int
 		code  int
-	}{{e.bad, abi.TrapCalledFnNotLinked}, {e.stack, abi.TrapStackFenceBreached}} {
+	}{{e.bad, abi.TrapCalledFnNotLinked}, {e.stack, abi.TrapStackFenceBreached}}
+	if len(e.signature) != 0 {
+		traps = append(traps, struct {
+			sites []int
+			code  int
+		}{e.signature, abi.TrapIndirectWrongSig})
+	}
+	for _, sites := range traps {
 		for _, site := range sites.sites {
 			if err := e.a.PatchLong(site, int64(e.a.Len())); err != nil {
 				return nil, err

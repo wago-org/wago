@@ -73,7 +73,7 @@ are bounded before validation. Private same-image direct-call lowering
 preserves function-reference arguments/results, mixed compact cells and
 reference root joins. Its separately enabled cooperative proper tails require
 exact reference result types and reuse the checked frame protocol. This private
-mode rejects reference-valued imports and indirect/reference proper tails; ordinary
+mode rejects reference-valued imports and indirect proper tails; ordinary
 numeric descriptor calls use the bounded bridge described below. Legacy production
 staging routes reject the mode. Private decoded whole-module compilation also
 checks numeric exports and descriptor targets, bounded declarations/code and
@@ -141,7 +141,7 @@ composes with these private frames and cells through the existing retained-owner
 bridge. Indexed numeric targets include own functions, imported native functions
 and scalar shared/owned Go wrappers; private functions remain noncallable descriptor
 holes. Source proofs reject reference-valued targets even in dead code, staging
-rechecks actual call/control witnesses, and indirect/reference proper tails
+rechecks actual call/control witnesses, and indirect proper tails
 remain separately gated in this selected mode. Ordered maximum transport, callback parks,
 retired import reexports, foreign dynamic roots, precise private null traps,
 stack-trap reuse and bounded allocation checks qualify the composition. One bounded
@@ -160,7 +160,7 @@ stay intact. Range guards precede writes, copy handles overlap, and growth fully
 initializes entries before publishing length. No-max tables with growth require
 a minimum of at most 512; reserved capacity stays bounded by 1024. Private operand
 floors, exact trap locations/reuse, cancellation, lifetime parks and compiler-free
-artifacts qualify the composition. Indirect/reference proper tails remain gated
+artifacts qualify the composition. Indirect proper tails remain gated
 in this selected mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories
@@ -178,6 +178,18 @@ feature admission remains disabled.
 This is not a supported
 release target; native cache and performance qualification remain outstanding.
 See [the runtime contract](ARCHITECTURE.md).
+
+Proper numeric `return_call_ref` now composes with selected private scalar/SWAR
+frames, owned reference cells and private table bulk state. Only canonical own,
+native and scalar Go/owned numeric targets are callable; private descriptor rows
+remain empty. Actual reference-tail instructions select the dynamic protocol,
+with exact finalized mixed direct/reference plans and bounded full-width homes.
+Frozen owner authentication distinguishes genuine signature mismatches from
+corrupted descriptors before transfer writes. Source/artifact tests cover active
+tail-target parks and reentry, cancellation/Close joins, minimum-stack private
+cycles, ordered maximum transport, exact generation quotas and trap reuse.
+Root entries construct and retire their generations; warm generation activation
+allocates nothing. Proper indirect tails in this private mode remain gated.
 
 ## Start here
 

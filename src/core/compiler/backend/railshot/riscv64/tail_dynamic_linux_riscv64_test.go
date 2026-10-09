@@ -194,6 +194,12 @@ func TestTailDynamicRV64ForeignCycleOneRecord(t *testing.T) {
 }
 
 func TestTailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T) {
+	tailDynamicRV64RejectsBeforeArgumentPublication(t, false)
+}
+func TestTailDynamicRV64FrozenSignatureAuthentication(t *testing.T) {
+	tailDynamicRV64RejectsBeforeArgumentPublication(t, true)
+}
+func tailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T, frozen bool) {
 	sig := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
 	f, view := tailInvocationFixtureForTest(t, false, 1, 1)
 	a := tailRANativeFrameInvocation(t, sig, f.a, f.ca, f.da, 0, true, func(e *integerEmitter) {
@@ -212,9 +218,12 @@ func TestTailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if frozen {
+		ob.signatureKeys = []uint64{wasm.StructuralFuncTypeKey(sig), wasm.StructuralFuncTypeKey(wrongSig)}
+	}
 	tailDynamicBindForTest(t, tailDynamicSiteForTest(t, a, []tailRADynamicOwner{ob}, a.info.FrameBytes-8), len(a.snapshot)+len(b.snapshot)+len(wrong.snapshot))
 	desc, dir, ctx := bytes.Clone(ob.descriptors), bytes.Clone(ob.directory), bytes.Clone(ob.context)
-	for _, tc := range []struct {
+	cases := []struct {
 		name   string
 		mutate func()
 	}{
@@ -248,7 +257,23 @@ func TestTailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T) {
 			binary.LittleEndian.PutUint64(ob.directory[32:], 0x10000)
 			binary.LittleEndian.PutUint64(ob.descriptors[40:], 0x10000)
 		}},
-	} {
+	}
+	if frozen {
+		cases = append(cases, struct {
+			name   string
+			mutate func()
+		}{"authentic-other-signature", func() {
+			binary.LittleEndian.PutUint64(f.witness[224:], uint64(tailRAPointer(ob.descriptors)+80))
+		}}, struct {
+			name   string
+			mutate func()
+		}{"frozen-wrong-entry", func() {
+			binary.LittleEndian.PutUint64(f.witness[224:], uint64(tailRAPointer(ob.descriptors)+80))
+			binary.LittleEndian.PutUint64(ob.descriptors[80:], 0x10000)
+			binary.LittleEndian.PutUint64(ob.directory[64:], 0x10000)
+		}})
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			copy(ob.descriptors, desc)
 			copy(ob.directory, dir)
@@ -261,7 +286,11 @@ func TestTailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T) {
 			f.a.SetRV64InvocationView(view)
 			err := f.e.CallPrepared(a.code.Base(), f.args, f.a.LinMemBase(), f.trap, f.results)
 			var trap *coreruntime.TrapError
-			if !errors.As(err, &trap) || trap.Code != abi.TrapCalledFnNotLinked {
+			want := coreruntime.TrapCode(abi.TrapCalledFnNotLinked)
+			if frozen && tc.name == "authentic-other-signature" {
+				want = coreruntime.TrapCode(abi.TrapIndirectWrongSig)
+			}
+			if !errors.As(err, &trap) || trap.Code != want {
 				t.Fatal("bad reference", err)
 			}
 			if len(trap.Frames) != 1 || trap.Frames[0].ProgramCounter != 37 {

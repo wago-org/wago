@@ -102,12 +102,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, err
 		}
 		if opts.referenceFunctions {
-			// Closed modules use local and numeric direct-import calls/tails.
-			// Dynamic targets and reference transport remain outside this ABI.
+			// Permission alone cannot change the qualified direct-tail path.
+			// The complete source scan below selects actual reference tails.
 			opts.dynamicTailCalls = false
-			if err := admitClosedReferenceProductionOptions(opts); err != nil {
-				return nil, err
-			}
 			if err := admitClosedReferenceFunctionModule(m, usesSWAR); err != nil {
 				return nil, err
 			}
@@ -123,6 +120,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	opts.referenceTailInstructions = referenceTails
 	opts.referenceCallInstructions = referenceCalls
 	opts.referenceControlInstructions = referenceControl
+	if opts.referenceFunctions {
+		opts.dynamicTailCalls = referenceTails
+		if err := admitClosedReferenceProductionOptions(opts); err != nil {
+			return nil, err
+		}
+	}
 	if usesSWAR {
 		return compileSWARProductionModule(m, opts)
 	}

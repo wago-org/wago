@@ -40,6 +40,9 @@ func TestRV64PublicReferenceFunctionOwnedTableRetiredRelays(t *testing.T) {
 func TestRV64PublicReferenceFunctionTableBulkRetiredRelays(t *testing.T) {
 	rv64ReferenceFunctionNumericCallsRetiredRelays(t, 2)
 }
+func TestRV64PublicReferenceFunctionProperReferenceTailRetiredRelays(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsRetiredRelays(t, 3)
+}
 func rv64ReferenceFunctionNumericCallsRetiredRelays(t *testing.T, tableStage int) {
 	ownedTable := tableStage > 0
 	t.Helper()
@@ -49,6 +52,9 @@ func rv64ReferenceFunctionNumericCallsRetiredRelays(t *testing.T, tableStage int
 	}
 	if tableStage == 2 {
 		product = "table-bulk"
+	}
+	if tableStage == 3 {
+		product = "proper-reference-tail"
 	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
