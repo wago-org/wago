@@ -243,6 +243,8 @@ func TestRV64PublicReferenceFunctionImportedStartGoParked(t *testing.T) {
 					if !active.constructionIsActive() || active.resourcesClosed || !caller.valid() {
 						t.Fatal("parked construction")
 					}
+					physicallyReleased := make(chan struct{})
+					active.referenceLifetime().afterPhysicalRelease(func() { close(physicallyReleased) })
 					switch action {
 					case "cancel":
 						cancel()
@@ -280,6 +282,19 @@ func TestRV64PublicReferenceFunctionImportedStartGoParked(t *testing.T) {
 						}
 					case <-time.After(5 * time.Second):
 						t.Fatal("imported start unwind timeout")
+					}
+					select {
+					case <-finished:
+					case <-time.After(5 * time.Second):
+						t.Fatal("imported start worker did not join")
+					}
+					// Runtime.Close may still own physical teardown after the
+					// constructor has returned. Join the actual release callback
+					// before observing native storage or closing the host owner.
+					select {
+					case <-physicallyReleased:
+					case <-time.After(5 * time.Second):
+						t.Fatal("imported start physical release did not complete")
 					}
 					if caller.valid() || active.constructionIsActive() || !active.resourcesClosed || readGlobalObject(provider.globalCells[1], ValI32) != 12 {
 						t.Fatal("imported start completion/scope/side effect")
