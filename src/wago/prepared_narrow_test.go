@@ -163,6 +163,22 @@ func TestInvocationGateFastUnlockPreservesRevocationAndHandsOffWaiter(t *testing
 	}
 }
 
+func TestInvocationGateUnlockNotifiesRevoker(t *testing.T) {
+	var gate invocationGate
+	changed := make(chan struct{})
+	gate.slow = &invocationGateSlowState{changed: changed, revocationWaiters: true}
+	gate.state.Store(invocationGateHeld | invocationGateFast | invocationGateRevoked | invocationGateWaiters)
+	gate.Unlock()
+	select {
+	case <-changed:
+	default:
+		t.Fatal("revoker was not notified after fast entry finished")
+	}
+	if got := gate.state.Load(); got != invocationGateRevoked {
+		t.Fatalf("gate state = %d, want revoked", got)
+	}
+}
+
 func TestPreparedDirectRejectsGCModes(t *testing.T) {
 	for _, flag := range []uint32{executionFlagImportedGCDomain, executionFlagDynamicGCDomain, executionFlagStoreOwnedGCCollector} {
 		t.Run(fmt.Sprint(flag), func(t *testing.T) {
