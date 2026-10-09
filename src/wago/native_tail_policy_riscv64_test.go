@@ -41,21 +41,31 @@ func TestRV64DynamicTailStaticImporterAggregatePolicy(t *testing.T) {
 	}
 	c := rv64NativeTailCompile(t, "dynamic-static-policy-root", rv64PublicTailModule([]wasm.ValType{wasm.I32}, false), false)
 	imports := testImports("env.tail", export)
-	root, err := Instantiate(c, imports)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer root.Close()
+	const configuredCode, configuredMetadata = uint64(1 << 20), uint64(1 << 20)
+	rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithMaxNativeCodeBytes(configuredCode).WithMaxInstanceMetadataBytes(configuredMetadata)))
+	defer rt.Close()
+	root := rv64HostTailInstantiate(t, rt, c, imports)
 	code, metadata, base := rv64DynamicTailCharge(t, root)
+	state := &root.pluginState.Load().railshotInvocation
+	captured := state.tailPolicy
+	if !captured.ready || !captured.codeConfigured || !captured.metadataConfigured || captured.limits.code != int(configuredCode) || captured.metadataBase != base || captured.limits.metadata != int(configuredMetadata-base) {
+		t.Fatal("Runtime destination allocation policy was not captured exactly", captured)
+	}
 	static := railshotNativeCodeBytes(c) - uint64(len(c.code))
-	if static == 0 || uint64(code) <= static || root.pluginState.Load().railshotInvocation.nativeImports == nil {
+	if static == 0 || uint64(code) <= static || state.nativeImports == nil {
 		t.Fatal("fixture lacks retained static dispatcher/wrapper")
 	}
+	// Address-valued Constant64 sequences make import thunk lengths specific to
+	// the physical instance. Probe its real charge, then exercise that instance's
+	// entry ledger at exact limits; another instance need not have equal bytes.
+	defer func() { state.tailPolicy = captured }()
 	for _, limits := range []struct{ code, metadata uint64 }{{uint64(code), base + uint64(metadata)}, {uint64(code) - static, base + uint64(metadata)}, {uint64(code), base + uint64(metadata) - 1}} {
-		rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithMaxNativeCodeBytes(limits.code).WithMaxInstanceMetadataBytes(limits.metadata)))
-		defer rt.Close()
-		in := rv64HostTailInstantiate(t, rt, c, imports)
-		got, err := in.Invoke("call", 0xcafe123480000001)
+		policy := captured
+		policy.limits.code = int(limits.code)
+		policy.limits.metadata = int(limits.metadata - base)
+		state.tailPolicy = policy // low-level captured-policy ledger control
+		got, err := root.Invoke("call", 0xcafe123480000001)
+		state.tailPolicy = captured // public entry has already retired its scope
 		if limits.code == uint64(code) && limits.metadata == base+uint64(metadata) {
 			if err != nil || len(got) != 1 || got[0] != 0x80000001 {
 				t.Fatal("exact aggregate static/dynamic quota", got, err)
@@ -68,9 +78,12 @@ func TestRV64DynamicTailStaticImporterAggregatePolicy(t *testing.T) {
 			if limits.code < uint64(code) && (quota.Resource != "native code bytes" || quota.Requested != uint64(code) || quota.Limit != limits.code) {
 				t.Fatal("static dispatcher omitted from exact aggregate", quota)
 			}
+			if limits.metadata < base+uint64(metadata) && (quota.Resource != "instance metadata bytes" || quota.Requested != base+uint64(metadata) || quota.Limit != limits.metadata) {
+				t.Fatal("metadata omitted from exact aggregate", quota)
+			}
 		}
-		if producer.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 {
-			t.Fatal("failed/completed scope retained caller reservation")
+		if state.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) || producer.pluginState.Load().railshotInvocation.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) || state.tableDepth != 0 {
+			t.Fatal("failed/completed scope retained caller or root reservation")
 		}
 	}
 }
