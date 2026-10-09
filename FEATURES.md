@@ -69,7 +69,11 @@ parameters and results through indexed blocks, loops and branches. These interna
 control declarations do not enter the numeric/vector callable ABI or enlarge
 call transport. Non-null/indexed declarations retain the typed witness even when
 unused, and currently require a defined code owner. Aggregate decoded type bytes
-are bounded before validation. Standalone `ref.null` constants with bounded numeric
+are bounded before validation. Private same-image ordinary direct-call lowering
+now preserves function-reference arguments/results, mixed compact cells and
+reference root joins. This private mode rejects imports, indirect/reference
+calls, tails and both production staging routes; source/artifact callable
+signatures remain numeric/vector-only. Standalone `ref.null` constants with bounded numeric
 function-type indices carry the typed witness, including unreachable uses,
 without allocating declared-call transport. Invocation
 scopes retain imported

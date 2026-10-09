@@ -103,6 +103,10 @@ func walkSWARPairsWithDynamicTailMode(fn *wasm.Func, ft *wasm.CompType, profile 
 }
 
 func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls bool, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithReferenceFunctionMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, false, emit)
+}
+
+func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions bool, emit *integerEmitter) (swarSummary, error) {
 	if dynamicTailCalls && (!importTailCalls || !foreignTableCalls || !localTailCalls) {
 		return swarSummary{}, unsupported("private dynamic tail walker contract")
 	}
@@ -121,6 +125,16 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 		return swarSummary{}, err
 	}
 	privateRefs := table != nil || foreignTableCalls
+	if referenceFunctions && (!privateRefs || importedFunctions != 0 || localTailCalls || importTailCalls || dynamicTailCalls) {
+		return swarSummary{}, unsupported("private reference functions require same-image ordinary calls")
+	}
+	functionClass := func(typ wasm.ValType) swarClass {
+		if referenceFunctions {
+			return swarControlClass(typ, internalReferenceTypes{swar: types}, true, referenceCalls)
+		}
+		return swarClassOf(typ)
+	}
+
 	descriptorRefs := privateRefs
 	if dataCount < 0 || dataCount > 256 {
 		return swarSummary{}, unsupported("SWAR passive data directory bound")
@@ -138,7 +152,11 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 		return swarSummary{}, unsupported("SWAR function directory bound")
 	}
 	for i, typ := range functions {
-		if err := swarCallSignature(typ); err != nil {
+		if referenceFunctions {
+			if err := admitSWARControlSignature(typ, internalReferenceTypes{swar: types}, true, referenceCalls); err != nil {
+				return swarSummary{}, err
+			}
+		} else if err := swarCallSignature(typ); err != nil {
 			return swarSummary{}, err
 		}
 		if i < importedFunctions {
@@ -160,7 +178,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 	}
 	for _, types := range [][]wasm.ValType{ft.Params, ft.Results} {
 		for _, typ := range types {
-			if !swarCarrierType(typ) {
+			if functionClass(typ) == swarInvalid {
 				return swarSummary{}, unsupported("SWAR pilot carrier type")
 			}
 		}
@@ -170,7 +188,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 	incomingSlots := 0
 	for i, typ := range ft.Params {
 		paramSlots[i] = incomingSlots
-		localClasses[i] = swarClassOf(typ)
+		localClasses[i] = functionClass(typ)
 		incomingSlots++
 		if localClasses[i] == swarV128 {
 			incomingSlots++
@@ -232,7 +250,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types, privateRefs: privateRefs, typedRefs: referenceCalls}
 	flow.frames[0] = swarControl{kind: 0xff, entry: true}
 	for _, typ := range ft.Results {
-		flow.frames[0].results = append(flow.frames[0].results, swarClassOf(typ))
+		flow.frames[0].results = append(flow.frames[0].results, functionClass(typ))
 	}
 	// The shared frame helper copies compact serialized argument cells first.
 	// Expand padded local homes backwards so a one-cell scalar cannot overwrite
@@ -311,7 +329,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 				return swarSummary{}, unsupported("SWAR terminal stack/bytes")
 			}
 			for j, typ := range ft.Results {
-				if stackClasses[j] != swarClassOf(typ) {
+				if stackClasses[j] != functionClass(typ) {
 					return swarSummary{}, unsupported("SWAR result carrier class")
 				}
 			}
@@ -356,7 +374,7 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 			}
 			params := make([]swarClass, len(sig.Params))
 			for i, typ := range sig.Params {
-				params[i] = swarClassOf(typ)
+				params[i] = functionClass(typ)
 			}
 			if err := flow.prepareDead(params...); err != nil {
 				return swarSummary{}, err
@@ -382,11 +400,14 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 			}
 			h = base
 			for _, typ := range sig.Results {
-				if err := push(swarClassOf(typ)); err != nil {
+				if err := push(functionClass(typ)); err != nil {
 					return swarSummary{}, err
 				}
 			}
 		case 0x12:
+			if referenceFunctions {
+				return swarSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
+			}
 			index, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -442,6 +463,9 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 			flow.frames[flow.depth-1].unreachable = true
 			h = flow.floor()
 		case 0x14, 0x15:
+			if referenceFunctions {
+				return swarSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
+			}
 			tail := op == 0x15
 			typeIndex, err := r.U32()
 			if err != nil {
@@ -517,6 +541,9 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 				}
 			}
 		case 0x11, 0x13:
+			if referenceFunctions {
+				return swarSummary{}, unsupported("private reference functions require ordinary same-image direct calls")
+			}
 			typeIndex, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -1980,6 +2007,9 @@ func compileSWARPairsWithImports(fn *wasm.Func, ft *wasm.CompType, memory *wasm.
 	return compileSWARPairsWithMemories(fn, ft, memories, false, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode)
 }
 func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []wasm.MemType, indexedMemories bool, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, mode emissionMode) ([]byte, FunctionInfo, []directCall, error) {
+	if mode.referenceFunctions && !mode.production {
+		return nil, FunctionInfo{}, nil, unsupported("private reference functions require production frame ABI")
+	}
 	if mode.localTailCalls && (!mode.production || !mode.interruptible) {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR local tails require cooperative production")
 	}
@@ -2011,7 +2041,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	summary, err := walkSWARPairsWithTypedCallMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, nil)
+	summary, err := walkSWARPairsWithReferenceFunctionMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -2034,7 +2064,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	actual, err := walkSWARPairsWithTypedCallMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, &f)
+	actual, err := walkSWARPairsWithReferenceFunctionMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

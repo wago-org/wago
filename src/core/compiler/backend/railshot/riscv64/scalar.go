@@ -33,11 +33,13 @@ type emissionMode struct {
 	// entry/resume and provides a synchronous root control frame.
 	foreignTableCalls bool
 	// Imported descriptors have independently checked bounded runtime capacity.
-	borrowedTable          bool
-	localTailCalls         bool
-	importTailCalls        bool
-	dynamicTailCalls       bool
-	referenceCalls         bool
+	borrowedTable    bool
+	localTailCalls   bool
+	importTailCalls  bool
+	dynamicTailCalls bool
+	referenceCalls   bool
+	// Private same-image ordinary calls only; never source/artifact admission.
+	referenceFunctions     bool
 	tailPlans              *[]tailImportPlan
 	tailSiteBase           uint32
 	localMutableReferences bool

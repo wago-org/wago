@@ -29,12 +29,14 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
-	production             bool
-	localTailCalls         bool
-	foreignTableCalls      bool
-	importTailCalls        bool
-	dynamicTailCalls       bool
-	referenceCalls         bool
+	production        bool
+	localTailCalls    bool
+	foreignTableCalls bool
+	importTailCalls   bool
+	dynamicTailCalls  bool
+	referenceCalls    bool
+	// Private same-image ordinary calls only; never source/artifact admission.
+	referenceFunctions     bool
 	importReferences       bool
 	localMutableReferences bool
 	ownedTable             bool

@@ -78,7 +78,11 @@ internal controls from numeric/vector callable signatures, including unused
 declarations. Scalar and SWAR decoded budgets charge reference encodings before
 validation. Typed declarations without a defined code owner remain closed pending
 a separate empty-code ownership contract; reference-valued callable signatures
-also remain closed. Mixed table/call_ref and private mutable-cell fixtures retain
+also remain closed. A separate private same-image ordinary direct-call mode now
+preserves reference entry/results and mixed scalar/SWAR transfers, including
+explicit root exits, recursive stack traps/reuse and maximum compact arenas.
+Both production staging routes reject that mode. Foreign parking/ownership and
+retained reference-callable integration remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

@@ -31,7 +31,22 @@ func CompileProduction(data []byte, opts ProductionOptions) (*enc.CompiledModule
 	return stageProduction(c, opts.DeferCodeMapping)
 }
 
+func admitProductionFunctionABI(c *Compiled) error {
+	if c.state.referenceFunctions {
+		return unsupported("private reference function ABI cannot be staged")
+	}
+	for _, info := range c.functions {
+		if info.mode.referenceFunctions {
+			return unsupported("private reference function ABI cannot be staged")
+		}
+	}
+	return nil
+}
+
 func stageProduction(c *Compiled, deferMapping bool) (*enc.CompiledModule, error) {
+	if err := admitProductionFunctionABI(c); err != nil {
+		return nil, err
+	}
 	if len(c.code) == 0 && len(c.functions) == 0 && c.state.importedFunctions == 0 {
 		// State-only modules have nothing to publish. In particular, do not
 		// create the page-rounded empty code mapping used by imported bridges.

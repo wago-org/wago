@@ -36,6 +36,9 @@ func (f *integerEmitter) swarCallArguments(sig *wasm.CompType, base int, spill f
 	offset := int32(0)
 	for i, typ := range sig.Params {
 		class := swarClassOf(typ)
+		if f.mode.referenceFunctions && typ.Kind() == wasm.ValRef {
+			class = swarFuncRef
+		}
 		f.Load(5, spill(base+i), !class.narrow())
 		f.a.Sd(enc.X5, enc.X10, offset)
 		offset += 8
@@ -52,6 +55,9 @@ func (f *integerEmitter) swarCallResults(sig *wasm.CompType, base int, spill fun
 	offset := int32(0)
 	for i, typ := range sig.Results {
 		class := swarClassOf(typ)
+		if f.mode.referenceFunctions && typ.Kind() == wasm.ValRef {
+			class = swarFuncRef
+		}
 		if class.narrow() {
 			f.a.Lwu(enc.X5, enc.X13, offset)
 		} else {

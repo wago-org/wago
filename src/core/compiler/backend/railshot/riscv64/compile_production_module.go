@@ -189,6 +189,9 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 }
 
 func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModule, error) {
+	if err := admitProductionFunctionABI(c); err != nil {
+		return nil, err
+	}
 	var tail *enc.NativeTailModule
 	if opts.NativeTailCalls {
 		if _, _, err := NativeTailInstanceBudget(len(*opts.tailPlans), len(c.code)); err != nil {
