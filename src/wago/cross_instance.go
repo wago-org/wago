@@ -374,6 +374,12 @@ func (o *tableOwner) validateFuncrefStoreLocked(store *referenceStore) error {
 }
 
 func (t *Table) validateImportWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	return t.validateImportWithRetainedOwner(elementType, exact, types, store, collector, addr64, nil)
+}
+
+// Only an exact managed acquisition may permit its producer's later logical
+// Close. Physical closure and every storage/type/store check still apply.
+func (t *Table) validateImportWithRetainedOwner(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool, retained *Instance) error {
 	if t == nil || t.owner == nil {
 		return fmt.Errorf("table descriptor is invalid")
 	}
@@ -391,7 +397,7 @@ func (t *Table) validateImportWithCollector(elementType ValType, exact ValueType
 	}
 	if o.instance != nil {
 		o.instance.lifeMu.Lock()
-		closed := o.instance.closed || o.instance.resourcesClosed
+		closed := o.instance.resourcesClosed || o.instance.closed && o.instance != retained
 		o.instance.lifeMu.Unlock()
 		if closed {
 			return fmt.Errorf("table owner instance is closed")
@@ -466,6 +472,12 @@ func (t *Table) attachImporter(elementType ValType, exact ValueTypeDescriptor, t
 }
 
 func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	return t.attachImporterWithExpectedHost(elementType, exact, types, store, collector, addr64, nil)
+}
+
+// Managed host acquisition cannot silently become an Instance acquisition if
+// its owner identity changes between validation and the actual counter claim.
+func (t *Table) attachImporterWithExpectedHost(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool, expected *tableOwner) error {
 	if err := t.validateImportWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
@@ -473,12 +485,16 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 	// Acquisition alone checks capacity. Validation of an already attached
 	// alias still succeeds without creating a second counter obligation.
 	o.mu.Lock()
+	if expected != nil && (t.owner != expected || o != expected || o.instance != nil || o.elementType != elementType) {
+		o.mu.Unlock()
+		return fmt.Errorf("host table owner changed before acquisition")
+	}
 	err := o.validateImporterCountLocked()
 	o.mu.Unlock()
 	if err != nil {
 		return err
 	}
-	if o.elementType == ValFuncRef && o.instance == nil {
+	if expected != nil && elementType == ValFuncRef || expected == nil && o.elementType == ValFuncRef && o.instance == nil {
 		if t.hasIncompatibleGCProducer(store) {
 			return fmt.Errorf("funcref table contains a producer from an incompatible GC invocation domain")
 		}
@@ -490,6 +506,9 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 		}
 		o.mu.Lock()
 		defer o.mu.Unlock()
+		if expected != nil && (t.owner != expected || o != expected || o.instance != nil || o.elementType != elementType) {
+			return fmt.Errorf("host table owner changed before acquisition")
+		}
 		if o.closed {
 			return fmt.Errorf("table owner is closed")
 		}
@@ -533,6 +552,9 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if expected != nil && (t.owner != expected || o != expected || o.instance != nil || o.elementType != elementType) {
+		return fmt.Errorf("host table owner changed before acquisition")
+	}
 	if o.closed {
 		return fmt.Errorf("table owner is closed")
 	}
@@ -564,11 +586,20 @@ func (o *tableOwner) validateImporterCountLocked() error {
 // detachImporterCounter consumes the exact store/count obligations without
 // releasing an Instance. Producer callbacks run only after all locks are gone.
 func (t *Table) detachImporterCounter(store *referenceStore) (*Instance, bool) {
+	return t.detachImporterCounterMatching(store, nil, nil, 0, false)
+}
+
+func (t *Table) consumeImporterCounter(store *referenceStore, owner *tableOwner, expected *Instance, elementType ValType) bool {
+	_, consumed := t.detachImporterCounterMatching(store, owner, expected, elementType, true)
+	return consumed
+}
+
+func (t *Table) detachImporterCounterMatching(store *referenceStore, expectedOwner *tableOwner, expected *Instance, elementType ValType, checkExpected bool) (*Instance, bool) {
 	if t == nil || t.owner == nil {
 		return nil, false
 	}
 	o := t.owner
-	if o.elementType == ValFuncRef && o.instance == nil {
+	if checkExpected && expected == nil && elementType == ValFuncRef || !checkExpected && o.elementType == ValFuncRef && o.instance == nil {
 		var topology *gcDomainTopology
 		if store != nil {
 			store.mu.Lock()
@@ -581,7 +612,7 @@ func (t *Table) detachImporterCounter(store *referenceStore) (*Instance, bool) {
 		}
 		o.mu.Lock()
 		refs := o.funcrefStores[store]
-		if o.importers <= 0 || refs == 0 || store != nil && (topology == nil || topology.funcrefTables[t] == 0) {
+		if o.importers <= 0 || refs == 0 || store != nil && (topology == nil || topology.funcrefTables[t] == 0) || checkExpected && (t.owner != expectedOwner || o != expectedOwner || o.instance != expected || o.elementType != elementType) {
 			o.mu.Unlock()
 			return nil, false
 		}
@@ -603,7 +634,7 @@ func (t *Table) detachImporterCounter(store *referenceStore) (*Instance, bool) {
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.importers <= 0 || o.store != store {
+	if o.importers <= 0 || o.store != store || checkExpected && (t.owner != expectedOwner || o != expectedOwner || o.instance != expected || o.elementType != elementType) {
 		return nil, false
 	}
 	o.importers--

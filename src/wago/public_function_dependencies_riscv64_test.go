@@ -103,10 +103,26 @@ func rv64FunctionDependencyPublicFixture(t *testing.T, vector, artifact bool) (*
 	return pc, producer, export, cc
 }
 
-func rv64FunctionDependencyPublicState(t *testing.T, in, producer *Instance) *rv64FunctionDependencyOwnership {
+func rv64FunctionDependencyPublicState(t *testing.T, in, producer *Instance, tableEdge ...bool) *rv64FunctionDependencyOwnership {
 	t.Helper()
+	wantOutgoing := uint32(1)
+	if len(tableEdge) != 0 && tableEdge[0] {
+		rows := rv64ExistingTableDependencyRows(in)
+		if rows == nil || rows.rows.n != 1 || rows.rows.inline[0].root.producer != producer {
+			t.Fatal("exact imported table storage receipt")
+		}
+		receipt := rows.rows.inline[0].root.receipt
+		receipt.graph.mu.Lock()
+		record, _ := receipt.graph.recordLocked(receipt.identity)
+		valid := record != nil && record.state == dependencyTyped && record.kind == dependencyTableStorage
+		receipt.graph.mu.Unlock()
+		if !valid {
+			t.Fatal("table handoff did not adopt its actual storage edge")
+		}
+		wantOutgoing++
+	}
 	o := rv64ExistingFunctionDependencyOwnership(in)
-	if o == nil || !o.managed || o.functions.n != 1 || o.functions.inline[0].producer != producer || o.functions.inline[0].receipt.graph != rv64FunctionDependencyGraph() || o.member.graph.Load() != rv64FunctionDependencyGraph() || o.member.outgoing.Load() != 1 {
+	if o == nil || !o.managed || o.functions.n != 1 || o.functions.inline[0].producer != producer || o.functions.inline[0].receipt.graph != rv64FunctionDependencyGraph() || o.member.graph.Load() != rv64FunctionDependencyGraph() || o.member.outgoing.Load() != wantOutgoing {
 		t.Fatal("exact deduplicated terminal function receipt")
 	}
 	return o
@@ -498,7 +514,7 @@ func TestRV64PublicFunctionDependenciesImportedTableHandoff(t *testing.T) {
 						return errors.New("receipt adoption preceded native lease release or lacked construction ownership")
 					}
 					nativeExecutionMu.Unlock()
-					rv64FunctionDependencyPublicState(t, in, producer)
+					rv64FunctionDependencyPublicState(t, in, producer, true)
 					if failure == "panic" {
 						panic(sentinel)
 					}

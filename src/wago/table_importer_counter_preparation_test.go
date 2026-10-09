@@ -138,7 +138,7 @@ func TestTableImporterCounterMissingActiveTopologyDoesNotConsume(t *testing.T) {
 }
 
 func TestTableImporterCounterFootprintAndWarmAllocation(t *testing.T) {
-	if unsafe.Sizeof(tableImportAttachments{}) != unsafe.Sizeof(importDedup[*Table]{})+unsafe.Sizeof((*referenceStore)(nil)) || unsafe.Offsetof(tableImportAttachments{}.set) != 0 {
+	if unsafe.Sizeof(tableImportAttachments{}) != unsafe.Sizeof(importDedup[*Table]{})+unsafe.Sizeof((*referenceStore)(nil))+unsafe.Sizeof(tableDependencyAttachments{}) || unsafe.Offsetof(tableImportAttachments{}.set) != unsafe.Sizeof(tableDependencyAttachments{}) {
 		t.Fatal("counter preparation changed attachment footprint")
 	}
 	table := counterTable(ValFuncRef, nil, nil, 0)

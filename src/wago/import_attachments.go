@@ -370,8 +370,9 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, p
 }
 
 type tableImportAttachments struct {
-	set   importDedup[*Table]
-	store *referenceStore
+	dependencies tableDependencyAttachments // empty on existing targets; not trailing
+	set          importDedup[*Table]
+	store        *referenceStore
 }
 
 func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
@@ -395,6 +396,9 @@ func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact
 }
 
 func (a *tableImportAttachments) detachAll() {
+	if railshotDrainBuilderTableDependencies(a) {
+		return
+	}
 	store := a.store
 	a.store = nil
 	a.set.drain(func(table *Table) { table.detachImporter(store) })
@@ -428,6 +432,9 @@ func (c *Compiled) preflightImportBindings(imports resolvedImports) error {
 
 func detachImportedTables(in *Instance) {
 	if in == nil || in.c == nil {
+		return
+	}
+	if railshotDrainInstanceTableDependencies(in) {
 		return
 	}
 	var cleanup resourceCleanup

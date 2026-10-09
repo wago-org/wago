@@ -223,6 +223,9 @@ func (in *Instance) transferImportedTableAttachment(table *Table) {
 	if in == nil || table == nil {
 		return
 	}
+	if railshotTransferTableDependency(in, table) {
+		return
+	}
 	state := transferredImportState(in)
 	state.mu.Lock()
 	if state.tables == nil {
@@ -239,6 +242,9 @@ func (in *Instance) transferImportedTableAttachment(table *Table) {
 }
 
 func (in *Instance) ownsTransferredTableAttachment(table *Table) bool {
+	if transferred, managed := railshotTransferredTableDependency(in, table); managed {
+		return transferred
+	}
 	value, ok := transferredImportAttachments.Load(in)
 	if !ok {
 		return false

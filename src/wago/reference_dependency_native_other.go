@@ -11,6 +11,19 @@ import (
 type functionDependencyAttachments struct{}
 type memoryDependencyAttachments struct{}
 type globalDependencyAttachments struct{}
+type tableDependencyAttachments struct{}
+
+func railshotPrepareTableDependencies(*instanceBuilder, *resourceCleanup) error { return nil }
+func railshotBindTableImport(a *tableImportAttachments, table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	return a.attach(table, elementType, exact, types, store, collector, addr64)
+}
+func railshotDrainBuilderTableDependencies(*tableImportAttachments) bool  { return false }
+func railshotHasBuilderTableDependencies(*tableImportAttachments) bool    { return false }
+func railshotInstallTableDependencies(*Instance, *tableImportAttachments) {}
+func railshotAdoptTableDependencies(*Instance, bool) error                { return nil }
+func railshotDrainInstanceTableDependencies(*Instance) bool               { return false }
+func railshotTransferTableDependency(*Instance, *Table) bool              { return false }
+func railshotTransferredTableDependency(*Instance, *Table) (bool, bool)   { return false, false }
 
 func railshotAcquireGlobalDependency(_ *globalImportAttachments, global *Global, store *referenceStore, collector *gc.Collector, _ *resourceCleanup) error {
 	if isReferenceValType(global.Type) {
