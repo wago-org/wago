@@ -28,6 +28,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   
 ### Fixed
 
+- Check encoded ARM64 register aliases in NEON shuffle and byte-movemask helpers
+  so source and scratch overlap cannot bypass their guards.
 - Keep ARM64 integer call results in frame slots when local pins leave too few
   registers for all result copies.
 - Invalidate stale vector facts after indexed AMD64 loads in the optional

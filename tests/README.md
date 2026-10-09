@@ -534,6 +534,19 @@ They do not measure whole-suite overhead, RSS or native execution speed. Records
 are capped at 64 KiB and captured child output at 1 MiB; these limits bound logical
 payload, not total allocator capacity or peak RSS. All changes are test-only.
 
+## ARM64 NEON helper register aliases
+
+`src/core/encoder/arm64/neon_alias_test.go` checks the five-bit register numbers
+used by instruction encodings. Across all eight register alias bands, unsafe
+shuffle and scratch overlaps must panic before emitting any instructions.
+Legal aliases must retain the canonical instruction bytes, including all 256
+shuffle controls and identity/broadcast shuffles. Movemask checks distinguish
+the GP and vector banks, so V16/V17 remain legal sources.
+
+The Linux ARM64 execution tests also exercise aliased in-place shuffles and
+movemask operands, checking lane results and preservation of the source vector.
+Portable byte checks alone do not qualify native execution.
+
 ## Indexed vector loads in the AMD64 allocation checker
 
 `src/core/encoder/amd64/indexed_vector_enabled_test.go` verifies that indexed

@@ -1949,13 +1949,13 @@ func (a *Asm) NeonExt16b(dst, lo, hi Reg, offset byte) {
 }
 func (a *Asm) NeonPshufS(dst, src Reg, imm byte) {
 	if imm == 0xe4 {
-		if dst != src {
+		if r(dst) != r(src) {
 			a.NeonMov16b(dst, src)
 		}
 		return
 	}
 	first := imm & 3
-	if dst == src {
+	if r(dst) == r(src) {
 		if imm != first*0x55 {
 			panic("NeonPshufS needs a separate source; use NeonPshufSWithScratch")
 		}
@@ -1972,12 +1972,12 @@ func (a *Asm) NeonPshufS(dst, src Reg, imm byte) {
 }
 
 // NeonPshufSWithScratch permits an in-place shuffle without clobbering source lanes.
-// The caller owns scratch, which must differ from dst and src.
+// The caller owns scratch, whose encoded register must differ from dst and src.
 func (a *Asm) NeonPshufSWithScratch(dst, src, scratch Reg, imm byte) {
-	if scratch == dst || scratch == src {
+	if r(scratch) == r(dst) || r(scratch) == r(src) {
 		panic("NeonPshufS scratch overlaps an operand")
 	}
-	if dst == src {
+	if r(dst) == r(src) {
 		a.NeonMov16b(scratch, src)
 		src = scratch
 	}
@@ -1987,7 +1987,7 @@ func (a *Asm) NeonPshufSWithScratch(dst, src, scratch Reg, imm byte) {
 // NeonMovemaskB extracts the high bit of each byte into a 16-bit mask.
 // X16 and X17 are the encoder's reserved scratch registers.
 func (a *Asm) NeonMovemaskB(dst, src Reg) {
-	if dst == X16 || dst == X17 {
+	if r(dst) == r(X16) || r(dst) == r(X17) {
 		panic("NeonMovemaskB destination overlaps scratch")
 	}
 	a.FmovToGpr(dst, src, true)
