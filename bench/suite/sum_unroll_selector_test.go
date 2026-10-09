@@ -13,6 +13,9 @@ import (
 //go:linkname setSumUnrollMeasurement github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.setSumUnrollMeasurement
 func setSumUnrollMeasurement(factor int, hybrid bool, threshold int)
 
+//go:linkname setSumUnrollMitigation github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.setSumUnrollMitigation
+func setSumUnrollMitigation(pairTail, reserve bool)
+
 func init() {
 	switch v := os.Getenv("WAGO_SUM_VARIANT"); v {
 	case "", "baseline", "default":
@@ -27,6 +30,7 @@ func init() {
 			threshold = 256
 		}
 		setSumUnrollMeasurement(16, v == "H", threshold)
+		setSumUnrollMitigation(v == "P" || v == "PR", v == "DR" || v == "PR")
 	default:
 		panic("unknown corpus sum variant: " + v)
 	}

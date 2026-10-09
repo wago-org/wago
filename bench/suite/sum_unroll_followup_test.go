@@ -58,7 +58,7 @@ func TestSumUnrollCorpusAdmission(t *testing.T) {
 			if (s.Peephole["experimental-linear-sum"] == 1) != want || (!want && s.Peephole["linear-sum-unroll4"] != 1) {
 				t.Fatalf("sum selection: %v", s.Peephole)
 			}
-			if os.Getenv("WAGO_SUM_VARIANT") == "P" && s.Peephole["experimental-linear-sum-pair-tail"] != 1 {
+			if (os.Getenv("WAGO_SUM_VARIANT") == "P" || os.Getenv("WAGO_SUM_VARIANT") == "PR") && s.Peephole["experimental-linear-sum-pair-tail"] != 1 {
 				t.Fatalf("pair tail not selected: %v", s.Peephole)
 			}
 			if os.Getenv("WAGO_SUM_VARIANT") == "H" && s.Peephole["experimental-linear-sum-hybrid"] != 1 {

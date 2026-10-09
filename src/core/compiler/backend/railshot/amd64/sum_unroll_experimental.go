@@ -8,6 +8,7 @@ var sumUnrollExperiment struct {
 	factor, chains, budget int
 	hybrid                 bool
 	threshold              int
+	pairTail, reserve      bool
 }
 
 // Called once by the corpus test bridge, before any compilation or timing.
@@ -20,9 +21,15 @@ func setSumUnrollMeasurement(factor int, hybrid bool, threshold int) {
 	sumUnrollExperiment.threshold = threshold
 }
 
+// Tests select mitigation modes once before compilation.
+func setSumUnrollMitigation(pairTail, reserve bool) {
+	sumUnrollExperiment.pairTail = pairTail
+	sumUnrollExperiment.reserve = reserve
+}
+
 func (f *fn) trySelectedLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	c := sumUnrollExperiment
-	if c.factor != 0 && f.tryLinearSumLatchWithTail(loop, counter, c.factor, c.chains, c.budget, c.hybrid, c.threshold) {
+	if c.factor != 0 && f.tryLinearSumLatchMitigated(loop, counter, c.factor, c.chains, c.budget, c.hybrid, c.threshold, c.pairTail) {
 		return true
 	}
 	return f.tryUnrolledLinearSumLatch(loop, counter)
@@ -37,6 +44,10 @@ func (f *fn) tryExperimentalLinearSumLatch(loop *ctrlFrame, counter int, factor,
 
 // Hybrid groups share setup, wrap dispatch, scalar tail, and final combination.
 func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, chains, budget int, hybrid bool, threshold int) bool {
+	return f.tryLinearSumLatchMitigated(loop, counter, factor, chains, budget, hybrid, threshold, false)
+}
+
+func (f *fn) tryLinearSumLatchMitigated(loop *ctrlFrame, counter int, factor, chains, budget int, hybrid bool, threshold int, pairTail bool) bool {
 	if f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl)) {
 		return false
 	}
@@ -50,6 +61,9 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	}
 
 	bound := 256 + 8*factor + 16*chains
+	if pairTail {
+		bound += 32
+	}
 	fourTail := hybrid || threshold != 0
 	if fourTail {
 		bound += 64
@@ -61,7 +75,7 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	// leaves assembler, allocator, and local state unchanged for the default path.
 	if factor < 2 || factor > 16 || factor&(factor-1) != 0 ||
 		chains < 2 || chains > 8 || chains > factor || factor%chains != 0 ||
-		budget < bound || fourTail && (factor != 16 || chains != 4) ||
+		budget < bound || pairTail && (factor != 16 || chains != 4 || fourTail) || fourTail && (factor != 16 || chains != 4) ||
 		threshold != 0 && (hybrid || threshold != 64 && threshold != 128 && threshold != 256) {
 		return false
 	}
@@ -160,8 +174,25 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	}
 	f.a.TestSelf(counterReg, false)
 	noRemainder := f.a.JccPlaceholder(condE)
+	oddTail := -1
+	if pairTail {
+		// Odd counts enter the second half, then all further visits consume pairs.
+		// Each address increment remains 32-bit; neither load has a native offset.
+		f.a.TestImm(counterReg, 1, false)
+		oddTail = f.a.JccPlaceholder(condNE)
+	}
 	remainder := f.a.Len()
-	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
+	if pairTail {
+		f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
+		f.a.AluRI(aluTable[opAdd].digit, addrReg, 8, false)
+		f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
+		f.a.PatchRel32(oddTail, f.a.Len())
+	}
+	tailAcc := accReg
+	if pairTail {
+		tailAcc = p1
+	}
+	f.a.AluIdx(aluTable[opAdd].rm, tailAcc, RBX, addrReg, 0, true)
 	f.a.AluRI(aluTable[opAdd].digit, addrReg, 8, false)
 	f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
 	moreRemainder := f.a.JccPlaceholder(condNE)
@@ -179,6 +210,9 @@ func (f *fn) tryLinearSumLatchWithTail(loop *ctrlFrame, counter int, factor, cha
 	}
 	f.markLocalDirty(counter)
 	f.stats.peep("experimental-linear-sum")
+	if pairTail {
+		f.stats.peep("experimental-linear-sum-pair-tail")
+	}
 	if hybrid {
 		f.stats.peep("experimental-linear-sum-hybrid")
 	}

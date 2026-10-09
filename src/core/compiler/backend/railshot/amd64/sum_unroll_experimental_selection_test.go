@@ -43,6 +43,8 @@ func selectSumUnroll(t testing.TB) {
 		sumUnrollExperiment.threshold = 256
 	}
 	sumUnrollExperiment.budget = 576
+	v := os.Getenv("WAGO_SUM_VARIANT")
+	setSumUnrollMitigation(v == "P" || v == "PR", v == "DR" || v == "PR")
 }
 
 func sumUnrollBaseline(t testing.TB, m *wasm.Module) *sumNative {

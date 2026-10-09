@@ -12,7 +12,7 @@ import (
 )
 
 func TestSumUnrollPairEmission(t *testing.T) {
-	if os.Getenv("WAGO_SUM_VARIANT") != "P" {
+	if os.Getenv("WAGO_SUM_VARIANT") != "P" && os.Getenv("WAGO_SUM_VARIANT") != "PR" {
 		t.Skip("pair-tail candidate only")
 	}
 	selectSumUnroll(t)
@@ -36,7 +36,7 @@ func TestSumUnrollPairEmission(t *testing.T) {
 }
 
 func TestSumUnrollPairBudgetFallback(t *testing.T) {
-	if os.Getenv("WAGO_SUM_VARIANT") != "P" {
+	if os.Getenv("WAGO_SUM_VARIANT") != "P" && os.Getenv("WAGO_SUM_VARIANT") != "PR" {
 		t.Skip("pair-tail candidate only")
 	}
 	selectSumUnroll(t)
