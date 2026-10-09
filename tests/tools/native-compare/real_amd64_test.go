@@ -62,7 +62,7 @@ func TestRealScalarSourceRegion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := Snapshot{Architecture: "amd64", Provenance: Provenance{"5cd443965a09e46076cce5e3dd4bf3ae69500348+diagnostic-only", fmt.Sprintf("%x", sha256.Sum256(binaryBytes)), fmt.Sprintf("%x", sha256.Sum256(data)), fmt.Sprintf("configured-mask=00000000;required-mask=%08x", cm.RequiredAMD64Features), "explicit", "wago_profile", "established/direct-backend"}}
+	s := Snapshot{Architecture: "amd64", Provenance: Provenance{"unit-test-fixture/source-revision-unattested", fmt.Sprintf("%x", sha256.Sum256(binaryBytes)), fmt.Sprintf("%x", sha256.Sum256(data)), fmt.Sprintf("configured-mask=00000000;required-mask=%08x", cm.RequiredAMD64Features), "explicit", "wago_profile", "established/direct-backend"}}
 	path := filepath.Join(t.TempDir(), "code.bin")
 	if err = os.WriteFile(path, cm.Code, 0600); err != nil {
 		t.Fatal(err)
@@ -224,7 +224,7 @@ func TestExistingFibSourceRegions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := Snapshot{Architecture: "amd64", Provenance: Provenance{"5cd443965a09e46076cce5e3dd4bf3ae69500348+diagnostic-only", fmt.Sprintf("%x", sha256.Sum256(executableBytes)), fmt.Sprintf("%x", sha256.Sum256(data)), "configured-mask=00000000", "explicit", "wago_profile", "established/direct-backend"}}
+	s := Snapshot{Architecture: "amd64", Provenance: Provenance{"unit-test-fixture/source-revision-unattested", fmt.Sprintf("%x", sha256.Sum256(executableBytes)), fmt.Sprintf("%x", sha256.Sum256(data)), "configured-mask=00000000", "explicit", "wago_profile", "established/direct-backend"}}
 	path := filepath.Join(t.TempDir(), "fib.bin")
 	if err = os.WriteFile(path, cm.Code, 0600); err != nil {
 		t.Fatal(err)
