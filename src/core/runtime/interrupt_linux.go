@@ -19,6 +19,7 @@ import (
 const (
 	maxInterruptRequests       = 64
 	maxExecutableCodeRanges    = 4096
+	executableCodeBucketCount  = 1024
 	maxInterruptLinearMemories = 4096
 	interruptDeadlineRetry     = 50 * time.Microsecond
 )
@@ -40,8 +41,10 @@ type executableCodeRange struct {
 }
 
 var (
-	interruptRequests          [maxInterruptRequests]interruptRequest
-	executableCodeRanges       [maxExecutableCodeRanges]executableCodeRange
+	interruptRequests    [maxInterruptRequests]interruptRequest
+	executableCodeRanges [maxExecutableCodeRanges]executableCodeRange
+	// A zero count proves that this bucket has no live range.
+	executableCodeBucketCounts [executableCodeBucketCount]uint16
 	executableCodeRangeLimit   uint32
 	executableCodeMu           sync.Mutex
 	interruptLinearMemories    [maxInterruptLinearMemories]uintptr
@@ -305,19 +308,44 @@ func registerExecutableCode(mem []byte) error {
 	if err := installInterruptHandler(); err != nil {
 		return fmt.Errorf("jit host interrupt: %w", err)
 	}
-	for i := range executableCodeRanges {
+	bucket := executableCodeBucket(start)
+	checkDuplicate := executableCodeBucketCounts[bucket] != 0
+	limit := int(atomic.LoadUint32(&executableCodeRangeLimit))
+	firstHole := -1
+	for i := 0; i < limit; i++ {
 		r := &executableCodeRanges[i]
-		if atomic.LoadUintptr(&r.start) == 0 {
-			atomic.StoreUintptr(&r.end, end)
-			atomic.StoreUintptr(&r.start, start) // publish last
-			limit := uint32(i + 1)
-			if limit > atomic.LoadUint32(&executableCodeRangeLimit) {
-				atomic.StoreUint32(&executableCodeRangeLimit, limit)
+		registered := atomic.LoadUintptr(&r.start)
+		if checkDuplicate && registered == start {
+			if atomic.LoadUintptr(&r.end) != end {
+				return fmt.Errorf("executable code range changed for mapping")
 			}
 			return nil
 		}
+		if registered == 0 && firstHole < 0 {
+			firstHole = i
+			if !checkDuplicate {
+				break
+			}
+		}
 	}
-	return fmt.Errorf("executable code range table full (%d)", maxExecutableCodeRanges)
+	if firstHole < 0 {
+		if limit == len(executableCodeRanges) {
+			return fmt.Errorf("executable code range table full (%d)", maxExecutableCodeRanges)
+		}
+		firstHole = limit
+	}
+	r := &executableCodeRanges[firstHole]
+	atomic.StoreUintptr(&r.end, end)
+	atomic.StoreUintptr(&r.start, start) // publish last
+	if firstHole == limit {
+		atomic.StoreUint32(&executableCodeRangeLimit, uint32(limit+1))
+	}
+	executableCodeBucketCounts[bucket]++
+	return nil
+}
+
+func executableCodeBucket(start uintptr) uint16 {
+	return uint16((uint64(start>>12) * 0x9e3779b97f4a7c15) >> 54)
 }
 
 func unregisterExecutableCode(mem []byte) {
@@ -332,6 +360,7 @@ func unregisterExecutableCode(mem []byte) {
 		if atomic.LoadUintptr(&r.start) == start {
 			atomic.StoreUintptr(&r.start, 0) // disable before unmapping
 			atomic.StoreUintptr(&r.end, 0)
+			executableCodeBucketCounts[executableCodeBucket(start)]--
 			limit := int(atomic.LoadUint32(&executableCodeRangeLimit))
 			for limit > 0 && atomic.LoadUintptr(&executableCodeRanges[limit-1].start) == 0 {
 				limit--
@@ -477,11 +506,34 @@ func RequestInterruptAsync(trap []byte) func() {
 	var stopOnce sync.Once
 	go func() {
 		defer close(stopped)
+		var request *interruptRequest
+		defer func() {
+			if request != nil {
+				releaseInterruptRequest(request, trapPtr)
+			}
+		}()
 		retry := time.NewTicker(50 * time.Microsecond)
 		defer retry.Stop()
 		for attempt := 0; attempt < 256; attempt++ {
-			if requestInterruptPointer(trapPtr) {
-				return
+			// A queued delivery must retain its authenticated token until the
+			// retry owner finishes. Reacquiring every tick invalidates signals
+			// that the kernel has queued but has not delivered yet.
+			if request == nil {
+				request = acquireInterruptRequest(trapPtr)
+				if request != nil {
+					atomic.StoreUint32(&request.ack, 0)
+				}
+			}
+			if request != nil {
+				if sig := atomic.LoadUint32(&interruptSignal); sig != 0 {
+					broadcastInterruptSignal(sig, request.token)
+					for yield := 0; yield < 64 && atomic.LoadUint32(&request.ack) == 0; yield++ {
+						goruntime.Gosched()
+					}
+					if atomic.LoadUint32(&request.ack) != 0 {
+						return
+					}
+				}
 			}
 			select {
 			case <-done:

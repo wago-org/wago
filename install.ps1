@@ -202,12 +202,9 @@ try {
     }
 
     if (Test-Path -LiteralPath $refreshRequest) {
-        [string[]]$paths = @(
-            [Environment]::GetEnvironmentVariable("Path", "Machine")
-            [Environment]::GetEnvironmentVariable("Path", "User")
-        ) | Where-Object { $_ }
-        if ($paths.Count -gt 0) {
-            $env:Path = [string]::Join(";", $paths)
+        $addedPath = (Get-Content -LiteralPath $refreshRequest -Raw -Encoding UTF8).Trim()
+        if ($addedPath) {
+            $env:Path = "$addedPath;$env:Path"
         }
     }
 } catch {

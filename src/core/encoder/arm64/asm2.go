@@ -293,24 +293,45 @@ func fbase(f64 bool, baseS, baseD uint32) uint32 {
 
 func (a *Asm) Fadd(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E202800, 0x1E602800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fsub(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E203800, 0x1E603800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fmul(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E200800, 0x1E600800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fdiv(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E201800, 0x1E601800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fsqrt(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E21C000, 0x1E61C000) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fmin(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E205800, 0x1E605800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) Fmax(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E204800, 0x1E604800) | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 
 // FmovReg copies V→V; FmovFromGpr copies GPR→V (also +0.0 from XZR/WZR);
@@ -321,12 +342,20 @@ func (a *Asm) FmovReg(rd, rn Reg, f64 bool) {
 	}
 
 	a.word(fbase(f64, 0x1E204000, 0x1E604000) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(rd))
+	}
+
 }
 func (a *Asm) FmovFromGpr(rd, rn Reg, f64 bool) {
 	if regallocCheckEnabled {
 		a.regallocCrossCopy(rd, rn, true, regallocWidth(f64))
 	}
 	a.word(fbase(f64, 0x1E270000, 0x9E670000) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(rd))
+	}
+
 }
 
 // FmovImm emits FMOV Sd/Dd, #imm from the architecture's exact eight-bit
@@ -369,6 +398,9 @@ func (a *Asm) Frint(rd, rn Reg, f64 bool, mode byte) {
 		panic("Frint: bad mode")
 	}
 	a.word(fbase(f64, s, d) | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 
 // Fcvtzs converts float→signed int (round toward zero). f64src selects the source
@@ -398,6 +430,9 @@ func (a *Asm) Scvtf(rd, rn Reg, f64, srcWide bool) {
 		base |= 0x80000000
 	}
 	a.word(base | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 
 // Ucvtf converts unsigned int→float. f64 selects destination precision and
@@ -411,11 +446,24 @@ func (a *Asm) Ucvtf(rd, rn Reg, f64, srcWide bool) {
 		base |= 0x80000000
 	}
 	a.word(base | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
 }
 func (a *Asm) CvtI2F(rd, rn Reg, f64, srcWide bool) { a.Scvtf(rd, rn, f64, srcWide) }
 
-func (a *Asm) FcvtS2D(rd, rn Reg) { a.word(0x1E22C000 | r(rn)<<5 | r(rd)) } // promote single→double
-func (a *Asm) FcvtD2S(rd, rn Reg) { a.word(0x1E624000 | r(rn)<<5 | r(rd)) } // demote double→single
+func (a *Asm) FcvtS2D(rd, rn Reg) {
+	a.word(0x1E22C000 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
+} // promote single→double
+func (a *Asm) FcvtD2S(rd, rn Reg) {
+	a.word(0x1E624000 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
+} // demote double→single
 
 // --- Stack-pointer register forms (SP must use the extended-register encoding) ---
 
@@ -445,6 +493,7 @@ func (a *Asm) Bl() int {
 	a.word(0x94000000)
 	if regallocCheckEnabled {
 		a.regallocGPWrites(^uint32(0))
+		regallocCall(a)
 	}
 	return at
 }
@@ -541,6 +590,9 @@ func (a *Asm) ldStrScaled(base uint32, shift uint, rt, rn Reg, off uint32) bool 
 	}
 	a.word(base | s<<10 | r(rn)<<5 | r(rt))
 	if regallocCheckEnabled {
+		if base&(1<<26|1<<22) == 1<<26|1<<22 {
+			a.regallocFPWrites(uint32(1) << r(rt))
+		}
 		if loadStoreMayWriteGPR(base) {
 			a.regallocGPWrites(regallocGPMask(rt, false))
 		}
@@ -641,6 +693,10 @@ func (a *Asm) LdrQ(dst, base Reg, disp int32) {
 	}
 	if disp >= -256 && disp <= 255 {
 		a.word(0x3CC00000 | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 		return
 	}
 	if a.baseDispImmediate(X16, base, disp) {
@@ -675,6 +731,9 @@ func (a *Asm) ldStrQIndexed(indexed uint32, rt, base Reg, disp int32) {
 	}
 	a.MovImm64(scratch, uint64(int64(disp)))
 	a.word(indexed | r(scratch)<<16 | r(base)<<5 | r(rt))
+	if regallocCheckEnabled && indexed&(1<<22) != 0 {
+		a.regallocFPWrites(uint32(1) << r(rt))
+	}
 }
 
 // LdpQ / StpQ load or store two adjacent 128-bit SIMD registers without
@@ -689,6 +748,9 @@ func (a *Asm) pairQ(base uint32, rt, rt2, rn Reg, off int32) {
 		panic("arm64: Q-register pair offset out of range or unaligned")
 	}
 	a.word(base | uint32((off/16)&0x7f)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+	if regallocCheckEnabled && base&(1<<22) != 0 {
+		a.regallocFPWrites(uint32(1)<<r(rt) | uint32(1)<<r(rt2))
+	}
 }
 
 // LoadIdx / StoreIdx / StoreImmIdx are the base+index(+disp) linear-memory
@@ -959,6 +1021,10 @@ func (a *Asm) FMov(rd, rn Reg, f64 bool) { a.FmovReg(rd, rn, f64) }
 func (a *Asm) LdrFIdx(dst, base, index Reg, disp int32, f64 bool) {
 	if disp == 0 {
 		a.word(fbase(f64, 0xBC606800, 0xFC606800) | r(index)<<16 | r(base)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 		return
 	}
 	a.AddShifted(X16, base, index, 0, false)
@@ -973,6 +1039,10 @@ func (a *Asm) LdrFIdx(dst, base, index Reg, disp int32, f64 bool) {
 	}
 	a.addDispX16(disp)
 	a.word(fbase(f64, 0xBC606800, 0xFC606800) | r(XZR)<<16 | r(X16)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) StrFIdx(base, index, src Reg, disp int32, f64 bool) {
 	if disp == 0 {
@@ -995,6 +1065,10 @@ func (a *Asm) StrFIdx(base, index, src Reg, disp int32, f64 bool) {
 func (a *Asm) LdrQIdx(rt, rn, rm Reg, disp int32) {
 	if disp == 0 {
 		a.word(0x3CE06800 | r(rm)<<16 | r(rn)<<5 | r(rt))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(rt))
+		}
+
 		return
 	}
 	a.AddShifted(X16, rn, rm, 0, false)
@@ -1003,6 +1077,10 @@ func (a *Asm) LdrQIdx(rt, rn, rm Reg, disp int32) {
 	}
 	a.addDispX16(disp)
 	a.word(0x3CE06800 | r(XZR)<<16 | r(X16)<<5 | r(rt))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(rt))
+	}
+
 }
 func (a *Asm) StrQIdx(rn, rm, rt Reg, disp int32) {
 	if disp == 0 {
@@ -1132,38 +1210,116 @@ func (a *Asm) NeonMov16b(dst, src Reg) {
 	}
 
 	a.word(0x4EA01C00 | r(src)<<16 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 
 // Cnt8b / Addv8b are the scalar popcnt reduction pieces. The same CNT encoding
 // is also the full-vector i8x16.popcnt lowering.
-func (a *Asm) Cnt8b(dst, src Reg)      { a.word(0x4E205800 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonCntB(dst, src Reg)   { a.Cnt8b(dst, src) }
-func (a *Asm) Addv8b(dst, src Reg)     { a.word(0x0E31B800 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonAddvB(dst, src Reg)  { a.word(0x4E31B800 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonUmaxvB(dst, src Reg) { a.word(0x6E30A800 | r(src)<<5 | r(dst)) }
+func (a *Asm) Cnt8b(dst, src Reg) {
+	a.word(0x4E205800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonCntB(dst, src Reg) { a.Cnt8b(dst, src) }
+func (a *Asm) Addv8b(dst, src Reg) {
+	a.word(0x0E31B800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonAddvB(dst, src Reg) {
+	a.word(0x4E31B800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUmaxvB(dst, src Reg) {
+	a.word(0x6E30A800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 
 // Horizontal unsigned-min (UMINV) and full-width add (ADDV) reductions across a
 // 128-bit vector. UMINV feeds all_true (a lane is zero iff the min lane is
 // zero); ADDV feeds bitmask, where every lane has been ANDed to a distinct
 // power-of-two weight so the horizontal sum is exactly the sign-bit mask.
-func (a *Asm) NeonUminvB(dst, src Reg)  { a.word(0x6E31A800 | r(src)<<5 | r(dst)) } // UMINV b, Vn.16b
-func (a *Asm) NeonUminvH(dst, src Reg)  { a.word(0x6E71A800 | r(src)<<5 | r(dst)) } // UMINV h, Vn.8h
-func (a *Asm) NeonUminvS(dst, src Reg)  { a.word(0x6EB1A800 | r(src)<<5 | r(dst)) } // UMINV s, Vn.4s
-func (a *Asm) NeonAddvH(dst, src Reg)   { a.word(0x4E71B800 | r(src)<<5 | r(dst)) } // ADDV h, Vn.8h
-func (a *Asm) NeonAddvS(dst, src Reg)   { a.word(0x4EB1B800 | r(src)<<5 | r(dst)) } // ADDV s, Vn.4s
-func (a *Asm) NeonBsl16b(dst, n, m Reg) { a.word(0x6E601C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonUminvB(dst, src Reg) {
+	a.word(0x6E31A800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // UMINV b, Vn.16b
+func (a *Asm) NeonUminvH(dst, src Reg) {
+	a.word(0x6E71A800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // UMINV h, Vn.8h
+func (a *Asm) NeonUminvS(dst, src Reg) {
+	a.word(0x6EB1A800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // UMINV s, Vn.4s
+func (a *Asm) NeonAddvH(dst, src Reg) {
+	a.word(0x4E71B800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // ADDV h, Vn.8h
+func (a *Asm) NeonAddvS(dst, src Reg) {
+	a.word(0x4EB1B800 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // ADDV s, Vn.4s
+func (a *Asm) NeonBsl16b(dst, n, m Reg) {
+	a.word(0x6E601C00 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 
 // --- NEON 16-byte logical ops (float sign-bit manipulation) + float spill aliases ---
 
-func (a *Asm) And16b(dst, n, m Reg)     { a.word(0x4E201C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
-func (a *Asm) Orr16b(dst, n, m Reg)     { a.word(0x4EA01C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
-func (a *Asm) Eor16b(dst, n, m Reg)     { a.word(0x6E201C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
+func (a *Asm) And16b(dst, n, m Reg) {
+	a.word(0x4E201C00 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) Orr16b(dst, n, m Reg) {
+	a.word(0x4EA01C00 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) Eor16b(dst, n, m Reg) {
+	a.word(0x6E201C00 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) NeonAnd16b(dst, n, m Reg) { a.And16b(dst, n, m) }
 func (a *Asm) NeonOrr16b(dst, n, m Reg) { a.Orr16b(dst, n, m) }
 func (a *Asm) NeonEor16b(dst, n, m Reg) { a.Eor16b(dst, n, m) }
-func (a *Asm) NeonNot16b(dst, n Reg)    { a.word(0x6E205800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonNot16b(dst, n Reg) {
+	a.word(0x6E205800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) NeonAndn16b(dst, n, m Reg) {
-	a.word(0x4E601C00 | r(m)<<16 | r(n)<<5 | r(dst)) // BIC Vd.16b,Vn.16b,Vm.16b
+	a.word(0x4E601C00 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+	// BIC Vd.16b,Vn.16b,Vm.16b
 }
 
 func neonSize(bytes int) uint32 {
@@ -1183,6 +1339,10 @@ func neonSize(bytes int) uint32 {
 
 func (a *Asm) neon3(base uint32, bytes int, dst, n, m Reg) {
 	a.word(base | neonSize(bytes)<<22 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 
 func (a *Asm) NeonAddB(dst, n, m Reg)  { a.neon3(0x4E208400, 1, dst, n, m) }
@@ -1243,80 +1403,298 @@ func (a *Asm) NeonMulS(dst, n, m Reg)      { a.neon3(0x4E209C00, 4, dst, n, m) }
 func (a *Asm) NeonSqrdmulhH(dst, n, m Reg) { a.neon3(0x6E20B400, 2, dst, n, m) }
 func (a *Asm) NeonHaddH(dst, n, m Reg)     { a.neon3(0x4E202800, 2, dst, n, m) }
 func (a *Asm) NeonHaddS(dst, n, m Reg)     { a.neon3(0x4E202800, 4, dst, n, m) }
-func (a *Asm) NeonSaddlpHfromB(dst, n Reg) { a.word(0x4E202800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUaddlpHfromB(dst, n Reg) { a.word(0x6E202800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSaddlpSfromH(dst, n Reg) { a.word(0x4E602800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUaddlpSfromH(dst, n Reg) { a.word(0x6E602800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSxtlHfromB(dst, n Reg)   { a.word(0x0F08A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSxtl2HfromB(dst, n Reg)  { a.word(0x4F08A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUxtlHfromB(dst, n Reg)   { a.word(0x2F08A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUxtl2HfromB(dst, n Reg)  { a.word(0x6F08A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSxtlSfromH(dst, n Reg)   { a.word(0x0F10A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSxtl2SfromH(dst, n Reg)  { a.word(0x4F10A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUxtlSfromH(dst, n Reg)   { a.word(0x2F10A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUxtl2SfromH(dst, n Reg)  { a.word(0x6F10A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSxtlDfromS(dst, n Reg)   { a.word(0x0F20A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSxtl2DfromS(dst, n Reg)  { a.word(0x4F20A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUxtlDfromS(dst, n Reg)   { a.word(0x2F20A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUxtl2DfromS(dst, n Reg)  { a.word(0x6F20A400 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonMaddwd(dst, n, m Reg)    { a.neon3(0x4E209C00, 2, dst, n, m) }
+func (a *Asm) NeonSaddlpHfromB(dst, n Reg) {
+	a.word(0x4E202800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUaddlpHfromB(dst, n Reg) {
+	a.word(0x6E202800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSaddlpSfromH(dst, n Reg) {
+	a.word(0x4E602800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUaddlpSfromH(dst, n Reg) {
+	a.word(0x6E602800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSxtlHfromB(dst, n Reg) {
+	a.word(0x0F08A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSxtl2HfromB(dst, n Reg) {
+	a.word(0x4F08A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUxtlHfromB(dst, n Reg) {
+	a.word(0x2F08A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUxtl2HfromB(dst, n Reg) {
+	a.word(0x6F08A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSxtlSfromH(dst, n Reg) {
+	a.word(0x0F10A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSxtl2SfromH(dst, n Reg) {
+	a.word(0x4F10A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUxtlSfromH(dst, n Reg) {
+	a.word(0x2F10A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUxtl2SfromH(dst, n Reg) {
+	a.word(0x6F10A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSxtlDfromS(dst, n Reg) {
+	a.word(0x0F20A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSxtl2DfromS(dst, n Reg) {
+	a.word(0x4F20A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUxtlDfromS(dst, n Reg) {
+	a.word(0x2F20A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUxtl2DfromS(dst, n Reg) {
+	a.word(0x6F20A400 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonMaddwd(dst, n, m Reg) { a.neon3(0x4E209C00, 2, dst, n, m) }
 func (a *Asm) NeonSmullHfromB(dst, n, m Reg) {
 	a.word(0x0E20C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonSmull2HfromB(dst, n, m Reg) {
 	a.word(0x4E20C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonUmullHfromB(dst, n, m Reg) {
 	a.word(0x2E20C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonUmull2HfromB(dst, n, m Reg) {
 	a.word(0x6E20C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonSmullSfromH(dst, n, m Reg) {
 	a.word(0x0E60C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonSmull2SfromH(dst, n, m Reg) {
 	a.word(0x4E60C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonUmullSfromH(dst, n, m Reg) {
 	a.word(0x2E60C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonUmull2SfromH(dst, n, m Reg) {
 	a.word(0x6E60C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonSmullDfromS(dst, n, m Reg) {
 	a.word(0x0EA0C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonSmull2DfromS(dst, n, m Reg) {
 	a.word(0x4EA0C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonUmullDfromS(dst, n, m Reg) {
 	a.word(0x2EA0C000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonUmull2DfromS(dst, n, m Reg) {
 	a.word(0x6EA0C000 | r(m)<<16 | r(n)<<5 | r(dst))
-}
-func (a *Asm) NeonSmullDQ(dst, n, m Reg)    { a.neon3(0x0E20C000, 4, dst, n, m) }
-func (a *Asm) NeonUmullDQ(dst, n, m Reg)    { a.neon3(0x2E20C000, 4, dst, n, m) }
-func (a *Asm) NeonSqxtnBfromH(dst, n Reg)   { a.word(0x0E214800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSqxtn2BfromH(dst, n Reg)  { a.word(0x4E214800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSqxtunBfromH(dst, n Reg)  { a.word(0x2E212800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSqxtun2BfromH(dst, n Reg) { a.word(0x6E212800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSqxtnHfromS(dst, n Reg)   { a.word(0x0E614800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSqxtn2HfromS(dst, n Reg)  { a.word(0x4E614800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSqxtunHfromS(dst, n Reg)  { a.word(0x2E612800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSqxtun2HfromS(dst, n Reg) { a.word(0x6E612800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonSqxtnSfromD(dst, n Reg)   { a.word(0x0EA14800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUqxtnSfromD(dst, n Reg)   { a.word(0x2EA14800 | r(n)<<5 | r(dst)) }
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
 
-func (a *Asm) NeonAbsB(dst, n Reg) { a.word(0x4E20B800 | neonSize(1)<<22 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonAbsH(dst, n Reg) { a.word(0x4E20B800 | neonSize(2)<<22 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonAbsS(dst, n Reg) { a.word(0x4E20B800 | neonSize(4)<<22 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonAbsD(dst, n Reg) { a.word(0x4E20B800 | neonSize(8)<<22 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonNegB(dst, n Reg) { a.word(0x6E20B800 | neonSize(1)<<22 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonNegH(dst, n Reg) { a.word(0x6E20B800 | neonSize(2)<<22 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonNegS(dst, n Reg) { a.word(0x6E20B800 | neonSize(4)<<22 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonNegD(dst, n Reg) { a.word(0x6E20B800 | neonSize(8)<<22 | r(n)<<5 | r(dst)) }
+}
+func (a *Asm) NeonSmullDQ(dst, n, m Reg) { a.neon3(0x0E20C000, 4, dst, n, m) }
+func (a *Asm) NeonUmullDQ(dst, n, m Reg) { a.neon3(0x2E20C000, 4, dst, n, m) }
+func (a *Asm) NeonSqxtnBfromH(dst, n Reg) {
+	a.word(0x0E214800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSqxtn2BfromH(dst, n Reg) {
+	a.word(0x4E214800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSqxtunBfromH(dst, n Reg) {
+	a.word(0x2E212800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSqxtun2BfromH(dst, n Reg) {
+	a.word(0x6E212800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSqxtnHfromS(dst, n Reg) {
+	a.word(0x0E614800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSqxtn2HfromS(dst, n Reg) {
+	a.word(0x4E614800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSqxtunHfromS(dst, n Reg) {
+	a.word(0x2E612800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSqxtun2HfromS(dst, n Reg) {
+	a.word(0x6E612800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonSqxtnSfromD(dst, n Reg) {
+	a.word(0x0EA14800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUqxtnSfromD(dst, n Reg) {
+	a.word(0x2EA14800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
+func (a *Asm) NeonAbsB(dst, n Reg) {
+	a.word(0x4E20B800 | neonSize(1)<<22 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonAbsH(dst, n Reg) {
+	a.word(0x4E20B800 | neonSize(2)<<22 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonAbsS(dst, n Reg) {
+	a.word(0x4E20B800 | neonSize(4)<<22 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonAbsD(dst, n Reg) {
+	a.word(0x4E20B800 | neonSize(8)<<22 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonNegB(dst, n Reg) {
+	a.word(0x6E20B800 | neonSize(1)<<22 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonNegH(dst, n Reg) {
+	a.word(0x6E20B800 | neonSize(2)<<22 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonNegS(dst, n Reg) {
+	a.word(0x6E20B800 | neonSize(4)<<22 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonNegD(dst, n Reg) {
+	a.word(0x6E20B800 | neonSize(8)<<22 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 
 func (a *Asm) NeonUshlB(dst, n, m Reg)  { a.neon3(0x6E204400, 1, dst, n, m) }
 func (a *Asm) NeonUshlH(dst, n, m Reg)  { a.neon3(0x6E204400, 2, dst, n, m) }
@@ -1332,13 +1710,37 @@ func (a *Asm) NeonUshrvD(dst, n, m Reg) { a.neon3(0x6E204400, 8, dst, n, m) }
 func (a *Asm) NeonSshrvD(dst, n, m Reg) { a.neon3(0x4E204400, 8, dst, n, m) } // SSHL.2D (negate count for asr)
 
 // Helpers for the i64x2.mul widening recombine (NEON has no MUL.2D).
-func (a *Asm) NeonRev64S(dst, n Reg)       { a.word(0x4EA00800 | r(n)<<5 | r(dst)) } // REV64 Vd.4S,Vn.4S
-func (a *Asm) NeonXtnBfromH(dst, n Reg)    { a.word(0x0E212800 | r(n)<<5 | r(dst)) } // XTN Vd.8B,Vn.8H
-func (a *Asm) NeonXtnSfromD(dst, n Reg)    { a.word(0x0EA12800 | r(n)<<5 | r(dst)) } // XTN Vd.2S,Vn.2D
-func (a *Asm) NeonUaddlpDfromS(dst, n Reg) { a.word(0x6EA02800 | r(n)<<5 | r(dst)) } // UADDLP Vd.2D,Vn.4S
+func (a *Asm) NeonRev64S(dst, n Reg) {
+	a.word(0x4EA00800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // REV64 Vd.4S,Vn.4S
+func (a *Asm) NeonXtnBfromH(dst, n Reg) {
+	a.word(0x0E212800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // XTN Vd.8B,Vn.8H
+func (a *Asm) NeonXtnSfromD(dst, n Reg) {
+	a.word(0x0EA12800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // XTN Vd.2S,Vn.2D
+func (a *Asm) NeonUaddlpDfromS(dst, n Reg) {
+	a.word(0x6EA02800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // UADDLP Vd.2D,Vn.4S
 func (a *Asm) neonLeftShift(bytes int, dst, n Reg, shift uint8) {
 	imm := uint32(bytes*8) + uint32(shift)
 	a.word(0x4F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonShlB(dst, n Reg, shift uint8) { a.neonLeftShift(1, dst, n, shift) }
 func (a *Asm) NeonShlH(dst, n Reg, shift uint8) { a.neonLeftShift(2, dst, n, shift) }
@@ -1347,15 +1749,27 @@ func (a *Asm) NeonShlD(dst, n Reg, shift uint8) { a.neonLeftShift(8, dst, n, shi
 func (a *Asm) NeonSliS(dst, n Reg, shift uint8) {
 	imm := 32 + uint32(shift)
 	a.word(0x6F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonUmlalDfromS(dst, n, m Reg) { // UMLAL Vd.2D,Vn.2S,Vm.2S (Vd += widen(n)*widen(m))
 	a.word(0x2EA08000 | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 
 func (a *Asm) neonRightShift(base uint32, bytes int, dst, n Reg, shift uint8) {
 	esize := uint32(bytes * 8)
 	imm := 2*esize - uint32(shift)
 	a.word(base | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonSshrB(dst, n Reg, shift uint8) { a.neonRightShift(0x4F000400, 1, dst, n, shift) }
 func (a *Asm) NeonSshrH(dst, n Reg, shift uint8) { a.neonRightShift(0x4F000400, 2, dst, n, shift) }
@@ -1365,7 +1779,12 @@ func (a *Asm) NeonUshrB(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 
 func (a *Asm) NeonUshrH(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 2, dst, n, shift) }
 func (a *Asm) NeonUshrS(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 4, dst, n, shift) }
 func (a *Asm) NeonUshrD(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 8, dst, n, shift) }
-func (a *Asm) NeonRev32H(dst, n Reg)             { a.word(0x6E600800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonRev32H(dst, n Reg) {
+	a.word(0x6E600800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }
@@ -1381,15 +1800,31 @@ func neonImm5(bytes int, lane byte) uint32 {
 }
 func (a *Asm) NeonInsB(dst, rn Reg, lane byte) {
 	a.word(0x4E001C00 | neonImm5(1, lane)<<16 | r(rn)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonInsH(dst, rn Reg, lane byte) {
 	a.word(0x4E001C00 | neonImm5(2, lane)<<16 | r(rn)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonInsS(dst, rn Reg, lane byte) {
 	a.word(0x4E001C00 | neonImm5(4, lane)<<16 | r(rn)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonInsD(dst, rn Reg, lane byte) {
 	a.word(0x4E001C00 | neonImm5(8, lane)<<16 | r(rn)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonUmovB(rd, vn Reg, lane byte) {
 	a.word(0x0E003C00 | neonImm5(1, lane)<<16 | r(vn)<<5 | r(rd))
@@ -1416,91 +1851,307 @@ func (a *Asm) NeonUmovD(rd, vn Reg, lane byte) {
 	}
 }
 
-func (a *Asm) NeonDupB(dst, src Reg)    { a.word(0x4E010400 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupH(dst, src Reg)    { a.word(0x4E020400 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupS(dst, src Reg)    { a.word(0x4E040400 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupD(dst, src Reg)    { a.word(0x4E080400 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupGprB(dst, src Reg) { a.word(0x4E010C00 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupGprH(dst, src Reg) { a.word(0x4E020C00 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupGprS(dst, src Reg) { a.word(0x4E040C00 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupGprD(dst, src Reg) { a.word(0x4E080C00 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupB(dst, src Reg) {
+	a.word(0x4E010400 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonDupH(dst, src Reg) {
+	a.word(0x4E020400 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonDupS(dst, src Reg) {
+	a.word(0x4E040400 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonDupD(dst, src Reg) {
+	a.word(0x4E080400 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonDupGprB(dst, src Reg) {
+	a.word(0x4E010C00 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonDupGprH(dst, src Reg) {
+	a.word(0x4E020C00 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonDupGprS(dst, src Reg) {
+	a.word(0x4E040C00 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonDupGprD(dst, src Reg) {
+	a.word(0x4E080C00 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) NeonDupLaneS(dst, src Reg, lane byte) {
 	a.word(0x4E000400 | neonImm5(4, lane)<<16 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonDupLaneD(dst, src Reg, lane byte) {
 	a.word(0x4E000400 | neonImm5(8, lane)<<16 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonInsLaneS(dst Reg, lane byte, src Reg) {
 	a.word(0x6E000400 | neonImm5(4, lane)<<16 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
+}
+func (a *Asm) NeonInsLaneSFrom(dst Reg, lane byte, src Reg, srcLane byte) {
+	a.word(0x6E000400 | neonImm5(4, lane)<<16 | uint32(srcLane&3)<<13 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
 }
 func (a *Asm) NeonInsLaneD(dst Reg, lane byte, src Reg) {
 	a.word(0x6E000400 | neonImm5(8, lane)<<16 | r(src)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonTbl(dst, table, idx Reg) {
-	a.word(0x4E000000 | r(idx)<<16 | r(table)<<5 | r(dst)) // TBL Vd.16b,{Vn.16b},Vm.16b
+	a.word(0x4E000000 | r(idx)<<16 | r(table)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+	// TBL Vd.16b,{Vn.16b},Vm.16b
 }
 func (a *Asm) NeonExt16b(dst, lo, hi Reg, offset byte) {
 	a.word(0x6E000000 | r(hi)<<16 | (uint32(offset)&15)<<11 | r(lo)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonPshufS(dst, src Reg, imm byte) {
-	_ = imm
-	if dst != src {
-		a.NeonMov16b(dst, src)
+	if imm == 0xe4 {
+		if dst != src {
+			a.NeonMov16b(dst, src)
+		}
+		return
+	}
+	first := imm & 3
+	if dst == src {
+		if imm != first*0x55 {
+			panic("NeonPshufS needs a separate source; use NeonPshufSWithScratch")
+		}
+		a.NeonDupLaneS(dst, src, first)
+		return
+	}
+	a.NeonDupLaneS(dst, src, first)
+	for lane := byte(1); lane < 4; lane++ {
+		selected := (imm >> (2 * lane)) & 3
+		if selected != first {
+			a.NeonInsLaneSFrom(dst, lane, src, selected)
+		}
 	}
 }
+
+// NeonPshufSWithScratch permits an in-place shuffle without clobbering source lanes.
+// The caller owns scratch, which must differ from dst and src.
+func (a *Asm) NeonPshufSWithScratch(dst, src, scratch Reg, imm byte) {
+	if scratch == dst || scratch == src {
+		panic("NeonPshufS scratch overlaps an operand")
+	}
+	if dst == src {
+		a.NeonMov16b(scratch, src)
+		src = scratch
+	}
+	a.NeonPshufS(dst, src, imm)
+}
+
+// NeonMovemaskB extracts the high bit of each byte into a 16-bit mask.
+// X16 and X17 are the encoder's reserved scratch registers.
 func (a *Asm) NeonMovemaskB(dst, src Reg) {
+	if dst == X16 || dst == X17 {
+		panic("NeonMovemaskB destination overlaps scratch")
+	}
 	a.FmovToGpr(dst, src, true)
-	a.LsrImm(dst, dst, 7, true)
-	a.AndImm32(dst, dst, 1)
+	a.NeonUmovD(X16, src, 1)
+	a.AndImm64(dst, dst, 0x8080808080808080)
+	a.AndImm64(X16, X16, 0x8080808080808080)
+	a.MovImm64(X17, 0x0002040810204081)
+	a.Mul64(dst, dst, X17)
+	a.Mul64(X16, X16, X17)
+	a.LsrImm(dst, dst, 56, false)
+	a.LsrImm(X16, X16, 56, false)
+	a.LslImm(X16, X16, 8, true)
+	a.Orr32(dst, dst, X16)
 }
 
 func (a *Asm) NeonFadd(dst, n, m Reg, f64 bool) {
 	a.word(fbase(f64, 0x4E20D400, 0x4E60D400) | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonFsub(dst, n, m Reg, f64 bool) {
 	a.word(fbase(f64, 0x4EA0D400, 0x4EE0D400) | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonFmul(dst, n, m Reg, f64 bool) {
 	a.word(fbase(f64, 0x6E20DC00, 0x6E60DC00) | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonFdiv(dst, n, m Reg, f64 bool) {
 	a.word(fbase(f64, 0x6E20FC00, 0x6E60FC00) | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonFmax(dst, n, m Reg, f64 bool) {
 	a.word(fbase(f64, 0x4E20F400, 0x4E60F400) | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonFmin(dst, n, m Reg, f64 bool) {
 	a.word(fbase(f64, 0x4EA0F400, 0x4EE0F400) | r(m)<<16 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonFabs(dst, n Reg, f64 bool) {
 	a.word(fbase(f64, 0x4EA0F800, 0x4EE0F800) | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonFneg(dst, n Reg, f64 bool) {
 	a.word(fbase(f64, 0x6EA0F800, 0x6EE0F800) | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
 func (a *Asm) NeonFsqrt(dst, n Reg, f64 bool) {
 	a.word(fbase(f64, 0x6EA1F800, 0x6EE1F800) | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+
 }
-func (a *Asm) NeonFcvtnSfromD(dst, n Reg)  { a.word(0x0E616800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonFcvtlDfromS(dst, n Reg)  { a.word(0x0E617800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonScvtfSfromS(dst, n Reg)  { a.word(0x4E21D800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUcvtfSfromS(dst, n Reg)  { a.word(0x6E21D800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonScvtfDfromD(dst, n Reg)  { a.word(0x4E61D800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonUcvtfDfromD(dst, n Reg)  { a.word(0x6E61D800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonFcvtzsSfromS(dst, n Reg) { a.word(0x4EA1B800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonFcvtzuSfromS(dst, n Reg) { a.word(0x6EA1B800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonFcvtzsDfromD(dst, n Reg) { a.word(0x4EE1B800 | r(n)<<5 | r(dst)) }
-func (a *Asm) NeonFcvtzuDfromD(dst, n Reg) { a.word(0x6EE1B800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonFcvtnSfromD(dst, n Reg) {
+	a.word(0x0E616800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonFcvtlDfromS(dst, n Reg) {
+	a.word(0x0E617800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonScvtfSfromS(dst, n Reg) {
+	a.word(0x4E21D800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUcvtfSfromS(dst, n Reg) {
+	a.word(0x6E21D800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonScvtfDfromD(dst, n Reg) {
+	a.word(0x4E61D800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonUcvtfDfromD(dst, n Reg) {
+	a.word(0x6E61D800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonFcvtzsSfromS(dst, n Reg) {
+	a.word(0x4EA1B800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonFcvtzuSfromS(dst, n Reg) {
+	a.word(0x6EA1B800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonFcvtzsDfromD(dst, n Reg) {
+	a.word(0x4EE1B800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+func (a *Asm) NeonFcvtzuDfromD(dst, n Reg) {
+	a.word(0x6EE1B800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) NeonFrint(dst, n Reg, f64 bool, mode byte) {
 	switch mode {
 	case 'n':
 		a.word(fbase(f64, 0x4E218800, 0x4E618800) | r(n)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	case 'm':
 		a.word(fbase(f64, 0x4E219800, 0x4E619800) | r(n)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	case 'p':
 		a.word(fbase(f64, 0x4EA18800, 0x4EE18800) | r(n)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	case 'z':
 		a.word(fbase(f64, 0x4EA19800, 0x4EE19800) | r(n)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	default:
 		panic("arm64: invalid neon frint mode")
 	}
@@ -1509,17 +2160,41 @@ func (a *Asm) NeonFcmp(dst, n, m Reg, f64 bool, pred byte) {
 	switch pred {
 	case 0x00: // eq
 		a.word(fbase(f64, 0x4E20E400, 0x4E60E400) | r(m)<<16 | r(n)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	case 0x11: // lt
 		a.word(fbase(f64, 0x6EA0E400, 0x6EE0E400) | r(n)<<16 | r(m)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	case 0x12: // le
 		a.word(fbase(f64, 0x6E20E400, 0x6E60E400) | r(n)<<16 | r(m)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	case 0x1d: // ge
 		a.word(fbase(f64, 0x6E20E400, 0x6E60E400) | r(m)<<16 | r(n)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	case 0x1e: // gt
 		a.word(fbase(f64, 0x6EA0E400, 0x6EE0E400) | r(m)<<16 | r(n)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	default:
 		// neq/unordered placeholder: invert eq with all-ones mask using dst as temp.
 		a.word(fbase(f64, 0x4E20E400, 0x4E60E400) | r(m)<<16 | r(n)<<5 | r(dst))
+		if regallocCheckEnabled {
+			a.regallocFPWrites(uint32(1) << r(dst))
+		}
+
 	}
 }
 

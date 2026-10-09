@@ -33,6 +33,10 @@ import (
 // the architecture-specific name is the public A/B oracle going forward.
 var regMergeEnabled = os.Getenv("WAGO_ARM64_NO_REG_MERGE") != "1" && os.Getenv("WAGO_REG_MERGE") != "0"
 
+// directGoImportEnabled bypasses cross-instance marshaling for bound Go imports
+// in bounded numeric functions. The dispatch tag remains an instance decision.
+var directGoImportEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_GO_IMPORT") != "1"
+
 // uxtwAddEnabled gates folding i64.add(x, i64.extend_i32_u(y)) into a single
 // UXTW extended-register add. On by default; WAGO_ARM64_NOUXTW=1 disables it for
 // A/B measurement.
@@ -408,6 +412,7 @@ type fn struct {
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
 	syncHostCalls          bool
+	dynamicHostFast        bool
 	syncHostSlots          int
 	gcTypeSubtypingRefTest bool
 	gcStructHelpers        bool
@@ -703,37 +708,43 @@ const maxCachedAdapterBytes = 256
 
 // adapterTemplateCache retains one repeated host-adapter shape per worker.
 // Function types alias immutable module storage, so pointer identity is an exact
-// signature key within the scratch's single-module lifetime. The first sighting
-// only records a candidate; the second emits normally and promotes the complete
+// signature key within the scratch's single-module lifetime. The memory-size
+// register is also part of the shape: bounded leaves can use X17 instead of X27.
+// The first sighting only records a candidate; the second emits normally and
+// promotes the complete
 // patched adapter. This avoids copying unique shapes while turning longer runs
 // into one bounded byte copy per function.
 type adapterTemplateCache struct {
-	candidate *wasm.CompType
-	typ       *wasm.CompType
-	n         uint16
-	returnOff uint16
-	endOff    uint16
-	code      [maxCachedAdapterBytes]byte
+	candidate        *wasm.CompType
+	typ              *wasm.CompType
+	n                uint16
+	returnOff        uint16
+	endOff           uint16
+	candidateMemSize Reg
+	memSize          Reg
+	code             [maxCachedAdapterBytes]byte
 }
 
-func (c *adapterTemplateCache) lookup(ft *wasm.CompType) (code []byte, returnOff, endOff int, ok bool) {
-	if c.typ != ft || c.n == 0 {
+func (c *adapterTemplateCache) lookup(ft *wasm.CompType, memSize Reg) (code []byte, returnOff, endOff int, ok bool) {
+	if c.typ != ft || c.memSize != memSize || c.n == 0 {
 		return nil, 0, 0, false
 	}
 	return c.code[:c.n], int(c.returnOff), int(c.endOff), true
 }
 
-func (c *adapterTemplateCache) observe(ft *wasm.CompType, code []byte, returnOff, endOff int) {
+func (c *adapterTemplateCache) observe(ft *wasm.CompType, memSize Reg, code []byte, returnOff, endOff int) {
 	if len(code) > len(c.code) || returnOff <= 4 || returnOff > len(code) || endOff > len(code) {
 		c.candidate = nil
 		return
 	}
-	if c.candidate != ft {
+	if c.candidate != ft || c.candidateMemSize != memSize {
 		c.candidate = ft
+		c.candidateMemSize = memSize
 		return
 	}
 	copy(c.code[:], code)
 	c.typ = ft
+	c.memSize = memSize
 	c.n = uint16(len(code))
 	c.returnOff = uint16(returnOff)
 	c.endOff = uint16(endOff)
@@ -1579,7 +1590,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if opts.Profile && opts.Stats == nil {
 		return nil, fmt.Errorf("arm64: profiling requires a ModuleStats destination")
 	}
-	compiled, err := compileModuleWith(m, opts)
+	var compiled *a64.CompiledModule
+	var err error
+	if codegen.SourceChecks {
+		compiled, err = compileSourceModuleWith(m, opts)
+	} else {
+		compiled, err = compileModuleWith(m, opts)
+	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
 	return compiled, err
@@ -1756,6 +1773,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				_ = codeBuffer.Close()
 			}
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
+		}
 		pressureDone := false
 		var directPrepared, directPreparedLight, directPreparedBounded []uint64
 		var adapterTails []adapterTailInfo
@@ -1931,6 +1951,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
+		if regallocCheckEnabled {
+			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
+		}
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
 		states[i].scratch.reserveLocalScratch(localCap)
@@ -1956,6 +1979,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			ws.scratchStats = workerScratchStats(ws.scratch)
 			ws.scratch = nil
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceContext(&ws.scratch.scalar, codegen.SourceContextFor(opts.Codegen, m))
+		}
 		for {
 			i := int(work.next.Add(1) - 1)
 			if i >= n {
@@ -3059,6 +3085,22 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.storeForwardOK = policy.EnabledOption(optStoreForward) && len(c.BodyBytes) <= 256 && nLocals <= 8
 	f.syncHostCalls = syncHostCalls
+	f.dynamicHostFast = f.opt(optDirectGoHostImport) && syncHostCalls && !f.moduleEH && shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
+	for _, typ := range ft.Params {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
+	for _, run := range c.Locals.Runs {
+		if run.Type.Kind() != wasm.ValNum || mtOf(run.Type) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
 	if !guardMode && len(m.Memories) > 0 {
@@ -3098,11 +3140,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	touchesMemory := hints.flags.has(hintTouchesMemory)
 	// A private prepared entry establishes X26 and preserves the full Go
 	// callee-saved set, so small integer functions need not be leaves. Keep host
-	// imports, memory-touching functions, module-pinned globals, and EH state on
-	// the adapter. A module-level memory alone is harmless when this function's
+	// imports on the adapter unless the native-host candidate below is proven;
+	// memory-touching functions, module-pinned globals and EH retain the adapter. A module-level memory alone is harmless when this function's
 	// bounded scan proves that its body never reads, writes, or grows memory.
+	// A native-host candidate has a register entry, but its runtime admission
+	// still requires the module-wide work proof and a proven native import.
+	nativeHostDirect := policy.EnabledOption(optNativeLeafHost) && policy.EnabledOption(optPreparedBoundedEntry) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
 	directPrepared := policy.EnabledOption(optPreparedDirectEntry) && policy.EnabledOption(optRegABI) && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && !touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) &&
-		m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall) && len(c.BodyBytes) <= 96 && nLocals <= 8
+		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
 	// runs its linear-memory ops in THIS caller's frame, so fold it into
@@ -3378,6 +3423,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		return nil, nil, 0, err
 	}
 
+	if regallocCheckEnabled {
+		checkSourceBegin(f, hostAdapter || !regABI)
+	}
+
 	if regABI {
 		internalOff, err := f.emitRegABI(c, hostAdapter, hints.localScore, hints.flags.has(hintHasFloatConst), hints)
 		if err != nil {
@@ -3393,9 +3442,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		if err := f.emitFloatConstPool(); err != nil {
 			return nil, nil, 0, err
 		}
+		if regallocCheckEnabled {
+			checkSourceFinishEmission(f)
+		}
 		internalOff, err = f.finalizeNativeCode(internalOff)
 		if err != nil {
 			return nil, nil, 0, err
+		}
+		if regallocCheckEnabled {
+			checkSourceVerify(f)
 		}
 		f.finalizeStats(len(f.a.B))
 		return f.a.B, f.relocs, internalOff, nil
@@ -4294,7 +4349,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	cachedAdapter := false
 	if hostAdapter {
 		if f.sc != nil {
-			if template, returnOff, endOff, ok := f.sc.adapterTemplate.lookup(f.ft); ok {
+			if template, returnOff, endOff, ok := f.sc.adapterTemplate.lookup(f.ft, f.memSizeReg); ok {
 				a.B = append(a.B, template...)
 				f.adapterReturnOff = returnOff
 				f.adapterEndOff = endOff
@@ -4442,6 +4497,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
+	// Body results are canonical; terminal reloads may reuse cache registers.
+	// Attempt cleanup owns observer restoration if return emission panics.
+	var returnWrites regallocWriteMask
+	if regallocCheckEnabled {
+		returnWrites = f.checkTerminalWrites()
+	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
@@ -4493,6 +4554,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		a.LdpPost(FP, LR, SP, 16) // restore FP/LR
 	}
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreWrites(returnWrites)
+	}
 	if profileEnabled {
 		f.collectProfileSources(internalOff)
 	}
@@ -4507,7 +4571,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		if !cachedAdapter {
 			f.patchBranch26(adapterCall, internalOff)
 			if f.sc != nil {
-				f.sc.adapterTemplate.observe(f.ft, f.a.B[:internalOff], f.adapterReturnOff, f.adapterEndOff)
+				f.sc.adapterTemplate.observe(f.ft, f.memSizeReg, f.a.B[:internalOff], f.adapterReturnOff, f.adapterEndOff)
 			}
 		}
 		if diagnosticsEnabled && f.stats != nil {
@@ -4531,6 +4595,11 @@ func (f *fn) emitPhasePadding() {
 // return, br to the function label) has already placed the results in slots
 // [0, resultN).
 func (f *fn) epilogue() {
+	// Every reaching path has already placed results in canonical slots.
+	var returnWrites regallocWriteMask
+	if regallocCheckEnabled {
+		returnWrites = f.checkTerminalWrites()
+	}
 	a := f.a
 	f.storeModuleGlobals(X2)     // Go exit: module-pinned registers → cells
 	f.ld64(X1, SP, frResultsOff) // results ptr (X1 is free at the epilogue)
@@ -4556,6 +4625,9 @@ func (f *fn) epilogue() {
 		a.LdpPost(FP, LR, SP, 16) // restore FP/LR
 	}
 	a.Ret()
+	if regallocCheckEnabled {
+		f.checkRestoreWrites(returnWrites)
+	}
 }
 
 func abiValOff(ts []wasm.ValType, idx int) int32 {

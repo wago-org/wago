@@ -19,7 +19,18 @@ func TestInternalEntryValidation(t *testing.T) {
 		{"length", []int{0, 1}, true, false},
 		{"negative", []int{-1}, true, false},
 		{"wire marker", []int{markDirectPreparedEntry(0)}, true, false},
+		{"wire light marker", []int{int(directPreparedLightMask)}, true, false},
+		{"wire bounded marker", []int{int(directPreparedBoundedMask)}, true, false},
+		{"wire host segment marker", []int{int(directHostSegmentsMask)}, true, false},
+		{"wire native bounded marker", []int{int(nativeScalarBoundedMask)}, true, false},
+		{"compiler native bounded marker", []int{int(nativeScalarBoundedMask)}, false, true},
+		{"wire Go host dispatch marker", []int{int(goHostDispatchTagMask)}, true, false},
+		{"compiler Go host dispatch marker", []int{int(goHostDispatchTagMask)}, false, true},
+		{"wire integer host context marker", []int{int(integerHostContextMask)}, true, integerHostContextMask == 0},
+		{"compiler integer host context marker", []int{int(integerHostContextMask)}, false, true},
+		{"wire native leaf marker", []int{int(nativeScalarLeafMask)}, true, false},
 		{"compiler marker", []int{markDirectPreparedEntry(0)}, false, true},
+		{"compiler native leaf marker", []int{int(directPreparedEntryMask >> 4)}, false, true},
 		{"compiler invalid offset", []int{markDirectPreparedEntry(2)}, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

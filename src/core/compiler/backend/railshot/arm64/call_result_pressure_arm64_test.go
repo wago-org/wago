@@ -13,7 +13,7 @@ import (
 // More than eight parameters select the wrapper entry. Reading every parameter
 // after the call fills the whole-function pin pool. A computed stack prefix must
 // also survive while each distinct integer result is checked in reverse order.
-func integerResultPressureModule(t testing.TB, count, paramCount int) (*wasm.Module, []uint64) {
+func integerResultPressureModule(t testing.TB, count, paramCount int, reloadPins bool) (*wasm.Module, []uint64) {
 	t.Helper()
 	params := make([]wasm.ValType, paramCount)
 	args := make([]uint64, paramCount)
@@ -24,9 +24,19 @@ func integerResultPressureModule(t testing.TB, count, paramCount int) (*wasm.Mod
 	caller := []byte{0, 0x20, 0, 0x42, 1, 0x7c} // local.get 0; i64.const 1; i64.add
 	caller = append(caller, 0x10, 1)            // call result producer
 	callee := []byte{0}
+	if reloadPins {
+		// A declared, used local excludes the pin-preserving leaf ABI.
+		callee = []byte{1, 1, 0x7e, 0x42}
+		callee = append(callee, wasmtest.SLEB64(1000)...)
+		callee = append(callee, 0x21, 0) // local.set 0
+	}
 	results := make([]wasm.ValType, count)
 	for i := range results {
 		results[i] = wasm.I64
+		if reloadPins && i == 0 {
+			callee = append(callee, 0x20, 0) // local.get 0
+			continue
+		}
 		callee = append(callee, 0x42)
 		callee = append(callee, wasmtest.SLEB64(int64(1000+i*17))...)
 	}
@@ -52,6 +62,18 @@ func integerResultPressureModule(t testing.TB, count, paramCount int) (*wasm.Mod
 	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatal(err)
 	}
+	nLocals := 0
+	if reloadPins {
+		nLocals = 1
+	}
+	h, err := scanFuncBody(m.Code[1], nLocals, 0, 1, nil, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft, _ := m.LocalFuncType(1)
+	if preservesCallerPins(ft, nLocals, h.funcHints) == reloadPins {
+		t.Fatal("producer lost its intended caller-pin preservation mode")
+	}
 	return m, args
 }
 
@@ -59,27 +81,32 @@ func TestIntegerCallResultPressureARM64(t *testing.T) {
 	for _, count := range []int{3, 4, 5, 6, 7, 8} {
 		for _, params := range []int{1, 24} {
 			for _, stackReg := range []bool{false, true} {
-				t.Run(fmt.Sprintf("results=%d/params=%d/stack-reg=%t", count, params, stackReg), func(t *testing.T) {
-					m, args := integerResultPressureModule(t, count, params)
-					var stats ModuleStats
-					opts := CompileOptions{DeferCodeMapping: true,
-						Optimizations: map[string]bool{"inline": false, "stack-reg": stackReg},
-					}
-					if diagnosticsEnabled {
-						opts.Stats = &stats
-					}
-					got, err := runArm64WrapperWithOptions(t, m, opts, args...)
-					if err != nil || got != 42 {
-						t.Fatalf("result = %d, %v; want 42", got, err)
-					}
-					if diagnosticsEnabled {
-						s := stats.Funcs[0]
-						t.Logf("pins=%d frame=%d spill-slots=%d calls=%v", s.PinnedLocals, s.FrameBytes, s.MaxSpillSlots, s.Calls)
-						if params == 24 && s.PinnedLocals < 11 {
-							t.Fatalf("fixture lost whole-function pin pressure: %d", s.PinnedLocals)
+				for _, reloadPins := range []bool{false, true} {
+					t.Run(fmt.Sprintf("results=%d/params=%d/stack-reg=%t/reload-pins=%t", count, params, stackReg, reloadPins), func(t *testing.T) {
+						m, args := integerResultPressureModule(t, count, params, reloadPins)
+						var stats ModuleStats
+						opts := CompileOptions{DeferCodeMapping: true,
+							Optimizations: map[string]bool{"inline": false, "stack-reg": stackReg},
 						}
-					}
-				})
+						if diagnosticsEnabled {
+							opts.Stats = &stats
+						}
+						got, err := runArm64WrapperWithOptions(t, m, opts, args...)
+						if err != nil || got != 42 {
+							t.Fatalf("result = %d, %v; want 42", got, err)
+						}
+						if diagnosticsEnabled {
+							s := stats.Funcs[0]
+							t.Logf("pins=%d frame=%d spill-slots=%d calls=%v", s.PinnedLocals, s.FrameBytes, s.MaxSpillSlots, s.Calls)
+							if params == 24 && s.PinnedLocals < 11 {
+								t.Fatalf("fixture lost whole-function pin pressure: %d", s.PinnedLocals)
+							}
+							if s.Calls[callKindRegisterABI] != 1 {
+								t.Fatalf("register calls = %v, want one", s.Calls)
+							}
+						}
+					})
+				}
 			}
 		}
 	}

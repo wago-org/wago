@@ -10,6 +10,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -166,8 +167,9 @@ type slotHostFunc func(m HostModule, params, results []uint64)
 // HostCall and values obtained from it are valid only until the callback
 // returns and must not be retained.
 type HostCall struct {
-	params  []uint64
-	results []uint64
+	_       [0]func() // Keep the borrowed-view value non-comparable.
+	params  hostCallSlots
+	results hostCallSlots
 	sig     *FuncSig
 	exact   *DefinedTypeDescriptor
 }
@@ -200,11 +202,11 @@ func (c HostCall) ResultCount() int {
 
 // ParamSlots returns the borrowed raw ABI slots for this call. The slice is
 // valid only until the callback returns and must not be retained.
-func (c HostCall) ParamSlots() []uint64 { return c.params }
+func (c HostCall) ParamSlots() []uint64 { return c.params.slice() }
 
 // ResultSlots returns the borrowed writable raw ABI slots for this call. The
 // slice is valid only until the callback returns and must not be retained.
-func (c HostCall) ResultSlots() []uint64 { return c.results }
+func (c HostCall) ResultSlots() []uint64 { return c.results.slice() }
 
 func (c HostCall) ParamType(i int) ValueTypeDescriptor {
 	if c.exact != nil && uint(i) < uint(len(c.exact.Params)) {
@@ -251,12 +253,12 @@ func (c HostCall) SetI31Ref(i int, v I31Ref) { c.setResultSlot(i, ValI31Ref, uin
 func (c HostCall) RawParam(i int) (lo, hi uint64) {
 	typ := c.paramType(i)
 	slot := i
-	if len(c.params) != len(c.sig.Params) {
+	if c.params.len() != len(c.sig.Params) {
 		slot = hostCallSlot(c.sig.Params, i)
 	}
-	lo = c.params[slot]
+	lo = c.params.slice()[slot]
 	if typ == ValV128 {
-		hi = c.params[slot+1]
+		hi = c.params.slice()[slot+1]
 	}
 	return
 }
@@ -264,12 +266,12 @@ func (c HostCall) RawParam(i int) (lo, hi uint64) {
 func (c HostCall) SetRawResult(i int, lo, hi uint64) {
 	typ := c.resultType(i)
 	slot := i
-	if len(c.results) != len(c.sig.Results) {
+	if c.results.len() != len(c.sig.Results) {
 		slot = hostCallSlot(c.sig.Results, i)
 	}
-	c.results[slot] = lo
+	c.results.slice()[slot] = lo
 	if typ == ValV128 {
-		c.results[slot+1] = hi
+		c.results.slice()[slot+1] = hi
 	}
 }
 
@@ -300,50 +302,19 @@ func hostCallSlot(types []ValType, index int) int {
 	return slot
 }
 
-func (c HostCall) paramSlotIndex(i int, want ValType) int {
-	if i == 0 && c.sig != nil && len(c.sig.Params) != 0 {
-		got := c.sig.Params[0]
-		if got != want {
-			panic(fmt.Sprintf("wago: host parameter %d is %s, not %s", i, got, want))
-		}
-		return 0
-	}
-	got := c.paramType(i)
-	if got != want {
-		panic(fmt.Sprintf("wago: host parameter %d is %s, not %s", i, got, want))
-	}
-	// Equal logical and physical counts mean every value occupies one slot.
-	// Read the current view instead of caching offsets in public signatures.
-	if len(c.params) == len(c.sig.Params) {
-		return i
-	}
-	return hostCallSlot(c.sig.Params, i)
-}
-
-func (c HostCall) resultSlotIndex(i int, want ValType) int {
-	if i == 0 && c.sig != nil && len(c.sig.Results) != 0 {
-		got := c.sig.Results[0]
-		if got != want {
-			panic(fmt.Sprintf("wago: host result %d is %s, not %s", i, got, want))
-		}
-		return 0
-	}
-	got := c.resultType(i)
-	if got != want {
-		panic(fmt.Sprintf("wago: host result %d is %s, not %s", i, got, want))
-	}
-	if len(c.results) == len(c.sig.Results) {
-		return i
-	}
-	return hostCallSlot(c.sig.Results, i)
-}
-
 func (c HostCall) paramSlot(i int, want ValType) uint64 {
-	return c.params[c.paramSlotIndex(i, want)]
+	if i == 0 && c.sig != nil && len(c.sig.Params) != 0 && c.sig.Params[0] == want {
+		return c.params.slice()[0]
+	}
+	return c.params.slice()[c.paramSlotIndex(i, want)]
 }
 
 func (c HostCall) setResultSlot(i int, want ValType, value uint64) {
-	c.results[c.resultSlotIndex(i, want)] = value
+	if i == 0 && c.sig != nil && len(c.sig.Results) != 0 && c.sig.Results[0] == want {
+		c.results.slice()[0] = value
+		return
+	}
+	c.results.slice()[c.resultSlotIndex(i, want)] = value
 }
 
 // Caller is an immutable, callback-scoped capability for a synchronous host
@@ -513,6 +484,23 @@ func (r *CallerResolver) InvocationContext(caller HostModule) (context.Context, 
 	return ctx, nil
 }
 
+// InvocationMayCancel reports whether the active call has a cancellation or
+// deadline signal. A false result lets synchronous re-entry avoid creating a
+// cancellation watcher. The caller is authorized with the same callback scope
+// as InvocationContext. The signal belongs to this callback even during nested
+// execution; no parent context or values are exposed.
+func (r *CallerResolver) InvocationMayCancel(caller HostModule) (bool, error) {
+	if r == nil {
+		return false, fmt.Errorf("wago: nil caller resolver: %w", ErrPermissionDenied)
+	}
+	rt := r.rt.Load()
+	h, ok := resolveHostCaller(caller)
+	if rt == nil || !ok || !h.valid() || h.in == nil || h.in.rt != rt || h.scope == nil {
+		return false, fmt.Errorf("wago: invocation cancellation requires an active host call from the owning runtime: %w", ErrPermissionDenied)
+	}
+	return h.generation&hostCallMayCancel != 0, nil
+}
+
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
 	active   atomic.Uint64
@@ -520,14 +508,30 @@ type hostCallScope struct {
 	state    atomic.Pointer[hostCallState]
 }
 
+// The low generation bit stores the immutable cancellation signal. The remaining
+// bits identify the callback without increasing the boxed caller token.
+const hostCallMayCancel uint64 = 1
+const maxHostCallSequence = ^uint64(0) >> 1
+
+func invocationMayCancel(parent context.Context) bool {
+	if parent == nil {
+		return false
+	}
+	if parent.Done() != nil || parent.Err() != nil {
+		return true
+	}
+	_, hasDeadline := parent.Deadline()
+	return hasDeadline
+}
+
 func (s *hostCallScope) nextGeneration() uint64 {
 	for {
 		previous := s.sequence.Load()
-		if previous == ^uint64(0) {
+		if previous >= maxHostCallSequence {
 			panic(invalidHostReference{err: fmt.Errorf("host callback generation exhausted")})
 		}
 		if s.sequence.CompareAndSwap(previous, previous+1) {
-			return previous + 1
+			return (previous + 1) << 1
 		}
 	}
 }
@@ -688,8 +692,11 @@ type instancePluginState struct {
 	gcArrayElements      atomic.Pointer[gcArrayElementState]
 	gcRefTestTable       atomic.Pointer[gcRefTestTableState]
 	gcGlobalRoots        []gcGlobalRootMapping
-	tagIdentityBase      uintptr      // arena-owned bounded native u64 directory for staged EH
-	tagExports           map[int]*Tag // lazy stable identity handles for exported local tags
+	tagIdentityBase      uintptr                 // arena-owned bounded native u64 directory for staged EH
+	tagExports           map[int]*Tag            // lazy stable identity handles for exported local tags
+	boundedViewVersion   uint64                  // native lease protected; valid only for this observed context epoch
+	boundedViewMemBase   uintptr                 // changed backing invalidates cached view entry too
+	multiHost            *boundedMultiHostLayout // immutable admitted import shapes, allocated only for multi-import modules
 }
 
 type instanceCloseState struct {
@@ -721,14 +728,25 @@ func (s *hostCallScope) begin(in *Instance) instanceHostModule {
 }
 
 func (s *hostCallScope) beginReserved(in *Instance, reservation *pluginOperationReservation) instanceHostModule {
-	return s.beginReservedWithID(in, in.currentInvocationID(), reservation)
+	return s.beginReservedWithID(in, in.currentInvocationID(), reservation, activeHostInvocationContext(in).parent)
 }
 
-func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reservation *pluginOperationReservation) instanceHostModule {
-	parent := s.active.Load()
-	generation := s.nextGeneration()
-	s.active.Store(generation)
+func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reservation *pluginOperationReservation, parentContext context.Context) instanceHostModule {
+	generation, parent := s.beginGeneration(parentContext)
 	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: id, reservation: reservation}
+}
+
+// beginGeneration keeps scope activation separate from the immutable capability
+// snapshot, so direct dispatch need not return and copy the whole token.
+func (s *hostCallScope) beginGeneration(parentContext context.Context) (generation, parent uint64) {
+	parent = s.active.Load()
+	mayCancel := invocationMayCancel(parentContext)
+	generation = s.nextGeneration()
+	if mayCancel {
+		generation |= hostCallMayCancel
+	}
+	s.active.Store(generation)
+	return generation, parent
 }
 
 func (s *hostCallScope) end(generation, parent uint64) {
@@ -772,7 +790,7 @@ func (in *Instance) beginHostCallScopeReserved(reservation *pluginOperationReser
 }
 
 func (in *Instance) beginHostCallScopeReservedWithID(id invocationID, reservation *pluginOperationReservation) instanceHostModule {
-	return in.ensurePluginState().hostScope.beginReservedWithID(in, id, reservation)
+	return in.ensurePluginState().hostScope.beginReservedWithID(in, id, reservation, activeHostInvocationContext(in).parent)
 }
 
 func (in *Instance) currentInvocationID() invocationID {
@@ -1756,11 +1774,11 @@ func (b *syncHostBinding) callBoundUnchecked(caller instanceHostModule, args, re
 		fn(Caller{instanceHostModule: caller}, args, results)
 	case HostCallFunc:
 		fn(HostCall{
-			params: args, results: results, sig: b.sig, exact: b.exact,
+			params: compactHostSlots(args), results: compactHostSlots(results), sig: b.sig, exact: b.exact,
 		})
 	case CallerHostCallFunc:
 		fn(Caller{instanceHostModule: caller}, HostCall{
-			params: args, results: results, sig: b.sig, exact: b.exact,
+			params: compactHostSlots(args), results: compactHostSlots(results), sig: b.sig, exact: b.exact,
 		})
 	case func(int64) int64:
 		results[0] = I64(fn(AsI64(args[0])))
@@ -2238,11 +2256,11 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHos
 	}
 	if binding.hostCall {
 		binding.fn.(HostCallFunc)(HostCall{
-			params: args, results: results, sig: binding.sig, exact: binding.exact,
+			params: compactHostSlots(args), results: compactHostSlots(results), sig: binding.sig, exact: binding.exact,
 		})
 		return
 	}
-	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation)
+	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	binding.callBoundUnchecked(caller, args, results)
@@ -2267,7 +2285,7 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 	defer gcTemps.release(in)
-	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation)
+	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = exact
 	var gcResultTemps gcHostTempTokens
 	gcResultTemps.exactTypes = exactTypesPtr
@@ -2301,7 +2319,7 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 			sig, exact := binding.sig, binding.exact
 			return func(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
 				if importIdx == 0 {
-					fn(HostCall{params: args, results: results, sig: sig, exact: exact})
+					fn(HostCall{params: compactHostSlots(args), results: compactHostSlots(results), sig: sig, exact: exact})
 					return
 				}
 				in.dispatchHostCall(ctrl, importIdx, args, results, invocation)
@@ -2557,12 +2575,20 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		return err
 	}
 	defer in.unlockNativeEntry(locked)
+	// ARM64 benefits from recovering in the unprepared driver itself. Keep
+	// AMD64's existing boundary: paired measurements regressed its view calls.
+	if goruntime.GOARCH == "arm64" {
+		return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, locked.local)
+	}
 	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, nil, locked.local)
 }
 
 // callNativeSyncAdmitted drives a synchronous host-call activation after native
 // admission. A reserved session supplies its prebound call and activation.
 func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, prepared *runtime.PreparedHostScalarCall, preparedFixed runtime.FixedScalarHostCall, preparedActivation *hostLoopActivation, heldNativeMu *sync.Mutex) (err error) {
+	if goruntime.GOARCH == "arm64" && prepared == nil {
+		return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
+	}
 	defer func() { err = in.decorateTrap(err) }()
 	defer recoverNativeSyncPanic(&err)
 	if prepared != nil {
@@ -2581,60 +2607,75 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 // recover observes host panics on that goroutine's active stack.
 func recoverNativeSyncPanic(err *error) {
 	if r := recover(); r != nil {
-		switch trap := r.(type) {
-		case HostTrap:
-			if trap.Err == nil {
-				*err = fmt.Errorf("wago: host trapped without an error")
-			} else {
-				*err = trap.Err
-			}
-			return
-		case *HostTrap:
-			if trap == nil || trap.Err == nil {
-				*err = fmt.Errorf("wago: host trapped without an error")
-			} else {
-				*err = trap.Err
-			}
-			return
-		}
-		if ex, ok := r.(HostExit); ok {
-			*err = &ExitError{Code: ex.Code}
-			return
-		}
-		if ex, ok := r.(*HostExit); ok && ex != nil {
-			*err = &ExitError{Code: ex.Code}
-			return
-		}
-		if missing, ok := r.(missingHostFunc); ok {
-			*err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
-			return
-		}
-		if invalid, ok := r.(invalidHostReference); ok {
-			*err = invalid.err
-			return
-		}
-		if instruction, ok := r.(instructionTrap); ok {
-			*err = instruction.err
-			return
-		}
-		if trap, ok := r.(gcStructHelperTrap); ok {
-			*err = &runtime.TrapError{Code: trap.code}
-			return
-		}
-		if helper, ok := r.(gcStructHelperError); ok {
-			*err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
-			return
-		}
-		if helper, ok := r.(atomicWaitHelperError); ok {
-			if errors.Is(helper.err, errAtomicWaitInstanceClosed) {
-				*err = &runtime.TrapError{Code: runtime.TrapInterrupted}
-			} else {
-				*err = helper.err
-			}
-			return
-		}
-		panic(r)
+		setNativeSyncPanicError(r, err)
 	}
+}
+
+// This must also be deferred directly: recover cannot be delegated to a helper.
+// Recovery precedes trap annotation, matching the separate general defers.
+func (in *Instance) recoverBoundedNativeSyncPanic(err *error) {
+	if r := recover(); r != nil {
+		setNativeSyncPanicError(r, err)
+	}
+	if *err != nil {
+		*err = in.decorateTrap(*err)
+	}
+}
+
+func setNativeSyncPanicError(r any, err *error) {
+	switch trap := r.(type) {
+	case HostTrap:
+		if trap.Err == nil {
+			*err = fmt.Errorf("wago: host trapped without an error")
+		} else {
+			*err = trap.Err
+		}
+		return
+	case *HostTrap:
+		if trap == nil || trap.Err == nil {
+			*err = fmt.Errorf("wago: host trapped without an error")
+		} else {
+			*err = trap.Err
+		}
+		return
+	}
+	if ex, ok := r.(HostExit); ok {
+		*err = &ExitError{Code: ex.Code}
+		return
+	}
+	if ex, ok := r.(*HostExit); ok && ex != nil {
+		*err = &ExitError{Code: ex.Code}
+		return
+	}
+	if missing, ok := r.(missingHostFunc); ok {
+		*err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
+		return
+	}
+	if invalid, ok := r.(invalidHostReference); ok {
+		*err = invalid.err
+		return
+	}
+	if instruction, ok := r.(instructionTrap); ok {
+		*err = instruction.err
+		return
+	}
+	if trap, ok := r.(gcStructHelperTrap); ok {
+		*err = &runtime.TrapError{Code: trap.code}
+		return
+	}
+	if helper, ok := r.(gcStructHelperError); ok {
+		*err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
+		return
+	}
+	if helper, ok := r.(atomicWaitHelperError); ok {
+		if errors.Is(helper.err, errAtomicWaitInstanceClosed) {
+			*err = &runtime.TrapError{Code: runtime.TrapInterrupted}
+		} else {
+			*err = helper.err
+		}
+		return
+	}
+	panic(r)
 }
 
 // callPreparedHostSyncAdmitted keeps the ordinary resolved-host path out of the
@@ -2664,13 +2705,137 @@ func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCal
 	return prepared.Call(activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 }
 
-func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, heldNativeMu *sync.Mutex) (err error) {
-	restoreInvocationContext := bindHostInvocationParent(in, waitParent)
-	defer restoreInvocationContext()
-	stopWaitContext := in.publishAtomicWaitContext(waitParent)
-	defer stopWaitContext()
-	if err := in.jm.RebindTrapCell(activeTrap); err != nil {
+// callCachedBoundedHostView is reached only after bounded numeric admission
+// has excluded references, helpers, native imports and shared execution. It
+// retains normal native ownership and host-context inheritance; callbacks can
+// still publish resources, reenter through Caller, grow their Go stack or panic.
+func (in *Instance) callCachedBoundedHostView(entry uintptr) (err error) {
+	locked, reuse, err := in.beginCachedBoundedViewEntry()
+	if err != nil {
 		return err
+	}
+	defer in.unlockNativeEntry(locked)
+	defer in.recoverBoundedNativeSyncPanic(&err)
+	if activeHostInvocationBindings.Load() != 0 {
+		restore := bindHostInvocationParent(in, nil)
+		defer restore()
+	}
+	state := in.ensurePluginState()
+	if !reuse {
+		in.jm.SetStackFence(in.eng.StackLimit())
+		in.jm.SetCustomCtx(offHeapSlicePtr(in.ctrl))
+		state.boundedViewVersion = state.nativeContextVersion.Load()
+		state.boundedViewMemBase = in.jm.LinMemBase()
+	}
+	binding := &in.syncHosts[0]
+	rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
+	activation := boundedViewHostActivation{
+		boundedTypedHostActivation: boundedTypedHostActivation{
+			root: in, ctrl: offHeapSlicePtr(in.ctrl), state: state, entryNativeMu: locked.local,
+		},
+	}
+	fixed := runtime.FixedHostContextCallView(boundedHostDispatchHostCallView)
+	fallback := runtime.FixedHostCallView(activation.dispatchHostCallView)
+	_, caller := binding.fn.(CallerHostCallFunc)
+	if caller {
+		fixed = boundedHostDispatchCallerView
+		fallback = activation.dispatchCallerView
+	}
+	// AMD64 Caller round trips retain the measured faster method adapter.
+	if prepared := in.eng.PreparedScalarHost(); prepared != nil {
+		if locked.privateContext() {
+			fixed = detachedNumericDispatchHostCall
+			if caller {
+				fixed = detachedNumericDispatchCaller
+			}
+		}
+		if prepared.IntegerGuestContext() {
+			err = prepared.CallIntegerView(entry, locked.memoryBase(in), unsafe.Pointer(&activation), fixed)
+		} else {
+			err = prepared.CallView(entry, locked.memoryBase(in), unsafe.Pointer(&activation), fixed)
+		}
+	} else if caller && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") {
+		err = in.eng.CallWithHostBaseFixedViewBoundedLive(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, fallback)
+	} else {
+		err = in.eng.CallWithHostBaseFixedViewBoundedContextLive(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, unsafe.Pointer(&activation), fixed, fallback)
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	return err
+}
+
+// callCachedBoundedTypedHost has the same warm admission and ownership contract
+// as the view driver, with a compact typed scalar callback frame on AMD64.
+func (in *Instance) callCachedBoundedTypedHost(entry uintptr) (err error) {
+	locked, reuse, err := in.beginCachedBoundedViewEntry()
+	if err != nil {
+		return err
+	}
+	defer in.unlockNativeEntry(locked)
+	defer in.recoverBoundedNativeSyncPanic(&err)
+	if activeHostInvocationBindings.Load() != 0 {
+		restore := bindHostInvocationParent(in, nil)
+		defer restore()
+	}
+	state := in.ensurePluginState()
+	if !reuse {
+		in.jm.SetStackFence(in.eng.StackLimit())
+		in.jm.SetCustomCtx(offHeapSlicePtr(in.ctrl))
+		state.boundedViewVersion = state.nativeContextVersion.Load()
+		state.boundedViewMemBase = in.jm.LinMemBase()
+	}
+	activation := boundedTypedHostActivation{
+		root: in, ctrl: offHeapSlicePtr(in.ctrl), state: state, entryNativeMu: locked.local,
+	}
+	binding := &in.syncHosts[0]
+	rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
+	fixed := runtime.FixedScalarHostContextCall(boundedTypedHostDispatchI32)
+	fallback := runtime.FixedScalarHostCall(activation.dispatchI32)
+	if binding.scalarKind == syncHostTypedI32x2 {
+		fixed = boundedTypedHostDispatchI32x2
+		fallback = activation.dispatchI32x2
+	}
+	if prepared := in.eng.PreparedScalarHost(); prepared != nil {
+		if locked.privateContext() {
+			fixed = detachedNumericDispatchI32
+			if binding.scalarKind == syncHostTypedI32x2 {
+				fixed = detachedNumericDispatchI32x2
+			}
+		}
+		if prepared.IntegerGuestContext() {
+			err = prepared.CallInteger(entry, locked.memoryBase(in), unsafe.Pointer(&activation), fixed)
+		} else {
+			err = prepared.Call(entry, locked.memoryBase(in), unsafe.Pointer(&activation), fixed)
+		}
+	} else {
+		err = in.eng.CallWithHostBaseScalarBoundedContextLive(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, unsafe.Pointer(&activation), fixed, fallback)
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	return err
+}
+
+func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, heldNativeMu *sync.Mutex) (err error) {
+	if goruntime.GOARCH == "arm64" {
+		defer func() { err = in.decorateTrap(err) }()
+		defer recoverNativeSyncPanic(&err)
+	}
+	// Avoid no-op context cleanup on ARM64; paired AMD64 measurements
+	// favor its original unconditional setup.
+	if goruntime.GOARCH != "arm64" || waitParent != nil || activeHostInvocationBindings.Load() != 0 {
+		restoreInvocationContext := bindHostInvocationParent(in, waitParent)
+		defer restoreInvocationContext()
+	}
+	if goruntime.GOARCH != "arm64" || in.c.usesAtomicWaitHelpers() {
+		stopWaitContext := in.publishAtomicWaitContext(waitParent)
+		defer stopWaitContext()
+	}
+	// Native CallWithHostBase entries validate and bind activeTrap themselves.
+	// Avoid repeating that binding on either supported native architecture.
+	if goruntime.GOARCH != "amd64" && goruntime.GOARCH != "arm64" {
+		if err := in.jm.RebindTrapCell(activeTrap); err != nil {
+			return err
+		}
 	}
 	in.jm.SetStackFence(in.eng.StackLimit())
 	if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
@@ -2691,7 +2856,16 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		defer finishProfileBoundary(span, &err)
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
 	} else if in.hasSingleDirectTypedScalarHost() {
-		err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
+		if in.boundedHostSegments() {
+			rawSlots, _ := in.syncHosts[0].typedScalarSlots()
+			fixed := runtime.FixedScalarHostCall(activation.dispatchSingleTypedI32FixedPortal)
+			if in.syncHosts[0].scalarKind == syncHostTypedI32x2 {
+				fixed = activation.dispatchSingleTypedI32x2FixedPortal
+			}
+			err = in.eng.CallWithHostBaseScalarBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, fixed)
+		} else {
+			err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
+		}
 	} else if in.hasSingleExpandedTypedScalarHost() {
 		rawSlots, ok := in.syncHosts[0].typedScalarSlots()
 		if !ok {
@@ -2722,7 +2896,13 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		case syncHostTypedF64x2:
 			fixed = activation.dispatchSingleTypedF64x2FixedPortal
 		}
-		err = in.eng.CallWithHostBaseScalarFixed(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchTypedScalarExpandedPortal, fixed)
+		if in.boundedHostSegments() {
+			err = in.eng.CallWithHostBaseScalarBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, fixed)
+		} else {
+			err = in.eng.CallWithHostBaseScalarFixed(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchTypedScalarExpandedPortal, fixed)
+		}
+	} else if in.hasBoundedMultiHostView() {
+		err = in.eng.CallWithHostBaseMultiViewBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, in.ensurePluginState().multiHost.shapes, activation.dispatchBoundedMultiHostView)
 	} else if in.hasExpandedTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalarExpanded(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchTypedScalarExpandedPortal)
 	} else if in.hasDirectTypedScalarHost() {
@@ -2730,11 +2910,19 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 	} else if in.hasSingleHostCallFixedViewPortal() {
 		binding := &in.syncHosts[0]
 		rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
-		err = in.eng.CallWithHostBaseFixedView(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchSingleHostCallFixedView)
+		if in.boundedHostSegments() {
+			err = in.eng.CallWithHostBaseFixedViewBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatchSingleHostCallFixedView)
+		} else {
+			err = in.eng.CallWithHostBaseFixedView(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchSingleHostCallFixedView)
+		}
 	} else if in.hasSingleHostCallPortal() {
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatchSingleHostCall)
 	} else if in.hasSingleHostCallViewPortal() {
 		err = in.eng.CallWithHostBaseView(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleHostCallView)
+	} else if in.boundedHostSegments() && in.hasBoundedCallerHostView() {
+		binding := &in.syncHosts[0]
+		rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
+		err = in.eng.CallWithHostBaseFixedViewBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatchBoundedHostView)
 	} else {
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
 	}

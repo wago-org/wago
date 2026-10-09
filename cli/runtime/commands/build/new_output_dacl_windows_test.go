@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -64,16 +65,18 @@ func testWindowsWriteOnlyInheritance(t *testing.T, forbidDelete bool) {
 		childOnly.AccessPermissions &^= windows.DELETE
 	}
 	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{parentOnly, childOnly}, nil)
+	// TrusteeValue holds only a uintptr, so retain its SID's allocation owner.
+	runtime.KeepAlive(user)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("create write-only inheritance ACL: %v", err)
 	}
 	old, err := windows.GetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("read temporary parent security: %v", err)
 	}
 	oldACL, _, err := old.DACL()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("read temporary parent DACL: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
@@ -85,7 +88,7 @@ func testWindowsWriteOnlyInheritance(t *testing.T, forbidDelete bool) {
 	if err := windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
 		nil, nil, acl, nil); err != nil {
-		t.Fatal(err)
+		t.Fatalf("set write-only parent DACL: %v", err)
 	}
 	control := filepath.Join(dir, "ordinary.wago")
 	if err := os.WriteFile(control, []byte("ordinary"), 0o600); err != nil {
@@ -157,13 +160,14 @@ func testWindowsWriteOnlyInheritance(t *testing.T, forbidDelete bool) {
 	// Grant access only after qualifying inheritance, so byte validation cannot
 	// mask a publication that changed the caller's intended access policy.
 	readable, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{parentOnly}, nil)
+	runtime.KeepAlive(user) // parentOnly still refers to the same SID allocation.
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("create readback ACL: %v", err)
 	}
 	if err := windows.SetNamedSecurityInfo(output, windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
 		nil, nil, readable, nil); err != nil {
-		t.Fatal(err)
+		t.Fatalf("set readback DACL: %v", err)
 	}
 	artifact, err := os.ReadFile(output)
 	if err != nil {
@@ -225,13 +229,15 @@ func setWindowsBuildReadableParentDACL(t *testing.T, path string) {
 				TrusteeType: windows.TRUSTEE_IS_WELL_KNOWN_GROUP, TrusteeValue: windows.TrusteeValueFromSID(everyone)},
 		},
 	}, nil)
+	runtime.KeepAlive(user)
+	runtime.KeepAlive(everyone)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("create readable parent ACL: %v", err)
 	}
 	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
 		nil, nil, acl, nil); err != nil {
-		t.Fatal(err)
+		t.Fatalf("set readable parent DACL: %v", err)
 	}
 }
 

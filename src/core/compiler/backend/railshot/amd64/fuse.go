@@ -97,6 +97,7 @@ func (f *fn) flushBelow(node *elem) int {
 		belowSlots += rootMachineType(cur).stackSlots()
 	}
 	f.tmpBelow = below
+	f.tmpBelowWritten = max(f.tmpBelowWritten, len(below))
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
 		below[i], below[j] = below[j], below[i]
 	}

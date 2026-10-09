@@ -540,7 +540,7 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 		}
 	}
 	for _, ins := range reg.instructions {
-		rt.instructions[ins.spec.Module+"."+ins.spec.Name] = ins
+		rt.instructions[instructionKey{ins.spec.Module, ins.spec.Name}] = ins
 	}
 	for _, imp := range reg.imports {
 		rt.imports[imp.key()] = imp.fn

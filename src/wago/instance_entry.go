@@ -382,7 +382,7 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 	if err != nil {
 		return contextInterruptError(ctx, err)
 	}
-	return in.reconcileGCGlobalRoots()
+	return contextInterruptError(ctx, in.reconcileGCGlobalRoots())
 }
 
 func (in *Instance) callVoidNative(entry uintptr) error {

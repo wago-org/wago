@@ -67,7 +67,7 @@ func BenchmarkPreparedTypedI32ToI32(b *testing.B) {
 	}
 }
 
-func TestHostImportsRemainOutsideBoundedSchedulerAdmission(t *testing.T) {
+func TestGoHostImportsRemainOutsideBoundedSchedulerAdmission(t *testing.T) {
 	for _, fixture := range []struct {
 		name        string
 		data        []byte
@@ -78,7 +78,7 @@ func TestHostImportsRemainOutsideBoundedSchedulerAdmission(t *testing.T) {
 		{"memory-loop", hostRoundtripLoopModule(t, 4), true},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			cfg := NewRuntimeConfig()
+			cfg := goHostSegmentConfig()
 			if fixture.multiMemory {
 				if !SupportedFeatures().IsEnabled(CoreFeatureMultiMemory) {
 					t.Skip("additional fixture requires multi-memory support")

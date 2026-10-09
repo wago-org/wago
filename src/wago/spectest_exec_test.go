@@ -1659,7 +1659,21 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 	return runSpecExecFileWithConfigAndImports(t, base, tmp, sf, cfg, nil)
 }
 
-func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports map[string]any) (stats specExecStats) {
+// specExecutionObserver adds optional test-only load and action evidence to the
+// existing runner. Nil preserves the ordinary conformance lane.
+type specExecutionObserver struct {
+	load     func(specExecCmd, []byte) []byte
+	loaded   func(specExecCmd, []byte, specModule)
+	rejected func(specExecCmd, error)
+	omit     func(specExecCmd) bool
+	action   func(specExecCmd, specActionOutcome)
+}
+
+func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports map[string]any) specExecStats {
+	return runSpecExecFileObserved(t, base, tmp, sf, cfg, extraImports, nil)
+}
+
+func runSpecExecFileObserved(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports map[string]any, observer *specExecutionObserver) (stats specExecStats) {
 	var cur specModule
 	var curRetained bool
 	var live []specModule
@@ -1714,8 +1728,14 @@ func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf spec
 	}
 	instantiate := func(data []byte, c specExecCmd) {
 		retireCurrent()
+		if observer != nil && observer.load != nil {
+			data = observer.load(c, data)
+		}
 		mod, err := rt.Compile(data)
 		if err != nil {
+			if observer != nil && observer.rejected != nil {
+				observer.rejected(c, err)
+			}
 			t.Logf("%s.wast:%d module compile rejected: %v", base, c.Line, err)
 			stats.skipModule(specGapCompileRejected)
 			return
@@ -1736,7 +1756,10 @@ func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf spec
 			return
 		}
 		stats.modulesPassed++
-		cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
+		cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef), observer: observer}
+		if observer != nil && observer.loaded != nil {
+			observer.loaded(c, data, cur)
+		}
 		live = append(live, cur)
 		if c.Name != "" {
 			named[c.Name] = cur
@@ -1750,6 +1773,9 @@ func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf spec
 	}
 
 	for _, c := range sf.Commands {
+		if observer != nil && observer.omit != nil && observer.omit(c) {
+			continue
+		}
 		switch c.Type {
 		case "thread":
 			if c.Name == "" || threads[c.Name] || len(c.Commands) == 0 {
@@ -2021,6 +2047,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 // compiled metadata (used to confirm an export exists before invoking, so an
 // absent-export skip is never confused with a trap).
 type specModule struct {
+	observer   *specExecutionObserver
 	inst       *wago.Instance
 	compiled   *wago.Compiled
 	externrefs map[string]wago.ExternRef
@@ -2088,7 +2115,10 @@ type specActionOutcome struct {
 // invokeAction performs an assertion's action against inst. Known unsupported
 // Release 2 behavior is returned as a bounded gap reason; malformed harness
 // values remain assertion failures instead of becoming skips.
-func invokeAction(c specExecCmd, m specModule, _ *testing.T) specActionOutcome {
+func invokeAction(c specExecCmd, m specModule, _ *testing.T) (out specActionOutcome) {
+	if m.observer != nil && m.observer.action != nil {
+		defer func() { m.observer.action(c, out) }()
+	}
 	if gap := classifyAssertionGap(c); gap != specGapNone {
 		return specActionOutcome{gap: gap}
 	}

@@ -80,6 +80,68 @@ func TestCleanBuildsDoesNotFollowVersionDirectorySymlink(t *testing.T) {
 	}
 }
 
+func TestLocalBuildCleanupRejectsLinkedDirectory(t *testing.T) {
+	for _, link := range []struct {
+		name, path, target string
+	}{
+		{"project root", ".wago", ""},
+		{"build root", LocalBuildDir(), "builds"},
+	} {
+		for _, operation := range []struct {
+			name string
+			run  func(wagopaths.Dirs) error
+		}{
+			{"clean", func(dirs wagopaths.Dirs) error {
+				_, err := Clean(dirs, Selection{Builds: true})
+				return err
+			}},
+			{"prune", func(dirs wagopaths.Dirs) error {
+				_, err := Prune(dirs, time.Hour)
+				return err
+			}},
+		} {
+			t.Run(link.name+"/"+operation.name, func(t *testing.T) {
+				project := t.TempDir()
+				previous, err := os.Getwd()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chdir(project); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chdir(previous) })
+				external := t.TempDir()
+				marker := filepath.Join(external, "builds", "old", "keep")
+				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(marker, []byte("outside"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				old := time.Now().Add(-2 * time.Hour)
+				if err := os.Chtimes(filepath.Dir(marker), old, old); err != nil {
+					t.Fatal(err)
+				}
+				if link.path == LocalBuildDir() {
+					if err := os.Mkdir(".wago", 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.Symlink(filepath.Join(external, link.target), link.path); err != nil {
+					t.Skipf("symlinks unavailable: %v", err)
+				}
+				dirs := wagopaths.Dirs{Cache: filepath.Join(project, "cache", "current"), Versions: filepath.Join(project, "versions"), Version: "current"}
+				if err := operation.run(dirs); err == nil {
+					t.Errorf("cleanup accepted linked %s", link.path)
+				}
+				if data, err := os.ReadFile(marker); err != nil || string(data) != "outside" {
+					t.Errorf("cleanup changed external file: %q, %v", data, err)
+				}
+			})
+		}
+	}
+}
+
 func TestCleanBuildsRemovesPluginLeafSymlinkWithoutFollowingIt(t *testing.T) {
 	root := t.TempDir()
 	workingDirectory, err := os.Getwd()

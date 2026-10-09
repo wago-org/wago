@@ -659,9 +659,10 @@ func requiredFeaturesForInstructionKind(kind wasm.InstrKind) CoreFeatures {
 	switch kind {
 	case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
 		return CoreFeatureSignExtensionOps
-	case wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop,
-		wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy:
+	case wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop:
 		return CoreFeatureBulkMemoryOperations
+	case wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy:
+		return CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
 	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize, wasm.InstrTableFill,
 		wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq:
 		return CoreFeatureReferenceTypes
@@ -800,7 +801,8 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 			out |= CoreFeatureBulkMemoryOperations
 		}
 	}
-	for _, data := range c.Data {
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
 		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
 	}
 	return out

@@ -56,6 +56,11 @@ type registeredInstruction struct {
 	definition coreplugins.Definition
 }
 
+type instructionKey struct {
+	module string
+	name   string
+}
+
 // Type registers a plugin-owned logical value type and returns its opaque
 // identity token. Repeating an identical declaration is idempotent; reusing a
 // name with a different size or carrier is rejected.
@@ -141,7 +146,7 @@ func (r *CompilerInstructionRegistrar) validateCustomSignature(sig *CustomSignat
 	return nil
 }
 
-func resolveInstructionLowerings(m *wasm.Module, registered map[string]*registeredInstruction) map[uint32]coreplugins.Instruction {
+func resolveInstructionLowerings(m *wasm.Module, registered map[instructionKey]*registeredInstruction) map[uint32]coreplugins.Instruction {
 	if len(registered) == 0 {
 		return nil
 	}
@@ -152,7 +157,7 @@ func resolveInstructionLowerings(m *wasm.Module, registered map[string]*register
 		if imp.Type.Kind != wasm.ExternFunc {
 			continue
 		}
-		if ins := registered[imp.Module+"."+imp.Name]; ins != nil {
+		if ins := registered[instructionKey{imp.Module, imp.Name}]; ins != nil {
 			if native, ok := ins.definition.Native(); ok {
 				resolved[functionIndex] = native
 			}

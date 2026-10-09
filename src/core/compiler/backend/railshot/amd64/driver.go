@@ -52,10 +52,17 @@ func (f *fn) representationError() error {
 // and returns control to the caller's body.
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	for len(f.ctrl) > minCtrl {
+		if !profileEnabled && minCtrl == 0 && !f.unreachable && f.s.logicalDepth == 0 &&
+			(f.s.cur != 0 || len(f.s.chunks[0]) >= defaultStackArenaCap) {
+			f.recycleEmptyOperandArena()
+		}
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
 		op, err := r.Byte()
 		if err != nil {
 			return err
+		}
+		if regallocCheckEnabled {
+			checkNativeSourceBefore(f, r.Offset()-1, op)
 		}
 		var previous profileOrigin
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
@@ -124,11 +131,46 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		if regallocCheckEnabled {
+			checkNativeSourceAfter(f, r.Offset())
+		}
 	}
 	if f.representationLimit != functionRepresentationOK {
 		return f.representationError()
 	}
 	return nil
+}
+
+// At a top-level reader instruction boundary, an empty operand stack and
+// zero-height control frames have no live expression nodes or control prefixes.
+// Nested blocks and loops are safe, but recursively spliced inline readers are
+// excluded: their caller can still own temporary node handles. Profiling keeps
+// stable node identities for its source-origin map and does not take this path.
+func (f *fn) recycleEmptyOperandArena() {
+	if f.nonzeroCtrlHeights != 0 {
+		return
+	}
+	for _, user := range f.regUser {
+		if user != nil {
+			return
+		}
+	}
+	for _, user := range f.fregUser {
+		if user != nil {
+			return
+		}
+	}
+	if _, reserved := f.s.nodeMemory(); reserved > f.sc.nodeScratchPeak {
+		f.sc.nodeScratchPeak = reserved
+	}
+	// Slots beyond these high-water marks have already been cleared. Capacity
+	// retained from a wider function therefore costs nothing at later checkpoints.
+	clear(f.tmpRoots[:f.tmpRootsWritten])
+	clear(f.tmpBelow[:f.tmpBelowWritten])
+	clear(f.tmpDeferred[:f.tmpDeferredWritten])
+	f.tmpRootsWritten, f.tmpBelowWritten, f.tmpDeferredWritten = 0, 0, 0
+	f.stats.peep("operand-arena-recycle")
+	f.s.reset()
 }
 
 // emitPlain lowers a single non-control opcode (leaves, arithmetic, memory,
@@ -191,6 +233,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		if regallocCheckEnabled {
+			checkNativeSourceGet(f, x)
+		}
 		if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
@@ -330,9 +375,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x6c:
 		f.pushBinOp(opMul, mtI32)
 	case 0x6d:
-		f.pushBinOp(opDivS, mtI32)
+		if !f.tryDivRemPair(r, op, opDivS, mtI32) {
+			f.pushBinOp(opDivS, mtI32)
+		}
 	case 0x6e:
-		f.pushBinOp(opDivU, mtI32)
+		if !f.tryDivRemPair(r, op, opDivU, mtI32) {
+			f.pushBinOp(opDivU, mtI32)
+		}
 	case 0x6f:
 		f.pushBinOp(opRemS, mtI32)
 	case 0x70:
@@ -370,9 +419,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x7e:
 		f.pushBinOp(opMul, mtI64)
 	case 0x7f:
-		f.pushBinOp(opDivS, mtI64)
+		if !f.tryDivRemPair(r, op, opDivS, mtI64) {
+			f.pushBinOp(opDivS, mtI64)
+		}
 	case 0x80:
-		f.pushBinOp(opDivU, mtI64)
+		if !f.tryDivRemPair(r, op, opDivU, mtI64) {
+			f.pushBinOp(opDivU, mtI64)
+		}
 	case 0x81:
 		f.pushBinOp(opRemS, mtI64)
 	case 0x82:
@@ -1117,6 +1170,9 @@ func (f *fn) v128TeeOverwritten(r *wasm.Reader, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+	if regallocCheckEnabled {
+		checkNativeSourceSet(f, x, tee, f.s.back())
+	}
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
