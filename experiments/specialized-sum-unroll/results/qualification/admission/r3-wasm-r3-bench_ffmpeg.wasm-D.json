@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 5730,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "a45470b48bba01f2d66b9af6eb84f6190da6302122fc3c8c23dc1603b8dfb967",
+  "native_bytes": 17657380,
+  "native_sha256": "0b2e8e0f05807b03440d57a2461239b6069e44fa9697b9290d4ce59cbf4f23f4",
+  "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/ffmpeg.wasm",
+  "selected_functions": null,
+  "variant": "D"
+}

@@ -1,0 +1,16 @@
+{
+  "branch_head": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+  "main_head": "796ccdea9e401097d0c73f8342b7075fbee1b843",
+  "old_common_base": "2286d676facdfa1cabe2d1c61072e505438ca7f2",
+  "update_method": "git archive6a06dbe1; git apply diff2286d676..796ccdea in /tmp/wago-qualification-updated; no worktree, merge, rebase or branch rewrite",
+  "updated_patch_sha256": "7687556ed18d792ef36f955fb6aeb9c3d34fce42b6b1735405c741a2c93459b0",
+  "binaries": {
+    "/tmp/wago-qualification-corpus-normal.test": "d9375ae74f4ece7c3dc03efd18d25dff564c16d9f78cba779bd74f7e2a42cead",
+    "/tmp/wago-qualification-corpus-all.test": "be04532445ce9cf9f92deb24773538fea5b57a429089881de153b51fdc3c814f"
+  },
+  "go_version": "go version go1.27.1 linux/amd64",
+  "wasm_tools_version": "wasm-tools 1.251.0 (a1a178a02 2026-05-28)",
+  "flags": "GOFLAGS=-buildvcs=false go test -c ./suite; tagged timing: -tags=wago_sumunroll; no diagnostic tags; GOMAXPROCS=1 CPU2 20alternating pairs150ms",
+  "updated_source_manifest_sha256": "cd2970f5b9a8cdad0971f28a6bf5a906b3f0bdbf300a36c622aae095c5df901d",
+  "source_files": 2884
+}

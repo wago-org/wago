@@ -1,0 +1,8 @@
+=== RUN   TestHeaderNopsAgainstCompiler
+--- PASS: TestHeaderNopsAgainstCompiler (0.00s)
+=== RUN   TestExactAndInstructionBoundaries
+--- PASS: TestExactAndInstructionBoundaries (0.00s)
+=== RUN   TestCorpusPositiveControl
+--- PASS: TestCorpusPositiveControl (0.00s)
+PASS
+ok  	github.com/wago-org/wago/experiments/specialized-sum-unroll/scan	0.002s

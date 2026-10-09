@@ -1,0 +1,17 @@
+[
+  {
+    "function": "inspectLinearSumLoop",
+    "identical": true,
+    "sha256": "943339d505c2fced6384f3b7910cd939bfd7b92c99e31a3f455b56eee39b5a8d"
+  },
+  {
+    "function": "tryHoistLinearSumBounds",
+    "identical": true,
+    "sha256": "d74c52e3e1bfc8080cd3dae1699dcf1b56d3f14407152564619a3f8f786c2a25"
+  },
+  {
+    "function": "tryUnrolledLinearSumLatch",
+    "identical": true,
+    "sha256": "a98b67db8a4bc220d4b2b14a3102b40b62cb922ecb3ca67f654e6318fbfb6ae4"
+  }
+]

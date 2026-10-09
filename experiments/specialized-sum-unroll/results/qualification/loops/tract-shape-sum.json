@@ -1,0 +1,257 @@
+{
+  "function": 2532,
+  "instructions": [
+    {
+      "pc": 66,
+      "op": 3
+    },
+    {
+      "pc": 68,
+      "op": 32,
+      "index": 3
+    },
+    {
+      "pc": 70,
+      "op": 32,
+      "index": 1
+    },
+    {
+      "pc": 72,
+      "op": 40
+    },
+    {
+      "pc": 75,
+      "op": 32,
+      "index": 2
+    },
+    {
+      "pc": 77,
+      "op": 32,
+      "index": 1
+    },
+    {
+      "pc": 79,
+      "op": 65,
+      "constant": 4
+    },
+    {
+      "pc": 81,
+      "op": 106
+    },
+    {
+      "pc": 82,
+      "op": 40
+    },
+    {
+      "pc": 85,
+      "op": 40,
+      "offset": 16
+    },
+    {
+      "pc": 88,
+      "op": 17,
+      "index": 1
+    },
+    {
+      "pc": 99,
+      "op": 2
+    },
+    {
+      "pc": 101,
+      "op": 32,
+      "index": 3
+    },
+    {
+      "pc": 103,
+      "op": 41
+    },
+    {
+      "pc": 106,
+      "op": 34,
+      "index": 6
+    },
+    {
+      "pc": 108,
+      "op": 66,
+      "constant": 2
+    },
+    {
+      "pc": 110,
+      "op": 82
+    },
+    {
+      "pc": 111,
+      "op": 13
+    },
+    {
+      "pc": 113,
+      "op": 32,
+      "index": 3
+    },
+    {
+      "pc": 115,
+      "op": 40,
+      "offset": 8
+    },
+    {
+      "pc": 118,
+      "op": 33,
+      "index": 1
+    },
+    {
+      "pc": 120,
+      "op": 32
+    },
+    {
+      "pc": 122,
+      "op": 66,
+      "constant": 2
+    },
+    {
+      "pc": 124,
+      "op": 55
+    },
+    {
+      "pc": 127,
+      "op": 32
+    },
+    {
+      "pc": 129,
+      "op": 32,
+      "index": 1
+    },
+    {
+      "pc": 131,
+      "op": 54,
+      "offset": 8
+    },
+    {
+      "pc": 134,
+      "op": 12,
+      "index": 3
+    },
+    {
+      "pc": 136,
+      "op": 11
+    },
+    {
+      "pc": 137,
+      "op": 32,
+      "index": 3
+    },
+    {
+      "pc": 139,
+      "op": 41,
+      "offset": 8
+    },
+    {
+      "pc": 142,
+      "op": 32,
+      "index": 5
+    },
+    {
+      "pc": 144,
+      "op": 124
+    },
+    {
+      "pc": 145,
+      "op": 33,
+      "index": 5
+    },
+    {
+      "pc": 147,
+      "op": 32,
+      "index": 6
+    },
+    {
+      "pc": 149,
+      "op": 167
+    },
+    {
+      "pc": 150,
+      "op": 32,
+      "index": 4
+    },
+    {
+      "pc": 152,
+      "op": 114
+    },
+    {
+      "pc": 153,
+      "op": 33,
+      "index": 4
+    },
+    {
+      "pc": 155,
+      "op": 32,
+      "index": 1
+    },
+    {
+      "pc": 157,
+      "op": 65,
+      "constant": 8
+    },
+    {
+      "pc": 159,
+      "op": 106
+    },
+    {
+      "pc": 160,
+      "op": 34,
+      "index": 1
+    },
+    {
+      "pc": 162,
+      "op": 32,
+      "index": 7
+    },
+    {
+      "pc": 164,
+      "op": 71
+    },
+    {
+      "pc": 165,
+      "op": 13
+    },
+    {
+      "pc": 167,
+      "op": 11
+    }
+  ],
+  "local_function": 2517,
+  "locals": [
+    {
+      "count": 2,
+      "type": "i32"
+    },
+    {
+      "count": 2,
+      "type": "i64"
+    },
+    {
+      "count": 1,
+      "type": "i32"
+    }
+  ],
+  "memories": [
+    {
+      "Limits": {
+        "Min": 242,
+        "Max": 0,
+        "HasMax": false,
+        "Addr64": false
+      },
+      "Shared": false
+    }
+  ],
+  "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tract-onnx-image-classification/benchmark.wasm",
+  "sha256": "f3fc86e08584bba9bb687b6afa945a21c9240fcb56fe543edb33f1961816bd78",
+  "signature": {
+    "params": [
+      "i32",
+      "i32",
+      "i32"
+    ],
+    "results": []
+  }
+}

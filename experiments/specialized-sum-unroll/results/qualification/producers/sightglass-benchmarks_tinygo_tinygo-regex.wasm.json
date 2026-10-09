@@ -1,0 +1,1 @@
+{"module":{"name":"main","producers":[["language",{"C11":"","C99":""}],["processed-by",{"clang":"20.1.1 (https://github.com/tinygo-org/llvm-project 670759811adc85df52f410d7306788fabfc6242d)","TinyGo":"0.40.0"}]],"authors":null,"description":null,"licenses":null,"source":null,"homepage":null,"revision":null,"version":null,"range":{"start":0,"end":1322796},"dependencies":null}}

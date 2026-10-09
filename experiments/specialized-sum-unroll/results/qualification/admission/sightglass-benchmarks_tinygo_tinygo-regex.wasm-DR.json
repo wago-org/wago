@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 247,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "ab0229c63aae6df83378164ad3a7abd8807917063b18ecb49eb4f3a7aefe26af",
+  "native_bytes": 1219338,
+  "native_sha256": "8bef7108fbb28e3f4df8536d95ceea2ee7b8155b0341db70c31dba55f30ffb76",
+  "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tinygo/tinygo-regex.wasm",
+  "selected_functions": null,
+  "variant": "DR"
+}

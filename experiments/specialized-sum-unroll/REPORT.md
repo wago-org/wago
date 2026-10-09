@@ -1109,3 +1109,314 @@ and validates before timing, keeps all initial rows, and stops after the fixed
 confirmation. Separate [analyze.py](analyze.py) recomputes medians and paired
 ratios from raw files. The original run/followup scripts and their results are
 unchanged.
+
+## Phase 4: final application qualification
+
+### Decision: close as “Useful but not practical”
+
+The experiment has a repeatable synthetic gain. It does not have an admitted
+real application with a measured benefit. The expanded search found no new loop
+that the current recognizer can accept. Close PR #910 without merging or deleting
+its branch. Keep production 4/4. Keep all experimental code, tests, reports and
+raw measurements on the branch as research evidence.
+
+This is a bounded negative result, not proof that no suitable application exists.
+It supports closure under the user's stated decision rule. It does not support
+production adoption of D or DR, or a recognition extension in this PR.
+
+### Source baseline and PR #908
+
+The branch started this phase at `6a06dbe1d6ed603e36ed464071d09f7ed620e91e`.
+Fetched main was `796ccdea9e401097d0c73f8342b7075fbee1b843`. The shared historical
+base remains `2286d676facdfa1cabe2d1c61072e505438ca7f2`.
+Main adds [PR #908](https://github.com/wago-org/wago/pull/908), merge commit
+`65194f23fc12222e006ccbf79d9880ca38182b23`, and PR #894's profile symbol escaping.
+
+PR #908 combines instance leases and gate flags in one atomic word. It also
+changes the first export cache and prepared-entry eligibility cache. Its published
+26.2% ordinary-call gain is from an ARM64 M4 Max measurement. That percentage is
+not an AMD64 result and is not used to adjust any result here. Its changed call
+path can affect the public execution and lifecycle measurements in this report.
+Neither main change touches the compiler, sum recognizer, bounds proof, or corpus.
+The recognizer, bounds proof and production 4/4 function are text-identical to
+current main; their hashes are in
+[production-equality.json](results/qualification/production-equality.json).
+
+No rebase, merge, new worktree, or history rewrite occurred. The prior samples
+remain on their original source lineage. New yyjson controls use an ordinary
+temporary source directory: `git archive 6a06dbe1`, then the same main-update
+patch for both normal and tagged builds. The patch, binary hashes, Go version,
+and hashes of 2,884 source files are retained in
+[build.json](results/qualification/build.json) and
+[updated-source-manifest.json.gz](results/qualification/updated-source-manifest.json.gz).
+The compiler admission records use the unchanged branch compiler. No old sample
+was relabeled as a current-main sample.
+
+### Expanded research inventory
+
+The limit was 256 MiB of pinned Git-hosted artifacts, one npm package below
+160 MiB, the existing local corpus, and seven bounded CDN attempts. The actual
+decoded inventory contains 467,426 function bodies and 435,740 loops. Artifacts
+total 476,681,771 bytes, including the eight derived embedded cores.
+
+| Source family | Artifacts | Core records decoded | Function bodies | Loops | Artifacts over 2 MiB | Exact recognizer bodies |
+|---|---:|---:|---:|---:|---:|---:|
+| Existing Wago corpus | 121 | 121 | 220,624 | 164,107 | 10 | 1, synthetic only |
+| Sightglass | 120 | 118 | 78,424 | 83,481 | 6 | 0 |
+| Published numerical / PolyBench / CHStone builds | 1,026 | 1,026 | 47,336 | 79,644 | 0 | 0 |
+| All Wasm-R3 replay artifacts | 27 | 27 | 56,325 | 46,434 | 6 | 0 |
+| DuckDB npm package | 3 | 1 | 64,575 | 62,046 | 3 | 0 |
+| Core modules extracted from two Sightglass components | 8 derived | 8 | 142 | 28 | 0 | 0 |
+
+There are 1,297 top-level artifacts, not 1,297 independent applications. The
+1,026 published builds cover 42 program prefixes with different sizes and flags,
+including numerical kernels, CHStone-style programs and an overhead control.
+The eight embedded cores are derived from two entries already counted above.
+This replaces the earlier 2 MiB external cutoff with complete collection scans.
+The largest inspected application is DuckDB MVP at 41,325,187 bytes. Tract's
+model benchmark is 27,992,676 bytes; Wasm-R3 Boa is 22,264,896 bytes.
+
+The source families and their pins are:
+
+- [Sightglass](https://github.com/bytecodealliance/sightglass/tree/a9023491c73d916ed329e4fd758cbae6380970a8),
+  revision `a9023491c73d916ed329e4fd758cbae6380970a8`: the full committed Wasm set,
+  including SQLite speedtest1, Rust JSON/HTML/protobuf, TinyGo JSON and regex,
+  cryptography, compression, GCC loops, integer matrix work, image processing,
+  and Tract inference. Wasmtime's main tree was also searched at
+  `a8d33e523206646ca2850bac2744571b4827961b`; it has no committed `.wasm` artifacts.
+  Sightglass is its upstream application benchmark source. The component-model
+  online statistics and Kotlin Richards entries were unbundled with wasm-tools
+  1.251.0 and all eight embedded core modules were decoded. Online statistics
+  computes f64 Welford statistics through component calls; it is not this i64 sum.
+- [Published benchmark builds](https://github.com/BenchmarkingWasm/BenchmarkingWebAssembly/tree/63e08d61ddb9ccbdba7e55aa25bfada728f550dd),
+  revision `63e08d61ddb9ccbdba7e55aa25bfada728f550dd`: all 1,026 Wasm files.
+  The Wago corpus's separate 30 PolyBench kernels were also decoded. Their
+  common floating-point reductions do not establish demand for an i64 emitter.
+- [Wasm-R3 artifacts](https://github.com/doehyunbaek/wasm-benchmarks/tree/bea10061c81428260ff029a9953273540a0c32e2/wasm-r3-bench),
+  revision `bea10061c81428260ff029a9953273540a0c32e2`: all 27 replay artifacts,
+  including Boa, FFmpeg, JSC, Parquet, browser graphics and games. Duplicate
+  reduction-tool input copies were excluded. Arithmetic toys remain excluded
+  from any application claim. The
+  [Wasm-R3 paper](https://software-lab.org/publications/oopsla2024_Wasm-R3.pdf)
+  explains how the replay collection was obtained; a replay name does not prove
+  that a particular loop runs or has a useful count.
+- [DuckDB-Wasm](https://github.com/duckdb/duckdb-wasm/tree/ef8a4f8912b6e7f62bc0cc490145ebd391b79e1f),
+  npm `1.33.1-dev57.0`, git revision `ef8a4f8912b6e7f62bc0cc490145ebd391b79e1f`:
+  the package integrity and SHA-256 are pinned. All three Wasm members were
+  acquired. MVP was decoded and compiled in all three modes. COI and EH use
+  legacy exception handling that Wago rejects; they are explicit exclusions.
+  The MVP binary has no producers metadata, so its exact Emscripten version
+  and unnamed function-to-source mapping are not claimed.
+- Existing applications include SQLite, jq, Rust coreutils, ripgrep, seqtk,
+  Brotli, XZ, age, Clang, Yosys, interpreters, and AssemblyScript JSON/UTF/hash
+  modules. Their revisions, languages, toolchains, licenses and oracles remain
+  in the corpus. The complete file/hash inventory is retained here as well.
+- [Biowasm](https://github.com/biowasm/biowasm/tree/4afa546aa207172355fdf2f639167ea78ace539a),
+  revision `4afa546aa207172355fdf2f639167ea78ace539a`: samtools 1.21,
+  bcftools 1.10, bedtools 2.31.0, bowtie2 2.4.2, fastp 0.20.1, minimap2 2.22,
+  and seqtk 1.4 were researched. Both public CDN URL forms returned HTTP 403.
+  These seven modules were not acquired or scanned. The existing licensed
+  seqtk corpus artifact was scanned and compiled. The manifest records the
+  failed URLs and source submodule pins; no negative reduction claim follows
+  from a failed download.
+- The public Seb-C Go-runtime benchmark was inspected at
+  `92d4a080f3bd61820a04a6e78dfa267539c6d9f5`. Its TinyGo program is add/Fibonacci
+  without an array reduction. It was not built as a supposed application.
+  Sightglass's actual TinyGo JSON and regex modules provide that language's
+  artifact coverage instead.
+
+The [DuckDB-Wasm paper](https://duckdb.org/pdf/VLDB2022-kohn-duckdb-wasm.pdf),
+the Wasm-R3 paper, the published numerical suite, and upstream Sightglass
+instructions supplied distinct application and benchmark sources. No research
+paper is used as evidence that Wago selected the optimization.
+
+[inventory.csv](results/qualification/inventory.csv) lists all 1,312 researched
+artifact records: 1,297 top-level artifacts, eight derived cores and seven failed
+CDN attempts. Eleven records are excluded from the core scan: two component
+wrappers, two legacy-EH DuckDB modules and seven failed downloads. Component
+wrappers have separate embedded-core coverage. Each acquired artifact has a
+SHA-256; Git downloads also have a verified Git blob hash and pinned revision.
+The manifests retain license scope and limits. Sightglass has MIT/Apache terms
+with benchmark dependencies; DuckDB-Wasm's package is MIT with dependency terms;
+Wasm-R3 artifact redistribution was not established. No new third-party binary
+or source was added to the corpus. Existing corpus license checks remain intact.
+
+### Instruction-aware admission analysis
+
+The new [scanner](scan/main.go) uses Wago's module decoder and module-aware
+instruction classifier. It reads actual instruction boundaries, immediates,
+local types and nested loop ranges. It does not search arbitrary data bytes.
+It separately checks the recognizer's exact suffix, independent of header shape.
+Its broad straight-line recurrence screen is deliberately labeled a hypothesis:
+it loses provenance across control, calls, stores and SIMD, and it can flag
+address, hash and bigint work. Its hypothesis counts are not counts of true
+reductions, eligible loops, or exercised application code.
+
+Independent review found that the first exact-header test could miss harmless
+header nops. This was corrected before the final scan. A regression compares
+the scanner to the actual compiler marker: nops before/between the three header
+instructions retain 4/4 admission; a nop after `br_if` prevents admission because
+the exact body reader sees it. The header-independent body check also bounds
+the negative result for other possible no-emission header forms. All final
+scans still have one exact header and one exact body: synthetic `memory.sum`.
+The earlier scanner outputs are retained and not used as the final count.
+
+| Manually inspected case | Wasm function / expression PCs | Classification and precise rejection | Count / application exercise |
+|---|---|---|---|
+| DuckDB contiguous i64 sum | 8687, main loop 4779, tail 4854, sum write 4871 | Near: load precedes accumulator; address is `base + (i32.wrap_i64(index) << 3)`; i64 index and second counter increase; bottom `br_if`; main already sums four loads | Tail counter limit is `(end-start)&3`: at most three iterations by static inspection. Main count and reachability in a SQL workload were not measured |
+| DuckDB pointer-gather sum | 4792, loop 185, write 198 | Near: `i32.load` gathers a pointer before `i64.load offset=48`; pointer-array stride 4; end-pointer comparison and bottom branch | No dynamic count or application trace; cannot use the current contiguous range proof |
+| DuckDB tagged-record sum | 4192, loop 5002, write 5022 | Near: conditional exit on record tag; load offset 8; stride 32; pointer-end bottom branch | No dynamic count or application trace; cannot move loads past early exit |
+| SQLite speedtest integer sum over typed records | 884, loop 25, write 65 | Near: stride-40 indexed records, flag-dependent branches, alternate call path, ascending index and nested control | Upstream speedtest1 is representative, but this unnamed function's dynamic exercise/count was not established |
+| Tract shape-expression sum | 2532, loop 66, write 145 | Near: indirect call, tagged result, stores and early exit; load offset 8; pointer-end bottom branch; another live status local | Part of the upstream model application, but shape-sum reachability/count was not traced; observable effects prevent this proof |
+| Sightglass rate-limit screen hit | 14, loop 296, write 450 | Unrelated to this reduction: SipHash-style XOR/rotate/add state with stores and calls, not a plain sum of i64 elements | No eligible reduction claim |
+
+The decoded full ranges and local types are in
+[loops/](results/qualification/loops/). Other screen hits were not promoted to
+verified near matches. A module with no exact body is classified as “no current
+recognizer match,” not as “contains no integer reductions.”
+
+[Compiler diagnostics](results/qualification/admission/) cover 19 modules in
+each of baseline, D and DR: 18 real application/benchmark/control modules and
+the synthetic positive control. The positive control selects 4/4 once, or D/DR
+once as requested. Every other module selects zero sum latches and has the same
+native SHA-256 and size in all three modes. This includes DuckDB MVP, Tract,
+SQLite speedtest, Rust JSON, TinyGo JSON/regex, GCC loops, RSA, Boa, FFmpeg,
+Parquet, corpus SQLite/jq/coreutils/seqtk/AssemblyScript/PolyBench and yyjson.
+These were compilations, not application execution claims. The explicit
+optimization-disabled native oracle and source-preservation controls remain in
+the existing correctness tests.
+
+There is no qualifying workload to add to the corpus. Therefore no application
+A/B timings, public compilation costs, lifecycle benefit, useful call-count
+distribution or compile-recovery claim is manufactured. No downloaded guest
+code was changed to force admission. No recognizer extension was made.
+
+### Practical costs and retained synthetic results
+
+The decisive synthetic measurements are the retained phase 2 and phase 3
+results, not another tuning run. Negative H/T/P findings were not repeated.
+
+| Candidate | Synthetic 512 execution vs normal 4/4 | Public compilation | Compiler memory / objects | Native module / sum function | Final decision |
+|---|---|---|---|---|---|
+| Existing 4/4 | Reference | Reference | 23,361 B / 108 | 472 / 312 B | Keep production |
+| D 16/4 | −9.91% / −10.60% in phase 2 | +5.04% / +3.70% | 25,153 B / 110 | 535 / 375 B | Useful synthetic result; no practical adoption case |
+| DR 16/4 with reservation | −9.57% / −10.12% in phase 3 | +0.0022% nonsignificant / +1.33%, p=.027 | 23,617 B / 108; direct D→DR repeat 23,616 B | 535 / 375 B | No application case; reservation defect remains |
+
+These rows belong to different retained measurement phases and are not a new
+simultaneous ranking. All execution rows have zero runtime allocations. The
+sum frame stays 40 B with no new operand spill/reload counters. D's benefit
+comes from less loop control with four independent sum chains. It adds 63 native
+bytes to this sum and increases public compilation growth allocations. DR
+restores object counts at a 256 B cost versus normal Wago in the primary sets;
+it does not prove free memory use or faster compilation. DR's complete one-call
+lifecycle changes +0.30% / +0.47%, both nonsignificant, and uses 25,201 B / 117
+objects versus baseline 24,945 B / 117. There is no measured application break-even.
+Known short-loop losses and the decline of the gain for large streaming buffers
+remain in the previous tables. A cache-resident synthetic win does not establish
+that production loops have the required structure, useful sizes or call frequency.
+
+### yyjson control and host layout
+
+All new sets have 20 alternating, serial pairs on CPU 2, `GOMAXPROCS=1`, Go
+1.27.1, 150 ms per sample, the same input and CPU settings, and timing binaries
+without diagnostic tags. Setup and compilation remain outside execution timing.
+Normal and tagged builds use the same updated source. All output and benchstat
+results are retained, including the noisy initial same-binary set.
+
+| Control | Baseline median | Candidate median | Change | benchstat p |
+|---|---:|---:|---:|---:|
+| Same tagged binary, baseline → DR | 913.45 ns | 1,008.50 ns | +10.406% | .402 |
+| Same tagged binary, independent repeat | 864.70 ns | 862.75 ns | −0.226% | .529 |
+| Normal binary → tagged DR | 875.40 ns | 871.60 ns | −0.434% | .060 |
+| Normal binary → tagged DR, independent repeat | 876.35 ns | 863.40 ns | −1.478% | .006 |
+| Same binary and same baseline mode, placebo | 857.65 ns | 863.50 ns | +0.682% | .931 |
+
+Each row has zero execution bytes and allocation objects. The first same-binary
+set has ±20–30% time variation. It is not discarded and not treated as evidence
+of equivalence. The stable repeat does not show a significant selection cost.
+The old +1.14% / +1.46% cross-binary losses remain recorded; the updated runs do
+not reproduce their direction. The significant new cross-binary improvement
+cannot be assigned to a sum emitter that selected no latch.
+
+Guest bytes and relative function offsets are identical. Saved `go tool nm`
+records show different host symbol positions: for example `benchmarkExecBatch`
+starts at `0xab85e0` in normal and `0xab9e20` in tagged. That establishes a host
+layout difference, not its causal effect. Same-binary controls remove that
+cross-binary difference. Absolute JIT placement and hardware cache effects were
+not isolated. Noise and layout remain possible causes; no specific cause was
+proved. This unresolved attribution is recorded as an experimental limit,
+not as a sum-emitter regression or an application gain.
+
+### DR reservation discontinuity
+
+The defect is confirmed in current source. `compile.go:1926–1928` adds headroom
+to `codeCap`; `compile.go:1954–1956` then reduces capacities at least 262,144
+bytes by one quarter on the serial deferred-heap path.
+
+For example, base capacity 262,016 plus one 128 B hint reaches 262,144, then
+becomes 196,608. Without the hint it stays 262,016: added headroom reduces the
+effective initial request by 65,408 B. The sizing formula reaches 262,016 with
+32 functions and 52,288 body bytes; average body size 1,634 B also meets the
+serial-heap condition. A false-positive hint can cause this. The reserve bound
+does not make this boundary monotonic.
+
+This affects allocation and compilation behavior, not native instructions,
+results or explicit callback thresholds. Existing small capacity/callback tests
+do not test this boundary. No eligible real workload justifies retaining DR, so
+the task's stop rule applies: document the defect and do not polish the discarded
+optimization. If a future study retains reservation, add failing tests below,
+at and above the boundary and for false-positive hints first; apply serial
+scaling before added headroom or otherwise prove a monotonic effective request.
+Then remeasure allocation bytes/objects and callback behavior. No fix or normal
+runtime check was added in this phase.
+
+### Independent reviews, validation and limits
+
+Separate read-only correctness and performance reviewers checked the new tools,
+coverage, diagnostics, raw controls and conclusions. Correctness review found
+the scanner nop issue and the DR boundary defect. The scanner issue and saved
+type visibility were corrected, tested and rescanned; DR remains documented.
+No new D semantic defect was found. Performance review checked all five control
+sets, their 20 samples per side, alternating order, medians and benchstat values.
+It confirmed zero admission in real modules and warned against counting build
+variants as independent applications. Both reviews support closure and do not
+approve production adoption. Their records are retained in this phase's results.
+Claude Code was attempted in read-only mode but returned “Not logged in.” No
+Claude review occurred.
+
+Fresh checks passed: scanner tests, the actual-compiler nop regression, tool
+package tests and vet, D and DR native correctness suites with codegen statistics
+and register checks, including full 4 GiB memory32, scalar remainders, integer
+overflow, live exit locals, trap metadata, source preservation and fallbacks.
+Pair/hybrid-only tests correctly skip in the D/DR runs. Experimental artifact
+tests without an output directory also skip; final admission data are from the
+separate diagnostic command. Python syntax, full `just lint`, `just docs`, and diff whitespace checks pass.
+The earlier affected unit, checked-native, guard, legacy, lint and ARM64
+cross-build results remain preserved. The earlier ordinary shared-scalar suite
+has its documented 86 baseline failures; it was not claimed fixed or rerun here.
+
+The last draft CI before this phase, run `37960026881`, passed its smoke/summary
+jobs. Its full matrix was skipped by draft policy. The new evidence commit's
+actual CI state is reported in the final PR comment. No native second AMD64
+machine or ARM64 measurement was available. The primary laptop still has boost,
+desktop activity and an unisolated SMT sibling. No hardware-counter or absolute
+JIT-placement causality was established. No downloaded application's dynamic
+loop distribution or independent runtime oracle was measured because none
+qualified. These limits bound the conclusion; they are not hidden proof of
+equivalence or absence of all real reductions.
+
+### Follow-up research, not implementation
+
+1. Confirm source mapping, dynamic coverage and useful counts for real dense
+   integer reductions, including already-unrolled DuckDB main loops. Only then
+   consider a separate narrow recognition experiment. Pointer-end or ascending
+   loops need zero-entry, count derivation, overflow and memory32 wrap proofs;
+   gathers need per-load bounds and trap-order proofs. Calls, stores, tags and
+   early exits cannot use this proof without new observable-effect reasoning.
+   The tiny DuckDB remainder is not a reason to add deeper unrolling.
+2. Keep the prior vector-map question separate: isolate PR #909's promising
+   128-bit i32/f32 maps and assess direct native emission, CPU-feature
+   profitability and avoidance of module cloning or rewritten-Wasm allocations.
+
+No follow-up PR was opened. No production default or unrelated compiler behavior
+changed. The final recommendation is **close #910 as Useful but not practical**.

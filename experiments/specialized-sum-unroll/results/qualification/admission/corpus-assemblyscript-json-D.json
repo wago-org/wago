@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 43,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "3b105acbd857f35d3916a59d363f0f928a50cc5071277c83d56d9b9e01ff205b",
+  "native_bytes": 58022,
+  "native_sha256": "6924fa9f1a1e840424c0f659efc3f8bb814cf8c952dde442a7bd5405fb4335dd",
+  "path": "corpus/workloads/assemblyscript/json-as.wasm",
+  "selected_functions": null,
+  "variant": "D"
+}

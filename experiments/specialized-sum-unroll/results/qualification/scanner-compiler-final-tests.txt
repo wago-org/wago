@@ -1,0 +1,1 @@
+ok  	github.com/wago-org/wago/experiments/specialized-sum-unroll/scan	0.002s

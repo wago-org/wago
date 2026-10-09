@@ -1,0 +1,35 @@
+Independent read-only performance and coverage review
+
+Reviewer: separate Codex agent; no edits or benchmarks run by reviewer.
+
+Decision supported by reviewed evidence: close Useful but not practical.
+Inventory1312records:1301decoded records,11explicit exclusions. Only synthetic
+memory.wasm matches the recognizer body/entry. Diagnostics19modules x3modes show
+zero selected sum loops and equal native bytes for every application module.
+DuckDB/SQLite/Tract near cases have actual structural differences requiring new
+proofs. Published1026artifacts are variants of42program prefixes, including
+PolyBench/numerical/CHStone-style programs, not1026independent applications.
+Saved type{} issue is fixed with readable types.
+
+Historical synthetic DR gains remain credible:97.435->88.110ns and
+97.070->87.250ns, zero runtime allocations. Normal Wago is the main baseline.
+Historical reviewed sets and five new controls have20alternating pairs per
+comparison, serial launches, and no failed timing sample removed. Raw medians
+and benchstat agree with all new control CSVs.
+
+New yyjson: cross-binary-.434% p=.060; repeat-1.478% p=.006; same-binary+10.406%
+p=.402 with20-30%noise; repeat-.226% p=.529; same-modeplacebo+.682% p=.931.
+These do not prove equivalence or explain the historical+1.14/+1.46% losses.
+Host symbol placement differs, but its causal effect is not proved. Preserve all
+losses and noisy results. Source archive/update patch and source-manifest hashes
+are needed to identify the updated-base timing lineage; these are now retained.
+
+No application benefit or useful compile recovery was established. No evidence
+review finding requires keeping the PR open. Final report text verification is
+recorded separately in the report addendum.
+
+Final report addendum: Phase4 report review passed. Inventory table, five raw
+control rows, historical costs, source files and patch hashes match. DR23616B
+is correctly labeled as the direct D->DR repeat; primary sets are23617B.
+Exclusions, dynamic-coverage gaps, reservation defect and validation limits are
+stated. No material report finding remains. Closure supported; no adoption.

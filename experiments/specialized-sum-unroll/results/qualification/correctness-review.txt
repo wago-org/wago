@@ -1,0 +1,33 @@
+Independent read-only correctness review and addendum
+
+Reviewer: separate Codex agent; did not edit, build, execute tests or benchmarks.
+Source: frozen compiler6a06dbe1 plus qualification tools and saved test results.
+
+Medium finding: DR adds128B headroom before the serial>=256KiB quarter reduction.
+Base262016 becomes262144 then196608, a65408B smaller request. The current sizing
+formula can reach the boundary with32functions and52288total body bytes. This
+affects allocations/compile cost, not guest semantics. Existing tests do not
+cover this boundary. Document if discarded; tests-first correction if retained.
+
+Medium finding, resolved: initial scanner required a literal immediate header.
+Compiler nops can leave native control position unchanged. Final scanner skips
+nops only before/between local.get/eqz/br_if; it rejects a nop afterbr_if. The
+actual-compiler marker regression passes all four positions. A separate exact
+body suffix check bounds the negative result independently of header shape.
+
+No new D semantic defect found. Recognizer/bounds/peel/trapPC/wrap behavior are
+shared. Production4/4 remains unchanged. D rejects before allocator/assembler
+mutation, uses only free registers with bounded storage, and releases transients.
+Its scalar remainder keeps zero-offset loads and32-bit address updates. Partial
+sums combine once under modulari64 addition. Saved tests include native oracle,
+exit locals, traps/source preservation, fallback and full4GiB memory32 execution.
+
+Final scans checked:1294main records,3DuckDB records,8embedded cores; one exact
+entry/body, synthetic only. Four top-level decoder exclusions remain stated.
+Loop inspection now records readable signature/local type strings. Broad screen
+candidates remain hypotheses and do not prove reachability, count or admission.
+Compiler diagnostics select the synthetic positive control as intended.
+
+Claude returned Not logged in. No Claude review occurred.
+Scanner finding resolved; DR limitation remains recorded. This supports the
+opt-in experiment's correctness, not production adoption or application benefit.

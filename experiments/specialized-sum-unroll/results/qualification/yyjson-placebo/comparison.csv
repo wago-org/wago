@@ -1,0 +1,2 @@
+variant,benchmark,samples_each,baseline_ns,baseline_bytes,baseline_allocs,candidate_ns,candidate_bytes,candidate_allocs,time_delta_percent,median_paired_time_delta_percent
+baseline,BenchmarkExec/yyjson.yyjson_run,20,857.6500000000001,0.0,0.0,863.5,0.0,0.0,0.682096426281098,0.10566813817570742

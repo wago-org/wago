@@ -1,0 +1,6 @@
+panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0x69726f]
+
+goroutine 1 [running]:
+main.main()
+	/home/jtenner/Projects/wago-sum-unroll/experiments/specialized-sum-unroll/admission/main.go:60 +0xccf

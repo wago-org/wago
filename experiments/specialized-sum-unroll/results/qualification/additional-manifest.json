@@ -1,0 +1,187 @@
+[
+  {
+    "family": "duckdb",
+    "repository": "https://github.com/duckdb/duckdb-wasm",
+    "revision": "ef8a4f8912b6e7f62bc0cc490145ebd391b79e1f",
+    "version": "1.33.1-dev57.0",
+    "path": "package/dist/duckdb-coi.wasm",
+    "url": "https://registry.npmjs.org/@duckdb/duckdb-wasm/-/duckdb-wasm-1.33.1-dev57.0.tgz",
+    "package_sha256": "a3f36b6430dcc40677a343ddcf0baefe8940398ece3dba29ce64a923576d1398",
+    "package_integrity": "sha512-ndn5l2EHq1PEMvCg8G6lRV0vjhSUcbqdM/niNBTTqH4/PyyUUVKbge0uUyCnj27b9SF/CiqBwDsgKLTqBvaxdw==",
+    "local_path": "/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-coi.wasm",
+    "bytes": 35644774,
+    "sha256": "61511af88cae299c18c9b22065855ee1d03beb49a3e86d8668744c83dfdd83d1",
+    "license_note": "MIT DuckDB-Wasm; bundled dependencies require separate audit; no redistribution",
+    "toolchain": "Emscripten; exact version not inferred"
+  },
+  {
+    "family": "duckdb",
+    "repository": "https://github.com/duckdb/duckdb-wasm",
+    "revision": "ef8a4f8912b6e7f62bc0cc490145ebd391b79e1f",
+    "version": "1.33.1-dev57.0",
+    "path": "package/dist/duckdb-eh.wasm",
+    "url": "https://registry.npmjs.org/@duckdb/duckdb-wasm/-/duckdb-wasm-1.33.1-dev57.0.tgz",
+    "package_sha256": "a3f36b6430dcc40677a343ddcf0baefe8940398ece3dba29ce64a923576d1398",
+    "package_integrity": "sha512-ndn5l2EHq1PEMvCg8G6lRV0vjhSUcbqdM/niNBTTqH4/PyyUUVKbge0uUyCnj27b9SF/CiqBwDsgKLTqBvaxdw==",
+    "local_path": "/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-eh.wasm",
+    "bytes": 35913747,
+    "sha256": "3abdec74989dcc54d2f2ea5621f611f3c45db1e7dff2f408476014d82beb2029",
+    "license_note": "MIT DuckDB-Wasm; bundled dependencies require separate audit; no redistribution",
+    "toolchain": "Emscripten; exact version not inferred"
+  },
+  {
+    "family": "duckdb",
+    "repository": "https://github.com/duckdb/duckdb-wasm",
+    "revision": "ef8a4f8912b6e7f62bc0cc490145ebd391b79e1f",
+    "version": "1.33.1-dev57.0",
+    "path": "package/dist/duckdb-mvp.wasm",
+    "url": "https://registry.npmjs.org/@duckdb/duckdb-wasm/-/duckdb-wasm-1.33.1-dev57.0.tgz",
+    "package_sha256": "a3f36b6430dcc40677a343ddcf0baefe8940398ece3dba29ce64a923576d1398",
+    "package_integrity": "sha512-ndn5l2EHq1PEMvCg8G6lRV0vjhSUcbqdM/niNBTTqH4/PyyUUVKbge0uUyCnj27b9SF/CiqBwDsgKLTqBvaxdw==",
+    "local_path": "/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-mvp.wasm",
+    "bytes": 41325187,
+    "sha256": "ee5560145a3d3e0ffa6dce697be802c08842f139a594698eecc7c754f7ad5f05",
+    "license_note": "MIT DuckDB-Wasm; bundled dependencies require separate audit; no redistribution",
+    "toolchain": "Emscripten; exact version not inferred"
+  },
+  {
+    "family": "biowasm",
+    "repository": "https://github.com/biowasm/biowasm",
+    "revision": "4afa546aa207172355fdf2f639167ea78ace539a",
+    "version": "1.10",
+    "path": "bcftools/bcftools.wasm",
+    "url": "https://biowasm.com/cdn/v3/bcftools/1.10/bcftools.wasm",
+    "toolchain": "Emscripten; build script/source submodule pin to be audited",
+    "license_note": "Biowasm MIT wrapper; tool upstream licenses apply; no redistribution",
+    "error": "HTTP Error 403: Forbidden",
+    "source_submodule": [
+      {
+        "path": "tools/bcftools/src",
+        "mode": "160000",
+        "type": "commit",
+        "sha": "9f0a0a2451bb64e52a12c4a586ffa5744a4bd965"
+      }
+    ],
+    "second_url_error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "family": "biowasm",
+    "repository": "https://github.com/biowasm/biowasm",
+    "revision": "4afa546aa207172355fdf2f639167ea78ace539a",
+    "version": "2.31.0",
+    "path": "bedtools/bedtools.wasm",
+    "url": "https://biowasm.com/cdn/v3/bedtools/2.31.0/bedtools.wasm",
+    "toolchain": "Emscripten; build script/source submodule pin to be audited",
+    "license_note": "Biowasm MIT wrapper; tool upstream licenses apply; no redistribution",
+    "error": "HTTP Error 403: Forbidden",
+    "source_submodule": [
+      {
+        "path": "tools/bedtools/src",
+        "mode": "160000",
+        "type": "commit",
+        "sha": "a42d2b52b92ec1c1333254f28c3ba3f965b3ea61"
+      }
+    ],
+    "second_url_error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "family": "biowasm",
+    "repository": "https://github.com/biowasm/biowasm",
+    "revision": "4afa546aa207172355fdf2f639167ea78ace539a",
+    "version": "2.4.2",
+    "path": "bowtie2/bowtie2-align-s.wasm",
+    "url": "https://biowasm.com/cdn/v3/bowtie2/2.4.2/bowtie2-align-s.wasm",
+    "toolchain": "Emscripten; build script/source submodule pin to be audited",
+    "license_note": "Biowasm MIT wrapper; tool upstream licenses apply; no redistribution",
+    "error": "HTTP Error 403: Forbidden",
+    "source_submodule": [
+      {
+        "path": "tools/bowtie2/src",
+        "mode": "160000",
+        "type": "commit",
+        "sha": "8be3a210eb488610072de14449eccf9b041d8930"
+      }
+    ],
+    "second_url_error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "family": "biowasm",
+    "repository": "https://github.com/biowasm/biowasm",
+    "revision": "4afa546aa207172355fdf2f639167ea78ace539a",
+    "version": "0.20.1",
+    "path": "fastp/fastp.wasm",
+    "url": "https://biowasm.com/cdn/v3/fastp/0.20.1/fastp.wasm",
+    "toolchain": "Emscripten; build script/source submodule pin to be audited",
+    "license_note": "Biowasm MIT wrapper; tool upstream licenses apply; no redistribution",
+    "error": "HTTP Error 403: Forbidden",
+    "source_submodule": [
+      {
+        "path": "tools/fastp/src",
+        "mode": "160000",
+        "type": "commit",
+        "sha": "8f0eceae82b1789c6edfd78f640ad601bc0be29c"
+      }
+    ],
+    "second_url_error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "family": "biowasm",
+    "repository": "https://github.com/biowasm/biowasm",
+    "revision": "4afa546aa207172355fdf2f639167ea78ace539a",
+    "version": "2.22",
+    "path": "minimap2/minimap2.wasm",
+    "url": "https://biowasm.com/cdn/v3/minimap2/2.22/minimap2.wasm",
+    "toolchain": "Emscripten; build script/source submodule pin to be audited",
+    "license_note": "Biowasm MIT wrapper; tool upstream licenses apply; no redistribution",
+    "error": "HTTP Error 403: Forbidden",
+    "source_submodule": [
+      {
+        "path": "tools/minimap2/src",
+        "mode": "160000",
+        "type": "commit",
+        "sha": "7358a1ead1adfa89a2d3d0e72ffddd05732f9850"
+      }
+    ],
+    "second_url_error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "family": "biowasm",
+    "repository": "https://github.com/biowasm/biowasm",
+    "revision": "4afa546aa207172355fdf2f639167ea78ace539a",
+    "version": "1.21",
+    "path": "samtools/samtools.wasm",
+    "url": "https://biowasm.com/cdn/v3/samtools/1.21/samtools.wasm",
+    "toolchain": "Emscripten; build script/source submodule pin to be audited",
+    "license_note": "Biowasm MIT wrapper; tool upstream licenses apply; no redistribution",
+    "error": "HTTP Error 403: Forbidden",
+    "source_submodule": [
+      {
+        "path": "tools/samtools/src",
+        "mode": "160000",
+        "type": "commit",
+        "sha": "ec8bf989bd852cf46901b3e1a7d06d6fa10a79ff"
+      }
+    ],
+    "second_url_error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "family": "biowasm",
+    "repository": "https://github.com/biowasm/biowasm",
+    "revision": "4afa546aa207172355fdf2f639167ea78ace539a",
+    "version": "1.4",
+    "path": "seqtk/seqtk.wasm",
+    "url": "https://biowasm.com/cdn/v3/seqtk/1.4/seqtk.wasm",
+    "toolchain": "Emscripten; build script/source submodule pin to be audited",
+    "license_note": "Biowasm MIT wrapper; tool upstream licenses apply; no redistribution",
+    "error": "HTTP Error 403: Forbidden",
+    "source_submodule": [
+      {
+        "path": "tools/seqtk/src",
+        "mode": "160000",
+        "type": "commit",
+        "sha": "fe1cc9e8d926d40a88f6ff368c07466d33c3665d"
+      }
+    ],
+    "second_url_error": "HTTP Error 403: Forbidden"
+  }
+]

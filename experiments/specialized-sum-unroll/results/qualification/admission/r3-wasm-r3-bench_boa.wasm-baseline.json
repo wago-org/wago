@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 4598,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "3b58ffd7d232796d505ce820670bdffc6b4abfd7292c559a447ae77ba2216041",
+  "native_bytes": 14707879,
+  "native_sha256": "71250913278f602468e68c6dcbe1bdc2cbd2d18fa7525bf0690793a8153551a1",
+  "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/boa.wasm",
+  "selected_functions": null,
+  "variant": "baseline"
+}

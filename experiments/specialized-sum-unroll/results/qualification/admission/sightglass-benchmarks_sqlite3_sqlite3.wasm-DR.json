@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 2562,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "4f87ebff894cd67868139ab824de37b6fc40738be63734c1c0e926cdd9cff098",
+  "native_bytes": 2873684,
+  "native_sha256": "1548d939e8adb79f2b48ba8630244f3580f473013ded2a8474b4d37f11659730",
+  "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/sqlite3/sqlite3.wasm",
+  "selected_functions": null,
+  "variant": "DR"
+}

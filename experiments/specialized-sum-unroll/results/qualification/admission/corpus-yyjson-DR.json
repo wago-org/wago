@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 19,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b",
+  "native_bytes": 299269,
+  "native_sha256": "6f522e7e4c047ef316c9da084692327e0b62d5e9a2144f10ca53bcc60776b5ce",
+  "path": "corpus/workloads/semantic/yyjson/yyjson.wasm",
+  "selected_functions": null,
+  "variant": "DR"
+}

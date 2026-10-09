@@ -1,0 +1,106 @@
+diff --git a/src/core/compiler/wasm/validate_bytebacked.go b/src/core/compiler/wasm/validate_bytebacked.go
+index 756a9df1a..2f1b6fe56 100644
+--- a/src/core/compiler/wasm/validate_bytebacked.go
++++ b/src/core/compiler/wasm/validate_bytebacked.go
+@@ -266,9 +266,7 @@ func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, lim
+ 				de.SectionID = id
+ 				de.SectionStart = start
+ 				de.SectionEnd = end
+-				if de.Offset == 0 {
+-					de.Offset = start
+-				}
++				de.Offset += start
+ 				return nil, de
+ 			}
+ 			return nil, err
+@@ -321,7 +319,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
+ 		}
+ 		hints, err := decodeBranchHintSectionWithBudget(payload, r.budget)
+ 		if err != nil {
+-			return err
++			return rebaseDecodeError(err, r.off()-len(payload))
+ 		}
+ 		dm.m.BranchHints = hints
+ 		dm.seenBranchHints = true
+@@ -334,6 +332,15 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
+ 	return nil
+ }
+ 
++// Nested readers report offsets within their own byte slice. Move a decode
++// error to the containing section before the outer decoder adds the file base.
++func rebaseDecodeError(err error, base int) error {
++	if de, ok := err.(*DecodeError); ok {
++		de.Offset += base
++	}
++	return err
++}
++
+ func decodeDirectTableSection(dm *directModule, r *reader) error {
+ 	n, err := r.u32()
+ 	if err != nil {
+@@ -742,20 +749,21 @@ func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemo
+ 		if err != nil {
+ 			return nil, false, err
+ 		}
++		bodyStart := r.off() - len(body)
+ 		sub.reset(body)
+ 		locals, err := decodeLocals(&sub)
+ 		if err != nil {
+-			return nil, false, err
++			return nil, false, rebaseDecodeError(err, bodyStart)
+ 		}
+ 		var exprBytes []byte
+ 		var bodyUsesDataCount bool
+ 		exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, widths, multiMemory)
+ 		if err != nil {
+-			return nil, false, err
++			return nil, false, rebaseDecodeError(err, bodyStart)
+ 		}
+ 		usesDataCountInstr = usesDataCountInstr || bodyUsesDataCount
+ 		if sub.has() {
+-			return nil, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: sub.off()}
++			return nil, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: bodyStart + sub.off()}
+ 		}
+ 		out = append(out, Func{Locals: locals, LocalDeclBytes: uint32(sub.off() - len(exprBytes)), BodyBytes: exprBytes})
+ 	}
+diff --git a/src/core/compiler/wasm/validate_bytebacked_test.go b/src/core/compiler/wasm/validate_bytebacked_test.go
+index c248106ef..a94503479 100644
+--- a/src/core/compiler/wasm/validate_bytebacked_test.go
++++ b/src/core/compiler/wasm/validate_bytebacked_test.go
+@@ -19,6 +19,36 @@ func TestValidateByteBackedModuleSimpleFunction(t *testing.T) {
+ 	}
+ }
+ 
++func TestDecodeByteBackedReportsAbsoluteSectionOffsets(t *testing.T) {
++	badType := module(section(secType, 0x01, 0xff))
++	badBody := module(
++		section(secType, 0x01, 0x60, 0x00, 0x00),
++		section(secFunction, 0x01, 0x00),
++		section(secCode, 0x01, 0x03, 0x00, 0xff, 0x0b),
++	)
++	badHint := module(custom(branchHintSectionName, 0x01, 0x00, 0x01, 0x00, 0x02, 0x00))
++	for _, tc := range []struct {
++		name string
++		data []byte
++		want int
++	}{
++		{"type", badType, bytes.IndexByte(badType, 0xff)},
++		{"function body", badBody, bytes.IndexByte(badBody, 0xff)},
++		{"branch hint", badHint, len(badHint) - 1},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			_, err := DecodeModuleByteBacked(tc.data)
++			var de *DecodeError
++			if !errors.As(err, &de) {
++				t.Fatalf("DecodeModuleByteBacked() = %v, want decode error", err)
++			}
++			if de.Offset != tc.want {
++				t.Fatalf("decode offset = %d, want absolute byte %d", de.Offset, tc.want)
++			}
++		})
++	}
++}
++
+ func TestDecodeModuleByteBackedKeepsRawFunctionBytes(t *testing.T) {
+ 	b := module(
+ 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),

@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 1547,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
+  "native_bytes": 4121558,
+  "native_sha256": "d9accc23acb01fe0e89589ad489278dc6e0dd34b61e5a4a030e7b8f63a663f57",
+  "path": "corpus/workloads/applications/sqlite3/sqlite3.wasm",
+  "selected_functions": null,
+  "variant": "baseline"
+}

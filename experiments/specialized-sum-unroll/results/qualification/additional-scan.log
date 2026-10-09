@@ -1,0 +1,3 @@
+/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-coi.wasm: 0 loops, exact=0 integer=0 float=0 error=wasm decode: legacy exception handling is not supported; recompile with try_table (exnref) at offset 379 in section 10 [8050474,33301917)
+/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-eh.wasm: 0 loops, exact=0 integer=0 float=0 error=wasm decode: legacy exception handling is not supported; recompile with try_table (exnref) at offset 370 in section 10 [8078945,33274257)
+/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-mvp.wasm: 62046 loops, exact=0 integer=2804 float=218 error=

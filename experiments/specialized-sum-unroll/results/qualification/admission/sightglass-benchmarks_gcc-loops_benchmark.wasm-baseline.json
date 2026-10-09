@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 704,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "a9709c4c8151f059ce9fcd4475faa0e77072887e6f61ac3a5558b767d82fa357",
+  "native_bytes": 773913,
+  "native_sha256": "e025ce20fe159f7221fb97577a818368c039b5121cedd0b891bf12498891b573",
+  "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/gcc-loops/benchmark.wasm",
+  "selected_functions": null,
+  "variant": "baseline"
+}

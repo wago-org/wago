@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 353,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "b06ba6927c3077bb28e299054c5618f88961102a5847e2d8a180d964c78dac67",
+  "native_bytes": 1639754,
+  "native_sha256": "ec8624b634c36029625134652723dea6e3246fc01be2ab77a39f43d408013d11",
+  "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tinygo/tinygo-json.wasm",
+  "selected_functions": null,
+  "variant": "baseline"
+}

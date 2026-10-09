@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                       │ experiments/specialized-sum-unroll/results/qualification/yyjson-placebo/baseline-baseline.txt │ experiments/specialized-sum-unroll/results/qualification/yyjson-placebo/baseline-candidate.txt │
+                       │                                            sec/op                                             │                                    sec/op                                     vs base          │
+Exec/yyjson.yyjson_run                                                                                     857.6n ± 2%                                                                    863.5n ± 1%  ~ (p=0.931 n=20)
+
+                       │ experiments/specialized-sum-unroll/results/qualification/yyjson-placebo/baseline-baseline.txt │ experiments/specialized-sum-unroll/results/qualification/yyjson-placebo/baseline-candidate.txt │
+                       │                                          calls/batch                                          │                                 calls/batch                                   vs base          │
+Exec/yyjson.yyjson_run                                                                                     2.405k ± 0%                                                                    2.408k ± 1%  ~ (p=0.516 n=20)
+
+                       │ experiments/specialized-sum-unroll/results/qualification/yyjson-placebo/baseline-baseline.txt │ experiments/specialized-sum-unroll/results/qualification/yyjson-placebo/baseline-candidate.txt │
+                       │                                             B/op                                              │                                    B/op                                     vs base            │
+Exec/yyjson.yyjson_run                                                                                      0.000 ± 0%                                                                   0.000 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal
+
+                       │ experiments/specialized-sum-unroll/results/qualification/yyjson-placebo/baseline-baseline.txt │ experiments/specialized-sum-unroll/results/qualification/yyjson-placebo/baseline-candidate.txt │
+                       │                                           allocs/op                                           │                                 allocs/op                                   vs base            │
+Exec/yyjson.yyjson_run                                                                                      0.000 ± 0%                                                                   0.000 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal

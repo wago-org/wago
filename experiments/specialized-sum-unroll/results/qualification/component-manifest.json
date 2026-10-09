@@ -1,0 +1,90 @@
+[
+  {
+    "family": "embedded-core",
+    "path": "/tmp/wago-qualification-artifacts/components/kotlin-richards/unbundled-module3.wasm",
+    "sha256": "b2e9ee67da4cff22d4486878db8f3cd2d4c0f02a0cfb2b16960f050f330e61d8",
+    "bytes": 285,
+    "parent_url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/kotlin-richards/kotlin-richards.wasm",
+    "parent_sha256": "73ef9b32625ed4bb91ddd5562d3eb1ef1d42a365516eb37ef005dda56ddfaf80",
+    "revision": "a9023491c73d916ed329e4fd758cbae6380970a8",
+    "extraction": "wasm-tools component unbundle --threshold0 --module-dir",
+    "license_note": "Apache-2.0 OR MIT; bundled benchmark dependencies need separate audit"
+  },
+  {
+    "family": "embedded-core",
+    "path": "/tmp/wago-qualification-artifacts/components/kotlin-richards/unbundled-module2.wasm",
+    "sha256": "ba7e0523586add23fddd9dbc39ee4c57c707ac8e485519d76452a5105a99c852",
+    "bytes": 551,
+    "parent_url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/kotlin-richards/kotlin-richards.wasm",
+    "parent_sha256": "73ef9b32625ed4bb91ddd5562d3eb1ef1d42a365516eb37ef005dda56ddfaf80",
+    "revision": "a9023491c73d916ed329e4fd758cbae6380970a8",
+    "extraction": "wasm-tools component unbundle --threshold0 --module-dir",
+    "license_note": "Apache-2.0 OR MIT; bundled benchmark dependencies need separate audit"
+  },
+  {
+    "family": "embedded-core",
+    "path": "/tmp/wago-qualification-artifacts/components/kotlin-richards/unbundled-module1.wasm",
+    "sha256": "016d60d09dba23e7b4bc105babf2e7d3d699e3f0cca2ed4bfa268b8d5522e246",
+    "bytes": 14758,
+    "parent_url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/kotlin-richards/kotlin-richards.wasm",
+    "parent_sha256": "73ef9b32625ed4bb91ddd5562d3eb1ef1d42a365516eb37ef005dda56ddfaf80",
+    "revision": "a9023491c73d916ed329e4fd758cbae6380970a8",
+    "extraction": "wasm-tools component unbundle --threshold0 --module-dir",
+    "license_note": "Apache-2.0 OR MIT; bundled benchmark dependencies need separate audit"
+  },
+  {
+    "family": "embedded-core",
+    "path": "/tmp/wago-qualification-artifacts/components/kotlin-richards/unbundled-module0.wasm",
+    "sha256": "88624aac0e9da16ab6250f7a608c5d40b18b7c5e9260b752e261b52299386390",
+    "bytes": 18772,
+    "parent_url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/kotlin-richards/kotlin-richards.wasm",
+    "parent_sha256": "73ef9b32625ed4bb91ddd5562d3eb1ef1d42a365516eb37ef005dda56ddfaf80",
+    "revision": "a9023491c73d916ed329e4fd758cbae6380970a8",
+    "extraction": "wasm-tools component unbundle --threshold0 --module-dir",
+    "license_note": "Apache-2.0 OR MIT; bundled benchmark dependencies need separate audit"
+  },
+  {
+    "family": "embedded-core",
+    "path": "/tmp/wago-qualification-artifacts/components/cm-online-stats/unbundled-module3.wasm",
+    "sha256": "928bc9b4ab80c390df504c971f5cacb09f42eed0b332bbd91abf2bd6df5299c6",
+    "bytes": 1573,
+    "parent_url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/cm-online-stats/cm-online-stats.wasm",
+    "parent_sha256": "05738c64ac8552464401bdf910e3b7f16ae8c48cbca39f0ede29dd195b1ed45a",
+    "revision": "a9023491c73d916ed329e4fd758cbae6380970a8",
+    "extraction": "wasm-tools component unbundle --threshold0 --module-dir",
+    "license_note": "Apache-2.0 OR MIT; bundled benchmark dependencies need separate audit"
+  },
+  {
+    "family": "embedded-core",
+    "path": "/tmp/wago-qualification-artifacts/components/cm-online-stats/unbundled-module2.wasm",
+    "sha256": "10ba2a5f96e6988775b9d3c787a2df9fd41279557e42839b82ba182977ee9682",
+    "bytes": 216,
+    "parent_url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/cm-online-stats/cm-online-stats.wasm",
+    "parent_sha256": "05738c64ac8552464401bdf910e3b7f16ae8c48cbca39f0ede29dd195b1ed45a",
+    "revision": "a9023491c73d916ed329e4fd758cbae6380970a8",
+    "extraction": "wasm-tools component unbundle --threshold0 --module-dir",
+    "license_note": "Apache-2.0 OR MIT; bundled benchmark dependencies need separate audit"
+  },
+  {
+    "family": "embedded-core",
+    "path": "/tmp/wago-qualification-artifacts/components/cm-online-stats/unbundled-module1.wasm",
+    "sha256": "708607d571119165a7463aa18a94ac0a7810dd283246c4bd03758a2da3c49aa0",
+    "bytes": 333,
+    "parent_url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/cm-online-stats/cm-online-stats.wasm",
+    "parent_sha256": "05738c64ac8552464401bdf910e3b7f16ae8c48cbca39f0ede29dd195b1ed45a",
+    "revision": "a9023491c73d916ed329e4fd758cbae6380970a8",
+    "extraction": "wasm-tools component unbundle --threshold0 --module-dir",
+    "license_note": "Apache-2.0 OR MIT; bundled benchmark dependencies need separate audit"
+  },
+  {
+    "family": "embedded-core",
+    "path": "/tmp/wago-qualification-artifacts/components/cm-online-stats/unbundled-module0.wasm",
+    "sha256": "342b486dc54c896dcaa6a43c72370d895e75e98129c03d50e2b2b8573850a883",
+    "bytes": 484,
+    "parent_url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/cm-online-stats/cm-online-stats.wasm",
+    "parent_sha256": "05738c64ac8552464401bdf910e3b7f16ae8c48cbca39f0ede29dd195b1ed45a",
+    "revision": "a9023491c73d916ed329e4fd758cbae6380970a8",
+    "extraction": "wasm-tools component unbundle --threshold0 --module-dir",
+    "license_note": "Apache-2.0 OR MIT; bundled benchmark dependencies need separate audit"
+  }
+]

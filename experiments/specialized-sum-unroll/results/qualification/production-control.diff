@@ -1,0 +1,13 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index 239d731db..139ea8834 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -410,7 +410,7 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
+ 	}
+ 	f.convergeBranchLocals(loop)
+ 	f.invalidateBoundsCertFor(1, uint32(x))
+-	if f.tryUnrolledLinearSumLatch(loop, x) {
++	if f.trySelectedLinearSumLatch(loop, x) {
+ 		f.stats.peep("counted-loop-latch")
+ 		return true, nil
+ 	}

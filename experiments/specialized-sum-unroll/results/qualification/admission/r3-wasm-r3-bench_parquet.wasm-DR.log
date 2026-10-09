@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 3198,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "cbcfc22fa6dd9bed5c7d9a1f064e54850dbdbcdb943fb2d5f11f97531976e3b1",
+  "native_bytes": 6744883,
+  "native_sha256": "2cf373f347dc061ed25a4dc613ec1aa799d577f3b568141e060e0e3b4ec31342",
+  "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/parquet.wasm",
+  "selected_functions": null,
+  "variant": "DR"
+}

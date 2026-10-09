@@ -1,0 +1,695 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index ea0d00c22..7578e9300 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
+ 
+ ### Changed
+ 
++- Reduce ordinary and prepared numeric host-to-Wasm call overhead by combining
++  instance lifetime and invocation-gate admission, preserving close, revocation,
++  and waiter handoff behavior.
+ - Bound AMD64 compiler scratch growth by recycling operand arenas at proven-empty
+   instruction boundaries, tracking control-frame eligibility in constant time
+   and clearing only pointer slots written since the previous cleanup.
+diff --git a/profile/export.go b/profile/export.go
+index 824f1c8cd..8a1dfe14e 100644
+--- a/profile/export.go
++++ b/profile/export.go
+@@ -14,7 +14,7 @@ import (
+ )
+ 
+ // Symbol includes source, compilation, mapping generation and full function
+-// identity. Names are display text only. ASCII escaping prevents format injection.
++// identity. Text fields are display text only. ASCII escaping prevents format injection.
+ func Symbol(im jitprofile.Image, r jitprofile.Region) string {
+ 	clean := func(s string) string {
+ 		return strings.Map(func(c rune) rune {
+@@ -24,7 +24,7 @@ func Symbol(im jitprofile.Image, r jitprofile.Region) string {
+ 			return c
+ 		}, s)
+ 	}
+-	return fmt.Sprintf("wago:%s:%s:g%d:f%d:r%x:%s:%s", im.ModuleID, im.ArtifactID, im.ID, r.Function, r.Offset, r.Kind, clean(r.Name))
++	return fmt.Sprintf("wago:%s:%s:g%d:f%d:r%x:%s:%s", clean(im.ModuleID), clean(im.ArtifactID), im.ID, r.Function, r.Offset, clean(r.Kind), clean(r.Name))
+ }
+ 
+ func executable(r jitprofile.Region) bool { return r.Kind != "padding" && r.Kind != "literal-data" }
+diff --git a/profile/export_test.go b/profile/export_test.go
+index dd2ee21e1..7d72bd43d 100644
+--- a/profile/export_test.go
++++ b/profile/export_test.go
+@@ -81,6 +81,32 @@ func TestExportErrorsAndAddressReuse(t *testing.T) {
+ 		t.Fatal("accepted missing code")
+ 	}
+ }
++
++func TestPerfMapEscapesAllSymbolFields(t *testing.T) {
++	for _, tc := range []struct {
++		name   string
++		mutate func(*jitprofile.Image)
++		want   string
++	}{
++		{"module", func(im *jitprofile.Image) { im.ModuleID = "mod\npart" }, "wago:mod_part:variant:g7:f3:r0:guest-body:duplicate_name"},
++		{"artifact", func(im *jitprofile.Image) { im.ArtifactID = "variant\npart" }, "wago:mod:variant_part:g7:f3:r0:guest-body:duplicate_name"},
++		{"region kind", func(im *jitprofile.Image) { im.Regions[0].Kind = "guest\nbody" }, "wago:mod:variant:g7:f3:r0:guest_body:duplicate_name"},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			events := fixture()
++			tc.mutate(events[0].Image)
++			var out bytes.Buffer
++			if err := NewPerfMap(&out).Write(events); err != nil {
++				t.Fatal(err)
++			}
++			want := "1000 2 " + tc.want + "\n"
++			if got := out.String(); got != want {
++				t.Fatalf("perf-map record = %q, want %q", got, want)
++			}
++		})
++	}
++}
++
+ func TestTemporalResolutionAndRegionBoundaries(t *testing.T) {
+ 	events := fixture()
+ 	events = append(events, jitprofile.Event{Sequence: 2, Timestamp: 20, Kind: "retire", ImageID: 7})
+diff --git a/src/core/compiler/wasm/validate_bytebacked.go b/src/core/compiler/wasm/validate_bytebacked.go
+index 756a9df1a..2f1b6fe56 100644
+--- a/src/core/compiler/wasm/validate_bytebacked.go
++++ b/src/core/compiler/wasm/validate_bytebacked.go
+@@ -266,9 +266,7 @@ func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, lim
+ 				de.SectionID = id
+ 				de.SectionStart = start
+ 				de.SectionEnd = end
+-				if de.Offset == 0 {
+-					de.Offset = start
+-				}
++				de.Offset += start
+ 				return nil, de
+ 			}
+ 			return nil, err
+@@ -321,7 +319,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
+ 		}
+ 		hints, err := decodeBranchHintSectionWithBudget(payload, r.budget)
+ 		if err != nil {
+-			return err
++			return rebaseDecodeError(err, r.off()-len(payload))
+ 		}
+ 		dm.m.BranchHints = hints
+ 		dm.seenBranchHints = true
+@@ -334,6 +332,15 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
+ 	return nil
+ }
+ 
++// Nested readers report offsets within their own byte slice. Move a decode
++// error to the containing section before the outer decoder adds the file base.
++func rebaseDecodeError(err error, base int) error {
++	if de, ok := err.(*DecodeError); ok {
++		de.Offset += base
++	}
++	return err
++}
++
+ func decodeDirectTableSection(dm *directModule, r *reader) error {
+ 	n, err := r.u32()
+ 	if err != nil {
+@@ -742,20 +749,21 @@ func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemo
+ 		if err != nil {
+ 			return nil, false, err
+ 		}
++		bodyStart := r.off() - len(body)
+ 		sub.reset(body)
+ 		locals, err := decodeLocals(&sub)
+ 		if err != nil {
+-			return nil, false, err
++			return nil, false, rebaseDecodeError(err, bodyStart)
+ 		}
+ 		var exprBytes []byte
+ 		var bodyUsesDataCount bool
+ 		exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, widths, multiMemory)
+ 		if err != nil {
+-			return nil, false, err
++			return nil, false, rebaseDecodeError(err, bodyStart)
+ 		}
+ 		usesDataCountInstr = usesDataCountInstr || bodyUsesDataCount
+ 		if sub.has() {
+-			return nil, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: sub.off()}
++			return nil, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: bodyStart + sub.off()}
+ 		}
+ 		out = append(out, Func{Locals: locals, LocalDeclBytes: uint32(sub.off() - len(exprBytes)), BodyBytes: exprBytes})
+ 	}
+diff --git a/src/core/compiler/wasm/validate_bytebacked_test.go b/src/core/compiler/wasm/validate_bytebacked_test.go
+index c248106ef..a94503479 100644
+--- a/src/core/compiler/wasm/validate_bytebacked_test.go
++++ b/src/core/compiler/wasm/validate_bytebacked_test.go
+@@ -19,6 +19,36 @@ func TestValidateByteBackedModuleSimpleFunction(t *testing.T) {
+ 	}
+ }
+ 
++func TestDecodeByteBackedReportsAbsoluteSectionOffsets(t *testing.T) {
++	badType := module(section(secType, 0x01, 0xff))
++	badBody := module(
++		section(secType, 0x01, 0x60, 0x00, 0x00),
++		section(secFunction, 0x01, 0x00),
++		section(secCode, 0x01, 0x03, 0x00, 0xff, 0x0b),
++	)
++	badHint := module(custom(branchHintSectionName, 0x01, 0x00, 0x01, 0x00, 0x02, 0x00))
++	for _, tc := range []struct {
++		name string
++		data []byte
++		want int
++	}{
++		{"type", badType, bytes.IndexByte(badType, 0xff)},
++		{"function body", badBody, bytes.IndexByte(badBody, 0xff)},
++		{"branch hint", badHint, len(badHint) - 1},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			_, err := DecodeModuleByteBacked(tc.data)
++			var de *DecodeError
++			if !errors.As(err, &de) {
++				t.Fatalf("DecodeModuleByteBacked() = %v, want decode error", err)
++			}
++			if de.Offset != tc.want {
++				t.Fatalf("decode offset = %d, want absolute byte %d", de.Offset, tc.want)
++			}
++		})
++	}
++}
++
+ func TestDecodeModuleByteBackedKeepsRawFunctionBytes(t *testing.T) {
+ 	b := module(
+ 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),
+diff --git a/src/wago/api.go b/src/wago/api.go
+index 4c04a7969..dcd4ba189 100644
+--- a/src/wago/api.go
++++ b/src/wago/api.go
+@@ -3826,35 +3826,33 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
+ 	if in != nil && (!in.syncMode || in.executionFlags.Load()&executionFlagNativeScalarLeaf != 0 && in.c.boundedNativeScalarLeaf()) {
+ 		if in.rt == nil {
+ 			state := in.pluginState.Load()
+-			if state != nil && in.invocationState.CompareAndSwap(0, 1) {
+-				if state.invokeMu.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
+-					ic := in.findInvokeCache(export)
+-					privateRefStore := in.refStore == nil || in.refStore.private
+-					isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
+-					if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) && len(args) == int(ic.paramSlots) && privateRefStore && !in.guestStorageBorrowed() && in.preparedFastStateValid() {
+-						var out []uint64
+-						var err error
+-						if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
+-							entry := ic.directEntry
+-							if ic.directIntFast && len(args) == 1 && ic.resultSlots <= 1 {
+-								if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && ic.directIntBounded && ic.scalarWideMask == 0 && ic.resultSlots == 1 && !ic.scalarResultWide {
+-									out, err = in.invokeCachedDirectI32ToI32(ic, args[0])
+-								} else {
+-									out, err = in.invokeCachedDirectInt1(ic, entry, args[0])
+-								}
+-							} else {
+-								out, err = in.invokeCachedDirectNumeric(ic, entry, args)
+-							}
++			if state != nil && state.invokeMu.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
++				// The common single-export hit avoids the cache-search call.
++				ic := &in.ic[0]
++				if !ic.valid || !sameExportName(ic.export, export) {
++					ic = in.findInvokeCache(export)
++				}
++				privateRefStore := in.refStore == nil || in.refStore.private
++				isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
++				if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) && len(args) == int(ic.paramSlots) && privateRefStore && state.guestStorageBorrow.Load() == 0 && in.preparedFastStateValid() {
++					var out []uint64
++					var err error
++					if ic.directI32Fast && len(args) == 1 {
++						out, err = in.invokeCachedDirectI32ToI32(ic, args[0])
++					} else if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
++						entry := ic.directEntry
++						if ic.directIntFast && len(args) == 1 && ic.resultSlots <= 1 {
++							out, err = in.invokeCachedDirectInt1(ic, entry, args[0])
+ 						} else {
+-							out, err = in.invokeCachedNumericEntry(export, ic, args, true, false)
++							out, err = in.invokeCachedDirectNumeric(ic, entry, args)
+ 						}
+-						state.invokeMu.Unlock()
+-						in.endDirectInvocation()
+-						return out, err
++					} else {
++						out, err = in.invokeCachedNumericEntry(export, ic, args, true, false)
+ 					}
+-					state.invokeMu.Unlock()
++					in.endFastInvocation(state)
++					return out, err
+ 				}
+-				in.endDirectInvocation()
++				in.endFastInvocation(state)
+ 			}
+ 		}
+ 	}
+@@ -5092,6 +5090,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
+ 		export:            export,
+ 		valid:             true,
+ 		directIntFast:     directIntFast,
++		directI32Fast:     directIntFast && in.c.directPreparedBoundedAt(li) && paramSlots == 1 && resultSlots == 1 && scalarWideMask == 0 && !widths[paramSlots],
+ 		directFloatFast:   directFloatFast || directMixedFast,
+ 		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
+ 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
+diff --git a/src/wago/api_compat_test.go b/src/wago/api_compat_test.go
+index aaf7c22d0..1c6a6d95a 100644
+--- a/src/wago/api_compat_test.go
++++ b/src/wago/api_compat_test.go
+@@ -42,7 +42,8 @@ func TestInvokeCacheKeepsAlternatingExports(t *testing.T) {
+ 	defer in.Close()
+ 
+ 	for i := int32(0); i < 8; i++ {
+-		f, err := in.Invoke("f", I32(i))
++		// Equal names with distinct backing storage must hit the same cache slot.
++		f, err := in.Invoke(strings.Clone("f"), I32(i))
+ 		if err != nil {
+ 			t.Fatalf("Invoke f: %v", err)
+ 		}
+diff --git a/src/wago/gc_array_reference_amd64_test.go b/src/wago/gc_array_reference_amd64_test.go
+index 45d4d1124..83c9cd99e 100644
+--- a/src/wago/gc_array_reference_amd64_test.go
++++ b/src/wago/gc_array_reference_amd64_test.go
+@@ -378,7 +378,7 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
+ 		// not on every Instance. Bounded view caches, the multi-host pointer and
+ 		// the atomic bounded invocation ID add 32 bytes to this sidecar.
+ 		// Profiling adds an instance ID; the ordinary profileState is empty.
+-		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 304 + unsafe.Sizeof(profileInstanceState{})}[name]
++		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 312 + unsafe.Sizeof(profileInstanceState{})}[name]
+ 		if got != want {
+ 			t.Fatalf("%s size = %d, want %d", name, got, want)
+ 		}
+diff --git a/src/wago/hostcall.go b/src/wago/hostcall.go
+index 1600c6374..4ca87d9b0 100644
+--- a/src/wago/hostcall.go
++++ b/src/wago/hostcall.go
+@@ -772,6 +772,7 @@ func (in *Instance) ensurePluginState() *instancePluginState {
+ 	state := in.pluginState.Load()
+ 	if state == nil {
+ 		candidate := &instancePluginState{}
++		candidate.invokeMu.state.shared = &in.invocationState.word
+ 		if in.pluginState.CompareAndSwap(nil, candidate) {
+ 			state = candidate
+ 		} else {
+diff --git a/src/wago/instance.go b/src/wago/instance.go
+index 2787c1e00..b9eb47c51 100644
+--- a/src/wago/instance.go
++++ b/src/wago/instance.go
+@@ -54,17 +54,17 @@ type Instance struct {
+ 	refStore                *referenceStore
+ 	lifeMu                  sync.Mutex
+ 	resourceRefs            int
+-	invocationState         atomic.Uint32 // high bit closes entry; low bits count active public invocations
+-	closed                  bool          // logical close; retained references may defer physical release
+-	finalizing              bool          // one goroutine owns quiescent finalization
++	invocationState         instanceInvocationState // lifetime leases and invocation gate share one atomic word
++	closed                  bool                    // logical close; retained references may defer physical release
++	finalizing              bool                    // one goroutine owns quiescent finalization
+ 	resourcesClosed         bool
+ 	icNext                  uint8                    // round-robin invoke-cache replacement cursor
+-	finalizers              *instanceFinalizers      // optional lifecycle callbacks; lifeMu protects access
+ 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
+-	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
+ 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
+ 	threadedMemoryZero      bool                     // immutable compiled memory-zero shape, cached for native entry
+ 	constructionActive      bool                     // registration through terminal instantiation observation
++	finalizers              *instanceFinalizers      // optional lifecycle callbacks; lifeMu protects access
++	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
+ 	constructionReservation *pluginOperationReservation
+ 	executionFlags          atomic.Uint32 // independent eligibility and cross-instance native-control sharing
+ 	nativeContext           uintptr       // arena-backed context bytes rebound before every native entry
+@@ -133,6 +133,7 @@ type invokeCache struct {
+ 	valid              bool
+ 	entryMode          preparedEntryMode
+ 	directIntFast      bool
++	directI32Fast      bool // bounded i32-to-i32 entry; invocation ownership is checked separately
+ 	directFloatFast    bool
+ 	directIntLight     bool
+ 	directIntBounded   bool
+diff --git a/src/wago/instance_admission.go b/src/wago/instance_admission.go
+new file mode 100644
+index 000000000..d07ceab67
+--- /dev/null
++++ b/src/wago/instance_admission.go
+@@ -0,0 +1,101 @@
++package wago
++
++import "sync/atomic"
++
++// The low half counts lifetime leases and closes entry; the high half owns the
++// invocation gate. Updating either half preserves concurrent changes to the other.
++type instanceInvocationState struct {
++	word atomic.Uint64
++}
++
++func (s *instanceInvocationState) Load() uint32 { return uint32(s.word.Load()) }
++
++func (s *instanceInvocationState) Store(next uint32) {
++	for {
++		old := s.word.Load()
++		if s.word.CompareAndSwap(old, old&0xffffffff00000000|uint64(next)) {
++			return
++		}
++	}
++}
++
++func (s *instanceInvocationState) CompareAndSwap(old, next uint32) bool {
++	for {
++		word := s.word.Load()
++		if uint32(word) != old {
++			return false
++		}
++		if s.word.CompareAndSwap(word, word&0xffffffff00000000|uint64(next)) {
++			return true
++		}
++	}
++}
++
++// Standalone gates keep a local word. Instance gates bind their immutable shared
++// pointer before publication, so lifetime and gate owners use the same atomic.
++type invocationGateState struct {
++	local  atomic.Uint32
++	shared *atomic.Uint64
++}
++
++func (s *invocationGateState) Load() uint32 {
++	if s.shared == nil {
++		return s.local.Load()
++	}
++	return uint32(s.shared.Load() >> 32)
++}
++
++func (s *invocationGateState) Store(next uint32) {
++	if s.shared == nil {
++		s.local.Store(next)
++		return
++	}
++	for {
++		word := s.shared.Load()
++		if s.shared.CompareAndSwap(word, uint64(uint32(word))|uint64(next)<<32) {
++			return
++		}
++	}
++}
++
++func (s *invocationGateState) CompareAndSwap(old, next uint32) bool {
++	if s.shared == nil {
++		return s.local.CompareAndSwap(old, next)
++	}
++	for {
++		word := s.shared.Load()
++		if uint32(word>>32) != old {
++			return false
++		}
++		if s.shared.CompareAndSwap(word, uint64(uint32(word))|uint64(next)<<32) {
++			return true
++		}
++	}
++}
++
++const instanceFastAdmission = uint64(invocationGateHeld|invocationGateFast)<<32 | 1
++
++func (fn *WasmFunc) tryBeginFastInvocation() bool {
++	in := fn.in
++	if in.rt != nil || fn.directGate == nil || fn.directGate.state.shared != &in.invocationState.word ||
++		!in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
++		return false
++	}
++	if in.guestStorageBorrowed() || !in.preparedFastStateValid() {
++		in.endFastInvocation(in.pluginState.Load())
++		return false
++	}
++	return true
++}
++
++func (in *Instance) endFastInvocation(state *instancePluginState) {
++	if !in.invocationState.word.CompareAndSwap(instanceFastAdmission, 0) {
++		in.endFastInvocationSlow(state)
++	}
++}
++
++//go:noinline
++func (in *Instance) endFastInvocationSlow(state *instancePluginState) {
++	state.invokeMu.Unlock()
++	in.endInvocation()
++}
+diff --git a/src/wago/instance_admission_test.go b/src/wago/instance_admission_test.go
+new file mode 100644
+index 000000000..9f49361ce
+--- /dev/null
++++ b/src/wago/instance_admission_test.go
+@@ -0,0 +1,109 @@
++package wago
++
++import (
++	"sync"
++	"testing"
++)
++
++func TestSharedAdmissionViewsPreserveOtherHalf(t *testing.T) {
++	in := &Instance{}
++	gate := &in.ensurePluginState().invokeMu
++	in.invocationState.word.Store(instanceFastAdmission)
++	if in.invocationState.Load() != 1 || gate.state.Load() != invocationGateHeld|invocationGateFast {
++		t.Fatal("combined admission did not publish both owners")
++	}
++	if !in.invocationState.CompareAndSwap(1, 2) || gate.state.Load() != invocationGateHeld|invocationGateFast {
++		t.Fatal("waiting invocation changed gate ownership")
++	}
++	const revoked = invocationGateHeld | invocationGateFast | invocationGateRevoked | invocationGateWaiters
++	if !gate.state.CompareAndSwap(invocationGateHeld|invocationGateFast, revoked) || in.invocationState.Load() != 2 {
++		t.Fatal("revocation changed lifetime ownership")
++	}
++	in.invocationState.Store(instanceInvocationClosed | 2)
++	if gate.state.Load() != revoked {
++		t.Fatal("close publication changed gate state")
++	}
++	gate.state.Store(invocationGateRevoked)
++	if in.invocationState.Load() != instanceInvocationClosed|2 {
++		t.Fatal("gate release erased close or waiting leases")
++	}
++}
++
++func TestSharedAdmissionConcurrentHalves(t *testing.T) {
++	in := &Instance{}
++	gate := &in.ensurePluginState().invokeMu
++	var wg sync.WaitGroup
++	wg.Add(2)
++	go func() {
++		defer wg.Done()
++		for i := 0; i < 10000; i++ {
++			if !in.invocationState.CompareAndSwap(0, 1) || !in.invocationState.CompareAndSwap(1, 0) {
++				t.Error("gate mutation interfered with lifetime CAS")
++				return
++			}
++		}
++	}()
++	go func() {
++		defer wg.Done()
++		for i := 0; i < 10000; i++ {
++			if !gate.state.CompareAndSwap(0, invocationGateHeld) || !gate.state.CompareAndSwap(invocationGateHeld, 0) {
++				t.Error("lifetime mutation interfered with gate CAS")
++				return
++			}
++		}
++	}()
++	wg.Wait()
++	if in.invocationState.word.Load() != 0 {
++		t.Fatal("shared admission retained an owner")
++	}
++}
++
++func TestCombinedAdmissionReleaseHandsOffWaitingLifetime(t *testing.T) {
++	in := &Instance{}
++	state := in.ensurePluginState()
++	gate := &state.invokeMu
++	if !in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
++		t.Fatal("admission failed")
++	}
++	if err := in.beginInstanceInvocation(); err != nil {
++		t.Fatal(err)
++	}
++	waiter := &invocationGateWaiter{ready: make(chan struct{}), queued: true}
++	gate.slow = &invocationGateSlowState{head: waiter, tail: waiter}
++	gate.state.Store(invocationGateHeld | invocationGateFast | invocationGateWaiters)
++	in.endFastInvocation(state)
++	select {
++	case <-waiter.ready:
++	default:
++		t.Fatal("waiting invocation was not notified")
++	}
++	if in.invocationState.Load() != 1 || !gate.tryAcquireHandoff() {
++		t.Fatal("handoff did not preserve the waiting lifetime lease")
++	}
++	gate.Unlock()
++	in.endInvocation()
++	if in.invocationState.word.Load() != 0 {
++		t.Fatal("handoff retained admission ownership")
++	}
++}
++
++func TestCombinedAdmissionCloseKeepsResourcesUntilRelease(t *testing.T) {
++	in, _ := narrowPreparedFixture(t)
++	fn, err := in.WasmFunc("f")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !fn.tryBeginFastInvocation() {
++		t.Fatal("combined admission rejected private instance")
++	}
++	if err := in.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if in.resourcesClosed || in.invocationState.Load() != instanceInvocationClosed|1 {
++		t.Fatal("close released an admitted native owner")
++	}
++	in.endFastInvocation(in.pluginState.Load())
++	if !in.resourcesClosed || in.invocationState.Load() != instanceInvocationClosed {
++		t.Fatal("last combined owner did not finalize closed resources")
++	}
++}
+diff --git a/src/wago/instance_entry.go b/src/wago/instance_entry.go
+index cdb99dd26..48f5c0833 100644
+--- a/src/wago/instance_entry.go
++++ b/src/wago/instance_entry.go
+@@ -4,14 +4,13 @@ import (
+ 	"context"
+ 	"encoding/binary"
+ 	"sync"
+-	"sync/atomic"
+ )
+ 
+ // invocationGate has a zero-value, allocation-free uncontended path. Contended
+ // callers queue for wake-one notification; cancellation removes its waiter in
+ // constant time and never changes the active owner's lifetime.
+ type invocationGate struct {
+-	state atomic.Uint32
++	state invocationGateState
+ 	mu    sync.Mutex
+ 	slow  *invocationGateSlowState
+ }
+diff --git a/src/wago/instance_lifecycle.go b/src/wago/instance_lifecycle.go
+index db719b84e..3cdbcc845 100644
+--- a/src/wago/instance_lifecycle.go
++++ b/src/wago/instance_lifecycle.go
+@@ -262,7 +262,7 @@ func (in *Instance) beginDirectInvocation() error {
+ // inline. A false result acquired no lease; the caller must use beginInvocation
+ // for Runtime accounting, contention, and the original error handling.
+ func (in *Instance) tryBeginDirectInvocation() bool {
+-	return in.rt == nil && !in.guestStorageBorrowed() && in.invocationState.CompareAndSwap(0, 1)
++	return in.rt == nil && !in.guestStorageBorrowed() && in.invocationState.word.CompareAndSwap(0, 1)
+ }
+ 
+ func (in *Instance) endInvocation() {
+@@ -305,7 +305,7 @@ func (in *Instance) endInvocation() {
+ // atomic operation. A concurrent Close changes the state and takes the full
+ // endInvocation finalization path; Runtime-owned instances retain operation accounting.
+ func (in *Instance) endDirectInvocation() {
+-	if in.rt == nil && in.invocationState.CompareAndSwap(1, 0) {
++	if in.rt == nil && in.invocationState.word.CompareAndSwap(1, 0) {
+ 		return
+ 	}
+ 	in.endInvocation()
+diff --git a/src/wago/prepared_direct_amd64.go b/src/wago/prepared_direct_amd64.go
+index 37abb1d6c..2ee933db1 100644
+--- a/src/wago/prepared_direct_amd64.go
++++ b/src/wago/prepared_direct_amd64.go
+@@ -97,6 +97,11 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
+ 
+ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
+ 	in := fn.in
++	if fn.directIsolated && fn.tryBeginFastInvocation() {
++		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
++		in.endFastInvocation(in.pluginState.Load())
++		return out, err
++	}
+ 	if !in.tryBeginDirectInvocation() {
+ 		if err := in.beginInvocation(); err != nil {
+ 			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+diff --git a/src/wago/prepared_direct_arm64.go b/src/wago/prepared_direct_arm64.go
+index 945e2f607..83f32fbb2 100644
+--- a/src/wago/prepared_direct_arm64.go
++++ b/src/wago/prepared_direct_arm64.go
+@@ -99,6 +99,11 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
+ 
+ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
+ 	in := fn.in
++	if fn.directIsolated && fn.tryBeginFastInvocation() {
++		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
++		in.endFastInvocation(in.pluginState.Load())
++		return out, err
++	}
+ 	if !in.tryBeginDirectInvocation() {
+ 		if err := in.beginInvocation(); err != nil {
+ 			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+diff --git a/src/wago/prepared_float_std.go b/src/wago/prepared_float_std.go
+index 9993decf8..239d5b11b 100644
+--- a/src/wago/prepared_float_std.go
++++ b/src/wago/prepared_float_std.go
+@@ -13,6 +13,11 @@ const preparedDirectFloatSupported = true
+ 
+ func (fn *WasmFunc) invokeDirectFloat(args []uint64) ([]uint64, error) {
+ 	in := fn.in
++	if fn.directIsolated && fn.tryBeginFastInvocation() {
++		out, err := fn.invokeDirectFloatSession(args)
++		in.endFastInvocation(in.pluginState.Load())
++		return out, err
++	}
+ 	if err := in.beginDirectInvocation(); err != nil {
+ 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+ 	}
+diff --git a/src/wago/prepared_mixed_std.go b/src/wago/prepared_mixed_std.go
+index ef812c772..5ba8a98bf 100644
+--- a/src/wago/prepared_mixed_std.go
++++ b/src/wago/prepared_mixed_std.go
+@@ -11,6 +11,11 @@ import (
+ 
+ func (fn *WasmFunc) invokeDirectMixed(args []uint64) ([]uint64, error) {
+ 	in := fn.in
++	if fn.directIsolated && fn.tryBeginFastInvocation() {
++		out, err := fn.invokeDirectMixedSession(args)
++		in.endFastInvocation(in.pluginState.Load())
++		return out, err
++	}
+ 	if err := in.beginDirectInvocation(); err != nil {
+ 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+ 	}
+diff --git a/src/wago/prepared_narrow_test.go b/src/wago/prepared_narrow_test.go
+index 42996d117..cc3299f04 100644
+--- a/src/wago/prepared_narrow_test.go
++++ b/src/wago/prepared_narrow_test.go
+@@ -163,6 +163,22 @@ func TestInvocationGateFastUnlockPreservesRevocationAndHandsOffWaiter(t *testing
+ 	}
+ }
+ 
++func TestInvocationGateUnlockNotifiesRevoker(t *testing.T) {
++	var gate invocationGate
++	changed := make(chan struct{})
++	gate.slow = &invocationGateSlowState{changed: changed, revocationWaiters: true}
++	gate.state.Store(invocationGateHeld | invocationGateFast | invocationGateRevoked | invocationGateWaiters)
++	gate.Unlock()
++	select {
++	case <-changed:
++	default:
++		t.Fatal("revoker was not notified after fast entry finished")
++	}
++	if got := gate.state.Load(); got != invocationGateRevoked {
++		t.Fatalf("gate state = %d, want revoked", got)
++	}
++}
++
+ func TestPreparedDirectRejectsGCModes(t *testing.T) {
+ 	for _, flag := range []uint32{executionFlagImportedGCDomain, executionFlagDynamicGCDomain, executionFlagStoreOwnedGCCollector} {
+ 		t.Run(fmt.Sprint(flag), func(t *testing.T) {
+diff --git a/src/wago/prepared_wide_std.go b/src/wago/prepared_wide_std.go
+index b8bfc0430..daf933ce2 100644
+--- a/src/wago/prepared_wide_std.go
++++ b/src/wago/prepared_wide_std.go
+@@ -13,6 +13,11 @@ const preparedDirectWideSupported = true
+ 
+ func (fn *WasmFunc) invokeDirectIntWide(args []uint64) ([]uint64, error) {
+ 	in := fn.in
++	if fn.directIsolated && fn.tryBeginFastInvocation() {
++		out, err := fn.invokeDirectIntWideSession(args)
++		in.endFastInvocation(in.pluginState.Load())
++		return out, err
++	}
+ 	if err := in.beginDirectInvocation(); err != nil {
+ 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
+ 	}

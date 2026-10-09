@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 2,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "d82e216024b8b69c6eac4a731851e9db9c9a9be54fed0ea4c0e920786542df7c",
+  "native_bytes": 6667,
+  "native_sha256": "2afa409daf47f21bcbb30a2fe63b01516f9ef258cba0a9879ca525a8af73b20d",
+  "path": "corpus/workloads/polybench/correlation.wasm",
+  "selected_functions": null,
+  "variant": "baseline"
+}

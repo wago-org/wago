@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 144,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "d0a899c3a17ad8245c6cc99cdad7c4bb30f189dab82609d233dad225384f9678",
+  "native_bytes": 384362,
+  "native_sha256": "d097a2e498577a204987faebec8bd199b43a8ba6d1ab5c71ac7129d9c1ebff78",
+  "path": "corpus/workloads/applications/seqtk/seqtk.wasm",
+  "selected_functions": null,
+  "variant": "baseline"
+}

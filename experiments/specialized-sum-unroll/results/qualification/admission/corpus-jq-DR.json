@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 719,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
+  "native_bytes": 1787508,
+  "native_sha256": "f2d44b88285432d92b1ea23c3688f7b05bcf6dea84b4111a56df6df885f30f69",
+  "path": "corpus/workloads/applications/jq/jq.wasm",
+  "selected_functions": null,
+  "variant": "DR"
+}

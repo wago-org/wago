@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 64575,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "ee5560145a3d3e0ffa6dce697be802c08842f139a594698eecc7c754f7ad5f05",
+  "native_bytes": 185515840,
+  "native_sha256": "906bfd537492b75d57b19ea63263e56150c455f001d14c1f4191769010128f59",
+  "path": "/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-mvp.wasm",
+  "selected_functions": null,
+  "variant": "D"
+}

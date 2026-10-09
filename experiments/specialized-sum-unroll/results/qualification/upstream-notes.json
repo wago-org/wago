@@ -1,0 +1,50 @@
+[
+  {
+    "path": "benchmarks__cm-online-stats__README.md",
+    "url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/cm-online-stats/README.md",
+    "sha256": "e9c3658fb1b6cb9d34cbfa389eac85752609f349e928a9cdb72ebbcf486aa724",
+    "bytes": 2478
+  },
+  {
+    "path": "benchmarks__tract-onnx-image-classification__README.md",
+    "url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/tract-onnx-image-classification/README.md",
+    "sha256": "ecdf136710387d1d1ce262e126b12616900d910186c47a7a898c71a9673d9767",
+    "bytes": 1064
+  },
+  {
+    "path": "benchmarks__tract-onnx-image-classification__rust-benchmark__src__lib.rs",
+    "url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/tract-onnx-image-classification/rust-benchmark/src/lib.rs",
+    "sha256": "32c2cedf78392a32267ef40b189cf2036ed8eef36229d8918d8e94091bdd656a",
+    "bytes": 20746
+  },
+  {
+    "path": "benchmarks__shootout__src__ratelimit.c",
+    "url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/shootout/src/ratelimit.c",
+    "sha256": "6d5908d5a58df0855b8487a6158502d1b88110b4534b83e3c6773b2ae00d67a2",
+    "bytes": 3948
+  },
+  {
+    "path": "benchmarks__sqlite3__README.md",
+    "url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/sqlite3/README.md",
+    "sha256": "b4e24bfc464f2fa0a71c733f315d6f0a329929cb973d469d44bac86f1c3faba7",
+    "bytes": 2386
+  },
+  {
+    "path": "benchmarks__cm-online-stats__cm-online-stats.wat",
+    "url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/cm-online-stats/cm-online-stats.wat",
+    "sha256": "953623e627229358084c8fde8564ed72a5f0a61cddeb22dd3f0f229d5247a31e",
+    "bytes": 34310
+  },
+  {
+    "path": "benchmarks__cm-online-stats__Dockerfile",
+    "url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/cm-online-stats/Dockerfile",
+    "sha256": "343c17fd4629d56b0ab1ed4e410bd09ac21bf8ba3a230f2c8eee4cfab8fab2cd",
+    "bytes": 24
+  },
+  {
+    "path": "benchmarks__tinygo__README.md",
+    "url": "https://raw.githubusercontent.com/bytecodealliance/sightglass/a9023491c73d916ed329e4fd758cbae6380970a8/benchmarks/tinygo/README.md",
+    "sha256": "442b6f6b350da80c69dbb10be9a923e7ce67d67f46412a43e95c3eb3d527acad",
+    "bytes": 961
+  }
+]

@@ -1,0 +1,74 @@
+{
+  "sightglass": {
+    "artifacts": 120,
+    "bytes": 78435632,
+    "decoded": 118,
+    "functions": 78424,
+    "loops": 83481,
+    "exact": 0,
+    "bodies": 0,
+    "integer_hypotheses": 7279,
+    "float_hypotheses": 283,
+    "larger_than_2MiB": 6
+  },
+  "polybench-published": {
+    "artifacts": 1026,
+    "bytes": 27325307,
+    "decoded": 1026,
+    "functions": 47336,
+    "loops": 79644,
+    "exact": 0,
+    "bodies": 0,
+    "integer_hypotheses": 1061,
+    "float_hypotheses": 695,
+    "larger_than_2MiB": 0
+  },
+  "r3": {
+    "artifacts": 27,
+    "bytes": 54252889,
+    "decoded": 27,
+    "functions": 56325,
+    "loops": 46434,
+    "exact": 0,
+    "bodies": 0,
+    "integer_hypotheses": 4177,
+    "float_hypotheses": 876,
+    "larger_than_2MiB": 6
+  },
+  "local-corpus": {
+    "artifacts": 121,
+    "bytes": 203747263,
+    "decoded": 121,
+    "functions": 220624,
+    "loops": 164107,
+    "exact": 1,
+    "bodies": 1,
+    "integer_hypotheses": 12769,
+    "float_hypotheses": 533,
+    "larger_than_2MiB": 10
+  },
+  "duckdb": {
+    "artifacts": 3,
+    "bytes": 112883708,
+    "decoded": 1,
+    "functions": 64575,
+    "loops": 62046,
+    "exact": 0,
+    "bodies": 0,
+    "integer_hypotheses": 2804,
+    "float_hypotheses": 218,
+    "larger_than_2MiB": 3
+  },
+  "components": {
+    "artifacts": 8,
+    "bytes": 36972,
+    "decoded": 8,
+    "functions": 142,
+    "loops": 28,
+    "exact": 0,
+    "bodies": 0,
+    "integer_hypotheses": 0,
+    "float_hypotheses": 0,
+    "larger_than_2MiB": 0
+  }
+}

@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+                       │ experiments/specialized-sum-unroll/results/qualification/yyjson-cross-binary-repeat/DR-baseline.txt │ experiments/specialized-sum-unroll/results/qualification/yyjson-cross-binary-repeat/DR-candidate.txt │
+                       │                                               sec/op                                                │                                    sec/op                                      vs base               │
+Exec/yyjson.yyjson_run                                                                                           876.4n ± 2%                                                                     863.4n ± 1%  -1.48% (p=0.006 n=20)
+
+                       │ experiments/specialized-sum-unroll/results/qualification/yyjson-cross-binary-repeat/DR-baseline.txt │ experiments/specialized-sum-unroll/results/qualification/yyjson-cross-binary-repeat/DR-candidate.txt │
+                       │                                             calls/batch                                             │                                    calls/batch                                      vs base          │
+Exec/yyjson.yyjson_run                                                                                           2.401k ± 1%                                                                          2.410k ± 0%  ~ (p=0.208 n=20)
+
+                       │ experiments/specialized-sum-unroll/results/qualification/yyjson-cross-binary-repeat/DR-baseline.txt │ experiments/specialized-sum-unroll/results/qualification/yyjson-cross-binary-repeat/DR-candidate.txt │
+                       │                                                B/op                                                 │                                       B/op                                        vs base            │
+Exec/yyjson.yyjson_run                                                                                            0.000 ± 0%                                                                         0.000 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal
+
+                       │ experiments/specialized-sum-unroll/results/qualification/yyjson-cross-binary-repeat/DR-baseline.txt │ experiments/specialized-sum-unroll/results/qualification/yyjson-cross-binary-repeat/DR-candidate.txt │
+                       │                                              allocs/op                                              │                                    allocs/op                                      vs base            │
+Exec/yyjson.yyjson_run                                                                                            0.000 ± 0%                                                                         0.000 ± 0%  ~ (p=1.000 n=20) ¹
+¹ all samples are equal

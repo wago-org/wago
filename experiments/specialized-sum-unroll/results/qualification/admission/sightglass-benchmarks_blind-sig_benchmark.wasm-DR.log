@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 522,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "9d417aa352c61c66f9f4f33b2deddaa359bea150c51b72b9320ee6289ba14e39",
+  "native_bytes": 800389,
+  "native_sha256": "5fabef6443a60b054c8ff1deace5456e7c536da6369b7ccbe691ca4daf77f8bd",
+  "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/blind-sig/benchmark.wasm",
+  "selected_functions": null,
+  "variant": "DR"
+}

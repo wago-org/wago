@@ -1,0 +1,2509 @@
+[
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/age/age-keygen.wasm",
+    "bytes": 4523855,
+    "sha256": "b99e027e56ebd36dabf89ea0d1607682f957cbae3b5ba253fa86c228f2b9a035",
+    "catalog_ids": [
+      "age-keygen-public"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/FiloSottile/age.git",
+        "revision": "b74dce4cdbe35b5e5f66c06d9612b72f89028758",
+        "revision_date": "2026-08-29",
+        "license": "BSD-3-Clause",
+        "toolchain": "go",
+        "toolchain_version": "1.27.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/FiloSottile/age.git",
+    "revision": "b74dce4cdbe35b5e5f66c06d9612b72f89028758",
+    "license_note": "BSD-3-Clause",
+    "language_toolchain": "go"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/age/age.wasm",
+    "bytes": 7999782,
+    "sha256": "6e3249c90b12d821f993b8270176eb4624449b11796e0f29fb5b2bd80c15f6c8",
+    "catalog_ids": [
+      "age-decrypt"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/FiloSottile/age.git",
+        "revision": "b74dce4cdbe35b5e5f66c06d9612b72f89028758",
+        "revision_date": "2026-08-29",
+        "license": "BSD-3-Clause",
+        "toolchain": "go",
+        "toolchain_version": "1.27.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/FiloSottile/age.git",
+    "revision": "b74dce4cdbe35b5e5f66c06d9612b72f89028758",
+    "license_note": "BSD-3-Clause",
+    "language_toolchain": "go"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/brotli/brotli.wasm",
+    "bytes": 791733,
+    "sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+    "catalog_ids": [
+      "brotli-compress",
+      "brotli-decompress"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/google/brotli.git",
+        "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+        "revision_date": "2025-10-27",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      {
+        "repository": "https://github.com/google/brotli.git",
+        "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+        "revision_date": "2025-10-27",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/google/brotli.git",
+    "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/clang/clang.wasm",
+    "bytes": 31208660,
+    "sha256": "d817b7af8c2cc851527d5872256f27079d6905750a755668683293ec8e36b584",
+    "catalog_ids": [
+      "clang-cpp-kernels",
+      "clang-c-kernels"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/binji/wasm-clang",
+        "revision": "648c4a89997a351eef75cdaec3ef5b89d4937dec",
+        "revision_date": "2023-12-07",
+        "license": "Apache-2.0 WITH LLVM-exception",
+        "toolchain": "WABT import rename",
+        "toolchain_version": "Clang 8.0.1"
+      },
+      {
+        "repository": "https://github.com/binji/wasm-clang",
+        "revision": "648c4a89997a351eef75cdaec3ef5b89d4937dec",
+        "revision_date": "2023-12-07",
+        "license": "Apache-2.0 WITH LLVM-exception",
+        "toolchain": "WABT import rename",
+        "toolchain_version": "Clang 8.0.1"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/binji/wasm-clang",
+    "revision": "648c4a89997a351eef75cdaec3ef5b89d4937dec",
+    "license_note": "Apache-2.0 WITH LLVM-exception",
+    "language_toolchain": "WABT import rename"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/coreutils/coreutils.wasm",
+    "bytes": 9769583,
+    "sha256": "393da2c407ef0498be397f48d8b030cd4106bd30e0ddec504bfc75718486d034",
+    "catalog_ids": [
+      "coreutils-sort",
+      "coreutils-sha256sum",
+      "coreutils-base64",
+      "coreutils-wc"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0",
+        "revision": "0.10.0",
+        "revision_date": "2026-08-05",
+        "license": "MIT",
+        "toolchain": "upstream wasm32-wasip1 release",
+        "toolchain_version": "0.10.0"
+      },
+      {
+        "repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0",
+        "revision": "0.10.0",
+        "revision_date": "2026-08-05",
+        "license": "MIT",
+        "toolchain": "upstream wasm32-wasip1 release",
+        "toolchain_version": "0.10.0"
+      },
+      {
+        "repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0",
+        "revision": "0.10.0",
+        "revision_date": "2026-08-05",
+        "license": "MIT",
+        "toolchain": "upstream wasm32-wasip1 release",
+        "toolchain_version": "0.10.0"
+      },
+      {
+        "repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0",
+        "revision": "0.10.0",
+        "revision_date": "2026-08-05",
+        "license": "MIT",
+        "toolchain": "upstream wasm32-wasip1 release",
+        "toolchain_version": "0.10.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/uutils/coreutils/releases/tag/0.10.0",
+    "revision": "0.10.0",
+    "license_note": "MIT",
+    "language_toolchain": "upstream wasm32-wasip1 release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/duktape/duk.wasm",
+    "bytes": 561627,
+    "sha256": "ecf2293773686dd1bcbcb5bb8f7c7647d4726c4bdec8d1e2e04bfb6cf5fd3612",
+    "catalog_ids": [
+      "duktape-script"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/saghul/wasi-lab.git",
+        "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+        "revision_date": "2019-10-25",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/saghul/wasi-lab.git",
+    "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/ecpbram/ecpbram.wasm",
+    "bytes": 660239,
+    "sha256": "2d5fcf6b054eddf2d034fea174f6c158e35ae2ade81794bfa50bf86d6079c00a",
+    "catalog_ids": [
+      "ecpbram-generate"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+    "revision": "0.5.0.0.post399",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/ecppack/ecppack.wasm",
+    "bytes": 807499,
+    "sha256": "2a2ea3a2c706ccfe0ab26f28d5a4d9ae724fb80441ab3bf422ae5aa54d602709",
+    "catalog_ids": [
+      "ecppack-bitstream"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+    "revision": "0.5.0.0.post399",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/ecppll/ecppll.wasm",
+    "bytes": 562700,
+    "sha256": "a86ef23e6f447021fa26b9481d14c2d00fb097b58e8aa3cb246dbc53aa5c2900",
+    "catalog_ids": [
+      "ecppll-clock"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+    "revision": "0.5.0.0.post399",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/ecpunpack/ecpunpack.wasm",
+    "bytes": 767087,
+    "sha256": "d50205335eadfbe406599306251f3c9ea9016e1885dbc6578309b861410f83f8",
+    "catalog_ids": [
+      "ecpunpack-config"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-nextpnr-ecp5/0.5.0.0.post399/",
+    "revision": "0.5.0.0.post399",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/embench/embench-crc32.wasm",
+    "bytes": 19412,
+    "sha256": "7c953db27a26a0609cce081bc2ab75ce21ea07e155c490b636cc89b50548ee7c",
+    "catalog_ids": [
+      "embench-crc32"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/embench/embench-huffbench.wasm",
+    "bytes": 22095,
+    "sha256": "341b2db8256e90d327fc89d0a475faabfb9cbe8ad49b80c4f58b7d4f3bea1ea4",
+    "catalog_ids": [
+      "embench-huffbench"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/embench/embench-matmult-int.wasm",
+    "bytes": 22566,
+    "sha256": "e3e750f028bca8308788bdff1dbf2cfcb08bf1ab84cefea796c27476094ad4f2",
+    "catalog_ids": [
+      "embench-matmult-int"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/embench/embench-nettle-aes.wasm",
+    "bytes": 31550,
+    "sha256": "24105cfbcf32870c123703830717f90af5826b30989050b8f047e877fe5dc824",
+    "catalog_ids": [
+      "embench-nettle-aes"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/embench/embench-nettle-sha256.wasm",
+    "bytes": 23208,
+    "sha256": "85dc5aa7638d4da760cfc39c9b9c5832aebfb8b0a0e59ebf2cf51e8927a3a29e",
+    "catalog_ids": [
+      "embench-nettle-sha256"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/embench/embench-qrduino.wasm",
+    "bytes": 38432,
+    "sha256": "83dfcc2d56cac22b9e772c911556afb3b61b3722a866ccfc1ce41f436cf2b07f",
+    "catalog_ids": [
+      "embench-qrduino"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/esbuild/esbuild.wasm",
+    "bytes": 20677268,
+    "sha256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f",
+    "catalog_ids": [
+      "esbuild-minify"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/evanw/esbuild.git",
+        "revision": "f6058f8364fe7ab91ca57a83e02577ed74c9cae4",
+        "revision_date": "2026-08-09",
+        "license": "MIT",
+        "toolchain": "go",
+        "toolchain_version": "1.26.5"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/evanw/esbuild.git",
+    "revision": "f6058f8364fe7ab91ca57a83e02577ed74c9cae4",
+    "license_note": "MIT",
+    "language_toolchain": "go"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/fasttree/fasttree.wasm",
+    "bytes": 254477,
+    "sha256": "780ce84c3a0ce8442fe259a5de0fe5db07f663430f2a8d1bc23187161de23387",
+    "catalog_ids": [
+      "fasttree-phylogeny"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/biowasm/biowasm/tree/main/tools/fasttree",
+        "revision": "2.1.11",
+        "revision_date": "2021-03-03",
+        "license": "GPL-3.0 AND MIT",
+        "toolchain": "Biowasm Emscripten release",
+        "toolchain_version": "FastTree 2.1.11"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/biowasm/biowasm/tree/main/tools/fasttree",
+    "revision": "2.1.11",
+    "license_note": "GPL-3.0 AND MIT",
+    "language_toolchain": "Biowasm Emscripten release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/gnu-coreutils/seq.wasm",
+    "bytes": 76306,
+    "sha256": "bdbd39485bb579411c626deab515d5fde792cae1050d9481f0ecb95be713059a",
+    "catalog_ids": [
+      "gnu-seq-range"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/biowasm/biowasm/tree/main/tools/coreutils",
+        "revision": "v8.32",
+        "revision_date": "2020-03-05",
+        "license": "GPL-3.0-or-later AND MIT",
+        "toolchain": "Biowasm Emscripten release",
+        "toolchain_version": "GNU coreutils 8.32"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/biowasm/biowasm/tree/main/tools/coreutils",
+    "revision": "v8.32",
+    "license_note": "GPL-3.0-or-later AND MIT",
+    "language_toolchain": "Biowasm Emscripten release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/gnu-coreutils/tr.wasm",
+    "bytes": 71050,
+    "sha256": "47e7ad6a441d4de920e876abb9559d5936dbd6c280e79bbdb1274814e1b46384",
+    "catalog_ids": [
+      "gnu-tr-uppercase"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/biowasm/biowasm/tree/main/tools/coreutils",
+        "revision": "v8.32",
+        "revision_date": "2020-03-05",
+        "license": "GPL-3.0-or-later AND MIT",
+        "toolchain": "Biowasm Emscripten release",
+        "toolchain_version": "GNU coreutils 8.32"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/biowasm/biowasm/tree/main/tools/coreutils",
+    "revision": "v8.32",
+    "license_note": "GPL-3.0-or-later AND MIT",
+    "language_toolchain": "Biowasm Emscripten release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/grain-stdlib/array.wasm",
+    "bytes": 261487,
+    "sha256": "cffc1de88b1777739c8f004791f6bb16185b1113bed0b38bb8533635ca970c74",
+    "catalog_ids": [
+      "grain-stdlib-array"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/grain-lang/grain",
+        "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+        "revision_date": "2026-02-08",
+        "license": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+        "toolchain": "Grain packaged Linux x64 compiler",
+        "toolchain_version": "0.7.2; Binaryen 124; --release --no-wasm-tail-call"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/grain-lang/grain",
+    "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+    "license_note": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+    "language_toolchain": "Grain packaged Linux x64 compiler"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/grain-stdlib/json-subset.wasm",
+    "bytes": 284532,
+    "sha256": "48bc2e82d2eeec22b403732dfe4f1a48c1793f8ed72cacd92cb60a0cdbcc4c48",
+    "catalog_ids": [
+      "grain-stdlib-json-subset"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/grain-lang/grain",
+        "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+        "revision_date": "2026-02-08",
+        "license": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+        "toolchain": "Grain packaged Linux x64 compiler",
+        "toolchain_version": "0.7.2; Binaryen 124; --release --no-wasm-tail-call"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/grain-lang/grain",
+    "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+    "license_note": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+    "language_toolchain": "Grain packaged Linux x64 compiler"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/grain-stdlib/string.wasm",
+    "bytes": 237342,
+    "sha256": "0eebeab44cdeb06d4dbc8698c6fe4eaf88e5df38d10c2572ab4d92952600bb91",
+    "catalog_ids": [
+      "grain-stdlib-string"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/grain-lang/grain",
+        "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+        "revision_date": "2026-02-08",
+        "license": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+        "toolchain": "Grain packaged Linux x64 compiler",
+        "toolchain_version": "0.7.2; Binaryen 124; --release --no-wasm-tail-call"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/grain-lang/grain",
+    "revision": "49829d7966b38b177291f7e91f5eb81c65ec07aa",
+    "license_note": "LGPL-3.0-only AND MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-Sun",
+    "language_toolchain": "Grain packaged Linux x64 compiler"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/icebram/icebram.wasm",
+    "bytes": 510411,
+    "sha256": "2eb590a9e8e8a5dce32ab0b01b57558b290e7e4cd0f001036e054f3ff9b99deb",
+    "catalog_ids": [
+      "icebram-generate"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+    "revision": "0.5.0.0.post399",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/icemulti/icemulti.wasm",
+    "bytes": 463065,
+    "sha256": "ac648e95ba42b44fc50fc6f3d6bb023e03063b6cace4dc6f4ffdefbe3a3820c2",
+    "catalog_ids": [
+      "icemulti-image"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+    "revision": "0.5.0.0.post399",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/icepack/icepack.wasm",
+    "bytes": 552512,
+    "sha256": "079f96f2e21954af470ed085e2bc86f7c7fd4f95fb13324fcb9098e222934e3e",
+    "catalog_ids": [
+      "icepack-pack",
+      "iceunpack-unpack"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      },
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+        "revision": "0.5.0.0.post399",
+        "revision_date": "2023-02-07",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.5.0.0.post399"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.5.0.0.post399/",
+    "revision": "0.5.0.0.post399",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/icepll/icepll.wasm",
+    "bytes": 59862,
+    "sha256": "47dfc30f14b4b748d89b7370190abf840e2d20f07ee36463305df667e913ecfd",
+    "catalog_ids": [
+      "icepll-clock"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.11.1.0.post826/",
+        "revision": "0.11.1.0.post826",
+        "revision_date": "2026-08-13",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.11.1.0.post826"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-nextpnr-ice40/0.11.1.0.post826/",
+    "revision": "0.11.1.0.post826",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/jq/jq.wasm",
+    "bytes": 957803,
+    "sha256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
+    "catalog_ids": [
+      "jq-json-transform"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/jqlang/jq.git",
+        "revision": "34f7186b86743a083a589741b6cea95293524108",
+        "revision_date": "2026-06-20",
+        "license": "MIT AND BSD-2-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/jqlang/jq.git",
+    "revision": "34f7186b86743a083a589741b6cea95293524108",
+    "license_note": "MIT AND BSD-2-Clause",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/json2csv/json2csv.wasm",
+    "bytes": 308856,
+    "sha256": "f1aacfb105c7d69b19b4c7dfcec0ebd2ed14a29588cfecbb0ce35a7b99a6f6cc",
+    "catalog_ids": [
+      "json2csv-people"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "asset-68082085",
+        "revision_date": "2022-06-10",
+        "license": "MIT",
+        "toolchain": "upstream a-Shell release artifact",
+        "toolchain_version": "0.1"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+    "revision": "asset-68082085",
+    "license_note": "MIT",
+    "language_toolchain": "upstream a-Shell release artifact"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/lua/lua.wasm",
+    "bytes": 306612,
+    "sha256": "51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2",
+    "catalog_ids": [
+      "lua-cli-buckets"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/nalgeon/lua-wasi",
+        "revision": "@antonz/lua-wasi 5.4.6",
+        "revision_date": "2024-01-03",
+        "license": "MIT",
+        "toolchain": "wasienv plus WABT import rename",
+        "toolchain_version": "Lua 5.4.6"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/nalgeon/lua-wasi",
+    "revision": "@antonz/lua-wasi 5.4.6",
+    "license_note": "MIT",
+    "language_toolchain": "wasienv plus WABT import rename"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/lzmadec/lzmadec.wasm",
+    "bytes": 57345,
+    "sha256": "0383ef35939b458adbacbb64144d2f12a13e282488efe3387dff017880c6c245",
+    "catalog_ids": [
+      "lzmadec-decompress"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/tukaani-project/xz.git",
+    "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+    "license_note": "0BSD",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/lzmainfo/lzmainfo.wasm",
+    "bytes": 45585,
+    "sha256": "fa290176f4449c7e0ce581d988d026b7d2849a430310d9d2028a4840acacd3d8",
+    "catalog_ids": [
+      "lzmainfo-header"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/tukaani-project/xz.git",
+    "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+    "license_note": "0BSD",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/micropython/micropython.wasm",
+    "bytes": 370907,
+    "sha256": "1c054a4d21d4a6589bc568821ebf562889988ddaaf8a17a2e2985a56cf228051",
+    "catalog_ids": [
+      "micropython-squares"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/micropython-wasm/0.1a2/",
+        "revision": "0.1a2",
+        "revision_date": "2026-06-06",
+        "license": "Apache-2.0 AND MIT",
+        "toolchain": "micropython-wasm wheel",
+        "toolchain_version": "0.1a2"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/micropython-wasm/0.1a2/",
+    "revision": "0.1a2",
+    "license_note": "Apache-2.0 AND MIT",
+    "language_toolchain": "micropython-wasm wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/php/php.wasm",
+    "bytes": 13622978,
+    "sha256": "5461eea8426378e2257f46c7eb1c734f607a89de9a921b72f8fc14c20ac3a33a",
+    "catalog_ids": [
+      "php-buckets"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/vmware-labs/webassembly-language-runtimes/releases/tag/php%2F8.2.6%2B20230714-11be424",
+        "revision": "php/8.2.6+20230714-11be424",
+        "revision_date": "2023-07-14",
+        "license": "Apache-2.0 AND PHP-3.01",
+        "toolchain": "WLR WasmEdge WASI release",
+        "toolchain_version": "8.2.6"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/vmware-labs/webassembly-language-runtimes/releases/tag/php%2F8.2.6%2B20230714-11be424",
+    "revision": "php/8.2.6+20230714-11be424",
+    "license_note": "Apache-2.0 AND PHP-3.01",
+    "language_toolchain": "WLR WasmEdge WASI release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/quickjs/qjs.wasm",
+    "bytes": 727617,
+    "sha256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40",
+    "catalog_ids": [
+      "quickjs-script"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/saghul/wasi-lab.git",
+        "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+        "revision_date": "2019-10-25",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/saghul/wasi-lab.git",
+    "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/ripgrep/rg.wasm",
+    "bytes": 21103589,
+    "sha256": "bd3d27817f2f34d625a3d24029eb2d5b16746ee4bb097d01eed8c99be9b83263",
+    "catalog_ids": [
+      "ripgrep-source"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "rg asset 2025-03-15",
+        "revision_date": "2025-03-15",
+        "license": "MIT OR Unlicense",
+        "toolchain": "a-Shell release binary",
+        "toolchain_version": "ripgrep 14.1.1"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+    "revision": "rg asset 2025-03-15",
+    "license_note": "MIT OR Unlicense",
+    "language_toolchain": "a-Shell release binary"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/ruby/ruby.wasm",
+    "bytes": 8239563,
+    "sha256": "de598f394e398763d2b147e3e51a6eeadf048128598ac4a3f992a97204c192b0",
+    "catalog_ids": [
+      "ruby-buckets"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/vmware-labs/webassembly-language-runtimes/releases/tag/ruby%2F3.2.2%2B20230714-11be424",
+        "revision": "ruby/3.2.2+20230714-11be424",
+        "revision_date": "2023-07-14",
+        "license": "Apache-2.0 AND (BSD-2-Clause OR Ruby)",
+        "toolchain": "WLR slim WASI release",
+        "toolchain_version": "3.2.2"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/vmware-labs/webassembly-language-runtimes/releases/tag/ruby%2F3.2.2%2B20230714-11be424",
+    "revision": "ruby/3.2.2+20230714-11be424",
+    "license_note": "Apache-2.0 AND (BSD-2-Clause OR Ruby)",
+    "language_toolchain": "WLR slim WASI release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/sed/sed.wasm",
+    "bytes": 184939,
+    "sha256": "f219fd9bb74d730d1df83242109ed3e17b05f52dec4fa06a1ed88d2ac0cd06be",
+    "catalog_ids": [
+      "sed-records"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/biowasm/biowasm/tree/main/tools/sed",
+        "revision": "v4.8",
+        "revision_date": "2020-01-14",
+        "license": "GPL-3.0-or-later AND MIT",
+        "toolchain": "Biowasm Emscripten release",
+        "toolchain_version": "GNU sed 4.8"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/biowasm/biowasm/tree/main/tools/sed",
+    "revision": "v4.8",
+    "license_note": "GPL-3.0-or-later AND MIT",
+    "language_toolchain": "Biowasm Emscripten release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/seq-align/lcs.wasm",
+    "bytes": 24549,
+    "sha256": "11cb9d2ba8b02d2465988f44c2ae221f1bf43e6d4e745b71927d2263f7b10f6b",
+    "catalog_ids": [
+      "lcs-substrings"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align",
+        "revision": "dc41988",
+        "revision_date": "2017-10-18",
+        "license": "Public Domain",
+        "toolchain": "Biowasm Emscripten release",
+        "toolchain_version": "seq-align dc41988"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align",
+    "revision": "dc41988",
+    "license_note": "Public Domain",
+    "language_toolchain": "Biowasm Emscripten release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/seq-align/needleman_wunsch.wasm",
+    "bytes": 125804,
+    "sha256": "0145e57676d9e2514c5683de4eee351590d57071b68ff6cb7a2ffee4c9d2ab02",
+    "catalog_ids": [
+      "needleman-wunsch-dna"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align",
+        "revision": "dc41988",
+        "revision_date": "2017-10-18",
+        "license": "Public Domain",
+        "toolchain": "Biowasm Emscripten release",
+        "toolchain_version": "seq-align dc41988"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align",
+    "revision": "dc41988",
+    "license_note": "Public Domain",
+    "language_toolchain": "Biowasm Emscripten release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/seq-align/smith_waterman.wasm",
+    "bytes": 128101,
+    "sha256": "f033fe248a561e06f5cafebbe9cab86b1d31928a96f144730d10f74b073f11d7",
+    "catalog_ids": [
+      "smith-waterman-dna"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align",
+        "revision": "dc41988",
+        "revision_date": "2017-10-18",
+        "license": "Public Domain",
+        "toolchain": "Biowasm Emscripten release",
+        "toolchain_version": "seq-align dc41988"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/biowasm/biowasm/tree/main/tools/seq-align",
+    "revision": "dc41988",
+    "license_note": "Public Domain",
+    "language_toolchain": "Biowasm Emscripten release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/seqtk/seqtk.wasm",
+    "bytes": 148484,
+    "sha256": "d0a899c3a17ad8245c6cc99cdad7c4bb30f189dab82609d233dad225384f9678",
+    "catalog_ids": [
+      "seqtk-fastq-to-fasta"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/biowasm/biowasm/tree/main/tools/seqtk",
+        "revision": "v1.4",
+        "revision_date": "2024-09-15",
+        "license": "MIT",
+        "toolchain": "Biowasm Emscripten release",
+        "toolchain_version": "seqtk 1.4"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/biowasm/biowasm/tree/main/tools/seqtk",
+    "revision": "v1.4",
+    "license_note": "MIT",
+    "language_toolchain": "Biowasm Emscripten release"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/sightglass/libsodium-hash/module.wasm",
+    "bytes": 56707,
+    "sha256": "48c5c35bbe57abc6cb32be4ee5caa79f6a17021c04b73d0ed3d94ace1ae4daed",
+    "catalog_ids": [
+      "sightglass-libsodium-hash"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/sightglass/shootout-base64/module.wasm",
+    "bytes": 202614,
+    "sha256": "8c0c50e8f8fb79255a307474136ac6be65d71ffee52a825839e852f8d6595e1c",
+    "catalog_ids": [
+      "sightglass-shootout-base64"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/sqlite3/sqlite3.wasm",
+    "bytes": 1318577,
+    "sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
+    "catalog_ids": [
+      "sqlite3-query"
+    ],
+    "sources": [
+      {
+        "repository": "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+        "revision": "3.53.4",
+        "revision_date": "2026-07-24",
+        "license": "Public-Domain",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+    "revision": "3.53.4",
+    "license_note": "Public-Domain",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/swift-format/swift-format.wasm",
+    "bytes": 51209935,
+    "sha256": "4f9c01a9569407766947c6fa6e9369dd9703f461f31dc9c79b49a6a6bcc5bc76",
+    "catalog_ids": [
+      "swift-format-source"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/kkebo/swift-format.git",
+        "revision": "92097d54ac3be47738fe77e38c918e9aabce0302",
+        "revision_date": "2026-07-01",
+        "license": "Apache-2.0 WITH Swift-exception",
+        "toolchain": "upstream WASI release artifact",
+        "toolchain_version": "603.0.0-wasm32-wasi"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/kkebo/swift-format.git",
+    "revision": "92097d54ac3be47738fe77e38c918e9aabce0302",
+    "license_note": "Apache-2.0 WITH Swift-exception",
+    "language_toolchain": "upstream WASI release artifact"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/tacle/bsort.wasm",
+    "bytes": 823,
+    "sha256": "625f345fb68018659984ed408a5c9ea1456b6bda09f02044f409e11676060028",
+    "catalog_ids": [
+      "tacle-bsort"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/tree/ashell-tree.wasm",
+    "bytes": 267777,
+    "sha256": "72ac9f09f35757a5714611f1922c325a8c33e8230e1a37ab7fc4104dbfbd2a64",
+    "catalog_ids": [
+      "tree-ashell-list"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+        "revision": "asset-20591324",
+        "revision_date": "2020-05-10",
+        "license": "GPL-2.0-or-later",
+        "toolchain": "upstream a-Shell release artifact",
+        "toolchain_version": "0.1"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/holzschu/a-Shell-commands/releases/tag/0.1",
+    "revision": "asset-20591324",
+    "license_note": "GPL-2.0-or-later",
+    "language_toolchain": "upstream a-Shell release artifact"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/tree/tree.wasm",
+    "bytes": 97725,
+    "sha256": "fbf2605dc5d03fcdce804b5e871d959951f7bc1e8c5ff3d0e74bfdb1ddbbd435",
+    "catalog_ids": [
+      "tree-list"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/Old-Man-Programmer/tree.git",
+        "revision": "d501b58ff9cbfd64272c8cbcad0bda36a3fada06",
+        "revision_date": "2024-11-25",
+        "license": "GPL-2.0-or-later",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/Old-Man-Programmer/tree.git",
+    "revision": "d501b58ff9cbfd64272c8cbcad0bda36a3fada06",
+    "license_note": "GPL-2.0-or-later",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/xzdec/xzdec.wasm",
+    "bytes": 92842,
+    "sha256": "83248ab482a8aa2e05b9be965f775af7c8218058d2501d93b18d967f04eea572",
+    "catalog_ids": [
+      "xzdec-decompress"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/tukaani-project/xz.git",
+        "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+        "revision_date": "2026-09-09",
+        "license": "0BSD",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/tukaani-project/xz.git",
+    "revision": "d3e650e63c110e830fd5391e7f8b45df0b91d3da",
+    "license_note": "0BSD",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/applications/yosys/yosys.wasm",
+    "bytes": 21017284,
+    "sha256": "7668d2963f8cc276ccd32980126dfddac961db1cd002cb93073506a694059493",
+    "catalog_ids": [
+      "yosys-counter"
+    ],
+    "sources": [
+      {
+        "repository": "https://pypi.org/project/yowasp-yosys/0.32.0.0.post560/",
+        "revision": "0.32.0.0.post560",
+        "revision_date": "2023-08-08",
+        "license": "ISC",
+        "toolchain": "YoWASP wheel",
+        "toolchain_version": "0.32.0.0.post560"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://pypi.org/project/yowasp-yosys/0.32.0.0.post560/",
+    "revision": "0.32.0.0.post560",
+    "license_note": "ISC",
+    "language_toolchain": "YoWASP wheel"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/assemblyscript/blake-as-simd.wasm",
+    "bytes": 23486,
+    "sha256": "741e9c374db8d28e8b80b6f45498c54da648087319232e47322095401e5a33f4",
+    "catalog_ids": [
+      "blake-as-simd"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/assemblyscript/blake-as.wasm",
+    "bytes": 4713,
+    "sha256": "9c6bed498081793fc9320c5729c1c9db0f8bec89c30a51f1a8f00d2b3620d33b",
+    "catalog_ids": [
+      "blake-as"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/assemblyscript/json-as-simd.wasm",
+    "bytes": 25576,
+    "sha256": "ca353a5601a88ad1912a7b041030da0d98604640cc25937f3d4b704a4dd9117c",
+    "catalog_ids": [
+      "json-as-simd"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/assemblyscript/json-as.wasm",
+    "bytes": 23410,
+    "sha256": "3b105acbd857f35d3916a59d363f0f928a50cc5071277c83d56d9b9e01ff205b",
+    "catalog_ids": [
+      "json-as"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/assemblyscript/utf-as-simd.wasm",
+    "bytes": 29801,
+    "sha256": "8867205c0e7c3772b776bb495867378a587db972de47cfb4914a4fa55083b31a",
+    "catalog_ids": [
+      "utf-as-simd"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/assemblyscript/utf-as.wasm",
+    "bytes": 20173,
+    "sha256": "7d3ce0f0e0aa2dfd3335e4031106d6f8f2b57dc54855bc55e114418543d69e80",
+    "catalog_ids": [
+      "utf-as"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/compute/fannkuch.wasm",
+    "bytes": 2667,
+    "sha256": "31e05ae6968784b6d1078f70d4badb93ca8772a0b790559b724efefa64dfaf37",
+    "catalog_ids": [
+      "fannkuch"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/compute/linked_list.wasm",
+    "bytes": 144,
+    "sha256": "d3dfc4028519becbadc69f6878c0b8b4e32f3ce4713ffe0edbb3a2ac63c4bba1",
+    "catalog_ids": [
+      "linked_list"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/compute/matmul.wasm",
+    "bytes": 1042,
+    "sha256": "f4b7a4ce25b1c8a9a77061a77672726a062dac4f0351bdc23b16271a0cd00ff8",
+    "catalog_ids": [
+      "matmul"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/compute/nbody.wasm",
+    "bytes": 2255,
+    "sha256": "f441c05eeae3381875144b9ab17eccc833b02bba6776529f742be98fd99e585a",
+    "catalog_ids": [
+      "nbody"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/compute/raytrace.wasm",
+    "bytes": 5803,
+    "sha256": "d5a226fa10efa31e193244858fdcb206edd7c935e3de794d7e39478538404c04",
+    "catalog_ids": [
+      "raytrace"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/compute/sha256.wasm",
+    "bytes": 2818,
+    "sha256": "0dbe8308751754ba91836fc546e7b805101851e301edc7b135fbb64aab46e384",
+    "catalog_ids": [
+      "sha256"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/2mm.wasm",
+    "bytes": 2534,
+    "sha256": "89b9c80bcde4caba2bbb6831db31ed4dd3f8db2db86f633503109c58d233d8b6",
+    "catalog_ids": [
+      "polybench-2mm"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/3mm.wasm",
+    "bytes": 2966,
+    "sha256": "a3294759cb52222d4b14a850b44ffd52ecd9ea1b8e7f16dcd748235d721c5891",
+    "catalog_ids": [
+      "polybench-3mm"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/adi.wasm",
+    "bytes": 3125,
+    "sha256": "c014667facaebc17da35d3fa04a959ed52be98c0cc0869d3e95bb523158c4519",
+    "catalog_ids": [
+      "polybench-adi"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/atax.wasm",
+    "bytes": 1952,
+    "sha256": "5697d8c317f7e0aceb53621a79edef1aea51f3c45dc12e8307ce7a5fc6505f15",
+    "catalog_ids": [
+      "polybench-atax"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/bicg.wasm",
+    "bytes": 2061,
+    "sha256": "fe0e107639ea3e9c6bed2ead194de2f73d6c43da3fbef4086d618a2cb4cb9237",
+    "catalog_ids": [
+      "polybench-bicg"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/cholesky.wasm",
+    "bytes": 2516,
+    "sha256": "32fa0520bc4ef20f36f5d9d374485ce8cd9dd505d57ce9cccc95c601a7f6557d",
+    "catalog_ids": [
+      "polybench-cholesky"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/correlation.wasm",
+    "bytes": 2417,
+    "sha256": "d82e216024b8b69c6eac4a731851e9db9c9a9be54fed0ea4c0e920786542df7c",
+    "catalog_ids": [
+      "polybench-correlation"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/covariance.wasm",
+    "bytes": 2151,
+    "sha256": "8617430637a0269e124411c4e55233739ef9a78f12bb089e2487f0000ed9194a",
+    "catalog_ids": [
+      "polybench-covariance"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/deriche.wasm",
+    "bytes": 2794,
+    "sha256": "fa1f06819b6a401427d034571199d6d4e055b466135b170f73fa83ec55736bef",
+    "catalog_ids": [
+      "polybench-deriche"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/doitgen.wasm",
+    "bytes": 2980,
+    "sha256": "d0a3cad13d8f4cc732a38f6f4455c5090761892c811f810bec1950f906de48ae",
+    "catalog_ids": [
+      "polybench-doitgen"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/durbin.wasm",
+    "bytes": 1862,
+    "sha256": "c7731633a680988fe4dba32d8b2248630340226dc18f50537b630e500d783b58",
+    "catalog_ids": [
+      "polybench-durbin"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/fdtd-2d.wasm",
+    "bytes": 3841,
+    "sha256": "330efa74054f9b909cd3f9bfa8a9f41fafaeea1854ab21537bdfc3d36ff6e04c",
+    "catalog_ids": [
+      "polybench-fdtd-2d"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/floyd-warshall.wasm",
+    "bytes": 1581,
+    "sha256": "20766bf0b5e219d64759fcbae37b68c3f1a3e2c08e7722e7a3ac04e966a879fe",
+    "catalog_ids": [
+      "polybench-floyd-warshall"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/gemm.wasm",
+    "bytes": 2184,
+    "sha256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79",
+    "catalog_ids": [
+      "polybench-gemm"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/gemver.wasm",
+    "bytes": 2932,
+    "sha256": "5f6027eeccaafa4f330e75259ce07122f76567ed5aa9442143b073674ee9e8ee",
+    "catalog_ids": [
+      "polybench-gemver"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/gesummv.wasm",
+    "bytes": 1925,
+    "sha256": "2bebb9d74f110824633022ff2d4981192295f3b466cdeb38cbc5342f36d720b1",
+    "catalog_ids": [
+      "polybench-gesummv"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/gramschmidt.wasm",
+    "bytes": 2288,
+    "sha256": "7454650c22f10bf57dd330ab00e553a81e20891025751cae5b78e50d494eee15",
+    "catalog_ids": [
+      "polybench-gramschmidt"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/heat-3d.wasm",
+    "bytes": 2941,
+    "sha256": "d9dd40a6d35a87fecf2c5aea7d53948229a3a7d32f79e535c061ae9eb4e26c65",
+    "catalog_ids": [
+      "polybench-heat-3d"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/jacobi-1d.wasm",
+    "bytes": 1605,
+    "sha256": "a53dec8850662d78ad36c5563a3998cb550bfe29de517b4689789d222d4e77b7",
+    "catalog_ids": [
+      "polybench-jacobi-1d"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/jacobi-2d.wasm",
+    "bytes": 1816,
+    "sha256": "22bf77b0c5d1ef03d29d5a11aaffd704a6e3979c9e15ce3ae150ffcc0ca82bf1",
+    "catalog_ids": [
+      "polybench-jacobi-2d"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/lu.wasm",
+    "bytes": 2461,
+    "sha256": "dd09f51afbfa45e88efef5248248483f8e33df484dec94157f7e6226fba9e269",
+    "catalog_ids": [
+      "polybench-lu"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/ludcmp.wasm",
+    "bytes": 3291,
+    "sha256": "15819eaa64025760a47988e579841a0cc1611febfa185227b4b19ce427eefe32",
+    "catalog_ids": [
+      "polybench-ludcmp"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/mvt.wasm",
+    "bytes": 2264,
+    "sha256": "7cefc0d81ab2218fee9302226c0edc49b7f7838256331786eb3c89c6af6f77f7",
+    "catalog_ids": [
+      "polybench-mvt"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/nussinov.wasm",
+    "bytes": 1930,
+    "sha256": "d057968b40a33481a9f64c98365f1301450c627586bbeabe64f39d03901ebf44",
+    "catalog_ids": [
+      "polybench-nussinov"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/seidel-2d.wasm",
+    "bytes": 1603,
+    "sha256": "0c9025ce4ec0116c713e11c69e5c354bb39cdaef9c0045d3a120fedb58cb89c1",
+    "catalog_ids": [
+      "polybench-seidel-2d"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/symm.wasm",
+    "bytes": 2554,
+    "sha256": "679cc4876b25367e32a2e90479c58908e4478e982d444218884ae1a143716af2",
+    "catalog_ids": [
+      "polybench-symm"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/syr2k.wasm",
+    "bytes": 2169,
+    "sha256": "d121107ec1742784107be56c7a095804a61779644047fdca7599ce77d379ba5a",
+    "catalog_ids": [
+      "polybench-syr2k"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/syrk.wasm",
+    "bytes": 2143,
+    "sha256": "daf0a9df60bfb18de8515e73abd49f518d550b14ea8e87e1da5943604e1e51a0",
+    "catalog_ids": [
+      "polybench-syrk"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/trisolv.wasm",
+    "bytes": 1852,
+    "sha256": "9d9af505eb4c4accbd360a1805cf243fbb40e2519f3567d0ced756ebfad55578",
+    "catalog_ids": [
+      "polybench-trisolv"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/polybench/trmm.wasm",
+    "bytes": 2207,
+    "sha256": "e379eb762f2b827b1a5663a703c9d7e8e7bdff3072e4a4b007c02daa76639b20",
+    "catalog_ids": [
+      "polybench-trmm"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/blake3/blake3.wasm",
+    "bytes": 13174,
+    "sha256": "903150890d2c96d4d8f0dd321c6d54e04f2ed1c033f9fbe87ec3dbc2e8bc96c6",
+    "catalog_ids": [
+      "blake3/hash",
+      "blake3/keyed_hash",
+      "blake3/derive_key",
+      "blake3"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/BLAKE3-team/BLAKE3.git",
+        "revision": "77b257eee7da5cd608eaf6be8343d3a4c9776af2",
+        "revision_date": "2026-08-05",
+        "license": "CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      },
+      {
+        "repository": "https://github.com/BLAKE3-team/BLAKE3.git",
+        "revision": "77b257eee7da5cd608eaf6be8343d3a4c9776af2",
+        "revision_date": "2026-08-05",
+        "license": "CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      },
+      {
+        "repository": "https://github.com/BLAKE3-team/BLAKE3.git",
+        "revision": "77b257eee7da5cd608eaf6be8343d3a4c9776af2",
+        "revision_date": "2026-08-05",
+        "license": "CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/BLAKE3-team/BLAKE3.git",
+    "revision": "77b257eee7da5cd608eaf6be8343d3a4c9776af2",
+    "license_note": "CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/cjson/cjson.wasm",
+    "bytes": 45701,
+    "sha256": "47174a6a8e4890bcd078906eed9dd35eac0b80db1dde6c98c3cc8279a6fb6b16",
+    "catalog_ids": [
+      "cjson"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/DaveGamble/cJSON.git",
+        "revision": "6d9f2443ab071f86e5d9b43025a40929ec41c46c",
+        "revision_date": "2026-09-16",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/DaveGamble/cJSON.git",
+    "revision": "6d9f2443ab071f86e5d9b43025a40929ec41c46c",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/coremark/coremark.wasm",
+    "bytes": 8156,
+    "sha256": "dc98981b11142786c3e505e1c7a129bc5bb398ebabead2d8082072385954fb5a",
+    "catalog_ids": [
+      "coremark/2k-performance",
+      "coremark"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/eembc/coremark.git",
+        "revision": "1f483d5b8316753a742cbf5590caf5bd0a4e4777",
+        "revision_date": "2025-05-01",
+        "license": "Apache-2.0",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/eembc/coremark.git",
+    "revision": "1f483d5b8316753a742cbf5590caf5bd0a4e4777",
+    "license_note": "Apache-2.0",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/drwav/drwav.wasm",
+    "bytes": 29993,
+    "sha256": "7f7625f9073f1f9de709b1682adc9c238989c39825e240570bc9870eb6630c56",
+    "catalog_ids": [
+      "drwav/pcm-decode-seek",
+      "drwav"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/mackron/dr_libs.git",
+        "revision": "dfe8377631000664666519fdb83da193fd8037f4",
+        "revision_date": "2026-09-01",
+        "license": "Unlicense OR MIT-0",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/mackron/dr_libs.git",
+    "revision": "dfe8377631000664666519fdb83da193fd8037f4",
+    "license_note": "Unlicense OR MIT-0",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/fastfloat/fastfloat.wasm",
+    "bytes": 30010,
+    "sha256": "6eb172b5da57c4d0a0ff194def7179f022847d09345fd975ba6dcdd827bd7265",
+    "catalog_ids": [
+      "fastfloat/decimal-parse",
+      "fastfloat"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/fastfloat/fast_float.git",
+        "revision": "b0ab987b3dfdde13fa1915f65ef2a5c068d9208c",
+        "revision_date": "2026-09-15",
+        "license": "MIT OR Apache-2.0 OR BSL-1.0",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/fastfloat/fast_float.git",
+    "revision": "b0ab987b3dfdde13fa1915f65ef2a5c068d9208c",
+    "license_note": "MIT OR Apache-2.0 OR BSL-1.0",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/kissfft/kissfft.wasm",
+    "bytes": 18901,
+    "sha256": "95b236874a6a1e8218545ce703abd36195dcad39eecd3e3b318bbc2a53fd3a1d",
+    "catalog_ids": [
+      "kissfft/complex-roundtrip",
+      "kissfft"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/mborgerding/kissfft.git",
+        "revision": "e5e3fac46e0d94a8f8170c06706b7a4218828333",
+        "revision_date": "2026-08-12",
+        "license": "BSD-3-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/mborgerding/kissfft.git",
+    "revision": "e5e3fac46e0d94a8f8170c06706b7a4218828333",
+    "license_note": "BSD-3-Clause",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/libtommath/libtommath.wasm",
+    "bytes": 35037,
+    "sha256": "a59c88869766c6f6fe1e35c9505b3fd9f83d347499e3b674b1c8abae15b59fd1",
+    "catalog_ids": [
+      "libtommath/modular-arithmetic",
+      "libtommath"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/libtom/libtommath.git",
+        "revision": "ae40a87a920099a7d9d00979570e0c8d917a1fd7",
+        "revision_date": "2026-04-20",
+        "license": "Unlicense",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/libtom/libtommath.git",
+    "revision": "ae40a87a920099a7d9d00979570e0c8d917a1fd7",
+    "license_note": "Unlicense",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/lodepng/lodepng.wasm",
+    "bytes": 97731,
+    "sha256": "254cc3dd5d15369282ed3976d3ac6d5291a1fb91d3f19e8b7da65267d8f38190",
+    "catalog_ids": [
+      "lodepng"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/lvandeve/lodepng.git",
+        "revision": "ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a",
+        "revision_date": "2026-05-28",
+        "license": "Zlib",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/lvandeve/lodepng.git",
+    "revision": "ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a",
+    "license_note": "Zlib",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/lua/lua.wasm",
+    "bytes": 193904,
+    "sha256": "fc83f0686ab492fbd2cf48cdba9341054f4e493cfd13a0ced43b98804da3934a",
+    "catalog_ids": [
+      "lua"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/lua/lua.git",
+        "revision": "6e22fedb74cf0c9b6656e9fce8b7331db847c605",
+        "revision_date": "2025-05-21",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/lua/lua.git",
+    "revision": "6e22fedb74cf0c9b6656e9fce8b7331db847c605",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/lz4/lz4.wasm",
+    "bytes": 2918,
+    "sha256": "00edcd94aa218054bff6926adb5469cdcbf764d72433908f5c9aafff191b63c9",
+    "catalog_ids": [
+      "lz4/compress",
+      "lz4/decompress",
+      "lz4"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/lz4/lz4.git",
+        "revision": "0774d05537f9762f838f7ab541b7765f1a729cb5",
+        "revision_date": "2026-06-01",
+        "license": "BSD-2-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      },
+      {
+        "repository": "https://github.com/lz4/lz4.git",
+        "revision": "0774d05537f9762f838f7ab541b7765f1a729cb5",
+        "revision_date": "2026-06-01",
+        "license": "BSD-2-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/lz4/lz4.git",
+    "revision": "0774d05537f9762f838f7ab541b7765f1a729cb5",
+    "license_note": "BSD-2-Clause",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/miniz/miniz.wasm",
+    "bytes": 36915,
+    "sha256": "eedb53d92c16882c20afd8dbb12e5402cbd61785dbb35cd23395587e1e8f5633",
+    "catalog_ids": [
+      "miniz/deflate-roundtrip",
+      "miniz"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/richgel999/miniz.git",
+        "revision": "77d0dce8627735138c51770d1799a1ef48f2117d",
+        "revision_date": "2026-07-01",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/richgel999/miniz.git",
+    "revision": "77d0dce8627735138c51770d1799a1ef48f2117d",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/monocypher/monocypher.wasm",
+    "bytes": 15833,
+    "sha256": "fa4356e1222b86387b5566f02c2ccd24404c5f9f044f697a14c164075dacf133",
+    "catalog_ids": [
+      "monocypher/aead-blake2b",
+      "monocypher"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/LoupVaillant/Monocypher.git",
+        "revision": "1830c06d5910fba451cec329c8f30f348fc607db",
+        "revision_date": "2026-07-28",
+        "license": "BSD-2-Clause OR CC0-1.0",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/LoupVaillant/Monocypher.git",
+    "revision": "1830c06d5910fba451cec329c8f30f348fc607db",
+    "license_note": "BSD-2-Clause OR CC0-1.0",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/nanosvg/nanosvg.wasm",
+    "bytes": 62625,
+    "sha256": "c80155bad149f7590195fa5f7fd9111d85aa2e8c5e3b283c0caa82826664b4b0",
+    "catalog_ids": [
+      "nanosvg/parse-structure",
+      "nanosvg"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/memononen/nanosvg.git",
+        "revision": "239e102ec2c691f2902e20ace2ed36ee4a35cfe6",
+        "revision_date": "2026-07-10",
+        "license": "Zlib",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/memononen/nanosvg.git",
+    "revision": "239e102ec2c691f2902e20ace2ed36ee4a35cfe6",
+    "license_note": "Zlib",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/pcre2/pcre2.wasm",
+    "bytes": 311039,
+    "sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
+    "catalog_ids": [
+      "pcre2/compile-match",
+      "pcre2"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/PCRE2Project/pcre2.git",
+        "revision": "085f8170c27b8336f0bd61f8e99518717ad0950d",
+        "revision_date": "2026-09-16",
+        "license": "BSD-3-Clause WITH PCRE2-exception",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/PCRE2Project/pcre2.git",
+    "revision": "085f8170c27b8336f0bd61f8e99518717ad0950d",
+    "license_note": "BSD-3-Clause WITH PCRE2-exception",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/qoi/qoi.wasm",
+    "bytes": 2933,
+    "sha256": "5f2e9bab7254dde3ae7488dee3ee82aafab26f0004ad3930a7b03a414758a5ea",
+    "catalog_ids": [
+      "qoi/encode",
+      "qoi/decode",
+      "qoi"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/phoboslab/qoi.git",
+        "revision": "97bacc86a9c4abf5a2d452102dc26546c4c670b9",
+        "revision_date": "2026-05-29",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      },
+      {
+        "repository": "https://github.com/phoboslab/qoi.git",
+        "revision": "97bacc86a9c4abf5a2d452102dc26546c4c670b9",
+        "revision_date": "2026-05-29",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/phoboslab/qoi.git",
+    "revision": "97bacc86a9c4abf5a2d452102dc26546c4c670b9",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/tinyxml2/tinyxml2.wasm",
+    "bytes": 47054,
+    "sha256": "68bde9e7af3167b5c95d524827f32db02232f428f764e44c0002d56a43429f31",
+    "catalog_ids": [
+      "tinyxml2"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/leethomason/tinyxml2.git",
+        "revision": "8224e427b655b83dae5e2298f1e6919523a78737",
+        "revision_date": "2026-05-23",
+        "license": "Zlib",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/leethomason/tinyxml2.git",
+    "revision": "8224e427b655b83dae5e2298f1e6919523a78737",
+    "license_note": "Zlib",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/utf8proc/utf8proc.wasm",
+    "bytes": 332333,
+    "sha256": "1f1a3e18f5adee7732e3e338e3b455f147757ba35a1e6c49c5d5f6abbcd005e7",
+    "catalog_ids": [
+      "utf8proc/normalize-casefold",
+      "utf8proc"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/JuliaStrings/utf8proc.git",
+        "revision": "0075ed7d0adba45682ee6bf7a83b10f8fd110163",
+        "revision_date": "2026-07-22",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/JuliaStrings/utf8proc.git",
+    "revision": "0075ed7d0adba45682ee6bf7a83b10f8fd110163",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/wren/wren.wasm",
+    "bytes": 165660,
+    "sha256": "2b1647ba27936995e85892492c7389d114811496e5c276a2c4b2d44e8a455b41",
+    "catalog_ids": [
+      "wren",
+      "wren-modulo"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/wren-lang/wren.git",
+        "revision": "99d2f0b8fc2686134b32b18166e037639f7e9f2c",
+        "revision_date": "2025-11-19",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      {
+        "repository": "https://github.com/wren-lang/wren.git",
+        "revision": "99d2f0b8fc2686134b32b18166e037639f7e9f2c",
+        "revision_date": "2025-11-19",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wren-lang/wren.git",
+    "revision": "99d2f0b8fc2686134b32b18166e037639f7e9f2c",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/xxhash/xxhash.wasm",
+    "bytes": 2772,
+    "sha256": "3c3b114bc7cf36c3888d0a7053e4349598408e8579b64f6e5dd9314dfdd011aa",
+    "catalog_ids": [
+      "xxhash/xxh64-boundaries",
+      "xxhash"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/Cyan4973/xxHash.git",
+        "revision": "f7009014c049235e14b32af0bfe1914906a00d17",
+        "revision_date": "2026-09-16",
+        "license": "BSD-2-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/Cyan4973/xxHash.git",
+    "revision": "f7009014c049235e14b32af0bfe1914906a00d17",
+    "license_note": "BSD-2-Clause",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/yyjson/yyjson.wasm",
+    "bytes": 127009,
+    "sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b",
+    "catalog_ids": [
+      "yyjson/parse-edit-write",
+      "yyjson"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/ibireme/yyjson.git",
+        "revision": "6447536015f3d600f3d65323b10976103b337ca7",
+        "revision_date": "2026-09-09",
+        "license": "MIT",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/ibireme/yyjson.git",
+    "revision": "6447536015f3d600f3d65323b10976103b337ca7",
+    "license_note": "MIT",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/zlib/zlib.wasm",
+    "bytes": 17044,
+    "sha256": "6d0c2a8cfb07c3b3cfef75d742a25cbd3f81a64b9786ac0e1cac6b58b5d7f92e",
+    "catalog_ids": [
+      "zlib/inflate",
+      "zlib"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/madler/zlib.git",
+        "revision": "e3dc0a85b7032e98380dec011bc8f2c2ee0d8fca",
+        "revision_date": "2026-06-01",
+        "license": "zlib",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/madler/zlib.git",
+    "revision": "e3dc0a85b7032e98380dec011bc8f2c2ee0d8fca",
+    "license_note": "zlib",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/semantic/zstd/zstd.wasm",
+    "bytes": 58777,
+    "sha256": "d59854de5e69e02b595ca57a2fd1a70417380ce6841b424c6205f5b882763a9f",
+    "catalog_ids": [
+      "zstd/decompress",
+      "zstd"
+    ],
+    "sources": [
+      {
+        "repository": "https://github.com/facebook/zstd.git",
+        "revision": "82d322c4973d9e2968d94047a40892bc6d9a9bdf",
+        "revision_date": "2026-08-01",
+        "license": "BSD-3-Clause",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "33.0"
+      }
+    ],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/facebook/zstd.git",
+    "revision": "82d322c4973d9e2968d94047a40892bc6d9a9bdf",
+    "license_note": "BSD-3-Clause",
+    "language_toolchain": "wasi-sdk"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/synthetic/dispatch.wasm",
+    "bytes": 108,
+    "sha256": "29ac75e8a197b2564df8c92a59a17fb18f3474fa3d55d944ea12dea6cde88de9",
+    "catalog_ids": [
+      "dispatch"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/synthetic/fib_rec.wasm",
+    "bytes": 62,
+    "sha256": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14",
+    "catalog_ids": [
+      "fib_rec"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/synthetic/many_funcs.wasm",
+    "bytes": 2992,
+    "sha256": "d3e33dac6c06b36b839936de79163453d52107a06e525886d98d5d8bef054fbd",
+    "catalog_ids": [
+      "many_funcs"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/synthetic/memory.wasm",
+    "bytes": 139,
+    "sha256": "61bc06924f4d51a179ebf19a1732002168b8899eb2cfa79886bdffdc9cbefabf",
+    "catalog_ids": [
+      "memory"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/synthetic/memory_tree.wasm",
+    "bytes": 194,
+    "sha256": "4f95f9b259641f241d9361b7e0aeb2740275314d1d69debcddd723efbbc129d5",
+    "catalog_ids": [
+      "memory_tree"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  },
+  {
+    "family": "local-corpus",
+    "path": "corpus/workloads/synthetic/tiny.wasm",
+    "bytes": 60,
+    "sha256": "b1db87bef75ea124f339b6331951ae1406581add804b44f6b6ccf696d0c3674a",
+    "catalog_ids": [
+      "tiny"
+    ],
+    "sources": [],
+    "notes": "Use corpus/PROVENANCE.md and artifact-local README when source is not repeated in catalog",
+    "repository": "https://github.com/wago-org/wago",
+    "revision": "6a06dbe1d6ed603e36ed464071d09f7ed620e91e",
+    "license_note": "See checked corpus/PROVENANCE.md and local README; no new redistribution",
+    "language_toolchain": "See original corpus source/build record"
+  }
+]

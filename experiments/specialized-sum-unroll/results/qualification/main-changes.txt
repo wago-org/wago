@@ -1,0 +1,23 @@
+commit 5cd443965a09e46076cce5e3dd4bf3ae69500348
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Fri Oct 9 13:14:04 2026 -0400
+Commit:     GitHub <noreply@github.com>
+CommitDate: Fri Oct 9 13:14:04 2026 -0400
+
+    fix(wasm): report absolute byte-backed decode offsets (#896)
+
+commit 796ccdea9e401097d0c73f8342b7075fbee1b843
+Author:     Joshua Tenner <tenner.joshua@gmail.com>
+AuthorDate: Fri Oct 9 11:40:07 2026 -0400
+Commit:     GitHub <noreply@github.com>
+CommitDate: Fri Oct 9 11:40:07 2026 -0400
+
+    fix(profile): escape all perf-map symbol fields (#894)
+
+commit 65194f23fc12222e006ccbf79d9880ca38182b23
+Author:     Jairus <me@jairus.dev>
+AuthorDate: Fri Oct 9 07:06:16 2026 -0700
+Commit:     GitHub <noreply@github.com>
+CommitDate: Fri Oct 9 07:06:16 2026 -0700
+
+    Reduce ordinary host-to-Wasm call latency by 26% (#908)

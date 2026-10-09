@@ -1,0 +1,2 @@
+?   	github.com/wago-org/wago/experiments/specialized-sum-unroll/admission	[no test files]
+ok  	github.com/wago-org/wago/experiments/specialized-sum-unroll/scan	(cached)

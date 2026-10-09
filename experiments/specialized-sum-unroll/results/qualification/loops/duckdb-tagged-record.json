@@ -1,0 +1,114 @@
+{
+  "function": 4192,
+  "instructions": [
+    {
+      "pc": 5002,
+      "op": 3
+    },
+    {
+      "pc": 5004,
+      "op": 32,
+      "index": 5
+    },
+    {
+      "pc": 5006,
+      "op": 40,
+      "offset": 16
+    },
+    {
+      "pc": 5009,
+      "op": 65,
+      "constant": 1
+    },
+    {
+      "pc": 5011,
+      "op": 70
+    },
+    {
+      "pc": 5012,
+      "op": 13,
+      "index": 20
+    },
+    {
+      "pc": 5014,
+      "op": 32,
+      "index": 5
+    },
+    {
+      "pc": 5016,
+      "op": 41,
+      "offset": 8
+    },
+    {
+      "pc": 5019,
+      "op": 32,
+      "index": 17
+    },
+    {
+      "pc": 5021,
+      "op": 124
+    },
+    {
+      "pc": 5022,
+      "op": 33,
+      "index": 17
+    },
+    {
+      "pc": 5024,
+      "op": 32,
+      "index": 5
+    },
+    {
+      "pc": 5026,
+      "op": 65,
+      "constant": 32
+    },
+    {
+      "pc": 5028,
+      "op": 106
+    },
+    {
+      "pc": 5029,
+      "op": 34,
+      "index": 5
+    },
+    {
+      "pc": 5031,
+      "op": 32
+    },
+    {
+      "pc": 5033,
+      "op": 71
+    },
+    {
+      "pc": 5034,
+      "op": 13
+    },
+    {
+      "pc": 5036,
+      "op": 11
+    }
+  ],
+  "local_function": 3713,
+  "locals": [
+    {
+      "count": 14,
+      "type": "i32"
+    },
+    {
+      "count": 3,
+      "type": "i64"
+    }
+  ],
+  "memories": null,
+  "path": "/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-mvp.wasm",
+  "sha256": "ee5560145a3d3e0ffa6dce697be802c08842f139a594698eecc7c754f7ad5f05",
+  "signature": {
+    "params": [
+      "i32",
+      "i32",
+      "i32"
+    ],
+    "results": []
+  }
+}

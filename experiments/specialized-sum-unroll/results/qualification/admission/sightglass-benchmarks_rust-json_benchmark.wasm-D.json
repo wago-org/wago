@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 442,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "54bbdacd4a9c0c666982c219903dac9f1b80243b70b5bf0d65a809295d3c05ee",
+  "native_bytes": 493663,
+  "native_sha256": "988054b9309ab26af6bc757161693b150e15664d69f3c2c1369452a0a289975c",
+  "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/rust-json/benchmark.wasm",
+  "selected_functions": null,
+  "variant": "D"
+}

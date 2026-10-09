@@ -1,0 +1,401 @@
+[
+  {
+    "name": "sightglass-benchmarks_blind-sig_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/blind-sig/benchmark.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.03809404373168945
+  },
+  {
+    "name": "sightglass-benchmarks_blind-sig_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/blind-sig/benchmark.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.03333711624145508
+  },
+  {
+    "name": "sightglass-benchmarks_blind-sig_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/blind-sig/benchmark.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.033422231674194336
+  },
+  {
+    "name": "sightglass-benchmarks_gcc-loops_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/gcc-loops/benchmark.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.030429840087890625
+  },
+  {
+    "name": "sightglass-benchmarks_gcc-loops_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/gcc-loops/benchmark.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.03229665756225586
+  },
+  {
+    "name": "sightglass-benchmarks_gcc-loops_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/gcc-loops/benchmark.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.032030582427978516
+  },
+  {
+    "name": "sightglass-benchmarks_rust-json_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/rust-json/benchmark.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.023621797561645508
+  },
+  {
+    "name": "sightglass-benchmarks_rust-json_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/rust-json/benchmark.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.02447366714477539
+  },
+  {
+    "name": "sightglass-benchmarks_rust-json_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/rust-json/benchmark.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.023175716400146484
+  },
+  {
+    "name": "sightglass-benchmarks_sqlite3_sqlite3.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/sqlite3/sqlite3.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.09765148162841797
+  },
+  {
+    "name": "sightglass-benchmarks_sqlite3_sqlite3.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/sqlite3/sqlite3.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.09721231460571289
+  },
+  {
+    "name": "sightglass-benchmarks_sqlite3_sqlite3.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/sqlite3/sqlite3.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.09732174873352051
+  },
+  {
+    "name": "sightglass-benchmarks_tinygo_tinygo-json.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tinygo/tinygo-json.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.049775123596191406
+  },
+  {
+    "name": "sightglass-benchmarks_tinygo_tinygo-json.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tinygo/tinygo-json.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.052368879318237305
+  },
+  {
+    "name": "sightglass-benchmarks_tinygo_tinygo-json.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tinygo/tinygo-json.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.049273014068603516
+  },
+  {
+    "name": "sightglass-benchmarks_tinygo_tinygo-regex.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tinygo/tinygo-regex.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.03886580467224121
+  },
+  {
+    "name": "sightglass-benchmarks_tinygo_tinygo-regex.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tinygo/tinygo-regex.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.03986072540283203
+  },
+  {
+    "name": "sightglass-benchmarks_tinygo_tinygo-regex.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tinygo/tinygo-regex.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.04128456115722656
+  },
+  {
+    "name": "sightglass-benchmarks_tract-onnx-image-classification_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tract-onnx-image-classification/benchmark.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.9934432506561279
+  },
+  {
+    "name": "sightglass-benchmarks_tract-onnx-image-classification_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tract-onnx-image-classification/benchmark.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.9992427825927734
+  },
+  {
+    "name": "sightglass-benchmarks_tract-onnx-image-classification_benchmark.wasm",
+    "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tract-onnx-image-classification/benchmark.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.9977092742919922
+  },
+  {
+    "name": "r3-wasm-r3-bench_boa.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/boa.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.4333174228668213
+  },
+  {
+    "name": "r3-wasm-r3-bench_boa.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/boa.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.4310605525970459
+  },
+  {
+    "name": "r3-wasm-r3-bench_boa.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/boa.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.4394989013671875
+  },
+  {
+    "name": "r3-wasm-r3-bench_ffmpeg.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/ffmpeg.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.4546496868133545
+  },
+  {
+    "name": "r3-wasm-r3-bench_ffmpeg.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/ffmpeg.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.4629831314086914
+  },
+  {
+    "name": "r3-wasm-r3-bench_ffmpeg.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/ffmpeg.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.4553818702697754
+  },
+  {
+    "name": "r3-wasm-r3-bench_parquet.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/parquet.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.17310166358947754
+  },
+  {
+    "name": "r3-wasm-r3-bench_parquet.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/parquet.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.17269086837768555
+  },
+  {
+    "name": "r3-wasm-r3-bench_parquet.wasm",
+    "path": "/tmp/wago-qualification-artifacts/r3/wasm-r3-bench/parquet.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.18208909034729004
+  },
+  {
+    "name": "duckdb-package_dist_duckdb-mvp.wasm",
+    "path": "/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-mvp.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 5.389034271240234
+  },
+  {
+    "name": "duckdb-package_dist_duckdb-mvp.wasm",
+    "path": "/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-mvp.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 5.363680362701416
+  },
+  {
+    "name": "duckdb-package_dist_duckdb-mvp.wasm",
+    "path": "/tmp/wago-qualification-artifacts/duckdb/package/dist/duckdb-mvp.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 5.3815834522247314
+  },
+  {
+    "name": "corpus-memory",
+    "path": "corpus/workloads/synthetic/memory.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.005831480026245117
+  },
+  {
+    "name": "corpus-memory",
+    "path": "corpus/workloads/synthetic/memory.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.0067403316497802734
+  },
+  {
+    "name": "corpus-memory",
+    "path": "corpus/workloads/synthetic/memory.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.007356882095336914
+  },
+  {
+    "name": "corpus-yyjson",
+    "path": "corpus/workloads/semantic/yyjson/yyjson.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.017647981643676758
+  },
+  {
+    "name": "corpus-yyjson",
+    "path": "corpus/workloads/semantic/yyjson/yyjson.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.016143321990966797
+  },
+  {
+    "name": "corpus-yyjson",
+    "path": "corpus/workloads/semantic/yyjson/yyjson.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.016421794891357422
+  },
+  {
+    "name": "corpus-sqlite3",
+    "path": "corpus/workloads/applications/sqlite3/sqlite3.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.12495851516723633
+  },
+  {
+    "name": "corpus-sqlite3",
+    "path": "corpus/workloads/applications/sqlite3/sqlite3.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.12768101692199707
+  },
+  {
+    "name": "corpus-sqlite3",
+    "path": "corpus/workloads/applications/sqlite3/sqlite3.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.12488532066345215
+  },
+  {
+    "name": "corpus-jq",
+    "path": "corpus/workloads/applications/jq/jq.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.06101274490356445
+  },
+  {
+    "name": "corpus-jq",
+    "path": "corpus/workloads/applications/jq/jq.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.06113624572753906
+  },
+  {
+    "name": "corpus-jq",
+    "path": "corpus/workloads/applications/jq/jq.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.0612943172454834
+  },
+  {
+    "name": "corpus-coreutils",
+    "path": "corpus/workloads/applications/coreutils/coreutils.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.4818077087402344
+  },
+  {
+    "name": "corpus-coreutils",
+    "path": "corpus/workloads/applications/coreutils/coreutils.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.4708373546600342
+  },
+  {
+    "name": "corpus-coreutils",
+    "path": "corpus/workloads/applications/coreutils/coreutils.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.47825098037719727
+  },
+  {
+    "name": "corpus-seqtk",
+    "path": "corpus/workloads/applications/seqtk/seqtk.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.019017696380615234
+  },
+  {
+    "name": "corpus-seqtk",
+    "path": "corpus/workloads/applications/seqtk/seqtk.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.01936483383178711
+  },
+  {
+    "name": "corpus-seqtk",
+    "path": "corpus/workloads/applications/seqtk/seqtk.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.01964569091796875
+  },
+  {
+    "name": "corpus-assemblyscript-json",
+    "path": "corpus/workloads/assemblyscript/json-as.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.007854700088500977
+  },
+  {
+    "name": "corpus-assemblyscript-json",
+    "path": "corpus/workloads/assemblyscript/json-as.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.008115291595458984
+  },
+  {
+    "name": "corpus-assemblyscript-json",
+    "path": "corpus/workloads/assemblyscript/json-as.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.0073130130767822266
+  },
+  {
+    "name": "corpus-polybench-correlation",
+    "path": "corpus/workloads/polybench/correlation.wasm",
+    "variant": "baseline",
+    "returncode": 2,
+    "seconds": 0.006632089614868164
+  },
+  {
+    "name": "corpus-polybench-correlation",
+    "path": "corpus/workloads/polybench/correlation.wasm",
+    "variant": "D",
+    "returncode": 2,
+    "seconds": 0.006345033645629883
+  },
+  {
+    "name": "corpus-polybench-correlation",
+    "path": "corpus/workloads/polybench/correlation.wasm",
+    "variant": "DR",
+    "returncode": 2,
+    "seconds": 0.006513118743896484
+  }
+]

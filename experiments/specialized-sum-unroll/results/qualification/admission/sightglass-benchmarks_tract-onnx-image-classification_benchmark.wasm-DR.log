@@ -1,0 +1,12 @@
+{
+  "baseline_hits": 0,
+  "diagnostic_functions": 16799,
+  "disabled": false,
+  "experimental_hits": 0,
+  "input_sha256": "f3fc86e08584bba9bb687b6afa945a21c9240fcb56fe543edb33f1961816bd78",
+  "native_bytes": 37683657,
+  "native_sha256": "2b5e0be48d32717670d645b9e32d65b8ac110cc5d8da24225d5f5da457867034",
+  "path": "/tmp/wago-qualification-artifacts/sightglass/benchmarks/tract-onnx-image-classification/benchmark.wasm",
+  "selected_functions": null,
+  "variant": "DR"
+}
