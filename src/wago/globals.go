@@ -135,6 +135,13 @@ func (g *Global) retainProducerInstanceForFinalization(in *Instance) bool {
 }
 
 func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) bool {
+	var cleanup resourceCleanup
+	result := g.retainProducerInstanceModeWithCleanup(in, finalization, &cleanup)
+	cleanup.finish()
+	return result
+}
+
+func (g *Global) retainProducerInstanceModeWithCleanup(in *Instance, finalization bool, cleanup *resourceCleanup) bool {
 	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil {
 		return false
 	}
@@ -158,7 +165,7 @@ func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) boo
 	o.mu.Lock()
 	if o.closed || len(g.cell) < 8 {
 		o.mu.Unlock()
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 		return false
 	}
 	current := readGlobalObject(g, ValFuncRef)
@@ -176,9 +183,9 @@ func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) boo
 	}
 	if !in.reachesFuncrefDescriptor(current) {
 		o.mu.Unlock()
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 		for _, root := range release {
-			root.releaseResourceRoot()
+			cleanup.run(root.releaseResourceRoot)
 		}
 		return false
 	}
@@ -202,11 +209,9 @@ func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) boo
 	}
 	o.mu.Unlock()
 	if exists {
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 	}
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	cleanup.run(func() { releaseRetainedResourceRoots(release) })
 	return true
 }
 
@@ -248,6 +253,13 @@ func (g *Global) funcrefProducerRoots() []*Instance {
 // fails, proxy conservatively owns the descriptor through its existing import
 // attachment chain until overwrite, later precise resolution, or global close.
 func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, proxy *Instance) descriptorRetentionResult {
+	var cleanup resourceCleanup
+	result := g.retainDescriptorOwnerForFinalizationWithCleanup(store, proxy, &cleanup)
+	cleanup.finish()
+	return result
+}
+
+func (g *Global) retainDescriptorOwnerForFinalizationWithCleanup(store *referenceStore, proxy *Instance, cleanup *resourceCleanup) descriptorRetentionResult {
 	if g == nil || g.owner == nil {
 		return descriptorRetentionResult{}
 	}
@@ -266,7 +278,7 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 		owner = store.retainDescriptorOwnerForFinalization(descriptor)
 	}
 	if owner != nil && owner == containerOwner {
-		owner.releaseResourceRoot()
+		cleanup.run(owner.releaseResourceRoot)
 		owner = nil
 	}
 	unresolved := descriptor != 0 && owner == nil
@@ -277,10 +289,10 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 	if o.closed || len(g.cell) < 8 || readGlobalObject(g, ValFuncRef) != descriptor {
 		o.mu.Unlock()
 		if owner != nil {
-			owner.releaseResourceRoot()
+			cleanup.run(owner.releaseResourceRoot)
 		}
 		if proxyAcquired {
-			proxy.releaseResourceRoot()
+			cleanup.run(proxy.releaseResourceRoot)
 		}
 		return descriptorRetentionResult{}
 	}
@@ -350,9 +362,7 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 	}
 	result := descriptorRetentionResult{retained: len(o.retained) != 0, unresolved: unresolved}
 	o.mu.Unlock()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	cleanup.run(func() { releaseRetainedResourceRoots(release) })
 	return result
 }
 

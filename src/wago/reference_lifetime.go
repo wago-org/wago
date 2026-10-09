@@ -52,13 +52,18 @@ func (lifetime referenceLifetime) finalize() {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
-	retainProducerRootsInImportedContainersForFinalization(in)
-	lifetime.notifyStore(store, referenceLifetimeQuiesced)
+	// These scans can detach transferred attachments and synchronously finalize
+	// another producer. A callback panic must not strand our finalizing claim or
+	// skip the later scan, store notification, and eligible physical teardown.
+	var cleanup resourceCleanup
+	cleanup.run(func() { retainProducerRootsInImportedContainersForFinalization(in) })
+	cleanup.run(func() { lifetime.notifyStore(store, referenceLifetimeQuiesced) })
 
 	in.lifeMu.Lock()
 	in.finalizing = false
 	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.constructionActive || in.invocationState.Load()&instanceInvocationCount != 0 {
 		in.lifeMu.Unlock()
+		cleanup.finish()
 		return
 	}
 	in.resourcesClosed = true
@@ -66,8 +71,7 @@ func (lifetime referenceLifetime) finalize() {
 	in.finalizers = nil
 	in.lifeMu.Unlock()
 
-	lifetime.notifyStore(store, referenceLifetimeResourcesReleased)
-	var cleanup resourceCleanup
+	cleanup.run(func() { lifetime.notifyStore(store, referenceLifetimeResourcesReleased) })
 	in.releaseResources(&cleanup)
 	if finalizers != nil && finalizers.physical != nil {
 		cleanup.run(finalizers.physical)

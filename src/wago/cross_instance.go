@@ -597,6 +597,13 @@ func (t *Table) retainProducerInstanceForFinalization(in *Instance) bool {
 }
 
 func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool {
+	var cleanup resourceCleanup
+	result := t.retainProducerInstanceModeWithCleanup(in, finalization, &cleanup)
+	cleanup.finish()
+	return result
+}
+
+func (t *Table) retainProducerInstanceModeWithCleanup(in *Instance, finalization bool, cleanup *resourceCleanup) bool {
 	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef || in == nil {
 		return false
 	}
@@ -622,7 +629,7 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 	if t.closed || len(t.desc) < 8 {
 		t.mu.Unlock()
 		railshotUnlockNativeTableScan()
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 		return false
 	}
 	current := t.funcrefDescriptorsLocked()
@@ -641,9 +648,9 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 	if !t.containsReachableFuncref(in) {
 		t.mu.Unlock()
 		railshotUnlockNativeTableScan()
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 		for _, root := range release {
-			root.releaseResourceRoot()
+			cleanup.run(root.releaseResourceRoot)
 		}
 		return false
 	}
@@ -672,11 +679,9 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 
 	railshotUnlockNativeTableScan()
 	if exists {
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 	}
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	cleanup.run(func() { releaseRetainedResourceRoots(release) })
 	return true
 }
 
@@ -740,6 +745,13 @@ func (t *Table) funcrefProducerRoots() []*Instance {
 // does not contain the copied refSlot. The proxy's still-live import attachments
 // conservatively preserve the source chain until overwrite or table close.
 func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, proxy *Instance) descriptorRetentionResult {
+	var cleanup resourceCleanup
+	result := t.retainDescriptorOwnersForFinalizationWithCleanup(store, proxy, &cleanup)
+	cleanup.finish()
+	return result
+}
+
+func (t *Table) retainDescriptorOwnersForFinalizationWithCleanup(store *referenceStore, proxy *Instance, cleanup *resourceCleanup) descriptorRetentionResult {
 	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef {
 		return descriptorRetentionResult{}
 	}
@@ -779,10 +791,10 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 		t.mu.Unlock()
 		railshotUnlockNativeTableScan()
 		for _, owner := range resolved {
-			owner.releaseResourceRoot()
+			cleanup.run(owner.releaseResourceRoot)
 		}
 		if proxyAcquired {
-			proxy.releaseResourceRoot()
+			cleanup.run(proxy.releaseResourceRoot)
 		}
 		return descriptorRetentionResult{}
 	}
@@ -897,9 +909,7 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 	result := descriptorRetentionResult{retained: len(t.retained) != 0, unresolved: len(unresolved) != 0}
 	t.mu.Unlock()
 	railshotUnlockNativeTableScan()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	cleanup.run(func() { releaseRetainedResourceRoots(release) })
 	return result
 }
 
