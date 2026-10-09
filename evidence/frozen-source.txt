@@ -1,0 +1,3 @@
+Evidence generated from implementation commit: 236b6b7a2ba8af313487d610e26bc690272ee812
+Profiled fixture binary: go test -p=2 -trimpath -c -tags=wago_profile
+Offline CLI: go build -p=2 -trimpath -buildvcs=false

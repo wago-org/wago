@@ -1,0 +1,11 @@
+{
+  "complete": false,
+  "compared": 12,
+  "known": 6,
+  "unknown": 6,
+  "changes": [],
+  "limit": false,
+  "reasons": [
+    "unknown instruction semantics"
+  ]
+}

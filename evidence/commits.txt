@@ -1,0 +1,3 @@
+236b6b7a2ba8af313487d610e26bc690272ee812 feat(diagnostics): compare bounded scalar instruction operands
+00b9645e40eb5532f2465943b1b7762f6f106951 test(diagnostics): pin operand comparison hypothesis and baseline
+5cd443965a09e46076cce5e3dd4bf3ae69500348 fix(wasm): report absolute byte-backed decode offsets (#896)
