@@ -126,7 +126,7 @@ func TestSumUnrollOracle(t *testing.T) {
 	for n := uint32(0); n <= 35; n++ {
 		counts = append(counts, n)
 	}
-	counts = append(counts, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 8192, 262144)
+	counts = append(counts, 63, 64, 65, 66, 127, 128, 129, 130, 255, 256, 257, 258, 511, 512, 513, 8192, 262144)
 	for _, pressure := range []int{0, 4, 12} {
 		for _, bounded := range []bool{false, true} {
 			t.Run(fmt.Sprintf("pressure%d/bounded%t", pressure, bounded), func(t *testing.T) {

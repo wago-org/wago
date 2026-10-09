@@ -5,17 +5,15 @@ package amd64
 import (
 	"encoding/binary"
 	"fmt"
-	"testing"
-
 	rt "github.com/wago-org/wago/src/core/runtime"
+	"testing"
 )
 
-// Resolve the gap between the short-loop and cache-resident comparisons. This
-// uses the same kernel, data pattern, seed, and native-call timer as the matrix.
-func BenchmarkSumUnrollThreshold(b *testing.B) {
+// Fixed follow-up matrix. Every setup step remains outside execution timing.
+func BenchmarkSumUnrollFollowup(b *testing.B) {
 	selectSumUnroll(b)
 	m := sumUnrollModule(b, 0)
-	mem, err := rt.NewJobMemory(65536)
+	mem, err := rt.NewJobMemory(64 << 20)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -26,7 +24,7 @@ func BenchmarkSumUnrollThreshold(b *testing.B) {
 	}
 	native := sumUnrollNative(b, m, CompileOptions{})
 	for _, addr := range []uint32{0, 1} {
-		for _, count := range []uint32{15, 16, 17, 31, 32, 33, 63, 64, 65, 66, 127, 128, 129, 130, 255, 256, 257, 258, 511, 512, 513, 1024, 2048, 4096} {
+		for _, count := range []uint32{0, 8, 16, 17, 33, 63, 64, 65, 66, 127, 128, 129, 130, 255, 256, 257, 258, 512, 8192, 262144, 8388607} {
 			b.Run(fmt.Sprintf("addr%d/n%d", addr, count), func(b *testing.B) {
 				want, trap := sumOracle(data, addr, count, 7, 0)
 				if trap {
