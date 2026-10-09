@@ -1514,6 +1514,9 @@ func (g *Global) attachNumericImporter() error {
 	if o.closed {
 		return fmt.Errorf("numeric global owner is closed")
 	}
+	if err := o.validateImporterCountLocked(); err != nil {
+		return err
+	}
 	if o.instance != nil && !o.instance.retainResourceRoot() {
 		return fmt.Errorf("numeric global owner instance is closed")
 	}
@@ -1633,6 +1636,9 @@ func (g *Global) attachReferenceImporterWithCollector(store *referenceStore, col
 	if o.closed {
 		return fmt.Errorf("reference global owner is closed")
 	}
+	if err := o.validateImporterCountLocked(); err != nil {
+		return err
+	}
 	if o.instance != nil && !o.instance.retainResourceRoot() {
 		return fmt.Errorf("reference global owner instance is closed")
 	}
@@ -1640,19 +1646,36 @@ func (g *Global) attachReferenceImporterWithCollector(store *referenceStore, col
 	return nil
 }
 
-func (g *Global) detachReferenceImporter() {
+// validateImporterCountLocked rejects invalid or exhausted counters before any
+// producer root is acquired. The caller holds globalOwner.mu.
+func (o *globalOwner) validateImporterCountLocked() error {
+	if o.importers < 0 {
+		return fmt.Errorf("global importer count is negative")
+	}
+	if o.importers == int(^uint(0)>>1) {
+		return fmt.Errorf("global importer count overflows int")
+	}
+	return nil
+}
+
+// detachImporterCounter consumes one count without releasing its producer root.
+// A host-owned global still consumes a count even though its producer is nil.
+func (g *Global) detachImporterCounter() (*Instance, bool) {
 	if g == nil || g.owner == nil {
-		return
+		return nil, false
 	}
 	o := g.owner
-	var instance *Instance
 	o.mu.Lock()
-	if o.importers > 0 {
-		o.importers--
-		instance = o.instance
+	defer o.mu.Unlock()
+	if o.importers <= 0 {
+		return nil, false
 	}
-	o.mu.Unlock()
-	if instance != nil {
+	o.importers--
+	return o.instance, true
+}
+
+func (g *Global) detachReferenceImporter() {
+	if instance, consumed := g.detachImporterCounter(); consumed && instance != nil {
 		instance.releaseResourceRoot()
 	}
 }
