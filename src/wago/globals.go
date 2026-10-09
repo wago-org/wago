@@ -488,13 +488,14 @@ func (g *Global) Close() error {
 	o.mu.Unlock()
 	// Root release may re-enter instance finalization, so it must not happen
 	// while globalOwner.mu is held.
-	for _, root := range roots {
-		root.releaseResourceRoot()
-	}
-	err := arena.Close()
+	var cleanup resourceCleanup
+	cleanup.run(func() { releaseRetainedResourceRoots(roots) })
+	var err error
+	cleanup.run(func() { err = arena.Close() })
 	if store != nil {
-		store.storeObjectClosed()
+		cleanup.run(store.storeObjectClosed)
 	}
+	cleanup.finish()
 	return err
 }
 
@@ -755,9 +756,7 @@ func (g *Global) setValueNoLease(v Value) error {
 		}
 	}
 	o.mu.Unlock()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	releaseRetainedResourceRoots(release)
 	return nil
 }
 
