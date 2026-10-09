@@ -62,7 +62,7 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if opts.referenceControlInstructions != control {
 		return nil, unsupported("closed reference staged control witness")
 	}
-	if c == nil || !c.state.referenceFunctions || c.state.importedFunctions != len(m.Imports) || len(c.functions) != len(m.Code) || len(c.code) == 0 || len(c.code) > MaxCodeBytes {
+	if c == nil || !c.state.referenceFunctions || c.state.importedFunctions != m.ImportedFuncCount() || len(c.functions) != len(m.Code) || len(c.code) == 0 || len(c.code) > MaxCodeBytes {
 		return nil, unsupported("closed reference staged function extent")
 	}
 	for _, f := range c.functions {

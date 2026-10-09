@@ -113,8 +113,14 @@ validation, aggregate name/count budgets and alias sharing. Borrowers can grow a
 exported memory even when the producer contains no growth instructions. Independent
 memory-only/global-only borrowers retain all storage after function callers close;
 late imports and host state access through a closed producer reject. Resource
-imports in this closed mode, general reference-valued imports/exports and mutable
-reference ownership remain separate work. Ordinary numeric function imports now
+imports now compose in this closed mode with separate function/global/memory
+namespaces, exact names and zero imported initializer payloads. Non-primary
+memory aliases refresh on host resume before guest growth; numeric resource-only
+providers remain physical attachment roots without callable snapshots. Source,
+retained metadata and compiler-free paths cover resource aliases, full-u64 active
+initializer rejection, failed-link refunds and joined callback interruption.
+General reference-valued imports/exports and mutable reference ownership remain
+separate work. Ordinary numeric function imports now
 compose with private references across native calls and scalar Go/owned callbacks.
 The imported prefix preserves physical ordinals, exact numeric bindings and
 paired internal descriptor holes; sparse generations retain native reexports and

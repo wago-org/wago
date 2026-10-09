@@ -12,13 +12,21 @@ import (
 )
 
 func rv64ReferenceImportsConsumer(vector, shared bool, route string) []byte {
+	return rv64ReferenceImportsConsumerWidth(vector, shared, true, route)
+}
+
+func rv64ReferenceImportsConsumerWidth(vector, shared, wide bool, route string) []byte {
 	typ := wasm.F64
 	if vector {
 		typ = wasm.V128
 	}
 	imports := [][]byte{append(append(wasmtest.Name("env"), wasmtest.Name("target")...), 0, 0)}
 	if shared {
-		imports = append(imports, append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, 5, 1, 3))
+		flag := byte(1)
+		if wide {
+			flag = 5
+		}
+		imports = append(imports, append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 2, flag, 1, 3))
 	}
 	types := [][]byte{wasmtest.FuncType([]wasm.ValType{wasm.I32, typ, wasm.I32}, []wasm.ValType{typ, wasm.I32, wasm.I32}), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})}
 	body := []byte{0x20, 0, 0x20, 1, 0x20, 2}

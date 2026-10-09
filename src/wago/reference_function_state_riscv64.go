@@ -9,7 +9,7 @@ import (
 )
 
 // Retained numeric state uses the ordinary exact metadata representation. The
-// closed witness cannot authorize references in storage or imported resources.
+// closed witness cannot authorize references in storage or imported signatures.
 // Shared validators subsequently check limits, initializer types and indices.
 func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 	reject := func(detail string) error { return fmt.Errorf("RV64 closed reference state: %s", detail) }
@@ -21,22 +21,27 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		return true
 	}
 	memories := c.memoryCount()
-	if memories > railshot.MaxProductionMemories || len(c.Globals) > 256 || c.activeDataCount() > 256 || len(c.PassiveData) > 256 || len(c.ValueTypes) > 5 {
+	if memories > railshot.MaxProductionMemories || len(c.Globals) > 256 || len(c.GlobalImports) > len(c.Globals) || c.activeDataCount() > 256 || len(c.PassiveData) > 256 || len(c.ValueTypes) > 5 {
 		return reject("directory bound")
 	}
 	if memories == 0 {
-		if c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax {
+		if c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.memoryImport != "" {
 			return reject("inactive memory metadata")
 		}
 	} else if c.memoryDir == nil || len(c.memoryDir.defs) != memories || !c.memoryDir.exactExports {
-		return reject("exact owned memory definitions required")
+		return reject("exact numeric memory definitions required")
 	}
+	if memories > 0 && (c.memoryImport != c.memoryDir.defs[0].ImportKey || c.MemHasMax != c.memoryDir.defs[0].HasMax) {
+		return reject("primary memory import metadata")
+	}
+	seenOwned := false
 	for i := 0; i < memories; i++ {
 		def := c.memoryDef(i)
-		if def.ImportKey != "" || def.Shared || !def.HasMax && def.Max != 0 {
-			return reject("owned canonical unshared memory required")
+		if def.Shared || !def.HasMax && def.Max != 0 || def.ImportKey != "" && seenOwned {
+			return reject("canonical unshared memory namespace required")
 		}
-		if !consume(21) {
+		seenOwned = seenOwned || def.ImportKey == ""
+		if !consume(21) || !consume(len(def.ImportKey)) {
 			return reject("memory bytes")
 		}
 	}
@@ -47,7 +52,7 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		}
 		kinds |= 1 << v.Kind
 	}
-	for _, g := range c.Globals {
+	for index, g := range c.Globals {
 		if !g.HasValueType || uint64(g.ValueTypeIndex) >= uint64(len(c.ValueTypes)) {
 			return reject("exact numeric global binding")
 		}
@@ -56,6 +61,15 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 			return reject("numeric global ABI mismatch")
 		}
 		used |= 1 << g.ValueTypeIndex
+		if index < len(c.GlobalImports) {
+			imp := c.GlobalImports[index]
+			if !imp.HasValueType || imp.ValueTypeIndex != g.ValueTypeIndex || imp.Type != g.Type || imp.Mutable != g.Mutable || g.HasInitFunc || g.InitFunc != 0 || g.HasInitGlobal || g.InitGlobal != 0 || len(g.InitExpr) != 0 || g.Bits != 0 || g.V128 != (V128{}) {
+				return reject("exact zero-initialized numeric global import binding")
+			}
+			if !consume(2) || !consume(len(imp.Module)) || !consume(len(imp.Name)) {
+				return reject("global import name bytes")
+			}
+		}
 		if g.HasInitFunc || g.InitFunc != 0 || !g.HasInitGlobal && g.InitGlobal != 0 || len(g.InitExpr) > railshot.MaxIntegerInitializerBytes {
 			return reject("global initializer metadata")
 		}

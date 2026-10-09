@@ -101,9 +101,14 @@ compose with private references in locals and lower operands. Native imports and
 scalar Go/owned callbacks preserve dirty-i32 normalization and scalar/SWAR payloads;
 local proper tails remain available. Sparse imported owners retain numeric target
 identities and empty internal rows through foreign entry and callback interruption.
-Go/owned signatures remain scalar with at most 64 arguments/results. Imported
-proper tails, resource imports and reference-valued imports/exports
-remain unsupported in this mode. Initializer
+Go/owned signatures remain scalar with at most 64 arguments/results. Numeric
+global imports and unshared memory32/64 imports also compose with this mode.
+Interleaved import kinds retain separate bounded namespaces and exact dotted
+names; imported global placeholders carry no initializer payload. Memory/global
+aliases share storage, including refreshed non-primary memory aliases after a
+parked callback. Resource-only providers retain physical storage without becoming
+callable generation owners. Imported proper tails and reference-valued
+imports/exports remain unsupported in this mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories
 through final attachment retirement. Separate memory-only and global-only borrowers

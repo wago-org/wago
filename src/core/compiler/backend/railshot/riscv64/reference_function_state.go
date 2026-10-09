@@ -4,11 +4,46 @@ package riscv64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// Numeric owned storage cannot contain a function-reference carrier. Its
+// Count source namespaces directly before any cached import-directory allocation.
+// A hand-built module may have changed in place since its directory was cached.
+type closedReferenceImports struct{ functions, globals, memories int }
+
+func countClosedReferenceImports(m *wasm.Module) (closedReferenceImports, error) {
+	var counts closedReferenceImports
+	if m == nil || len(m.Imports) > MaxProductionImports {
+		return counts, unsupported("closed reference import directory bound")
+	}
+	for _, im := range m.Imports {
+		switch im.Type.Kind {
+		case wasm.ExternFunc:
+			counts.functions++
+		case wasm.ExternGlobal:
+			counts.globals++
+		case wasm.ExternMem:
+			counts.memories++
+		default:
+			return counts, unsupported("closed reference numeric imports only")
+		}
+	}
+	if counts.functions > MaxHostFunctionImports || len(m.Code) > MaxFunctions-counts.functions || len(m.Globals) > 256-counts.globals || len(m.Memories) > MaxProductionMemories-counts.memories {
+		return counts, unsupported("closed reference import namespace bound")
+	}
+	return counts, nil
+}
+
+// Numeric owned or imported storage cannot contain a function-reference carrier. Its
 // initializers and payloads share the closed module's aggregate byte budget,
 // before validation, copying data, or allocating derived state directories.
 func admitClosedReferenceNumericState(m *wasm.Module, vector bool, remaining *int) error {
-	if len(m.Memories) > MaxProductionMemories || len(m.Globals) > 256 || len(m.Data) > 256 || m.DataCount != nil && *m.DataCount != uint32(len(m.Data)) {
+	counts, err := countClosedReferenceImports(m)
+	if err != nil {
+		return err
+	}
+	return admitClosedReferenceNumericStateWithImports(m, vector, remaining, counts)
+}
+
+func admitClosedReferenceNumericStateWithImports(m *wasm.Module, vector bool, remaining *int, counts closedReferenceImports) error {
+	if len(m.Data) > 256 || m.DataCount != nil && *m.DataCount != uint32(len(m.Data)) {
 		return unsupported("closed reference numeric state directory bound")
 	}
 	consume := func(n int) bool {
@@ -17,6 +52,31 @@ func admitClosedReferenceNumericState(m *wasm.Module, vector bool, remaining *in
 		}
 		*remaining -= n
 		return true
+	}
+	for _, im := range m.Imports {
+		switch im.Type.Kind {
+		case wasm.ExternFunc:
+			// Function bindings are checked with declared control types.
+		case wasm.ExternGlobal:
+			g := im.Type.GlobalType()
+			if im.Type != wasm.NewGlobalExternType(g) || g.Type.Kind() == wasm.ValRef || !scalarType(g.Type, true) && !(vector && wasm.EqualValType(g.Type, wasm.V128)) || !consume(2) {
+				return unsupported("closed reference numeric global import")
+			}
+		case wasm.ExternMem:
+			memory := im.Type.MemType()
+			if im.Type != wasm.NewMemExternType(memory) || !memory.Limits.HasMax && memory.Limits.Max != 0 {
+				return unsupported("closed reference canonical memory import")
+			}
+			if err := admitMemoryType(memory, true, true); err != nil {
+				return err
+			}
+			// Include the separator retained in the exact import key.
+			if !consume(22) {
+				return unsupported("closed reference memory import bytes")
+			}
+		default:
+			return unsupported("closed reference numeric imports only")
+		}
 	}
 	for _, memory := range m.Memories {
 		if !memory.Limits.HasMax && memory.Limits.Max != 0 {
@@ -47,7 +107,7 @@ func admitClosedReferenceNumericState(m *wasm.Module, vector bool, remaining *in
 		}
 		switch data.Mode.Kind {
 		case wasm.DataActive:
-			if uint64(data.Mode.Mem) >= uint64(len(m.Memories)) || len(data.Mode.Offset.BodyBytes) == 0 || len(data.Mode.Offset.BodyBytes) > MaxIntegerInitializerBytes {
+			if uint64(data.Mode.Mem) >= uint64(counts.memories+len(m.Memories)) || len(data.Mode.Offset.BodyBytes) == 0 || len(data.Mode.Offset.BodyBytes) > MaxIntegerInitializerBytes {
 				return unsupported("closed reference active data shape")
 			}
 		case wasm.DataPassive:

@@ -57,7 +57,9 @@ func TestReferenceFunctionImportsRejectEscapes(t *testing.T) {
 			{"profile", func(_ *wasm.Module, o *CompileOptions) { o.Profile = true }},
 			{"source-maps", func(_ *wasm.Module, o *CompileOptions) { o.SourceMaps = true }},
 			{"unwind-maps", func(_ *wasm.Module, o *CompileOptions) { o.UnwindMaps = true }},
-			{"resource-import", func(m *wasm.Module, _ *CompileOptions) { m.Imports[2].Type.Kind = wasm.ExternMem }},
+			{"reference-resource-import", func(m *wasm.Module, _ *CompileOptions) {
+				m.Imports[2].Type = wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.FuncRef})
+			}},
 			{"recursive-import-index", func(m *wasm.Module, _ *CompileOptions) {
 				m.Imports[2].Type = wasm.NewFuncExternType(wasm.TypeIdx{Rec: true})
 			}},

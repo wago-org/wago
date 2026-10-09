@@ -10,18 +10,18 @@ import (
 // operate on owned numeric globals, two mixed-width memories and bulk data.
 // Only numeric functions are exported. Function ordinals 2 and 3 are internal.
 func ClosedReferenceState(vector, tails, wideFirst bool) []byte {
-	return closedReferenceState(vector, tails, wideFirst, 32, false, false)
+	return closedReferenceState(vector, tails, wideFirst, 32, false, false, false)
 }
 
 // ClosedReferenceStateOffset varies the full memory64 active initializer address.
 func ClosedReferenceStateOffset(vector bool, offset uint64) []byte {
-	return closedReferenceState(vector, false, true, offset, false, false)
+	return closedReferenceState(vector, false, true, offset, false, false, false)
 }
 
 // ClosedReferenceResources exports owned numeric resources and contains no grow
 // instruction: exported reservations must still support growth by borrowers.
 func ClosedReferenceResources(vector, tails, wideFirst bool) []byte {
-	return closedReferenceState(vector, tails, wideFirst, 32, true, false)
+	return closedReferenceState(vector, tails, wideFirst, 32, true, false, false)
 }
 
 // ClosedReferenceImports keeps a reference in a local and below a numeric/SWAR
@@ -30,10 +30,44 @@ func ClosedReferenceResources(vector, tails, wideFirst bool) []byte {
 // The exported local-null global independently reports the saved local after callbacks, before it is overwritten by the
 // lower operand. Imports env.native/shared/owned all have (i32)->i32 type.
 func ClosedReferenceImports(vector, tails, wideFirst bool) []byte {
-	return closedReferenceState(vector, tails, wideFirst, 32, false, true)
+	return closedReferenceState(vector, tails, wideFirst, 32, false, true, false)
 }
 
-func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, resources, imported bool) []byte {
+// ClosedReferenceResourceImports uses interleaved, dotted numeric function,
+// memory and global imports. Memory2 aliases imported memory1; memory3 is owned.
+func ClosedReferenceResourceImports(vector, tails, wideFirst bool) []byte {
+	return closedReferenceState(vector, tails, wideFirst, 32, false, true, true)
+}
+
+// ClosedNumericImportResources has no function code. Numeric resource imports
+// must retain its physical storage without adding it as a callable owner.
+func ClosedNumericImportResources(vector, wideFirst bool) []byte {
+	return ClosedNumericImportResourcesOffset(vector, wideFirst, 32)
+}
+
+// ClosedNumericImportResourcesOffset varies the immutable memory64 address
+// supplied to a borrower's active initializer, including full-u64 failures.
+func ClosedNumericImportResourcesOffset(vector, wideFirst bool, offset uint64) []byte {
+	typ := wasm.F64
+	zero := []byte{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b}
+	if vector {
+		typ = wasm.V128
+		zero = append(append([]byte{0xfd, 12}, make([]byte, 16)...), 0x0b)
+	}
+	var memories [][]byte
+	for _, wide := range []bool{wideFirst, !wideFirst} {
+		flag := byte(1)
+		if wide {
+			flag = 5
+		}
+		memories = append(memories, []byte{flag, 1, 3})
+	}
+	globals := [][]byte{GlobalEntry(wasm.I32, false, []byte{0x41, 9, 0x0b}), GlobalEntry(wasm.I32, true, []byte{0x41, 11, 0x0b}), GlobalEntry(typ, true, zero), GlobalEntry(wasm.I64, false, append(append([]byte{0x42}, SLEB64(int64(offset))...), 0x0b))}
+	exports := [][]byte{ExportEntry("memory.0", 2, 0), ExportEntry("memory.1", 2, 1), ExportEntry("seed", 3, 0), ExportEntry("counter", 3, 1), ExportEntry("payload", 3, 2), ExportEntry("offset", 3, 3)}
+	return Module(Section(5, Vec(memories...)), Section(6, Vec(globals...)), Section(7, Vec(exports...)))
+}
+
+func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, resources, imported, borrowed bool) []byte {
 	typ := wasm.F64
 	load, store := []byte{0x2b}, []byte{0x39}
 	zero := []byte{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b}
@@ -109,7 +143,20 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 	}
 	leaf = append(leaf, 0x23, 0, 0x6a, 0x24, 1, 0x20, 2, 0x24, 2)
 	if imported {
-		leaf = []byte{0x20, 0, 0x22, 3, 0x20, 2, 0x20, 1, 0x10, 0, 0x10, 1, 0x10, 2, 0x23, 0, 0x6a, 0x24, 1, 0x24, 2}
+		leaf = []byte{0x20, 0, 0x22, 3, 0x20, 2, 0x20, 1, 0x10, 0, 0x10, 1}
+		if borrowed {
+			// Observe the refreshed alias before another import or guest grow can
+			// repair it. Both the reference and original payload remain live below.
+			leaf = append(leaf, 0x3f, 2)
+			if !widths[1] {
+				leaf = append(leaf, 0xad)
+			}
+			leaf = append(leaf, 0x24, 6)
+			leaf = append(leaf, constant(1, 65536+64)...)
+			leaf = append(leaf, memarg(load, 2)...)
+			leaf = append(leaf, 0x24, 7)
+		}
+		leaf = append(leaf, 0x10, 2, 0x23, 0, 0x6a, 0x24, 1, 0x24, 2)
 	}
 	for i := 0; i < 2; i++ {
 		if !resources {
@@ -126,9 +173,20 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 	leaf = append(leaf, constant(1, 48)...)
 	leaf = append(leaf, 0x41, 4, 0xfc, 10, 0, 1)
 	if imported {
-		leaf = append(leaf, 0x20, 3, 0xd1, 0x24, 3)
+		nullGlobal := byte(3)
+		if borrowed {
+			nullGlobal = 4
+		}
+		leaf = append(leaf, 0x20, 3, 0xd1, 0x24, nullGlobal)
 	}
-	leaf = append(leaf, 0x21, 3, 0x23, 2, 0x23, 1, 0x20, 3, 0x0b)
+	if borrowed {
+		// Last private call exposes the exact lower operand and saved local in
+		// the native argument arena to internal tests, without an external ABI.
+		leaf = append(leaf, 0x20, 3, 0x10, 15)
+	}
+	leaf = append(leaf, 0x21, 3, 0x23, 2, 0x23, 1, 0x20, 3)
+
+	leaf = append(leaf, 0x0b)
 	add(params, results, leaf, "", true)
 	for i := 0; i < 2; i++ {
 		loadBody := append([]byte{0x20, 0}, memarg(load, i)...)
@@ -142,6 +200,10 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 		}
 		add(nil, []wasm.ValType{addrType(i)}, []byte{0x3f, byte(i), 0x0b}, fmt.Sprintf("size%d", i), false)
 	}
+	if borrowed {
+		add([]wasm.ValType{wasm.FuncRef, wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}, []byte{0x20, 0, 0x0b}, "", false)
+	}
+
 	if resources {
 		for i := uint32(0); i < 2; i++ {
 			exports = append(exports, ExportEntry(fmt.Sprintf("memory%d", i), 2, i), ExportEntry(fmt.Sprintf("alias%d", i), 2, i))
@@ -156,6 +218,9 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 		}
 		memories = append(memories, []byte{flag, 1, 3})
 		offset := append(constant(i, int64(wideOffset)), 0x0b)
+		if borrowed && wide {
+			offset = []byte{0x23, 3, 0x0b}
+		}
 		if !wide {
 			offset = []byte{0x23, 0, 0x41, 23, 0x6a, 0x0b}
 		}
@@ -179,6 +244,27 @@ func closedReferenceState(vector, tails, wideFirst bool, wideOffset uint64, reso
 	element := []byte{1, 3, 0, 1, 1 + prefix}
 	if imported {
 		element = []byte{1, 3, 0, 4, 0, 1, 2, 1 + prefix}
+	}
+	if borrowed {
+		memoryImport := func(name string, wide bool) []byte {
+			flag := byte(1)
+			if wide {
+				flag = 5
+			}
+			return append(append(Name("env.resources"), Name(name)...), 2, flag, 1, 3)
+		}
+		functionImport := func(name string) []byte { return append(append(Name("env.calls"), Name(name)...), 0, 0) }
+		imports := [][]byte{GlobalImportEntry("env.resources", "seed", wasm.I32, false), memoryImport("memory.0", widths[0]), functionImport("native.fn"), GlobalImportEntry("env.resources", "counter", wasm.I32, true), functionImport("shared.fn"), memoryImport("memory.1", widths[1]), GlobalImportEntry("env.resources", "payload", typ, true), functionImport("owned.fn"), memoryImport("alias.1", widths[1]), GlobalImportEntry("env.resources", "offset", wasm.I64, false)}
+		sections[1] = Section(2, Vec(imports...))
+		memories = [][]byte{{1, 1, 3}}
+		globals = [][]byte{GlobalEntry(wasm.I32, true, []byte{0x41, 0, 0x0b}), GlobalEntry(wasm.I32, false, []byte{0x23, 0, 0x41, 2, 0x6a, 0x0b}), GlobalEntry(wasm.I64, true, []byte{0x42, 0, 0x0b}), GlobalEntry(typ, true, zero)}
+		// Replace the old local-null export ordinal after four global imports.
+		for i, e := range exports {
+			if len(e) == len(ExportEntry("local-null", 3, 3)) && string(e) == string(ExportEntry("local-null", 3, 3)) {
+				exports[i] = ExportEntry("local-null", 3, 4)
+			}
+		}
+		exports = append(exports, ExportEntry("memory1", 2, 1), ExportEntry("alias1", 2, 2), ExportEntry("owned-memory", 2, 3), ExportEntry("counter", 3, 1), ExportEntry("payload", 3, 2), ExportEntry("derived", 3, 5), ExportEntry("resumed-size", 3, 6), ExportEntry("resumed-payload", 3, 7))
 	}
 	sections = append(sections, Section(3, Vec(functions...)), Section(5, Vec(memories...)), Section(6, Vec(globals...)), Section(7, Vec(exports...)), Section(9, element), Section(12, []byte{3}), Section(10, Vec(codes...)), Section(11, Vec(data...)))
 	return Module(sections...)
