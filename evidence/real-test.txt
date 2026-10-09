@@ -76,6 +76,6 @@
     real_amd64_test.go:181: native bytes=48; mapped regions=1; compared=2; known=2; unknown=0; complete=true; trusted executions=6; XOR=  25:	44 31 d0                                        	xor    eax,r10d
 --- PASS: TestRealScalarSourceRegion (0.01s)
 === RUN   TestExistingFibSourceRegions
-    real_amd64_test.go:205: open ../../fixtures/wasm/fib.wasm: no such file or directory
---- FAIL: TestExistingFibSourceRegions (0.00s)
-FAIL
+    real_amd64_test.go:293: current fib fixture: wasm=88 native=105 mapped regions=8 compared=12 known=6 unknown=6 complete=false
+--- PASS: TestExistingFibSourceRegions (0.01s)
+PASS
