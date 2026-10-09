@@ -6,10 +6,39 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Changed
+
+- Bound AMD64 compiler scratch growth by recycling operand arenas at proven-empty
+  instruction boundaries, tracking control-frame eligibility in constant time
+  and clearing only pointer slots written since the previous cleanup.
+- Reduce data-section decoding and execution-snapshot allocations with checked
+  vector preallocation and compact immutable active-data records, preserving
+  public data ownership and artifact encoding.
+- Reduce AMD64 and ARM64 synchronous host-call round trips with bounded native
+  bridges, private prepared owners, and specialized numeric marshalling. This
+  adds 32 bytes to the instance plugin sidecar and about 192 KiB to stripped
+  Go runtime binaries (63.3 KiB for the minimal TinyGo runtime).
+
+### Added
+
+- Add mixed-scalar host-call checks across nested memory, global, and table
+  changes, including nested traps and repeated resolved calls.
+- Bind corpus child completion to loaded input identity and exact invocation
+  evidence, with omitted-call and same-result substitution controls.
+  
 ### Fixed
 
 - Report batched Wago and wazero execution benchmark allocations per operation,
   matching their timing units instead of reporting allocations per batch.
+- Check encoded ARM64 register aliases in NEON shuffle and byte-movemask helpers
+  so source and scratch overlap cannot bypass their guards.
+- Keep ARM64 integer call results in frame slots when local pins leave too few
+  registers for all result copies.
+- Invalidate stale vector facts after indexed AMD64 loads in the optional
+  register-allocation checker, including encoded register aliases, without
+  allocating temporary kill values.
+- Key ARM64 worker adapter reuse by the memory-size register to prevent stale
+  entry code when leaf and memory-access functions share a type.
 
 ## [v0.1.0-beta.12] - 2026-10-07
 
@@ -73,6 +102,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Preserve ARM64 direct synchronous host-call results under register pressure,
+  restore locals and globals after control-frame result loads, and prevent
+  general-purpose allocation from spilling floating-point registers.
 - Publish `wago build` output atomically, preserving existing artifacts when
   publication fails and respecting platform access controls and file metadata.
 - Bound CLI module reads and artifact-cache admission, rejecting oversized

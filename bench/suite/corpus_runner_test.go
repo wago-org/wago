@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +25,7 @@ func TestCorpus(t *testing.T) {
 		for _, stage := range corpusStages(m) {
 			if stage != "Exec" {
 				t.Run(m.ID+"/"+stage, func(t *testing.T) {
-					runCorpusChild(t, m.ID, stage, "", "explicit")
+					runCorpusChild(t, m, stage, "", "explicit")
 				})
 				continue
 			}
@@ -35,9 +34,9 @@ func TestCorpus(t *testing.T) {
 					t.Fatalf("%s.%s has no exact result oracle", m.ID, invocation.Export)
 				}
 				t.Run(m.ID+"/Exec/"+invocation.Export, func(t *testing.T) {
-					runCorpusChild(t, m.ID, stage, invocation.Export, "explicit")
+					runCorpusChild(t, m, stage, invocation.Export, "explicit")
 					if corpusGuardEnabled() {
-						runCorpusChild(t, m.ID, stage, invocation.Export, "guard")
+						runCorpusChild(t, m, stage, invocation.Export, "guard")
 					}
 				})
 			}
@@ -62,8 +61,10 @@ func corpusStages(m corpusModule) []string {
 	return stages
 }
 
-func runCorpusChild(t *testing.T, id, stage, export, bounds string) {
+func runCorpusChild(t *testing.T, m corpusModule, stage, export, bounds string) {
 	t.Helper()
+	id := m.ID
+	want := corpusExpectedCompletion(t, m, stage, export, bounds)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestCorpusChild$", "-test.v", "-wago.corpus="+*corpusSelector)
 	cmd.Env = append(os.Environ(),
 		"WAGO_CORPUS_CHILD=1",
@@ -72,7 +73,7 @@ func runCorpusChild(t *testing.T, id, stage, export, bounds string) {
 		"WAGO_CORPUS_EXPORT="+export,
 		"WAGO_CORPUS_BOUNDS="+bounds,
 	)
-	var output strings.Builder
+	var output corpusChildOutput
 	cmd.Stdout, cmd.Stderr = &output, &output
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start corpus child: %v", err)
@@ -90,8 +91,11 @@ func runCorpusChild(t *testing.T, id, stage, export, bounds string) {
 		<-done
 		t.Fatalf("corpus child timed out after %s: %s/%s/%s", timeout, id, stage, export)
 	}
-	if !strings.Contains(output.String(), corpusChildMarker) {
-		t.Fatalf("corpus child did not report completion:\n%s", output.String())
+	if output.overflow {
+		t.Fatal("corpus child output limit")
+	}
+	if err := checkCorpusCompletion(output.String(), want); err != nil {
+		t.Fatalf("corpus child completion: %v\n%s", err, output.String())
 	}
 }
 
@@ -111,24 +115,26 @@ func TestCorpusChild(t *testing.T) {
 	if selected == nil {
 		t.Fatalf("unknown selected corpus benchmark %q", id)
 	}
-	runCorpusStage(t, *selected, os.Getenv("WAGO_CORPUS_STAGE"), os.Getenv("WAGO_CORPUS_EXPORT"), os.Getenv("WAGO_CORPUS_BOUNDS"))
-	fmt.Println(corpusChildMarker)
+	record := runCorpusStage(t, *selected, os.Getenv("WAGO_CORPUS_STAGE"), os.Getenv("WAGO_CORPUS_EXPORT"), os.Getenv("WAGO_CORPUS_BOUNDS"))
+	fmt.Println(corpusCompletionLine(t, record))
 }
 
-func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) {
+func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) corpusCompletion {
 	t.Helper()
+	// Hash the exact bytes passed to the decoder and compiler, not catalog metadata.
+	record := corpusLoadedCompletion(m, stage, export, bounds)
 	decoded, err := wasm.DecodeModule(m.bytes)
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if stage == "Decode" {
-		return
+		return record
 	}
 	if err := wasm.ValidateModule(decoded); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
 	if stage == "Validate" {
-		return
+		return record
 	}
 	if stage == "Compile" {
 		cm, err := benchCompileModule(decoded)
@@ -138,7 +144,7 @@ func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) 
 		if err := cm.Close(); err != nil {
 			t.Fatal(err)
 		}
-		return
+		return record
 	}
 	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 	if bounds == "guard" {
@@ -150,7 +156,7 @@ func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) 
 	}
 	defer compiled.Close()
 	if stage == "CompileFull" {
-		return
+		return record
 	}
 	instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: hostStubs(compiled)})
 	if err != nil {
@@ -158,7 +164,7 @@ func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) 
 	}
 	defer instance.Close()
 	if stage == "Instantiate" {
-		return
+		return record
 	}
 	if stage != "Exec" {
 		t.Fatalf("unknown corpus stage %q", stage)
@@ -167,6 +173,7 @@ func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) 
 		if _, err := instance.Invoke(m.Init); err != nil {
 			t.Fatalf("initialize %s: %v", m.Init, err)
 		}
+		record.InitCalls++
 	}
 	for _, invocation := range m.Exec {
 		if invocation.Export != export {
@@ -180,10 +187,14 @@ func runCorpusStage(t *testing.T, m corpusModule, stage, export, bounds string) 
 		if err != nil {
 			t.Fatalf("invoke %s: %v", export, err)
 		}
+		record.Calls++
+		record.Args = append([]uint64(nil), args...)
+		record.Results = append([]uint64(nil), got...)
 		if !slices.Equal(got, invocation.Want) {
 			t.Fatalf("invoke %s results = %v, want %v", export, got, invocation.Want)
 		}
-		return
+		return record
 	}
 	t.Fatalf("export %q is not declared by %s", export, m.ID)
+	return record
 }

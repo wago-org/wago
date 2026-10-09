@@ -471,10 +471,24 @@ of copying the full stack at every nested block. These indexes reduce repeated
 scans while preserving exact branch types and root placement.
 
 The `wago_regalloccheck` build tag adds an independent symbolic transfer checker
-at canonical-stack, control-edge and ABI-shuffle seams, plus immutable-cache
-call-clobber checks. The ordinary build retains no checker state or work. This
-first version assumes correct window inputs and does not verify arbitrary
-instructions between windows or whole-CFG equivalence.
+at canonical-stack, control-edge and ABI-shuffle seams. Immutable-cache lifetime
+observers independently reject typed encoder writes to reserved GP registers and
+the low 128 bits of FP/vector registers on AMD64 and ARM64, including partial
+writes and physical calls. The reservations begin after preload and end at cache
+retirement or function-attempt cleanup; terminal return paths restore the observer
+state before later emission. AMD64 legacy scratch borrowing excludes immutable
+caches while retaining save/restore for other live values. SIMD helpers use
+saved GP temporaries outside the integer-cache candidate set.
+
+The ordinary build retains no checker state or observer work. Transfer windows
+assume correct incoming values. The lifetime observers classify destinations,
+not arithmetic semantics; unknown generic effects conservatively report possible
+writes to the applicable register banks. Raw byte/word emission, arbitrary frame
+stores, upper vector lanes and runtime image publication are outside this
+typed-register contract.
+Separate bounded original-source and final-byte proofs cover selected recipes;
+unsupported shapes remain inconclusive. These checks do not establish general
+whole-function or whole-CFG equivalence.
 
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's

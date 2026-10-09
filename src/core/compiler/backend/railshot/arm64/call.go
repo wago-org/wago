@@ -372,7 +372,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
-			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
+			return f.emitDynamicHostOrCrossInstance(f.importBindings[idx], ft)
 		}
 		// A module with any returning host import uses the synchronous control
 		// frame for ALL its host calls, so the async log and the control frame
@@ -706,6 +706,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 		f.ld64(X11, X16, disp+runtime.ImportDispatchTargetContextOffset)
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
+		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerGoHostTag)
 	} else {
 		f.a.MovImm64(X10, b.CalleeLinMem)
 		f.a.MovImm64(X17, b.CalleeEntry)
@@ -1359,7 +1360,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
 	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
-	p, rN := len(ft.Params), len(ft.Results)
+	p := len(ft.Params)
 	var rootOffsets []uint32
 	recordRoots := false
 	if uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) == 0 {
@@ -1405,6 +1406,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// X9-X11 are part of the extended local-pin bank. Home every dirty pin before
 	// globals, control-frame setup, or argument marshalling reuses those registers.
 	f.spillLocalsForCall()
+	if regallocCheckEnabled {
+		f.checkHostSyncHomes()
+	}
 	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
 	if !internalGC {
 		// Internal GC helpers cannot observe or mutate numeric module-global cells,
@@ -1463,70 +1467,50 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
 	}
-	f.reloadLocalsForCall()
-
-	if !internalGC {
-		f.deriveModuleGlobals() // arbitrary host code may have written global cells
-	}
-	f.derivePinnedGlobals()
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
-	// Read results out of the control frame onto the operand stack, honoring
-	// slot-width result layout for v128 and mixed scalar/vector signatures.
-	f.ld64(X11, linMemReg, -int32(offCustomCtx)) // reload ctrl (clobbered by the round trip)
+	// Publish each result immediately so later loads can spill it to the existing
+	// operand frame. Pin only the control pointer, never the whole result set.
+	// setDepthTypesWithGCRoots clears transient pins, so reserve X11 after it.
+	savedPins := f.pinned
+	f.pinned = f.pinned.add(X11)
+	f.ld64(X11, linMemReg, -int32(offCustomCtx))
 	if wide {
 		f.a.AddImm64(X11, X11, hcWideBase)
 	}
-	res := f.tmpRegs[:0]
-	if cap(res) < rN {
-		res = make([]Reg, 0, rN)
-	}
-	res = res[:rN]
-	f.tmpRegs = res
-	resTypes := f.tmpTypes[:0]
-	if cap(resTypes) < rN {
-		resTypes = make([]machineType, 0, rN)
-	}
-	resTypes = resTypes[:rN]
-	f.tmpTypes = resTypes
 	ctrlSlot = 0
-	for j := 0; j < rN; j++ {
-		rt := mtOf(ft.Results[j])
-		resTypes[j] = rt
+	for _, result := range ft.Results {
+		rt := mtOf(result)
+		var value *elem
 		switch {
 		case rt.isV128():
-			res[j] = f.allocFReg(0)
-			f.syncHostLoadV128(res[j], X11, resultsOffset+int32(ctrlSlot)*8)
-			f.fpinned = f.fpinned.add(res[j]) // keep across the remaining loads
+			r := f.allocFReg(0)
+			f.syncHostLoadV128(r, X11, resultsOffset+int32(ctrlSlot)*8)
+			value = f.pushVReg(r)
 		case rt.isFloat():
 			tmp := f.allocReg(0)
 			f.syncHostLoad64(tmp, X11, resultsOffset+int32(ctrlSlot)*8)
-			res[j] = f.allocFReg(0)
-			f.a.FmovFromGpr(res[j], tmp, true)
+			r := f.allocFReg(0)
+			f.a.FmovFromGpr(r, tmp, true)
 			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[j])
+			value = f.pushFReg(r, rt)
 		default:
-			res[j] = f.allocReg(0)
-			f.syncHostLoad64(res[j], X11, resultsOffset+int32(ctrlSlot)*8)
-			f.pinned = f.pinned.add(res[j]) // keep across the remaining loads
+			r := f.allocReg(0)
+			f.syncHostLoad64(r, X11, resultsOffset+int32(ctrlSlot)*8)
+			value = f.pushReg(r, rt)
 		}
+		value.st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, result))
 		ctrlSlot += rt.stackSlots()
 	}
-	for j := 0; j < rN; j++ {
-		var value *elem
-		switch rt := resTypes[j]; {
-		case rt.isV128():
-			f.fpinned = f.fpinned.remove(res[j])
-			value = f.pushVReg(res[j])
-		case rt.isFloat():
-			f.fpinned = f.fpinned.remove(res[j])
-			value = f.pushFReg(res[j], rt)
-		default:
-			f.pinned = f.pinned.remove(res[j])
-			value = f.pushReg(res[j], rt)
-		}
-		value.st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[j]))
+	f.pinned = savedPins
+	// A restored local or value-pinned global can occupy X11. Restore these
+	// only after the final control-frame load. Their registers remain reserved
+	// from result allocation throughout the reconstruction.
+	f.reloadLocalsForCall()
+	if !internalGC {
+		f.deriveModuleGlobals()
 	}
+	f.derivePinnedGlobals()
 	// Arbitrary host code can synchronously re-enter this instance and grow its
 	// memory. Reload after reconstructing the operand stack so the continuation
 	// cannot retain the parked activation's pre-call size.
@@ -1732,6 +1716,61 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 	f.a.Store64(X9, X8, 0)
 }
 
+// A bound ordinary Go thunk can use its known control-frame ABI directly.
+// The instance's tagged dispatch word proves this is not a same-context Wasm
+// target. Both alternatives join with canonical operands and homed locals.
+func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) error {
+	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
+		return f.emitCrossInstanceCall(b, ft)
+	}
+	for _, typ := range ft.Params {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			return f.emitCrossInstanceCall(b, ft)
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			return f.emitCrossInstanceCall(b, ft)
+		}
+	}
+	roots := f.rootsBottomToTop()
+	types := append([]machineType(nil), f.logicalTypes(roots)...)
+	rootFlags := gcRootFlags(roots)
+	f.flush()
+	locals := append([]localDef(nil), f.locals...)
+	if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
+		return fmt.Errorf("import dispatch index overflows displacement")
+	}
+	disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+	f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+	f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
+	f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerGoHostTag)
+	slow := f.a.Cbz64(X12)
+	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
+		return err
+	}
+	f.flush()
+	resultTypes := append([]machineType(nil), f.logicalTypes(f.rootsBottomToTop())...)
+	resultFlags := gcRootFlags(f.rootsBottomToTop())
+	fastLocals := append([]localDef(nil), f.locals...)
+	done := f.a.Branch()
+	f.patchBranch19(slow, f.a.Len())
+	copy(f.locals, locals)
+	f.setDepthTypesWithGCRoots(types, rootFlags)
+	if err := f.emitCrossInstanceCall(b, ft); err != nil {
+		return err
+	}
+	f.flush()
+	for i := range f.locals {
+		if f.locals[i].state != fastLocals[i].state {
+			return fmt.Errorf("direct Go import local-state join differs at local %d", i)
+		}
+	}
+	f.patchBranch26(done, f.a.Len())
+	f.setDepthTypesWithGCRoots(resultTypes, resultFlags)
+	return nil
+}
+
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
 // another instance's function (cross-instance linking). Unlike a host import
 // (which logs and returns void), this is a real native call into the callee
@@ -1803,6 +1842,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.StpPre(X25, X23, SP, -16)
 	f.a.StpPre(X27, ehReg, SP, -16)
 
+	sameContext := -1
 	if b.Dynamic {
 		if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
 			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
@@ -1812,9 +1852,24 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		f.ld64(X1, X16, disp+runtime.ImportDispatchHomeLinMemOffset)     // wrapper-ABI arg 1
 		f.ld64(X10, X16, disp+runtime.ImportDispatchTargetContextOffset) // target context
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)       // wrapper entry
+		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
+		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerGoHostTag)
+		// Ordinary host imports target this exact instance context. Its basedata
+		// is already installed, so publish neither a context image nor identical
+		// trap words. Equal linear memory alone is insufficient for aliased
+		// instances: their context identities must also match.
+		f.cmpRR(X1, linMemReg, true)
+		differentHome := f.a.Bcond(condNE)
+		f.cmpRR(X10, X12, true)
+		differentContext := f.a.Bcond(condNE)
+		f.a.StpPre(ZR, X17, SP, -16) // zero caller context means no switch occurred
+		sameContext = f.a.Branch()
+		f.patchBranch19(differentHome, f.a.Len())
+		f.patchBranch19(differentContext, f.a.Len())
 		f.copyInstanceContext(X1, X10)
-		f.ld64(X16, X16, disp+runtime.ImportDispatchCallerContextOffset) // caller context
-		f.a.StpPre(X16, X17, SP, -16)
+		f.a.StpPre(X12, X17, SP, -16)
+		// The forward branch skips the per-execution control-word copies below.
+
 	} else {
 		f.a.MovImm64(X1, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)
 	}
@@ -1827,6 +1882,10 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.st64(X1, -int32(offStackFence), X9)
 	f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
 	f.st64(X1, -int32(offTrapCellPtr), X9)
+
+	if sameContext >= 0 {
+		f.patchBranch26(sameContext, f.a.Len())
+	}
 
 	if b.Dynamic {
 		if regallocCheckEnabled {
@@ -1855,7 +1914,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.LdpPost(X25, X23, SP, 16)
 	f.a.LdpPost(linMemReg, X24, SP, 16)
 	if b.Dynamic {
+		unchanged := f.a.Cbz64(X16)
 		f.copyInstanceContext(linMemReg, X16)
+		f.patchBranch19(unchanged, f.a.Len())
 	}
 	// A dynamic target may be arbitrary host code that synchronously re-enters
 	// this caller and grows its memory. Reload from the restored caller context
@@ -2147,11 +2208,33 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
 	}
 	var quadRes [8]Reg
+	resultsInSlots := false
 	if registerQuadResultsSupported && rN > 2 {
+		// Results remain protected until local/global reloads finish. Whole-
+		// function pins can leave fewer destinations than the result count.
+		avoid := maskOf(X0, X1, X2, X3, X4, X5, X6, X7)
+		blocked := avoid.union(f.pinned).union(f.pinnedLocalMask).union(f.reserved)
+		available := 0
+		for _, reg := range gpAlloc {
+			if !blocked.has(reg) {
+				available++
+			}
+		}
+		resultsInSlots = available < rN
+		base := 0
+		if resultsInSlots {
+			base = f.allocSpillSlots(rN)
+		}
 		for i, src := range []Reg{X0, X1, X2, X3, X4, X5, X6, X7}[:rN] {
-			quadRes[i] = f.allocReg(maskOf(X0, X1, X2, X3, X4, X5, X6, X7))
-			f.a.MovReg64(quadRes[i], src)
-			f.pinned = f.pinned.add(quadRes[i])
+			if resultsInSlots {
+				f.st64(SP, f.spillOff(base+i), src)
+				value := f.pushValue(storage{kind: stSlot, typ: mtOf(ft.Results[i]), slot: uint32(base + i)})
+				value.st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[i]))
+			} else {
+				quadRes[i] = f.allocReg(avoid)
+				f.a.MovReg64(quadRes[i], src)
+				f.pinned = f.pinned.add(quadRes[i])
+			}
 		}
 	}
 	if !preservesPins {
@@ -2189,7 +2272,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			f.pushReg(reg, mtOf(ft.Results[i]))
 		}
 	}
-	if registerQuadResultsSupported && rN > 2 {
+	if registerQuadResultsSupported && rN > 2 && !resultsInSlots {
 		for i, reg := range quadRes[:rN] {
 			f.pinned = f.pinned.remove(reg)
 			f.pushReg(reg, mtOf(ft.Results[i]))

@@ -33,6 +33,9 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
+// Binding-time Go classification permits direct control-frame calls in bounded numeric functions.
+var directGoImportEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_GO_IMPORT") != "1"
+
 // Lend R11 to guarded call-making local pins. The second lease below can
 // also use R10; call capture and spill contracts still apply.
 // WAGO_AMD64_GUARD_CALL_PIN=0 restores the previous pin pool for comparison.
@@ -495,12 +498,13 @@ type fn struct {
 	moduleGlobalRegionalLeaseSlot uint32
 
 	// Control-flow state (Phase 3).
-	ctrl        []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
-	unreachable bool        // in dead code after an unconditional branch/trap
-	ehTryDepth  int         // live reachable try_table records; bounded by ehTryCap
-	ehRootCount int         // compile-time assigned fixed exception roots; bounded by ehRootCap
-	ehTryCap    int         // this function's reserved try_table records (max nesting depth)
-	ehRootCap   int         // this function's reserved exception roots (catch_ref clauses)
+	nonzeroCtrlHeights int         // active frames retaining an operand prefix or deferred if recipe
+	ctrl               []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
+	unreachable        bool        // in dead code after an unconditional branch/trap
+	ehTryDepth         int         // live reachable try_table records; bounded by ehTryCap
+	ehRootCount        int         // compile-time assigned fixed exception roots; bounded by ehRootCap
+	ehTryCap           int         // this function's reserved try_table records (max nesting depth)
+	ehRootCap          int         // this function's reserved exception roots (catch_ref clauses)
 
 	// sc holds per-function scratch whose backing is reused across the module:
 	// The intrusive return chain, brFoldSites and trapSites live there so each
@@ -538,6 +542,7 @@ type fn struct {
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
 	syncHostCalls          bool
+	dynamicHostFast        bool
 	syncHostSlots          int  // symmetric control-frame capacity; >64 selects the wide extension
 	gcTypeSubtypingRefTest bool // typed function tests/casts resolve exact declared type identity after dynamic loads
 	gcStructHelpers        bool // exact staged numeric struct ops use the same parked Go re-entry frame
@@ -583,6 +588,12 @@ type transient struct {
 	v128Pool          []poolConst // reusable 4/8/16-byte trailing rip-relative constants
 	poolSites         []poolSite  // flat intrusive site lists; no per-constant allocation
 	literalWords      []uint64    // packed compaction island plan; reusable per worker
+
+	// High-water marks include stale slots past slice length. Only writes since
+	// the last recycling checkpoint need clearing; unused capacity stays clean.
+	tmpRootsWritten    int
+	tmpBelowWritten    int
+	tmpDeferredWritten int
 }
 
 // gpCand is a hot int local or global competing for a GP pin register, ranked by
@@ -1723,7 +1734,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.Profile && opts.Stats == nil {
 		return nil, fmt.Errorf("amd64: profiling requires a ModuleStats destination")
 	}
-	compiled, err := compileModuleWith(m, opts)
+	var compiled *amd64.CompiledModule
+	var err error
+	if codegen.SourceChecks {
+		compiled, err = compileSourceModuleWith(m, opts)
+	} else {
+		compiled, err = compileModuleWith(m, opts)
+	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
 	return compiled, err
@@ -1943,6 +1960,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				_ = codeBuffer.Close()
 			}
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
+		}
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		var directPrepared, directPreparedBounded []uint64
@@ -2169,6 +2189,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
+		if regallocCheckEnabled {
+			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
+		}
 		states[i].scratch.amd64Features = opts.AMD64Features
 		states[i].scratch.asm.BitCountState = opts.BitCountFeatures & 0x07
 		states[i].scratch.policy = policy
@@ -2197,6 +2220,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			ws.scratchStats = workerScratchStats(ws.scratch)
 			ws.scratch = nil
 		}()
+		if regallocCheckEnabled {
+			shared.SetSourceContext(&ws.scratch.scalar, codegen.SourceContextFor(opts.Codegen, m))
+		}
 		for {
 			i := int(work.next.Add(1) - 1)
 			if i >= n {
@@ -3494,6 +3520,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		bmi2Rorx = false
 	}
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
+	// Transfer pointer scratch ownership to the active function. Cached slice
+	// headers must not keep detached backings alive when these buffers grow.
+	sc.transient.tmpRoots = nil
+	sc.transient.tmpBelow = nil
+	sc.transient.tmpDeferred = nil
+	sc.transient.tmpRootsWritten = 0
+	sc.transient.tmpBelowWritten = 0
+	sc.transient.tmpDeferredWritten = 0
 	state = f
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
@@ -3521,6 +3555,22 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.ehTryCap, f.ehRootCap = shape.TryRecords, shape.RootRecords
 	}
 	f.syncHostCalls = syncHostCalls
+	f.dynamicHostFast = f.opt(optDirectGoHostImport) && syncHostCalls && !f.moduleEH && shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
+	for _, typ := range ft.Params {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
+	for _, run := range c.Locals.Runs {
+		if run.Type.Kind() != wasm.ValNum || mtOf(run.Type) == mtV128 {
+			f.dynamicHostFast = false
+		}
+	}
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
 	f.gcStructHelpers = gcStructHelpers
@@ -3591,7 +3641,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// touchesMemory — otherwise the guard-page pin exclusion (which drops R9/R10/R11
 	// from the pool for a memory-touching call-making function) would be skipped for
 	// a caller whose own body never touched memory.
-	inlinePlan := buildInlineCallerPlan(c, inlineTargets)
+	var inlinePlan inlineCallerPlan
+	if hasCall {
+		inlinePlan = buildInlineCallerPlan(c, inlineTargets)
+	}
 	inlinedCallees := inlinePlan.callees
 	boundedSpecializedInline := inlinePlan.allCallsInline && len(inlinedCallees) != 0
 	for _, target := range inlinedCallees {
@@ -3863,6 +3916,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.RecordUnwind = !moduleEH && len(custom) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil && len(inlinedCallees) == 0 && !hints.flags.has(hintHasTailCall|hintUsesBulkMem|hintMutatesTable|hintHasJumpTableData|hintGCSharedResolver|hintGCDeferredResolver)
 	}
 
+	if regallocCheckEnabled {
+		checkSourceBegin(f, hostAdapter || !regABI)
+	}
+
 	if regABI {
 		// The prepared trampoline establishes RBX, and every admitted function was
 		// compiled without the unsaved R12-R15 set. The module finalizer below
@@ -3877,9 +3934,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			return nil, nil, 0, err
 		}
 		f.emitV128ConstPool()
+		if regallocCheckEnabled {
+			checkSourceFinishEmission(f)
+		}
 		internalOff, err = f.finalizeNativeCode(internalOff)
 		if err != nil {
 			return nil, nil, 0, err
+		}
+		if regallocCheckEnabled {
+			checkSourceVerify(f)
 		}
 		f.finalizeStats(len(f.a.B))
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
@@ -4825,9 +4888,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	}
 	// Results are canonical now; this terminal return cannot use body caches.
 	// Attempt cleanup owns observer restoration if epilogue emission panics.
-	var returnGPWrites regallocGPWriteMask
+	var returnGPWrites regallocWriteMask
 	if regallocCheckEnabled {
-		returnGPWrites = f.checkTerminalGPWrites()
+		returnGPWrites = f.checkTerminalWrites()
 	}
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
@@ -4883,7 +4946,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 	if regallocCheckEnabled {
-		f.checkRestoreGPWrites(returnGPWrites)
+		f.checkRestoreWrites(returnGPWrites)
 	}
 	f.emitNativeGCStubs()
 	if profileEnabled {
@@ -4969,9 +5032,9 @@ func (f *fn) patchFrameSize() error {
 // the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
 	// On panic, compileFuncAttempt retires the abandoned function's observer.
-	var returnGPWrites regallocGPWriteMask
+	var returnGPWrites regallocWriteMask
 	if regallocCheckEnabled {
-		returnGPWrites = f.checkTerminalGPWrites()
+		returnGPWrites = f.checkTerminalWrites()
 	}
 	a := f.a
 	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
@@ -4994,7 +5057,7 @@ func (f *fn) epilogue() {
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 	if regallocCheckEnabled {
-		f.checkRestoreGPWrites(returnGPWrites)
+		f.checkRestoreWrites(returnGPWrites)
 	}
 }
 

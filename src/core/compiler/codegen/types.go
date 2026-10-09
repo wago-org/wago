@@ -27,14 +27,6 @@ type Backend[M any] interface {
 	CompileModule(m M, opts Options) (*Object, error)
 }
 
-// Options are shared code-generation dependencies selected by the caller after
-// frontend validation and runtime configuration normalization.
-type Options struct {
-	Runtime RuntimeABI
-	Heap    HeapABI
-	Module  ModuleInfo
-}
-
 // Value is an opaque backend-owned value handle paired with its wasm type.
 //
 // Heap policies must not inspect Opaque. They pass Value tokens back to Emitter

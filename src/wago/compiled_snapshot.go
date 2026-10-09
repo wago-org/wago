@@ -42,7 +42,7 @@ func (c *Compiled) freezeExecution(limit uint64) (*Compiled, error) {
 	if err != nil {
 		return nil, err
 	}
-	snapshot := cloneCompiledMetadata(c)
+	snapshot := cloneCompiledExecutionMetadata(c)
 	memo.snapshotBytes = size
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&memo.execution)), unsafe.Pointer(snapshot))
 	return snapshot, nil
@@ -63,6 +63,16 @@ func (c *Compiled) executionView() *Compiled {
 }
 
 func cloneCompiledMetadata(c *Compiled) *Compiled {
+	return cloneCompiledMetadataWithDataPolicy(c, false)
+}
+
+func cloneCompiledExecutionMetadata(c *Compiled) *Compiled {
+	return cloneCompiledMetadataWithDataPolicy(c, true)
+}
+
+func cloneCompiledMetadataWithDataPolicy(c *Compiled, compactExecution bool) *Compiled {
+	compactPayloadBytes, compactData := compactActiveDataSize(c)
+	compactData = compactData && compactExecution
 	var valTypeCount, refInitCount, byteCount int
 	for i := range c.Funcs {
 		valTypeCount += len(c.Funcs[i].Params) + len(c.Funcs[i].Results)
@@ -84,8 +94,11 @@ func cloneCompiledMetadata(c *Compiled) *Compiled {
 	}
 	countElems(c.Elems)
 	countElems(c.passiveElems)
-	for i := range c.Data {
-		byteCount += len(c.Data[i].Bytes) + len(c.Data[i].Offset.Expr)
+	if !compactData {
+		for i := 0; i < c.activeDataCount(); i++ {
+			d := c.activeDataAt(i)
+			byteCount += len(d.Bytes) + len(d.Offset.Expr)
+		}
 	}
 	for i := range c.PassiveData {
 		byteCount += len(c.PassiveData[i].Bytes)
@@ -97,7 +110,18 @@ func cloneCompiledMetadata(c *Compiled) *Compiled {
 	refInits := packedCloneStorage[RefInit]{values: make([]RefInit, refInitCount)}
 	bytes := packedCloneStorage[byte]{values: make([]byte, byteCount)}
 
-	out := *c
+	var out *Compiled
+	if compactData {
+		owner := &struct {
+			compiled Compiled
+			data     compactActiveData
+		}{compiled: *c}
+		out = &owner.compiled
+		out.compactData = &owner.data
+	} else {
+		out = new(Compiled)
+		*out = *c
+	}
 	out.Entry = entries.clone(c.Entry)
 	out.InternalEntry = entries.clone(c.InternalEntry)
 	out.Funcs = cloneFuncSigs(c.Funcs, &funcSigs, &valTypes)
@@ -115,10 +139,22 @@ func cloneCompiledMetadata(c *Compiled) *Compiled {
 	out.FuncTypeID = slices.Clone(c.FuncTypeID)
 	out.Elems = cloneCompiledElems(c.Elems, &elems, &refInits, &bytes)
 	out.passiveElems = cloneCompiledElems(c.passiveElems, &elems, &refInits, &bytes)
-	out.Data = slices.Clone(c.Data)
-	for i := range out.Data {
-		out.Data[i].Bytes = bytes.clone(c.Data[i].Bytes)
-		out.Data[i].Offset.Expr = bytes.clone(c.Data[i].Offset.Expr)
+	if compactData {
+		out.Data = nil
+		cloneCompactActiveData(out.compactData, c, compactPayloadBytes)
+	} else {
+		out.compactData = nil
+		if c.compactData != nil {
+			out.Data = make([]DataInit, c.activeDataCount())
+		} else {
+			out.Data = slices.Clone(c.Data)
+		}
+		for i := range out.Data {
+			d := c.activeDataAt(i)
+			out.Data[i] = d
+			out.Data[i].Bytes = bytes.clone(d.Bytes)
+			out.Data[i].Offset.Expr = bytes.clone(d.Offset.Expr)
+		}
 	}
 	out.PassiveData = slices.Clone(c.PassiveData)
 	for i := range out.PassiveData {
@@ -133,7 +169,7 @@ func cloneCompiledMetadata(c *Compiled) *Compiled {
 	for i := range out.GCTypeDescs {
 		out.GCTypeDescs[i].Fields = gcFields.clone(c.GCTypeDescs[i].Fields)
 	}
-	return &out
+	return out
 }
 
 type packedCloneStorage[T any] struct {
@@ -235,7 +271,8 @@ func (c *Compiled) validateInternalEntries(artifact bool) error {
 		return fmt.Errorf("compiled metadata invalid: InternalEntry length %d != Entry length %d", len(c.InternalEntry), len(c.Entry))
 	}
 	for i, entry := range c.InternalEntry {
-		if artifact && entry < 0 {
+		compileMarkers := directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask | directHostSegmentsMask | nativeScalarLeafMask | nativeScalarBoundedMask | goHostDispatchTagMask | integerHostContextMask
+		if artifact && uint(entry)&compileMarkers != 0 {
 			return fmt.Errorf("compiled metadata invalid: InternalEntry[%d] has compile-only marker", i)
 		}
 		off := internalEntryOffset(entry)

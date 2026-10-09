@@ -15,6 +15,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("simd-reduction-borrow", &simdReductionBorrowEnabled),
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
 	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
+	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
 	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
 	optimization.Bind("compact-loop-align32", &compactLoopAlign32Enabled),
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
@@ -82,6 +83,7 @@ var (
 	optSIMDReductionBorrow     = optimizationBindings.Option("simd-reduction-borrow")
 	optPreparedDirectEntry     = optimizationBindings.Option("prepared-direct-entry")
 	optPreparedBoundedEntry    = optimizationBindings.Option("prepared-bounded-entry")
+	optDirectGoHostImport      = optimizationBindings.Option("direct-go-host-import")
 	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
 	optCompactLoopAlign32      = optimizationBindings.Option("compact-loop-align32")
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")

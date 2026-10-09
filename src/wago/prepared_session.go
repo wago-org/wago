@@ -2,6 +2,7 @@ package wago
 
 import (
 	"fmt"
+	goruntime "runtime"
 	"sync/atomic"
 
 	"github.com/wago-org/wago/internal/runtimebridge"
@@ -19,6 +20,7 @@ type PreparedSession struct {
 
 type preparedSessionState struct {
 	fn             *WasmFunc
+	privateHost    *privateNumericSession
 	lease          preparedInvocationLease
 	fast           bool
 	host           bool
@@ -60,13 +62,18 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 	// block collection or calls in another instance that shares those domains.
 	state.lease = in.lockPreparedSessionInvocation()
 	state.guardCalls = in.syncMode || len(in.hostLog) != 0
+	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" && armPrivateNumericSessionEnabled) && privateNumericSessionEnabled && !codeProfileEnabled && fn.scalarFast && fn.boundedNumericHost && !fn.gcMaintenance && fn.paramSlots <= 4 {
+		if p := in.eng.PreparedScalarHost(); p != nil && p.DetachedNumericContext() && (goruntime.GOARCH == "arm64" || p.IntegerGuestContext()) {
+			state.privateHost = newPrivateNumericSession(fn, p, state.lease.state)
+		}
+	}
 	// Synchronous host callbacks still park the independent native lease while
 	// arbitrary Go runs. Reserving it across outer calls only removes repeated
 	// context binding; callback re-entry and host-side access retain the normal
 	// unlock/reacquire protocol.
 	flags := in.executionFlags.Load()
 	noGCDomains := in.gc == nil && flags&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
-	if fn.scalarFast && in.syncMode && noGCDomains && in.usesIndependentExecution() && in.hasSingleDirectTypedScalarHost() {
+	if fn.scalarFast && !fn.boundedNumericHost && in.syncMode && noGCDomains && in.usesIndependentExecution() && in.hasSingleDirectTypedScalarHost() {
 		pluginState := in.ensurePluginState()
 		pluginState.nativeShareMu.Lock()
 		if !in.usesIndependentExecution() {
@@ -92,6 +99,15 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 				return nil, fmt.Errorf("wago: open prepared session host entry: %w", prepareErr)
 			}
 			state.host = true
+			if in.boundedHostSegments() && preparedHostFixedEnabled {
+				if err := prepared.EnableBoundedSegments(runtimebridge.GrantHostScalarCall()); err != nil {
+					entry.unlockExecution()
+					pluginState.nativeShareMu.Unlock()
+					state.lease.unlock()
+					in.endInvocation()
+					return nil, err
+				}
+			}
 			state.entry = entry
 			state.hostCall = prepared
 			if in.hostCall == nil {
@@ -183,6 +199,16 @@ func (s *PreparedSession) Invoke1(a0 uint64) ([]uint64, error) { return s.invoke
 
 // Invoke2 calls the reserved function with two argument slots.
 func (s *PreparedSession) Invoke2(a0, a1 uint64) ([]uint64, error) {
+	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && s != nil && s.state != nil && s.state.privateHost != nil && s.state.privateHost.owner != nil {
+		if out, err, admitted := s.tryPrivateFixed2(a0, a1); admitted {
+			return out, err
+		}
+	}
+	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && s != nil && s.state != nil && s.state.privateHost != nil && s.state.privateHost.viewOwner != nil {
+		if out, err, admitted := s.tryPrivateViewFixed2(a0, a1); admitted {
+			return out, err
+		}
+	}
 	return s.invokeFixed(2, a0, a1, 0, 0)
 }
 
@@ -205,6 +231,7 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 	if count != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
 	}
+
 	if state.fast {
 		if preparedDirectWideSupported && fn.directIntFast && fn.resultSlots > 2 {
 			args := [4]uint64{a0, a1, a2, a3}
@@ -224,11 +251,11 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 		}
 		return fn.invokeDirectIntSession(a0, a1, a2, a3)
 	}
-	gcLease, err := state.beginCall()
-	if err != nil {
+	var gcLease gcInvocationLease
+	if err := state.beginCall(&gcLease); err != nil {
 		return nil, err
 	}
-	defer state.endCall(gcLease)
+	defer state.endCall(&gcLease)
 	if codeProfileEnabled && fn.in.boundaryProfile() != nil {
 		span, restore := fn.in.beginProfileInvocation(fn.export)
 		defer restore()
@@ -239,6 +266,12 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 		return state.invokeScalarHostReserved(args[:count])
 	}
 	if fn.scalarFast {
+		if !codeProfileEnabled && fn.boundedNumericHost && !fn.gcMaintenance && fn.in.preparedFastStateValid() && fn.in.usesIndependentExecution() && !fn.in.guestStorageBorrowed() {
+			if state.privateHost != nil && fn.in.eng.PreparedScalarHost() == state.privateHost.prepared && offHeapSlicePtr(fn.in.ctrl) == state.privateHost.activation.ctrl {
+				return state.privateHost.invokeOwned(fn, args[:count])
+			}
+			return fn.invokeBoundedNumericAdmitted(args[:count])
+		}
 		return fn.invokeScalarAdmitted(args[:count])
 	}
 	return fn.invokeGeneralAdmitted(args[:count])
@@ -262,11 +295,11 @@ func (s *PreparedSession) invokeArgs(args []uint64) (result []uint64, resultErr 
 	if state.fast {
 		return fn.invokeScalarAdmitted(args)
 	}
-	gcLease, err := state.beginCall()
-	if err != nil {
+	var gcLease gcInvocationLease
+	if err := state.beginCall(&gcLease); err != nil {
 		return nil, err
 	}
-	defer state.endCall(gcLease)
+	defer state.endCall(&gcLease)
 	if codeProfileEnabled && fn.in.boundaryProfile() != nil {
 		span, restore := fn.in.beginProfileInvocation(fn.export)
 		defer restore()
@@ -276,14 +309,17 @@ func (s *PreparedSession) invokeArgs(args []uint64) (result []uint64, resultErr 
 		return state.invokeScalarHostReserved(args)
 	}
 	if fn.scalarFast {
+		if !codeProfileEnabled && fn.boundedNumericHost && !fn.gcMaintenance && fn.in.preparedFastStateValid() && fn.in.usesIndependentExecution() && !fn.in.guestStorageBorrowed() {
+			return fn.invokeBoundedNumericAdmitted(args)
+		}
 		return fn.invokeScalarAdmitted(args)
 	}
 	return fn.invokeGeneralAdmitted(args)
 }
 
-func (state *preparedSessionState) beginCall() (gcInvocationLease, error) {
+func (state *preparedSessionState) beginCall(gcLease *gcInvocationLease) error {
 	if state.guardCalls && !state.active.CompareAndSwap(false, true) {
-		return gcInvocationLease{}, fmt.Errorf("wago: prepared session is already active")
+		return fmt.Errorf("wago: prepared session is already active")
 	}
 	in := state.fn.in
 	// Cached host admission proves that the instance has no local or reachable
@@ -291,18 +327,24 @@ func (state *preparedSessionState) beginCall() (gcInvocationLease, error) {
 	// sharing falls back to the ordinary per-call GC lease before dispatch.
 	if state.host {
 		if state.hostLeaseValid() {
-			return gcInvocationLease{}, nil
+			return nil
 		}
 		state.dropHostLease(false)
 	}
-	return in.lockGCInvocation(state.lease.state.invocationID), nil
+	// Avoid materializing a domain lease for instances with no reachable GC.
+	// These flags are revocable and must be checked on every call.
+	if in.refStore == nil || in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
+		return nil
+	}
+	*gcLease = in.lockGCInvocation(state.lease.state.invocationID)
+	return nil
 }
 
-func (state *preparedSessionState) endCall(gcLease gcInvocationLease) {
+func (state *preparedSessionState) endCall(gcLease *gcInvocationLease) {
 	if gcLease.acquired {
 		gcLease.unlock()
 	}
-	if in := state.fn.in; in.importsFuncrefStorage() || in.table != nil {
+	if in := state.fn.in; in.table != nil || in.mayImportFuncrefStorage() && in.importsFuncrefStorage() {
 		in.reconcileFuncrefRoots()
 	}
 	if !state.guardCalls {

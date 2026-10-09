@@ -1,0 +1,192 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCommandExec/sqlite3-query         	       1	 417132406 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCommandExec/quickjs-script        	       1	 224040650 ns/op	   68720 B/op	     722 allocs/op
+BenchmarkCommandExec/esbuild-minify        	       1	 763287138 ns/op	   79696 B/op	     893 allocs/op
+BenchmarkCommandExec/lodepng               	      50	   3538803 ns/op	   41144 B/op	     412 allocs/op
+BenchmarkExec/tiny.add                     	      84	        20.70 ns/op	    100400 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fib_rec.fib                  	      73	   1139197 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/many_funcs.run               	      88	        20.02 ns/op	    102002 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fannkuch.run                 	      62	   1459907 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/matmul.run                   	      90	    163358 ns/op	        13.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/sha256.hashN                 	      64	     57733 ns/op	        42.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/raytrace.render              	      76	    493639 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.serializeN           	      99	     29963 ns/op	        75.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.deserializeN         	      93	     55994 ns/op	        47.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.serializeN      	     104	     36036 ns/op	        67.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.deserializeN    	     100	     70857 ns/op	        37.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN          	      82	    576447 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN         	      74	     78505 ns/op	        29.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN        	      87	    197424 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/coremark.coremark_run        	       4	  47648519 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_hash           	      86	    363492 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_keyed_hash     	      90	    365538 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_derive_key     	      74	    375103 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run            	      85	      1226 ns/op	      1843 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run              	      88	     14676 ns/op	       152.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-cholesky.polybench_run         	      88	   2085160 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-correlation.polybench_run      	      80	    429033 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gemm.polybench_run             	      92	    406191 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCommandExec/sqlite3-query         	       1	 411295007 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCommandExec/quickjs-script        	       1	 225139931 ns/op	   68720 B/op	     722 allocs/op
+BenchmarkCommandExec/esbuild-minify        	       1	 719603578 ns/op	   79696 B/op	     893 allocs/op
+BenchmarkCommandExec/lodepng               	      54	   3424196 ns/op	   41144 B/op	     412 allocs/op
+BenchmarkExec/tiny.add                     	      98	        20.55 ns/op	    101880 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fib_rec.fib                  	      79	   1129758 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/many_funcs.run               	     111	        19.70 ns/op	    101291 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fannkuch.run                 	      60	   1425834 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/matmul.run                   	      86	    155810 ns/op	        13.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/sha256.hashN                 	      81	     56297 ns/op	        43.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/raytrace.render              	      75	    479696 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.serializeN           	      81	     32199 ns/op	        78.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.deserializeN         	      76	     54002 ns/op	        42.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.serializeN      	     100	     34643 ns/op	        59.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.deserializeN    	      91	     70605 ns/op	        36.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN          	      82	    553823 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN         	      87	     77759 ns/op	        23.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN        	      79	    197119 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/coremark.coremark_run        	       4	  46533611 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_hash           	      84	    352752 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_keyed_hash     	      86	    353179 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_derive_key     	     100	    365812 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run            	      88	      1165 ns/op	      1865 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run              	      88	     14507 ns/op	       151.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-cholesky.polybench_run         	      88	   2053917 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-correlation.polybench_run      	      86	    418253 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gemm.polybench_run             	      92	    391076 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCommandExec/sqlite3-query         	       1	 411587211 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCommandExec/quickjs-script        	       1	 228384225 ns/op	   68720 B/op	     722 allocs/op
+BenchmarkCommandExec/esbuild-minify        	       1	 764279895 ns/op	   79696 B/op	     893 allocs/op
+BenchmarkCommandExec/lodepng               	      54	   3715710 ns/op	   41144 B/op	     412 allocs/op
+BenchmarkExec/tiny.add                     	      90	        21.52 ns/op	    101538 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fib_rec.fib                  	      79	   1233302 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/many_funcs.run               	     100	        20.27 ns/op	     94548 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fannkuch.run                 	      57	   1463722 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/matmul.run                   	      85	    159586 ns/op	        13.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/sha256.hashN                 	      72	     57593 ns/op	        42.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/raytrace.render              	      90	    482383 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.serializeN           	      86	     29334 ns/op	        70.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.deserializeN         	      90	     54538 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.serializeN      	      81	     35772 ns/op	        57.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.deserializeN    	      88	     74003 ns/op	        28.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN          	      80	    562652 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN         	     105	     78141 ns/op	        29.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN        	      79	    197143 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/coremark.coremark_run        	       4	  47028687 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_hash           	      70	    368438 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_keyed_hash     	      86	    357956 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_derive_key     	      84	    367097 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run            	      86	      1199 ns/op	      1852 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run              	      90	     15035 ns/op	       153.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-cholesky.polybench_run         	      88	   2055988 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-correlation.polybench_run      	      82	    424552 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gemm.polybench_run             	      92	    400650 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCommandExec/sqlite3-query         	       1	 419354802 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCommandExec/quickjs-script        	       1	 229709561 ns/op	   68720 B/op	     722 allocs/op
+BenchmarkCommandExec/esbuild-minify        	       1	 746890196 ns/op	   79696 B/op	     893 allocs/op
+BenchmarkCommandExec/lodepng               	      54	   3417139 ns/op	   41144 B/op	     412 allocs/op
+BenchmarkExec/tiny.add                     	     100	        20.40 ns/op	     98944 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fib_rec.fib                  	      79	   1137114 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/many_funcs.run               	      99	        19.87 ns/op	    103345 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fannkuch.run                 	      63	   1447787 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/matmul.run                   	      84	    156258 ns/op	        14.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/sha256.hashN                 	      88	     56411 ns/op	        42.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/raytrace.render              	      74	    482510 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.serializeN           	      82	     29229 ns/op	        78.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.deserializeN         	      85	     54561 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.serializeN      	     103	     35246 ns/op	        65.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.deserializeN    	      79	     70691 ns/op	        28.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN          	      81	    553097 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN         	      70	     78592 ns/op	        29.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN        	      82	    196663 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/coremark.coremark_run        	       4	  47866952 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_hash           	      84	    362097 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_keyed_hash     	      98	    380955 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_derive_key     	      69	    367517 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run            	      88	      1199 ns/op	      1824 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run              	      90	     15301 ns/op	       153.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-cholesky.polybench_run         	      84	   2072999 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-correlation.polybench_run      	      81	    438859 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gemm.polybench_run             	      90	    392718 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCommandExec/sqlite3-query         	       1	 422974608 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCommandExec/quickjs-script        	       1	 224241898 ns/op	   68720 B/op	     722 allocs/op
+BenchmarkCommandExec/esbuild-minify        	       1	 776141371 ns/op	   79696 B/op	     893 allocs/op
+BenchmarkCommandExec/lodepng               	      54	   3429965 ns/op	   41144 B/op	     412 allocs/op
+BenchmarkExec/tiny.add                     	      78	        20.39 ns/op	    100371 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fib_rec.fib                  	      79	   1172179 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/many_funcs.run               	     100	        19.82 ns/op	    103238 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fannkuch.run                 	      63	   1433463 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/matmul.run                   	      82	    156212 ns/op	        14.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/sha256.hashN                 	      72	     54242 ns/op	        42.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/raytrace.render              	      94	    480693 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.serializeN           	     103	     29817 ns/op	        82.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.deserializeN         	      69	     54621 ns/op	        44.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.serializeN      	      99	     37995 ns/op	        58.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.deserializeN    	      75	     70097 ns/op	        37.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN          	      80	    557058 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN         	      81	     76071 ns/op	        28.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN        	      84	    201145 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/coremark.coremark_run        	       4	  46944593 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_hash           	      86	    358349 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_keyed_hash     	      85	    357592 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_derive_key     	     100	    381945 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run            	      90	      1229 ns/op	      1853 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run              	      91	     14499 ns/op	       153.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-cholesky.polybench_run         	      87	   2031405 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-correlation.polybench_run      	      85	    421362 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gemm.polybench_run             	      92	    394147 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+BenchmarkCommandExec/sqlite3-query         	       1	 409300062 ns/op	   60344 B/op	     709 allocs/op
+BenchmarkCommandExec/quickjs-script        	       1	 225075784 ns/op	   68720 B/op	     722 allocs/op
+BenchmarkCommandExec/esbuild-minify        	       1	 727667162 ns/op	   79696 B/op	     893 allocs/op
+BenchmarkCommandExec/lodepng               	      54	   3460625 ns/op	   41144 B/op	     412 allocs/op
+BenchmarkExec/tiny.add                     	      87	        20.59 ns/op	     97913 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fib_rec.fib                  	      80	   1135467 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/many_funcs.run               	      76	        19.64 ns/op	    102333 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/fannkuch.run                 	      63	   1430359 ns/op	         2.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/matmul.run                   	      88	    154184 ns/op	        13.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/sha256.hashN                 	      81	     57963 ns/op	        43.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/raytrace.render              	      75	    476236 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.serializeN           	      99	     30202 ns/op	        75.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as.deserializeN         	      79	     53147 ns/op	        47.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.serializeN      	      81	     35462 ns/op	        63.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/json-as-simd.deserializeN    	      67	     69217 ns/op	        36.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake-as-simd.hashN          	      82	    564798 ns/op	         4.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.convertN         	      96	     78867 ns/op	        23.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/utf-as-simd.validateN        	      86	    194069 ns/op	        11.00 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/coremark.coremark_run        	       4	  46875326 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_hash           	      78	    357215 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_keyed_hash     	      86	    356638 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/blake3.blake3_derive_key     	      84	    369315 ns/op	         6.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/yyjson.yyjson_run            	      85	      1189 ns/op	      1756 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/pcre2.pcre2_run              	      88	     14925 ns/op	       154.0 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-cholesky.polybench_run         	      88	   2056912 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-correlation.polybench_run      	      86	    422382 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+BenchmarkExec/polybench-gemm.polybench_run             	      92	    393639 ns/op	         5.000 calls/batch	       0 B/op	       0 allocs/op
+PASS

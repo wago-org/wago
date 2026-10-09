@@ -554,6 +554,10 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 	}
 	fr.callFreeLoopPrefix = f.callFreeLoopDepth
 	fr.ehDepth = uint16(f.ehTryDepth)
+	// Base heights and detached if recipes are fixed before push.
+	if fr.height != 0 || fr.has(ctrlIfDeferredPrefix) {
+		f.nonzeroCtrlHeights++
+	}
 	f.ctrl = append(f.ctrl, *fr)
 }
 
@@ -828,6 +832,7 @@ func (f *fn) rootsBottomToTop() []*elem {
 		rs[i], rs[j] = rs[j], rs[i]
 	}
 	f.tmpRoots = rs
+	f.tmpRootsWritten = max(f.tmpRootsWritten, len(rs))
 	return rs
 }
 
@@ -1318,7 +1323,16 @@ func (f *fn) placeSingleResult() {
 	if f.resultFloat {
 		x := f.materializeF(e)
 		if x != 0 {
+			// The source is materialized; only the terminal result move may
+			// reuse body-cache registers. Other emitted arms keep their masks.
+			var writes regallocWriteMask
+			if regallocCheckEnabled {
+				writes = f.checkTerminalWrites()
+			}
 			f.a.FMov(0, x, f.resultF64) // -> XMM0
+			if regallocCheckEnabled {
+				f.checkRestoreWrites(writes)
+			}
 		}
 		f.releaseF(x)
 	} else {
@@ -1401,6 +1415,11 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 	case cfLoop:
 		f.a.JmpBack(fr.controlSite)
 	case cfFunc:
+		// Result slots are canonical; this taken edge leaves the function.
+		var writes regallocWriteMask
+		if regallocCheckEnabled {
+			writes = f.checkTerminalWrites()
+		}
 		// The caller already converged the result to slot 0 (fr.height == 0); with
 		// the register-return hint the epilogue no longer reloads it, so load it
 		// into the return register here so every exit agrees on RAX/XMM0 = result.
@@ -1412,6 +1431,9 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 			}
 		}
 		f.appendReturnSite(f.a.JmpPlaceholder())
+		if regallocCheckEnabled {
+			f.checkRestoreWrites(writes)
+		}
 	default:
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.set(ctrlEndReachable, true)
@@ -2232,6 +2254,9 @@ func (f *fn) opEnd() error {
 	firstEnd, secondEnd, ends := f.frameEndSites(&fr)
 	if fr.has(ctrlLoopCallFree) {
 		f.callFreeLoopDepth--
+	}
+	if fr.height != 0 || fr.has(ctrlIfDeferredPrefix) {
+		f.nonzeroCtrlHeights--
 	}
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]

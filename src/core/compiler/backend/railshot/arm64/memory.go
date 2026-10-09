@@ -247,14 +247,14 @@ func (f *fn) prepareEntryTrapPins() {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
-	var savedGPWrites regallocGPWriteMask
+	var savedGPWrites regallocWriteMask
 	if regallocCheckEnabled {
-		savedGPWrites = f.checkTerminalGPWrites()
+		savedGPWrites = f.checkTerminalWrites()
 	}
 	before := f.a.Len()
 	defer func() {
 		if regallocCheckEnabled {
-			f.checkRestoreGPWrites(savedGPWrites)
+			f.checkRestoreWrites(savedGPWrites)
 		}
 		f.stats.addGCTrapStubBytes(f.a.Len() - before)
 	}()

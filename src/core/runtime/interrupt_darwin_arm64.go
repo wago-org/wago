@@ -20,6 +20,7 @@ import (
 // to the native foreign-stack landing pad. Normal Wasm execution does no work.
 const (
 	maxDarwinExecutableCodeRanges = 4096
+	executableCodeBucketCount     = 1024
 	armThreadState64Flavor        = 6
 	armThreadState64Count         = 68
 	armThreadStateNoPtrauth       = 1
@@ -42,7 +43,9 @@ type darwinARMThreadState64 struct {
 }
 
 var (
-	darwinExecutableCodeRanges     [maxDarwinExecutableCodeRanges]darwinExecutableCodeRange
+	darwinExecutableCodeRanges [maxDarwinExecutableCodeRanges]darwinExecutableCodeRange
+	// A zero count proves that this bucket has no live range.
+	executableCodeBucketCounts     [executableCodeBucketCount]uint16
 	darwinExecutableCodeRangeLimit uint32
 	darwinExecutableCodeMu         sync.Mutex
 	darwinInterruptMu              sync.Mutex
@@ -69,19 +72,44 @@ func registerExecutableCode(mem []byte) error {
 	end := start + uintptr(len(mem))
 	darwinExecutableCodeMu.Lock()
 	defer darwinExecutableCodeMu.Unlock()
-	for i := range darwinExecutableCodeRanges {
+	bucket := executableCodeBucket(start)
+	checkDuplicate := executableCodeBucketCounts[bucket] != 0
+	limit := int(atomic.LoadUint32(&darwinExecutableCodeRangeLimit))
+	firstHole := -1
+	for i := 0; i < limit; i++ {
 		r := &darwinExecutableCodeRanges[i]
-		if atomic.LoadUintptr(&r.start) != 0 {
-			continue
+		registered := atomic.LoadUintptr(&r.start)
+		if checkDuplicate && registered == start {
+			if atomic.LoadUintptr(&r.end) != end {
+				return fmt.Errorf("executable code range changed for mapping")
+			}
+			return nil
 		}
-		atomic.StoreUintptr(&r.end, end)
-		atomic.StoreUintptr(&r.start, start)
-		if limit := uint32(i + 1); limit > atomic.LoadUint32(&darwinExecutableCodeRangeLimit) {
-			atomic.StoreUint32(&darwinExecutableCodeRangeLimit, limit)
+		if registered == 0 && firstHole < 0 {
+			firstHole = i
+			if !checkDuplicate {
+				break
+			}
 		}
-		return nil
 	}
-	return fmt.Errorf("executable code range table full (%d)", maxDarwinExecutableCodeRanges)
+	if firstHole < 0 {
+		if limit == len(darwinExecutableCodeRanges) {
+			return fmt.Errorf("executable code range table full (%d)", maxDarwinExecutableCodeRanges)
+		}
+		firstHole = limit
+	}
+	r := &darwinExecutableCodeRanges[firstHole]
+	atomic.StoreUintptr(&r.end, end)
+	atomic.StoreUintptr(&r.start, start)
+	if firstHole == limit {
+		atomic.StoreUint32(&darwinExecutableCodeRangeLimit, uint32(limit+1))
+	}
+	executableCodeBucketCounts[bucket]++
+	return nil
+}
+
+func executableCodeBucket(start uintptr) uint16 {
+	return uint16((uint64(start>>12) * 0x9e3779b97f4a7c15) >> 54)
 }
 
 func unregisterExecutableCode(mem []byte) {
@@ -98,6 +126,7 @@ func unregisterExecutableCode(mem []byte) {
 		}
 		atomic.StoreUintptr(&r.start, 0)
 		atomic.StoreUintptr(&r.end, 0)
+		executableCodeBucketCounts[executableCodeBucket(start)]--
 		limit := int(atomic.LoadUint32(&darwinExecutableCodeRangeLimit))
 		for limit > 0 && atomic.LoadUintptr(&darwinExecutableCodeRanges[limit-1].start) == 0 {
 			limit--

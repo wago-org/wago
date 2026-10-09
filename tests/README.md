@@ -66,6 +66,70 @@ excluded from the prepared-call benchmark. No wall-clock threshold is asserted.
 Native ARM64 and admitted memory-region/shared-compiler loops remain outside
 this coverage.
 
+## Wide host calls across nested state changes
+
+`host_nested_state_test.go` combines 48 mixed i32/i64/f32/f64 parameters and
+results with one supported `InvokeFromHost` re-entry. Same-instance and
+different-instance cases grow memory once, write a new-page marker, change a
+global, and replace an indirect-call target. Both normal nested return and
+mutation followed by a nested trap must preserve every outer parameter and
+result. The guest reports five separate state observations after the callback.
+The test invokes one resolved `WasmFunc` twice with distinct input and output
+values; retained results are copied before the next invocation. Memory views
+are reacquired after nested execution. Scalar comparison ignores unspecified
+high ABI-slot bits for i32/f32 and compares all semantic bits exactly.
+
+The same observation gate rejects B's valid state when A is expected. This is
+a wrong-valid-binding observer control, not native pointer corruption. Existing
+`guest_storage_test.go` owns rejection of re-entry during a storage borrow and
+expired borrowed views. No v128 callback or deferred-event re-entry is added.
+
+Verbose output records Wasm and loaded-code hashes and execution provenance.
+With `wago_codegenstats`, a separate diagnostic compile must reproduce loaded
+bytes and report the established compiler for the wide `run` function. This
+caller-aware route does not use the direct HostCall view portal or the fixed
+typed scalar portal. Native ARM64 CI exposed a register-limit failure in the
+following five-result guest call. The fix uses frame slots only when too few
+registers remain for the result copies. The focused ARM64 result-pressure test
+checks 3–8 results, a live prefix, and all caller parameters. Both a
+pin-preserving leaf and a producer with a used local run in lazy/eager local
+reload modes; a compiler classification check keeps those call modes distinct.
+AMD64 ran natively; the fixed ARM64 cases also ran under local emulation. Native
+ARM64 CI must confirm the fix. TinyGo and precompiled-only builds are excluded.
+
+`BenchmarkHostNestedMixedState` measures repeated calls after the first memory
+growth, including the observer and nested mutation. Compilation, instance setup,
+and initial growth are excluded. Each instance retains at most two Wasm memory
+pages. The benchmark reports allocations without asserting a timing threshold.
+
+## ARM64 direct synchronous host results
+
+`TestSyncHostResultPressureCompile` and `TestSyncHostResultPressureExecution`
+cover integer, floating-point, mixed, and vector host results up to the direct
+ABI's 64-slot limit, with lazy local reload enabled and disabled. Each result
+is stored separately with its exact Wasm width. The test checks all bits,
+scalar padding, memory guards, live integer/vector values below the results,
+callback counts, and repeated calls with changed
+values, including signed zero and NaN payloads. Diagnostic builds also require
+one actual direct synchronous host call. Public dynamic import wrappers use a
+separate lowering; these tests do not claim to qualify that path.
+
+`TestSyncHostRestoresX11LocalAfterResults`,
+`TestSyncHostRestoresX11GlobalAfterResults`, and
+`TestSyncHostResultSpillsPreserveRootMetadata` inspect the emission seam. They
+check explicit X11 pin restoration and reference-root metadata after spills.
+They never execute partial native code. The allocator tests also prevent
+floating-point or vector values from being selected as general-purpose spill
+victims. This is a structural root check, not a
+collector-liveness proof.
+
+`BenchmarkSyncHostResults` measures compilation and prepared execution
+separately for valid one-result calls. These signatures work on the compiler
+before and after the fix. Wider signatures are correctness cases; known-bad
+native output is not executed as a timing baseline. No timing threshold is
+asserted. ARM64 emulation establishes only emulated behavior and timing;
+native ARM64 CI and hardware measurements must be labelled separately.
+
 ## Bytecode summary agreement
 
 `TestBytecodeSummary*` in `src/core/compiler/wasm` and `src/wago` checks the
@@ -432,3 +496,108 @@ switches. SIMD pairs
 compare a constant count with an equal dynamic count. Setup is outside native
 call timing. No wall-clock threshold is asserted. The support code adds no
 production instrumentation or retained production memory.
+
+
+### Corpus child execution identity
+
+The existing `bench/suite` corpus subprocess lane now requires one bounded
+completion record per requested stage. The parent checks the catalog's pinned
+Wasm digest against the bytes used by the child, stage/export/init/bounds and
+Go target identity, completed invocation counts, arguments and raw result slots.
+Direct exports must be unique within a catalog module because child selection
+uses the export name. Nonzero child exits, timeouts, missing/duplicate records
+and log/record limits fail qualification. Existing per-case result checks remain.
+
+Run controls and the default corpus from the repository root:
+
+```sh
+go test ./bench/suite -run '^TestCorpus(Completion|ChildOutput|$)' -count=1
+go test -tags=wago_regalloccheck ./bench/suite -run '^TestCorpus(Completion|ChildOutput|$)' -count=1
+go test ./bench/suite -run '^$' -bench '^BenchmarkCorpusCompletion$' -benchmem
+```
+
+Controls compile but omit a zero-returning invocation, and execute different
+valid Wasm bytes with the same interface/result. Both must fail for the intended
+count/identity reason. Additional controls cover protocol, raw-result, argument,
+configuration and bounded-output checks, including `io.Copy`'s reader path.
+
+This is a bounded extension of #819. It covers the Wago direct corpus child
+lane, not command/semantic adapters, cross-engine comparison, NaN normalization,
+loaded native-image hashes or independently observed compiler-path selection.
+Those remain separate qualifications. AMD64 execution does not qualify ARM64;
+run the same native test there before claiming cross-target coverage.
+
+Benchmarks retain the old marker check as an observer-cost baseline and measure
+the new record checker and SHA-256 separately. Setup, JSON serialization,
+subprocess transport, compilation and guest execution are outside those timings.
+They do not measure whole-suite overhead, RSS or native execution speed. Records
+are capped at 64 KiB and captured child output at 1 MiB; these limits bound logical
+payload, not total allocator capacity or peak RSS. All changes are test-only.
+
+## ARM64 NEON helper register aliases
+
+`src/core/encoder/arm64/neon_alias_test.go` checks the five-bit register numbers
+used by instruction encodings. Across all eight register alias bands, unsafe
+shuffle and scratch overlaps must panic before emitting any instructions.
+Legal aliases must retain the canonical instruction bytes, including all 256
+shuffle controls and identity/broadcast shuffles. Movemask checks distinguish
+the GP and vector banks, so V16/V17 remain legal sources.
+
+The Linux ARM64 execution tests also exercise aliased in-place shuffles and
+movemask operands, checking lane results and preservation of the source vector.
+Portable byte checks alone do not qualify native execution.
+
+## Indexed vector loads in the AMD64 allocation checker
+
+`src/core/encoder/amd64/indexed_vector_enabled_test.go` verifies that indexed
+SSE and AVX vector loads invalidate all 16 destination bytes. It covers both
+raw and named encoder entry points, low/high registers, an RSP base with an
+index, and positive/negative displacements. Scalar loads are existing-behavior
+controls; stores must preserve source facts. Neighbor registers, address
+registers, and unrelated stack slots must keep their facts. No faulty native
+code is executed. Literal encoding tests run in both ordinary and checked
+builds. These tests do not qualify all FP/SIMD joins, calls, or ARM64 transport.
+
+An additional test covers all 256 raw register values for indexed vector and
+scalar loads and stores. It decodes the physical destination from the emitted
+ModRM and REX/VEX bits, checks that all 16 destination bytes become unknown,
+and checks that all other vectors and store sources retain their facts.
+
+`BenchmarkIndexedVectorEncoding` measures emission with no active observer.
+`BenchmarkIndexedVectorObserved` measures an active checker, including restoring
+known input facts on every iteration. Both reuse the byte buffer. A checker
+state test requires allocation-free kill operations and checks partial-byte
+invalidation, clone isolation, and unknown-value propagation.
+
+## ARM64 worker reuse and adapter keys
+
+`TestWorkerScratchMatchesFresh` in the ARM64 backend compares 11 functions
+with fresh workers after 14 fixed predecessor sequences, under memory32/64
+and ordinary/compact code policies (616 pairs). It compares exact native bytes,
+relocations, internal entries, compiler path and function/source metadata.
+Only compile/admission timing is normalized. Seven inputs per pair check
+integer, FP and SIMD results, valid memory writes and division traps. Actual
+native execution starts only after the fresh/reused comparison passes.
+
+This matrix found a stale adapter cache key: identical function signatures
+could use X17 or X27 for the memory-size value. The cache now checks both.
+The two register fields fit existing padding; its size remains 280 bytes.
+`TestAdapterTemplateCacheMemoryRegisterArm64` checks candidate promotion and
+lookup with changed register keys. Existing GC adapter metadata tests remain
+in use; this matrix does not establish collector-root or EH transport proofs.
+
+Run `python3 tests/scripts/check-arm64-worker-reset-control.py` on ARM64, or
+add `--runner /path/to/qemu-aarch64` for emulation. A temporary Go overlay
+omits the register-key check. The comparison must reject the changed native
+bytes before the first native call. No checkout source or production switch
+is changed. The error-to-reuse test rejects bad backend input without
+executing it, then checks the next valid function. Worker release must clear
+tracked retained scalar/node/control scratch.
+
+`BenchmarkWorkerScratchReuse` measures existing fresh/reused compiler work.
+`BenchmarkWorkerScratchMixed` includes adapter hits and register changes in
+one fixed sequence. Both report allocations and retained scratch; those
+counters do not include every worker allocation. Native ARM64 timing must be
+measured on ARM64 hardware. QEMU timing is only a bounded cost check for the
+emulated compiler. Shared admission is checked separately from profile builds,
+which use the established path and record source ranges.

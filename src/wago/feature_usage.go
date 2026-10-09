@@ -801,7 +801,8 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 			out |= CoreFeatureBulkMemoryOperations
 		}
 	}
-	for _, data := range c.Data {
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
 		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
 	}
 	return out

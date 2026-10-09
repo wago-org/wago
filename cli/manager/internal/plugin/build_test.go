@@ -120,11 +120,22 @@ func TestPluginRuntimeBinaryBlocksConcurrentPublication(t *testing.T) {
 	t.Cleanup(releaseBuildLock)
 
 	runtimeDone := make(chan error, 1)
+	var publisherDone chan error
 	go func() {
+		defer close(runtimeDone)
 		_, _, err := pluginRuntimeBinary()
 		runtimeDone <- err
 	}()
-	waitForPluginBuildLock(t)
+	// Join before prepareTestPluginRuntime restores environment, working
+	// directory and temporary files, including early readiness/assertion errors.
+	t.Cleanup(func() {
+		releaseBuildLock()
+		receivePluginTestResult(t, runtimeDone, "plugin runtime cleanup")
+		if publisherDone != nil {
+			receivePluginTestResult(t, publisherDone, "plugin publication cleanup")
+		}
+	})
+	waitForPluginBuildLock(t, runtimeDone)
 
 	projectLockPath := filepath.Join(manifestDir, ".wago", "project.lock")
 	probe, err := filelock.TryAcquireExisting(projectLockPath)
@@ -140,8 +151,9 @@ func TestPluginRuntimeBinaryBlocksConcurrentPublication(t *testing.T) {
 
 	publisherStarted := make(chan struct{})
 	publisherEntered := make(chan struct{})
-	publisherDone := make(chan error, 1)
+	publisherDone = make(chan error, 1)
 	go func() {
+		defer close(publisherDone)
 		close(publisherStarted)
 		publisherDone <- project.WithMutation(context.Background(), manifestDir, func(*project.Mutation) error {
 			close(publisherEntered)
@@ -168,18 +180,28 @@ func TestPluginRuntimeBinaryBlocksConcurrentPublication(t *testing.T) {
 	}
 }
 
-func waitForPluginBuildLock(t *testing.T) {
+func waitForPluginBuildLock(t *testing.T, runtimeDone <-chan error) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// Readiness includes module reconciliation and external Go commands before
+	// acquiring the lock. Use the same deadlock bound as the result wait.
+	timeout := time.NewTimer(time.Minute)
+	defer timeout.Stop()
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
 	stacks := make([]byte, 1<<20)
-	for time.Now().Before(deadline) {
+	for {
 		length := runtime.Stack(stacks, true)
 		if bytes.Contains(stacks[:length], []byte("plugin/build.acquireBuildLock")) {
 			return
 		}
-		runtime.Gosched()
+		select {
+		case err := <-runtimeDone:
+			t.Fatalf("plugin runtime exited before blocking on the active build lock: %v", err)
+		case <-timeout.C:
+			t.Fatal("plugin runtime did not block on the active build lock")
+		case <-poll.C:
+		}
 	}
-	t.Fatal("plugin runtime did not block on the active build lock")
 }
 
 func receivePluginTestResult(t *testing.T, result <-chan error, operation string) error {

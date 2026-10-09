@@ -1317,7 +1317,16 @@ func (f *fn) placeSingleResult() {
 	if f.resultFloat {
 		x := f.materializeF(e)
 		if x != 0 {
+			// The source is materialized; only the terminal result move may
+			// reuse body-cache registers. Other emitted arms keep their masks.
+			var writes regallocWriteMask
+			if regallocCheckEnabled {
+				writes = f.checkTerminalWrites()
+			}
 			f.a.FmovReg(0, x, f.resultF64) // -> V0
+			if regallocCheckEnabled {
+				f.checkRestoreWrites(writes)
+			}
 		}
 		f.releaseF(x)
 	} else {
@@ -1404,6 +1413,11 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 		// placeholder and patch it immediately since the target is already known.
 		f.patchBranch26(f.a.Branch(), fr.controlSite)
 	case cfFunc:
+		// Result slots are canonical; this taken edge leaves the function.
+		var writes regallocWriteMask
+		if regallocCheckEnabled {
+			writes = f.checkTerminalWrites()
+		}
 		// The caller already converged the result to slot 0 (fr.height == 0); with
 		// the register-return hint the epilogue no longer reloads it, so load it
 		// into the return register here so every exit agrees on X0/V0 = result.
@@ -1415,6 +1429,9 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 			}
 		}
 		f.appendReturnSite(f.a.Branch())
+		if regallocCheckEnabled {
+			f.checkRestoreWrites(writes)
+		}
 	default:
 		f.appendFrameEnd(fr, f.a.Branch(), false)
 		fr.set(ctrlEndReachable, true)

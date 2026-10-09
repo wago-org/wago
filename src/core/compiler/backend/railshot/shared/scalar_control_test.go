@@ -57,8 +57,12 @@ func TestScalarControlColdAllocationBudget(t *testing.T) {
 	})
 	// Node, operand and control backing are the only cold allocations needed
 	// for a constant result with no locals. Control nesting must not regrow.
-	if allocs > 3 {
-		t.Fatalf("cold deep compilation allocates %g times, budget 3", allocs)
+	budget := float64(3)
+	if scalarGraphChecks {
+		budget++
+	} // Checked recorder support makes the state escape.
+	if allocs > budget {
+		t.Fatalf("cold deep compilation allocates %g times, budget %g", allocs, budget)
 	}
 }
 

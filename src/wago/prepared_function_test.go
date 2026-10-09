@@ -43,7 +43,11 @@ func TestWasmFuncPreparedHostRestoresInheritedContext(t *testing.T) {
 }
 
 func TestWasmFuncPreparedHostPanicTranslation(t *testing.T) {
-	c := MustCompile(benchReturningImportModule())
+	// Exercise the general prepared frame and its per-handle context cache.
+	c, compileErr := Compile(NewRuntimeConfig().WithOptimization("prepared-bounded-entry", false), benchReturningImportModule())
+	if compileErr != nil {
+		t.Fatal(compileErr)
+	}
 	defer c.Close()
 	sentinel := errors.New("prepared host trap")
 	for _, outcome := range []string{"host-trap", "exit", "panic"} {
@@ -133,7 +137,11 @@ func TestWasmFuncInvokeAndCacheIndependence(t *testing.T) {
 }
 
 func TestWasmFuncPreparedHostCallRevokedByCallbackSharing(t *testing.T) {
-	c := MustCompile(sessionImportMemoryModule())
+	// Exercise the general prepared frame and its per-handle context cache.
+	c, compileErr := Compile(NewRuntimeConfig().WithOptimization("prepared-bounded-entry", false), sessionImportMemoryModule())
+	if compileErr != nil {
+		t.Fatal(compileErr)
+	}
 	defer c.Close()
 	var in *Instance
 	var fn *WasmFunc
@@ -180,10 +188,16 @@ func TestWasmFuncPreparedHostCallRevokedByCallbackSharing(t *testing.T) {
 }
 
 func TestWasmFuncOrdinaryHostEntryReusesUnchangedNativeContext(t *testing.T) {
-	c := MustCompile(sessionImportMemoryModule())
+	// Exercise the general prepared frame and its per-handle context cache.
+	c, compileErr := Compile(NewRuntimeConfig().WithOptimization("prepared-bounded-entry", false), sessionImportMemoryModule())
+	if compileErr != nil {
+		t.Fatal(compileErr)
+	}
 	defer c.Close()
+	// Observe each dispatch so this exercises an ordinary Go callback.
+	calls := 0
 	imports := NewImports()
-	imports.HostFunc("env", "f", func(v int32) int32 { return v + 1 })
+	imports.HostFunc("env", "f", func(v int32) int32 { calls++; return v + 1 })
 	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		t.Fatal(err)
@@ -233,6 +247,9 @@ func TestWasmFuncOrdinaryHostEntryReusesUnchangedNativeContext(t *testing.T) {
 	call()
 	if got := state.nativeContextVersion.Load(); got <= bound {
 		t.Fatalf("cached memory-base mismatch did not force rebind: version %d -> %d", bound, got)
+	}
+	if calls != 6 {
+		t.Fatalf("Go callback count=%d; want 6", calls)
 	}
 }
 

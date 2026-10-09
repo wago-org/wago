@@ -225,7 +225,7 @@ func TestFlowInvalidModels(t *testing.T) {
 		{Blocks: []Block{{Operations: []Operation{machine(Effect{Kind: Kill, Dst: Slot(0), Size: 0, ClearTo: 1})}}}},
 		{},
 		{Widths: []uint8{0}, Blocks: []Block{{}}},
-		{Widths: []uint8{17}, Blocks: []Block{{}}},
+		{Widths: []uint8{65}, Blocks: []Block{{}}},
 		{Widths: []uint8{8}, Blocks: []Block{{Operations: []Operation{use(r, 2)}}}},
 		{Widths: []uint8{16}, Inputs: []Binding{{r, 1}}, Blocks: []Block{{}}},
 		{Widths: []uint8{8}, Blocks: []Block{{Edges: []Edge{{To: 1}}}}},

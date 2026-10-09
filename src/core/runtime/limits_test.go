@@ -10,6 +10,7 @@ import (
 type inlineOnlyEngineLayout struct {
 	stack       []byte
 	stackTop    uintptr
+	_           *PreparedScalarHost // Account for the prepared scalar bridge pointer.
 	preparedInt tinygoPreparedIntState
 	inUse       bool
 	args        [maxHostArity]uint64
@@ -35,7 +36,7 @@ func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {
 
 func TestHostCtrlFrameWideCapacityKeepsInlineLayout(t *testing.T) {
 	if got, want := unsafe.Sizeof(Engine{}), unsafe.Sizeof(inlineOnlyEngineLayout{}); got != want {
-		t.Fatalf("Engine size = %d, prior inline-only layout = %d", got, want)
+		t.Fatalf("Engine size = %d, inline scratch and prepared bridge layout = %d", got, want)
 	}
 	if got, err := HostCtrlFrameBytesForSlots(maxHostArity); err != nil || got != HostCtrlFrameBytes {
 		t.Fatalf("64-slot frame = %d, %v; want %d", got, err, HostCtrlFrameBytes)

@@ -1,0 +1,137 @@
+//go:build wago_regalloccheck
+
+package shared
+
+import (
+	"encoding/binary"
+	"github.com/wago-org/wago/internal/regalloccheck"
+)
+
+type sourceBranchInstruction struct {
+	effect                   regalloccheck.Effect
+	writes, journalWrites    uint32
+	section                  uint8 // entry, then, else, join, return
+	copy, condition, returns bool
+}
+type sourceBranchRecipe struct {
+	instructions           []sourceBranchInstruction
+	thenResult, elseResult regalloccheck.Location
+	thenSource, elseSource regalloccheck.Location
+	loopLocals             [3]regalloccheck.Location
+	invalid                string
+}
+
+// Decode the ENTIRE bounded final image. One SubRsp establishes body SP; every
+// memory Copy uses that actual RSP origin and lies inside its reservation. The
+// equal AddRsp and C3 RET preserve caller return control. RBP is allocatable in
+// this internal Wasm ABI; RBX/module caches and other reserved GPs are excluded.
+// There is no generic addressing, flag writer, call, or raw padding admission.
+func decodeSourceBranchAMD64(code []byte) (sourceBranchRecipe, bool) {
+	r := sourceBranchRecipe{}
+	if len(code) < 35 || len(code) > 128 {
+		return r, false
+	}
+	end := len(code) - 8
+	if code[0] != 0x48 || code[1] != 0x81 || code[2] != 0xec || code[end] != 0x48 || code[end+1] != 0x81 || code[end+2] != 0xc4 || code[len(code)-1] != 0xc3 {
+		return r, false
+	}
+	frame := uint64(binary.LittleEndian.Uint32(code[3:7]))
+	restore := uint64(binary.LittleEndian.Uint32(code[end+3 : end+7]))
+	if frame > 128 {
+		return r, false
+	}
+	if frame == 0 || frame != restore {
+		r.invalid = "unbalanced reserved frame"
+	}
+	r.instructions = make([]sourceBranchInstruction, 0, 16)
+	r.instructions = append(r.instructions, sourceBranchInstruction{writes: 1 << 4})
+	pc := 7
+	allowed := func(reg uint8) bool { return reg < 12 && reg != 3 && reg != 4 }
+	// Decode only MOV register/register and direct RSP+disp stores/loads. REX
+	// index/base extensions and SIB scale/index are excluded before any facts.
+	copyInstruction := func(section uint8) (sourceBranchInstruction, bool) {
+		in, next, invalid, ok := decodeSourceTransferAMD64(code, pc, end, frame, section)
+		pc = next
+		if invalid != "" {
+			r.invalid = invalid
+		}
+		return in, ok
+	}
+	for i := 0; i < 4; i++ {
+		in, ok := copyInstruction(0)
+		if !ok {
+			return r, false
+		}
+		if i < 2 {
+			if in.effect.Dst.Bank != regalloccheck.GP || in.effect.Src.Bank != regalloccheck.GP {
+				return r, false
+			}
+		}
+		if i == 2 && (in.effect.Dst.Bank != regalloccheck.Frame || in.effect.Src.Bank != regalloccheck.GP) {
+			return r, false
+		}
+		if i == 3 && (in.effect.Src.Bank != regalloccheck.Frame || in.effect.Dst.Bank != regalloccheck.GP || in.effect.Size != 4) {
+			return r, false
+		}
+		r.instructions = append(r.instructions, in)
+	}
+	// TEST must read precisely the i32 condition against itself. No instruction
+	// may overwrite its flags before the immediately adjacent near conditional.
+	rex := byte(0)
+	if pc < end && code[pc] >= 0x40 && code[pc] <= 0x4f {
+		rex = code[pc]
+		pc++
+	}
+	if pc+2 > end || code[pc] != 0x85 || rex&2 != 0 || code[pc+1]&0xc0 != 0xc0 {
+		return r, false
+	}
+	m := code[pc+1]
+	left, right := uint8(m&7)|(rex&1)<<3, uint8((m>>3)&7)|((rex>>2)&1)<<3
+	pc += 2
+	if !allowed(left) || !allowed(right) {
+		return r, false
+	}
+	if left != right || rex&8 != 0 {
+		// Wider and aliased-register TEST forms can be correct. They require
+		// separate flag/upper-lane contracts and are outside this recipe.
+		return r, false
+	}
+	r.instructions = append(r.instructions, sourceBranchInstruction{condition: true, effect: regalloccheck.Effect{Src: leafReg(left)}})
+	if pc+6 > end || code[pc] != 0x0f || code[pc+1] < 0x80 || code[pc+1] > 0x8f {
+		return r, false
+	}
+	condition := code[pc+1]
+	falseTarget := int64(pc+6) + int64(int32(binary.LittleEndian.Uint32(code[pc+2:pc+6])))
+	pc += 6
+	thenMove, ok := copyInstruction(1)
+	if !ok || thenMove.effect.Dst.Bank != regalloccheck.GP || thenMove.effect.Src.Bank != regalloccheck.GP {
+		return r, false
+	}
+	r.thenSource, r.thenResult = thenMove.effect.Src, thenMove.effect.Dst
+	r.instructions = append(r.instructions, thenMove)
+	if pc+5 > end || code[pc] != 0xe9 {
+		return r, false
+	}
+	joinTarget := int64(pc+5) + int64(int32(binary.LittleEndian.Uint32(code[pc+1:pc+5])))
+	pc += 5
+	falseStart := pc
+	elseMove, ok := copyInstruction(2)
+	if !ok || elseMove.effect.Dst.Bank != regalloccheck.GP || elseMove.effect.Src.Bank != regalloccheck.GP {
+		return r, false
+	}
+	r.elseSource, r.elseResult = elseMove.effect.Src, elseMove.effect.Dst
+	r.instructions = append(r.instructions, elseMove)
+	joinStart := pc
+	returnMove, ok := copyInstruction(3)
+	if !ok || returnMove.effect.Dst.Bank != regalloccheck.GP || returnMove.effect.Src.Bank != regalloccheck.GP || pc != end {
+		return r, false
+	}
+	r.instructions = append(r.instructions, returnMove, sourceBranchInstruction{section: 3, writes: 1 << 4}, sourceBranchInstruction{section: 4, writes: 1 << 4, returns: true})
+	if condition != 0x84 || falseTarget != int64(falseStart) || joinTarget != int64(joinStart) {
+		// Inverted predicates with swapped arms and preloaded result carriers
+		// can implement equivalent control flow. Only canonical destinations
+		// are mapped here; alternative CFGs need a separate source bridge.
+		return r, false
+	}
+	return r, true
+}

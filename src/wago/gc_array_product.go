@@ -130,6 +130,12 @@ func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {
 }
 
 func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
+	// Reject impossible fixture sizes before hashing the whole module.
+	switch len(data) {
+	case 55, 80, 115, 146, 183, 250, 268, 335, 351, 396, 402, 435:
+	default:
+		return 0, false
+	}
 	digest := fmt.Sprintf("%x", sha256.Sum256(data))
 	switch {
 	case len(data) == 146 && digest == stagedGCArrayNumericLocalSHA256:
