@@ -12,7 +12,7 @@ import (
 
 func fixture(arch, code string) Snapshot {
 	pc := uint32(5)
-	return Snapshot{arch, Provenance{"rev", strings.Repeat("a", 64), strings.Repeat("b", 64), "baseline", "explicit", "ordinary", "established"}, []Region{{"f0.pc5", 0, &pc, []Instruction{{0, code, ""}}}}}
+	return Snapshot{nil, arch, Provenance{"rev", strings.Repeat("a", 64), strings.Repeat("b", 64), "baseline", "explicit", "ordinary", "established"}, []Region{{"f0.pc5", 0, &pc, []Instruction{{0, code, ""}}}}}
 }
 func TestPairedControls(t *testing.T) {
 	for _, c := range controls {
@@ -119,8 +119,8 @@ func TestIncompleteCoverageAndConfiguration(t *testing.T) {
 			a, b := fixture("amd64", "31c0"), fixture("amd64", "31c0")
 			switch name {
 			case "unknown":
-				a = fixture("amd64", "90")
-				b = fixture("amd64", "90")
+				a = fixture("amd64", "c3")
+				b = fixture("amd64", "c3")
 			case "unmapped":
 				a.Regions[0].WasmOffset = nil
 				b.Regions[0].WasmOffset = nil
@@ -269,5 +269,87 @@ func TestMalformedShapesAndUnknownPartialWrites(t *testing.T) {
 		if err != nil || r.Complete || r.Unknown != 1 {
 			t.Fatal(r, err)
 		}
+	}
+}
+
+func TestExtendedScalarFacts(t *testing.T) {
+	for _, c := range []struct {
+		hex   string
+		check func(Record) bool
+	}{
+		{"4439d7", func(r Record) bool {
+			return r.Opcode == "cmp-register" && r.Reads[0].Number == 7 && r.Reads[1].Number == 10 && r.ReadCount == 2 && r.WriteCount == 0 && r.FlagsWrite && !r.ZeroExtends
+		}},
+		{"4183c201", func(r Record) bool {
+			return r.Opcode == "add-immediate" && r.Immediate == 1 && r.ImmediateWidth == 8 && r.Writes[0].Number == 10 && r.ZeroExtends && r.FlagsWrite
+		}},
+		{"4883c0ff", func(r Record) bool { return r.Immediate == ^uint64(0) && r.Width == 64 && !r.ZeroExtends }},
+		{"83c0ff", func(r Record) bool { return r.Immediate == 0xffffffff && r.Width == 32 }},
+		{"4881f8ffffffff", func(r Record) bool {
+			return r.Opcode == "cmp-immediate" && r.Immediate == ^uint64(0) && r.WriteCount == 0 && !r.ZeroExtends
+		}},
+		{"8b3c24", func(r Record) bool {
+			return r.Address.Present && r.Address.Base == 4 && r.Address.Displacement == 0 && r.Writes[0].Number == 7 && r.Reads[0].Width == 64
+		}},
+		{"0f8e12000000", func(r Record) bool {
+			return r.Opcode == "jcc-e" && r.FlagsRead && !r.FlagsWrite && r.WriteCount == 0 && r.ImmediateWidth == 32
+		}},
+		{"7eff", func(r Record) bool {
+			return r.Opcode == "jcc-e" && r.FlagsRead && r.Immediate == 255 && r.ImmediateWidth == 8
+		}},
+		{"660f1f840000000000", func(r Record) bool {
+			return r.Opcode == "nop" && r.ReadCount == 0 && r.WriteCount == 0 && !r.Address.Present
+		}},
+	} {
+		r, err := decode("amd64", Instruction{0, c.hex, ""})
+		if err != nil || !r.Known || !c.check(r) {
+			t.Fatalf("%s: %+v %v", c.hex, r, err)
+		}
+	}
+	for _, raw := range []string{"660f1f840000000001", "8b0425", "8b0510000000", "428b0424", "6683c001", "4483c001", "81c001", "0f8e120000", "f390"} {
+		r, err := decode("amd64", Instruction{0, raw, ""})
+		if err != nil || r.Known {
+			t.Fatalf("must stay unknown: %s %+v %v", raw, r, err)
+		}
+	}
+	a, b := fixture("amd64", "0f8e01000000"), fixture("amd64", "0f8e02000000")
+	a.Regions[0].Instructions[0].Relocation = "f0.pc9.i0"
+	b.Regions[0].Instructions[0].Relocation = "f0.pc9.i0"
+	r, err := Compare(a, b)
+	if err != nil || !r.Complete || len(r.Changes) != 0 {
+		t.Fatal(r, err)
+	}
+	b.Regions[0].Instructions[0].Hex = "0f8f02000000"
+	r, err = Compare(a, b)
+	if err != nil || len(r.Changes) != 1 || r.Changes[0].Category != "branch" {
+		t.Fatal(r, err)
+	}
+}
+func TestCaptureMetadataValidation(t *testing.T) {
+	valid := func() Snapshot {
+		s := fixture("amd64", "31c0")
+		s.Capture = &CaptureMetadata{strings.Repeat("a", 64), 4, 2, 2}
+		return s
+	}
+	if err := validate(valid()); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*Snapshot){
+		func(s *Snapshot) { s.Capture.NativeSHA256 = "bad" },
+		func(s *Snapshot) { s.Capture.MappedBytes = 3 },
+		func(s *Snapshot) { s.Capture.UnmappedBytes = 3 },
+		func(s *Snapshot) { s.Capture.NativeBytes = 1 },
+		func(s *Snapshot) { s.Regions[0].Instructions[0].Offset = 3 },
+	} {
+		s := valid()
+		mutate(&s)
+		if err := validate(s); err == nil {
+			t.Fatal("inconsistent metadata accepted", s)
+		}
+	}
+	s := fixture("amd64", "c3")
+	r, err := Compare(s, s)
+	if err != nil || r.Complete || len(r.UnknownSites) != 1 || r.UnknownSites[0].BeforeHex != "c3" {
+		t.Fatal(r, err)
 	}
 }

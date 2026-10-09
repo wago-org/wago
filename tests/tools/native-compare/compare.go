@@ -29,7 +29,7 @@ type Instruction struct {
 	Offset uint64 `json:"offset"`
 	Hex    string `json:"hex"`
 	// Relocation names a stable logical target, never an unstable address/name.
-	// It is admitted only for direct JMP (AMD64) or B (ARM64).
+	// It is admitted only for direct JMP/Jcc (AMD64) or B (ARM64).
 	Relocation string `json:"relocation,omitempty"`
 }
 type Region struct {
@@ -38,10 +38,18 @@ type Region struct {
 	WasmOffset   *uint32       `json:"wasm_offset"`
 	Instructions []Instruction `json:"instructions"`
 }
+type CaptureMetadata struct {
+	NativeSHA256  string `json:"native_sha256"`
+	NativeBytes   uint64 `json:"native_bytes"`
+	MappedBytes   uint64 `json:"mapped_bytes"`
+	UnmappedBytes uint64 `json:"unmapped_bytes"`
+}
+
 type Snapshot struct {
-	Architecture string     `json:"architecture"`
-	Provenance   Provenance `json:"provenance"`
-	Regions      []Region   `json:"regions"`
+	Capture      *CaptureMetadata `json:"capture,omitempty"`
+	Architecture string           `json:"architecture"`
+	Provenance   Provenance       `json:"provenance"`
+	Regions      []Region         `json:"regions"`
 }
 type Register struct {
 	Number int `json:"number"`
@@ -58,22 +66,25 @@ type Address struct {
 }
 
 type Record struct {
-	ReadCount   int         `json:"read_count"`
-	WriteCount  int         `json:"write_count"`
-	Encoding    string      `json:"comparison_encoding"`
-	Raw         string      `json:"raw"`
-	Opcode      string      `json:"opcode"`
-	Known       bool        `json:"known"`
-	Reads       [2]Register `json:"reads,omitempty"`
-	Writes      [1]Register `json:"writes,omitempty"`
-	Width       int         `json:"width,omitempty"`
-	Immediate   uint64      `json:"immediate_bits,omitempty"`
-	Address     Address     `json:"address,omitempty"`
-	ZeroExtends bool        `json:"zero_extends,omitempty"`
-	FlagsWrite  bool        `json:"flags_write,omitempty"`
-	Target      string      `json:"target,omitempty"`
+	ReadCount      int         `json:"read_count"`
+	WriteCount     int         `json:"write_count"`
+	Encoding       string      `json:"comparison_encoding"`
+	Raw            string      `json:"raw"`
+	Opcode         string      `json:"opcode"`
+	Known          bool        `json:"known"`
+	Reads          [2]Register `json:"reads,omitempty"`
+	Writes         [1]Register `json:"writes,omitempty"`
+	Width          int         `json:"width,omitempty"`
+	Immediate      uint64      `json:"immediate_bits,omitempty"`
+	Address        Address     `json:"address,omitempty"`
+	ZeroExtends    bool        `json:"zero_extends,omitempty"`
+	FlagsRead      bool        `json:"flags_read,omitempty"`
+	ImmediateWidth int         `json:"immediate_width,omitempty"`
+	FlagsWrite     bool        `json:"flags_write,omitempty"`
+	Target         string      `json:"target,omitempty"`
 }
 type Change struct {
+	Category     string  `json:"category"`
 	Region       string  `json:"region"`
 	Function     uint32  `json:"function"`
 	WasmOffset   *uint32 `json:"wasm_offset"`
@@ -82,14 +93,27 @@ type Change struct {
 	Before       Record  `json:"before"`
 	After        Record  `json:"after"`
 }
+type UnknownSite struct {
+	Region       string  `json:"region"`
+	Function     uint32  `json:"function"`
+	WasmOffset   *uint32 `json:"wasm_offset"`
+	BeforeOffset uint64  `json:"before_offset"`
+	AfterOffset  uint64  `json:"after_offset"`
+	BeforeHex    string  `json:"before_hex"`
+	AfterHex     string  `json:"after_hex"`
+}
+
 type Report struct {
-	Complete bool     `json:"complete"`
-	Compared int      `json:"compared"`
-	Known    int      `json:"known"`
-	Unknown  int      `json:"unknown"`
-	Changes  []Change `json:"changes"`
-	Limit    bool     `json:"limit"`
-	Reasons  []string `json:"reasons,omitempty"`
+	BeforeCapture *CaptureMetadata `json:"before_capture,omitempty"`
+	AfterCapture  *CaptureMetadata `json:"after_capture,omitempty"`
+	UnknownSites  []UnknownSite    `json:"unknown_sites,omitempty"`
+	Complete      bool             `json:"complete"`
+	Compared      int              `json:"compared"`
+	Known         int              `json:"known"`
+	Unknown       int              `json:"unknown"`
+	Changes       []Change         `json:"changes"`
+	Limit         bool             `json:"limit"`
+	Reasons       []string         `json:"reasons,omitempty"`
 }
 
 func validate(s Snapshot) error {
@@ -100,6 +124,7 @@ func validate(s Snapshot) error {
 		return fmt.Errorf("region budget/empty snapshot")
 	}
 	count := 0
+	var mappedBytes uint64
 	var previousEnd uint64
 	ids := make(map[string]bool, len(s.Regions))
 	for ri, r := range s.Regions {
@@ -130,12 +155,28 @@ func validate(s Snapshot) error {
 				return fmt.Errorf("non-contiguous instruction boundaries")
 			}
 			end = in.Offset + uint64(n)
+			mappedBytes += uint64(n)
+			if s.Capture != nil && end > s.Capture.NativeBytes {
+				return fmt.Errorf("instruction outside captured image")
+			}
 			var storage [15]byte
 			if _, err := hex.Decode(storage[:n], []byte(in.Hex)); err != nil {
 				return fmt.Errorf("invalid instruction hex")
 			}
 		}
 		previousEnd = end
+	}
+	if c := s.Capture; c != nil {
+		var hash [32]byte
+		if len(c.NativeSHA256) != 64 {
+			return fmt.Errorf("native hash length")
+		}
+		if _, err := hex.Decode(hash[:], []byte(c.NativeSHA256)); err != nil {
+			return fmt.Errorf("native hash encoding")
+		}
+		if c.NativeBytes == 0 || c.MappedBytes > c.NativeBytes || c.UnmappedBytes != c.NativeBytes-c.MappedBytes || c.MappedBytes != mappedBytes {
+			return fmt.Errorf("inconsistent capture byte counts")
+		}
 	}
 	return nil
 }
@@ -151,14 +192,14 @@ func provenanceComplete(p Provenance) bool {
 			return false
 		}
 	}
-	return p.CompilerRevision != "" && p.CPUFeatures != "" && p.Bounds != "" && p.Build != "" && p.Path != ""
+	return p.CompilerRevision != "" && p.CompilerRevision != "unqualified-build" && p.CPUFeatures != "" && p.Bounds != "" && p.Build != "" && p.Path != ""
 }
 
 // Compare aligns matching named source regions, then instruction positions.
 // Insertions/region mismatch are inconclusive rather than guessed alignment.
 // Runtime is linear in admitted input size; no LCS or quadratic search is used.
 func Compare(a, b Snapshot) (Report, error) {
-	out := Report{Complete: true, Changes: make([]Change, 0)}
+	out := Report{Complete: true, Changes: make([]Change, 0), BeforeCapture: a.Capture, AfterCapture: b.Capture}
 	if err := validate(a); err != nil {
 		return out, err
 	}
@@ -205,6 +246,12 @@ func Compare(a, b Snapshot) (Report, error) {
 			} else {
 				out.Unknown++
 				out.Complete = false
+				if len(out.UnknownSites) == maxChanges {
+					out.Limit = true
+					incomplete("unknown-site budget")
+					return out, nil
+				}
+				out.UnknownSites = append(out.UnknownSites, UnknownSite{ar.ID, ar.Function, ar.WasmOffset, ai.Offset, bi.Offset, av.Raw, bv.Raw})
 			}
 			ac, bc := av, bv
 			ac.Raw = ""
@@ -215,7 +262,7 @@ func Compare(a, b Snapshot) (Report, error) {
 					incomplete("change budget")
 					return out, nil
 				}
-				out.Changes = append(out.Changes, Change{ar.ID, ar.Function, ar.WasmOffset, ai.Offset, bi.Offset, av, bv})
+				out.Changes = append(out.Changes, Change{classify(av, bv), ar.ID, ar.Function, ar.WasmOffset, ai.Offset, bi.Offset, av, bv})
 			}
 		}
 	}
@@ -238,12 +285,16 @@ func decode(arch string, in Instruction) (Record, error) {
 	}
 	r.Encoding = r.Raw
 	if in.Relocation != "" {
-		if !r.Known || (r.Opcode != "jmp" && r.Opcode != "b") {
+		if !r.Known || !branchRecord(r) {
 			return r, fmt.Errorf("relocation is not an admitted direct branch")
 		}
 		copyBytes := bytes.Clone(b)
 		if arch == "amd64" {
-			clear(copyBytes[1:5])
+			start := 1
+			if len(b) == 6 {
+				start = 2
+			}
+			clear(copyBytes[start:])
 		} else {
 			binary.LittleEndian.PutUint32(copyBytes, binary.LittleEndian.Uint32(b)&0xfc000000)
 		}
@@ -255,7 +306,44 @@ func decode(arch string, in Instruction) (Record, error) {
 }
 
 func decodeAMD64(b []byte, raw string) Record {
-	r := Record{Raw: raw, Opcode: "unknown"}
+	unknown := Record{Raw: raw, Opcode: "unknown"}
+	r := unknown
+	// Exact canonical alignment NOP forms only. No memory read or flag effects.
+	if raw == "660f1f840000000000" || raw == "0f1f00" || raw == "90" {
+		r.Known = true
+		r.Opcode = "nop"
+		return r
+	}
+	if b[0] == 0xe9 && len(b) == 5 {
+		r.Known = true
+		r.Opcode = "jmp"
+		r.Immediate = uint64(binary.LittleEndian.Uint32(b[1:]))
+		r.ImmediateWidth = 32
+		return r
+	}
+	if b[0] == 0xeb && len(b) == 2 {
+		r.Known = true
+		r.Opcode = "jmp"
+		r.Immediate = uint64(b[1])
+		r.ImmediateWidth = 8
+		return r
+	}
+	if b[0] >= 0x70 && b[0] <= 0x7f && len(b) == 2 {
+		r.Known = true
+		r.Opcode = jccOpcodes[b[0]&15]
+		r.FlagsRead = true
+		r.Immediate = uint64(b[1])
+		r.ImmediateWidth = 8
+		return r
+	}
+	if b[0] == 0x0f && len(b) == 6 && b[1] >= 0x80 && b[1] <= 0x8f {
+		r.Known = true
+		r.Opcode = jccOpcodes[b[1]&15]
+		r.FlagsRead = true
+		r.Immediate = uint64(binary.LittleEndian.Uint32(b[2:]))
+		r.ImmediateWidth = 32
+		return r
+	}
 	at, rex, width := 0, byte(0), 32
 	if b[0]&0xf0 == 0x40 {
 		rex = b[0]
@@ -265,23 +353,16 @@ func decodeAMD64(b []byte, raw string) Record {
 		}
 	}
 	if at >= len(b) {
-		return r
+		return unknown
 	}
 	op := b[at]
 	at++
-	if rex == 0 && op == 0xe9 && len(b) == 5 {
-		r.Known = true
-		r.Opcode = "jmp"
-
-		r.Immediate = uint64(binary.LittleEndian.Uint32(b[1:]))
-		return r
-	}
 	if op >= 0xb8 && op <= 0xbf && len(b)-at == width/8 && rex&6 == 0 {
-		reg := int(op-0xb8) + int(rex&1)*8
 		r.Known = true
 		r.Opcode = "mov-immediate"
 		r.Width = width
-		r.Writes = [1]Register{{reg, width}}
+		r.ImmediateWidth = width
+		r.Writes = [1]Register{{int(op-0xb8) + int(rex&1)*8, width}}
 		r.WriteCount = 1
 		r.ZeroExtends = width == 32
 		if width == 32 {
@@ -291,16 +372,51 @@ func decodeAMD64(b []byte, raw string) Record {
 		}
 		return r
 	}
-	if op != 0x89 && op != 0x8b && op != 0x31 && op != 0x01 {
-		return r
-	}
 	if at >= len(b) {
-		return r
+		return unknown
 	}
 	modrm := b[at]
 	at++
 	reg := int(modrm>>3&7) + int(rex>>2&1)*8
 	rm := int(modrm&7) + int(rex&1)*8
+	if (op == 0x81 || op == 0x83) && modrm>>6 == 3 && rex&6 == 0 {
+		group := modrm >> 3 & 7
+		if group != 0 && group != 5 && group != 7 {
+			return unknown
+		}
+		if op == 0x83 && len(b)-at == 1 {
+			r.Immediate = uint64(int64(int8(b[at])))
+			r.ImmediateWidth = 8
+		} else if op == 0x81 && len(b)-at == 4 {
+			r.Immediate = uint64(int64(int32(binary.LittleEndian.Uint32(b[at:]))))
+			r.ImmediateWidth = 32
+		} else {
+			return unknown
+		}
+		if width == 32 {
+			r.Immediate &= 0xffffffff
+		}
+		r.Known = true
+		r.Width = width
+		r.Reads = [2]Register{{rm, width}}
+		r.ReadCount = 1
+		r.FlagsWrite = true
+		r.Opcode = "add-immediate"
+		if group == 5 {
+			r.Opcode = "sub-immediate"
+		}
+		if group == 7 {
+			r.Opcode = "cmp-immediate"
+		} else {
+			r.Writes = [1]Register{{rm, width}}
+			r.WriteCount = 1
+			r.ZeroExtends = width == 32
+		}
+		return r
+	}
+	if op != 0x89 && op != 0x8b && op != 0x31 && op != 0x01 && op != 0x39 {
+		return unknown
+	}
 	r.Width = width
 	if modrm>>6 == 3 && at == len(b) && rex&2 == 0 {
 		dst, src := rm, reg
@@ -320,6 +436,12 @@ func decodeAMD64(b []byte, raw string) Record {
 			r.Opcode = "add-register"
 			r.Reads = [2]Register{{dst, width}, {src, width}}
 			r.ReadCount = 2
+			if op == 0x39 {
+				r.Opcode = "cmp-register"
+				r.Writes = [1]Register{}
+				r.WriteCount = 0
+				r.ZeroExtends = false
+			}
 			if op == 0x31 {
 				r.Opcode = "xor-register"
 				if dst == src {
@@ -330,23 +452,34 @@ func decodeAMD64(b []byte, raw string) Record {
 		}
 		return r
 	}
-	// Initial memory subset: base+disp8/disp32, no index, MOV only.
-	if op != 0x89 && op != 0x8b || modrm>>6 == 0 || modrm>>6 == 3 || rex&2 != 0 {
-		return Record{Raw: r.Raw, Opcode: "unknown"}
+	if (op != 0x89 && op != 0x8b) || modrm>>6 == 3 || rex&2 != 0 {
+		return unknown
 	}
+	if modrm>>6 == 0 && modrm&7 == 5 {
+		return unknown
+	} // RIP-relative excluded.
 	if modrm&7 == 4 {
 		if at >= len(b) || b[at] != 0x24 {
-			return Record{Raw: r.Raw, Opcode: "unknown"}
+			return unknown
 		}
 		at++
-	}
+	} // No index.
 	disp := int64(0)
-	if modrm>>6 == 1 && len(b)-at == 1 {
+	switch modrm >> 6 {
+	case 0:
+		if at != len(b) {
+			return unknown
+		}
+	case 1:
+		if len(b)-at != 1 {
+			return unknown
+		}
 		disp = int64(int8(b[at]))
-	} else if modrm>>6 == 2 && len(b)-at == 4 {
+	case 2:
+		if len(b)-at != 4 {
+			return unknown
+		}
 		disp = int64(int32(binary.LittleEndian.Uint32(b[at:])))
-	} else {
-		return Record{Raw: r.Raw, Opcode: "unknown"}
 	}
 	r.Known = true
 	r.Address = Address{Displacement: disp, Base: uint8(rm), Present: true, SP: rm == 4}
@@ -363,6 +496,33 @@ func decodeAMD64(b []byte, raw string) Record {
 		r.ZeroExtends = width == 32
 	}
 	return r
+}
+
+var jccOpcodes = [16]string{"jcc-0", "jcc-1", "jcc-2", "jcc-3", "jcc-4", "jcc-5", "jcc-6", "jcc-7", "jcc-8", "jcc-9", "jcc-a", "jcc-b", "jcc-c", "jcc-d", "jcc-e", "jcc-f"}
+
+func branchRecord(r Record) bool {
+	return r.Opcode == "jmp" || r.Opcode == "b" || strings.HasPrefix(r.Opcode, "jcc-")
+}
+func classify(a, b Record) string {
+	if !a.Known || !b.Known {
+		return "unknown"
+	}
+	if branchRecord(a) || branchRecord(b) {
+		return "branch"
+	}
+	if a.Width != b.Width || a.ZeroExtends != b.ZeroExtends {
+		return "width"
+	}
+	if a.Address != b.Address {
+		return "addressing"
+	}
+	if a.Immediate != b.Immediate || a.ImmediateWidth != b.ImmediateWidth {
+		return "constant"
+	}
+	if a.Reads != b.Reads || a.ReadCount != b.ReadCount || a.Writes != b.Writes || a.WriteCount != b.WriteCount || a.FlagsRead != b.FlagsRead || a.FlagsWrite != b.FlagsWrite {
+		return "register-dependency"
+	}
+	return "instruction"
 }
 
 func decodeARM64(b []byte, raw string) Record {
