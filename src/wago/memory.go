@@ -284,18 +284,9 @@ func (m *Memory) attachImporter() error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.has(memoryStateClosed) || m.jm == nil {
-		return fmt.Errorf("memory owner is closed")
-	}
-	if s.owner != nil && !s.has(memoryStateShared) {
-		return fmt.Errorf("memory has not been exported for import")
-	}
-	count := s.importerCount()
-	if !s.has(memoryStateShared) && count != 0 {
-		return fmt.Errorf("memory is already used by another instance")
-	}
-	if count == ^uint32(0) {
-		return fmt.Errorf("memory importer count overflows uint32")
+	count, err := m.validateImporterLocked(s)
+	if err != nil {
+		return err
 	}
 	if s.owner != nil && !s.owner.retainResourceRoot() {
 		return fmt.Errorf("memory owner instance is closed")
@@ -304,24 +295,54 @@ func (m *Memory) attachImporter() error {
 	return nil
 }
 
+// validateImporterLocked has no acquisition side effects. The caller holds
+// this Memory's state mutex; a future receipt path must revalidate after doing
+// graph work outside that container lock, before committing its counter unit.
+func (m *Memory) validateImporterLocked(s *memoryState) (uint32, error) {
+	if s.has(memoryStateClosed) || m.jm == nil {
+		return 0, fmt.Errorf("memory owner is closed")
+	}
+	if s.owner != nil && !s.has(memoryStateShared) {
+		return 0, fmt.Errorf("memory has not been exported for import")
+	}
+	count := s.importerCount()
+	if !s.has(memoryStateShared) && count != 0 {
+		return 0, fmt.Errorf("memory is already used by another instance")
+	}
+	if count == ^uint32(0) {
+		return 0, fmt.Errorf("memory importer count overflows uint32")
+	}
+	return count, nil
+}
+
 func (m *Memory) detachImporter() {
-	if m == nil {
-		return
-	}
-	s := m.state.Load()
-	if s == nil {
-		return
-	}
-	s.mu.Lock()
-	var owner *Instance
-	if count := s.importerCount(); count > 0 {
-		s.setImporterCount(count - 1)
-		owner = s.owner
-	}
-	s.mu.Unlock()
+	owner, _ := m.detachImporterCounter()
 	if owner != nil {
 		owner.releaseResourceRoot()
 	}
+}
+
+// detachImporterCounter consumes only a counter unit, then unlocks before the
+// caller releases its physical root. Exact managed receipts will supply that
+// root release themselves; ordinary detachImporter retains the existing path.
+// The bool distinguishes a consumed host-only unit from an empty counter.
+func (m *Memory) detachImporterCounter() (*Instance, bool) {
+	if m == nil {
+		return nil, false
+	}
+	s := m.state.Load()
+	if s == nil {
+		return nil, false
+	}
+	s.mu.Lock()
+	if count := s.importerCount(); count > 0 {
+		s.setImporterCount(count - 1)
+		owner := s.owner
+		s.mu.Unlock()
+		return owner, true
+	}
+	s.mu.Unlock()
+	return nil, false
 }
 
 func (m *Memory) observeOwner(owner *Instance) error {
