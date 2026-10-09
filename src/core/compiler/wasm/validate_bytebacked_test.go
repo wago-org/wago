@@ -19,6 +19,36 @@ func TestValidateByteBackedModuleSimpleFunction(t *testing.T) {
 	}
 }
 
+func TestDecodeByteBackedReportsAbsoluteSectionOffsets(t *testing.T) {
+	badType := module(section(secType, 0x01, 0xff))
+	badBody := module(
+		section(secType, 0x01, 0x60, 0x00, 0x00),
+		section(secFunction, 0x01, 0x00),
+		section(secCode, 0x01, 0x03, 0x00, 0xff, 0x0b),
+	)
+	badHint := module(custom(branchHintSectionName, 0x01, 0x00, 0x01, 0x00, 0x02, 0x00))
+	for _, tc := range []struct {
+		name string
+		data []byte
+		want int
+	}{
+		{"type", badType, bytes.IndexByte(badType, 0xff)},
+		{"function body", badBody, bytes.IndexByte(badBody, 0xff)},
+		{"branch hint", badHint, len(badHint) - 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := DecodeModuleByteBacked(tc.data)
+			var de *DecodeError
+			if !errors.As(err, &de) {
+				t.Fatalf("DecodeModuleByteBacked() = %v, want decode error", err)
+			}
+			if de.Offset != tc.want {
+				t.Fatalf("decode offset = %d, want absolute byte %d", de.Offset, tc.want)
+			}
+		})
+	}
+}
+
 func TestDecodeModuleByteBackedKeepsRawFunctionBytes(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),

@@ -54,17 +54,17 @@ type Instance struct {
 	refStore                *referenceStore
 	lifeMu                  sync.Mutex
 	resourceRefs            int
-	invocationState         atomic.Uint32 // high bit closes entry; low bits count active public invocations
-	closed                  bool          // logical close; retained references may defer physical release
-	finalizing              bool          // one goroutine owns quiescent finalization
+	invocationState         instanceInvocationState // lifetime leases and invocation gate share one atomic word
+	closed                  bool                    // logical close; retained references may defer physical release
+	finalizing              bool                    // one goroutine owns quiescent finalization
 	resourcesClosed         bool
 	icNext                  uint8                    // round-robin invoke-cache replacement cursor
-	finalizers              *instanceFinalizers      // optional lifecycle callbacks; lifeMu protects access
 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
-	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
 	threadedMemoryZero      bool                     // immutable compiled memory-zero shape, cached for native entry
 	constructionActive      bool                     // registration through terminal instantiation observation
+	finalizers              *instanceFinalizers      // optional lifecycle callbacks; lifeMu protects access
+	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
 	constructionReservation *pluginOperationReservation
 	executionFlags          atomic.Uint32 // independent eligibility and cross-instance native-control sharing
 	nativeContext           uintptr       // arena-backed context bytes rebound before every native entry
@@ -133,6 +133,7 @@ type invokeCache struct {
 	valid              bool
 	entryMode          preparedEntryMode
 	directIntFast      bool
+	directI32Fast      bool // bounded i32-to-i32 entry; invocation ownership is checked separately
 	directFloatFast    bool
 	directIntLight     bool
 	directIntBounded   bool
