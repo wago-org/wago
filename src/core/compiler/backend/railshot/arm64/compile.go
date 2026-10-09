@@ -1446,6 +1446,10 @@ type ImportBinding = shared.ImportBinding
 
 // CompileOptions configures direct wasm-to-arm64 compilation.
 type CompileOptions struct {
+	// ExperimentalLoopMode enables a bounded source-order compiler lowering.
+	// It is opt-in and retains the ordinary backend on failed recognition.
+	ExperimentalLoopMode string
+
 	SourceMaps bool
 	UnwindMaps bool
 	// Profile records finalized code regions without changing emitted bytes. Requires Stats.
@@ -1576,7 +1580,13 @@ func CompileModule(m *wasm.Module) (*a64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule, error) {
-
+	if opts.ExperimentalLoopMode != "" && !opts.Interruptible && len(opts.CustomInstructions) == 0 && !opts.Profile && !opts.SourceMaps && !opts.UnwindMaps {
+		var err error
+		m, _, err = shared.RewriteReplication(m, opts.ExperimentalLoopMode)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
 		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
 	}
