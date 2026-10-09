@@ -163,7 +163,16 @@ reference-bearing rows remain noncallable. Dead target confinement, frontend-bac
 operand-floor checks, exact staging witnesses, ordered transport at existing
 scalar/import/vector bounds, private trap attribution and reuse, retired relays,
 foreign dynamic roots, quotas and zero-allocation own calls qualify this slice.
-Tables, indirect calls and reference tails remain separately gated in this mode.
+One bounded private owned nullable funcref table32 now composes with these frames
+and cells through ordinary numeric `call_indirect` and table.get/set/size. Active
+legacy numeric elements and literal null/own numeric table initializers stay
+confined even when unused; exact empty export metadata blocks host ingress.
+Source and retained aggregate bounds, sparse SWAR keys, table-only pooled types,
+strict frontend-backed dead operands, dirty-upper indices, private trap/reuse,
+maximum ordered transport, no-max reserved capacities, starts, retired relays,
+parked cleanup and compiler-free artifacts qualify the new slice. Bulk table
+init/drop/copy/grow/fill and indirect/reference proper tails remain gated in this
+selected mode pending separate qualification.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt

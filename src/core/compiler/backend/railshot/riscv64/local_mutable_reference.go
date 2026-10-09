@@ -4,7 +4,7 @@ package riscv64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// Mutable local reference cells have no foreign descriptor ingress: no table,
+// Mutable local reference cells have no foreign descriptor ingress: no public table,
 // imported reference global, callable reference signature or exported mutable cell. Internal control types
 // cannot introduce foreign descriptors.
 // Every nonnull value therefore names this instance's canonical directory.
@@ -16,7 +16,7 @@ func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
 	if !has {
 		return false, nil
 	}
-	if len(m.Tables) != 0 || m.ImportedTableCount() != 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions {
+	if len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions {
 		return false, unsupported("local mutable references require bounded table-free private cells")
 	}
 	for _, im := range m.Imports {
@@ -41,6 +41,9 @@ func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
 			}
 		}
 		return true, nil
+	}
+	if len(m.Tables) != 0 || m.ImportedTableCount() != 0 {
+		return false, unsupported("local mutable references require bounded table-free private cells")
 	}
 	// Enclosing source admission checks every declared type and its profile
 	// bounds. Only actual callable bindings can introduce foreign descriptors;

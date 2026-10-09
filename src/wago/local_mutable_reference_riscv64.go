@@ -15,7 +15,14 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 		return false, nil
 	}
 	if c.tableCount() != 0 {
-		return false, fmt.Errorf("local mutable reference cells require no tables")
+		if !c.nativeReferenceFunctionABI {
+			return false, fmt.Errorf("local mutable reference cells require no tables")
+		}
+		// This full shape proof does not call the mutable-cell helper. Permission
+		// alone cannot open a host/foreign table ingress or private target row.
+		if err := rv64ValidateReferenceFunctions(c); err != nil {
+			return false, err
+		}
 	}
 	for _, g := range c.GlobalImports {
 		if isReferenceValType(g.Type) {

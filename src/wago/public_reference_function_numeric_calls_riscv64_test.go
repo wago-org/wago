@@ -5,6 +5,7 @@ package wago
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"runtime"
 	"slices"
@@ -14,6 +15,19 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func rv64ReferenceNumericCallsFixture(table, importedInitializer, vector, tails, wide bool, start, target int) []byte {
+	if table {
+		if importedInitializer {
+			return wasmtest.ClosedReferenceOwnedTableImportedInitializer(vector, tails, wide, start)
+		}
+		return wasmtest.ClosedReferenceOwnedTable(vector, tails, wide, start, target)
+	}
+	if importedInitializer {
+		return wasmtest.ClosedReferenceNumericCallsImportedInitializer(vector, tails, wide, start)
+	}
+	return wasmtest.ClosedReferenceNumericCalls(vector, tails, wide, start, target)
+}
 
 func rv64ReferenceNumericCallsRows(in *Instance) bool {
 	if len(in.funcRefDescs) != 14*coreruntime.FuncRefDescBytes {
@@ -51,6 +65,18 @@ func rv64ReferenceNumericCallsCheck(t *testing.T, in *Instance, vector bool, wan
 			t.Fatal("callback did not clear current reference cell", index)
 		}
 	}
+	if in.c.tableCount() != 0 {
+		table := privateTableBytes(in)
+		if binary.LittleEndian.Uint32(table) != 3 || !bytes.Equal(table[8:8+2*coreruntime.TableEntryBytes], make([]byte, 2*coreruntime.TableEntryBytes)) {
+			t.Fatal("private table clear/size while saved carriers survived")
+		}
+		for _, name := range []string{"", "0", "table", "escape"} {
+			if _, err := in.ExportedTable(name); err == nil {
+				t.Fatal("private table exposed to host", name)
+			}
+		}
+	}
+
 	null := uint64(0)
 	for _, cell := range []int{4, 5} {
 		value := readGlobalObject(in.globalCells[cell], ValFuncRef)
@@ -78,6 +104,17 @@ func rv64ReferenceNumericCallsCheck(t *testing.T, in *Instance, vector bool, wan
 }
 
 func TestRV64PublicReferenceFunctionNumericCallsSourceArtifact(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsSourceArtifact(t, false)
+}
+func TestRV64PublicReferenceFunctionOwnedTableSourceArtifact(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsSourceArtifact(t, true)
+}
+func rv64ReferenceFunctionNumericCallsSourceArtifact(t *testing.T, ownedTable bool) {
+	t.Helper()
+	product := "numeric-calls"
+	if ownedTable {
+		product = "owned-table"
+	}
 	for _, target := range []int{0, 1, 2} {
 		for _, artifact := range []bool{false, true} {
 			for _, vector := range []bool{false, true} {
@@ -89,7 +126,7 @@ func TestRV64PublicReferenceFunctionNumericCallsSourceArtifact(t *testing.T) {
 									rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 									defer rv64HostCertificateCloseRuntime(t, rt)
 									provider, grower, _, im, _ := rv64ReferenceStartProvider(t, rt, artifact, vector, wide, false)
-									pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-numeric-calls-v%t-t%t-w%t-s%d-target%d", vector, tails, wide, start, target), wasmtest.ClosedReferenceNumericCalls(vector, tails, wide, start, target), artifact)
+									pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-v%t-t%t-w%t-s%d-target%d", product, vector, tails, wide, start, target), rv64ReferenceNumericCallsFixture(ownedTable, false, vector, tails, wide, start, target), artifact)
 									if !pc.nativeReferenceCallABI || !pc.nativeReferenceFunctionABI {
 										t.Fatal("missing private numeric call witnesses")
 									}

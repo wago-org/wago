@@ -328,8 +328,11 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 		functionKeys = make([]uint64, len(functions))
 		for i, ft := range functions {
-			// The function namespace includes imported ordinals; all admitted
-			// signatures are numeric and use their complete structural identity.
+			// Preserve every physical ordinal. Private signatures have no callable
+			// descriptor row and never enter the numeric-only key constructor.
+			if mode.referenceFunctions && swarCallSignature(ft) != nil {
+				continue
+			}
 			functionKeys[i] = wasm.StructuralFuncTypeKey(ft)
 		}
 	}

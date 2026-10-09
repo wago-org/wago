@@ -32,6 +32,17 @@ func rv64ReferenceNumericCallsRelayModule(route string) []byte {
 }
 
 func TestRV64PublicReferenceFunctionNumericCallsRetiredRelays(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsRetiredRelays(t, false)
+}
+func TestRV64PublicReferenceFunctionOwnedTableRetiredRelays(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsRetiredRelays(t, true)
+}
+func rv64ReferenceFunctionNumericCallsRetiredRelays(t *testing.T, ownedTable bool) {
+	t.Helper()
+	product := "numeric-calls"
+	if ownedTable {
+		product = "owned-table"
+	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
 			for _, route := range []string{"ordinary", "static-tail", "reference-call", "reference-tail", "reexport"} {
@@ -45,7 +56,7 @@ func TestRV64PublicReferenceFunctionNumericCallsRetiredRelays(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-numeric-calls-v%t-ttrue-wfalse-s0-target0", vector), wasmtest.ClosedReferenceNumericCalls(vector, true, false, 0, 0), artifact)
+					pc := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-v%t-ttrue-wfalse-s0-target0", product, vector), rv64ReferenceNumericCallsFixture(ownedTable, false, vector, true, false, 0, 0), artifact)
 					calls := 0
 					var bridge, selected *Instance
 					var saved Caller

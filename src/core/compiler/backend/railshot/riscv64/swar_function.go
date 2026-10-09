@@ -542,8 +542,8 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 				}
 			}
 		case 0x11, 0x13:
-			if referenceFunctions {
-				return swarSummary{}, unsupported("private reference functions require same-image direct calls")
+			if referenceFunctions && op == 0x13 {
+				return swarSummary{}, unsupported("private reference functions exclude indirect proper tails")
 			}
 			typeIndex, err := r.U32()
 			if err != nil {
@@ -589,7 +589,8 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 					return swarSummary{}, err
 				}
 			}
-			operands := make([]swarClass, len(sig.Params)+1)
+			var operandStorage [maxSWARLocals + 1]swarClass
+			operands := operandStorage[:len(sig.Params)+1]
 			for i, typ := range sig.Params {
 				operands[i] = swarClassOf(typ)
 			}

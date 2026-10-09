@@ -54,6 +54,11 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		}
 		kinds |= 1 << v.Kind
 	}
+	if c.tableCount() != 0 {
+		// The preceding exact table proof establishes this pool binding even
+		// when the module has no globals consuming the canonical funcref type.
+		used |= 1 << c.TableValueTypeIndex
+	}
 	for index, g := range c.Globals {
 		if !g.HasValueType || uint64(g.ValueTypeIndex) >= uint64(len(c.ValueTypes)) {
 			return reject("exact numeric global binding")

@@ -56,7 +56,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions-c.NumImports || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return reject("bounded framed function ABI required")
 	}
-	if c.dynamicFuncrefEscape || !c.HasStart && c.StartIsImport || (!c.HasStart || c.StartIsImport) && c.StartLocalFunc != 0 || (!c.HasStart || !c.StartIsImport) && c.StartImportIdx != 0 || c.tableCount() != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.Elems) != 0 || len(c.customInstructions) != 0 {
+	if c.dynamicFuncrefEscape || !c.HasStart && c.StartIsImport || (!c.HasStart || c.StartIsImport) && c.StartLocalFunc != 0 || (!c.HasStart || !c.StartIsImport) && c.StartImportIdx != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.customInstructions) != 0 {
 		return reject("external state or callable escape")
 	}
 	if c.HasStart {
@@ -87,9 +87,6 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 			return err
 		}
 	}
-	if c.TableHasValueType || c.TableValueTypeIndex != 0 {
-		return reject("unused exact value metadata")
-	}
 	if d := c.memoryDir; d != nil && (len(d.ehTags) != 0 || len(d.ehTagExports) != 0 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil) {
 		return reject("resource initializer metadata")
 	}
@@ -114,17 +111,20 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 		return err
 	}
-	remaining := railshot.MaxModuleBytes
-	if c.HasStart {
-		remaining -= 5
+	hasReferences := false
+	for i, sig := range c.Funcs {
+		if !sig.HasTypeIndex || uint64(sig.TypeIndex) >= uint64(len(c.Types)) {
+			return reject("exact actual function type binding required")
+		}
+		if err := validateFuncSignature(sig, c.Types); err != nil {
+			return err
+		}
+		hasReferences = hasReferences || railshotNonCallableFunction(c, c.NumImports+i)
 	}
-	if err := rv64ValidateReferenceFunctionState(c, &remaining); err != nil {
-		return err
+	if !hasReferences {
+		return reject("witness without a reference-valued function")
 	}
-	if err := rv64ValidateReferenceFunctionExports(c, &remaining); err != nil {
-		return err
-	}
-	for i, sig := range c.importFuncSigs {
+	for _, sig := range c.importFuncSigs {
 		if !sig.HasTypeIndex || uint64(sig.TypeIndex) >= uint64(len(c.Types)) {
 			return reject("exact imported function type binding required")
 		}
@@ -134,6 +134,21 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 		if _, err := rv64NativeTailSignatureValues(sig); err != nil {
 			return err
 		}
+	}
+	remaining := railshot.MaxModuleBytes
+	if c.HasStart {
+		remaining -= 5
+	}
+	if err := rv64ValidateReferenceFunctionTable(c, &remaining); err != nil {
+		return err
+	}
+	if err := rv64ValidateReferenceFunctionState(c, &remaining); err != nil {
+		return err
+	}
+	if err := rv64ValidateReferenceFunctionExports(c, &remaining); err != nil {
+		return err
+	}
+	for i := range c.importFuncSigs {
 		if remaining < 5 || len(c.Imports[i]) > remaining-5 {
 			return reject("import binding/name byte bound")
 		}
@@ -155,31 +170,15 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 			}
 		}
 	}
-	hasReferences := false
-	for i, sig := range c.Funcs {
-		if !sig.HasTypeIndex || uint64(sig.TypeIndex) >= uint64(len(c.Types)) {
-			return reject("exact actual function type binding required")
-		}
-		if err := validateFuncSignature(sig, c.Types); err != nil {
-			return err
-		}
-		hasReferences = hasReferences || railshotNonCallableFunction(c, c.NumImports+i)
-	}
-	if !hasReferences {
-		return reject("witness without a reference-valued function")
-	}
 	for _, index := range c.Exports {
 		if index < 0 || index >= c.NumImports+len(c.Funcs) || railshotNonCallableFunction(c, index) {
 			return reject("numeric exports only")
 		}
 	}
-	if len(c.passiveElems) > railshot.MaxOwnedElementSegments {
-		return reject("declarative element count bound")
-	}
-	for _, e := range c.passiveElems {
-		if e.Mode != ElemModeDeclarative || e.TableIndex != 0 || e.RefType != 0 && e.RefType != ValFuncRef || e.HasValueType || e.ValueTypeIndex != 0 || len(e.Values) != 0 || e.Offset.Base != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 {
-			return reject("only canonical dropped declarative state is retained")
-		}
+	if c.tableCount() != 0 {
+		// Full signatures are validated before the common numeric key checker
+		// uses its fixed carrier arrays. Private ordinals remain sparse holes.
+		return rv64ValidateOwnedTable(c)
 	}
 	return nil
 }

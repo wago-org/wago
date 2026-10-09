@@ -10,24 +10,33 @@ import (
 // exact lower operand and saved local after a callback clears the live cells.
 // Start0 is absent, start1 defined, start2 imported; imports are interleaved.
 func ClosedReferenceLocalCells(vector, tails, wide bool, start int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 3, -1)
+	return closedReferenceLocalCells(vector, tails, wide, start, 3, -1, false)
 }
 
 func ClosedReferenceLocalCellsImportedInitializer(vector, tails, wide bool, start int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 0, -1)
+	return closedReferenceLocalCells(vector, tails, wide, start, 0, -1, false)
 }
 
 // ClosedReferenceNumericCalls preserves unrelated full-width cell carriers while
 // calling a numeric target through an indexed private parameter. Target0 names
 // an imported native wrapper, target1 an own identity, target2 a Go wrapper.
 func ClosedReferenceNumericCalls(vector, tails, wide bool, start, target int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 3, target)
+	return closedReferenceLocalCells(vector, tails, wide, start, 3, target, false)
 }
 func ClosedReferenceNumericCallsImportedInitializer(vector, tails, wide bool, start int) []byte {
-	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0)
+	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0, false)
 }
 
-func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer byte, target int) []byte {
+// ClosedReferenceOwnedTable uses a private own table while preserving private
+// lower/local descriptors across callbacks that clear its live entries.
+func ClosedReferenceOwnedTable(vector, tails, wide bool, start, target int) []byte {
+	return closedReferenceLocalCells(vector, tails, wide, start, 3, target, true)
+}
+func ClosedReferenceOwnedTableImportedInitializer(vector, tails, wide bool, start int) []byte {
+	return closedReferenceLocalCells(vector, tails, wide, start, 0, 0, true)
+}
+
+func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer byte, target int, ownedTable bool) []byte {
 	typ, typeByte := wasm.F64, byte(0x7c)
 	if vector {
 		typ, typeByte = wasm.V128, 0x7b
@@ -88,6 +97,7 @@ func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer 
 	functionTypes := []byte{8, 1, 2, 3, 1, 1, 4, 5, 0}
 	elements := []byte{1, 3, 0, 2, 0, 3}
 	initialize := []byte{0x10, 7, 0x0b}
+	clear := []byte{0xd0, 0x70, 0x24, 2, 0xd0, 0x70, 0x24, 3, 0x0b}
 	var extra [][]byte
 	if target >= 0 {
 		types = append(types, []byte{0x60, 2, 0x63, 0, 0x7f, 1, 0x7f})
@@ -107,7 +117,30 @@ func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer 
 		elements = []byte{1, 3, 0, 6, 0, 1, 2, 3, 7, 11}
 		extra = [][]byte{Code([]byte{0x20, 0, 0x41, 2, 0x6a, 0x0b}), Code([]byte{0x20, 0, 0x24, 14, 0x20, 1, 0x20, 0, 0x14, 0, 0x0b})}
 	}
-	sections := [][]byte{Section(1, Vec(types...)), Section(2, Vec(imports...)), Section(3, functionTypes), Section(6, Vec(globals...)), Section(7, Vec(exports...))}
+	if ownedTable {
+		index := byte(0)
+		if target == 1 {
+			index = 11
+		} else if target == 2 {
+			index = 2
+		}
+		// Table entries carry distinct native, own and Go targets. The private
+		// wrapper replaces entry0 and snapshots the exact table.get descriptor.
+		extra[1] = Code([]byte{0x41, 0, 0x20, 0, 0x26, 0, 0x41, 0, 0x25, 0, 0x24, 14,
+			0xfc, 16, 0, 0x1a, 0x20, 1, 0x41, 0, 0x11, 0, 0, 0x0b})
+		body := []byte{3, 1, 0x70, 1, 0x7f, 1, typeByte, 0x20, 0, 0x21, 3, 0x23, 2, 0xd2, index, 0x20, 1, 0x10, 12,
+			0x22, 4, 0xad, 0x24, 11, 0x20, 4, 0x20, 2, 0x41, 1, 0xd2, 1, 0x26, 0, 0x41, 1, 0x11, 1, 0,
+			0x21, 5, 0x21, 4, 0x20, 3, 0x10, 9, 0x21, 3, 0x23, 4, 0xd1, 0x24, 10, 0x20, 5, 0x20, 4, 0x20, 3, 0x0b}
+		leaf = append(ULEB(uint32(len(body))), body...)
+		clear = []byte{0xd0, 0x70, 0x24, 2, 0xd0, 0x70, 0x24, 3,
+			0x41, 0, 0xd0, 0x70, 0x26, 0, 0x41, 1, 0xd0, 0x70, 0x26, 0, 0x0b}
+		elements = []byte{2, 0, 0x41, 0, 0x0b, 3, index, 1, 7, 3, 0, 6, 0, 1, 2, 3, 7, 11}
+	}
+	sections := [][]byte{Section(1, Vec(types...)), Section(2, Vec(imports...)), Section(3, functionTypes)}
+	if ownedTable {
+		sections = append(sections, Section(4, []byte{1, 0x70, 1, 3, 4}))
+	}
+	sections = append(sections, Section(6, Vec(globals...)), Section(7, Vec(exports...)))
 	if start != 0 {
 		index := byte(3)
 		if start == 2 {
@@ -115,6 +148,6 @@ func closedReferenceLocalCells(vector, tails, wide bool, start int, initializer 
 		}
 		sections = append(sections, Section(8, []byte{index}))
 	}
-	sections = append(sections, Section(9, elements), Section(10, Vec(append([][]byte{Code(initialize), leaf, Code([]byte{0x23, 8, 0x23, 7, 0x23, 9, 0x23, 10, 0x23, 2, 0xd1, 0x23, 3, 0xd1, 0x0b}), Code([]byte{0xd0, 0x70, 0x24, 2, 0xd0, 0x70, 0x24, 3, 0x0b}), Code(run), Code(tail), Code([]byte{0x20, 0, 0x24, 4, 0x20, 1, 0x24, 5, 0x20, 1, 0x0b}), Code(selectCell)}, extra...)...)), Section(11, append(append([]byte{1, 0, addr}, SLEB32(48)...), 0x0b, 1, 7)))
+	sections = append(sections, Section(9, elements), Section(10, Vec(append([][]byte{Code(initialize), leaf, Code([]byte{0x23, 8, 0x23, 7, 0x23, 9, 0x23, 10, 0x23, 2, 0xd1, 0x23, 3, 0xd1, 0x0b}), Code(clear), Code(run), Code(tail), Code([]byte{0x20, 0, 0x24, 4, 0x20, 1, 0x24, 5, 0x20, 1, 0x0b}), Code(selectCell)}, extra...)...)), Section(11, append(append([]byte{1, 0, addr}, SLEB32(48)...), 0x0b, 1, 7)))
 	return Module(sections...)
 }

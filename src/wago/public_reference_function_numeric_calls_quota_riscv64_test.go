@@ -10,17 +10,27 @@ import (
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestRV64PublicReferenceFunctionNumericCallsQuota(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsQuota(t, false)
+}
+func TestRV64PublicReferenceFunctionOwnedTableQuota(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsQuota(t, true)
+}
+func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, ownedTable bool) {
+	t.Helper()
+	product := "numeric-calls"
+	if ownedTable {
+		product = "owned-table"
+	}
 	for _, vector := range []bool{false, true} {
 		t.Run(fmt.Sprintf("vector%t", vector), func(t *testing.T) {
 			owners := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			defer rv64HostCertificateCloseRuntime(t, owners)
 			provider, _, memories, im, _ := rv64ReferenceStartProvider(t, owners, false, vector, true, true)
 			native, nf := rv64ReferenceStartNative(t, owners, false)
-			pc := rv64NativeTailCompile(t, "reference-numeric-calls-quota", wasmtest.ClosedReferenceNumericCalls(vector, true, true, 1, 0), false)
+			pc := rv64NativeTailCompile(t, "reference-"+product+"-quota", rv64ReferenceNumericCallsFixture(ownedTable, false, vector, true, true, 1, 0), false)
 			view := pc.executionView()
 			if err := view.validateCached(); err != nil {
 				t.Fatal(err)

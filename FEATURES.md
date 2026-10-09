@@ -73,8 +73,8 @@ are bounded before validation. Private same-image direct-call lowering
 preserves function-reference arguments/results, mixed compact cells and
 reference root joins. Its separately enabled cooperative proper tails require
 exact reference result types and reuse the checked frame protocol. This private
-mode rejects reference-valued imports, indirect calls and reference tails; ordinary
-numeric reference calls use the bounded bridge described below. Legacy production
+mode rejects reference-valued imports and indirect/reference proper tails; ordinary
+numeric descriptor calls use the bounded bridge described below. Legacy production
 staging routes reject the mode. Private decoded whole-module compilation also
 checks numeric exports and descriptor targets, bounded declarations/code and
 inert metadata before validation. It admits bounded numeric resource imports and prevents
@@ -141,10 +141,19 @@ composes with these private frames and cells through the existing retained-owner
 bridge. Indexed numeric targets include own functions, imported native functions
 and scalar shared/owned Go wrappers; private functions remain noncallable descriptor
 holes. Source proofs reject reference-valued targets even in dead code, staging
-rechecks actual call/control witnesses, and indirect/table/reference-tail calls
-remain outside this table-free mode. Ordered maximum transport, callback parks,
+rechecks actual call/control witnesses, and indirect/reference proper tails
+remain separately gated in this selected mode. Ordered maximum transport, callback parks,
 retired import reexports, foreign dynamic roots, precise private null traps,
-stack-trap reuse and bounded allocation checks qualify the composition. Initializer
+stack-trap reuse and bounded allocation checks qualify the composition. One bounded
+private owned nullable funcref table32 also composes with these frames/cells through
+ordinary numeric `call_indirect` and table.get/set/size. Active legacy numeric
+function elements and literal null/own numeric table initializers stay confined;
+exact empty table export metadata prevents host descriptor ingress. Every private
+row remains noncallable. Aggregate source/retained budgets, strict dead operand
+floors, dirty-upper table indices, table-only exact type pools, zero-size and no-max
+initializers, maximum ordered transport, precise private indirect traps and reuse,
+starts and parked/retired owners have source/compiler-free coverage. Selected-mode
+table.init/elem.drop/copy/grow/fill await their own qualification. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories
 through final attachment retirement. Separate memory-only and global-only borrowers

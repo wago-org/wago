@@ -813,14 +813,27 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("private table index")
 				}
 				if op == 0x26 {
-					if _, err = popClass(true); err != nil {
+					if functionRefs {
+						err = match(inlineResults[1][:], inlineReference[:], false, true)
+						if err == nil {
+							h--
+						}
+					} else {
+						_, err = popClass(true)
+					}
+					if err != nil {
 						return integerSummary{}, err
 					}
 					if live && emit != nil {
 						emit.Load(28, emit.SpillOffset(h), true)
 					}
 				}
-				if _, err = pop(); err != nil {
+				if functionRefs {
+					err = condition() // Exact i32 at this frame's current floor.
+				} else {
+					_, err = pop()
+				}
+				if err != nil {
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
@@ -1032,8 +1045,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x11, 0x13:
-			if functionRefs {
-				return integerSummary{}, unsupported("private reference functions require same-image direct calls")
+			if functionRefs && op == 0x13 {
+				return integerSummary{}, unsupported("private reference functions exclude indirect proper tails")
 			}
 			typeIndex, e := r.U32()
 			if e != nil {
@@ -1071,7 +1084,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("indirect call count/slot budget")
 			}
-			if tail {
+			if functionRefs {
+				err = condition()
+			} else if tail {
 				err = popWidth(false)
 			} else {
 				_, err = pop()
@@ -1080,14 +1095,21 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, err
 			}
 			indexSlot := h
-			for j := len(sig.params) - 1; j >= 0; j-- {
-				if tail {
-					err = popWidth(sig.params[j])
-				} else {
-					_, err = pop()
-				}
-				if err != nil {
+			if functionRefs {
+				if err = match(sig.params, nil, false, true); err != nil {
 					return integerSummary{}, err
+				}
+				h -= len(sig.params)
+			} else {
+				for j := len(sig.params) - 1; j >= 0; j-- {
+					if tail {
+						err = popWidth(sig.params[j])
+					} else {
+						_, err = pop()
+					}
+					if err != nil {
+						return integerSummary{}, err
+					}
 				}
 			}
 			if live && emit != nil {

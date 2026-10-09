@@ -22,6 +22,9 @@ func rv64ReferenceNumericMaximumValue(vector bool, i int) []uint64 {
 }
 
 func rv64ReferenceNumericCallsMaximumModule(vector, imported, call bool) ([]byte, []wasm.ValType) {
+	return rv64ReferenceNumericMaximumModule(vector, imported, call, false)
+}
+func rv64ReferenceNumericMaximumModule(vector, imported, call, ownedTable bool) ([]byte, []wasm.ValType) {
 	n, typ, stride := 256, wasm.I32, 4
 	if vector {
 		n, typ, stride = 128, wasm.V128, 16
@@ -46,7 +49,9 @@ func rv64ReferenceNumericCallsMaximumModule(vector, imported, call bool) ([]byte
 		}
 	}
 	identity = append(identity, 0x0b)
-	if call {
+	if call && ownedTable {
+		body = append(body, 0x41, 0, 0x11, 0, 0)
+	} else if call {
 		body = append(body, 0xd2, 0, 0x14, 0)
 	} else {
 		body = append(body, 0x10, 0)
@@ -88,19 +93,38 @@ func rv64ReferenceNumericCallsMaximumModule(vector, imported, call bool) ([]byte
 		codes = nil
 	}
 	codes = append(codes, wasmtest.Code([]byte{0xd2, 1, 0x10, 2, 0x24, 0, 0x0b}), privateBody)
-	sections = append(sections, wasmtest.Section(3, funcs), wasmtest.Section(5, []byte{1, 1, 1, 1}), wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, true, []byte{0xd0, 0x70, 0x0b}))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))), wasmtest.Section(9, []byte{1, 3, 0, 2, 0, 1}), wasmtest.Section(10, wasmtest.Vec(codes...)))
+	sections = append(sections, wasmtest.Section(3, funcs))
+	if ownedTable {
+		sections = append(sections, wasmtest.Section(4, []byte{1, 0x70, 1, 1, 1}))
+	}
+	elements := []byte{1, 3, 0, 2, 0, 1}
+	if ownedTable {
+		elements = []byte{2, 0, 0x41, 0, 0x0b, 1, 0, 3, 0, 2, 0, 1}
+	}
+	sections = append(sections, wasmtest.Section(5, []byte{1, 1, 1, 1}), wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, true, []byte{0xd0, 0x70, 0x0b}))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))), wasmtest.Section(9, elements), wasmtest.Section(10, wasmtest.Vec(codes...)))
 	return wasmtest.Module(sections...), types
 }
 
 func TestRV64PublicReferenceFunctionNumericCallsMaximum(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsMaximum(t, false)
+}
+func TestRV64PublicReferenceFunctionOwnedTableMaximum(t *testing.T) {
+	rv64ReferenceFunctionNumericCallsMaximum(t, true)
+}
+func rv64ReferenceFunctionNumericCallsMaximum(t *testing.T, ownedTable bool) {
+	t.Helper()
+	product := "numeric-call"
+	if ownedTable {
+		product = "owned-table"
+	}
 	for _, artifact := range []bool{false, true} {
 		for _, vector := range []bool{false, true} {
 			for _, imported := range []bool{false, true} {
 				t.Run(fmt.Sprintf("artifact%t-vector%t-imported%t", artifact, vector, imported), func(t *testing.T) {
 					rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 					defer rv64HostCertificateCloseRuntime(t, rt)
-					source, types := rv64ReferenceNumericCallsMaximumModule(vector, imported, true)
-					c := rv64NativeTailCompile(t, fmt.Sprintf("reference-numeric-call-max-v%t-i%t", vector, imported), source, artifact)
+					source, types := rv64ReferenceNumericMaximumModule(vector, imported, true, ownedTable)
+					c := rv64NativeTailCompile(t, fmt.Sprintf("reference-%s-max-v%t-i%t", product, vector, imported), source, artifact)
 					im := NewImports()
 					var native *Instance
 					var nc *Compiled
@@ -166,8 +190,8 @@ func TestRV64PublicReferenceFunctionNumericCallsMaximum(t *testing.T) {
 					}
 					session.Close()
 					if !artifact { // Compare matching private frames/owners, changing only the call form.
-						controlSource, _ := rv64ReferenceNumericCallsMaximumModule(vector, imported, false)
-						controlCode := rv64NativeTailCompile(t, "reference-numeric-call-max-control", controlSource, false)
+						controlSource, _ := rv64ReferenceNumericMaximumModule(vector, imported, false, ownedTable)
+						controlCode := rv64NativeTailCompile(t, "reference-"+product+"-max-control", controlSource, false)
 						// The logically closed native remains callable through the already attached
 						// export used above, but new public attachment is correctly disallowed.
 						if !imported {

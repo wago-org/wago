@@ -17,11 +17,14 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		return err
 	}
 	imported := counts.functions
-	if m.UsesCompactImports || len(m.Tables) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
+	if m.UsesCompactImports || len(m.Tables) > 1 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.BranchHints != nil {
 		return unsupported("closed reference module external state")
 	}
 	remaining := MaxModuleBytes
 	if err := admitClosedReferenceNumericStateWithImports(m, vector, &remaining, counts); err != nil {
+		return err
+	}
+	if err := admitClosedReferenceOwnedTableState(m, &remaining); err != nil {
 		return err
 	}
 	consume := func(n int) bool {
@@ -130,6 +133,15 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		return unsupported("closed reference module requires internal reference functions")
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
+	if len(m.Tables) != 0 && m.Tables[0].Init != nil {
+		value, err := tableElementExpression(*m.Tables[0].Init)
+		if err != nil {
+			return err
+		}
+		if !value.Null && !numericTarget(value.FuncIndex) {
+			return unsupported("closed reference table initializer descriptor escape")
+		}
+	}
 	for _, global := range m.Globals {
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
 			value, err := tableElementExpression(global.Init)
@@ -177,8 +189,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	}
 	elements := 0
 	for _, e := range m.Elements {
-		if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || len(e.Mode.Offset.BodyBytes) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Exprs) != 0 || len(e.Kind.Funcs) > MaxOwnedTableEntries-elements || !consume(4*len(e.Kind.Funcs)) {
-			return unsupported("closed reference module numeric declarative elements only")
+		if e.Mode.Kind != wasm.ElemDeclarative && (e.Mode.Kind != wasm.ElemActive || len(m.Tables) == 0) || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Mode.Kind == wasm.ElemDeclarative && len(e.Mode.Offset.BodyBytes) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Exprs) != 0 || len(e.Kind.Funcs) > MaxOwnedTableEntries-elements || !consume(4*len(e.Kind.Funcs)) {
+			return unsupported("closed reference module numeric active/declarative elements only")
 		}
 		elements += len(e.Kind.Funcs)
 		for _, idx := range e.Kind.Funcs {
@@ -230,8 +242,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			switch op {
 			case 0x1f:
 				return unsupported("closed reference module exception control is unsupported")
-			case 0x11, 0x13, 0x15:
-				return unsupported("closed reference module excludes indirect and reference-tail calls")
+			case 0x13, 0x15:
+				return unsupported("closed reference module excludes indirect and reference-tail proper calls")
 			}
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
@@ -240,11 +252,23 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			if op == 0xd2 && !numericTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
 			}
-			if op == 0x14 {
+			if op == 0x11 && (len(m.Tables) != 1 || imm.Index2 != 0) {
+				return unsupported("closed reference indirect call requires own table zero")
+			}
+			if (op == 0x25 || op == 0x26 || imm.Kind == wasm.InstrTableSize) && (len(m.Tables) != 1 || imm.Index != 0) {
+				return unsupported("closed reference table operation requires own table zero")
+			}
+			if op == 0xfc {
+				switch imm.Kind {
+				case wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
+					return unsupported("closed reference table bulk/growth requires separate qualification")
+				}
+			}
+			if op == 0x14 || op == 0x11 {
 				// Check even dead sites: private functions never become callable
 				// descriptor targets, and the existing bridge transports numbers.
 				if uint64(imm.Index) >= uint64(len(m.Types)) {
-					return unsupported("closed reference numeric call_ref type index")
+					return unsupported("closed reference numeric descriptor call type index")
 				}
 				sig := &m.Types[imm.Index].SubTypes[0].Comp
 				if vector {
