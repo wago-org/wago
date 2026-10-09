@@ -124,39 +124,54 @@ func TestSumUnrollOracle(t *testing.T) {
 	saved := append([]byte(nil), data...)
 	counts := []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 512, 8192, 262144}
 	for _, pressure := range []int{0, 4, 12} {
-		t.Run(fmt.Sprint(pressure), func(t *testing.T) {
-			m := sumUnrollModule(t, pressure)
-			native := sumUnrollNative(t, m, CompileOptions{})
-			baseline := sumUnrollBaseline(t, m)
-			scalar := sumUnrollNative(t, m, CompileOptions{Optimizations: map[string]bool{"linear-sum-loop": false}})
-			for _, addr := range []uint32{0, 1, 7, 8, 63, 128} {
-				for _, count := range counts {
-					for _, seed := range []uint64{0, ^uint64(0) - 3} {
-						want, trap := sumOracle(data, addr, count, seed, pressure)
-						got, err := native.call(mem, addr, count, seed, pressure)
-						ref, refErr := scalar.call(mem, addr, count, seed, pressure)
-						if trap || err != nil || refErr != nil || got != want || ref != want {
-							t.Fatalf("addr=%d count=%d seed=%x got=%x ref=%x want=%x err=%v/%v", addr, count, seed, got, ref, want, err, refErr)
+		for _, bounded := range []bool{false, true} {
+			t.Run(fmt.Sprintf("pressure%d/bounded%t", pressure, bounded), func(t *testing.T) {
+				m := sumUnrollModule(t, pressure)
+				if bounded {
+					m.Memories[0].Limits.HasMax = true
+					m.Memories[0].Limits.Max = 48
+				}
+				original := append([]byte(nil), m.Code[0].BodyBytes...)
+				native := sumUnrollNative(t, m, CompileOptions{})
+				baseline := sumUnrollBaseline(t, m)
+				scalar := sumUnrollNative(t, m, CompileOptions{Optimizations: map[string]bool{"linear-sum-loop": false}})
+				for _, addr := range []uint32{0, 1, 7, 8, 63, 128} {
+					for _, count := range counts {
+						for _, seed := range []uint64{0, ^uint64(0) - 3} {
+							want, trap := sumOracle(data, addr, count, seed, pressure)
+							got, err := native.call(mem, addr, count, seed, pressure)
+							ref, refErr := scalar.call(mem, addr, count, seed, pressure)
+							base, baseErr := baseline.call(mem, addr, count, seed, pressure)
+							if baseErr != nil || base != want {
+								t.Fatalf("baseline success mismatch: %x want %x: %v", base, want, baseErr)
+							}
+							if trap || err != nil || refErr != nil || got != want || ref != want {
+								t.Fatalf("addr=%d count=%d seed=%x got=%x ref=%x want=%x err=%v/%v", addr, count, seed, got, ref, want, err, refErr)
+							}
 						}
 					}
 				}
-			}
-			for _, tc := range [][2]uint32{{uint32(len(data)) - 8, 1}, {uint32(len(data)) - 8, 2}, {uint32(len(data)) - 7, 1}, {^uint32(0), 0}, {^uint32(0), 1}, {0, ^uint32(0)}, {uint32(len(data)) - 16, 1 << 29}, {0, 1 << 29}} {
-				want, trap := sumOracle(data, tc[0], tc[1], 13, pressure)
-				got, err := native.call(mem, tc[0], tc[1], 13, pressure)
-				ref, refErr := scalar.call(mem, tc[0], tc[1], 13, pressure)
-				if (err != nil) != trap || (refErr != nil) != trap || !trap && (got != want || ref != want) {
-					t.Fatalf("boundary %v got=%x ref=%x want=%x trap=%v err=%v/%v", tc, got, ref, want, trap, err, refErr)
+				for _, tc := range [][2]uint32{{uint32(len(data)) - 8, 1}, {uint32(len(data)) - 8, 2}, {uint32(len(data)) - 7, 1}, {^uint32(0), 0}, {^uint32(0), 1}, {0, ^uint32(0)}, {uint32(len(data)) - 16, 1 << 29}, {0, 1 << 29}} {
+					want, trap := sumOracle(data, tc[0], tc[1], 13, pressure)
+					got, err := native.call(mem, tc[0], tc[1], 13, pressure)
+					ref, refErr := scalar.call(mem, tc[0], tc[1], 13, pressure)
+					if (err != nil) != trap || (refErr != nil) != trap || !trap && (got != want || ref != want) {
+						t.Fatalf("boundary %v got=%x ref=%x want=%x trap=%v err=%v/%v", tc, got, ref, want, trap, err, refErr)
+					}
+					base, baselineErr := baseline.call(mem, tc[0], tc[1], 13, pressure)
+					if (baselineErr != nil) != trap || !trap && base != want {
+						t.Fatal("baseline trap mismatch")
+					}
+					if trap && (!bytes.Equal(native.trap, baseline.trap) || !bytes.Equal(native.trap[:20], scalar.trap[:20])) {
+						t.Fatalf("trap metadata differs at %v: %x / %x", tc, native.trap, scalar.trap)
+					}
 				}
-				_, baselineErr := baseline.call(mem, tc[0], tc[1], 13, pressure)
-				if (baselineErr != nil) != trap {
-					t.Fatal("baseline trap mismatch")
+
+				if !bytes.Equal(original, m.Code[0].BodyBytes) {
+					t.Fatal("compiler changed Wasm instructions")
 				}
-				if trap && (!bytes.Equal(native.trap, baseline.trap) || !bytes.Equal(native.trap[:20], scalar.trap[:20])) {
-					t.Fatalf("trap metadata differs at %v: %x / %x", tc, native.trap, scalar.trap)
-				}
-			}
-		})
+			})
+		}
 	}
 	if !bytes.Equal(data, saved) {
 		t.Fatal("read-only reduction changed memory")
@@ -186,8 +201,8 @@ func TestSumUnrollFullMemory32(t *testing.T) {
 		if (err != nil) != trap || (refErr != nil) != trap || !trap && (got != want || ref != want) {
 			t.Fatalf("wrap %v: %x/%x want %x errors %v/%v", tc, got, ref, want, err, refErr)
 		}
-		_, baselineErr := baseline.call(mem, tc[0], tc[1], ^uint64(0), 0)
-		if (baselineErr != nil) != trap {
+		base, baselineErr := baseline.call(mem, tc[0], tc[1], ^uint64(0), 0)
+		if (baselineErr != nil) != trap || !trap && base != want {
 			t.Fatal("baseline wrap trap mismatch")
 		}
 		if trap && (!bytes.Equal(native.trap, baseline.trap) || !bytes.Equal(native.trap[:20], scalar.trap[:20])) {

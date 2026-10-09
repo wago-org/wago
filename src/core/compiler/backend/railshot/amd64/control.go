@@ -410,7 +410,7 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	}
 	f.convergeBranchLocals(loop)
 	f.invalidateBoundsCertFor(1, uint32(x))
-	if f.tryUnrolledLinearSumLatch(loop, x) {
+	if f.trySelectedLinearSumLatch(loop, x) {
 		f.stats.peep("counted-loop-latch")
 		return true, nil
 	}

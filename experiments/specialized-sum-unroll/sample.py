@@ -2,6 +2,7 @@
 """Serial paired measurements. Build and test all binaries before running."""
 import argparse
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -10,6 +11,7 @@ import time
 p = argparse.ArgumentParser()
 p.add_argument("--baseline", required=True)
 p.add_argument("--candidate", required=True)
+p.add_argument("--baseline-variant", default="baseline")
 p.add_argument("--variants", nargs="+", default=["A", "B"])
 p.add_argument("--out", required=True)
 p.add_argument("--samples", type=int, default=20)
@@ -25,13 +27,14 @@ out.mkdir(parents=True, exist_ok=False)
 env = dict(os.environ, GOMAXPROCS="1", GOFLAGS="-buildvcs=false")
 metadata = dict(vars(a), started=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 affinity=sorted(os.sched_getaffinity(0)), environment={k:v for k,v in env.items() if k.startswith(("GO", "WAGO"))})
+metadata["binary_sha256"] = {label: hashlib.sha256(Path(binary).read_bytes()).hexdigest() for label,binary in [("baseline",a.baseline),("candidate",a.candidate)]}
 for cmd in (["go", "version"], ["lscpu"], ["uname", "-a"], ["git", "rev-parse", "HEAD"]):
     metadata[" ".join(cmd)] = subprocess.check_output(cmd, text=True).strip()
 (out / "environment.json").write_text(json.dumps(metadata, indent=2)+"\n")
 with (out / "order.jsonl").open("w") as order:
     for variant in a.variants:
         for sample in range(a.samples):
-            pair = [("baseline", a.baseline, "baseline"), ("candidate", a.candidate, variant)]
+            pair = [("baseline", a.baseline, a.baseline_variant), ("candidate", a.candidate, variant)]
             if sample % 2:
                 pair.reverse()
             for label, binary, selected in pair:
