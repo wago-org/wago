@@ -302,13 +302,13 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	// lease. The deferred reacquire covers normal return, HostExit, validation
 	// panics, and arbitrary host panics. Rebind the exact parked callee because a
 	// nested wasm entry may have replaced its shared basedata context.
-	stackTop := active.eng.StackTop()
+	physicalStack := active.eng
 	if root != nil && root.eng != nil {
 		// Cross-instance native calls remain on the public root's foreign stack
 		// even though the parked control frame and callsite map belong to active.
-		stackTop = root.eng.StackTop()
+		physicalStack = root.eng
 	}
-	activation := active.pushGCHostActivation(ctrl, importIdx, stackTop)
+	activation := active.pushGCHostActivation(ctrl, importIdx, physicalStack)
 	if err := active.rootGCHostArguments(activation, importIdx, args); err != nil {
 		active.clearGCHostResultRoots(activation)
 		active.popGCHostActivation(activation)

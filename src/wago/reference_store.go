@@ -695,6 +695,7 @@ type gcNativeFrameRoots struct {
 type gcHostActivation struct {
 	base         uintptr
 	ctrl         uintptr
+	stack        *coreruntime.Engine
 	callsite     uint32
 	noFrame      bool
 	savedControl gcHostSavedControl
@@ -731,7 +732,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 		return true
 	}
 	r.syncGlobalsBeforeCollection()
-	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}, nil) {
 		return false
 	}
 	state := r.suspended
@@ -757,7 +758,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
 				callsites:            state.hostRootPlan.callsites,
 			}
-			if !chain.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+			if !chain.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}, activation.stack) {
 				return false
 			}
 		}
@@ -782,7 +783,7 @@ func (s classifiedRootSink) VisitRootRef(r gc.Ref) bool {
 
 func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	r.syncGlobalsBeforeCollection()
-	if !r.rangeChain(fn, sink) {
+	if !r.rangeChain(fn, sink, nil) {
 		return false
 	}
 	state := r.suspended
@@ -808,7 +809,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
 				callsites:            state.hostRootPlan.callsites,
 			}
-			if !chain.rangeChain(fn, sink) {
+			if !chain.rangeChain(fn, sink, activation.stack) {
 				return false
 			}
 		}
@@ -916,18 +917,25 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	return true
 }
 
-func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
+func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
 	owner := r.owner
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
 	codeBase, codeBytes := r.codeBase, r.codeBytes
 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
-	// Cross-instance calls may use another instance's engine. Apply this bound
-	// only when the first frame belongs to the owner's mapped stack.
+	// Parked host activations carry their physical stack bounds because reentry
+	// may replace owner.eng while their native frames remain on the old stack.
+	// Other chains use the owner mapping only when their first frame lies in it.
 	var stackTop uintptr
-	if owner != nil && owner.eng != nil {
+	if stack != nil {
+		stackTop = stack.StackTop()
+		stackBytes := uintptr(stack.StackBytes())
+		if stackBytes == 0 || stackTop < stackBytes || base < stackTop-stackBytes || base >= stackTop {
+			panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
+		}
+	} else if owner != nil && owner.eng != nil {
 		top := owner.eng.StackTop()
-		stackBytes := uintptr(owner.eng.StackBytes())
-		if stackBytes != 0 && top >= stackBytes && base >= top-stackBytes && base < top {
+		ownerStackBytes := uintptr(owner.eng.StackBytes())
+		if ownerStackBytes != 0 && top >= ownerStackBytes && base >= top-ownerStackBytes && base < top {
 			stackTop = top
 		}
 	}

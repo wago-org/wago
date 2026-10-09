@@ -98,6 +98,55 @@ func TestGCNativeFrameRootsMappedStackBounds(t *testing.T) {
 	}
 }
 
+func TestGCNativeFrameRootsParkedActivationUsesPhysicalStack(t *testing.T) {
+	frame := mappedFrameChain(t, 1)
+	oldStack := frame.owner.eng
+	newStack, err := coreruntime.NewEngineWithStackBytes(coreruntime.MinNativeStackBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := newStack.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	frame.owner.eng = newStack // Reentry can replace the owner's active engine.
+	state := &gcPublicState{
+		hostActivationCount: 1,
+		hostRootPlan: &compiledGCFrameRoots{
+			adapterReturnOffsets: frame.adapterReturnOffsets,
+			callsites:            frame.callsites,
+		},
+		hostCodeBase:  frame.codeBase,
+		hostCodeBytes: frame.codeBytes,
+	}
+	activation := &state.hostActivations[0]
+	*activation = gcHostActivation{
+		base: frame.base, stack: oldStack,
+	}
+	roots := gcNativeFrameRoots{owner: frame.owner, suspended: state, frameLayout: frame.frameLayout}
+	seen := 0
+	roots.RangeRoots(func(gc.RootSlot) bool {
+		seen++
+		return true
+	})
+	if seen != 1 {
+		t.Fatalf("parked roots visited = %d, want 1", seen)
+	}
+	// A mismatched explicit mapping must be rejected before reading a frame.
+	// The frame itself remains valid in the old mapping, so this is safe even
+	// if the bound is accidentally ignored.
+	activation.stack = newStack
+	got := func() (failure any) {
+		defer func() { failure = recover() }()
+		roots.RangeRoots(func(gc.RootSlot) bool { return true })
+		return nil
+	}()
+	if fmt.Sprint(got) != "generic GC native frame exceeds stack bounds" {
+		t.Fatalf("mismatched parked stack panic = %v", got)
+	}
+}
+
 func BenchmarkGCNativeFrameRootsMappedStack(b *testing.B) {
 	for _, frames := range []int{1, 64, 4098} {
 		b.Run(fmt.Sprintf("frames=%d", frames), func(b *testing.B) {
