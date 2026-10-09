@@ -102,3 +102,36 @@ func BenchmarkSupertypeChainMetadata(b *testing.B) {
 		}
 	}
 }
+
+// Shallow declared chains use the existing walker without allocating a full
+// ancestry index. Deep chains retain the index for repeated reference checks.
+func TestSupertypeAncestryIndexRequiresDeepChain(t *testing.T) {
+	for _, tc := range []struct {
+		count, depth int
+		indexed      bool
+	}{
+		{64, 1, false}, {1024, 1, false}, {64, 31, false},
+		{64, 32, true}, {1024, 1023, true},
+	} {
+		t.Run(fmt.Sprintf("%d/%d", tc.count, tc.depth), func(t *testing.T) {
+			m := &Module{Types: make([]RecType, tc.count)}
+			for i := range m.Types {
+				var supers []TypeIdx
+				if i > 0 && i <= tc.depth {
+					supers = []TypeIdx{{Index: uint32(i - 1)}}
+				}
+				m.Types[i] = openStructType(nil, supers...)
+			}
+			v := &moduleValidator{m: m, funcIndex: -1}
+			if err := v.validateModule(); err != nil {
+				t.Fatal(err)
+			}
+			if got := len(v.superEnter) != 0; got != tc.indexed {
+				t.Fatalf("ancestry index present=%t, want %t", got, tc.indexed)
+			}
+			if !v.typeIdxSuperSubtype(TypeIdx{Index: uint32(tc.depth)}, TypeIdx{Index: 0}) {
+				t.Fatal("lost declared ancestry")
+			}
+		})
+	}
+}
