@@ -20,7 +20,7 @@ func metadataControlImage(n int) *jitprofile.Image {
 }
 
 func BenchmarkSamplyMetadataControls(b *testing.B) {
-	for _, name := range []string{"dense31", "dense32", "dense33", "dense64", "excluded", "single", "shared", "repeated", "missing", "duplicates"} {
+	for _, name := range []string{"dense31", "dense32", "dense33", "dense64", "dense128", "dense256", "excluded", "single", "shared", "repeated", "missing", "duplicates"} {
 		b.Run(name, func(b *testing.B) {
 			n := 4000
 			switch name {
@@ -32,6 +32,10 @@ func BenchmarkSamplyMetadataControls(b *testing.B) {
 				n = 33
 			case "dense64":
 				n = 64
+			case "dense128":
+				n = 128
+			case "dense256":
+				n = 256
 			}
 			im := metadataControlImage(n)
 			for i := range im.Regions {
@@ -66,7 +70,7 @@ func BenchmarkSamplyMetadataControls(b *testing.B) {
 }
 
 func TestSamplyMetadataLookupControls(t *testing.T) {
-	for _, n := range []int{1, 64} {
+	for _, n := range []int{1, 256} {
 		for _, mode := range []string{"missing", "first", "repeated", "shared"} {
 			t.Run(fmt.Sprintf("%s/%d", mode, n), func(t *testing.T) {
 				im := metadataControlImage(n)

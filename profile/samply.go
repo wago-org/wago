@@ -31,15 +31,7 @@ func ReadSamplyWithLimits(r io.Reader, events []jitprofile.Event, limits Limits)
 		if e.Image != nil {
 			im := e.Image
 			var functionIndex map[int]int
-			if len(im.Regions) >= 32 && len(im.Functions) >= 32 {
-				functionIndex = make(map[int]int, len(im.Functions))
-				for i := range im.Functions {
-					index := im.Functions[i].Index
-					if _, exists := functionIndex[index]; !exists {
-						functionIndex[index] = i // Match the first duplicate, as the scan did.
-					}
-				}
-			}
+			metadataLookups := 0
 			for _, region := range im.Regions {
 				if !executable(region) || region.Kind == "unknown" {
 					continue
@@ -57,6 +49,18 @@ func ReadSamplyWithLimits(r io.Reader, events []jitprofile.Event, limits Limits)
 						return Report{}, fmt.Errorf("samply aggregation row limit exceeded")
 					}
 					row := Row{ModuleID: im.ModuleID, ArtifactID: im.ArtifactID, Function: region.Function, Kind: kind, Name: region.Name, RegionOffset: offset}
+					// Count new-row lookups so excluded or already-known rows do
+					// not allocate an unused index.
+					if functionIndex == nil && metadataLookups >= 32 && len(im.Functions) >= 256 {
+						functionIndex = make(map[int]int, len(im.Functions))
+						for i := range im.Functions {
+							index := im.Functions[i].Index
+							if _, exists := functionIndex[index]; !exists {
+								functionIndex[index] = i // Match the first duplicate, as the scan did.
+							}
+						}
+					}
+					metadataLookups++
 					if functionIndex != nil {
 						if i, ok := functionIndex[region.Function]; ok {
 							f := im.Functions[i]

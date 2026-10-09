@@ -31,7 +31,7 @@ func BenchmarkSamplyFunctionMetadata(b *testing.B) {
 }
 
 func TestSamplyDuplicateFunctionIndexUsesFirstMetadata(t *testing.T) {
-	for _, n := range []int{1, 64} {
+	for _, n := range []int{1, 256} {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
 			im := &jitprofile.Image{ModuleID: "module", ArtifactID: "artifact", Size: uint64(n)}
 			for i := 0; i < n; i++ {
