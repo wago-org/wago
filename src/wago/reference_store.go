@@ -921,9 +921,19 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
 	codeBase, codeBytes := r.codeBase, r.codeBytes
 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
-	for depth := 0; ; depth++ {
-		if depth > 4096 {
-			panic(gcHelperFailuref("generic GC native frame chain exceeds 4096 frames"))
+	// Cross-instance calls may use another instance's engine. Apply this bound
+	// only when the first frame belongs to the owner's mapped stack.
+	var stackTop uintptr
+	if owner != nil && owner.eng != nil {
+		top := owner.eng.StackTop()
+		stackBytes := uintptr(owner.eng.StackBytes())
+		if stackBytes != 0 && top >= stackBytes && base >= top-stackBytes && base < top {
+			stackTop = top
+		}
+	}
+	for {
+		if stackTop != 0 && (base >= stackTop || uintptr(frameBytes) > stackTop-base) {
+			panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
 		}
 		for _, off := range offsets {
 			// gc.Ref is the low 32 bits of the validated little-endian native qword.
@@ -949,7 +959,11 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		if base > ^uintptr(0)-uintptr(frameBytes)-returnPCBias {
 			panic(gcHelperFailuref("generic GC native frame address overflows"))
 		}
-		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes)+returnPCBias)), 8)
+		retAddr := base + uintptr(frameBytes) + returnPCBias
+		if stackTop != 0 && (retAddr > stackTop || stackTop-retAddr < 8) {
+			panic(gcHelperFailuref("generic GC native return address exceeds stack bounds"))
+		}
+		retWord := unsafe.Slice((*byte)(offHeapPtr(retAddr)), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
 		if retPC < codeBase || retPC-codeBase >= codeBytes {
 			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
