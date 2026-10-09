@@ -654,16 +654,79 @@ func (g *Global) getValueNoLease() (Value, error) {
 }
 
 // SetValue updates a mutable reference global after exact token validation.
-func (g *Global) SetValue(v Value) error {
-	end, ok := g.beginOwnerAccess()
-	if !ok {
+func (g *Global) SetValue(v Value) (err error) {
+	if g == nil {
 		return fmt.Errorf("global owner instance is closed")
 	}
-	defer end()
-	return g.setValueNoLease(v)
+	var owner *Instance
+	if g.owner != nil {
+		owner = g.owner.instance
+	}
+	if owner != nil {
+		if err := owner.beginInvocation(); err != nil {
+			return fmt.Errorf("global owner instance is closed")
+		}
+	}
+	nativeMu := &nativeExecutionMu
+	if owner != nil {
+		nativeMu = owner.acquireInstanceNativeStateForHostAccess()
+	} else {
+		nativeMu.Lock()
+	}
+	var roots globalValueRoots
+	var cleanup resourceCleanup
+	defer func() { finishGlobalValueAccess(nativeMu, owner, &roots, &cleanup) }()
+	cleanup.run(func() { err = g.setValueNoLease(v, &roots) })
+	return err
 }
 
-func (g *Global) setValueNoLease(v Value) error {
+// Each slot owns an independent acquisition, including repeated owners. Record
+// bootstraps before publication and transfer only the unit installed in the map.
+type globalValueRoots struct {
+	inline [4]*Instance
+	extra  []*Instance
+	count  int
+}
+
+func (r *globalValueRoots) record(owner *Instance) int {
+	index := r.count
+	if index < len(r.inline) {
+		r.inline[index] = owner
+	} else {
+		r.extra = append(r.extra, owner)
+	}
+	r.count++
+	return index
+}
+
+func (r *globalValueRoots) transfer(index int) {
+	if index < len(r.inline) {
+		r.inline[index] = nil
+	} else {
+		r.extra[index-len(r.inline)] = nil
+	}
+}
+
+func (r *globalValueRoots) release() {
+	n := min(r.count, len(r.inline))
+	var cleanup resourceCleanup
+	cleanup.run(func() { releaseRetainedResourceRoots(r.inline[:n]) })
+	cleanup.run(func() { releaseRetainedResourceRoots(r.extra) })
+	cleanup.finish()
+}
+
+// Physical callbacks may reenter native execution or logically close the owner.
+// Keep the invocation through the whole root drain and preserve the first panic.
+func finishGlobalValueAccess(nativeMu *sync.Mutex, owner *Instance, roots *globalValueRoots, cleanup *resourceCleanup) {
+	cleanup.run(nativeMu.Unlock)
+	cleanup.run(roots.release)
+	if owner != nil {
+		cleanup.run(owner.endInvocation)
+	}
+	cleanup.finish()
+}
+
+func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
 	if g == nil || g.owner == nil {
 		return fmt.Errorf("global has no compatible reference owner")
 	}
@@ -684,6 +747,7 @@ func (g *Global) setValueNoLease(v Value) error {
 	}
 	bits := v.bits
 	var retainedOwner *Instance
+	bootstrap := -1
 	if bits == 0 && hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
 		return fmt.Errorf("global requires a non-null reference value")
 	}
@@ -717,19 +781,15 @@ func (g *Global) setValueNoLease(v Value) error {
 			}
 			bits = descriptor
 			retainedOwner = owner
+			bootstrap = roots.record(owner)
 			if retainedOwner == containerOwner {
-				retainedOwner.releaseResourceRoot()
 				retainedOwner = nil
 			}
 		}
 	}
-	var release []*Instance
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	if o.closed || len(g.cell) < 8 || o.typ != typ || o.mutable != mutable || g.Type != typ || g.Mutable != mutable {
-		o.mu.Unlock()
-		if retainedOwner != nil {
-			retainedOwner.releaseResourceRoot()
-		}
 		return fmt.Errorf("global reference owner metadata is invalid")
 	}
 	writeGlobalObject(g, typ, bits)
@@ -738,8 +798,8 @@ func (g *Global) setValueNoLease(v Value) error {
 			if root == retainedOwner {
 				continue
 			}
+			roots.record(root)
 			delete(o.retained, root)
-			release = append(release, root)
 		}
 		if retainedOwner != nil {
 			if o.retained == nil {
@@ -748,15 +808,13 @@ func (g *Global) setValueNoLease(v Value) error {
 			if state := o.retained[retainedOwner]; state != nil {
 				state.precise = true
 				state.proxyDescriptors = nil
-				release = append(release, retainedOwner)
 			} else {
 				o.retained[retainedOwner] = &retainedInstanceRoot{precise: true}
+				roots.transfer(bootstrap)
 				retainedOwner.markNativeControlShared()
 			}
 		}
 	}
-	o.mu.Unlock()
-	releaseRetainedResourceRoots(release)
 	return nil
 }
 

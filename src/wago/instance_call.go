@@ -312,13 +312,19 @@ func (in *Instance) TableFunctionIndex(name string, entry uint64) (index uint32,
 // against the global's declared type. Non-null funcref tokens are resolved and
 // non-null externref tokens are validated only through the instance's exact
 // reference store before native-visible storage.
-func (in *Instance) SetGlobalValue(name string, v Value) error {
+func (in *Instance) SetGlobalValue(name string, v Value) (err error) {
 	if err := in.beginInvocation(); err != nil {
 		return fmt.Errorf("set global %q: %w", name, err)
 	}
-	defer in.endInvocation()
-	unlockNative := in.lockInstanceNativeStateForHostAccess()
-	defer unlockNative()
+	nativeMu := in.acquireInstanceNativeStateForHostAccess()
+	var roots globalValueRoots
+	var cleanup resourceCleanup
+	defer func() { finishGlobalValueAccess(nativeMu, in, &roots, &cleanup) }()
+	cleanup.run(func() { err = in.setGlobalValueNoLease(name, v, &roots) })
+	return err
+}
+
+func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalValueRoots) error {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return err
@@ -332,7 +338,7 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 	}
 	cell := in.globalCells[idx]
 	if isReferenceValType(g.Type) && cell.owner != nil {
-		if err := cell.setValueNoLease(v); err != nil {
+		if err := cell.setValueNoLease(v, roots); err != nil {
 			return fmt.Errorf("global %q: %w", name, err)
 		}
 		return nil
