@@ -614,6 +614,9 @@ The existing source-pair harness logs source and loaded-native hashes; the
 `wago_codegenstats` build verifies the established compiler and reports native
 size, spill counter, and literals. AMD64 tests use SSE2 and available AVX2;
 ARM64 uses its existing native execution adapter.
+The ARM64 lowering capacity test also reserves 26 vector-local registers and
+one cached constant, leaving five transient registers for i64x2 multiply.
+The multiply reuses a dead low-half temporary and still writes the result last.
 
 `BenchmarkSIMDExtmul` compares 256-vector prepared native calls. Trap binding,
 memory-base lookup, argument setup, warm-up, and full-vector checks are outside
