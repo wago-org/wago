@@ -5,6 +5,9 @@ and artifacts live in the repository-level `corpus` directory. The benchmark
 module is deliberately separate from the runtime module so comparison-engine
 dependencies do not become runtime dependencies.
 
+See [prepared semantic adapter schedules](semantic-adapter-schedule.md) for
+vector operation units and the adapter work-count controls.
+
 Run benchmarks from the repository root through `just`:
 
 ```sh

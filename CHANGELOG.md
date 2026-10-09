@@ -24,6 +24,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Qualify prepared semantic benchmark call schedules and report the number of
+  guest calls in each scalar or complete vector operation.
 - Add mixed-scalar host-call checks across nested memory, global, and table
   changes, including nested traps and repeated resolved calls.
 - Bind corpus child completion to loaded input identity and exact invocation
