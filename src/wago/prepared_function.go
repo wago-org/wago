@@ -416,27 +416,57 @@ type preparedScalarNoGCLease struct {
 	state *instancePluginState
 }
 
-func (in *Instance) lockPreparedScalarNoGC() preparedScalarNoGCLease {
+func (in *Instance) lockPreparedScalarNoGC() (lease preparedScalarNoGCLease) {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
+	lease.in, lease.state = in, state
+	returned := false
+	defer func() {
+		if returned {
+			return
+		}
+		var cleanup resourceCleanup
+		cleanup.panicked, cleanup.value = true, recover()
+		cleanup.run(func() { state.setInvocationIdentity(0) })
+		cleanup.run(state.invokeMu.Unlock)
+		cleanup.finish()
+	}()
 	state.setInvocationIdentity(newInvocationID())
-	return preparedScalarNoGCLease{in: in, state: state}
+	returned = true
+	return lease
 }
 
 func (l preparedScalarNoGCLease) unlock() {
+	var cleanup resourceCleanup
 	if l.in.importsFuncrefStorage() || l.in.table != nil {
-		l.in.reconcileFuncrefRoots()
+		cleanup.run(l.in.reconcileFuncrefRoots)
 	}
-	l.state.setInvocationIdentity(0)
-	l.state.invokeMu.Unlock()
+	cleanup.run(func() { l.state.setInvocationIdentity(0) })
+	cleanup.run(l.state.invokeMu.Unlock)
+	cleanup.finish()
 }
 
-func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
+func (in *Instance) lockPreparedInvocation() (lease preparedInvocationLease) {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
+	lease.in, lease.state = in, state
+	returned := false
+	defer func() {
+		if returned {
+			return
+		}
+		var cleanup resourceCleanup
+		cleanup.panicked, cleanup.value = true, recover()
+		cleanup.run(lease.gc.unlock)
+		cleanup.run(func() { state.setInvocationIdentity(0) })
+		cleanup.run(state.invokeMu.Unlock)
+		cleanup.finish()
+	}()
 	id := newInvocationID()
 	state.setInvocationIdentity(id)
-	return preparedInvocationLease{in: in, state: state, gc: in.lockGCInvocation(id)}
+	lease.gc = in.lockGCInvocation(id)
+	returned = true
+	return lease
 }
 
 func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
@@ -447,12 +477,14 @@ func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
 }
 
 func (l preparedInvocationLease) unlock() {
-	l.gc.unlock()
+	var cleanup resourceCleanup
+	cleanup.run(l.gc.unlock)
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
-		l.in.reconcileFuncrefRoots()
+		cleanup.run(l.in.reconcileFuncrefRoots)
 	}
-	l.state.setInvocationIdentity(0)
-	l.state.invokeMu.Unlock()
+	cleanup.run(func() { l.state.setInvocationIdentity(0) })
+	cleanup.run(l.state.invokeMu.Unlock)
+	cleanup.finish()
 }
 
 // ARM64 avoids copying the complete GC-domain lease through the scalar call
@@ -460,18 +492,34 @@ func (l preparedInvocationLease) unlock() {
 func (in *Instance) lockPreparedScalarInvocationInto(l *preparedInvocationLease) {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
+	l.in, l.state = in, state
+	returned := false
+	defer func() {
+		if returned {
+			return
+		}
+		var cleanup resourceCleanup
+		cleanup.panicked, cleanup.value = true, recover()
+		cleanup.run(l.gc.unlock)
+		cleanup.run(func() { state.setInvocationIdentity(0) })
+		cleanup.run(state.invokeMu.Unlock)
+		cleanup.finish()
+	}()
 	id := newInvocationID()
 	state.setInvocationIdentity(id)
-	l.in, l.state, l.gc = in, state, in.lockGCInvocation(id)
+	l.gc = in.lockGCInvocation(id)
+	returned = true
 }
 
 func (l *preparedInvocationLease) unlockScalarInvocation() {
-	l.gc.unlock()
+	var cleanup resourceCleanup
+	cleanup.run(l.gc.unlock)
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
-		l.in.reconcileFuncrefRoots()
+		cleanup.run(l.in.reconcileFuncrefRoots)
 	}
-	l.state.setInvocationIdentity(0)
-	l.state.invokeMu.Unlock()
+	cleanup.run(func() { l.state.setInvocationIdentity(0) })
+	cleanup.run(l.state.invokeMu.Unlock)
+	cleanup.finish()
 }
 
 func (fn *WasmFunc) invokeGeneral(args []uint64) (result []uint64, resultErr error) {
@@ -482,19 +530,29 @@ func (fn *WasmFunc) invokeGeneral(args []uint64) (result []uint64, resultErr err
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
-	defer in.endInvocation()
 	// Prepared calls share the same instance buffers and Runtime GC domain as
 	// Invoke. Publish an invocation identity under the instance gate so host
 	// callbacks can suspend the domain lease, and retain that lease through public
 	// reference-result tokenization.
-	preparedLease := in.lockPreparedInvocation()
-	defer preparedLease.unlock()
-	if codeProfileEnabled && in.boundaryProfile() != nil {
-		span, restore := in.beginProfileInvocation(fn.export)
-		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+	var preparedLease preparedInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		preparedLease = in.lockPreparedInvocation()
+		leaseOwned = true
+		if codeProfileEnabled && in.boundaryProfile() != nil {
+			span, restore := in.beginProfileInvocation(fn.export)
+			defer restore()
+			defer finishProfileBoundary(span, &resultErr)
+		}
+		result, resultErr = fn.invokeGeneralAdmitted(args)
+	})
+	if leaseOwned {
+		cleanup.run(preparedLease.unlock)
 	}
-	return fn.invokeGeneralAdmitted(args)
+	cleanup.run(in.endInvocation)
+	cleanup.finish()
+	return result, resultErr
 }
 
 func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
@@ -633,7 +691,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 	return in.callPreparedHostSyncAdmitted(fn.hostPrepared, fn.hostFixed, &fn.hostActivation)
 }
 
-func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeScalar(args []uint64) (result []uint64, resultErr error) {
 	in := fn.in
 	var admissionErr error
 	if fn.isolatedFast {
@@ -652,21 +710,52 @@ func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 			return out, err
 		}
 	}
-	defer in.endInvocation()
 	if in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
-		preparedLease := in.lockPreparedScalarNoGC()
-		defer preparedLease.unlock()
-		return fn.invokeScalarAdmitted(args)
+		var preparedLease preparedScalarNoGCLease
+		leaseOwned := false
+		var cleanup resourceCleanup
+		cleanup.run(func() {
+			preparedLease = in.lockPreparedScalarNoGC()
+			leaseOwned = true
+			result, resultErr = fn.invokeScalarAdmitted(args)
+		})
+		if leaseOwned {
+			cleanup.run(preparedLease.unlock)
+		}
+		cleanup.run(in.endInvocation)
+		cleanup.finish()
+		return result, resultErr
 	}
 	if preparedScalarInPlaceLease {
 		var preparedLease preparedInvocationLease
-		in.lockPreparedScalarInvocationInto(&preparedLease)
-		defer preparedLease.unlockScalarInvocation()
-		return fn.invokeScalarAdmitted(args)
+		leaseOwned := false
+		var cleanup resourceCleanup
+		cleanup.run(func() {
+			in.lockPreparedScalarInvocationInto(&preparedLease)
+			leaseOwned = true
+			result, resultErr = fn.invokeScalarAdmitted(args)
+		})
+		if leaseOwned {
+			cleanup.run(preparedLease.unlockScalarInvocation)
+		}
+		cleanup.run(in.endInvocation)
+		cleanup.finish()
+		return result, resultErr
 	}
-	preparedLease := in.lockPreparedInvocation()
-	defer preparedLease.unlock()
-	return fn.invokeScalarAdmitted(args)
+	var preparedLease preparedInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		preparedLease = in.lockPreparedInvocation()
+		leaseOwned = true
+		result, resultErr = fn.invokeScalarAdmitted(args)
+	})
+	if leaseOwned {
+		cleanup.run(preparedLease.unlock)
+	}
+	cleanup.run(in.endInvocation)
+	cleanup.finish()
+	return result, resultErr
 }
 
 func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
