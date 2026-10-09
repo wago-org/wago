@@ -641,6 +641,9 @@ func (f *fn) emitLeaAdd(dst, base Reg, right *elem, w bool) {
 // immediate shift; a variable count must live in CL (x86 constraint), so it is
 // forced into RCX and the value is shifted by CL.
 func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+	if r, ok := f.tryPredicateShift(node, dest); ok {
+		return r
+	}
 	w := node.valueType().is64()
 	digit := shiftDigit(node.deferredOp())
 	left := node.arg0
@@ -986,6 +989,9 @@ func (f *fn) swarAnd(dst, mask Reg, value uint64, w, load bool) {
 // division traps: divide-by-zero (all four ops) and the signed INT_MIN/-1
 // overflow (div_s only; rem_s must instead yield 0 without faulting).
 func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
+	if r, ok := f.tryDivRemConstPair(node, dest); ok {
+		return r
+	}
 	w := node.valueType().is64()
 	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
 	wantRem := node.deferredOp() == opRemS || node.deferredOp() == opRemU
