@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -43,6 +44,11 @@ type Compiled struct {
 	functions []FunctionInfo
 	exports   map[string]int
 	state     moduleState
+	// Selected staging compares the caller's symbolic plans with the directory
+	// that actually emitted tail sites, including zero sites and source homes.
+	// This bounded compile-time witness never becomes runtime metadata.
+	finalizedReferenceImportTails []tailImportPlan
+	referenceImportTailsFinalized bool
 }
 
 func (c *Compiled) Functions() []FunctionInfo {
@@ -130,7 +136,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		return nil, fmt.Errorf("rv64: nil module")
 	}
 	if opts.referenceFunctions {
-		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls || opts.dynamicTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
+		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.dynamicTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
 			return nil, unsupported("closed reference module requires private cooperative production")
 		}
 		if err := admitClosedReferenceFunctionModule(m, false); err != nil {
@@ -229,6 +235,10 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		if ex.Index.Kind == wasm.ExternFunc && ex.Index.Index >= uint32(state.importedFunctions) {
 			c.exports[ex.Name] = int(ex.Index.Index) - state.importedFunctions
 		}
+	}
+	if opts.referenceFunctions && opts.importTailCalls {
+		c.finalizedReferenceImportTails = slices.Clone(*opts.tailPlans)
+		c.referenceImportTailsFinalized = true
 	}
 	return c, nil
 }

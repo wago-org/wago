@@ -69,7 +69,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	privateRefs := floating && (state.ownedTable || state.importReferences)
 	functionRefs := state != nil && state.referenceFunctions
 	if functionRefs {
-		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.importTailCalls || state.dynamicTailCalls {
+		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
 		if len(state.functions) > MaxFunctions {

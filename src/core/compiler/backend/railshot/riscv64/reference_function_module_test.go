@@ -26,7 +26,7 @@ func closedReferenceCompile(m *wasm.Module, vector, tails bool) (*Compiled, erro
 	if err != nil {
 		return nil, err
 	}
-	return &Compiled{code: image.code, functions: image.functions, state: moduleState{referenceFunctions: true}}, nil
+	return &Compiled{code: image.code, functions: image.functions, state: moduleState{referenceFunctions: true, localTailCalls: tails}}, nil
 }
 func closedReferenceSource(vector, tails, indexed, nullable bool) []byte {
 	typ := wasm.F64

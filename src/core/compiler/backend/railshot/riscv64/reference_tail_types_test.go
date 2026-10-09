@@ -233,11 +233,11 @@ func TestReferenceTailPrivateOtherCallsAndMode(t *testing.T) {
 			state.localTailCalls = true
 			state.importTailCalls = imports
 			state.dynamicTailCalls = !imports
-			if _, err := walkInteger(fn, ft, &state, nil); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("private scalar external tail mode", err)
+			if _, err := walkInteger(fn, ft, &state, nil); imports && err != nil || !imports && !errors.Is(err, ErrUnsupported) {
+				t.Fatal("private scalar direct/dynamic tail mode", err)
 			}
-			if _, err := walkSWARPairsWithReferenceFunctionMode(fn, ft, memoryProfile{}, nil, []*wasm.CompType{ft}, nil, 0, nil, nil, 0, 0, true, false, true, false, imports, !imports, true, true, nil); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("private SWAR external tail mode", err)
+			if _, err := walkSWARPairsWithReferenceFunctionMode(fn, ft, memoryProfile{}, nil, []*wasm.CompType{ft}, nil, 0, nil, nil, 0, 0, true, false, true, false, imports, !imports, true, true, nil); imports && err != nil || !imports && !errors.Is(err, ErrUnsupported) {
+				t.Fatal("private SWAR direct/dynamic tail mode", err)
 			}
 		}
 	}

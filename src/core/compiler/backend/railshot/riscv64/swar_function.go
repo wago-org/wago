@@ -125,7 +125,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 		return swarSummary{}, err
 	}
 	privateRefs := table != nil || foreignTableCalls
-	if referenceFunctions && (!privateRefs || importTailCalls || dynamicTailCalls) {
+	if referenceFunctions && (!privateRefs || dynamicTailCalls) {
 		return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 	}
 	functionClass := func(typ wasm.ValType) swarClass {

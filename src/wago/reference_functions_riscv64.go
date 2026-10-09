@@ -59,8 +59,15 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if c.dynamicFuncrefEscape || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.tableCount() != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.Elems) != 0 || len(c.customInstructions) != 0 {
 		return reject("external state or callable escape")
 	}
-	if m := rv64NativeTailModule(c); m != nil && len(m.Plans) != 0 {
-		return reject("only local direct tail calls are admitted")
+	if m := rv64NativeTailModule(c); m != nil {
+		for _, p := range m.Plans {
+			if p.Kind != 0 || p.TypeIndex != 0 || p.ReferenceBase != 0 || uint64(p.ImportIndex) >= uint64(c.NumImports) {
+				return reject("only numeric direct imported-tail plans are admitted")
+			}
+		}
+		if err := rv64ValidateNativeTailPlans(c, m.Plans); err != nil {
+			return err
+		}
 	}
 	if c.TableHasValueType || c.TableValueTypeIndex != 0 {
 		return reject("unused exact value metadata")

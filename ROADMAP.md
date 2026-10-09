@@ -125,8 +125,15 @@ compose with private references across native calls and scalar Go/owned callback
 The imported prefix preserves physical ordinals, exact numeric bindings and
 paired internal descriptor holes; sparse generations retain native reexports and
 host identities through producer retirement. Exact limits, interrupted callback
-cleanup and compiler-free artifacts qualify this bounded path. Imported proper
-tails and V128 host signatures still require separate qualification. Mixed table/call_ref and private mutable-cell fixtures retain
+cleanup and compiler-free artifacts qualify this bounded path. Numeric direct
+imported proper tails now compose with private reference frames, preserving
+ordinary-caller continuation, scalar/SWAR payloads and static capability lifetime.
+Exact finalized plans, numeric target results and real frame extents are checked
+before publication; internal source rows remain noncallable. Baseline RV64G
+source/artifact tests cover foreign homes, native reexports, parked alias growth,
+joined interruption, static quota rejection/retry, warm native allocation and
+deep local tails followed by an imported tail on the minimum stack. Native vector
+targets are supported; V128 Go host signatures remain unsupported. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
 primitive prepare later reference ownership work. The receipt primitive remains

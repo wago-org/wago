@@ -3,6 +3,8 @@
 package riscv64
 
 import (
+	"slices"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -33,11 +35,11 @@ func hasDefinedReferenceFunctions(m *wasm.Module) (bool, error) {
 }
 
 func admitClosedReferenceProductionOptions(opts CompileOptions) error {
-	if !opts.NativeReferenceFunctions || !opts.referenceFunctions || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls || opts.dynamicTailCalls || opts.localTailCalls != opts.NativeTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
+	if !opts.NativeReferenceFunctions || !opts.referenceFunctions || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls && !opts.localTailCalls || opts.dynamicTailCalls || opts.localTailCalls != opts.NativeTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
 		return unsupported("closed reference staging requires cooperative local-call production")
 	}
-	if opts.NativeTailCalls && opts.tailPlans == nil || opts.tailPlans != nil && len(*opts.tailPlans) != 0 || opts.referenceTailInstructions || opts.referenceCallInstructions {
-		return unsupported("closed reference staging excludes symbolic foreign call plans")
+	if opts.NativeTailCalls && opts.tailPlans == nil || !opts.importTailCalls && opts.tailPlans != nil && len(*opts.tailPlans) != 0 || opts.referenceTailInstructions || opts.referenceCallInstructions {
+		return unsupported("closed reference staging excludes dynamic foreign call plans")
 	}
 	return nil
 }
@@ -67,9 +69,86 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	}
 	for _, f := range c.functions {
 		mode := f.mode
-		if !mode.referenceFunctions || !mode.production || !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || mode.importTailCalls || mode.dynamicTailCalls || mode.localTailCalls != opts.NativeTailCalls || mode.referenceCalls != opts.NativeReferenceCalls || mode.profileMode != (profileMode{}) || f.FrameHeaderBytes != 16 && f.FrameHeaderBytes != callFrameHeader {
+		if !mode.referenceFunctions || !mode.production || !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || mode.importTailCalls != opts.importTailCalls || mode.dynamicTailCalls || mode.localTailCalls != opts.NativeTailCalls || mode.referenceCalls != opts.NativeReferenceCalls || mode.profileMode != (profileMode{}) || f.FrameHeaderBytes != 16 && f.FrameHeaderBytes != callFrameHeader {
 			return nil, unsupported("closed reference staged function mode")
 		}
 	}
+	if c.state.importTailCalls != opts.importTailCalls || c.state.localTailCalls != opts.localTailCalls || c.state.dynamicTailCalls {
+		return nil, unsupported("closed reference staged tail state")
+	}
+	if err := admitClosedReferenceImportTailPlans(c, opts, m, vector); err != nil {
+		return nil, err
+	}
 	return stageAdmittedProductionModule(c, opts)
+}
+
+// Selected private frames may be sources without becoming descriptor targets.
+// Recheck symbolic direct-import authority against finalized source frames and
+// validated result types before common staging can allocate or publish an image.
+func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wasm.Module, vector bool) error {
+	if opts.importTailCalls != c.referenceImportTailsFinalized {
+		return unsupported("closed reference imported-tail finalization mode")
+	}
+	if opts.tailPlans == nil {
+		if len(c.finalizedReferenceImportTails) != 0 {
+			return unsupported("closed reference imported-tail missing directory")
+		}
+		return nil
+	} // Non-tail modules were checked above.
+	// Persisted production plans and dispatcher rows start at zero. The private
+	// multi-image lowering helper has a separate enclosing-owner site contract.
+	if opts.tailSiteBase != 0 || len(*opts.tailPlans) > tailRAMaxSites {
+		return unsupported("closed reference imported-tail site bound")
+	}
+	if opts.importTailCalls && !c.referenceImportTailsFinalized || !slices.Equal(*opts.tailPlans, c.finalizedReferenceImportTails) {
+		return unsupported("closed reference imported-tail finalized directory")
+	}
+	values := 0
+	for i, p := range *opts.tailPlans {
+		local := int(p.functionIndex) - c.state.importedFunctions
+		if !opts.importTailCalls || opts.tailModule != m || p.kind != enc.NativeTailDirectImport || p.typeIndex != 0 || p.referenceBase != 0 || p.importIndex >= uint32(c.state.importedFunctions) || p.site != opts.tailSiteBase+uint32(i) || local < 0 || local >= len(c.functions) || uint64(p.sourcePC) < uint64(m.Code[local].LocalDeclBytes) || uint64(p.sourcePC)-uint64(m.Code[local].LocalDeclBytes) >= uint64(len(m.Code[local].BodyBytes)) {
+			return unsupported("closed reference direct imported-tail identity")
+		}
+		source := &m.Types[m.FuncTypes[local].Index].SubTypes[0].Comp
+		target, ok := m.FuncSignature(p.importIndex)
+		if !ok {
+			return unsupported("closed reference imported-tail target binding")
+		}
+		if err := admitReferenceTailResults(source, target); err != nil {
+			return err
+		}
+		if vector {
+			if err := swarImportSignature(target); err != nil {
+				return err
+			}
+		} else if err := integerNumericSignature(target, true); err != nil {
+			return err
+		}
+		values += len(target.Params) + len(target.Results)
+		if err := NativeTailMetadataBudget(len(*opts.tailPlans), values); err != nil {
+			return err
+		}
+		r := wasm.ReaderFrom(m.Code[local].BodyBytes[uint64(p.sourcePC)-uint64(m.Code[local].LocalDeclBytes):])
+		op, err := r.Byte()
+		if err != nil || op != 0x12 {
+			return unsupported("closed reference imported-tail source opcode")
+		}
+		targetIndex, err := r.U32()
+		if err != nil || targetIndex != p.importIndex {
+			return unsupported("closed reference imported-tail source immediate")
+		}
+		f := c.functions[local]
+		end := len(c.code)
+		if local+1 < len(c.functions) {
+			end = c.functions[local+1].Entry
+		}
+		if f.Entry < 0 || end <= f.Entry || end > len(c.code) || f.FrameHeaderBytes != callFrameHeader || f.mode.functionIndex != p.functionIndex || f.FrameBytes < callFrameHeader || f.FrameBytes > MaxFrameBytes || f.FrameBytes&15 != 0 || p.sourceStride != 8 && p.sourceStride != 16 || (p.sourceStride == 16) != vector || p.sourceBase < callFrameHeader || p.sourceBase > f.FrameBytes || p.sourceBase&7 != 0 || len(target.Params) > (f.FrameBytes-p.sourceBase)/p.sourceStride {
+			return unsupported("closed reference imported-tail finalized source homes")
+		}
+		frame, err := NativeFrameBytes(c.code[:end], f.Entry)
+		if err != nil || frame != f.FrameBytes {
+			return unsupported("closed reference imported-tail finalized frame extent")
+		}
+	}
+	return nil
 }

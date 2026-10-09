@@ -102,9 +102,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, err
 		}
 		if opts.referenceFunctions {
-			// Closed modules use direct calls/tails only. General tail permission
-			// must not attach import or dynamic owner plans to this ABI.
-			opts.importTailCalls, opts.dynamicTailCalls = false, false
+			// Closed modules use local and numeric direct-import calls/tails.
+			// Dynamic targets and reference transport remain outside this ABI.
+			opts.dynamicTailCalls = false
 			if err := admitClosedReferenceProductionOptions(opts); err != nil {
 				return nil, err
 			}

@@ -4,6 +4,7 @@ package riscv64
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -11,20 +12,22 @@ import (
 
 type swarModuleImage struct {
 	profileModuleState
-	code               []byte
-	functions          []FunctionInfo
-	globals            []swarGlobalInitializer
-	data               [][]byte
-	activeData         []swarActiveData
-	memory             *wasm.MemType
-	table              *wasm.TableType
-	elements           []swarElement
-	publicInitializers bool // shared runtime owns global and data initialization
-	publicTables       bool // shared runtime owns initializer metadata; private owner must not bind this image
-	functionKeys       []uint64
-	hosts              []swarHostSignature
-	hostCode           []byte
-	hostEntries        []int
+	code                          []byte
+	functions                     []FunctionInfo
+	globals                       []swarGlobalInitializer
+	data                          [][]byte
+	activeData                    []swarActiveData
+	memory                        *wasm.MemType
+	table                         *wasm.TableType
+	elements                      []swarElement
+	publicInitializers            bool // shared runtime owns global and data initialization
+	publicTables                  bool // shared runtime owns initializer metadata; private owner must not bind this image
+	functionKeys                  []uint64
+	hosts                         []swarHostSignature
+	hostCode                      []byte
+	hostEntries                   []int
+	finalizedReferenceImportTails []tailImportPlan
+	referenceImportTailsFinalized bool
 }
 
 type swarModulePolicy uint8
@@ -109,7 +112,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		return nil, unsupported("SWAR decoded module production/policy")
 	}
 	if mode.referenceFunctions {
-		if !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.importTailCalls || mode.dynamicTailCalls || mode.profileMode != (profileMode{}) {
+		if !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.dynamicTailCalls || mode.profileMode != (profileMode{}) {
 			return nil, unsupported("closed reference SWAR module requires private cooperative production")
 		}
 		if err := admitClosedReferenceFunctionModule(m, true); err != nil {
@@ -397,6 +400,10 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if err := a.PatchLong(call.site, int64(image.functions[call.callee].Entry)); err != nil {
 			return nil, fmt.Errorf("rv64: SWAR direct relocation: %w", err)
 		}
+	}
+	if mode.referenceFunctions && mode.importTailCalls {
+		image.finalizedReferenceImportTails = slices.Clone(*mode.tailPlans)
+		image.referenceImportTailsFinalized = true
 	}
 	return image, nil
 }

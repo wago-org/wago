@@ -33,7 +33,9 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	if err != nil {
 		return nil, err
 	}
-	c := &Compiled{profileModuleState: image.profileModuleState, code: image.code, functions: image.functions, state: moduleState{importedFunctions: len(image.hosts), referenceFunctions: opts.referenceFunctions}}
+	c := &Compiled{profileModuleState: image.profileModuleState, code: image.code, functions: image.functions, state: moduleState{importedFunctions: len(image.hosts), referenceFunctions: opts.referenceFunctions, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls}}
+	c.finalizedReferenceImportTails = image.finalizedReferenceImportTails
+	c.referenceImportTailsFinalized = image.referenceImportTailsFinalized
 	if opts.referenceFunctions {
 		return stageClosedReferenceProductionModule(c, opts, m, true)
 	}

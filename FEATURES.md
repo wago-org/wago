@@ -76,7 +76,7 @@ exact reference result types and reuse the checked frame protocol. This private
 mode rejects reference-valued imports and indirect/reference calls or tails; legacy production
 staging routes reject the mode. Private decoded whole-module compilation also
 checks numeric exports and descriptor targets, bounded declarations/code and
-inert metadata before validation. It excludes imported resources and prevents
+inert metadata before validation. It admits bounded numeric resource imports and prevents
 reference-bearing functions from escaping; legacy isolated instantiation rejects
 the mode before allocation. Private sparse owner snapshots retain every physical
 function frame while leaving internal-only descriptor and target rows empty.
@@ -107,7 +107,15 @@ Interleaved import kinds retain separate bounded namespaces and exact dotted
 names; imported global placeholders carry no initializer payload. Memory/global
 aliases share storage, including refreshed non-primary memory aliases after a
 parked callback. Resource-only providers retain physical storage without becoming
-callable generation owners. Imported proper tails and reference-valued
+callable generation owners. Numeric direct imported proper tails also compose
+with private reference frames. A private reference parameter, local or lower
+operand is discarded at the tail exit; only the exact numeric target arguments
+and results enter external transport. Ordinary callers continue after the tail,
+including foreign entry with aliased memory growth and callback interruption.
+Finalized source staging checks the exact ordered plan directory and emitted
+frame; retained trusted artifacts recheck direct target, numeric result and
+frame/home bounds. Private source rows remain noncallable. Native vector targets
+use paired transport; Go callbacks remain scalar. Reference-valued
 imports/exports remain unsupported in this mode. Initializer
 programs and data share the aggregate admission budget, and exact memory exports
 prevent legacy name fallback. Foreign numeric callers retain all producer memories

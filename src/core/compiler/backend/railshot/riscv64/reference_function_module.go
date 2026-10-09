@@ -72,6 +72,14 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			return err
 		}
 	}
+	var importSignatures [MaxHostFunctionImports]*wasm.CompType
+	importedOrdinal := 0
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternFunc {
+			importSignatures[importedOrdinal] = &m.Types[im.Type.FuncType().Index].SubTypes[0].Comp
+			importedOrdinal++
+		}
+	}
 	hasReferenceFunction := false
 	for i, index := range m.FuncTypes {
 		if index.Rec || uint64(index.Index) >= uint64(len(m.Types)) {
@@ -162,7 +170,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		return err
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	for _, fn := range m.Code {
+	for function, fn := range m.Code {
 		r := wasm.ReaderFrom(fn.BodyBytes)
 		budget, depth := 0, 0
 		for r.HasNext() {
@@ -207,7 +215,12 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 				return unsupported("closed reference module ref.func escape")
 			}
 			if op == 0x12 && uint64(imm.Index) < uint64(imported) {
-				return unsupported("closed reference imported proper tails are unsupported")
+				// This includes unreachable tails. A private source may have reference
+				// parameters/locals, but a numeric imported target must match its results.
+				source := &m.Types[m.FuncTypes[function].Index].SubTypes[0].Comp
+				if err := admitReferenceTailResults(source, importSignatures[imm.Index]); err != nil {
+					return err
+				}
 			}
 		}
 	}
