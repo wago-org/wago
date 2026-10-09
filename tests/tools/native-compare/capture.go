@@ -23,6 +23,7 @@ const maxCaptureCode = 64 << 10
 type capturedCode struct {
 	bytes    []byte
 	sources  []jitprofile.SourceRange
+	owners   []jitprofile.Region
 	features string
 	close    func()
 }
@@ -128,6 +129,9 @@ func captureBytes(data []byte) (Snapshot, error) {
 	s.Provenance = Provenance{compilerIdentity(), hex.EncodeToString(hash.Sum(nil)), fmt.Sprintf("%x", sha256.Sum256(data)), code.features, "explicit", "wago_profile", "established/direct-backend"}
 	s.Capture = &CaptureMetadata{NativeSHA256: fmt.Sprintf("%x", sha256.Sum256(code.bytes)), NativeBytes: uint64(len(code.bytes))}
 	if err := populateRegions(&s, code.sources, instructions); err != nil {
+		return s, err
+	}
+	if err := populateRaw(&s, code.owners, code.bytes); err != nil {
 		return s, err
 	}
 	assignTargets(&s)
@@ -239,5 +243,61 @@ func populateRegions(s *Snapshot, sources []jitprofile.SourceRange, instructions
 		return fmt.Errorf("overlapping source coverage")
 	}
 	s.Capture.UnmappedBytes = s.Capture.NativeBytes - s.Capture.MappedBytes
+	return nil
+}
+
+// Profile ownership can include data/cold code and may cut objdump's decode.
+// Gaps therefore retain raw bytes without guessed instruction or Wasm facts.
+func populateRaw(s *Snapshot, owners []jitprofile.Region, code []byte) error {
+	if len(owners) > maxRawRegions {
+		return fmt.Errorf("profile ownership budget")
+	}
+	if err := jitprofile.ValidateRegions(owners, uint64(len(code))); err != nil {
+		return err
+	}
+	occurrences := make(map[string]int)
+	mi := 0
+	for _, owner := range owners {
+		if owner.Kind == "" || len(owner.Kind) > 64 || owner.Function < -1 || int64(owner.Function) > int64(^uint32(0)) {
+			return fmt.Errorf("invalid profile ownership")
+		}
+		key := fmt.Sprintf("%s.f%d", owner.Kind, owner.Function)
+		id := fmt.Sprintf("%s.%d", key, occurrences[key])
+		occurrences[key]++
+		cursor, end := owner.Offset, owner.Offset+owner.Size
+		left := "owner-start"
+		gap := 0
+		add := func(start, stop uint64, right string) error {
+			if start == stop {
+				return nil
+			}
+			if len(s.RawRegions) == maxRawRegions {
+				return fmt.Errorf("raw region budget")
+			}
+			s.RawRegions = append(s.RawRegions, RawRegion{ID: fmt.Sprintf("%s.gap%d", id, gap), Owner: id, Kind: owner.Kind, Function: owner.Function, LeftAnchor: left, RightAnchor: right, Offset: start, Hex: hex.EncodeToString(code[start:stop])})
+			gap++
+			return nil
+		}
+		for mi < len(s.Regions) && s.Regions[mi].Instructions[0].Offset < end {
+			r := s.Regions[mi]
+			start, stop := r.Instructions[0].Offset, regionEnd(r)
+			if start < cursor || stop > end || owner.Function < 0 || uint32(owner.Function) != r.Function {
+				return fmt.Errorf("source region crosses/mismatches profile owner")
+			}
+			if err := add(cursor, start, r.ID); err != nil {
+				return err
+			}
+			cursor = stop
+			left = r.ID
+			mi++
+		}
+		if err := add(cursor, end, "owner-end"); err != nil {
+			return err
+		}
+	}
+	if mi != len(s.Regions) {
+		return fmt.Errorf("source regions outside profile ownership")
+	}
+	s.Capture.RawCoverage = true
 	return nil
 }

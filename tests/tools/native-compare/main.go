@@ -66,7 +66,7 @@ func main() {
 	}
 	fmt.Fprintf(os.Stderr, "supplied regions: compared=%d supported=%d unknown=%d changes=%d complete=%v limit=%v\n", r.Compared, r.Known, r.Unknown, len(r.Changes), r.Complete, r.Limit)
 	if r.BeforeCapture != nil && r.AfterCapture != nil {
-		fmt.Fprintf(os.Stderr, "image bytes outside supplied regions: before=%d after=%d\n", r.BeforeCapture.UnmappedBytes, r.AfterCapture.UnmappedBytes)
+		fmt.Fprintf(os.Stderr, "opaque bytes without source locations: before=%d after=%d; raw ranges compared=%d changes=%d complete=%v\n", r.BeforeCapture.UnmappedBytes, r.AfterCapture.UnmappedBytes, r.RawCompared, len(r.RawChanges), r.RawComplete)
 	}
 	if !r.Complete {
 		os.Exit(3)

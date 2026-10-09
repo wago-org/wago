@@ -12,7 +12,7 @@ import (
 
 func fixture(arch, code string) Snapshot {
 	pc := uint32(5)
-	return Snapshot{nil, arch, Provenance{"rev", strings.Repeat("a", 64), strings.Repeat("b", 64), "baseline", "explicit", "ordinary", "established"}, []Region{{"f0.pc5", 0, &pc, []Instruction{{0, code, ""}}}}}
+	return Snapshot{nil, arch, Provenance{"rev", strings.Repeat("a", 64), strings.Repeat("b", 64), "baseline", "explicit", "ordinary", "established"}, []Region{{"f0.pc5", 0, &pc, []Instruction{{0, code, ""}}}}, nil}
 }
 func TestPairedControls(t *testing.T) {
 	for _, c := range controls {
@@ -328,7 +328,7 @@ func TestExtendedScalarFacts(t *testing.T) {
 func TestCaptureMetadataValidation(t *testing.T) {
 	valid := func() Snapshot {
 		s := fixture("amd64", "31c0")
-		s.Capture = &CaptureMetadata{strings.Repeat("a", 64), 4, 2, 2}
+		s.Capture = &CaptureMetadata{NativeSHA256: strings.Repeat("a", 64), NativeBytes: 4, MappedBytes: 2, UnmappedBytes: 2}
 		return s
 	}
 	if err := validate(valid()); err != nil {
