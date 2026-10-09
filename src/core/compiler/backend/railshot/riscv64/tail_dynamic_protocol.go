@@ -22,6 +22,9 @@ type tailRADynamicOwner struct {
 	// Only the opaque runtime constructor supplies keys, after cloning and
 	// validating signatures. Private mutable proof inputs leave this nil.
 	signatureKeys []uint64
+	// Nil retains the legacy all-callable contract. Sparse defined owners keep
+	// every physical ordinal but expose no descriptor or target for true bits.
+	uncallable []bool
 	// Optional parallel producer/proxy metadata. Nil targets selects the source
 	// defined functions. A nonnil proxy authenticates the exact ordinary bridge.
 	targets []tailRAFunction
@@ -93,8 +96,12 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 		if len(o.functions) == 0 || len(o.functions) > MaxFunctions-count || o.signatureKeys != nil && len(o.signatureKeys) != len(o.functions) || o.targets != nil && len(o.targets) != len(o.functions) || o.proxies != nil && (len(o.proxies) != len(o.functions) || o.targets == nil) || o.hosts != nil && len(o.hosts) != len(o.functions) || len(o.descriptors) != 40*(len(o.functions)+1) || len(o.context) != abi.RV64InstanceContextBytes || len(o.directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*len(o.functions) {
 			return 0, 0, unsupported("dynamic tail retained owner extent")
 		}
+		if o.uncallable != nil && (len(o.uncallable) != len(o.functions) || o.signatureKeys == nil || o.targets != nil || o.proxies != nil || o.hosts != nil) {
+			return 0, 0, unsupported("dynamic tail sparse defined owner extent")
+		}
 		count += len(o.functions)
 		metadata += (len(o.functions)+len(o.targets))*int(unsafe.Sizeof(tailRAFunction{})) + len(o.proxies)*int(unsafe.Sizeof((*tailRADynamicProxy)(nil))) + len(o.signatureKeys)*8 + len(o.hosts)*int(unsafe.Sizeof((*NativeTailHostFunction)(nil)))
+		metadata += len(o.uncallable) * int(unsafe.Sizeof(false))
 		for _, p := range o.proxies {
 			if p != nil {
 				metadata += int(unsafe.Sizeof(*p))
@@ -102,6 +109,12 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 		}
 		for i := 0; i < len(o.functions)+len(o.targets); i++ {
 			f := o.retainedFunction(i)
+			if o.uncallable != nil && o.uncallable[i] {
+				if f.signature != nil || o.signatureKeys[i] != 0 || f.info.Params != 0 || f.info.Results != 0 || f.published == nil {
+					return 0, 0, unsupported("dynamic tail noncallable signature metadata")
+				}
+				continue
+			}
 			if f.signature == nil || len(f.signature.Params) > 256 || len(f.signature.Results) > 256 {
 				return 0, 0, unsupported("dynamic tail frozen signature extent")
 			}
@@ -159,6 +172,19 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 		return unsupported("dynamic tail retained directory identity")
 	}
 	for i, f := range o.functions {
+		if o.uncallable != nil && o.uncallable[i] {
+			if err := f.validateFrame(true); err != nil {
+				return err
+			}
+			var emptyDescriptor [40]byte
+			var emptyTarget [abi.RV64TailTargetsRowBytes]byte
+			desc := o.descriptors[40*(i+1) : 40*(i+2)]
+			row := o.directory[abi.RV64TailTargetsHeaderBytes+i*abi.RV64TailTargetsRowBytes : abi.RV64TailTargetsHeaderBytes+(i+1)*abi.RV64TailTargetsRowBytes]
+			if !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(f.job.LinMemBase()) || !bytes.Equal(desc, emptyDescriptor[:]) || !bytes.Equal(row, emptyTarget[:]) {
+				return unsupported("dynamic tail noncallable physical owner or row")
+			}
+			continue
+		}
 		t := o.target(i)
 		if len(t.context) != abi.RV64InstanceContextBytes {
 			return unsupported("dynamic tail true producer context extent")
@@ -236,6 +262,9 @@ func tailRADynamicFreezeFunctions(functions []tailRAFunction) []tailRAFunction {
 	}
 	frozen := append([]tailRAFunction(nil), functions...)
 	for n := range frozen {
+		if frozen[n].signature == nil {
+			continue // Only explicitly masked rows pass the preceding budget check.
+		}
 		sig := *frozen[n].signature
 		sig.Params = append([]wasm.ValType(nil), sig.Params...)
 		sig.Results = append([]wasm.ValType(nil), sig.Results...)
@@ -251,6 +280,7 @@ func (d *tailRADynamicSite) freeze() *tailRADynamicSite {
 	f := *d
 	f.owners = append([]tailRADynamicOwner(nil), d.owners...)
 	for i := range f.owners {
+		f.owners[i].uncallable = append([]bool(nil), d.owners[i].uncallable...)
 		f.owners[i].signatureKeys = append([]uint64(nil), d.owners[i].signatureKeys...)
 		f.owners[i].functions = tailRADynamicFreezeFunctions(d.owners[i].functions)
 		f.owners[i].targets = tailRADynamicFreezeFunctions(d.owners[i].targets)
@@ -384,6 +414,9 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 	var genuine []int
 	for _, o := range d.owners {
 		for i, f := range o.functions {
+			if o.uncallable != nil && o.uncallable[i] {
+				continue
+			}
 			t := o.target(i)
 			// A live key cannot relabel a genuine function of another signature.
 			if wasm.StructuralFuncTypeKey(f.signature) != d.key || wasm.StructuralFuncTypeKey(t.signature) != d.key {

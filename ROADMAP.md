@@ -87,7 +87,11 @@ mixed reference/vector transfers. Private decoded scalar/SWAR module adapters
 now require a bounded closed-module proof: numeric exports and descriptor targets,
 no external state, and no indirect/reference calls. They retain actual function
 indices across descriptor-directory holes. Both production staging routes and
-legacy isolated instantiation reject that mode before allocation. Foreign parking/ownership and
+legacy isolated instantiation reject that mode before allocation. A private
+sparse owner constructor now retains full physical function spans with explicit
+noncallable ordinals, empty descriptor/target rows and bounded frozen metadata.
+Callable targets after internal functions preserve their indices; entry binding
+also works when ordinal zero is internal. Foreign parking/ownership and
 retained reference-callable integration remain separate work. Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt

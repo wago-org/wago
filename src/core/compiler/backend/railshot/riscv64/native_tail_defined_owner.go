@@ -48,24 +48,61 @@ func NativeTailDefinedOwnerBytes(count, values int) (int, error) {
 // helpers without descriptor rows; each indexed function's span ends at the
 // next actual entry. No process address or function metadata is serialized.
 func NewNativeTailDefinedOwner(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, descriptors, directory []byte, entries []int, signatures []wasm.CompType) (*NativeTailDefinedOwner, error) {
-	n := len(signatures)
+	return newNativeTailDefinedOwner(image, job, context, descriptors, directory, entries, len(signatures), func(i int) *wasm.CompType { return &signatures[i] }, false)
+}
+
+// NewNativeTailSparseDefinedOwner preserves every function ordinal and physical
+// frame. A nil signature marks an internal function that is not a descriptor
+// target. Its full descriptor and target rows must be zero. The runtime proves
+// the closed module's escape rules before supplying this private owner contract.
+// Numeric signatures are copied; nil entries become a frozen ordinal mask.
+func NewNativeTailSparseDefinedOwner(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, descriptors, directory []byte, entries []int, signatures []*wasm.CompType) (*NativeTailDefinedOwner, error) {
+	return newNativeTailDefinedOwner(image, job, context, descriptors, directory, entries, len(signatures), func(i int) *wasm.CompType { return signatures[i] }, true)
+}
+
+// Sparse construction charges the pointer input and ordinal mask in addition
+// to the conservative dense staging/retained bound. Callable values alone may
+// consume signature storage; full row/code extents still use count.
+func NativeTailSparseDefinedOwnerBytes(count, nonCallable, values int) (int, error) {
+	if nonCallable < 0 || nonCallable > count || values < 0 || count <= 0 || count > MaxFunctions || values > 512*(count-nonCallable) {
+		return 0, unsupported("native sparse defined owner counts")
+	}
+	size, err := NativeTailDefinedOwnerBytes(count, values)
+	if err != nil {
+		return 0, err
+	}
+	size += count * (int(unsafe.Sizeof((*wasm.CompType)(nil))) + int(unsafe.Sizeof(false)))
+	if size > MaxModuleBytes {
+		return 0, unsupported("native sparse defined owner metadata bound")
+	}
+	return size, nil
+}
+
+func newNativeTailDefinedOwner(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, descriptors, directory []byte, entries []int, n int, signature func(int) *wasm.CompType, sparse bool) (*NativeTailDefinedOwner, error) {
 	if n == 0 || n > MaxFunctions || len(entries) < n || len(entries) > 2*MaxFunctions || image == nil || job == nil || len(context) != abi.RV64InstanceContextBytes || len(descriptors) != 40*(n+1) || len(directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*n {
 		return nil, unsupported("native defined tail owner count/extent")
 	}
 	if err := image.Validate(); err != nil {
 		return nil, err
 	}
-	values := 0
+	values, nonCallable := 0, 0
 	if err := NativeTailDefinedOwnerBudget(n, values); err != nil {
 		return nil, err
 	}
 	code := image.Bytes()
-	for i := range signatures {
-		sig := &signatures[i]
-		if err := tailRASignature(sig); err != nil {
-			return nil, err
+	for i := 0; i < n; i++ {
+		sig := signature(i)
+		if sparse && sig == nil {
+			nonCallable++
+		} else {
+			if err := tailRASignature(sig); err != nil {
+				return nil, err
+			}
+			if len(sig.Fields) != 0 || sig.Array != (wasm.FieldType{}) {
+				return nil, unsupported("native defined tail inactive signature metadata")
+			}
+			values += len(sig.Params) + len(sig.Results)
 		}
-		values += len(sig.Params) + len(sig.Results)
 		if err := NativeTailDefinedOwnerBudget(n, values); err != nil {
 			return nil, err
 		}
@@ -80,18 +117,35 @@ func NewNativeTailDefinedOwner(image *NativeTailCodeImage, job *coreruntime.JobM
 			return nil, err
 		}
 	}
+	if sparse {
+		if _, err := NativeTailSparseDefinedOwnerBytes(n, nonCallable, values); err != nil {
+			return nil, err
+		}
+	}
 	o := &NativeTailDefinedOwner{owner: tailRADynamicOwner{descriptors: descriptors, context: context, directory: directory, functions: make([]tailRAFunction, n), signatureKeys: make([]uint64, n)}}
-	for i, sig := range signatures {
+	if sparse {
+		o.owner.uncallable = make([]bool, n)
+	}
+	for i := 0; i < n; i++ {
 		entry, end := entries[i], len(code)
 		if i+1 < len(entries) {
 			end = entries[i+1]
 		}
 		frame, _ := NativeFrameBytes(code[:end], entry)
-		sig.Params = append([]wasm.ValType(nil), sig.Params...)
-		sig.Results = append([]wasm.ValType(nil), sig.Results...)
-		o.owner.signatureKeys[i] = wasm.StructuralFuncTypeKey(&sig)
-		info := FunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, Params: swarSignatureSlots(sig.Params), Results: swarSignatureSlots(sig.Results), mode: emissionMode{production: true, interruptible: true, invocationContext: true, functionIndex: uint32(i)}}
-		o.owner.functions[i] = tailRAFunction{published: image, snapshot: code, info: info, signature: &sig, job: job, context: context, directory: descriptors}
+		info := FunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, mode: emissionMode{production: true, interruptible: true, invocationContext: true, functionIndex: uint32(i)}}
+		var frozen *wasm.CompType
+		if sig := signature(i); sig != nil {
+			// Do not retain inactive empty slice backing storage from the input.
+			copy := wasm.CompType{Kind: wasm.CompFunc}
+			copy.Params = append([]wasm.ValType(nil), sig.Params...)
+			copy.Results = append([]wasm.ValType(nil), sig.Results...)
+			frozen = &copy
+			o.owner.signatureKeys[i] = wasm.StructuralFuncTypeKey(frozen)
+			info.Params, info.Results = swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results)
+		} else {
+			o.owner.uncallable[i] = true
+		}
+		o.owner.functions[i] = tailRAFunction{published: image, snapshot: code, info: info, signature: frozen, job: job, context: context, directory: descriptors}
 	}
 	if err := o.Validate(); err != nil {
 		return nil, err

@@ -31,6 +31,21 @@ type tailRAFunction struct {
 func tailRAPointer(b []byte) uintptr { return uintptr(unsafe.Pointer(unsafe.SliceData(b))) }
 
 func (f tailRAFunction) validate(caller bool) error {
+	if err := f.validateFrame(caller); err != nil {
+		return err
+	}
+	if err := tailRASignature(f.signature); err != nil {
+		return err
+	}
+	if f.info.Params != swarSignatureSlots(f.signature.Params) || f.info.Results != swarSignatureSlots(f.signature.Results) {
+		return unsupported("private tail physical signature metadata")
+	}
+	return nil
+}
+
+// Internal direct-only functions still retain real framed code and physical
+// owners. Their absent callable signature never relaxes this authentication.
+func (f tailRAFunction) validateFrame(caller bool) error {
 	if err := f.validateCode(); err != nil {
 		return err
 	}
@@ -50,12 +65,6 @@ func (f tailRAFunction) validate(caller bool) error {
 		if err != nil || frame != i.FrameBytes {
 			return unsupported("native tail published frame metadata")
 		}
-	}
-	if err := tailRASignature(f.signature); err != nil {
-		return err
-	}
-	if i.Params != swarSignatureSlots(f.signature.Params) || i.Results != swarSignatureSlots(f.signature.Results) {
-		return unsupported("private tail physical signature metadata")
 	}
 	if binary.LittleEndian.Uint64(f.context[16:]) != uint64(tailRAPointer(f.directory)) || binary.LittleEndian.Uint64(f.directory[32:]) != uint64(tailRAPointer(f.context)) {
 		return unsupported("private tail canonical context anchor")
