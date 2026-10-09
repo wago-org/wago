@@ -4,6 +4,6 @@ package main
 
 import "fmt"
 
-func captureFile(input, output string) error {
-	return fmt.Errorf("capture requires an AMD64 build with -tags=wago_profile; comparison is available in ordinary builds")
+func captureCommand(input, output string) {
+	fail(fmt.Errorf("capture requires an AMD64 build with -tags=wago_profile; comparison is available in ordinary builds"))
 }

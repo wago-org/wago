@@ -20,6 +20,14 @@ import (
 const maxCaptureWasm = 32 << 10
 const maxCaptureCode = 64 << 10
 
+var compiledRevision = "unqualified-build"
+
+func captureCommand(input, output string) {
+	if err := captureFile(input, output); err != nil {
+		fail(err)
+	}
+}
+
 type capturedCode struct {
 	bytes    []byte
 	sources  []jitprofile.SourceRange
