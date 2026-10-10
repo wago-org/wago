@@ -49,8 +49,11 @@ func rv64StateOnlyTable32ScalarGlobals(c *Compiled) bool {
 	if err != nil || exactTable != plainRef || !c.hasTableExportMetadata || len(c.tableExports) != 1 || table.ImportKey != "" || table.Type != ValFuncRef || !table.HasValueType || table.ValueTypeIndex != 4 || table.HasInitFunc || table.InitFunc != 0 || table.Addr64 || !table.HasMax || table.Size < 0 || table.Size > railshot.MaxOwnedTableEntries || table.Max > railshot.MaxOwnedTableEntries || table.Max < uint64(table.Size) || c.tableRuntimeCapacity(0) < table.Size || c.tableRuntimeCapacity(0) > railshot.MaxOwnedTableEntries {
 		return false
 	}
-	for _, index := range c.tableExports {
+	for name, index := range c.tableExports {
 		if index != 0 {
+			return false
+		}
+		if _, duplicate := c.GlobalExports[name]; duplicate {
 			return false
 		}
 	}
@@ -62,7 +65,7 @@ func rv64StateOnlyTable32ScalarGlobals(c *Compiled) bool {
 		plain, _ := valueTypeDescriptorFromValType(typ)
 		global := c.Globals[i]
 		exact, exactErr := c.globalExactType(i)
-		if exactErr != nil || exact != plain || c.ValueTypes[i] != plain || global.Type != typ || !global.HasValueType || global.ValueTypeIndex != uint32(i) || global.Mutable || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0 || global.V128 != (V128{}) {
+		if exactErr != nil || exact != plain || c.ValueTypes[i] != plain || global.Type != typ || !global.HasValueType || global.ValueTypeIndex != uint32(i) || global.Mutable || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0 || global.V128 != (V128{}) || (typ == ValI32 || typ == ValF32) && global.Bits>>32 != 0 {
 			return false
 		}
 	}
@@ -1124,7 +1127,8 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if !c.nativeTableContextABI || !c.nativeTableReferenceABI {
 		return fmt.Errorf("retained native table context and reference ABI are required")
 	}
-	if c.hasNoFunctionCode() && len(c.Globals) != 0 && !rv64StateOnlyTable32ScalarGlobals(c) {
+	stateOnlyLocalDeclarations := c.hasNoFunctionCode() && c.tableImportCount() == 0 && len(c.GlobalImports) == 0 && c.memoryImportCount() == 0 && c.tagImportCount() == 0
+	if stateOnlyLocalDeclarations && len(c.Globals) != 0 && !rv64StateOnlyTable32ScalarGlobals(c) {
 		return fmt.Errorf("table/scalar globals require the exact state-only literal profile")
 	}
 	qualifiedTable64 := rv64QualifiedTable64(c)

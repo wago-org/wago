@@ -42,6 +42,9 @@ func TestRV64PublicStateOnlyTable32ScalarGlobals(t *testing.T) {
 			if !rv64StateOnlyTable32ScalarGlobals(c) || c.tableCount() != 1 || len(c.Globals) != 4 || len(c.GlobalExports) != 4 || len(c.tableExports) != 1 || c.requiredFeatures != 0 || compiledStructuralRequiredFeatures(c) != 0 {
 				t.Fatalf("table32/scalar-global metadata contract: witness=%v features=%#x structural=%#x globals=%+v value-types=%+v table=%+v table-exports=%v global-exports=%v native=%d refs=%v", rv64StateOnlyTable32ScalarGlobals(c), c.requiredFeatures, compiledStructuralRequiredFeatures(c), c.Globals, c.ValueTypes, c.tableDef(0), c.tableExports, c.GlobalExports, c.nativeTable64ABI, c.NeedsFuncRefDescs)
 			}
+			if c.Globals[0].Bits>>32 != 0 || c.Globals[2].Bits>>32 != 0 {
+				t.Fatal("narrow scalar literals were not canonical", c.Globals[0].Bits, c.Globals[2].Bits)
+			}
 			rv64CheckStateOnlyCode(t, c, 0)
 			instances := make([]*Instance, 0, 2)
 			for range 2 {
@@ -49,6 +52,7 @@ func TestRV64PublicStateOnlyTable32ScalarGlobals(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				t.Cleanup(func() { _ = in.Close() })
 				instances = append(instances, in)
 				if len(in.globalCells) != 4 || in.tableDescPtr == 0 {
 					t.Fatal("state directory", len(in.globalCells), in.tableDescPtr)
@@ -164,6 +168,13 @@ func TestRV64PublicStateOnlyTable32ScalarGlobalsSourceGates(t *testing.T) {
 			wasmtest.ExportEntry("f32", 3, 2),
 			wasmtest.ExportEntry("f64", 3, 2),
 		)),
+		"cross-kind-export-name": rv64ReplaceTableStageSection(t, base, 7, exports(
+			wasmtest.ExportEntry("i32", 1, 0),
+			wasmtest.ExportEntry("i32", 3, 0),
+			wasmtest.ExportEntry("i64", 3, 1),
+			wasmtest.ExportEntry("f32", 3, 2),
+			wasmtest.ExportEntry("f64", 3, 3),
+		)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
@@ -187,20 +198,26 @@ func TestRV64PublicStateOnlyTable32ScalarGlobalsArtifactGates(t *testing.T) {
 		"derived-global":    func(v *Compiled) { v.Globals[1].HasInitGlobal = true; v.Globals[1].InitGlobal = 0 },
 		"global-expression": func(v *Compiled) { v.Globals[0].InitExpr = []byte{0x41, 0, 0x0b} },
 		"vector-payload":    func(v *Compiled) { v.Globals[0].V128[0] = 1 },
+		"i32-upper-bits":    func(v *Compiled) { v.Globals[0].Bits |= 1 << 32 },
+		"f32-upper-bits":    func(v *Compiled) { v.Globals[2].Bits |= 1 << 32 },
 		"missing-global-export": func(v *Compiled) {
 			delete(v.GlobalExports, "f64")
 		},
 		"aliased-global-export": func(v *Compiled) { v.GlobalExports["f64"] = 2 },
 		"missing-table-export":  func(v *Compiled) { delete(v.tableExports, "table") },
 		"wrong-table-export":    func(v *Compiled) { v.tableExports["table"] = 1 },
-		"table64":               func(v *Compiled) { v.TableAddr64 = true },
-		"missing-table-max":     func(v *Compiled) { v.TableHasMax = false },
-		"oversize-table":        func(v *Compiled) { v.TableMax = railshot.MaxOwnedTableEntries + 1 },
-		"table-initializer":     func(v *Compiled) { v.HasTableInitFunc = true; v.TableInitFunc = 1 },
-		"element":               func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"function":              func(v *Compiled) { v.Funcs = []FuncSig{{}} },
-		"function-export":       func(v *Compiled) { v.Exports["f"] = 0 },
-		"start":                 func(v *Compiled) { v.HasStart = true },
+		"cross-kind-export-name": func(v *Compiled) {
+			delete(v.tableExports, "table")
+			v.tableExports["i32"] = 0
+		},
+		"table64":           func(v *Compiled) { v.TableAddr64 = true },
+		"missing-table-max": func(v *Compiled) { v.TableHasMax = false },
+		"oversize-table":    func(v *Compiled) { v.TableMax = railshot.MaxOwnedTableEntries + 1 },
+		"table-initializer": func(v *Compiled) { v.HasTableInitFunc = true; v.TableInitFunc = 1 },
+		"element":           func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"function":          func(v *Compiled) { v.Funcs = []FuncSig{{}} },
+		"function-export":   func(v *Compiled) { v.Exports["f"] = 0 },
+		"start":             func(v *Compiled) { v.HasStart = true },
 		"memory": func(v *Compiled) {
 			v.HasMemory = true
 			v.MemMinPages = 1

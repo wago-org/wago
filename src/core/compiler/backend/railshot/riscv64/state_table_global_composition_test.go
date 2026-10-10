@@ -87,6 +87,9 @@ func TestStateOnlyTable32ScalarGlobalsProfileRejectsOtherDeclarations(t *testing
 		"wrong-export": func(m *wasm.Module) {
 			m.Exports[4].Index.Kind = wasm.ExternFunc
 		},
+		"duplicate-export-name": func(m *wasm.Module) {
+			m.Exports[0].Name = m.Exports[1].Name
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := stateOnlyTable32ScalarGlobalsProfile()
@@ -94,11 +97,23 @@ func TestStateOnlyTable32ScalarGlobalsProfileRejectsOtherDeclarations(t *testing
 			if admitStateOnlyTable32ScalarGlobals(m, true, true) {
 				t.Fatal("unsupported table32/scalar-global composition admitted")
 			}
-			if len(m.Code) == 0 && len(m.Globals) != 0 {
+			if len(m.Imports) == 0 && len(m.FuncTypes) == 0 && len(m.Code) == 0 && len(m.Globals) != 0 {
 				if _, err := admitTableProfile(m, true, true); !errors.Is(err, ErrUnsupported) {
 					t.Fatal("unsupported declaration composition escaped table gate", err)
 				}
 			}
 		})
+	}
+}
+
+func TestStateOnlyTable32ScalarGlobalsGateDoesNotCaptureImportedFunctions(t *testing.T) {
+	m := stateOnlyTable32ScalarGlobalsProfile()
+	m.Types = []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}}
+	m.Imports = []wasm.Import{{Module: "env", Name: "call", Type: wasm.NewFuncExternType(wasm.TypeIdx{})}}
+	if admitStateOnlyTable32ScalarGlobals(m, true, true) {
+		t.Fatal("imported-function module matched declaration-only profile")
+	}
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("declaration-only gate captured imported-function table/global module", table, err)
 	}
 }

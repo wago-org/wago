@@ -186,7 +186,12 @@ func admitStateOnlyTable32ScalarGlobals(m *wasm.Module, production, public bool)
 	}
 	var tableExport bool
 	var globalExports [4]bool
-	for _, export := range m.Exports {
+	for i, export := range m.Exports {
+		for j := 0; j < i; j++ {
+			if m.Exports[j].Name == export.Name {
+				return false
+			}
+		}
 		switch export.Index.Kind {
 		case wasm.ExternTable:
 			if export.Index.Index != 0 || tableExport {
@@ -1636,7 +1641,8 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	if !hasTable && len(m.Elements) == 0 {
 		return false, nil
 	}
-	if hasTable && len(m.Code) == 0 && len(m.Globals) != 0 && !admitStateOnlyTable32ScalarGlobals(m, production, importedTables) {
+	stateOnlyLocalDeclarations := len(m.Imports) == 0 && len(m.FuncTypes) == 0 && len(m.Code) == 0
+	if hasTable && stateOnlyLocalDeclarations && len(m.Globals) != 0 && !admitStateOnlyTable32ScalarGlobals(m, production, importedTables) {
 		return false, unsupported("table/scalar globals require the exact state-only literal profile")
 	}
 	if !production || !hasTable && !importedTables {
