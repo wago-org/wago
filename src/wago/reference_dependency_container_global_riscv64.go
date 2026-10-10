@@ -46,6 +46,7 @@ type rv64GlobalDescriptorDependency struct {
 	phase            rv64GlobalDescriptorDependencyPhase
 	retireRequested  bool
 	releaseCommitted bool
+	afterTyped       func() // deterministic test seam; nil in production
 }
 
 type globalDescriptorDependencyBatch struct {
@@ -268,6 +269,12 @@ func (row *rv64GlobalDescriptorDependency) publish() {
 }
 
 func (row *rv64GlobalDescriptorDependency) adoptClosed() {
+	row.adoptClosedWithTypedHook(row.afterTyped)
+}
+
+// adoptClosedWithTypedHook exposes the otherwise unobservable graph-Typed / stable-row-Adopting
+// handoff to deterministic ownership tests. Production callers pass no hook.
+func (row *rv64GlobalDescriptorDependency) adoptClosedWithTypedHook(afterTyped func()) {
 	owner := row.owner
 	owner.mu.Lock()
 	if row.phase != rv64GlobalDescriptorPending || owner.descriptorDependencies.rows[row.mapState] != row || owner.descriptorDependencies.holder == nil {
@@ -282,6 +289,9 @@ func (row *rv64GlobalDescriptorDependency) adoptClosed() {
 	typed := false
 	if receipt.graph != nil && receipt.graph.registerRetained(&holder.member) == nil {
 		typed, _ = receipt.adoptClosed(&holder.member, dependencyContainerDescriptor)
+	}
+	if typed && afterTyped != nil {
+		afterTyped()
 	}
 	owner.mu.Lock()
 	if row.phase != rv64GlobalDescriptorAdopting || owner.descriptorDependencies.rows[row.mapState] != row {

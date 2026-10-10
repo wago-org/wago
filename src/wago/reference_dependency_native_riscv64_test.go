@@ -354,6 +354,139 @@ func TestRV64DependencyComponentInternalDriverPhysicalOrder(t *testing.T) {
 	}
 }
 
+func TestRV64DependencyComponentConcurrentCloseAuthorityOwnsCallbackError(t *testing.T) {
+	g, err := newRV64FunctionDependencyGraph(2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owners := rv64FunctionDependencyUnitOwners(t, 2)
+	a, b := owners[0], owners[1]
+	a.c, b.c = &Compiled{}, &Compiled{}
+	aOwnership := rv64FunctionDependencyOwnershipFor(a)
+	bOwnership := rv64FunctionDependencyOwnershipFor(b)
+	if err := g.register(&aOwnership.member); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.register(&bOwnership.member); err != nil {
+		t.Fatal(err)
+	}
+	dependencyTestInvocationLease(&aOwnership.member, &bOwnership.member)
+	aToB := dependencyTestAcquire(t, g, &bOwnership.member)
+	bToA := dependencyTestAcquire(t, g, &aOwnership.member)
+	if typed, err := aToB.adopt(&aOwnership.member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	if typed, err := bToA.adopt(&bOwnership.member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	aOwnership.functions.push(functionDependencyRoot{producer: b, receipt: aToB})
+	bOwnership.functions.push(functionDependencyRoot{producer: a, receipt: bToA})
+	aOwnership.managed, bOwnership.managed = true, true
+	dependencyTestClosedForDiscovery(t, &aOwnership.member, &bOwnership.member)
+	aState, bState := a.closeState.Load(), b.closeState.Load()
+	aState.completed.Store(false)
+	bState.completed.Store(false)
+	for ownership, state := range map[*rv64FunctionDependencyOwnership]*instanceCloseState{aOwnership: aState, bOwnership: bState} {
+		ownership.closedAdoptionMu.Lock()
+		ownership.closedAdoptionState = state
+		ownership.closedAdoptionReady = true
+		ownership.closedAdoptionMu.Unlock()
+	}
+
+	type callbackResult struct{ a, b error }
+	callback := make(chan callbackResult, 1)
+	callbackEntered := make(chan struct{})
+	resumeCallback := make(chan struct{})
+	var resumeOnce sync.Once
+	resume := func() { resumeOnce.Do(func() { close(resumeCallback) }) }
+	marker := new(int)
+	a.referenceLifetime().afterPhysicalRelease(func() {
+		callback <- callbackResult{a: a.Close(), b: b.Close()}
+		close(callbackEntered)
+		<-resumeCallback
+		panic(marker)
+	})
+	type closeResult struct {
+		owner *Instance
+		state *instanceCloseState
+		err   error
+		panic any
+	}
+	start := make(chan struct{})
+	results := make(chan closeResult, 2)
+	closeOwner := func(owner *Instance, state *instanceCloseState) {
+		result := closeResult{owner: owner, state: state}
+		defer func() {
+			result.panic = recover()
+			results <- result
+		}()
+		<-start
+		result.err = callShutdownSafely("collect closed dependency component", func() {
+			railshotCollectClosingDependencyComponent(owner, state)
+		})
+		state.complete(result.err)
+		railshotCompleteClosingDependencyCollection(owner, state)
+	}
+	go closeOwner(a, aState)
+	go closeOwner(b, bState)
+	close(start)
+	joined := 0
+	defer func() {
+		resume()
+		for joined < 2 {
+			select {
+			case <-results:
+				joined++
+			case <-time.After(5 * time.Second):
+				t.Error("timed out cleaning up concurrent Close authority worker")
+				return
+			}
+		}
+	}()
+	select {
+	case <-callbackEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for scoped physical callback")
+	}
+	if rv64CollectClosedDependencyComponent(&aOwnership.member, 2, 2) {
+		t.Fatal("ordinary collector drove a scoped coordinator")
+	}
+	resume()
+	join := func() closeResult {
+		select {
+		case result := <-results:
+			joined++
+			return result
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out joining concurrent Close authority worker")
+			return closeResult{}
+		}
+	}
+	first, second := join(), join()
+	if first.panic != nil || second.panic != nil {
+		t.Fatal("concurrent Close authority worker panicked", first.panic, second.panic)
+	}
+	bad := first
+	good := second
+	if !errors.Is(first.err, ErrCallbackPanic) {
+		bad, good = second, first
+	}
+	if !errors.Is(bad.err, ErrCallbackPanic) || good.err != nil || bad.state.result != bad.err || good.state.result != nil || bad.owner.WaitClosed(nil) != bad.err || good.owner.WaitClosed(nil) != nil {
+		t.Fatal("callback error did not belong to exactly one pre-publication Close result", first.err, second.err)
+	}
+	select {
+	case reentered := <-callback:
+		if reentered.a != nil || reentered.b != nil {
+			t.Fatal("physical callback could not reenter Close promptly", reentered.a, reentered.b)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("physical callback did not run")
+	}
+	if g.live != 0 || dependencyTestRefs(a) != 0 || dependencyTestRefs(b) != 0 || !a.resourcesClosed || !b.resourcesClosed || !aOwnership.cleanupCompleted.Load() || !bOwnership.cleanupCompleted.Load() || aOwnership.member.active.Load() || bOwnership.member.active.Load() {
+		t.Fatal("concurrent pre-publication collection did not converge")
+	}
+}
+
 func TestRV64DependencyComponentRejectsForeignMemberBeforePhysicalClaim(t *testing.T) {
 	g, err := newRV64FunctionDependencyGraph(2, 2)
 	if err != nil {
@@ -464,16 +597,16 @@ func TestRV64DependencyComponentRetryDoesNotRepeatMappedTeardown(t *testing.T) {
 	aOwnership.functions.push(functionDependencyRoot{producer: b, receipt: aToB})
 	bOwnership.functions.push(functionDependencyRoot{producer: a, receipt: bToA})
 	aOwnership.managed, bOwnership.managed = true, true
-	a.endInvocation()
-	aLease = false
-	b.endInvocation()
-	bLease = false
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.Close(); err != nil {
 		t.Fatal(err)
 	}
+	a.endInvocation()
+	aLease = false
+	b.endInvocation()
+	bLease = false
 	if a.resourcesClosed || b.resourcesClosed || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {
 		t.Fatal("cycle did not retain mapped instances through logical close")
 	}
@@ -528,17 +661,20 @@ func TestRV64DependencyComponentRetryDoesNotRepeatMappedTeardown(t *testing.T) {
 			bIndex = i
 		}
 	}
-	if aIndex < 0 || bIndex < 0 || !coordinator.teardownDone[aIndex].Load() || !coordinator.teardownDone[bIndex].Load() || coordinator.release.physicalJournals[aIndex].Load() != 0 || coordinator.release.physicalJournals[bIndex].Load() != 2 || aCallbacks != 0 || bCallbacks != 1 {
-		t.Fatal("denied mapped teardown did not retain only the incomplete holder journal", aIndex, bIndex, aCallbacks, bCallbacks)
+	if aIndex < 0 || bIndex < 0 || !coordinator.teardownDone[aIndex].Load() || !coordinator.teardownDone[bIndex].Load() || coordinator.release.physicalJournals[aIndex].Load() != 2 || coordinator.release.physicalJournals[bIndex].Load() != 2 || aCallbacks != 1 || bCallbacks != 1 {
+		t.Fatal("denied mapped teardown did not consume both physical callback journals", aIndex, bIndex, aCallbacks, bCallbacks)
 	}
 	if c.codeCache.refs != 1 || c.codeCache.base != base {
 		t.Fatal("first mapped teardown did not release exactly two code references", c.codeCache.refs, c.codeCache.base, base)
 	}
+	if retryErr := a.Close(); !errors.Is(retryErr, ErrCallbackPanic) || a.WaitClosed(nil) != nil || a.closeState.Load().result != nil {
+		t.Fatal("completed Close retry did not report denial without mutating the published result", retryErr, a.WaitClosed(nil), a.closeState.Load().result)
+	}
 
 	setDenied(false)
 	denied = false
-	if !rv64CollectClosedDependencyComponent(&aOwnership.member, 2, 2) {
-		t.Fatal("repaired exact holder did not complete component retry")
+	if retryErr := a.Close(); retryErr != nil || a.WaitClosed(nil) != nil || a.closeState.Load().result != nil {
+		t.Fatal("repaired completed Close did not complete the component with stable result identity", retryErr, a.WaitClosed(nil), a.closeState.Load().result)
 	}
 	if reentrantCompleted || aCallbacks != 1 || bCallbacks != 1 || c.codeCache.refs != 1 || c.codeCache.base != base {
 		t.Fatal("retry repeated mapped teardown or completed reentrantly", reentrantCompleted, aCallbacks, bCallbacks, c.codeCache.refs, c.codeCache.base)

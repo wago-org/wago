@@ -33,7 +33,8 @@ func (in *Instance) Close() (err error) {
 	state, owner := in.beginClose()
 	if !owner {
 		if state.completed.Load() {
-			err = joinPrimary(state.result, railshotRetryClosedNativeTableRetirement(in))
+			err = joinPrimary(state.result, railshotRetryClosedDependencyComponent(in))
+			err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
 			err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
 			return joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
 		}
@@ -52,7 +53,11 @@ func (in *Instance) Close() (err error) {
 		if state.terminalComplete.Load() {
 			err = joinPrimary(err, railshotClosedContainerAdoptionResult(in, state))
 		}
+		err = joinPrimary(err, callShutdownSafely("collect closed dependency component", func() {
+			railshotCollectClosingDependencyComponent(in, state)
+		}))
 		state.complete(err)
+		railshotCompleteClosingDependencyCollection(in, state)
 		// Managed terminal work must not detach ownership before the logical
 		// result is available to drain and WaitClosed. Retry after publication.
 		if in.hasManagedOwner() {

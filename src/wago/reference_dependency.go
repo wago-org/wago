@@ -200,14 +200,42 @@ func (g *dependencyGraph) authoritativeLocked(member *dependencyMember) bool {
 	return member != nil && member.owner != nil && member.graph.Load() == g && member.active.Load() && member.identity != 0 && g.owners[member.owner] == member
 }
 
+// dependencyComponentCollectionPermit is stack-scoped authority held by one
+// exact Close owner. It may admit owners which reached the same safe
+// pre-publication phase, but is never accepted by the ordinary collector.
+type dependencyComponentCollectionPermit struct {
+	owner          *Instance
+	state          *instanceCloseState
+	member         *dependencyMember
+	graph          *dependencyGraph
+	memberIdentity uint64
+}
+
+func (permit *dependencyComponentCollectionPermit) boundTo(g *dependencyGraph, member *dependencyMember) bool {
+	return permit != nil && permit.owner != nil && permit.state != nil && permit.member == member && permit.graph == g &&
+		member != nil && member.owner == permit.owner && member.identity == permit.memberIdentity && member.graph.Load() == g
+}
+
 // closedComponentMemberLocked is shared by discovery and exact revalidation.
 // The caller holds g.mu and this member's lifeMu.
 func (g *dependencyGraph) closedComponentMemberLocked(member *dependencyMember) bool {
+	return g.closedComponentMemberLockedWithPermit(member, nil)
+}
+
+func (g *dependencyGraph) closedComponentMemberLockedWithPermit(member *dependencyMember, permit *dependencyComponentCollectionPermit) bool {
 	if !g.authoritativeLocked(member) {
 		return false
 	}
 	owner := member.owner
-	return !member.collecting.Load() && dependencyClosedConsumerLeaseLocked(owner) && member.external == 0
+	if member.collecting.Load() || member.external != 0 {
+		return false
+	}
+	if dependencyClosedConsumerLeaseLocked(owner) {
+		return true
+	}
+	return dependencyClosedConsumerBaseLeaseLocked(owner) &&
+		railshotDependencyComponentCollectionPermitValid(permit) &&
+		railshotDependencyComponentCollectionPrepared(owner)
 }
 
 func dependencyClosedConsumerLeaseLocked(owner *Instance) bool {
@@ -246,12 +274,25 @@ func dependencyClosedConsumerAdoptionLeaseLocked(owner *Instance) bool {
 // are lifetime-locked in immutable identity order. No native, store or
 // container lock is acquired here.
 func (g *dependencyGraph) discoverClosedComponent(seed *dependencyMember, nodeBudget, receiptBudget int) dependencyComponent {
+	return g.discoverClosedComponentWithPermit(seed, nodeBudget, receiptBudget, nil)
+}
+
+func (g *dependencyGraph) discoverClosedComponentWithPermit(seed *dependencyMember, nodeBudget, receiptBudget int, permit *dependencyComponentCollectionPermit) dependencyComponent {
 	result := dependencyComponent{status: dependencyComponentBlocked}
 	if g == nil || seed == nil {
 		return result
 	}
+	if permit != nil && !permit.boundTo(g, seed) {
+		return result
+	}
 	if nodeBudget <= 0 || receiptBudget <= 0 {
 		result.status = dependencyComponentIncomplete
+		return result
+	}
+	// A zero-outgoing seed cannot belong to a dependency cycle. Avoid waiting
+	// behind an in-flight first publication in that common Close path; actual
+	// cycle candidates take the graph lock so the final collector cannot miss.
+	if permit != nil && seed.outgoing.Load() == 0 {
 		return result
 	}
 	g.mu.Lock()
@@ -339,7 +380,7 @@ func (g *dependencyGraph) discoverClosedComponent(seed *dependencyMember, nodeBu
 	component := make(map[*dependencyMember]struct{}, len(result.members))
 	for _, member := range result.members {
 		component[member] = struct{}{}
-		if !g.closedComponentMemberLocked(member) {
+		if !g.closedComponentMemberLockedWithPermit(member, permit) {
 			result.members = nil
 			return result
 		}
@@ -400,18 +441,27 @@ func (g *dependencyGraph) discoverClosedComponent(seed *dependencyMember, nodeBu
 // extent bounds this second scan; growth conservatively invalidates the
 // candidate instead of extending work after discovery.
 func (g *dependencyGraph) revalidateClosedComponent(candidate dependencyComponent) bool {
-	return g.withRevalidatedClosedComponent(candidate, nil)
+	return g.withRevalidatedClosedComponent(candidate, nil, nil)
 }
 
 // withRevalidatedClosedComponent optionally runs a non-callback commit while
 // the exact graph and member lifetime snapshot is still locked.
-func (g *dependencyGraph) withRevalidatedClosedComponent(candidate dependencyComponent, commit func()) bool {
+func (g *dependencyGraph) withRevalidatedClosedComponent(candidate dependencyComponent, permit *dependencyComponentCollectionPermit, commit func()) bool {
 	if g == nil || candidate.status != dependencyComponentCandidate || candidate.graph != g || len(candidate.members) == 0 ||
 		len(candidate.members) != len(candidate.memberIdentities) || len(candidate.members) != len(candidate.memberOutgoing) ||
 		len(candidate.members) > g.nodeCap || candidate.receiptSlots <= 0 || candidate.receiptSlots > g.receiptCap ||
 		candidate.internalReceipts == 0 || candidate.internalReceipts != len(candidate.receiptIdentities) || candidate.internalReceipts > candidate.receiptSlots ||
 		len(candidate.outgoingIdentities) > candidate.receiptSlots {
 		return false
+	}
+	if permit != nil {
+		bound := false
+		for _, member := range candidate.members {
+			bound = bound || permit.boundTo(g, member)
+		}
+		if !bound {
+			return false
+		}
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -435,7 +485,7 @@ func (g *dependencyGraph) withRevalidatedClosedComponent(candidate dependencyCom
 	component := make(map[*dependencyMember]int, len(candidate.members))
 	for i, member := range candidate.members {
 		component[member] = i
-		if member.identity != candidate.memberIdentities[i] || member.outgoing.Load() != candidate.memberOutgoing[i] || !g.closedComponentMemberLocked(member) {
+		if member.identity != candidate.memberIdentities[i] || member.outgoing.Load() != candidate.memberOutgoing[i] || !g.closedComponentMemberLockedWithPermit(member, permit) {
 			return false
 		}
 	}
@@ -502,6 +552,8 @@ type dependencyComponentClaim struct {
 type dependencyComponentRelease struct {
 	claim      *dependencyComponentClaim
 	finalizers []*instanceFinalizers
+	// Deterministic test seam after the final locked completion check fails.
+	afterFailedCompletion func()
 	// 0 is unclaimed/retryable, 1 is running, and 2 is complete. Completion is
 	// published before a callback panic is rethrown from resourceCleanup.
 	physicalJournals []atomic.Uint32
@@ -509,7 +561,7 @@ type dependencyComponentRelease struct {
 
 func (g *dependencyGraph) claimClosedComponent(candidate dependencyComponent) (*dependencyComponentClaim, bool) {
 	claim := &dependencyComponentClaim{graph: g}
-	if !g.withRevalidatedClosedComponent(candidate, func() {
+	if !g.withRevalidatedClosedComponent(candidate, nil, func() {
 		claim.members = append(claim.members, candidate.members...)
 		for _, member := range claim.members {
 			member.collecting.Store(true)
@@ -528,9 +580,13 @@ func (g *dependencyGraph) claimClosedComponent(candidate dependencyComponent) (*
 // keep internal receipt releases from reaching an unclaimed zero while the
 // caller runs physical teardown outside graph and lifetime locks.
 func (g *dependencyGraph) claimClosedComponentForPhysicalRelease(candidate dependencyComponent) (*dependencyComponentRelease, bool) {
+	return g.claimClosedComponentForPhysicalReleaseWithPermit(candidate, nil)
+}
+
+func (g *dependencyGraph) claimClosedComponentForPhysicalReleaseWithPermit(candidate dependencyComponent, permit *dependencyComponentCollectionPermit) (*dependencyComponentRelease, bool) {
 	claim := &dependencyComponentClaim{graph: g}
 	release := &dependencyComponentRelease{claim: claim}
-	if !g.withRevalidatedClosedComponent(candidate, func() {
+	if !g.withRevalidatedClosedComponent(candidate, permit, func() {
 		claim.members = append(claim.members, candidate.members...)
 		release.finalizers = make([]*instanceFinalizers, len(claim.members))
 		release.physicalJournals = make([]atomic.Uint32, len(claim.members))
@@ -658,6 +714,9 @@ func (release *dependencyComponentRelease) complete() bool {
 				claim.members[i].owner.lifeMu.Unlock()
 			}
 			g.mu.Unlock()
+			if release.afterFailedCompletion != nil {
+				release.afterFailedCompletion()
+			}
 			return false
 		}
 	}

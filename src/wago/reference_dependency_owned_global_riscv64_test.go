@@ -592,6 +592,193 @@ func TestRV64OwnedGlobalDescriptorsContinueAfterFirstCallbackPanic(t *testing.T)
 	}
 }
 
+func TestRV64ClosedComponentCompletesAfterTypedAdoptingHandoff(t *testing.T) {
+	compiled := globalValueAccessCompile(t, false, false)
+	a, err := Instantiate(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Instantiate(compiled)
+	if err != nil {
+		a.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = cleanupTestPanic(func() { _ = a.Close() }) })
+	t.Cleanup(func() { _, _ = cleanupTestPanic(func() { _ = b.Close() }) })
+	g, err := newRV64FunctionDependencyGraph(2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aOwnership := rv64FunctionDependencyOwnershipFor(a)
+	bOwnership := rv64FunctionDependencyOwnershipFor(b)
+	if err := g.register(&aOwnership.member); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.register(&bOwnership.member); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.beginInstanceInvocation(); err != nil {
+		t.Fatal(err)
+	}
+	bLease := true
+	t.Cleanup(func() {
+		if bLease {
+			b.endInvocation()
+		}
+	})
+	bToA := dependencyTestAcquire(t, g, &aOwnership.member)
+	if typed, err := bToA.adopt(&bOwnership.member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	bOwnership.functions.push(functionDependencyRoot{producer: a, receipt: bToA})
+	bOwnership.managed = true
+	b.endInvocation()
+	bLease = false
+
+	global := globalValueAccessOwnedCell(t, a)
+	aMapState, aRow, publication := rv64GlobalDescriptorTestRecord(t, global.owner, b, g)
+	t.Cleanup(func() {
+		var retire globalDescriptorDependencyBatch
+		global.owner.mu.Lock()
+		if global.owner.descriptorDependencies.rows[aMapState] == aRow {
+			if global.owner.retained[b] == aMapState {
+				delete(global.owner.retained, b)
+			}
+			railshotRetireGlobalDescriptorDependencyLocked(global.owner, b, aMapState, &retire)
+		}
+		global.owner.mu.Unlock()
+		var cleanup resourceCleanup
+		cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&retire) })
+		cleanup.run(func() { bOwnership.functions.drain(bOwnership) })
+		cleanup.finish()
+	})
+	if !a.retainResourceRootForFinalization() {
+		t.Fatal("failed to retain closed owner until the late row is published")
+	}
+	aRoot := true
+	t.Cleanup(func() {
+		if aRoot {
+			a.releaseResourceRoot()
+		}
+	})
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a.releaseResourceRoot()
+	aRoot = false
+	if a.resourcesClosed || dependencyTestRefs(a) != 1 || !a.closeState.Load().terminalComplete.Load() {
+		t.Fatal("closed cycle member did not remain terminal and retained", a.resourcesClosed, dependencyTestRefs(a))
+	}
+
+	typed := make(chan struct{})
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	resumeAdopter := func() { resumeOnce.Do(func() { close(resume) }) }
+	aRow.afterTyped = func() {
+		close(typed)
+		<-resume
+	}
+	type publishResult struct {
+		value    any
+		panicked bool
+	}
+	published := make(chan publishResult, 1)
+	go func() {
+		value, panicked := cleanupTestPanic(func() { railshotFlushGlobalDescriptorDependencies(&publication) })
+		published <- publishResult{value: value, panicked: panicked}
+	}()
+	joined := false
+	t.Cleanup(func() {
+		resumeAdopter()
+		if !joined {
+			select {
+			case <-published:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out cleaning up graph-Typed adoption handoff")
+			}
+		}
+	})
+	select {
+	case <-typed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("late closed adoption did not reach graph-Typed handoff")
+	}
+	aCallbacks, bCallbacks := 0, 0
+	callbackEntered := make(chan struct{})
+	resumeCallback := make(chan struct{})
+	var callbackOnce sync.Once
+	resumePhysical := func() { callbackOnce.Do(func() { close(resumeCallback) }) }
+	a.referenceLifetime().afterPhysicalRelease(func() {
+		aCallbacks++
+		close(callbackEntered)
+		<-resumeCallback
+	})
+	b.referenceLifetime().afterPhysicalRelease(func() { bCallbacks++ })
+	closed := make(chan error, 1)
+	go func() { closed <- b.Close() }()
+	closeJoined := false
+	t.Cleanup(func() {
+		resumePhysical()
+		if !closeJoined {
+			select {
+			case <-closed:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out cleaning up component Close worker")
+			}
+		}
+	})
+	select {
+	case <-callbackEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("component teardown did not reach the blocked physical callback")
+	}
+	coordinator := aOwnership.componentRelease.Load()
+	if coordinator == nil || coordinator != bOwnership.componentRelease.Load() || !coordinator.published.Load() {
+		t.Fatal("typed/adopting overlap lost its published coordinator")
+	}
+	completionFailed := make(chan struct{})
+	resumeCompletion := make(chan struct{})
+	var completionOnce sync.Once
+	resumeCheck := func() { completionOnce.Do(func() { close(resumeCompletion) }) }
+	coordinator.release.afterFailedCompletion = func() {
+		close(completionFailed)
+		<-resumeCompletion
+	}
+	t.Cleanup(resumeCheck)
+	resumePhysical()
+	select {
+	case <-completionFailed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("component release did not reach its final failed completion check")
+	}
+	if !coordinator.physicalJournalsComplete() || aCallbacks != 1 || bCallbacks != 1 || !aRow.retireRequested || aRow.phase != rv64GlobalDescriptorAdopting {
+		t.Fatal("typed/adopting overlap lost callback or persistent coordinator", coordinator, aCallbacks, bCallbacks, aRow.retireRequested, aRow.phase)
+	}
+	resumeAdopter()
+	select {
+	case result := <-published:
+		joined = true
+		if result.panicked {
+			t.Fatal("late closed adopter panicked after component claim", result.value)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("late closed adopter did not hand completion to the component coordinator")
+	}
+	resumeCheck()
+	select {
+	case err := <-closed:
+		closeJoined = true
+		if err != nil {
+			t.Fatal("component Close failed after completion handoff", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("component Close did not observe the completion handoff")
+	}
+	if aOwnership.componentRelease.Load() != nil || bOwnership.componentRelease.Load() != nil || !aOwnership.cleanupCompleted.Load() || !bOwnership.cleanupCompleted.Load() || aOwnership.member.active.Load() || bOwnership.member.active.Load() || g.live != 0 || dependencyTestRefs(a) != 0 || dependencyTestRefs(b) != 0 {
+		t.Fatal("typed/adopting handoff stranded component guards or roots")
+	}
+}
+
 func TestRV64OwnedGlobalDescriptorClosedAdoptionFormsCollectibleCycle(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -682,26 +869,15 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionFormsCollectibleCycle(t *testing
 				a.endInvocation()
 				b.endInvocation()
 				invocations = false
+				graph := aRow.receipt.graph
+				if !rv64CollectClosedDependencyComponent(&rv64ExistingFunctionDependencyOwnership(a).member, graph.nodeCap, graph.receiptCap) {
+					t.Fatal("delayed genuine owned Global cycle did not reach the explicit internal driver")
+				}
 			}
 			aOwnership := rv64ExistingFunctionDependencyOwnership(a)
 			bOwnership := rv64ExistingFunctionDependencyOwnership(b)
-			if a.resourcesClosed || b.resourcesClosed || aRow.phase != rv64GlobalDescriptorTyped || bRow.phase != rv64GlobalDescriptorTyped || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {
-				t.Fatal("terminal adoption did not preserve one typed cycle root", a.resourcesClosed, b.resourcesClosed, aRow.phase, bRow.phase, dependencyTestRefs(a), dependencyTestRefs(b))
-			}
-			graph := aRow.receipt.graph
-			graph.mu.Lock()
-			aRecord, _ := graph.recordLocked(aRow.receiptIdentity)
-			bRecord, _ := graph.recordLocked(bRow.receiptIdentity)
-			typed := aRecord != nil && aRecord.state == dependencyTyped && aRecord.consumer == &aOwnership.member && aRecord.target == &bOwnership.member && bRecord != nil && bRecord.state == dependencyTyped && bRecord.consumer == &bOwnership.member && bRecord.target == &aOwnership.member
-			graph.mu.Unlock()
-			if !typed {
-				t.Fatal("terminal adoption published the wrong exact topology")
-			}
-			if !rv64CollectClosedDependencyComponent(&aOwnership.member, graph.nodeCap, graph.receiptCap) {
-				t.Fatal("genuine owned Global cycle did not reach the internal driver")
-			}
 			if !a.resourcesClosed || !b.resourcesClosed || aRow.phase != rv64GlobalDescriptorReleased || bRow.phase != rv64GlobalDescriptorReleased || dependencyTestRefs(a) != 0 || dependencyTestRefs(b) != 0 || !aOwnership.cleanupCompleted.Load() || !bOwnership.cleanupCompleted.Load() || aOwnership.member.active.Load() || bOwnership.member.active.Load() {
-				t.Fatal("genuine owned Global cycle did not converge")
+				t.Fatal("genuine owned Global cycle did not automatically converge")
 			}
 		})
 	}

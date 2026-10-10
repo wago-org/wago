@@ -429,26 +429,15 @@ func TestRV64OwnedTableDescriptorClosedAdoptionFormsCollectibleCycle(t *testing.
 				a.endInvocation()
 				b.endInvocation()
 				invocations = false
+				graph := aRow.receipt.graph
+				if !rv64CollectClosedDependencyComponent(&rv64ExistingFunctionDependencyOwnership(a).member, graph.nodeCap, graph.receiptCap) {
+					t.Fatal("delayed genuine owned Table cycle did not reach the explicit internal driver")
+				}
 			}
 			aOwnership := rv64ExistingFunctionDependencyOwnership(a)
 			bOwnership := rv64ExistingFunctionDependencyOwnership(b)
-			if a.resourcesClosed || b.resourcesClosed || aRow.phase != rv64TableDescriptorTyped || bRow.phase != rv64TableDescriptorTyped || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {
-				t.Fatal("terminal Table adoption did not preserve one typed cycle root", a.resourcesClosed, b.resourcesClosed, aRow.phase, bRow.phase, dependencyTestRefs(a), dependencyTestRefs(b))
-			}
-			graph := aRow.receipt.graph
-			graph.mu.Lock()
-			aRecord, _ := graph.recordLocked(aRow.receiptIdentity)
-			bRecord, _ := graph.recordLocked(bRow.receiptIdentity)
-			typed := aRecord != nil && aRecord.state == dependencyTyped && aRecord.consumer == &aOwnership.member && aRecord.target == &bOwnership.member && bRecord != nil && bRecord.state == dependencyTyped && bRecord.consumer == &bOwnership.member && bRecord.target == &aOwnership.member
-			graph.mu.Unlock()
-			if !typed {
-				t.Fatal("terminal Table adoption published the wrong exact topology")
-			}
-			if !rv64CollectClosedDependencyComponent(&aOwnership.member, graph.nodeCap, graph.receiptCap) {
-				t.Fatal("genuine owned Table cycle did not reach the internal driver")
-			}
 			if !a.resourcesClosed || !b.resourcesClosed || aRow.phase != rv64TableDescriptorReleased || bRow.phase != rv64TableDescriptorReleased || dependencyTestRefs(a) != 0 || dependencyTestRefs(b) != 0 || !aOwnership.cleanupCompleted.Load() || !bOwnership.cleanupCompleted.Load() || aOwnership.member.active.Load() || bOwnership.member.active.Load() {
-				t.Fatal("genuine owned Table cycle did not converge")
+				t.Fatal("genuine owned Table cycle did not automatically converge")
 			}
 		})
 	}
