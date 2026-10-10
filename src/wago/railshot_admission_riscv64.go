@@ -125,8 +125,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.nativeTable64ABI == nativeTable64GrowABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Grow(c) && !rv64OwnedTwoTable64Grow(c)) {
 		return reject("table64.grow compiler witness requires its exact owned table64 or indexed two-table profile")
 	}
-	if c.nativeTable64ABI == nativeTable64GetSetABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64GetSet(c) && !rv64OwnedTwoTable64GetSet(c)) {
-		return reject("table64.get/set compiler witness requires its exact owned table64 or indexed two-table profile")
+	if c.nativeTable64ABI == nativeTable64GetSetABI && !rv64OwnedTwoTable32GetSet(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64GetSet(c) && !rv64OwnedTwoTable64GetSet(c)) {
+		return reject("table.get/set compiler witness requires its exact owned or indexed two-table profile")
 	}
 	if c.nativeTable64ABI == nativeTable64IndirectABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Indirect(c) && !rv64OwnedTwoTable64Indirect(c) && !rv64ImportedTable64Indirect(c)) {
 		return reject("table64 indirect-call compiler witness requires its exact owned, indexed two-table, or imported table64 profile")
