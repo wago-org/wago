@@ -254,6 +254,60 @@ func TestOwnedTwoTable32GrowProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable32FillProfile() *wasm.Module {
+	m := ownedTwoTable64FillProfile()
+	m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I32
+	m.Types[0].SubTypes[0].Comp.Params[1] = wasm.I32
+	for i := range m.Tables {
+		m.Tables[i].Type.Limits.Addr64 = false
+	}
+	return m
+}
+
+func TestOwnedTwoTable32FillProfile(t *testing.T) {
+	m := ownedTwoTable32FillProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact indexed two-table32 fill profile rejected", table, err)
+	}
+	if err := AdmitPublicInitializers(m); err != nil {
+		t.Fatal("two-table32 fill initializer preflight", err)
+	}
+	state, err := admitStatePolicy(m, true, false, true, true)
+	if err != nil || len(state.tableAddr64) != 2 || state.tableAddr64[0] || state.tableAddr64[1] {
+		t.Fatal("two-table32 fill state directory", state.tableAddr64, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body-index":     func(m *wasm.Module) { m.Code[1].BodyBytes[8] = 0 },
+		"result":         func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"first-param":    func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I64 },
+		"second-param":   func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[1] = wasm.I64 },
+		"locals":         func(m *wasm.Module) { m.Code[1].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I32}} },
+		"no-max":         func(m *wasm.Module) { m.Tables[1].Type.Limits.HasMax = false },
+		"mixed-width":    func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = true },
+		"externref":      func(m *wasm.Module) { m.Tables[1].Type.Ref = wasm.AbsRef(wasm.HeapExtern) },
+		"no-export":      func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+		"extra-table":    func(m *wasm.Module) { m.Tables = append(m.Tables, m.Tables[1]) },
+		"element":        func(m *wasm.Module) { m.Elements = []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}}} },
+		"initializer":    func(m *wasm.Module) { m.Tables[1].Init = &wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}} },
+		"branch-hints":   func(m *wasm.Module) { m.BranchHints = []wasm.FuncBranchHints{{FuncIndex: 0}} },
+		"compact-import": func(m *wasm.Module) { m.UsesCompactImports = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable32FillProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed two-table32 fill profile admitted", err)
+			}
+			if err := AdmitPublicInitializers(bad); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed two-table32 fill initializer preflight", err)
+			}
+		})
+	}
+	if _, err := admitTableProfile(m, true, false); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("indexed two-table32 fill escaped retained public boundary", err)
+	}
+}
+
 func ownedTwoTable64SizeProfile() *wasm.Module {
 	return &wasm.Module{
 		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I64}}}}}},
