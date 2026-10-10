@@ -85,6 +85,12 @@ workload sensitivity, not a credible speedup. The compiler emits about 1.8
 KiB less native code with unchanged aggregate spill/reload counts, but there
 is no meaningful resource or end-to-end win yet.
 
+A later short crossover check on the same real PHP command (
+`-benchtime=10x -count=3 -benchmem -cpu=1`, separate processes) gave
+default **5.725/5.146/5.157 ms/op** and opt-in
+**5.164/5.409/5.214 ms/op**, again **961 allocs/op** on both sides.
+These samples overlap; the draft recommendation is unchanged.
+
 **Recommendation:** keep the flag off and the PR draft. The prototype proves
 one bounded safe lowering and supplies A/B controls; it does not meet the
 issue's benefit threshold. A next experiment should correlate *selected*
