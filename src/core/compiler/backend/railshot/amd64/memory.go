@@ -15,6 +15,10 @@ import (
 // an exact A/B and correctness oracle.
 var storeValueLoadFoldEnabled = os.Getenv("WAGO_AMD64_NO_STORE_VALUE_LOAD_FOLD") != "1"
 
+// The issue #919 prototype only reuses an immediately preceding deferred load
+// from the same pinned local and memarg. The normal path remains the default.
+var repeatLinearLoadExperiment = os.Getenv("WAGO_AMD64_EXPERIMENT_REPEAT_LOAD") == "1"
+
 // storeValueLastFoldableLoad returns the last deferred load in a pure integer
 // value tree. Earlier loads are forced in source order before condensation, so
 // only the final load may move among nontrapping operations.
@@ -898,6 +902,9 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
+	if f.tryReuseAdjacentMemLoad(memoryIndex, off, size, signed, wide) {
+		return nil
+	}
 	if memoryIndex != 0 {
 		f.invalidateStoreForward()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
@@ -964,6 +971,44 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		f.regUser[ea] = e // an owned address register belongs to the deferred load
 	}
 	return nil
+}
+
+// tryReuseAdjacentMemLoad handles the common "local.get; load; local.get;
+// load" pair without retaining state across a branch, call, or store. The
+// first value must still be a deferred memory reference: any intervening
+// memory effect would have forced it. Both addresses borrow the same pinned
+// local register, so there is no ambiguous address calculation or ownership.
+// The second bounds check remains, then the first value is materialized in
+// source order and copied into an independently owned register.
+func (f *fn) tryReuseAdjacentMemLoad(memoryIndex uint32, off uint64, size int, signed, wide bool) bool {
+	if !repeatLinearLoadExperiment || memoryIndex != 0 || f.memoryAddr64(0) || f.threadedMemory0 ||
+		f.guardMode || off > 0x7fffffff {
+		return false
+	}
+	addr := f.s.back()
+	if addr == nil || !addr.isValue() || addr.st.kind != stLocalReg {
+		return false
+	}
+	first := addr.prev
+	if first == f.s.head || !first.isValue() || first.st.kind != stMemRef ||
+		first.st.memBorrow() != addr.st.index() || first.st.reg != addr.st.reg ||
+		first.st.memDisp() != int32(off) || first.st.memSize() != size ||
+		first.st.memSigned() != signed || (first.st.typ == mtI64) != wide {
+		return false
+	}
+	f.invalidateStoreForward()
+	ea, owned, borrow, disp := f.memAddr(uint32(off), size, true, 0)
+	if owned || borrow != addr.st.index() || ea != addr.st.reg || disp != int32(off) {
+		panic("amd64: repeated-load borrowed address changed")
+	}
+	value := f.materialize(first)
+	f.pinned = f.pinned.add(value)
+	copyReg := f.allocReg(maskOf(value))
+	f.moveInt(copyReg, value, first.st.typ)
+	f.pinned = f.pinned.remove(value)
+	f.pushReg(copyReg, first.st.typ)
+	f.stats.peep("adjacent-repeat-linear-load")
+	return true
 }
 
 // memStore lowers a scalar store of `size` bytes.
