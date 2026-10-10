@@ -1166,7 +1166,7 @@ type Compiled struct {
 	nativeReferenceFunctionABI bool       // closed internal reference-valued functions; no public callable descriptors
 	nativeTableContextABI      bool       // retained canonical table calls with framed context switching
 	nativeTableReferenceABI    bool       // full-width foreign table carriers and active writer/storage scopes
-	nativeTable64ABI           uint8      // compiler-attested exact owned table64 instruction profile
+	nativeTable64ABI           uint8      // compiler-attested exact table64 instruction/storage profile
 	Elems                      []ElemInit // active element segments
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped

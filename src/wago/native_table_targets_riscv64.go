@@ -119,7 +119,12 @@ func (s *rv64NativeTableTargets) tableRoots(table *Table, edges *int) error {
 	defer table.owner.mu.Unlock()
 	table.mu.Lock()
 	defer table.mu.Unlock()
-	qualifiedTable64 := table.owner.addr64 && table.owner.instance != nil && rv64QualifiedTable64(table.owner.instance.c)
+	// Host-owned table64 descriptors have no compiled instance from which to
+	// recover a source-profile witness. Their address form is fixed by
+	// NewTable64 and the import declaration is independently qualified before
+	// this retained-target walk. Instance-owned providers still require their
+	// exact compiled table64 witness.
+	qualifiedTable64 := table.owner.addr64 && (table.owner.instance == nil || rv64QualifiedTable64(table.owner.instance.c))
 	if table.owner.closed || table.closed || table.owner.addr64 && !qualifiedTable64 || table.owner.elementType != ValFuncRef || len(table.desc) < 8 {
 		return fmt.Errorf("RV64 retained table storage/type is invalid")
 	}

@@ -96,6 +96,51 @@ func TestOwnedTable64SizeProfile(t *testing.T) {
 	}
 }
 
+func importedTable64SizeProfile() *wasm.Module {
+	table := wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: 4, HasMax: true, Addr64: true}}
+	return &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I64}}}}}},
+		Imports:   []wasm.Import{{Module: "env", Name: "table", Type: wasm.NewTableExternType(table)}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code:      []wasm.Func{{BodyBytes: []byte{0xfc, 0x10, 0, 0x0b}}},
+		Exports: []wasm.Export{
+			{Name: "size", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}},
+			{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}},
+		},
+	}
+}
+
+func TestImportedTable64SizeProfile(t *testing.T) {
+	m := importedTable64SizeProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact imported table64.size profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body":   func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x42, 0, 0x0b} },
+		"result": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I32 },
+		"param":  func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params = []wasm.ValType{wasm.I64} },
+		"no-max": func(m *wasm.Module) {
+			t := m.Imports[0].Type.TableType()
+			t.Limits.HasMax = false
+			m.Imports[0].Type = wasm.NewTableExternType(t)
+		},
+		"locals":    func(m *wasm.Module) { m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I64}} },
+		"no-export": func(m *wasm.Module) { m.Exports = m.Exports[1:] },
+		"extra":     func(m *wasm.Module) { m.Code = append(m.Code, wasm.Func{}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := importedTable64SizeProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid imported table64.size profile admitted", err)
+			}
+		})
+	}
+	if _, err := admitTableProfile(m, true, false); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("imported table64.size escaped retained public table ABI", err)
+	}
+}
+
 func ownedTable64GrowProfile() *wasm.Module {
 	m := stateOnlyTable64Profile()
 	m.Types = []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I64}}}}}}

@@ -140,7 +140,10 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.nativeTable64ABI == nativeTable64InitDropABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64InitDrop(c)) {
 		return reject("table64.init/drop compiler witness requires its exact owned table64 profile")
 	}
-	if c.nativeTable64ABI > nativeTable64InitDropABI {
+	if c.nativeTable64ABI == nativeTable64ImportedSizeABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64Size(c)) {
+		return reject("table64.size compiler witness requires its exact imported table64 profile")
+	}
+	if c.nativeTable64ABI > nativeTable64ImportedSizeABI {
 		return reject("unknown table64 compiler witness")
 	}
 	if c.requiredFeatures.IsEnabled(CoreFeatureTable64) && !rv64QualifiedTable64(c) {
@@ -452,7 +455,7 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 	if err != nil {
 		return err
 	}
-	if err := table.validateImportWithCollector(ValFuncRef, exact, c.Types, store, nil, false); err != nil {
+	if err := table.validateImportWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
 		return err
 	}
 	// Frozen global roots must not create a backedge into an instance-owned
@@ -470,7 +473,7 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 		break
 	}
 	// The descriptor itself also needs a lease: host tables have no instance root.
-	if err := table.attachImporterWithCollector(ValFuncRef, exact, c.Types, store, nil, false); err != nil {
+	if err := table.attachImporterWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
 		return err
 	}
 	defer table.detachImporter(store)
