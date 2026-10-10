@@ -14,6 +14,31 @@ import (
 	rv64runtime "github.com/wago-org/wago/src/core/runtime/riscv64"
 )
 
+// rv64StateOnlyExternrefGlobal is the persisted-artifact witness for one
+// immutable null externref global in an otherwise empty module. It must remain
+// declaration-only: executable reference carriers and every imported or
+// initializer-dependent owner path require separate qualification.
+func rv64StateOnlyExternrefGlobal(c *Compiled) bool {
+	if c == nil || !c.hasNoFunctionCode() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 || len(c.FuncTypeID) != 0 || len(c.Exports) != 0 {
+		return false
+	}
+	if len(c.Globals) != 1 || len(c.GlobalImports) != 0 || len(c.GlobalExports) > 1 || len(c.ValueTypes) != 1 || c.tableCount() != 0 || c.memoryCount() != 0 || c.tagImportCount() != 0 || c.HasStart {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.requiredFeatures != CoreFeatureReferenceTypes || compiledStructuralRequiredFeatures(c) != CoreFeatureReferenceTypes {
+		return false
+	}
+	for _, index := range c.GlobalExports {
+		if index != 0 {
+			return false
+		}
+	}
+	g := c.Globals[0]
+	plain, _ := valueTypeDescriptorFromValType(ValExternRef)
+	exact, err := c.globalExactType(0)
+	return err == nil && exact == plain && g.Type == ValExternRef && g.HasValueType && g.ValueTypeIndex == 0 && !g.Mutable && g.Bits == 0 && g.V128 == (V128{}) && !g.HasInitGlobal && g.InitGlobal == 0 && !g.HasInitFunc && g.InitFunc == 0 && len(g.InitExpr) == 0
+}
+
 // Loading and hand-built metadata must enforce the same bounded public ABI as
 // source compilation before any executable image or host thunk is published.
 func railshotValidateCompiled(c *Compiled) error {
@@ -226,7 +251,14 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject(err.Error())
 	}
 	hasReferenceGlobal := false
+	stateOnlyExternref := rv64StateOnlyExternrefGlobal(c)
 	for i, global := range c.Globals {
+		if global.Type == ValExternRef {
+			if !stateOnlyExternref || i != 0 {
+				return reject("externref global requires the exact state-only null profile")
+			}
+			continue
+		}
 		if global.Type == ValFuncRef {
 			hasReferenceGlobal = true
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)

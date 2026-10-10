@@ -3,7 +3,9 @@
 package riscv64
 
 import (
+	"bytes"
 	"fmt"
+
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -99,6 +101,25 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	}
 	return v, nil
 }
+
+// admitStateOnlyExternrefGlobal recognizes one immutable null externref global
+// in an otherwise empty public module. This declaration-only profile does not
+// enable executable externref carriers, imports, mutation, or initializer
+// chains.
+func admitStateOnlyExternrefGlobal(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Globals) != 1 || len(m.Exports) > 1 || m.Start != nil {
+		return false
+	}
+	if len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	if len(m.Exports) == 1 && (m.Exports[0].Index.Kind != wasm.ExternGlobal || m.Exports[0].Index.Index != 0) {
+		return false
+	}
+	g := m.Globals[0]
+	return !g.Type.Mutable && wasm.EqualValType(g.Type.Type, wasm.ExternRef) && len(g.Init.Instrs) == 0 && bytes.Equal(g.Init.BodyBytes, []byte{0xd0, 0x6f, 0x0b})
+}
+
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	return admitStatePolicy(m, production, false, false, false)
 }
@@ -198,6 +219,13 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	}
 	importedGlobals := len(s.globals)
 	for _, g := range m.Globals {
+		if wasm.EqualValType(g.Type.Type, wasm.ExternRef) {
+			if !admitStateOnlyExternrefGlobal(m, production, publicExports) {
+				return s, unsupported("externref global requires the exact state-only null profile")
+			}
+			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
+			continue
+		}
 		if wasm.EqualValType(g.Type.Type, wasm.FuncRef) {
 			if !publicExports || !importedTables {
 				return s, unsupported("reference global requires retained public table")
