@@ -968,7 +968,10 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 					s.node(old).home = 0
 				}
 				s.release(old)
-				s.materialize(id, 0)
+				// Keep constants available for folding through local.set/local.tee.
+				if s.node(id).kind != ScalarConstant {
+					s.materialize(id, 0)
+				}
 				s.locals[x] = id
 				if op == 0x22 {
 					s.retain(id)
