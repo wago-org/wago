@@ -89,3 +89,58 @@ func TestGuardedMutableIndirectCall(t *testing.T) {
 		t.Fatal("out-of-bounds index did not trap")
 	}
 }
+
+// A producer's exported table can hold a funcref whose global index and type
+// match the consumer's designated local target. Descriptor identity must still
+// miss because the target belongs to a different instance.
+func TestGuardedMutableIndirectCrossInstance(t *testing.T) {
+	producerCompiled := MustCompile(mutableGuardOracleModule())
+	defer producerCompiled.Close()
+	producer, err := Instantiate(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	table, err := producer.ExportedTable("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f64 := []wasm.ValType{wasm.F64}
+	consumerBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.F64, wasm.I32}, f64),
+			wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.I32}, f64),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 3, 3))),
+		tableTestFuncSection(0, 1),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestLocalGet(1), tableTestLocalGet(2), tableTestLocalGet(0), tableTestCallIndirect(1, 0))),
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestLocalGet(1), []byte{0xb7, 0xa0})),
+		)),
+	)
+	consumerCompiled := MustCompile(consumerBytes)
+	defer consumerCompiled.Close()
+	consumer, err := Instantiate(consumerCompiled, testImports("env.t", table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	call := func(want float64) {
+		t.Helper()
+		got, err := consumer.Invoke("call", 0, math.Float64bits(12), 5)
+		if err != nil || len(got) != 1 || got[0] != math.Float64bits(want) {
+			t.Fatalf("cross-instance call = %v, %v; want %g", got, err, want)
+		}
+	}
+	call(17)
+	if _, err := producer.Invoke("setAlt"); err != nil {
+		t.Fatal(err)
+	}
+	call(7)
+	if _, err := producer.Invoke("setOriginal"); err != nil {
+		t.Fatal(err)
+	}
+	call(17)
+}
