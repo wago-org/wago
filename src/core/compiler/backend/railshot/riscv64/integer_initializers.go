@@ -98,8 +98,22 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	}
 	for _, table := range m.Tables {
 		if table.Init != nil {
-			if err := admitTableInitializer(*table.Init, m); err != nil {
+			global, err := admitTableInitializer(*table.Init, m)
+			if err != nil {
 				return err
+			}
+			if global {
+				if len(m.Elements) >= MaxOwnedElementSegments || table.Type.Limits.Min > MaxOwnedTableEntries {
+					return unsupported("table global initializer aggregate bound")
+				}
+				remaining := uint64(MaxOwnedTableEntries) - table.Type.Limits.Min
+				for _, element := range m.Elements {
+					entries := uint64(len(element.Kind.Funcs) + len(element.Kind.Exprs))
+					if entries > remaining {
+						return unsupported("table global initializer aggregate bound")
+					}
+					remaining -= entries
+				}
 			}
 		}
 	}

@@ -489,7 +489,7 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 			if !publicStarts || !consume(len(table.Init.BodyBytes)) {
 				return unsupported("SWAR decoded table initializer")
 			}
-			if err := admitTableInitializer(*table.Init, m); err != nil {
+			if _, err := admitTableInitializer(*table.Init, m); err != nil {
 				return err
 			}
 		}

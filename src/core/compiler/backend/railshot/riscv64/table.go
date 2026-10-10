@@ -63,16 +63,25 @@ func elementInitializerExpression(expr wasm.Expr, m *wasm.Module, mode wasm.Elem
 }
 
 // Table initialization shares the literal element profile and canonical public
-// descriptors. Validate the index even when the initial table size is zero.
-func admitTableInitializer(expr wasm.Expr, m *wasm.Module) error {
+// descriptors. An imported immutable funcref is materialized by the shared
+// frontend as a synthetic active segment. Local globals remain outside this
+// profile: Core table initializers may only read imported globals. Validate the
+// source even when the initial table size is zero.
+func admitTableInitializer(expr wasm.Expr, m *wasm.Module) (global bool, err error) {
+	if len(expr.BodyBytes) != 0 && expr.BodyBytes[0] == 0x23 {
+		if err := admitGlobalExpression(expr, m, wasm.FuncRef, m.ImportedGlobalCount()); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
 	value, err := tableElementExpression(expr)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !value.Null && uint64(value.FuncIndex) >= uint64(m.ImportedFuncCount()+len(m.Code)) {
-		return unsupported("table initializer function index")
+		return false, unsupported("table initializer function index")
 	}
-	return nil
+	return false, nil
 }
 
 // Bound decoded resource metadata before validation or payload copies.
@@ -90,6 +99,21 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		}
 	}
 	remaining := MaxOwnedTableEntries
+	if public && len(m.Tables) == 1 && m.Tables[0].Init != nil {
+		global, err := admitTableInitializer(*m.Tables[0].Init, m)
+		if err != nil {
+			return err
+		}
+		if global {
+			// The shared frontend expands a global initializer to one active
+			// segment containing the initial table length. Account for that
+			// synthetic retained metadata before ordinary segments.
+			if len(m.Elements) >= MaxOwnedElementSegments || m.Tables[0].Type.Limits.Min > uint64(remaining) {
+				return unsupported("table global initializer aggregate bound")
+			}
+			remaining -= int(m.Tables[0].Type.Limits.Min)
+		}
+	}
 	for _, e := range m.Elements {
 		if len(e.Kind.Funcs) > remaining || len(e.Kind.Exprs) > remaining {
 			return unsupported("element payload bound")
@@ -137,7 +161,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 		if !importedTables {
 			return false, unsupported("table initializer requires retained public table ABI")
 		}
-		if err := admitTableInitializer(*m.Tables[0].Init, m); err != nil {
+		if _, err := admitTableInitializer(*m.Tables[0].Init, m); err != nil {
 			return false, err
 		}
 	}
