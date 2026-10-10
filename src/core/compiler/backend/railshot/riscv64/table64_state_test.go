@@ -1182,6 +1182,40 @@ func TestOwnedTwoTable64InitDropProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable32InitDropProfile() *wasm.Module {
+	m := ownedTwoTable64InitDropProfile()
+	m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I32
+	for i := range m.Tables {
+		m.Tables[i].Type.Limits.Addr64 = false
+	}
+	return m
+}
+
+func TestOwnedTwoTable32InitDropProfile(t *testing.T) {
+	m := ownedTwoTable32InitDropProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact indexed table32.init/drop profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"first-index":     func(m *wasm.Module) { m.Code[0].BodyBytes[9] = 1 },
+		"second-index":    func(m *wasm.Module) { m.Code[1].BodyBytes[9] = 0 },
+		"destination-i64": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I64 },
+		"source-i64":      func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[1] = wasm.I64 },
+		"count-i64":       func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[2] = wasm.I64 },
+		"second-table64":  func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = true },
+		"missing-export":  func(m *wasm.Module) { m.Exports = m.Exports[:4] },
+		"extra-element":   func(m *wasm.Module) { m.Elements = append(m.Elements, m.Elements[0]) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable32InitDropProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed table32.init/drop profile admitted", err)
+			}
+		})
+	}
+}
+
 func importedTable64InitDropProfile() *wasm.Module {
 	m := ownedTable64InitDropProfile()
 	table := m.Tables[0].Type
