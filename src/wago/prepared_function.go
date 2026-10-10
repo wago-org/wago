@@ -372,7 +372,7 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 	return fn.invokeGeneral(args)
 }
 
-func (fn *WasmFunc) tryInvokeScalarHost1(args []uint64) ([]uint64, error, bool) {
+func (fn *WasmFunc) tryInvokeScalarHost1(args []uint64) (result []uint64, resultErr error, admitted bool) {
 	in := fn.in
 	if in.gc != nil || fn.gcMaintenance || !in.usesIndependentExecution() || !in.preparedFastStateValid() {
 		return nil, nil, false
@@ -380,26 +380,56 @@ func (fn *WasmFunc) tryInvokeScalarHost1(args []uint64) ([]uint64, error, bool) 
 	if err := in.beginDirectInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err), true
 	}
-	lease := in.lockPreparedScalarNoGC()
-	if !in.usesIndependentExecution() || !in.preparedFastStateValid() {
-		lease.unlock()
-		in.endDirectInvocation()
-		return nil, nil, false
+	var lease preparedScalarNoGCLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		lease = in.lockPreparedScalarNoGC()
+		leaseOwned = true
+		if !in.usesIndependentExecution() || !in.preparedFastStateValid() {
+			return
+		}
+		admitted = true
+		binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
+		if len(in.hostLog) > 0 {
+			binary.LittleEndian.PutUint32(in.hostLog, 0)
+		}
+		if resultErr = fn.callScalarHostPrepared(); resultErr != nil {
+			return
+		}
+		goruntime.KeepAlive(in)
+		goruntime.KeepAlive(in.c)
+		result = in.resultVals[:1]
+		result[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	})
+	if leaseOwned {
+		cleanup.run(lease.unlock)
 	}
-	defer in.endDirectInvocation()
-	defer lease.unlock()
-	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
-	if len(in.hostLog) > 0 {
-		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	cleanup.run(in.endDirectInvocation)
+	cleanup.finish()
+	return result, resultErr, admitted
+}
+
+// invokeGeneralAfterDirectAdmission completes a revoked direct-entry fallback.
+// The caller has already acquired one direct lifetime unit; keep its prepared
+// lease and lifecycle release in the same first-panic journal as the admitted
+// general body.
+func (fn *WasmFunc) invokeGeneralAfterDirectAdmission(args []uint64) (result []uint64, resultErr error) {
+	in := fn.in
+	var lease preparedInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		lease = in.lockPreparedInvocation()
+		leaseOwned = true
+		result, resultErr = fn.invokeGeneralAdmitted(args)
+	})
+	if leaseOwned {
+		cleanup.run(lease.unlock)
 	}
-	if err := fn.callScalarHostPrepared(); err != nil {
-		return nil, err, true
-	}
-	goruntime.KeepAlive(in)
-	goruntime.KeepAlive(in.c)
-	out := in.resultVals[:1]
-	out[0] = uint64(binary.LittleEndian.Uint32(in.results))
-	return out, nil, true
+	cleanup.run(in.endDirectInvocation)
+	cleanup.finish()
+	return result, resultErr
 }
 
 type preparedInvocationLease struct {
