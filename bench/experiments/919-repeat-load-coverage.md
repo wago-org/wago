@@ -51,7 +51,13 @@ backend package passes with the flag on. The synthetic case and PHP command
 also pass under `-tags=wago_regalloccheck`. The real `php-buckets` corpus command
 passes its pinned output oracle with the flag on. Diagnostics from an
 original-module standalone backend compile under `-tags=wago_codegenstats`
-show **942 selected pairs in 530 PHP functions**. They also show:
+show **942 selected pairs in 530 PHP functions** and the resource counts below.
+
+After restoring the exact
+spec-v3 submodule revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`
+and using repository-pinned WABT 1.0.41, the full opt-in
+`go test ./src/wago ./src/core/compiler/backend/railshot/amd64 -count=1
+-timeout=180s` passed both packages (14.424s and 3.335s).
 
 | Mode | Native B | Function body B | Spills | Reloads |
 | --- | ---: | ---: | ---: | ---: |
