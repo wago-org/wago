@@ -300,3 +300,177 @@ func TestDependencyClosedComponentDiscoveryBoundsAndAuthority(t *testing.T) {
 	dependencyTestCounts(t, g, b, 1, 1, 0, 1)
 	dependencyTestCounts(t, g, c, 1, 1, 0, 1)
 }
+
+func dependencyTestRevalidationCycle(t *testing.T) (*dependencyGraph, *dependencyMember, *dependencyMember, dependencyReceipt) {
+	t.Helper()
+	g := dependencyTestGraph(t, 3, 4)
+	a := dependencyTestMember(t, g, false)
+	b := dependencyTestMember(t, g, false)
+	downstream := dependencyTestMember(t, g, false)
+	dependencyTestInvocationLease(a, b)
+	for _, endpoints := range [][2]*dependencyMember{{a, b}, {b, a}} {
+		receipt := dependencyTestAcquire(t, g, endpoints[1])
+		if typed, err := receipt.adopt(endpoints[0], dependencyFunction); !typed || err != nil {
+			t.Fatal(typed, err)
+		}
+	}
+	outbound := dependencyTestAcquire(t, g, downstream)
+	if typed, err := outbound.adopt(a, dependencyTableStorage); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	dependencyTestClosedForDiscovery(t, a, b)
+	return g, a, downstream, outbound
+}
+
+func TestDependencyClosedComponentExactRevalidation(t *testing.T) {
+	t.Run("unchanged", func(t *testing.T) {
+		g, a, _, _ := dependencyTestRevalidationCycle(t)
+		candidate := g.discoverClosedComponent(a, 3, 4)
+		if candidate.status != dependencyComponentCandidate || !g.revalidateClosedComponent(candidate) {
+			t.Fatalf("unchanged candidate did not revalidate: %#v", candidate)
+		}
+		foreign := dependencyTestGraph(t, 1, 1)
+		if foreign.revalidateClosedComponent(candidate) {
+			t.Fatal("foreign graph revalidated candidate")
+		}
+		malformed := candidate
+		malformed.internalReceipts = malformed.receiptSlots + 1
+		malformed.receiptIdentities = make([]uint64, malformed.internalReceipts)
+		if g.revalidateClosedComponent(malformed) {
+			t.Fatal("receipt cardinality above captured extent revalidated")
+		}
+		malformed = candidate
+		malformed.members = append(append([]*dependencyMember{}, malformed.members...), a, a)
+		malformed.memberIdentities = append(append([]uint64{}, malformed.memberIdentities...), a.identity, a.identity)
+		malformed.memberOutgoing = append(append([]uint32{}, malformed.memberOutgoing...), 0, 0)
+		if g.revalidateClosedComponent(malformed) {
+			t.Fatal("member cardinality above graph cap revalidated")
+		}
+		candidate.receiptIdentities[0]++
+		if g.revalidateClosedComponent(candidate) {
+			t.Fatal("changed receipt identity revalidated")
+		}
+	})
+	t.Run("outgoing topology", func(t *testing.T) {
+		g, a, _, outbound := dependencyTestRevalidationCycle(t)
+		candidate := g.discoverClosedComponent(a, 3, 4)
+		if !g.revalidateClosedComponent(candidate) || !outbound.release() {
+			t.Fatal("failed to establish outgoing release")
+		}
+		if g.revalidateClosedComponent(candidate) {
+			t.Fatal("changed outgoing topology revalidated")
+		}
+	})
+	t.Run("receipt extent", func(t *testing.T) {
+		g, a, downstream, _ := dependencyTestRevalidationCycle(t)
+		candidate := g.discoverClosedComponent(a, 3, 4)
+		if !g.revalidateClosedComponent(candidate) {
+			t.Fatal("initial candidate did not revalidate")
+		}
+		_ = dependencyTestAcquire(t, g, downstream)
+		if g.revalidateClosedComponent(candidate) {
+			t.Fatal("grown receipt extent revalidated")
+		}
+	})
+	t.Run("root count", func(t *testing.T) {
+		g, a, _, _ := dependencyTestRevalidationCycle(t)
+		candidate := g.discoverClosedComponent(a, 3, 4)
+		if !a.owner.retainResourceRootMode(true) {
+			t.Fatal("failed to retain anonymous root")
+		}
+		t.Cleanup(a.owner.releaseResourceRoot)
+		if g.revalidateClosedComponent(candidate) {
+			t.Fatal("changed root count revalidated")
+		}
+	})
+	t.Run("lifecycle", func(t *testing.T) {
+		g, a, _, _ := dependencyTestRevalidationCycle(t)
+		candidate := g.discoverClosedComponent(a, 3, 4)
+		a.owner.lifeMu.Lock()
+		a.owner.finalizing = true
+		a.owner.lifeMu.Unlock()
+		if g.revalidateClosedComponent(candidate) {
+			t.Fatal("changed lifecycle revalidated")
+		}
+	})
+	t.Run("noncandidate", func(t *testing.T) {
+		g := dependencyTestGraph(t, 1, 1)
+		member := dependencyTestMember(t, g, false)
+		if g.revalidateClosedComponent(g.discoverClosedComponent(member, 1, 1)) {
+			t.Fatal("blocked discovery revalidated")
+		}
+	})
+}
+
+func TestDependencyClosedComponentRevalidationOutgoingBarrier(t *testing.T) {
+	g, a, downstream, outbound := dependencyTestRevalidationCycle(t)
+	candidate := g.discoverClosedComponent(a, 3, 4)
+	if !g.revalidateClosedComponent(candidate) {
+		t.Fatal("initial candidate did not revalidate")
+	}
+	started, proceed := make(chan struct{}), make(chan struct{})
+	var callbackOnce sync.Once
+	g.afterRelease = func(owner *Instance) {
+		if owner == downstream.owner {
+			callbackOnce.Do(func() {
+				close(started)
+				<-proceed
+			})
+		}
+	}
+	type releaseResult struct {
+		released bool
+		panic    any
+	}
+	done := make(chan releaseResult, 1)
+	go func() {
+		result := releaseResult{}
+		defer func() {
+			result.panic = recover()
+			done <- result
+		}()
+		result.released = outbound.release()
+	}()
+	var proceedOnce sync.Once
+	unblock := func() { proceedOnce.Do(func() { close(proceed) }) }
+	joined := false
+	t.Cleanup(func() {
+		unblock()
+		if !joined {
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out joining outbound release worker")
+			}
+		}
+	})
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out entering outbound release callback")
+	}
+	if g.revalidateClosedComponent(candidate) {
+		t.Fatal("in-flight outbound release revalidated stale candidate")
+	}
+	if result := g.discoverClosedComponent(a, 3, 4); result.status != dependencyComponentBlocked {
+		t.Fatalf("in-flight outbound release discovered candidate: %#v", result)
+	}
+	unblock()
+	var released releaseResult
+	select {
+	case released = <-done:
+		joined = true
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out completing outbound release callback")
+	}
+	if released.panic != nil || !released.released {
+		t.Fatalf("outbound release result = %+v", released)
+	}
+	if g.revalidateClosedComponent(candidate) {
+		t.Fatal("completed outbound release revalidated stale candidate")
+	}
+	fresh := g.discoverClosedComponent(a, 3, 4)
+	if fresh.status != dependencyComponentCandidate || !g.revalidateClosedComponent(fresh) {
+		t.Fatalf("fresh component after outbound release = %#v", fresh)
+	}
+}
