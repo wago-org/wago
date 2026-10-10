@@ -75,8 +75,8 @@ func rv64AssertPublicReferenceArgumentScopesClear(t *testing.T, in *Instance) {
 		t.Fatal("reference argument native entry leaked", pool.tableDepth)
 	}
 	for slot, scope := range pool.argumentOwners {
-		if scope != nil && (scope.active || scope.count != 0) {
-			t.Fatal("reference argument owner scope leaked", slot, scope.active, scope.count)
+		if scope != nil && (scope.active || scope.count != 0 || scope.externrefCount != 0 || scope.externrefStore != nil) {
+			t.Fatal("reference argument owner scope leaked", slot, scope.active, scope.count, scope.externrefCount, scope.externrefStore != nil)
 		}
 	}
 }

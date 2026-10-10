@@ -109,8 +109,11 @@ func TestRV64Core3RefIsNullExecutionRetainedClassifier(t *testing.T) {
 	if err := base.validate(); err != nil {
 		t.Fatal("exact retained fixture failed common validation:", err)
 	}
-	if err := railshotValidateReferenceFunctionInstance(base, InstantiateOptions{railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}}); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("unqualified runtime publication was not closed:", err)
+	if err := railshotValidateReferenceFunctionInstance(base, InstantiateOptions{railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}}); err != nil {
+		t.Fatal("qualified runtime publication was rejected:", err)
+	}
+	if err := railshotValidateReferenceFunctionInstance(base, InstantiateOptions{}); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("runtime publication escaped private permission:", err)
 	}
 	mutations := map[string]func(*Compiled){
 		"code":           func(c *Compiled) { c.code = bytes.Clone(c.code); c.code[0] ^= 1 },
@@ -168,8 +171,11 @@ func TestRV64Core3RefIsNullExecutionArtifactRoundTrip(t *testing.T) {
 	if !rv64Core3RefIsNullExecution(view) {
 		t.Fatal("trusted artifact lost exact retained witness")
 	}
-	if err := railshotValidateReferenceFunctionInstance(loaded, InstantiateOptions{railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}}); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("loaded artifact escaped the runtime publication gate:", err)
+	if err := railshotValidateReferenceFunctionInstance(loaded, InstantiateOptions{railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}}); err != nil {
+		t.Fatal("qualified loaded artifact was rejected:", err)
+	}
+	if err := railshotValidateReferenceFunctionInstance(loaded, InstantiateOptions{}); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("loaded artifact escaped private runtime permission:", err)
 	}
 }
 

@@ -15,9 +15,6 @@ import (
 // or a source Compiled's cache. Trusted decoding retains unpublished RW staging.
 func railshotValidateReferenceFunctionInstance(c *Compiled, opts InstantiateOptions) error {
 	c = c.executionView()
-	if rv64Core3RefIsNullExecution(c) {
-		return fmt.Errorf("%w: Core 3 ref.is_null runtime publication is not qualified", railshot.ErrUnsupported)
-	}
 	if c.nativeReferenceFunctionABI && !opts.railshotTailPolicy.referenceFunctions {
 		return fmt.Errorf("%w: closed RV64 reference functions require private Runtime permission", railshot.ErrUnsupported)
 	}
