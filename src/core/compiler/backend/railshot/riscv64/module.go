@@ -343,11 +343,12 @@ func admitWireStartProfile(data []byte, floating, vectors, publicStarts bool) er
 								return err
 							}
 							// An explicit singleton wrapper adds no recursive
-							// identity to the canonical nullable abstract funcref.
-							// Keep every typed, non-null and non-function heap form
-							// outside this representation-only exception.
+							// identity to an abstract function reference. Keep every
+							// indexed and non-function heap form outside this
+							// representation-only exception; decoded feature admission
+							// still distinguishes nullable from typed non-null control.
 							if explicitSingleton {
-								if t == 0x63 && heap == -16 {
+								if (t == 0x63 || t == 0x64) && heap == -16 {
 									continue
 								}
 								return unsupported("singleton recursive reference type")
