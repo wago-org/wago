@@ -2768,15 +2768,19 @@ func (in *Instance) callCachedBoundedHostView(entry uintptr) (err error) {
 
 // callCachedBoundedTypedHost has the same warm admission and ownership contract
 // as the view driver, with a compact typed scalar callback frame on AMD64.
-func (in *Instance) callCachedBoundedTypedHost(entry uintptr) (err error) {
+func (in *Instance) callCachedBoundedTypedHost(entry uintptr) error {
+	return in.callCachedBoundedTypedHostContext(entry, nil)
+}
+
+func (in *Instance) callCachedBoundedTypedHostContext(entry uintptr, waitParent context.Context) (err error) {
 	locked, reuse, err := in.beginCachedBoundedViewEntry()
 	if err != nil {
 		return err
 	}
 	defer in.unlockNativeEntry(locked)
 	defer in.recoverBoundedNativeSyncPanic(&err)
-	if activeHostInvocationBindings.Load() != 0 {
-		restore := bindHostInvocationParent(in, nil)
+	if waitParent != nil || activeHostInvocationBindings.Load() != 0 {
+		restore := bindHostInvocationParent(in, waitParent)
 		defer restore()
 	}
 	state := in.ensurePluginState()
