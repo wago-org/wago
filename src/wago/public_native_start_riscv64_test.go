@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -34,6 +35,97 @@ func rv64PublicNativeStartProducerModule(shared bool, tail []byte) []byte {
 	}
 	body = append(body, 0x0b)
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(2, wasmtest.Vec(imports...)), wasmtest.Section(3, []byte{2, 0, 1}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("producer_boot", 0, 1), wasmtest.ExportEntry("safe", 0, 2))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code([]byte{0x41, 23, 0x0b}))))
+}
+
+func rv64PublicNativeStartHostPanicProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("boot", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x0b}))),
+	)
+}
+
+func TestRV64PublicNativeImportedStartHostPanicCompletes(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+	}{{name: "value", value: "native imported start panic"}}
+	if os.Getenv("WAGO_NATIVE_IMPORTED_START_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name  string
+			value any
+		}{name: "nil", value: nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fail := true
+			calls := 0
+			var callerToken Caller
+			producerCode := rv64PublicStartCompile(t, rv64PublicNativeStartHostPanicProducerModule(), false)
+			producer, err := Instantiate(producerCode, NewImports().Function("env", "f", CallerHostCallFunc(func(caller Caller, _ HostCall) {
+				calls++
+				callerToken = caller
+				if fail {
+					panic(tc.value)
+				}
+			})))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer producer.Close()
+			export, err := producer.ExportedFunc("boot")
+			if err != nil {
+				t.Fatal(err)
+			}
+			consumerCode := rv64PublicStartCompile(t, invocationContextImportedStartModule(), false)
+			beforeRoots := producer.referenceLifetime().snapshot().ResourceRoots
+			var failed *Instance
+			in, err := Instantiate(consumerCode, InstantiateOptions{
+				Imports:     testImports("env.outer", export),
+				afterCreate: func(in *Instance) error { failed = in; return nil },
+			})
+			if in != nil {
+				defer in.Close()
+			}
+			if in != nil || err == nil || calls != 1 || !strings.Contains(err.Error(), "wago: instantiation panicked after instance creation") || !strings.Contains(err.Error(), fmt.Sprint(tc.value)) {
+				t.Fatalf("native imported start panic = (%p, %v, calls=%d)", in, err, calls)
+			}
+			if failed == nil || callerToken.valid() || !failed.resourcesClosed || failed.constructionIsActive() || failed.invocationState.Load()&instanceInvocationCount != 0 || failed.jm != nil || failed.thunkMem != nil || producer.referenceLifetime().snapshot().ResourceRoots != beforeRoots || producer.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatal("native imported start panic retained caller, constructor, native resources, or producer attachment")
+			}
+			if state := failed.pluginState.Load(); state != nil && (state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0) {
+				t.Fatal("native imported start panic retained consumer invocation gate")
+			}
+			if state := producer.pluginState.Load(); state != nil && (state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0) {
+				t.Fatal("native imported start panic retained producer invocation gate")
+			}
+
+			fail = false
+			if got, err := producer.Invoke("boot"); err != nil || len(got) != 0 {
+				t.Fatal("producer not reusable after failed native imported start", got, err)
+			}
+			retry, err := Instantiate(consumerCode, testImports("env.outer", export))
+			if retry != nil {
+				defer func() {
+					if retry != nil {
+						_ = retry.Close()
+					}
+				}()
+			}
+			if err != nil || retry == nil {
+				t.Fatal("consumer not reusable after failed native imported start", retry, err)
+			}
+			if err := retry.Close(); err != nil {
+				t.Fatal(err)
+			}
+			retry = nil
+			if calls != 3 || producer.referenceLifetime().snapshot().ResourceRoots != beforeRoots {
+				t.Fatal("native imported start retry did not balance calls or attachment", calls, producer.referenceLifetime().snapshot().ResourceRoots)
+			}
+		})
+	}
 }
 
 func TestRV64PublicNativeImportedStartStateReentryAndLifecycle(t *testing.T) {

@@ -1905,10 +1905,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			state.gcConfig = &cfg
 		}
 	}
-	// The local start may carry a raw legacy panic(nil) through the native host
-	// bridge. Both profiling and construction teardown must distinguish that
-	// panic from a normal error return even though recover reports a nil value.
-	definedStartReturned := true
+	// Native start execution, including an RV64 native imported start, may carry
+	// a raw legacy panic(nil) through the native host bridge. Both profiling and
+	// construction teardown must distinguish that panic from a normal error
+	// return even though recover reports a nil value.
+	nativeStartReturned := true
 	finishConstruction := func() {
 		// RV64 imported-table publication holds construction through registration.
 		// Release the native lease before Close can reenter resource finalization.
@@ -1917,7 +1918,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			finishMemoryContext = nil
 		}
 		recovered := recover()
-		if !definedStartReturned || recovered != nil {
+		if !nativeStartReturned || recovered != nil {
 			result = nil
 			if panicErr, ok := recovered.(error); ok {
 				err = wrapContextError("wago: instantiation panicked after instance creation", panicErr)
@@ -2041,7 +2042,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if codeProfileEnabled && in.lifecycleProfile() != nil {
 			var span profileSpanToken
 			span, opts.startContext = b.beginProfileInitialization(in, opts.startContext)
-			defer finishProfileBoundary(span, &err, &definedStartReturned)
+			defer finishProfileBoundary(span, &err, &nativeStartReturned)
 		}
 		if c.StartIsImport {
 			// Validation guarantees the imported start is () -> (). RV64 native
@@ -2053,7 +2054,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			displayKey := c.Imports[c.StartImportIdx]
 			key := c.functionImportBindingKey(c.StartImportIdx)
 			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil {
-				if handled, startErr := railshotInvokeNativeImportedStart(in, c.StartImportIdx, ownedThunkAddr, opts.startContext); handled {
+				nativeStartReturned = false
+				handled, startErr := railshotInvokeNativeImportedStart(in, c.StartImportIdx, ownedThunkAddr, opts.startContext)
+				nativeStartReturned = true
+				if handled {
 					if startErr != nil {
 						return nil, fmt.Errorf("start function %q: %w", displayKey, startErr)
 					}
@@ -2094,7 +2098,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			// complete-call lease so start-time allocation cannot collect another
 			// tenant's native result before public tokenization. The instance gate is
 			// acquired first, matching Invoke and prepared-call lock ordering.
-			definedStartReturned = false
+			nativeStartReturned = false
 			startErr := func() error {
 				if err := in.beginInvocation(); err != nil {
 					return err
@@ -2104,7 +2108,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				defer state.unlockInvocation()
 				return in.invokeVoidEntry(opts.startContext, startEntry, in.constructionReservationSnapshot())
 			}()
-			definedStartReturned = true
+			nativeStartReturned = true
 			if startErr != nil {
 				// Instantiation writes to imported tables are store side effects. If a
 				// local funcref remains installed when start traps, the shared table
