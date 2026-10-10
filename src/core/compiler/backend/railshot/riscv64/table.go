@@ -92,7 +92,7 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		return unsupported("table import count bound")
 	}
 	tableCount := len(m.Tables) + m.ImportedTableCount()
-	if tableCount > 1 && !admitOwnedTwoTable64Size(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
+	if tableCount > 1 && !admitOwnedTwoTable64Size(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
 	for index := 0; index < tableCount; index++ {
@@ -182,6 +182,50 @@ func admitOwnedTwoTable64Size(m *wasm.Module, production, public bool) bool {
 	}
 	sub := m.Types[0].SubTypes[0]
 	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I64) {
+		return false
+	}
+	var functions, tables [2]bool
+	for _, export := range m.Exports {
+		if export.Index.Index > 1 {
+			return false
+		}
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			functions[export.Index.Index] = true
+		case wasm.ExternTable:
+			tables[export.Index.Index] = true
+		default:
+			return false
+		}
+	}
+	return functions[0] && functions[1] && tables[0] && tables[1]
+}
+
+// admitOwnedTwoTable64GetSet qualifies the same bounded two-descriptor
+// directory for null-only indexed entry access. Each body is pinned to one
+// table index, so no other reference flow or mutation shape is admitted.
+func admitOwnedTwoTable64GetSet(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	for i := range m.Tables {
+		table := m.Tables[i]
+		body := []byte{0x20, 0, 0xd0, 0x70, 0x26, byte(i), 0x20, 0, 0x25, byte(i), 0xd1, 0x0b}
+		if table.Init != nil || !table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min > MaxOwnedTableEntries || table.Type.Limits.Max > MaxOwnedTableEntries || table.Type.Limits.Max < table.Type.Limits.Min || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) {
+			return false
+		}
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != 0 || len(m.Code[i].Locals.Runs) != 0 || len(m.Code[i].Body.Instrs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, body) {
+			return false
+		}
+	}
+	if len(m.Types[0].SubTypes) != 1 {
+		return false
+	}
+	sub := m.Types[0].SubTypes[0]
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 1 || !wasm.EqualValType(sub.Comp.Params[0], wasm.I64) || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) {
 		return false
 	}
 	var functions, tables [2]bool
@@ -824,7 +868,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	if hasTable {
 		t, _ := m.TableType(0)
-		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTwoTable64Size(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
+		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTwoTable64Size(m, production, importedTables) && !admitOwnedTwoTable64GetSet(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
 			return false, unsupported("private nullable funcref table32 only")
 		}
 	}
@@ -977,8 +1021,8 @@ func (f *integerEmitter) privateTableDescriptor(dst enc.Reg, index uint32) {
 }
 
 // Returns the entry address in X6. X28 may hold a full-width reference.
-func (f *integerEmitter) privateTableEntry() {
-	f.a.Ld(enc.X6, enc.X25, -80)
+func (f *integerEmitter) privateTableEntry(index uint32) {
+	f.privateTableDescriptor(enc.X6, index)
 	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
 	f.a.Lwu(enc.X7, enc.X6, 0)
 	f.trap(trapTableBounds, f.a.BranchLong(enc.GEU, enc.X5, enc.X7))

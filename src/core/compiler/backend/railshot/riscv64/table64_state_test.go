@@ -154,6 +154,46 @@ func TestOwnedTwoTable64SizeProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable64GetSetProfile() *wasm.Module {
+	m := ownedTwoTable64SizeProfile()
+	m.Types[0].SubTypes[0].Comp.Params = []wasm.ValType{wasm.I64}
+	m.Types[0].SubTypes[0].Comp.Results = []wasm.ValType{wasm.I32}
+	m.Code[0].BodyBytes = []byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0x20, 0, 0x25, 0, 0xd1, 0x0b}
+	m.Code[1].BodyBytes = []byte{0x20, 0, 0xd0, 0x70, 0x26, 1, 0x20, 0, 0x25, 1, 0xd1, 0x0b}
+	m.Exports[0].Name, m.Exports[1].Name = "roundtrip0", "roundtrip1"
+	return m
+}
+
+func TestOwnedTwoTable64GetSetProfile(t *testing.T) {
+	m := ownedTwoTable64GetSetProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact indexed two-table64 get/set profile rejected", table, err)
+	}
+	state, err := admitStatePolicy(m, true, false, true, true)
+	if err != nil || len(state.tableAddr64) != 2 || !state.tableAddr64[0] || !state.tableAddr64[1] {
+		t.Fatal("two-table64 get/set state directory", state.tableAddr64, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body-index":  func(m *wasm.Module) { m.Code[1].BodyBytes[9] = 0 },
+		"body-set":    func(m *wasm.Module) { m.Code[1].BodyBytes[5] = 0 },
+		"result":      func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"param":       func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I32 },
+		"no-max":      func(m *wasm.Module) { m.Tables[1].Type.Limits.HasMax = false },
+		"table32":     func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = false },
+		"no-export":   func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+		"element":     func(m *wasm.Module) { m.Elements = []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}}} },
+		"initializer": func(m *wasm.Module) { m.Tables[1].Init = &wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable64GetSetProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed two-table64 get/set profile admitted", err)
+			}
+		})
+	}
+}
+
 func importedTable64SizeProfile() *wasm.Module {
 	table := wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: 4, HasMax: true, Addr64: true}}
 	return &wasm.Module{

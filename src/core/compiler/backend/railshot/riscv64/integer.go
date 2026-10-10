@@ -809,7 +809,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if !state.ownedTable || idx != 0 {
+				tableWide, tableOK := state.tableWidth(idx)
+				if !tableOK {
 					return integerSummary{}, unsupported("private table index")
 				}
 				if op == 0x26 {
@@ -829,20 +830,20 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 				}
 				if functionRefs {
-					if state.table64 {
+					if tableWide {
 						err = popWidth(true)
 					} else {
 						err = condition() // Exact i32 at this frame's current floor.
 					}
 				} else {
-					err = popWidth(state.table64)
+					err = popWidth(tableWide)
 				}
 				if err != nil {
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
-					emit.Load(5, emit.SpillOffset(h), state.table64)
-					emit.privateTableEntry()
+					emit.Load(5, emit.SpillOffset(h), tableWide)
+					emit.privateTableEntry(idx)
 					if op == 0x25 {
 						emit.a.Ld(enc.X5, enc.X6, 24)
 						emit.Store(emit.SpillOffset(h), 5, true)
