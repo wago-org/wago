@@ -88,3 +88,26 @@ with eager production.
 The external references motivate the question, but do not establish a Wago
 result: [V8's Wasm compilation pipeline](https://v8.dev/docs/wasm-compilation-pipeline)
 and [Titzer's in-place WebAssembly interpreter paper](https://arxiv.org/abs/2205.01183).
+
+## Real-command function-entry followup
+
+The disposable WABT rewriter `bench/experiments/925-profile-functions.py` adds a visited bit at the entry of each **local** function. The opt-in suite test runs the original real command against its existing corpus oracle, then runs two fresh instrumented instances, requiring identical results, stdout, stderr, output files, and visited sets. The complete suite was repeated twice with identical results:
+
+```sh
+cd bench
+WAGO_925_PROFILE=1 GOCACHE=/tmp/wago-go-cache go test -tags=wago_codegenstats ./suite -run '^TestLazyFunctionEntryProfile$' -count=2 -v -timeout=120s -args -wago.corpus=all
+```
+
+The two full passes took 20.80 seconds. Per-function body byte attribution comes from a separate original-module standalone AMD64 backend compile with `CodegenStats`; it excludes shared stubs and metadata and may differ from Wago's ordinary production compile policy. It is **not** a lazy compiler or a measured saving. The original Wago native total remains listed separately above.
+
+| Real command | Local funcs | Entered | Entered share | Backend body B | Entered body B | Unentered body B |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| FastTree phylogeny | 163 | 85 | 52.15% | 655,174 | 496,990 | 158,184 |
+| jq transform | 719 | 229 | 31.85% | 1,783,584 | 740,318 | 1,043,266 |
+| QuickJS script | 891 | 270 | 30.30% | 1,935,597 | 959,167 | 976,430 |
+| SQLite query | 1,547 | 334 | 21.59% | 4,111,843 | 1,666,920 | 2,444,923 |
+| PHP buckets | 12,592 | 727 | 5.77% | 30,071,824 | 2,825,081 | 27,246,743 |
+
+The PHP input now has actual execution coverage, unlike the initial static element/export proxy. Its 27.25 MB of unentered body code makes it the clearest candidate, though another input or longer run may enter many more functions. Instrumentation increases source size (PHP 13,622,978→14,026,672 B) and compiled size (30,164,957→30,428,535 B); use it only to identify entered functions, never to estimate lazy speed or memory. The original command output is unchanged. The unentered byte sum is an upper bound before the costs of retained validated bodies, first-use stubs, synchronization, executable mapping, and serialization; no net retained RSS or compile-time reduction is claimed.
+
+A safe first implementation still needs the fixed-entry and code-publication protocol described above. The profile gives a concrete target for that work and leaves this PR draft pending a working opt-in implementation and concurrency/serialization correctness tests.
