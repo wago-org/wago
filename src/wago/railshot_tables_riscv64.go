@@ -117,8 +117,30 @@ func rv64OwnedTable64Indirect(c *Compiled) bool {
 	return true
 }
 
+func rv64OwnedTable64Fill(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64FillABI || !c.TableAddr64 || !c.TableHasMax || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) == 0 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	sig := c.Funcs[0]
+	if len(sig.Params) != 2 || sig.Params[0] != ValI64 || sig.Params[1] != ValI64 || len(sig.Results) != 1 || sig.Results[0] != ValI32 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+		return false
+	}
+	for _, index := range c.Exports {
+		if index != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func rv64QualifiedTable64(c *Compiled) bool {
-	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTable64Indirect(c)
+	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTable64Fill(c)
 }
 
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy

@@ -14,13 +14,15 @@ func (f *integerEmitter) privateTableRange(copySource bool) {
 	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
 	f.a.Lwu(enc.X29, enc.X28, 0)
 	f.a.Add(enc.X30, enc.X6, enc.X5)
+	f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X30, enc.X6))
 	f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X30))
 	if copySource {
 		f.a.Add(enc.X30, enc.X7, enc.X5)
+		f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X30, enc.X7))
 		f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X30))
 	}
-	// Normalized table32 operands add in64 bits: even two UINT32_MAX values
-	// cannot wrap. Exact-end zero-length ranges remain valid.
+	// Exact-end zero-length ranges remain valid. Explicit overflow checks are
+	// required for table64; they are harmless for normalized table32 operands.
 	f.a.Slli(enc.X6, enc.X6, 5)
 	f.a.Add(enc.X6, enc.X6, enc.X28)
 	f.a.Addi(enc.X6, enc.X6, 8)

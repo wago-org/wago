@@ -171,6 +171,16 @@ func rv64Table64IndirectInstructionSource() []byte {
 	)
 }
 
+func rv64Table64FillInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 4, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("fill", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x20, 1, 0xfc, 0x11, 0, 0x41, 1, 0x0b}))),
+	)
+}
+
 func rv64RelabelledTable32FunctionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
@@ -324,6 +334,117 @@ func TestRV64PublicOwnedTable64Indirect(t *testing.T) {
 			}
 			if got, err := in.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
 				t.Fatal("table64 indirect reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64Fill(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-fill", rv64Table64FillInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64FillABI || !rv64OwnedTable64Fill(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("table64.fill metadata contract: witness=%d qualified=%v features=%#x funcs=%+v refs=%v descs=%v", c.nativeTable64ABI, rv64OwnedTable64Fill(c), c.requiredFeatures, c.Funcs, c.nativeReferenceFunctionABI, c.NeedsFuncRefDescs)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 4 {
+				t.Fatal("table64.fill export", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("table64.fill missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			for i := uint64(0); i < 4; i++ {
+				copy(table.desc[8+int(i)*coreruntime.TableEntryBytes:], row)
+			}
+			expected := slices.Clone(table.desc)
+			clear(expected[8+coreruntime.TableEntryBytes : 8+3*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("fill", 1, 2); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table.desc, expected) {
+				t.Fatal("table64.fill did not clear exact canonical rows", got, err)
+			}
+			if got, err := in.Invoke("fill", 4, 0); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table.desc, expected) {
+				t.Fatal("table64.fill exact-end zero range", got, err)
+			}
+			for i, wantNull := range []bool{false, true, true, false} {
+				if null, err := table.EntryIsNull(uint64(i)); err != nil || null != wantNull {
+					t.Fatal("table64.fill entry state", i, null, wantNull, err)
+				}
+			}
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][2]uint64{{3, 2}, {1 << 32, 0}, {0, 1 << 32}, {^uint64(0), 2}} {
+				got, err := in.Invoke("fill", invalid[0], invalid[1])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("table64.fill range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 4 {
+					t.Fatal("table64.fill trap changed storage", invalid)
+				}
+			}
+			if got, err := in.Invoke("fill", 0, 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("table64.fill reuse after trap", got, err)
+			}
+			if null, err := table.EntryIsNull(0); err != nil || !null {
+				t.Fatal("table64.fill reuse did not clear row zero", null, err)
+			}
+			if got, err := in.Invoke("fill", 3, 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("table64.fill final cleanup", got, err)
+			}
+			for i := uint64(0); i < 4; i++ {
+				if null, err := table.EntryIsNull(i); err != nil || !null {
+					t.Fatal("table64.fill final null entry", i, null, err)
+				}
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64FillArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-fill-admission", rv64Table64FillInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"indirect-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64IndirectABI
+		},
+		"first-param":  func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"second-param": func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
+		"result":       func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"missing-ref":  func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"no-max":       func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 12)
+		},
+		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"element":        func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32":        func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.fill metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64.fill artifact admitted")
 			}
 		})
 	}
@@ -568,6 +689,9 @@ func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
 		},
 		"contradictory-indirect-witness": func(v *Compiled) {
 			v.nativeTable64ABI = nativeTable64IndirectABI
+		},
+		"contradictory-fill-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64FillABI
 		},
 		"table32":     func(v *Compiled) { v.TableAddr64 = false },
 		"start":       func(v *Compiled) { v.HasStart = true },
