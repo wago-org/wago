@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -120,6 +121,26 @@ func rv64Table64UnsupportedInstructionSource() []byte {
 	)
 }
 
+func rv64Table64GrowInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 0, 0x0b}))),
+	)
+}
+
+func rv64Table64GrowNoMaxSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x04, 2})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 0, 0x0b}))),
+	)
+}
+
 func rv64RelabelledTable32FunctionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
@@ -134,7 +155,7 @@ func TestRV64PublicOwnedTable64Size(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-table64-size", rv64Table64SizeInstructionSource(), artifact)
-			if !c.nativeTable64SizeABI || !rv64OwnedTable64Size(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+			if c.nativeTable64ABI != nativeTable64SizeABI || !rv64OwnedTable64Size(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
 				t.Fatal("table64.size metadata contract")
 			}
 			in, err := Instantiate(c)
@@ -162,10 +183,90 @@ func TestRV64PublicOwnedTable64Size(t *testing.T) {
 	}
 }
 
+func TestRV64PublicOwnedTable64Grow(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-grow", rv64Table64GrowInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64GrowABI || !rv64OwnedTable64Grow(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatal("table64.grow metadata contract")
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for _, step := range []struct {
+				delta, old uint64
+				size       int
+			}{
+				{^uint64(0), ^uint64(0), 2},
+				{1, 2, 3},
+				{1, 3, 4},
+				{1, ^uint64(0), 4},
+				{1 << 32, ^uint64(0), 4},
+			} {
+				got, err := in.Invoke("grow", step.delta)
+				if err != nil || !slices.Equal(got, []uint64{step.old}) || table.Size() != step.size {
+					t.Fatal("table64.grow", step, got, table.Size(), err)
+				}
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64GrowArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-grow-admission", rv64Table64GrowInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"size-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
+		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"no-max":          func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 15)
+		},
+		"extra-function": func(v *Compiled) {
+			v.Funcs = append(v.Funcs, FuncSig{})
+		},
+		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32": func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.grow metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64.grow artifact admitted")
+			}
+		})
+	}
+}
+
 func TestRV64PublicOwnedTable64SizeArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-table64-size-admission", rv64Table64SizeInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-witness": func(v *Compiled) { v.nativeTable64SizeABI = false },
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
 		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
 		"export":          func(v *Compiled) { v.Exports["size"] = 1 },
 		"extra-function": func(v *Compiled) {
@@ -199,7 +300,7 @@ func TestRV64PublicOwnedTable64SizeArtifactGates(t *testing.T) {
 	}
 
 	relabelled := rv64TableStageCompile(t, "ordinary-table32-i64", rv64RelabelledTable32FunctionSource(), false)
-	if relabelled.nativeTable64SizeABI {
+	if relabelled.nativeTable64ABI != nativeTable64NoABI {
 		t.Fatal("ordinary table32 function acquired table64.size compiler witness")
 	}
 	bad := *relabelled.executionView()
@@ -238,6 +339,7 @@ func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
 	overCapacity := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0, 0x81, 0x08})))
 	for name, bad := range map[string][]byte{
 		"instruction": rv64Table64UnsupportedInstructionSource(),
+		"grow-no-max": rv64Table64GrowNoMaxSource(),
 		"second":      secondTable,
 		"memory":      withMemory,
 		"imported":    importedTable,
@@ -259,7 +361,8 @@ func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "state-only-table64-admission", rv64StateOnlyTable64Source(0, 4, "table"), true)
 	for name, mutate := range map[string]func(*Compiled){
 		"missing-feature":            func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTable64 },
-		"contradictory-size-witness": func(v *Compiled) { v.nativeTable64SizeABI = true },
+		"contradictory-size-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
+		"contradictory-grow-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
 		"table32":                    func(v *Compiled) { v.TableAddr64 = false },
 		"start":                      func(v *Compiled) { v.HasStart = true },
 		"initializer":                func(v *Compiled) { v.HasTableInitFunc = true },

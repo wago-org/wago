@@ -1249,7 +1249,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					widths, references := [3]bool{}, [3]bool{}
 					n := 3
 					if imm.Kind == wasm.InstrTableGrow {
-						n, widths[0], references[0] = 2, true, true
+						n, widths[0], widths[1], references[0] = 2, true, state.table64, true
 					} else if imm.Kind == wasm.InstrTableFill {
 						widths[1], references[1] = true, true
 					}
@@ -1262,7 +1262,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				deltaSlot := h
 				if live && emit != nil {
-					emit.Load(5, emit.SpillOffset(h), false)
+					emit.Load(5, emit.SpillOffset(h), imm.Kind == wasm.InstrTableGrow && state.table64)
 				}
 				if _, err = popClass(imm.Kind != wasm.InstrTableCopy); err != nil {
 					return integerSummary{}, err
@@ -1285,12 +1285,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					case wasm.InstrTableFill:
 						emit.privateTableFill()
 					case wasm.InstrTableGrow:
-						emit.privateTableGrow(deltaSlot)
-						emit.Store(emit.SpillOffset(h), 5, false)
+						emit.privateTableGrow(deltaSlot, state.table64)
+						emit.Store(emit.SpillOffset(h), 5, state.table64)
 					}
 				}
 				if imm.Kind == wasm.InstrTableGrow {
-					if err = push(false); err != nil {
+					if err = push(state.table64); err != nil {
 						return integerSummary{}, err
 					}
 				}

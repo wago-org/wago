@@ -119,8 +119,14 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
-	if c.nativeTable64SizeABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c)) {
+	if c.nativeTable64ABI == nativeTable64SizeABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c)) {
 		return reject("table64.size compiler witness requires its exact owned table64 profile")
+	}
+	if c.nativeTable64ABI == nativeTable64GrowABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Grow(c)) {
+		return reject("table64.grow compiler witness requires its exact owned table64 profile")
+	}
+	if c.nativeTable64ABI > nativeTable64GrowABI {
+		return reject("unknown table64 compiler witness")
 	}
 	if c.requiredFeatures.IsEnabled(CoreFeatureTable64) && !rv64QualifiedTable64(c) {
 		return reject("table64 requires an exact qualified owned-table profile")

@@ -127,17 +127,18 @@ func (f *integerEmitter) privateCopyEntries(step int32) {
 	}
 }
 
-func (f *integerEmitter) privateTableGrow(deltaSlot int) {
-	f.privateTableGrowAt(f.SpillOffset(deltaSlot))
+func (f *integerEmitter) privateTableGrow(deltaSlot int, deltaWide bool) {
+	f.privateTableGrowAt(f.SpillOffset(deltaSlot), deltaWide)
 }
 
 // The offset belongs to the caller's spill layout; SWAR uses16-byte homes.
-func (f *integerEmitter) privateTableGrowAt(deltaOffset int32) {
+func (f *integerEmitter) privateTableGrowAt(deltaOffset int32, deltaWide bool) {
 	f.a.Ld(enc.X28, enc.X25, -80)
 	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
 	f.a.Lwu(enc.X30, enc.X28, 0)
 	f.a.Lwu(enc.X29, enc.X28, 4)
 	f.a.Add(enc.X6, enc.X30, enc.X5)
+	overflow := f.a.BranchLong(enc.LTU, enc.X6, enc.X5)
 	failed := f.a.BranchLong(enc.LTU, enc.X29, enc.X6)
 	f.privateReferenceGuard()
 	f.a.Ld(enc.X6, enc.X25, -80)
@@ -146,16 +147,24 @@ func (f *integerEmitter) privateTableGrowAt(deltaOffset int32) {
 	f.a.Addi(enc.X6, enc.X6, 8)
 	f.privateFillEntries()
 	// Initialization and all entry polls finish before the new length is visible.
-	f.Load(5, deltaOffset, false)
+	f.Load(5, deltaOffset, deltaWide)
 	f.a.Add(enc.X5, enc.X30, enc.X5)
 	f.a.Ld(enc.X6, enc.X25, -80)
 	f.a.Sw(enc.X5, enc.X6, 0)
 	f.a.Addi(enc.X5, enc.X30, 0)
 	done := f.Jump()
-	if err := f.Patch(failed, f.Position()); err != nil {
+	failure := f.Position()
+	if err := f.Patch(overflow, failure); err != nil {
 		f.err = err
 	}
-	f.a.Constant32(enc.X5, ^uint32(0))
+	if err := f.Patch(failed, failure); err != nil {
+		f.err = err
+	}
+	if deltaWide {
+		f.a.Addi(enc.X5, enc.Zero, -1)
+	} else {
+		f.a.Constant32(enc.X5, ^uint32(0))
+	}
 	if err := f.Patch(done, f.Position()); err != nil {
 		f.err = err
 	}
