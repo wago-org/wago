@@ -30,6 +30,9 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 	if goruntime.GOOS != "linux" || goruntime.GOARCH != "riscv64" {
 		return nativeTable64NoABI
 	}
+	if stagedOwnedTwoTable64SizeShape(m) {
+		return nativeTable64SizeABI
+	}
 	if stagedOwnedTable64SizeShape(m) {
 		return nativeTable64SizeABI
 	}
@@ -80,7 +83,7 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 //
 //go:noinline
 func validateCompileTable64(m *wasm.Module) error {
-	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedImportedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m) || stagedOwnedTable64InitDropShape(m) || stagedImportedTable64SizeShape(m) || stagedImportedTable64GetSetShape(m) || stagedImportedTable64GrowShape(m) || stagedImportedTable64FillShape(m) || stagedImportedTable64CopyShape(m) || stagedImportedTable64InitDropShape(m))
+	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTwoTable64SizeShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedImportedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m) || stagedOwnedTable64InitDropShape(m) || stagedImportedTable64SizeShape(m) || stagedImportedTable64GetSetShape(m) || stagedImportedTable64GrowShape(m) || stagedImportedTable64FillShape(m) || stagedImportedTable64CopyShape(m) || stagedImportedTable64InitDropShape(m))
 	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !rv64Qualified {
 		return fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
@@ -152,6 +155,46 @@ func validateCompileTable64(m *wasm.Module) error {
 		}
 	}
 	return nil
+}
+
+func stagedOwnedTwoTable64SizeShape(m *wasm.Module) bool {
+	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	for i := range m.Tables {
+		table := m.Tables[i]
+		if table.Init != nil || !table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min > frontend.StagedTable64Max() || table.Type.Limits.Max > frontend.StagedTable64Max() || table.Type.Limits.Max < table.Type.Limits.Min || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) {
+			return false
+		}
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != 0 || len(m.Code[i].Locals.Runs) != 0 || len(m.Code[i].Body.Instrs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, []byte{0xfc, 0x10, byte(i), 0x0b}) {
+			return false
+		}
+	}
+	if len(m.Types[0].SubTypes) != 1 {
+		return false
+	}
+	sub := m.Types[0].SubTypes[0]
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I64) {
+		return false
+	}
+	var functions, tables [2]bool
+	for _, export := range m.Exports {
+		if export.Index.Index > 1 {
+			return false
+		}
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			functions[export.Index.Index] = true
+		case wasm.ExternTable:
+			tables[export.Index.Index] = true
+		default:
+			return false
+		}
+	}
+	return functions[0] && functions[1] && tables[0] && tables[1]
 }
 
 func stagedOwnedTable64SizeShape(m *wasm.Module) bool {

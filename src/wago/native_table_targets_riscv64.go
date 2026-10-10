@@ -169,7 +169,7 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 		if err := owner.c.validateCached(); err != nil {
 			return err
 		}
-		if owner.c.tableCount() > 1 {
+		if owner.c.tableCount() > 1 && !rv64OwnedTwoTable64Size(owner.c) {
 			return fmt.Errorf("RV64 table target table directory bound")
 		}
 		for index := range owner.c.Imports {
@@ -244,11 +244,10 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 		if err := rv64ValidateTailTargets(owner); err != nil {
 			return err
 		}
-		if owner.c.tableCount() == 0 {
-			continue
-		}
-		if err := s.validateTable(owner.tableDescriptor(0)); err != nil {
-			return err
+		for tableIndex := 0; tableIndex < owner.c.tableCount(); tableIndex++ {
+			if err := s.validateTable(owner.tableDescriptor(tableIndex)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

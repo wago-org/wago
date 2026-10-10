@@ -57,7 +57,11 @@ func admitProductionWireProfile(data []byte, public bool) error {
 			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
 			count, err := section.U32()
 			limit := uint32(1)
-			if id == 9 {
+			if id == 4 && public {
+				// Decoded admission restricts the second table to the exact bounded
+				// indexed-size profile before code generation.
+				limit = 2
+			} else if id == 9 {
 				limit = MaxOwnedElementSegments
 			}
 			if err != nil || count == 0 && !public || count > limit {

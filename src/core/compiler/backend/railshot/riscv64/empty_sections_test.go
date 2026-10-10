@@ -64,7 +64,7 @@ func TestProductionEmptySectionsPreserveBounds(t *testing.T) {
 	for _, id := range []byte{2, 4, 9} {
 		limit := uint32(MaxProductionImports)
 		if id == 4 {
-			limit = 1
+			limit = 2
 		} else if id == 9 {
 			limit = MaxOwnedElementSegments
 		}

@@ -96,6 +96,64 @@ func TestOwnedTable64SizeProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable64SizeProfile() *wasm.Module {
+	return &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I64}}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}, {Index: 0}},
+		Code: []wasm.Func{
+			{BodyBytes: []byte{0xfc, 0x10, 0, 0x0b}},
+			{BodyBytes: []byte{0xfc, 0x10, 1, 0x0b}},
+		},
+		Tables: []wasm.Table{
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: 2, HasMax: true, Addr64: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 3, Max: 4, HasMax: true, Addr64: true}}},
+		},
+		Exports: []wasm.Export{
+			{Name: "size0", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}},
+			{Name: "size1", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}},
+			{Name: "table0", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}},
+			{Name: "table1", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 1}},
+		},
+	}
+}
+
+func TestOwnedTwoTable64SizeProfile(t *testing.T) {
+	m := ownedTwoTable64SizeProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact indexed two-table64.size profile rejected", table, err)
+	}
+	state, err := admitStatePolicy(m, true, false, true, true)
+	if err != nil || len(state.tableAddr64) != 2 || !state.tableAddr64[0] || !state.tableAddr64[1] {
+		t.Fatal("two-table64 state directory", state.tableAddr64, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body":           func(m *wasm.Module) { m.Code[1].BodyBytes = []byte{0xfc, 0x10, 0, 0x0b} },
+		"result":         func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I32 },
+		"param":          func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params = []wasm.ValType{wasm.I64} },
+		"locals":         func(m *wasm.Module) { m.Code[1].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I64}} },
+		"no-max":         func(m *wasm.Module) { m.Tables[1].Type.Limits.HasMax = false },
+		"table32":        func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = false },
+		"externref":      func(m *wasm.Module) { m.Tables[1].Type.Ref = wasm.AbsRef(wasm.HeapExtern) },
+		"no-export":      func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+		"extra-table":    func(m *wasm.Module) { m.Tables = append(m.Tables, m.Tables[1]) },
+		"element":        func(m *wasm.Module) { m.Elements = []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}}} },
+		"initializer":    func(m *wasm.Module) { m.Tables[1].Init = &wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}} },
+		"branch-hints":   func(m *wasm.Module) { m.BranchHints = []wasm.FuncBranchHints{{FuncIndex: 0}} },
+		"compact-import": func(m *wasm.Module) { m.UsesCompactImports = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable64SizeProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed two-table64.size profile admitted", err)
+			}
+		})
+	}
+	if _, err := admitTableProfile(m, true, false); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("indexed two-table64.size escaped retained public boundary", err)
+	}
+}
+
 func importedTable64SizeProfile() *wasm.Module {
 	table := wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: 4, HasMax: true, Addr64: true}}
 	return &wasm.Module{

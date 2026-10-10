@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"maps"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -110,6 +112,27 @@ func rv64Table64SizeInstructionSource() []byte {
 		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0, 0x0b}))),
+	)
+}
+
+func rv64TwoTable64SizeInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 1, 2},
+			[]byte{0x70, 0x05, 3, 4},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("size1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xfc, 0x10, 0, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x10, 1, 0x0b}),
+		)),
 	)
 }
 
@@ -345,6 +368,60 @@ func TestRV64PublicOwnedTable64Size(t *testing.T) {
 			}
 			if got, err := in.Invoke("size"); err != nil || !slices.Equal(got, []uint64{2}) {
 				t.Fatal("table64.size after compiled close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64Size(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-size", rv64TwoTable64SizeInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64SizeABI || !rv64OwnedTwoTable64Size(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatalf("two-table64.size metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Size(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			if in.jm.TableDirPtr() == 0 || len(in.tableDescriptor(0)) < 8 || len(in.tableDescriptor(1)) < 8 || &in.tableDescriptor(0)[0] == &in.tableDescriptor(1)[0] {
+				t.Fatal("two-table64 descriptor directory")
+			}
+			for range 3 {
+				if got, err := in.Invoke("size0"); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("table64.size table 0", got, err)
+				}
+				if got, err := in.Invoke("size1"); err != nil || !slices.Equal(got, []uint64{3}) {
+					t.Fatal("table64.size table 1", got, err)
+				}
+			}
+			second := in.tableDescriptor(1)
+			capacity := binary.LittleEndian.Uint32(second[4:])
+			binary.LittleEndian.PutUint32(second[4:], capacity+railshot.MaxOwnedTableEntries)
+			got, invokeErr := in.Invoke("size0")
+			binary.LittleEndian.PutUint32(second[4:], capacity)
+			if invokeErr == nil || len(got) != 0 {
+				t.Fatal("unselected corrupt table64 descriptor accepted", got, invokeErr)
+			}
+			if got, err := in.Invoke("size0"); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("table64.size reuse after descriptor restore", got, err)
+			}
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 1 {
+				t.Fatal("table64 table 0 export", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 3 || table1 == table0 {
+				t.Fatal("table64 table 1 export", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if err := c.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := in.Invoke("size1"); err != nil || !slices.Equal(got, []uint64{3}) {
+				t.Fatal("table64.size table 1 after compiled close", got, err)
 			}
 		})
 	}
@@ -1615,6 +1692,62 @@ func TestRV64PublicOwnedTable64SizeArtifactGates(t *testing.T) {
 		if loadErr == nil {
 			t.Fatal("ordinary table32 artifact relabelled as table64.size")
 		}
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64SizeArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-size-admission", rv64TwoTable64SizeInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"first-table32":   func(v *Compiled) { v.TableAddr64 = false },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-initializer": func(v *Compiled) {
+			v.extraTables[0].HasInitFunc = true
+			v.extraTables[0].InitFunc = 1
+		},
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI32 },
+		"function-export": func(v *Compiled) { v.Exports["size1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid two-table64.size metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid two-table64.size artifact admitted")
+			}
+		})
+	}
+
+	inactive := *c.executionView()
+	inactive.extraTables = slices.Clone(inactive.extraTables)
+	inactive.extraTables[0].InitFunc = 1
+	if err := inactive.validate(); err == nil {
+		t.Fatal("inactive second-table initializer index admitted")
 	}
 }
 

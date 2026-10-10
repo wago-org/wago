@@ -43,6 +43,7 @@ type moduleState struct {
 	ownedTable             bool
 	ownedTableGrowth       bool
 	table64                bool
+	tableAddr64            []bool
 	elementCount           int
 	memory                 *memorySpec
 	memoryCount            int
@@ -58,6 +59,19 @@ type moduleState struct {
 	capacity               int
 	memoryExports          map[string]bool
 	globalExports          map[string]int
+}
+
+func (s *moduleState) tableWidth(index uint32) (wide bool, ok bool) {
+	if s == nil || !s.ownedTable {
+		return false, false
+	}
+	if len(s.tableAddr64) == 0 {
+		return s.table64, index == 0
+	}
+	if uint64(index) >= uint64(len(s.tableAddr64)) {
+		return false, false
+	}
+	return s.tableAddr64[index], true
 }
 
 func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
@@ -103,10 +117,16 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.ownedTable, tableErr = admitTableProfile(m, production, importedTables)
 	s.elementCount = len(m.Elements)
 	if s.ownedTable {
-		// The frontend reserves max(1024,2*min) for observable no-max growth.
-		t, _ := m.TableType(0)
-		s.table64 = t.Limits.Addr64
-		s.ownedTableGrowth = importedTables && m.ImportedTableCount() != 0 || t.Limits.HasMax || t.Limits.Min <= MaxOwnedTableEntries/2
+		s.tableAddr64 = make([]bool, m.TableCount())
+		for index := range s.tableAddr64 {
+			t, _ := m.TableType(uint32(index))
+			s.tableAddr64[index] = t.Limits.Addr64
+			if index == 0 {
+				// The frontend reserves max(1024,2*min) for observable no-max growth.
+				s.table64 = t.Limits.Addr64
+				s.ownedTableGrowth = importedTables && m.ImportedTableCount() != 0 || t.Limits.HasMax || t.Limits.Min <= MaxOwnedTableEntries/2
+			}
+		}
 	}
 	if tableErr != nil {
 		return s, tableErr
@@ -240,7 +260,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			}
 			s.globalExports[ex.Name] = int(ex.Index.Index)
 		case wasm.ExternTable:
-			if !production || !publicExports || !s.ownedTable || ex.Index.Index != 0 {
+			if !production || !publicExports || !s.ownedTable || uint64(ex.Index.Index) >= uint64(len(s.tableAddr64)) {
 				return s, unsupported("table export requires the public owned table profile")
 			}
 			tableExports++

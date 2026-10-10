@@ -91,10 +91,11 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 	if len(m.Imports) > MaxProductionImports {
 		return unsupported("table import count bound")
 	}
-	if len(m.Tables)+m.ImportedTableCount() > 1 || len(m.Elements) > MaxOwnedElementSegments {
+	tableCount := len(m.Tables) + m.ImportedTableCount()
+	if tableCount > 1 && !admitOwnedTwoTable64Size(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
-	for index := 0; index < len(m.Tables)+m.ImportedTableCount(); index++ {
+	for index := 0; index < tableCount; index++ {
 		t, _ := m.TableType(uint32(index))
 		if t.Limits.Min > MaxOwnedTableEntries || (t.Limits.HasMax && t.Limits.Max > MaxOwnedTableEntries) {
 			return unsupported("private table capacity")
@@ -155,6 +156,49 @@ func admitStateOnlyTable64(m *wasm.Module, production, public bool) bool {
 	}
 	t := m.Tables[0]
 	return t.Type.Limits.Addr64 && wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef)
+}
+
+// admitOwnedTwoTable64Size is the first multi-table descriptor slice. It
+// observes two bounded owned table64 lengths through distinct fixed indexes,
+// without references, initializers, imports, mutation, or indirect dispatch.
+func admitOwnedTwoTable64Size(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	for i := range m.Tables {
+		table := m.Tables[i]
+		if table.Init != nil || !table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min > MaxOwnedTableEntries || table.Type.Limits.Max > MaxOwnedTableEntries || table.Type.Limits.Max < table.Type.Limits.Min || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) {
+			return false
+		}
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != 0 || len(m.Code[i].Locals.Runs) != 0 || len(m.Code[i].Body.Instrs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, []byte{0xfc, 0x10, byte(i), 0x0b}) {
+			return false
+		}
+	}
+	if len(m.Types[0].SubTypes) != 1 {
+		return false
+	}
+	sub := m.Types[0].SubTypes[0]
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I64) {
+		return false
+	}
+	var functions, tables [2]bool
+	for _, export := range m.Exports {
+		if export.Index.Index > 1 {
+			return false
+		}
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			functions[export.Index.Index] = true
+		case wasm.ExternTable:
+			tables[export.Index.Index] = true
+		default:
+			return false
+		}
+	}
+	return functions[0] && functions[1] && tables[0] && tables[1]
 }
 
 // admitOwnedTable64Size is the first executable table64 slice. Its sole
@@ -780,7 +824,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	if hasTable {
 		t, _ := m.TableType(0)
-		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
+		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTwoTable64Size(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
 			return false, unsupported("private nullable funcref table32 only")
 		}
 	}
@@ -919,6 +963,17 @@ func (f *integerEmitter) functionReference(index uint32) {
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
 	f.a.Constant64(enc.X6, int64(index+1)*40)
 	f.a.Add(enc.X5, enc.X5, enc.X6)
+}
+
+func (f *integerEmitter) privateTableDescriptor(dst enc.Reg, index uint32) {
+	if index == 0 {
+		f.a.Ld(dst, enc.X25, -80)
+		return
+	}
+	f.a.Ld(dst, enc.X25, -abi.TableDirPtrOffset)
+	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, dst, enc.Zero))
+	f.a.Ld(dst, dst, int32(index*8))
+	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, dst, enc.Zero))
 }
 
 // Returns the entry address in X6. X28 may hold a full-width reference.

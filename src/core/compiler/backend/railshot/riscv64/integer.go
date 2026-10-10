@@ -1319,15 +1319,16 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				continue
 			}
 			if imm.Kind == wasm.InstrTableSize {
-				if !state.ownedTable || !privateRefs || imm.Index != 0 {
+				wide, ok := state.tableWidth(imm.Index)
+				if !privateRefs || !ok {
 					return integerSummary{}, unsupported("private table.size index")
 				}
 				if live && emit != nil {
-					emit.a.Ld(enc.X6, enc.X25, -80)
+					emit.privateTableDescriptor(enc.X6, imm.Index)
 					emit.a.Lwu(enc.X5, enc.X6, 0)
-					emit.Store(emit.SpillOffset(h), 5, state.table64)
+					emit.Store(emit.SpillOffset(h), 5, wide)
 				}
-				if err = push(state.table64); err != nil {
+				if err = push(wide); err != nil {
 					return integerSummary{}, err
 				}
 				continue
