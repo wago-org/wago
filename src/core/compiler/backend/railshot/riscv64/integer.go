@@ -1255,14 +1255,23 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				continue
 			}
 			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
-				if !state.ownedTable || !privateRefs || imm.Index != 0 || imm.Index2 != 0 || (imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth) {
+				tableIndex, tableWide := uint32(0), state.table64
+				if imm.Kind == wasm.InstrTableGrow {
+					tableIndex = imm.Index
+					var tableOK bool
+					tableWide, tableOK = state.tableWidth(tableIndex)
+					if !tableOK || !state.ownedTableGrowth {
+						return integerSummary{}, unsupported("bounded private table mutation shape")
+					}
+				}
+				if !state.ownedTable || !privateRefs || imm.Kind != wasm.InstrTableGrow && imm.Index != 0 || imm.Index2 != 0 {
 					return integerSummary{}, unsupported("bounded private table mutation shape")
 				}
 				if functionRefs {
 					widths, references := [3]bool{}, [3]bool{}
 					n := 3
 					if imm.Kind == wasm.InstrTableGrow {
-						n, widths[0], widths[1], references[0] = 2, true, state.table64, true
+						n, widths[0], widths[1], references[0] = 2, true, tableWide, true
 					} else if imm.Kind == wasm.InstrTableFill {
 						widths[0], widths[1], widths[2], references[1] = state.table64, true, state.table64, true
 					} else if imm.Kind == wasm.InstrTableCopy && state.table64 {
@@ -1272,7 +1281,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, err
 					}
 				}
-				wideCount := state.table64 && (imm.Kind == wasm.InstrTableGrow || imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy)
+				wideCount := tableWide && (imm.Kind == wasm.InstrTableGrow || imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy)
 				if err = popWidth(wideCount); err != nil {
 					return integerSummary{}, err
 				}
@@ -1308,12 +1317,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					case wasm.InstrTableFill:
 						emit.privateTableFill()
 					case wasm.InstrTableGrow:
-						emit.privateTableGrow(deltaSlot, state.table64)
-						emit.Store(emit.SpillOffset(h), 5, state.table64)
+						emit.privateTableGrow(deltaSlot, tableWide, tableIndex)
+						emit.Store(emit.SpillOffset(h), 5, tableWide)
 					}
 				}
 				if imm.Kind == wasm.InstrTableGrow {
-					if err = push(state.table64); err != nil {
+					if err = push(tableWide); err != nil {
 						return integerSummary{}, err
 					}
 				}

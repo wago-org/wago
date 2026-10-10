@@ -157,6 +157,27 @@ func rv64TwoTable64GetSetInstructionSource() []byte {
 	)
 }
 
+func rv64TwoTable64GrowInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 1, 2},
+			[]byte{0x70, 0x05, 2, 4},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("grow0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("grow1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 1, 0x0b}),
+		)),
+	)
+}
+
 func rv64ImportedTable64SizeInstructionSource() []byte {
 	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
 	return wasmtest.Module(
@@ -507,6 +528,66 @@ func TestRV64PublicOwnedTwoTable64GetSet(t *testing.T) {
 			}
 			if got, err := in.Invoke("roundtrip1", 2); err != nil || !slices.Equal(got, []uint64{1}) {
 				t.Fatal("two-table64 get/set reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64Grow(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-grow", rv64TwoTable64GrowInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64GrowABI || !rv64OwnedTwoTable64Grow(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatalf("two-table64 grow metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Grow(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 1 {
+				t.Fatal("two-table64 grow table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 2 || table1 == table0 {
+				t.Fatal("two-table64 grow table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("two-table64 grow missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			copy(table0.desc[8+coreruntime.TableEntryBytes:], row)
+			copy(table1.desc[8+2*coreruntime.TableEntryBytes:], row)
+			copy(table1.desc[8+3*coreruntime.TableEntryBytes:], row)
+			if got, err := in.Invoke("grow0", 1); err != nil || !slices.Equal(got, []uint64{1}) || table0.Size() != 2 || table1.Size() != 2 {
+				t.Fatal("two-table64 grow table 0 selected descriptor", got, table0.Size(), table1.Size(), err)
+			}
+			if !slices.Equal(table0.desc[8+coreruntime.TableEntryBytes:8+2*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) || !slices.Equal(table1.desc[8+2*coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes], append(slices.Clone(row), row...)) {
+				t.Fatal("two-table64 grow table 0 null initialization or isolation")
+			}
+			afterGrow0 := slices.Clone(table0.desc)
+			if got, err := in.Invoke("grow1", 1); err != nil || !slices.Equal(got, []uint64{2}) || table0.Size() != 2 || table1.Size() != 3 || !slices.Equal(table0.desc, afterGrow0) {
+				t.Fatal("two-table64 grow table 1 selected descriptor", got, table0.Size(), table1.Size(), err)
+			}
+			if !slices.Equal(table1.desc[8+2*coreruntime.TableEntryBytes:8+3*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) || !slices.Equal(table1.desc[8+3*coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes], row) {
+				t.Fatal("two-table64 grow table 1 partial null initialization")
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, delta := range []uint64{1 << 32, ^uint64(0)} {
+				if got, err := in.Invoke("grow1", delta); err != nil || !slices.Equal(got, []uint64{^uint64(0)}) || !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("two-table64 grow full-width failure", delta, got, err)
+				}
+			}
+			if got, err := in.Invoke("grow1", 1); err != nil || !slices.Equal(got, []uint64{3}) || table1.Size() != 4 || table0.Size() != 2 {
+				t.Fatal("two-table64 grow reuse", got, table0.Size(), table1.Size(), err)
+			}
+			for index := uint64(2); index < 4; index++ {
+				if null, err := table1.EntryIsNull(index); err != nil || !null {
+					t.Fatal("two-table64 grow null row", index, null, err)
+				}
 			}
 		})
 	}
@@ -1880,6 +1961,55 @@ func TestRV64PublicOwnedTwoTable64GetSetArtifactGates(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("invalid two-table64 get/set artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64GrowArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-grow-admission", rv64TwoTable64GrowInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-initializer": func(v *Compiled) {
+			v.extraTables[0].HasInitFunc = true
+			v.extraTables[0].InitFunc = 1
+		},
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-param":    func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI32 },
+		"function-export": func(v *Compiled) { v.Exports["grow1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid two-table64 grow metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid two-table64 grow artifact admitted")
 			}
 		})
 	}
