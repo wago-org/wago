@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -248,6 +250,10 @@ func TestCOWImagePlanConfigurationAndQuota(t *testing.T) {
 	fd, ok, err := snapshot.experimentalCOWImageFD(initial, maxBytes)
 	if err != nil || !ok {
 		t.Fatalf("valid image: fd=%d eligible=%t err=%v", fd, ok, err)
+	}
+	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+	if err != nil || flags&unix.FD_CLOEXEC == 0 {
+		t.Fatalf("image duplicate must be close-on-exec: flags=%#x err=%v", flags, err)
 	}
 	_ = syscall.Close(fd)
 	fd, ok, err = snapshot.experimentalCOWImageFD(initial, maxBytes+65536)

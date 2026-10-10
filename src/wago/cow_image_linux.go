@@ -128,7 +128,7 @@ func (c *Compiled) experimentalCOWImageFD(initial, max int) (int, bool, error) {
 		}
 		indexes.memoryImage = file
 	}
-	dup, err := syscall.Dup(int(indexes.memoryImage.Fd()))
+	dup, err := unix.FcntlInt(indexes.memoryImage.Fd(), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
 		return -1, false, fmt.Errorf("duplicate CoW image: %w", err)
 	}
