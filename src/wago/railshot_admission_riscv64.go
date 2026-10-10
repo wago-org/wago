@@ -78,6 +78,9 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
 	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
+	if rv64Core3RefIsNullExecutionCode(c) && !exactCore3RefIsNull {
+		return reject("Core 3 ref.is_null image requires its exact retained metadata")
+	}
 	if !c.nativeContextTrapABI {
 		return reject("native-context trap ABI is required")
 	}

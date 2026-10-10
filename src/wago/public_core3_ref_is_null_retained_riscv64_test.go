@@ -144,7 +144,7 @@ func TestRV64Core3RefIsNullExecutionRetainedClassifier(t *testing.T) {
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			bad := cloneCompiledMetadata(base)
+			bad := rv64Core3RefIsNullExecutionRetainedFixture(t)
 			mutate(bad)
 			if rv64Core3RefIsNullExecution(bad) || railshotValidateCompiled(bad) == nil {
 				t.Fatal("hostile retained metadata admitted")
