@@ -46,3 +46,12 @@ func railshotResourceRootReleasedLocked(in *Instance) {
 		state.rootAccounting.ledger.external--
 	}
 }
+
+// The physical journal cannot unregister while collecting is set. Completion
+// clears every component guard first, then retries the durable ownership
+// sidecar's ordinary retirement path outside graph and lifetime locks.
+func railshotDependencyComponentReleaseCompleted(in *Instance) {
+	if ownership := rv64ExistingFunctionDependencyOwnership(in); ownership != nil {
+		rv64RetireFunctionDependencyMember(&ownership.member)
+	}
+}

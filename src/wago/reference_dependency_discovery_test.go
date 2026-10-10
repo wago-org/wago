@@ -627,3 +627,102 @@ func TestDependencyClosedComponentRollbackContinuesFinalizationAfterPanic(t *tes
 		t.Fatal("component guards or finalization state remained after panic")
 	}
 }
+
+func TestDependencyClosedComponentPhysicalClaimAndCompletion(t *testing.T) {
+	g := dependencyTestGraph(t, 2, 2)
+	a := dependencyTestMember(t, g, false)
+	b := dependencyTestMember(t, g, false)
+	dependencyTestInvocationLease(a, b)
+	aToB := dependencyTestAcquire(t, g, b)
+	bToA := dependencyTestAcquire(t, g, a)
+	if typed, err := aToB.adopt(a, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	if typed, err := bToA.adopt(b, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	dependencyTestClosedForDiscovery(t, a, b)
+	firstPanic, directPanic := new(int), new(int)
+	var visited []int
+	first := func() { visited = append(visited, 0); panic(firstPanic) }
+	second := func() { visited = append(visited, 1) }
+	a.owner.lifeMu.Lock()
+	a.owner.finalizers = &instanceFinalizers{physical: first}
+	a.owner.lifeMu.Unlock()
+	b.owner.lifeMu.Lock()
+	b.owner.finalizers = &instanceFinalizers{physical: second}
+	b.owner.lifeMu.Unlock()
+
+	release, ok := g.claimClosedComponentForPhysicalRelease(g.discoverClosedComponent(a, 2, 2))
+	if !ok || release == nil || release.claim == nil || len(release.finalizers) != 2 {
+		t.Fatal("failed to claim component for physical release")
+	}
+	if !a.owner.resourcesClosed || !b.owner.resourcesClosed || a.owner.finalizers != nil || b.owner.finalizers != nil || release.finalizers[0].physical == nil || release.finalizers[1].physical == nil {
+		t.Fatal("physical claim did not atomically detach member finalizers")
+	}
+	dependencyTestCounts(t, g, a, 2, 1, 0, 1)
+	dependencyTestCounts(t, g, b, 2, 1, 0, 1)
+	if release.complete() {
+		t.Fatal("physical claim completed with live internal receipts")
+	}
+	if _, panicked := cleanupTestPanic(func() { release.claim.release() }); !panicked || !release.claim.active.Load() {
+		t.Fatal("irreversible physical claim allowed rollback or lost retry authority")
+	}
+	if value, panicked := cleanupTestPanic(func() {
+		release.runPhysicalJournal(0, func(*resourceCleanup) { panic(directPanic) })
+	}); !panicked || value != directPanic || release.physicalJournals[0].Load() != 0 {
+		t.Fatal("direct journal abort did not preserve retry authority")
+	}
+	var cleanup resourceCleanup
+	runningJournalBlockedCompletion := false
+	cleanup.run(func() {
+		release.runPhysicalJournal(0, func(memberCleanup *resourceCleanup) {
+			memberCleanup.run(func() {
+				if !aToB.release() {
+					panic("failed to drain first internal receipt")
+				}
+			})
+		})
+	})
+	cleanup.run(func() {
+		if !release.runPhysicalJournal(1, func(memberCleanup *resourceCleanup) {
+			memberCleanup.run(func() {
+				if !bToA.release() {
+					panic("failed to drain second internal receipt")
+				}
+			})
+			dependencyTestCounts(t, g, a, 1, 0, 0, 0)
+			dependencyTestCounts(t, g, b, 1, 0, 0, 0)
+			if release.complete() {
+				panic("physical claim completed while a journal was running")
+			}
+			runningJournalBlockedCompletion = true
+		}) {
+			panic("failed to run second physical journal")
+		}
+	})
+	if !reflect.DeepEqual(visited, []int{0, 1}) || release.physicalJournals[0].Load() != 2 || release.physicalJournals[1].Load() != 2 {
+		t.Fatalf("physical journal callbacks=%v states=%d/%d", visited, release.physicalJournals[0].Load(), release.physicalJournals[1].Load())
+	}
+	callbackReplayed := false
+	if !runningJournalBlockedCompletion || release.runPhysicalJournal(0, func(*resourceCleanup) { callbackReplayed = true }) || callbackReplayed {
+		t.Fatal("running/completed journal gate did not prevent completion or callback replay")
+	}
+	if release.finalizers[0] != nil || release.finalizers[1] != nil {
+		t.Fatal("completed journals retained detached finalizers")
+	}
+	if err := g.unregister(a); !errors.Is(err, errDependencyState) {
+		t.Fatalf("collecting member unregistered before guard completion: %v", err)
+	}
+	if !release.complete() || release.complete() {
+		t.Fatal("physical claim did not complete exactly once")
+	}
+	dependencyTestCounts(t, g, a, 0, 0, 0, 0)
+	dependencyTestCounts(t, g, b, 0, 0, 0, 0)
+	if a.collecting.Load() || b.collecting.Load() || release.claim.active.Load() {
+		t.Fatal("physical claim guards remained after completion")
+	}
+	if value, panicked := cleanupTestPanic(cleanup.finish); !panicked || value != firstPanic {
+		t.Fatalf("physical journal panic = %v/%t", value, panicked)
+	}
+}

@@ -8,3 +8,4 @@ type referenceRootAccounting struct{}
 func railshotResourceRootRetainAllowedLocked(*Instance) bool { return true }
 func railshotResourceRootAcquiredLocked(*Instance)           {}
 func railshotResourceRootReleasedLocked(*Instance)           {}
+func railshotDependencyComponentReleaseCompleted(*Instance)  {}

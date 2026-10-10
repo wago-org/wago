@@ -472,6 +472,18 @@ type dependencyComponentClaim struct {
 	active  atomic.Bool
 }
 
+// dependencyComponentRelease is an irreversible, atomically committed
+// resourcesClosed claim for every member. The caller owns the detached
+// physical callbacks and must run the complete physical-release journal before
+// complete drops the synthetic guards.
+type dependencyComponentRelease struct {
+	claim      *dependencyComponentClaim
+	finalizers []*instanceFinalizers
+	// 0 is unclaimed/retryable, 1 is running, and 2 is complete. Completion is
+	// published before a callback panic is rethrown from resourceCleanup.
+	physicalJournals []atomic.Uint32
+}
+
 func (g *dependencyGraph) claimClosedComponent(candidate dependencyComponent) (*dependencyComponentClaim, bool) {
 	claim := &dependencyComponentClaim{graph: g}
 	if !g.withRevalidatedClosedComponent(candidate, func() {
@@ -488,9 +500,66 @@ func (g *dependencyGraph) claimClosedComponent(candidate dependencyComponent) (*
 	return claim, true
 }
 
-// release rolls back this guard exactly once. A later collector can use the
-// same terminal operation after it has drained holder-specific outgoing roots;
-// ordinary finalization remains responsible for physical teardown.
+// claimClosedComponentForPhysicalRelease atomically makes every member
+// non-finalizable by ordinary single-instance lifetime code. The guard roots
+// keep internal receipt releases from reaching an unclaimed zero while the
+// caller runs physical teardown outside graph and lifetime locks.
+func (g *dependencyGraph) claimClosedComponentForPhysicalRelease(candidate dependencyComponent) (*dependencyComponentRelease, bool) {
+	claim := &dependencyComponentClaim{graph: g}
+	release := &dependencyComponentRelease{claim: claim}
+	if !g.withRevalidatedClosedComponent(candidate, func() {
+		claim.members = append(claim.members, candidate.members...)
+		release.finalizers = make([]*instanceFinalizers, len(claim.members))
+		release.physicalJournals = make([]atomic.Uint32, len(claim.members))
+		for i, member := range claim.members {
+			member.collecting.Store(true)
+			member.owner.resourceRefs++
+			railshotResourceRootAcquiredLocked(member.owner)
+			member.owner.resourcesClosed = true
+			release.finalizers[i] = member.owner.finalizers
+			member.owner.finalizers = nil
+		}
+		claim.active.Store(true)
+	}) {
+		return nil, false
+	}
+	return release, true
+}
+
+// runPhysicalJournal gives one caller exactly-once authority to execute a
+// member's complete physical-release journal. Ordinary cleanup panics are
+// delayed by the supplied resourceCleanup; the completed attestation is
+// published before finish rethrows the first one. A direct journal panic before
+// return resets authority for retry.
+func (release *dependencyComponentRelease) runPhysicalJournal(index int, journal func(*resourceCleanup)) (completed bool) {
+	if release == nil || release.claim == nil || journal == nil || index < 0 || index >= len(release.physicalJournals) || !release.claim.active.Load() || !release.physicalJournals[index].CompareAndSwap(0, 1) {
+		return false
+	}
+	defer func() {
+		if !completed {
+			release.physicalJournals[index].CompareAndSwap(1, 0)
+		}
+	}()
+	var cleanup resourceCleanup
+	journal(&cleanup)
+	// This journal owner is the only path that can consume the detached
+	// callback. A direct pre-return panic leaves it for retry; a callback panic
+	// is captured after the pointer is cleared and cannot be replayed.
+	if finalizers := release.finalizers[index]; finalizers != nil {
+		release.finalizers[index] = nil
+		if finalizers.physical != nil {
+			cleanup.run(finalizers.physical)
+		}
+	}
+	release.physicalJournals[index].Store(2)
+	completed = true
+	cleanup.finish()
+	return true
+}
+
+// release rolls back a nonphysical guard exactly once. An irreversible
+// physical-release claim has a distinct completion path and cannot roll back
+// resourcesClosed or its detached finalizers.
 func (claim *dependencyComponentClaim) release() bool {
 	if claim == nil || claim.graph == nil || len(claim.members) == 0 || !claim.active.Load() {
 		return false
@@ -505,7 +574,7 @@ func (claim *dependencyComponentClaim) release() bool {
 		member.owner.lifeMu.Lock()
 	}
 	for _, member := range claim.members {
-		if !g.authoritativeLocked(member) || !member.collecting.Load() || member.owner.resourceRefs == 0 {
+		if !g.authoritativeLocked(member) || !member.collecting.Load() || member.owner.resourcesClosed || member.owner.resourceRefs == 0 {
 			for i := len(claim.members) - 1; i >= 0; i-- {
 				claim.members[i].owner.lifeMu.Unlock()
 			}
@@ -531,6 +600,58 @@ func (claim *dependencyComponentClaim) release() bool {
 	return true
 }
 
+// complete consumes an irreversible physical-release claim exactly once. It
+// accepts only the post-journal state: every graph receipt and outgoing edge is
+// gone and each member owns exactly its one synthetic guard. A failed check
+// retains the guards and retry authority.
+func (release *dependencyComponentRelease) complete() bool {
+	if release == nil || release.claim == nil || release.claim.graph == nil || !release.claim.active.Load() {
+		return false
+	}
+	claim, g := release.claim, release.claim.graph
+	if len(release.physicalJournals) != len(claim.members) {
+		return false
+	}
+	for i := range release.physicalJournals {
+		if release.physicalJournals[i].Load() != 2 {
+			return false
+		}
+	}
+	g.mu.Lock()
+	if !claim.active.Load() {
+		g.mu.Unlock()
+		return false
+	}
+	for _, member := range claim.members {
+		member.owner.lifeMu.Lock()
+	}
+	for _, member := range claim.members {
+		if !g.authoritativeLocked(member) || !member.collecting.Load() || !member.owner.resourcesClosed || member.owner.resourceRefs != 1 || member.receipts != 0 || member.external != 0 || member.incoming != 0 || member.outgoing.Load() != 0 {
+			for i := len(claim.members) - 1; i >= 0; i-- {
+				claim.members[i].owner.lifeMu.Unlock()
+			}
+			g.mu.Unlock()
+			return false
+		}
+	}
+	claim.active.Store(false)
+	for _, member := range claim.members {
+		member.owner.resourceRefs--
+		railshotResourceRootReleasedLocked(member.owner)
+		member.collecting.Store(false)
+	}
+	for i := len(claim.members) - 1; i >= 0; i-- {
+		claim.members[i].owner.lifeMu.Unlock()
+	}
+	g.mu.Unlock()
+	var cleanup resourceCleanup
+	for _, member := range claim.members {
+		cleanup.run(func() { railshotDependencyComponentReleaseCompleted(member.owner) })
+	}
+	cleanup.finish()
+	return true
+}
+
 func (g *dependencyGraph) unregister(member *dependencyMember) error {
 	if g == nil {
 		return errDependencyMember
@@ -542,7 +663,7 @@ func (g *dependencyGraph) unregister(member *dependencyMember) error {
 	}
 	member.owner.lifeMu.Lock()
 	defer member.owner.lifeMu.Unlock()
-	if member.receipts != 0 || member.outgoing.Load() != 0 || !member.owner.resourcesClosed {
+	if member.collecting.Load() || member.receipts != 0 || member.outgoing.Load() != 0 || !member.owner.resourcesClosed {
 		return errDependencyState
 	}
 	member.active.Store(false)
