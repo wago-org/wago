@@ -26,6 +26,56 @@ func rv64StateOnlyTable64(c *Compiled) bool {
 	return c.memoryDir == nil || len(c.memoryDir.ehTags) == 0
 }
 
+// rv64StateOnlyTable32ScalarGlobals is the persisted-artifact witness for one
+// bounded nullable-funcref table32 composed with four immutable literal scalar
+// globals. It admits retained descriptors and cells only; no table/reference
+// operation or initializer dependency is implied by this declaration profile.
+func rv64StateOnlyTable32ScalarGlobals(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64NoABI || c.TableAddr64 || !c.hasNoFunctionCode() || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 0 || len(c.Exports) != 0 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 || len(c.FuncTypeID) != 0 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 4 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 4 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	if c.requiredFeatures != 0 || compiledStructuralRequiredFeatures(c) != 0 || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {
+		return false
+	}
+	table := c.tableDef(0)
+	plainRef, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	exactTable, err := c.tableExactType(0)
+	if err != nil || exactTable != plainRef || !c.hasTableExportMetadata || len(c.tableExports) != 1 || table.ImportKey != "" || table.Type != ValFuncRef || !table.HasValueType || table.ValueTypeIndex != 4 || table.HasInitFunc || table.InitFunc != 0 || table.Addr64 || !table.HasMax || table.Size < 0 || table.Size > railshot.MaxOwnedTableEntries || table.Max > railshot.MaxOwnedTableEntries || table.Max < uint64(table.Size) || c.tableRuntimeCapacity(0) < table.Size || c.tableRuntimeCapacity(0) > railshot.MaxOwnedTableEntries {
+		return false
+	}
+	for _, index := range c.tableExports {
+		if index != 0 {
+			return false
+		}
+	}
+	want := [...]ValType{ValI32, ValI64, ValF32, ValF64}
+	if len(c.ValueTypes) != len(want)+1 || c.ValueTypes[4] != plainRef {
+		return false
+	}
+	for i, typ := range want {
+		plain, _ := valueTypeDescriptorFromValType(typ)
+		global := c.Globals[i]
+		exact, exactErr := c.globalExactType(i)
+		if exactErr != nil || exact != plain || c.ValueTypes[i] != plain || global.Type != typ || !global.HasValueType || global.ValueTypeIndex != uint32(i) || global.Mutable || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0 || global.V128 != (V128{}) {
+			return false
+		}
+	}
+	var exported [4]bool
+	for _, index := range c.GlobalExports {
+		if index < 0 || index >= len(exported) || exported[index] {
+			return false
+		}
+		exported[index] = true
+	}
+	return exported[0] && exported[1] && exported[2] && exported[3]
+}
+
 // rv64StateOnlyTwoTable32 is the persisted-artifact witness for two bounded
 // owned table32 declarations with no executable or initializer-bearing state.
 // Keep the export directory exact so hostile artifacts cannot alias one table
@@ -1073,6 +1123,9 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	}
 	if !c.nativeTableContextABI || !c.nativeTableReferenceABI {
 		return fmt.Errorf("retained native table context and reference ABI are required")
+	}
+	if c.hasNoFunctionCode() && len(c.Globals) != 0 && !rv64StateOnlyTable32ScalarGlobals(c) {
+		return fmt.Errorf("table/scalar globals require the exact state-only literal profile")
 	}
 	qualifiedTable64 := rv64QualifiedTable64(c)
 	qualifiedMultiTable := rv64StateOnlyTwoTable32(c) || rv64OwnedTwoTable32Size(c) || rv64OwnedTwoTable32GetSet(c) || rv64OwnedTwoTable32Grow(c) || rv64OwnedTwoTable32Fill(c) || rv64OwnedTwoTable32Copy(c) || rv64OwnedTwoTable32InitDrop(c) || rv64OwnedTwoTable32Indirect(c) || rv64OwnedTwoTable64Size(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTwoTable64InitDrop(c) || rv64OwnedTwoTable64Indirect(c)

@@ -158,6 +158,53 @@ func admitStateOnlyTable64(m *wasm.Module, production, public bool) bool {
 	return t.Type.Limits.Addr64 && wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef)
 }
 
+// admitStateOnlyTable32ScalarGlobals recognizes one deliberately
+// non-executable composition of existing owned state: a bounded nullable
+// funcref table32 and four immutable literal scalar globals. Requiring every
+// declaration to have one distinct export keeps the retained descriptor and
+// cell identities exact without enabling table/reference instructions.
+func admitStateOnlyTable32ScalarGlobals(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Tables) != 1 || len(m.Globals) != 4 || len(m.Exports) != 5 || m.Start != nil {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	table := m.Tables[0]
+	limits := table.Type.Limits
+	if table.Init != nil || limits.Addr64 || !limits.HasMax || limits.Min > MaxOwnedTableEntries || limits.Max > MaxOwnedTableEntries || limits.Max < limits.Min || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) {
+		return false
+	}
+	want := [...]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+	for i, global := range m.Globals {
+		if global.Type.Mutable || !wasm.EqualValType(global.Type.Type, want[i]) || len(global.Init.Instrs) != 0 {
+			return false
+		}
+		if _, err := plainScalarConst(global.Init, want[i], true); err != nil {
+			return false
+		}
+	}
+	var tableExport bool
+	var globalExports [4]bool
+	for _, export := range m.Exports {
+		switch export.Index.Kind {
+		case wasm.ExternTable:
+			if export.Index.Index != 0 || tableExport {
+				return false
+			}
+			tableExport = true
+		case wasm.ExternGlobal:
+			if export.Index.Index >= uint32(len(globalExports)) || globalExports[export.Index.Index] {
+				return false
+			}
+			globalExports[export.Index.Index] = true
+		default:
+			return false
+		}
+	}
+	return tableExport && globalExports[0] && globalExports[1] && globalExports[2] && globalExports[3]
+}
+
 // admitStateOnlyTwoTable32 recognizes the first deliberately non-executable
 // multi-table profile. Both bounded owned tables are exported, but no code,
 // initializer, import, or other resource can observe or populate them.
@@ -1588,6 +1635,9 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	hasTable := len(m.Tables)+m.ImportedTableCount() != 0
 	if !hasTable && len(m.Elements) == 0 {
 		return false, nil
+	}
+	if hasTable && len(m.Code) == 0 && len(m.Globals) != 0 && !admitStateOnlyTable32ScalarGlobals(m, production, importedTables) {
+		return false, unsupported("table/scalar globals require the exact state-only literal profile")
 	}
 	if !production || !hasTable && !importedTables {
 		return false, unsupported("isolated private table")
