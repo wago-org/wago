@@ -10,7 +10,11 @@ import (
 // Mutation keeps count in X5, destination in X6, and source/reference in X7.
 // Polls clobber only X28/X29, and address/long-transfer helpers use X31.
 func (f *integerEmitter) privateTableRange(copySource bool) {
-	f.a.Ld(enc.X28, enc.X25, -80)
+	f.privateTableRangeAt(copySource, 0)
+}
+
+func (f *integerEmitter) privateTableRangeAt(copySource bool, tableIndex uint32) {
+	f.privateTableDescriptor(enc.X28, tableIndex)
 	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
 	f.a.Lwu(enc.X29, enc.X28, 0)
 	f.a.Add(enc.X30, enc.X6, enc.X5)
@@ -55,7 +59,11 @@ func (f *integerEmitter) privateReferenceGuard() {
 }
 
 func (f *integerEmitter) privateTableFill() {
-	f.privateTableRange(false)
+	f.privateTableFillAt(0)
+}
+
+func (f *integerEmitter) privateTableFillAt(tableIndex uint32) {
+	f.privateTableRangeAt(false, tableIndex)
 	f.privateReferenceGuard()
 	f.privateFillEntries()
 }

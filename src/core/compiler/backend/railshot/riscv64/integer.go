@@ -1256,15 +1256,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
 				tableIndex, tableWide := uint32(0), state.table64
-				if imm.Kind == wasm.InstrTableGrow {
+				if imm.Kind == wasm.InstrTableGrow || imm.Kind == wasm.InstrTableFill {
 					tableIndex = imm.Index
 					var tableOK bool
 					tableWide, tableOK = state.tableWidth(tableIndex)
-					if !tableOK || !state.ownedTableGrowth {
+					if !tableOK || imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth {
 						return integerSummary{}, unsupported("bounded private table mutation shape")
 					}
 				}
-				if !state.ownedTable || !privateRefs || imm.Kind != wasm.InstrTableGrow && imm.Index != 0 || imm.Index2 != 0 {
+				if !state.ownedTable || !privateRefs || imm.Kind != wasm.InstrTableGrow && imm.Kind != wasm.InstrTableFill && imm.Index != 0 || imm.Index2 != 0 {
 					return integerSummary{}, unsupported("bounded private table mutation shape")
 				}
 				if functionRefs {
@@ -1273,7 +1273,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if imm.Kind == wasm.InstrTableGrow {
 						n, widths[0], widths[1], references[0] = 2, true, tableWide, true
 					} else if imm.Kind == wasm.InstrTableFill {
-						widths[0], widths[1], widths[2], references[1] = state.table64, true, state.table64, true
+						widths[0], widths[1], widths[2], references[1] = tableWide, true, tableWide, true
 					} else if imm.Kind == wasm.InstrTableCopy && state.table64 {
 						widths = [3]bool{true, true, true}
 					}
@@ -1302,7 +1302,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.Load(7, emit.SpillOffset(h), imm.Kind != wasm.InstrTableCopy || wideSource)
 				}
 				if imm.Kind != wasm.InstrTableGrow {
-					wideDestination := state.table64 && (imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy)
+					wideDestination := tableWide && (imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy)
 					if err = popWidth(wideDestination); err != nil {
 						return integerSummary{}, err
 					}
@@ -1315,7 +1315,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					case wasm.InstrTableCopy:
 						emit.privateTableCopy()
 					case wasm.InstrTableFill:
-						emit.privateTableFill()
+						emit.privateTableFillAt(tableIndex)
 					case wasm.InstrTableGrow:
 						emit.privateTableGrow(deltaSlot, tableWide, tableIndex)
 						emit.Store(emit.SpillOffset(h), 5, tableWide)

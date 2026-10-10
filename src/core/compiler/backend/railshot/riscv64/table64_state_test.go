@@ -228,6 +228,42 @@ func TestOwnedTwoTable64GrowProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable64FillProfile() *wasm.Module {
+	m := ownedTwoTable64SizeProfile()
+	m.Types[0].SubTypes[0].Comp.Params = []wasm.ValType{wasm.I64, wasm.I64}
+	m.Types[0].SubTypes[0].Comp.Results = []wasm.ValType{wasm.I32}
+	m.Code[0].BodyBytes = []byte{0x20, 0, 0xd0, 0x70, 0x20, 1, 0xfc, 0x11, 0, 0x41, 1, 0x0b}
+	m.Code[1].BodyBytes = []byte{0x20, 0, 0xd0, 0x70, 0x20, 1, 0xfc, 0x11, 1, 0x41, 1, 0x0b}
+	m.Exports[0].Name, m.Exports[1].Name = "fill0", "fill1"
+	return m
+}
+
+func TestOwnedTwoTable64FillProfile(t *testing.T) {
+	m := ownedTwoTable64FillProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact indexed two-table64 fill profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body-index":  func(m *wasm.Module) { m.Code[1].BodyBytes[8] = 0 },
+		"result":      func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"first-param": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I32 },
+		"count-param": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[1] = wasm.I32 },
+		"no-max":      func(m *wasm.Module) { m.Tables[1].Type.Limits.HasMax = false },
+		"table32":     func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = false },
+		"no-export":   func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+		"element":     func(m *wasm.Module) { m.Elements = []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}}} },
+		"initializer": func(m *wasm.Module) { m.Tables[1].Init = &wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable64FillProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed two-table64 fill profile admitted", err)
+			}
+		})
+	}
+}
+
 func importedTable64SizeProfile() *wasm.Module {
 	table := wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: 4, HasMax: true, Addr64: true}}
 	return &wasm.Module{
