@@ -384,6 +384,20 @@ func TestRV64TailEntryGenerationClosedQuarantineRetry(t *testing.T) {
 }
 
 func TestRV64TailEntryGenerationClosedRetryDrainsPanickingFinalizers(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		panicNil bool
+	}{
+		{name: "value"},
+		{name: "nil", panicNil: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rv64TailEntryGenerationClosedRetryDrainsPanickingFinalizers(t, test.panicNil)
+		})
+	}
+}
+
+func rv64TailEntryGenerationClosedRetryDrainsPanickingFinalizers(t *testing.T, panicNil bool) {
 	root, producer, table, _ := rv64EntryGenerationFixture(t, false)
 	if err := root.beginInvocation(); err != nil {
 		t.Fatal(err)
@@ -407,6 +421,9 @@ func TestRV64TailEntryGenerationClosedRetryDrainsPanickingFinalizers(t *testing.
 		// A close from the physical cleanup joins promptly instead of waiting
 		// for the same invocation gate that owns this exact retirement.
 		_ = root.Close()
+		if panicNil {
+			panic(nil)
+		}
 		panic("producer physical callback")
 	})
 	root.referenceLifetime().afterPhysicalRelease(func() { physical[1]++ })
@@ -422,8 +439,11 @@ func TestRV64TailEntryGenerationClosedRetryDrainsPanickingFinalizers(t *testing.
 	if err := root.Close(); !errors.Is(err, ErrCallbackPanic) {
 		t.Fatal("close lost callback panic", err)
 	}
-	if !root.closeState.Load().completed.Load() || !root.resourcesClosed || !producer.resourcesClosed || physical != [2]int{1, 1} || gate.railshotInvocation.tableDepth != 0 || entry.tables.targets.count != 0 || entry.tables.targets.tailRetiring {
-		t.Fatal("panic interrupted exact-scope drain or close completion", physical, root.closeState.Load().completed.Load(), root.resourcesClosed, producer.resourcesClosed, gate.railshotInvocation.tableDepth, entry.tables.targets.count, entry.tables.targets.tailRetiring, root.resourceRefs)
+	if err := root.WaitClosed(nil); !errors.Is(err, ErrCallbackPanic) {
+		t.Fatal("completed close lost callback panic", err)
+	}
+	if !root.closeState.Load().completed.Load() || !root.resourcesClosed || !producer.resourcesClosed || physical != [2]int{1, 1} || gate.invokeMu.state.Load()&invocationGateHeld != 0 || gate.railshotInvocation.tableDepth != 0 || entry.tables.targets.count != 0 || entry.tables.targets.tailRetiring {
+		t.Fatal("panic interrupted exact-scope drain or close completion", physical, root.closeState.Load().completed.Load(), root.resourcesClosed, producer.resourcesClosed, gate.invokeMu.state.Load(), gate.railshotInvocation.tableDepth, entry.tables.targets.count, entry.tables.targets.tailRetiring, root.resourceRefs)
 	}
 	_ = root.Close()
 	if physical != [2]int{1, 1} {

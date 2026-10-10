@@ -174,13 +174,6 @@ func railshotRetryNativeTableRetirement(root *Instance) error {
 // and zero count exclude active or parked root invocations without waiting for
 // callbacks. Physical root release may finalize the instance during the retry.
 func railshotRetryClosedNativeTableRetirement(root *Instance) (err error) {
-	// Physical finalizers can run while the final scoped roots drain. Preserve
-	// Close's completion contract even when this runs inside its recovery defer.
-	defer func() {
-		if recover() != nil {
-			err = fmt.Errorf("wago: RV64 closed table retirement: %w", ErrCallbackPanic)
-		}
-	}()
 	if root == nil || root.invocationState.Load() != instanceInvocationClosed {
 		return nil
 	}
@@ -194,6 +187,14 @@ func railshotRetryClosedNativeTableRetirement(root *Instance) (err error) {
 	if !gate.state.CompareAndSwap(0, invocationGateHeld) && !gate.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) {
 		return nil
 	}
-	defer gate.Unlock()
-	return railshotRetryNativeTableRetirement(root)
+	// Physical finalizers can run while the final scoped roots drain. Journal
+	// gate release after retirement so Close completes and reports even a legacy
+	// panic(nil), including when this retry runs inside Close's recovery defer.
+	var cleanup resourceCleanup
+	cleanup.run(func() { err = railshotRetryNativeTableRetirement(root) })
+	cleanup.run(gate.Unlock)
+	if cleanup.panicked {
+		return fmt.Errorf("wago: RV64 closed table retirement: %w", ErrCallbackPanic)
+	}
+	return err
 }
