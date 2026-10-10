@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -203,6 +204,145 @@ func rv64Core3RefIsNullDeclarationCode(c *Compiled) bool {
 		return false
 	}
 	return fmt.Sprintf("%x", sha256.Sum256(c.code)) == "d2b9e9c8c334de03404b77c7044ee894fc4585a122c601f8c7c25180765d5478"
+}
+
+// rv64Core3RefIsNullExecution is the retained compiler/artifact witness for
+// pinned Core 3 ref_is_null.0.wasm. It binds every executable directory and
+// the mixed 32/8/32-byte table layout. Recognition alone does not open source
+// compilation or instantiation; those boundaries require their own lifetime,
+// publication and externref-store proofs.
+func rv64Core3RefIsNullExecution(c *Compiled) bool {
+	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || rv64HasReferenceTail(c) {
+		return false
+	}
+	if c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.requiredAMD64Features != 0 || c.dynamicFuncrefEscape || c.dynamicImports || !c.needsFuncRefDescs() || !c.needsFuncRefContextHeader || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 10 || len(c.Types) != 7 || len(c.ValueTypes) != 4 || len(c.FuncTypeID) != 10 || len(c.Entry) != 10 || len(c.InternalEntry) != 10 || len(c.Exports) != 8 || c.Names != nil {
+		return false
+	}
+	if c.memoryImport != "" || c.HasMemory || c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || c.syncHostSlots != 0 {
+		return false
+	}
+	if len(c.code) != 8872 || sha256.Sum256(c.code) != ([32]byte{0xb7, 0x0c, 0x68, 0x57, 0x59, 0xc1, 0xfe, 0x72, 0x23, 0xd8, 0x07, 0x16, 0x7d, 0x4b, 0xe8, 0xc8, 0x33, 0xf8, 0x8d, 0x2b, 0x1a, 0x5a, 0xb8, 0x29, 0xfc, 0xbf, 0xff, 0x35, 0x08, 0x09, 0x58, 0x01}) {
+		return false
+	}
+	wantEntries := [...]int{0, 576, 1200, 1824, 2448, 3120, 4000, 6128, 6960, 7920}
+	wantBindings := [...]uint32{0, 1, 2, 3, 4, 5, 0, 6, 6, 6}
+	wantTypeIDs := [...]uint64{0xd60da539b2828050, 0x457208c8efc22dab, 0x159570dc55660444, 0x43a91b81cda1964c, 0x87259896b4921f6c, 0x009df426b447def3, 0xd60da539b2828050, 0x57cc9e275fbbb6a5, 0x57cc9e275fbbb6a5, 0x57cc9e275fbbb6a5}
+	wantParams := [][]ValType{nil, {ValFuncRef}, {ValExternRef}, {ValFuncRef}, nil, {ValExternRef}, nil, {ValI32}, {ValI32}, {ValI32}}
+	wantResults := [][]ValType{nil, {ValI32}, {ValI32}, {ValI32}, {ValI32}, nil, nil, {ValI32}, {ValI32}, {ValI32}}
+	for i := range c.Funcs {
+		sig := &c.Funcs[i]
+		if c.Entry[i] != wantEntries[i] || c.InternalEntry[i] != wantEntries[i] || !sig.HasTypeIndex || sig.TypeIndex != wantBindings[i] || sig.unsafeCrossTail || c.FuncTypeID[i] != wantTypeIDs[i] || !rv64Core3ABIValues(sig.Params, wantParams[i]) || !rv64Core3ABIValues(sig.Results, wantResults[i]) {
+			return false
+		}
+	}
+	if !rv64Core3RefIsNullExecutionTypes(c) || !rv64Core3RefIsNullExecutionTables(c) || !rv64Core3RefIsNullExecutionElements(c) {
+		return false
+	}
+	wantExports := map[string]int{
+		"funcref": 1, "externref": 2, "ref-null": 4, "init": 5,
+		"deinit": 6, "funcref-elem": 7, "externref-elem": 8, "ref-elem": 9,
+	}
+	for name, index := range wantExports {
+		if actual, ok := c.Exports[name]; !ok || actual != index {
+			return false
+		}
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || len(c.tableExports) != 0 || !c.hasTableExportMetadata || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.compactData != nil || len(c.Data) != 0 || len(c.PassiveData) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 {
+		return false
+	}
+	if len(c.GCTypeDescs) != 7 {
+		return false
+	}
+	for i, desc := range c.GCTypeDescs {
+		if desc.ID != corergc.TypeID(i) || desc.Kind != corergc.KindFunc || !desc.Final || desc.HasSuper || desc.Super != 0 || len(desc.Fields) != 0 || desc.Elem != 0 || desc.Size != 0 || desc.ElemSize != 0 || desc.Align != 0 || desc.HasRefs {
+			return false
+		}
+	}
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+		return false
+	}
+	return true
+}
+
+func rv64Core3ABIValues(got, want []ValType) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func rv64Core3RefIsNullExecutionTypes(c *Compiled) bool {
+	i32 := ValueTypeDescriptor{Kind: ValueTypeI32}
+	nullFunc := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapFunc}}}
+	nullExtern := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapExtern}}}
+	nullIndexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Defined: true}}}
+	nonNullIndexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true}}}
+	wantParams := [][]ValueTypeDescriptor{nil, {nullFunc}, {nullExtern}, {nullIndexed}, nil, {nullExtern}, {i32}}
+	wantResults := [][]ValueTypeDescriptor{nil, {i32}, {i32}, {i32}, {i32}, nil, {i32}}
+	for i := range c.Types {
+		typ := &c.Types[i]
+		if typ.RecGroup != uint32(i) || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.Describes != 0 || typ.HasDescriptor || typ.Descriptor != 0 || typ.Kind != CompositeTypeFunction || len(typ.Fields) != 0 || typ.Array != (FieldTypeDescriptor{}) || !rv64Core3ValueTypes(typ.Params, wantParams[i]) || !rv64Core3ValueTypes(typ.Results, wantResults[i]) {
+			return false
+		}
+	}
+	wantValues := [...]ValueTypeDescriptor{nullFunc, nullExtern, nullIndexed, nonNullIndexed}
+	for i := range wantValues {
+		if c.ValueTypes[i] != wantValues[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func rv64Core3ValueTypes(got, want []ValueTypeDescriptor) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func rv64Core3RefIsNullExecutionTables(c *Compiled) bool {
+	if c.tableCount() != 3 || c.tableImportCount() != 0 || !c.HasTable || c.TableType != ValFuncRef || c.TableValueTypeIndex != 0 || !c.TableHasValueType || c.TableSize != 2 || c.TableMax != 2 || c.HasTableInitFunc || c.TableHasMax || c.TableAddr64 || c.TableInitFunc != 0 || len(c.extraTables) != 2 {
+		return false
+	}
+	want := [...]tableDef{
+		{Size: 2, Max: 2, Type: ValExternRef, ValueTypeIndex: 1, HasValueType: true},
+		{Size: 2, Max: 2, Type: ValFuncRef, ValueTypeIndex: 2, HasValueType: true},
+	}
+	for i := range want {
+		if c.extraTables[i] != want[i] {
+			return false
+		}
+	}
+	return c.tableEntryBytes(0) == coreruntime.TableEntryBytes && c.tableEntryBytes(1) == 8 && c.tableEntryBytes(2) == coreruntime.TableEntryBytes
+}
+
+func rv64Core3RefIsNullExecutionElements(c *Compiled) bool {
+	if len(c.Elems) != 2 {
+		return false
+	}
+	for i := range c.Elems {
+		e := &c.Elems[i]
+		if e.Mode != ElemModeActive || e.Offset.Base != 1 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 || len(e.Values) != 1 {
+			return false
+		}
+		v := e.Values[0]
+		if v.FuncIndex != 0 || v.GlobalIndex != 0 || len(v.Expr) != 0 || v.Null || v.HasGlobal || v.I31Wrap || v.RepeatPrevious {
+			return false
+		}
+	}
+	first, second := c.Elems[0], c.Elems[1]
+	return first.TableIndex == 0 && first.RefType == ValFuncRef && first.ValueTypeIndex == 0 && !first.HasValueType && second.TableIndex == 2 && second.RefType == ValFuncRef && second.ValueTypeIndex == 3 && second.HasValueType
 }
 
 // rv64Core3RefAsNonNullDeclarationMetadata is the exact retained metadata
