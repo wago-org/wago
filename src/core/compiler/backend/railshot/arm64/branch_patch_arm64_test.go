@@ -58,3 +58,28 @@ func TestBranchFailurePreservesFirstLimitArm64(t *testing.T) {
 		t.Fatal("branch failure replaced the first representation limit")
 	}
 }
+
+func TestMandatoryAdrPatchRangeArm64(t *testing.T) {
+	for _, delta := range []int{-(1 << 20) - 4, -(1 << 20), (1 << 20) - 1, 1 << 20} {
+		f := fn{a: &a64.Asm{}}
+		site := f.a.Adr(a64.X16)
+		f.patchAdr(site, site+delta)
+		inRange := delta >= -(1<<20) && delta < 1<<20
+		if got := f.representationLimit == functionRepresentationOK; got != inRange {
+			t.Fatalf("ADR delta %d: accepted=%v, want %v", delta, got, inRange)
+		}
+	}
+}
+
+func TestAdrFailureRejectsDisabledFinalizerArm64(t *testing.T) {
+	before := nativeFinalizerEnabled
+	t.Cleanup(func() { nativeFinalizerEnabled = before })
+	for _, enabled := range []bool{false, true} {
+		nativeFinalizerEnabled = enabled
+		f := fn{a: &a64.Asm{}}
+		f.patchAdr(f.a.Adr(a64.X16), 1<<20)
+		if _, err := f.finalizeNativeCode(0); err == nil || !strings.Contains(err.Error(), "PC-relative address") {
+			t.Fatalf("finalizer enabled=%v: error=%v", enabled, err)
+		}
+	}
+}
