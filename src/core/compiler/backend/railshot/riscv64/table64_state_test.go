@@ -412,6 +412,51 @@ func TestOwnedTable64IndirectProfile(t *testing.T) {
 	}
 }
 
+func importedTable64IndirectProfile() *wasm.Module {
+	m := importedTable64SizeProfile()
+	m.Types = []wasm.RecType{
+		{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}}}}},
+		{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}}}}},
+	}
+	m.FuncTypes = []wasm.TypeIdx{{Index: 1}}
+	m.Code = []wasm.Func{{BodyBytes: []byte{0x20, 0, 0x11, 0, 0, 0x0b}}}
+	m.Exports[0].Name = "call"
+	return m
+}
+
+func TestImportedTable64IndirectProfile(t *testing.T) {
+	m := importedTable64IndirectProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact imported table64 indirect-call profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body":          func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x20, 0, 0x1a, 0x41, 7, 0x0b} },
+		"caller-param":  func(m *wasm.Module) { m.Types[1].SubTypes[0].Comp.Params[0] = wasm.I32 },
+		"target-result": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"wrong-type":    func(m *wasm.Module) { m.FuncTypes[0].Index = 0 },
+		"no-max": func(m *wasm.Module) {
+			t := m.Imports[0].Type.TableType()
+			t.Limits.HasMax = false
+			m.Imports[0].Type = wasm.NewTableExternType(t)
+		},
+		"locals":    func(m *wasm.Module) { m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I64}} },
+		"element":   func(m *wasm.Module) { m.Elements = []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemDeclarative}}} },
+		"no-export": func(m *wasm.Module) { m.Exports = m.Exports[1:] },
+		"extra":     func(m *wasm.Module) { m.Code = append(m.Code, wasm.Func{}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := importedTable64IndirectProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid imported table64 indirect-call profile admitted", err)
+			}
+		})
+	}
+	if _, err := admitTableProfile(m, true, false); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("imported table64 indirect call escaped retained public table ABI", err)
+	}
+}
+
 func ownedTable64FillProfile() *wasm.Module {
 	m := stateOnlyTable64Profile()
 	m.Types = []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64, wasm.I64}, Results: []wasm.ValType{wasm.I32}}}}}}

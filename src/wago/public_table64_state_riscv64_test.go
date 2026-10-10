@@ -191,6 +191,23 @@ func rv64ImportedTable64InitDropInstructionSource() []byte {
 	)
 }
 
+func rv64ImportedTable64IndirectInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("call", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x11, 0, 0, 0x0b}))),
+	)
+}
+
 func rv64Table64UnsupportedInstructionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
@@ -492,6 +509,80 @@ func TestRV64PublicImportedTable64GetSet(t *testing.T) {
 			}
 			if got, err := consumer.Invoke("roundtrip", 1); err != nil || !slices.Equal(got, []uint64{1}) {
 				t.Fatal("imported table64 get/set after producer close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64Indirect(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-indirect-producer", rv64Table64IndirectInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-indirect-consumer", rv64ImportedTable64IndirectInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64IndirectABI || !rv64ImportedTable64Indirect(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+				t.Fatalf("imported table64 indirect metadata contract: witness=%d qualified=%v features=%#x funcs=%+v descs=%v typeids=%v", view.nativeTable64ABI, rv64ImportedTable64Indirect(view), view.requiredFeatures, view.Funcs, view.NeedsFuncRefDescs, view.FuncTypeID)
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("imported table64 indirect producer table", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			alias, err := consumer.ExportedTable("table")
+			if err != nil || alias != table {
+				t.Fatal("imported table64 indirect export identity", err)
+			}
+			checkTrap := func(index uint64) {
+				t.Helper()
+				before := slices.Clone(table.desc)
+				got, err := consumer.Invoke("call", index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 3 {
+					t.Fatal("imported table64 indirect index did not trap", index, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("imported table64 indirect trap changed storage", index)
+				}
+			}
+			checkTrap(0) // The imported table is still null before the producer seeds it.
+			for index := uint64(0); index < 2; index++ {
+				if got, err := producer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64 indirect producer seed", index, got, err)
+				}
+			}
+			before := slices.Clone(table.desc)
+			for index := uint64(0); index < 2; index++ {
+				if got, err := consumer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64 indirect call", index, got, err)
+				}
+			}
+			for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
+				checkTrap(index)
+				if got, err := consumer.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64 indirect after trap", index, got, err)
+				}
+			}
+			if !slices.Equal(table.desc, before) {
+				t.Fatal("imported table64 indirect calls changed storage")
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := consumer.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("imported table64 indirect after producer close", got, err)
 			}
 		})
 	}
@@ -1332,6 +1423,50 @@ func TestRV64PublicOwnedTable64IndirectArtifactGates(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("invalid table64 indirect artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64IndirectArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-indirect-admission", rv64ImportedTable64IndirectInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness":  func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"size-witness":     func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedSizeABI },
+		"missing-import":   func(v *Compiled) { v.tableImport = "" },
+		"missing-max":      func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":          func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":          func(v *Compiled) { v.tableImportMax = 1025 },
+		"caller-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"caller-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
+		"missing-type-key": func(v *Compiled) { v.FuncTypeID = nil },
+		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
+		"extra-function":   func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"element":          func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32":          func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64 indirect metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64 indirect artifact admitted")
 			}
 		})
 	}
