@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func explicitSingletonRecModule(f fixtureFunc) []byte {
@@ -24,6 +25,28 @@ func explicitSingletonRecModule(f fixtureFunc) []byte {
 		payload = append(payload, 1, f.result)
 	}
 	return modifySection(compact, 1, 1, payload, true)
+}
+
+func singletonRecControlModule(vector, explicitNullable, wrapped bool) []byte {
+	typ := byte(0x7e)
+	if vector {
+		typ = 0x7b
+	}
+	control := []byte{0x60, 0, 1, 0x70}
+	if explicitNullable {
+		control = []byte{0x60, 0, 1, 0x63, 0x70}
+	}
+	if wrapped {
+		control = append([]byte{0x4e, 1}, control...)
+	}
+	types := []byte{2, 0x60, 1, typ, 1, 0x7f}
+	types = append(types, control...)
+	return wasmtest.Module(
+		wasmtest.Section(1, types),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x1a, 0x02, 1, 0xd0, 0x70, 0x0b, 0xd1, 0x0b}))),
+	)
 }
 
 func TestPublicExplicitSingletonRecAdmissionIdentity(t *testing.T) {
@@ -86,20 +109,62 @@ func TestPublicExplicitSingletonRecStateOnly(t *testing.T) {
 	}
 }
 
+func TestPublicExplicitSingletonRecNullableControlIdentity(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, explicitNullable := range []bool{false, true} {
+			compact := singletonRecControlModule(vector, explicitNullable, false)
+			wrapped := singletonRecControlModule(vector, explicitNullable, true)
+			if err := AdmitProductionSource(wrapped); err != nil {
+				t.Fatal("public wrapped nullable control", vector, explicitNullable, err)
+			}
+			if err := admitWire(wrapped); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("private wrapped nullable control", vector, explicitNullable, err)
+			}
+			plainModule, err := wasm.DecodeModule(compact)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wrappedModule, err := wasm.DecodeModule(wrapped)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var plainPressure, wrappedPressure int
+			plain, err := CompileModuleWith(plainModule, referenceControlProductionOptions(false, &plainPressure))
+			if err != nil {
+				t.Fatal("compact control", err)
+			}
+			got, err := CompileModuleWith(wrappedModule, referenceControlProductionOptions(false, &wrappedPressure))
+			if err != nil {
+				t.Fatal("wrapped control", err)
+			}
+			if plainPressure != 1 || wrappedPressure != 1 || !bytes.Equal(plain.Code, got.Code) || !slices.Equal(plain.Entry, got.Entry) || !slices.Equal(plain.InternalEntry, got.InternalEntry) || plain.NativeReferenceControl != got.NativeReferenceControl || plain.NativeReferenceCalls != got.NativeReferenceCalls {
+				t.Fatal("singleton rec changed nullable control production", plainPressure, wrappedPressure)
+			}
+			if plain.CodeImage != nil {
+				plain.CodeImage.Close()
+			}
+			if got.CodeImage != nil {
+				got.CodeImage.Close()
+			}
+		}
+	}
+}
+
 func TestPublicExplicitSingletonRecRejectsBroaderGrammar(t *testing.T) {
 	header := []byte{0, 97, 115, 109, 1, 0, 0, 0}
 	for name, payload := range map[string][]byte{
-		"empty":           {1, 0x4e, 0},
-		"multiple":        {1, 0x4e, 2, 0x60, 0, 0, 0x60, 0, 0},
-		"nested":          {1, 0x4e, 1, 0x4e, 1, 0x60, 0, 0},
-		"final-subtype":   {1, 0x4e, 1, 0x4f, 0, 0x60, 0, 0},
-		"open-subtype":    {1, 0x4e, 1, 0x50, 0, 0x60, 0, 0},
-		"struct":          {1, 0x4e, 1, 0x5f, 0},
-		"array":           {1, 0x4e, 1, 0x5e, 0x7f, 0},
-		"funcref":         {1, 0x4e, 1, 0x60, 1, 0x70, 0},
-		"typed-reference": {1, 0x4e, 1, 0x60, 1, 0x64, 0x70, 0},
-		"truncated":       {1, 0x4e},
-		"arity":           append([]byte{1, 0x4e, 1, 0x60, 0x81, 0x02}, make([]byte, 257)...),
+		"empty":            {1, 0x4e, 0},
+		"multiple":         {1, 0x4e, 2, 0x60, 0, 0, 0x60, 0, 0},
+		"nested":           {1, 0x4e, 1, 0x4e, 1, 0x60, 0, 0},
+		"final-subtype":    {1, 0x4e, 1, 0x4f, 0, 0x60, 0, 0},
+		"open-subtype":     {1, 0x4e, 1, 0x50, 0, 0x60, 0, 0},
+		"struct":           {1, 0x4e, 1, 0x5f, 0},
+		"array":            {1, 0x4e, 1, 0x5e, 0x7f, 0},
+		"non-null-funcref": {1, 0x4e, 1, 0x60, 1, 0x64, 0x70, 0},
+		"indexed-funcref":  {1, 0x4e, 1, 0x60, 1, 0x63, 0, 0},
+		"nullable-extern":  {1, 0x4e, 1, 0x60, 1, 0x63, 0x6f, 0},
+		"truncated":        {1, 0x4e},
+		"arity":            append([]byte{1, 0x4e, 1, 0x60, 0x81, 0x02}, make([]byte, 257)...),
 	} {
 		t.Run(name, func(t *testing.T) {
 			source := section(append([]byte(nil), header...), 1, payload)

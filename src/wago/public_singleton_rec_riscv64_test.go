@@ -36,6 +36,28 @@ func rv64SingletonRecModule(vector, wrapped bool) []byte {
 	)
 }
 
+func rv64SingletonRecControlModule(vector, explicitNullable, wrapped bool) []byte {
+	typ := byte(0x7e)
+	if vector {
+		typ = 0x7b
+	}
+	control := []byte{0x60, 0, 1, 0x70}
+	if explicitNullable {
+		control = []byte{0x60, 0, 1, 0x63, 0x70}
+	}
+	if wrapped {
+		control = append([]byte{0x4e, 1}, control...)
+	}
+	types := []byte{2, 0x60, 1, typ, 1, 0x7f}
+	types = append(types, control...)
+	return wasmtest.Module(
+		wasmtest.Section(1, types),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x1a, 0x02, 1, 0xd0, 0x70, 0x0b, 0xd1, 0x0b}))),
+	)
+}
+
 func TestRV64PublicExplicitSingletonRec(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, artifact := range []bool{false, true} {
@@ -68,6 +90,43 @@ func TestRV64PublicExplicitSingletonRec(t *testing.T) {
 	}
 }
 
+func TestRV64PublicExplicitSingletonRecNullableControl(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, explicitNullable := range []bool{false, true} {
+			for _, artifact := range []bool{false, true} {
+				name := fmt.Sprintf("vector%t-explicit%t-artifact%t", vector, explicitNullable, artifact)
+				t.Run(name, func(t *testing.T) {
+					key := fmt.Sprintf("singleton-rec-control-vector%t-explicit%t", vector, explicitNullable)
+					plain := rv64TableStageCompile(t, key+"-compact", rv64SingletonRecControlModule(vector, explicitNullable, false), artifact)
+					wrapped := rv64TableStageCompile(t, key+"-wrapped", rv64SingletonRecControlModule(vector, explicitNullable, true), artifact)
+					if !bytes.Equal(plain.code, wrapped.code) || !slices.Equal(plain.Entry, wrapped.Entry) || !slices.Equal(plain.InternalEntry, wrapped.InternalEntry) || !slices.Equal(plain.FuncTypeID, wrapped.FuncTypeID) || plain.requiredFeatures != wrapped.requiredFeatures || plain.nativeReferenceControlABI != wrapped.nativeReferenceControlABI || plain.nativeReferenceCallABI != wrapped.nativeReferenceCallABI {
+						t.Fatal("singleton rec changed nullable control image")
+					}
+					if !wrapped.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || wrapped.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || wrapped.nativeReferenceCallABI {
+						t.Fatal("wrapped nullable control feature/ABI witness", wrapped.requiredFeatures, wrapped.nativeReferenceControlABI, wrapped.nativeReferenceCallABI)
+					}
+					rt := NewRuntime()
+					defer rt.Close()
+					instances := []*Instance{
+						rv64NativeTokenInstantiate(t, rt, plain, NewImports()),
+						rv64NativeTokenInstantiate(t, rt, wrapped, NewImports()),
+					}
+					plain.Close()
+					wrapped.Close()
+					args := []uint64{9}
+					if vector {
+						args = []uint64{0x0123456789abcdef, 0xfedcba9876543210}
+					}
+					for _, in := range instances {
+						importedGlobalInvoke(t, in, "run", []uint64{1}, args...)
+						in.Close()
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestRV64PublicExplicitSingletonRecStateOnly(t *testing.T) {
 	source := wasmtest.Module(wasmtest.Section(1, []byte{1, 0x4e, 1, 0x60, 1, 0x7e, 1, 0x7e}))
 	for _, artifact := range []bool{false, true} {
@@ -86,6 +145,32 @@ func TestRV64PublicExplicitSingletonRecStateOnly(t *testing.T) {
 	}
 }
 
+func TestRV64PublicExplicitSingletonRecNullableControlStateOnly(t *testing.T) {
+	for _, explicitNullable := range []bool{false, true} {
+		ref := []byte{0x70}
+		if explicitNullable {
+			ref = []byte{0x63, 0x70}
+		}
+		typePayload := []byte{1, 0x4e, 1, 0x60, 0, 1}
+		typePayload = append(typePayload, ref...)
+		source := wasmtest.Module(wasmtest.Section(1, typePayload))
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("explicit%t-artifact%t", explicitNullable, artifact), func(t *testing.T) {
+				c := rv64TableStageCompile(t, fmt.Sprintf("singleton-rec-control-state-explicit%t", explicitNullable), source, artifact)
+				if !c.hasNoFunctionCode() || c.codeCache.base != 0 || c.codeCache.mem != nil || c.codeCache.sealed || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
+					t.Fatal("state-only nullable singleton rec image", c.requiredFeatures)
+				}
+				in, err := Instantiate(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				in.Close()
+				c.Close()
+			})
+		}
+	}
+}
+
 func TestRV64PublicExplicitSingletonRecWrappedSIMDFeatureGate(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("source compiler unavailable in compiler-free qualification")
@@ -96,5 +181,20 @@ func TestRV64PublicExplicitSingletonRecWrappedSIMDFeatureGate(t *testing.T) {
 			compiled.Close()
 		}
 		t.Fatal("disabled SIMD admitted wrapped v128 declaration", err)
+	}
+}
+
+func TestRV64PublicExplicitSingletonRecWrappedReferenceFeatureGate(t *testing.T) {
+	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
+		t.Skip("source compiler unavailable in compiler-free qualification")
+	}
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false)
+	for _, explicitNullable := range []bool{false, true} {
+		if compiled, err := Compile(cfg, rv64SingletonRecControlModule(false, explicitNullable, true)); compiled != nil || err == nil {
+			if compiled != nil {
+				compiled.Close()
+			}
+			t.Fatal("disabled reference types admitted wrapped nullable control", explicitNullable, err)
+		}
 	}
 }

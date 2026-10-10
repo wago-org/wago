@@ -334,13 +334,23 @@ func admitWireStartProfile(data []byte, floating, vectors, publicStarts bool) er
 						// Wire admission preserves plain function grammar. Declared
 						// internal references are checked against the decoded type
 						// directory and feature permission before staging.
-						if !explicitSingleton && publicStarts && t == 0x70 {
+						if publicStarts && t == 0x70 {
 							continue
 						}
-						if !explicitSingleton && publicStarts && (t == 0x63 || t == 0x64) {
+						if publicStarts && (t == 0x63 || t == 0x64) {
 							heap, err := s.S33()
 							if err != nil {
 								return err
+							}
+							// An explicit singleton wrapper adds no recursive
+							// identity to the canonical nullable abstract funcref.
+							// Keep every typed, non-null and non-function heap form
+							// outside this representation-only exception.
+							if explicitSingleton {
+								if t == 0x63 && heap == -16 {
+									continue
+								}
+								return unsupported("singleton recursive reference type")
 							}
 							if heap == -16 || heap >= 0 && uint64(heap) < uint64(count) {
 								continue
