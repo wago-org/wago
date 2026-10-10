@@ -141,6 +141,43 @@ func TestImportedTable64SizeProfile(t *testing.T) {
 	}
 }
 
+func importedTable64GetSetProfile() *wasm.Module {
+	m := importedTable64SizeProfile()
+	m.Types[0].SubTypes[0].Comp.Params = []wasm.ValType{wasm.I64}
+	m.Types[0].SubTypes[0].Comp.Results = []wasm.ValType{wasm.I32}
+	m.Code[0].BodyBytes = []byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0x20, 0, 0x25, 0, 0xd1, 0x0b}
+	m.Exports[0].Name = "roundtrip"
+	return m
+}
+
+func TestImportedTable64GetSetProfile(t *testing.T) {
+	m := importedTable64GetSetProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact imported table64.get/set profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body":   func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x41, 1, 0x0b} },
+		"result": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"param":  func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I32 },
+		"no-max": func(m *wasm.Module) {
+			t := m.Imports[0].Type.TableType()
+			t.Limits.HasMax = false
+			m.Imports[0].Type = wasm.NewTableExternType(t)
+		},
+		"locals":    func(m *wasm.Module) { m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I64}} },
+		"no-export": func(m *wasm.Module) { m.Exports = m.Exports[1:] },
+		"extra":     func(m *wasm.Module) { m.Code = append(m.Code, wasm.Func{}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := importedTable64GetSetProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid imported table64.get/set profile admitted", err)
+			}
+		})
+	}
+}
+
 func ownedTable64GrowProfile() *wasm.Module {
 	m := stateOnlyTable64Profile()
 	m.Types = []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I64}}}}}}

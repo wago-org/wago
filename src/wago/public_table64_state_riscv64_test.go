@@ -124,6 +124,17 @@ func rv64ImportedTable64SizeInstructionSource() []byte {
 	)
 }
 
+func rv64ImportedTable64GetSetInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0x20, 0, 0x25, 0, 0xd1, 0x0b}))),
+	)
+}
+
 func rv64Table64UnsupportedInstructionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
@@ -362,6 +373,69 @@ func TestRV64PublicImportedTable64SizeImportGates(t *testing.T) {
 			}
 			if err := in.Close(); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64GetSet(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-getset-producer", rv64Table64IndirectInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-getset-consumer", rv64ImportedTable64GetSetInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64ImportedGetSetABI || !rv64ImportedTable64GetSet(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatal("imported table64.get/set metadata contract")
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			if got, err := producer.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("seed imported table64 row", got, err)
+			}
+			if null, err := table.EntryIsNull(0); err != nil || null {
+				t.Fatal("producer did not publish canonical row", null, err)
+			}
+			if got, err := consumer.Invoke("roundtrip", 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64 null roundtrip", got, err)
+			}
+			if null, err := table.EntryIsNull(0); err != nil || !null {
+				t.Fatal("imported table64 mutation not visible", null, err)
+			}
+			if got, err := producer.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("reseed imported table64 row", got, err)
+			}
+			before := slices.Clone(table.desc)
+			for _, index := range []uint64{1 << 32, ^uint64(0)} {
+				got, err := consumer.Invoke("roundtrip", index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("imported table64 high index did not trap", index, got, err)
+				}
+				if !slices.Equal(table.desc, before) {
+					t.Fatal("imported table64 trap changed storage", index)
+				}
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := consumer.Invoke("roundtrip", 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64 get/set after producer close", got, err)
 			}
 		})
 	}
@@ -1058,6 +1132,51 @@ func TestRV64PublicImportedTable64SizeArtifactGates(t *testing.T) {
 	}
 }
 
+func TestRV64PublicImportedTable64GetSetArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-getset-admission", rv64ImportedTable64GetSetInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64GetSetABI },
+		"size-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedSizeABI },
+		"missing-import":  func(v *Compiled) { v.tableImport = "" },
+		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"export":          func(v *Compiled) { v.Exports["roundtrip"] = 1 },
+		"table32":         func(v *Compiled) { v.TableAddr64 = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 8)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64.get/set metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64.get/set artifact admitted")
+			}
+		})
+	}
+}
+
 func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("source admission only")
@@ -1117,6 +1236,9 @@ func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
 		},
 		"contradictory-imported-size-witness": func(v *Compiled) {
 			v.nativeTable64ABI = nativeTable64ImportedSizeABI
+		},
+		"contradictory-imported-getset-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64ImportedGetSetABI
 		},
 		"table32":     func(v *Compiled) { v.TableAddr64 = false },
 		"start":       func(v *Compiled) { v.HasStart = true },
