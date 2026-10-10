@@ -601,3 +601,45 @@ counters do not include every worker allocation. Native ARM64 timing must be
 measured on ARM64 hardware. QEMU timing is only a bounded cost check for the
 emulated compiler. Shared admission is checked separately from profile builds,
 which use the established path and record source ranges.
+
+## Floor-average source experiment (#871)
+
+`TestSIMDFloorAverageSources` qualifies `(a & b) + ((a ^ b) >> 1)` on the
+unchanged compiler for signed/unsigned 8-, 16-, and 32-bit lanes. It uses an
+independent widened-sum and mathematical floor-division oracle, exhausts byte
+pairs in the lane model, and runs edge/seeded full vectors in native code.
+Coverage includes all eight add/AND/XOR commutations, effective shift counts
+`1`, `1+width`, and `1-width`, equal operands, observed source locals, 24 live
+vectors, input preservation, zero work, and completed work. The observer rejects
+omitted execution and corrupted inputs, outputs, and live-vector results.
+
+`BenchmarkSIMDFloorAverage` measures prepared calls over 256 records with
+trap binding, memory-base lookup, argument setup, warm-up, and full-vector
+checks outside timing. `BenchmarkSIMDFloorAverageCompile` includes decode,
+validation, and compilation; neither measures retained heap or release binaries.
+These are synthetic baseline workloads, not a SHADD/UHADD comparison or a
+compiler speedup. Source, input and loaded-native hashes are logged; the existing
+`wago_codegenstats` adapter checks the established compiler path and reports
+spills and literals. Native ARM64 execution/selection remain unmeasured locally.
+
+```sh
+WAGO_FLOOR_CORPUS="$PWD/corpus/workloads" go test ./src/wago -run '^TestSIMDFloorAverageCorpusCensus$' -v -count=1
+go test -tags=wago_codegenstats,wago_regalloccheck ./src/wago -run '^TestSIMDFloorAverage' -v -count=1
+go test ./src/wago -run '^$' -bench '^BenchmarkSIMDFloorAverage' -benchmem
+```
+
+The decoded census accepts only exact nine-instruction local-source windows,
+including commutations and masked constant counts. It compares actual local
+indices, never sampled values, and logs source/function identity, body offsets,
+width, signedness and rejection reasons. It uses a fixed window and at most one
+body hash per reported function. Controls reject wrong producers, counts,
+dynamic counts, width mismatches, left shifts, OR/subtraction substitutions,
+64-bit lanes, local writes and retained intermediates.
+
+At pinned main `d6064024`, 121 validated workload modules / 220,624 functions
+contained 125 vector ANDs, 667 XORs, 410 supported right shifts and 926 adds,
+but zero admitted floor-average windows and zero reported near matches. No
+module was excluded. This is a negative result for the bounded local-source
+proposal; other dataflow forms and other corpora remain outside the census.
+No production recognition or SHADD/UHADD encoder was added. Native ARM64 and
+quiet paired measurements would be needed to justify a future production rule.
