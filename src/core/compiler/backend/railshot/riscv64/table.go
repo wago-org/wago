@@ -92,7 +92,7 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		return unsupported("table import count bound")
 	}
 	tableCount := len(m.Tables) + m.ImportedTableCount()
-	if tableCount > 1 && !admitStateOnlyTwoTable32(m, true, public) && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable32Indirect(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
+	if tableCount > 1 && !(public && isCore3RefIsNullExecution(m)) && !admitStateOnlyTwoTable32(m, true, public) && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable32Indirect(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
 	for index := 0; index < tableCount; index++ {
@@ -1633,6 +1633,9 @@ func admitOwnedTwoTable32InitDrop(m *wasm.Module, production, public bool) bool 
 func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, error) {
 	if err := ownedTableBounds(m, production && importedTables); err != nil {
 		return false, err
+	}
+	if production && importedTables && isCore3RefIsNullExecution(m) {
+		return true, nil
 	}
 	if m.ImportedTableCount() != 0 && (!production || !importedTables) {
 		return false, unsupported("imported table requires the retained public table ABI")

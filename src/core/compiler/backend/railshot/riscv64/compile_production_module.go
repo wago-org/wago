@@ -336,7 +336,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 	types := internalReferenceTypes{
 		decoded:                  m.Types,
 		decodedSWAR:              vector,
-		declarationExtern:        !vector && referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
+		declarationExtern:        !vector && referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m) || isCore3RefIsNullExecution(m)),
 		declarationNonNullExtern: !vector && referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
 	}
 	for _, group := range m.Types {

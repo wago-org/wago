@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -88,6 +89,34 @@ func TestCore3RefIsNullExecutionDecodedConfinement(t *testing.T) {
 			if isCore3RefIsNullExecution(m) {
 				t.Fatal("hostile decoded shape admitted")
 			}
+			if image, err := CompileModuleWith(m, closedReferenceProductionOptions(false, true)); image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("hostile decoded shape reached backend checkpoint", err)
+			}
 		})
+	}
+}
+
+func TestCore3RefIsNullExecutionBackendCheckpoint(t *testing.T) {
+	m := core3RefIsNullExecutionDecode(t)
+	opts := closedReferenceProductionOptions(false, true)
+	image, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image == nil || !image.NativeReferenceFunctions || image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil || image.CodeImage != nil || len(image.Entry) != 10 {
+		if image == nil {
+			t.Fatal("exact backend checkpoint produced nil image")
+		}
+		t.Fatalf("exact backend checkpoint witness: functions=%t calls=%t control=%t entries=%d", image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, len(image.Entry))
+	}
+	wantEntries := []int{0, 576, 1200, 1824, 2448, 3120, 4000, 6128, 6960, 7920}
+	wantCodeSHA := [32]byte{0xb7, 0x0c, 0x68, 0x57, 0x59, 0xc1, 0xfe, 0x72, 0x23, 0xd8, 0x07, 0x16, 0x7d, 0x4b, 0xe8, 0xc8, 0x33, 0xf8, 0x8d, 0x2b, 0x1a, 0x5a, 0xb8, 0x29, 0xfc, 0xbf, 0xff, 0x35, 0x08, 0x09, 0x58, 0x01}
+	if len(image.Code) != 8872 || sha256.Sum256(image.Code) != wantCodeSHA || !slices.Equal(image.Entry, wantEntries) || !slices.Equal(image.InternalEntry, wantEntries) {
+		t.Fatal("exact backend code image changed")
+	}
+	// This is deliberately a compiler-only checkpoint. The source boundary must
+	// still reject until retained metadata and runtime lifetime proofs exist.
+	if err := AdmitProductionSource(core3RefIsNullExecutionSource()); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("backend checkpoint escaped public source gate", err)
 	}
 }

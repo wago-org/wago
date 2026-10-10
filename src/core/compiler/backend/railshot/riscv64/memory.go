@@ -39,15 +39,16 @@ type moduleState struct {
 	referenceCalls    bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
-	referenceFunctions     bool
-	declarationExternRefs  bool
-	declarationNonnullRefs bool
-	importReferences       bool
-	localMutableReferences bool
-	ownedTable             bool
-	ownedTableGrowth       bool
-	table64                bool
-	tableAddr64            []bool
+	referenceFunctions      bool
+	core3RefIsNullExecution bool
+	declarationExternRefs   bool
+	declarationNonnullRefs  bool
+	importReferences        bool
+	localMutableReferences  bool
+	ownedTable              bool
+	ownedTableGrowth        bool
+	table64                 bool
+	tableAddr64             []bool
 	// Compact reference tables store one authenticated opaque carrier per
 	// eight-byte row. Funcref tables retain their 32-byte callable descriptor
 	// rows. Keep physical layout independent from the table index width.

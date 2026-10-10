@@ -76,6 +76,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
 		return unsupported("closed reference module directory bound")
 	}
+	if !vector && isCore3RefIsNullExecution(m) {
+		return nil
+	}
 	publicReferenceCallBoundary := !vector && admitPublicReferenceCallBoundary(m)
 	counts, err := countClosedReferenceImports(m)
 	if err != nil {

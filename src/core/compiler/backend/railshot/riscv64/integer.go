@@ -748,7 +748,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				if heap != -16 && !(state.core3RefIsNullExecution && heap == -17) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {

@@ -160,7 +160,8 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.dynamicTailCalls = opts.dynamicTailCalls
 	state.referenceCalls = opts.NativeReferenceCalls
 	state.referenceFunctions = opts.referenceFunctions
-	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
+	state.core3RefIsNullExecution = opts.referenceFunctions && isCore3RefIsNullExecution(m)
+	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m) || state.core3RefIsNullExecution)
 	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	importTailCount := 0
@@ -399,7 +400,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	declarationExtern := referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
+	declarationExtern := referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m) || isCore3RefIsNullExecution(m))
 	declarationNonNullExtern := referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
 	// Public modules may contain only state. Import-only modules execute through
 	// instance-owned bridges; neither shape needs placeholder instructions.
