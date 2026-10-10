@@ -812,18 +812,13 @@ func (in *Instance) preparedBoundedNumericEligible() bool {
 func (fn *WasmFunc) tryInvokeBoundedNumeric(args []uint64) (out []uint64, err error, admitted bool) {
 	in := fn.in
 	state := in.pluginState.Load()
-	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
-		return nil, nil, false
-	}
-	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
-		in.endDirectInvocation()
+	if !in.tryBeginOrdinaryInvocation(state) {
 		return nil, nil, false
 	}
 	privateRefStore := in.refStore == nil || in.refStore.private
 	if !privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
 		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
 	state.invocationID = newInvocationID()
@@ -831,7 +826,7 @@ func (fn *WasmFunc) tryInvokeBoundedNumeric(args []uint64) (out []uint64, err er
 	var locked executionLease
 	nativeOwned := false
 	defer func() {
-		defer func() { state.invocationID = 0; state.invokeMu.Unlock(); in.endDirectInvocation() }()
+		defer func() { state.invocationID = 0; in.endOrdinaryInvocation(state) }()
 		if nativeOwned {
 			defer in.unlockNativeEntry(locked)
 		}

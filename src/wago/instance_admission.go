@@ -73,7 +73,30 @@ func (s *invocationGateState) CompareAndSwap(old, next uint32) bool {
 	}
 }
 
-const instanceFastAdmission = uint64(invocationGateHeld|invocationGateFast)<<32 | 1
+const (
+	instanceOrdinaryAdmission = uint64(invocationGateHeld)<<32 | 1
+	instanceFastAdmission     = uint64(invocationGateHeld|invocationGateFast)<<32 | 1
+)
+
+// tryBeginOrdinaryInvocation atomically acquires the standalone lifetime lease
+// and ordinary serialization gate. Unlike fast admission, callbacks may revoke
+// private entry and publish resources while this owner is parked.
+func (in *Instance) tryBeginOrdinaryInvocation(state *instancePluginState) bool {
+	return in.rt == nil && state != nil && state.invokeMu.state.shared == &in.invocationState.word &&
+		in.invocationState.word.CompareAndSwap(0, instanceOrdinaryAdmission)
+}
+
+func (in *Instance) endOrdinaryInvocation(state *instancePluginState) {
+	if !in.invocationState.word.CompareAndSwap(instanceOrdinaryAdmission, 0) {
+		in.endOrdinaryInvocationSlow(state)
+	}
+}
+
+//go:noinline
+func (in *Instance) endOrdinaryInvocationSlow(state *instancePluginState) {
+	state.invokeMu.Unlock()
+	in.endDirectInvocation()
+}
 
 func (fn *WasmFunc) tryBeginFastInvocation() bool {
 	in := fn.in
