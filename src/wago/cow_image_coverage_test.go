@@ -14,6 +14,10 @@ type imageSpan struct{ start, end uint64 }
 // TestCOWImageCoverage surveys constant-offset active data in real modules.
 // Touched page counts are an opportunity bound, not measured RSS/PSS.
 func TestCOWImageCoverage(t *testing.T) {
+	// Survey the same real modules on every supported host. CoreFeaturesV3
+	// includes proposals that some ports cannot compile, but these workloads
+	// need only the subset supported by the current port.
+	features := CoreFeaturesV3 & SupportedFeatures()
 	for _, rel := range []string{
 		"corpus/workloads/applications/sqlite3/sqlite3.wasm",
 		"corpus/workloads/applications/quickjs/qjs.wasm",
@@ -27,7 +31,7 @@ func TestCOWImageCoverage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(data)
+			c, err := NewRuntimeConfig().WithCoreFeatures(features).Compile(data)
 			if err != nil {
 				t.Fatal(err)
 			}
