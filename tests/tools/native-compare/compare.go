@@ -1,3 +1,5 @@
+//go:build wago_nativecompare
+
 // Package main implements an offline diagnostic experiment. No production code
 // imports it. Input instruction boundaries and source anchors come from the
 // existing disassembler/source maps, not from an invented general decoder.

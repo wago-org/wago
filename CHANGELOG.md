@@ -67,6 +67,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+Require `wago_nativecompare` so ordinary builds and install discovery exclude it.
+
 - Add an opt-in operand-aware native comparison diagnostic with bounded Wasm
   capture, source anchors, explicit opaque-byte coverage and focused test recipes.
 

@@ -1,3 +1,5 @@
+//go:build wago_nativecompare
+
 package main
 
 import "testing"

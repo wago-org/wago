@@ -315,3 +315,5 @@ source.
 For bounded offline operand inspection, see the [native comparison diagnostic](tests/tools/native-compare/README.md).
 `just bench native-capture input.wasm snapshot.json`, `just bench native-compare before.json after.json`,
 and `just test native-compare` use existing profile/source-map facilities and report coverage explicitly.
+The entire diagnostic requires `wago_nativecompare`; the recipes supply that tag.
+Ordinary broad builds, tests and install discovery exclude the command.
