@@ -573,7 +573,11 @@ func (fn *WasmFunc) invokeGeneral(args []uint64) (result []uint64, resultErr err
 		if codeProfileEnabled && in.boundaryProfile() != nil {
 			span, restore := in.beginProfileInvocation(fn.export)
 			defer restore()
-			defer finishProfileBoundary(span, &resultErr)
+			completed := false
+			defer finishProfileBoundary(span, &resultErr, &completed)
+			result, resultErr = fn.invokeGeneralAdmitted(args)
+			completed = true
+			return
 		}
 		result, resultErr = fn.invokeGeneralAdmitted(args)
 	})

@@ -57,10 +57,12 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 			return nil, err
 		}
 	}
+	profileCompleted := true
 	if codeProfileEnabled && activeHostInvocationContext(active).profileSession() != nil {
 		var span profileSpanToken
 		ctx, span = profileReentryContext(active, in, ctx)
-		defer finishProfileBoundary(span, &err)
+		profileCompleted = false
+		defer finishProfileBoundary(span, &err, &profileCompleted)
 	}
 	contexts := invocationContextSetFor(ctx)
 	if codeProfileEnabled && activeHostInvocationContext(active).profileSession() != nil {
@@ -68,11 +70,14 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 	}
 	depth, ok := acquireHostReentryDepth(id)
 	if !ok {
+		profileCompleted = true
 		return nil, fmt.Errorf("wago: host re-entry depth %d exceeds limit %d: %w", depth+1, maxHostReentryDepth, ErrPermissionDenied)
 	}
 	defer releaseHostReentryDepth(id)
 	results, err = in.invokeWithToken(export, args, contexts, id, false, false, reservation)
-	return results, contextInterruptError(ctx, err)
+	err = contextInterruptError(ctx, err)
+	profileCompleted = true
+	return results, err
 }
 
 // hostReentryDepths retains its small map for allocation-free ordinary reuse.
@@ -2717,10 +2722,12 @@ func setNativeSyncPanicError(r any, err *error) {
 // generic sync entry's unused unprepared-call dispatch and argument setup.
 func (in *Instance) callPreparedHostSyncAdmitted(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) (err error) {
 	defer func() { err = in.decorateTrap(err) }()
-	defer recoverNativeSyncPanic(&err)
+	returned := false
+	defer recoverNativeSyncPanicCompletion(&err, &returned)
 	err = in.callPreparedHostSync(prepared, fixed, activation)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
+	returned = true
 	return err
 }
 
@@ -2728,8 +2735,11 @@ func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCal
 	if codeProfileEnabled && in.boundaryProfile() != nil {
 		span, restore := activation.beginProfileActivation()
 		defer restore()
-		defer finishProfileBoundary(span, &err)
-		return prepared.Call(activation.dispatch, profileScalarFallback)
+		completed := false
+		defer finishProfileBoundary(span, &err, &completed)
+		err = prepared.Call(activation.dispatch, profileScalarFallback)
+		completed = true
+		return err
 	}
 	if preparedHostFixedEnabled {
 		if fixed == nil {
@@ -2863,9 +2873,10 @@ func (in *Instance) callCachedBoundedTypedHostContext(entry uintptr, waitParent 
 }
 
 func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, heldNativeMu *sync.Mutex) (err error) {
+	returned := false
 	if goruntime.GOARCH == "arm64" {
 		defer func() { err = in.decorateTrap(err) }()
-		defer recoverNativeSyncPanic(&err)
+		defer recoverNativeSyncPanicCompletion(&err, &returned)
 	}
 	// Avoid no-op context cleanup on ARM64; paired AMD64 measurements
 	// favor its original unconditional setup.
@@ -2900,8 +2911,10 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 	if codeProfileEnabled && (in.boundaryProfile() != nil || activeHostInvocationContext(in).profileSession() != nil) {
 		span, restore := activation.beginProfileActivation()
 		defer restore()
-		defer finishProfileBoundary(span, &err)
+		completed := false
+		defer finishProfileBoundary(span, &err, &completed)
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
+		completed = true
 	} else if in.hasSingleDirectTypedScalarHost() {
 		if in.boundedHostSegments() {
 			rawSlots, _ := in.syncHosts[0].typedScalarSlots()
@@ -2975,5 +2988,6 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
+	returned = true
 	return err
 }

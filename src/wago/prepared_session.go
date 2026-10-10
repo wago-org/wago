@@ -276,8 +276,17 @@ func (state *preparedSessionState) invokeFixedCall(count int, a0, a1, a2, a3 uin
 	if codeProfileEnabled && fn.in.boundaryProfile() != nil {
 		span, restore := fn.in.beginProfileInvocation(fn.export)
 		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+		completed := false
+		defer finishProfileBoundary(span, &resultErr, &completed)
+		result, resultErr = state.invokeFixedCallBody(count, a0, a1, a2, a3)
+		completed = true
+		return result, resultErr
 	}
+	return state.invokeFixedCallBody(count, a0, a1, a2, a3)
+}
+
+func (state *preparedSessionState) invokeFixedCallBody(count int, a0, a1, a2, a3 uint64) (result []uint64, resultErr error) {
+	fn := state.fn
 	args := [4]uint64{a0, a1, a2, a3}
 	if state.host {
 		return state.invokeScalarHostReserved(args[:count])
@@ -332,8 +341,17 @@ func (state *preparedSessionState) invokeArgsCall(args []uint64) (result []uint6
 	if codeProfileEnabled && fn.in.boundaryProfile() != nil {
 		span, restore := fn.in.beginProfileInvocation(fn.export)
 		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+		completed := false
+		defer finishProfileBoundary(span, &resultErr, &completed)
+		result, resultErr = state.invokeArgsCallBody(args)
+		completed = true
+		return result, resultErr
 	}
+	return state.invokeArgsCallBody(args)
+}
+
+func (state *preparedSessionState) invokeArgsCallBody(args []uint64) (result []uint64, resultErr error) {
+	fn := state.fn
 	if state.host {
 		return state.invokeScalarHostReserved(args)
 	}

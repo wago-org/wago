@@ -4237,7 +4237,12 @@ func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invoca
 	if codeProfileEnabled && in.boundaryProfile() != nil {
 		span, restore := in.beginProfileInvocation(export)
 		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+		completed := false
+		defer finishProfileBoundary(span, &resultErr, &completed)
+		state := in.ensurePluginState()
+		result, resultErr = in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
+		completed = true
+		return result, resultErr
 	}
 	state := in.ensurePluginState()
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
@@ -4294,8 +4299,16 @@ func (in *Instance) invokeEntryLocked(export string, args []uint64, contexts inv
 		}
 		span, restore := in.beginProfileInvocation(export)
 		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+		completed := false
+		defer finishProfileBoundary(span, &resultErr, &completed)
+		result, resultErr = in.invokeEntryLockedBody(export, args, contexts, alreadyAdmitted, state, admittedHere)
+		completed = true
+		return result, resultErr
 	}
+	return in.invokeEntryLockedBody(export, args, contexts, alreadyAdmitted, state, admittedHere)
+}
+
+func (in *Instance) invokeEntryLockedBody(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool, state *instancePluginState, admittedHere *bool) (result []uint64, resultErr error) {
 	privateRefStore := in.refStore == nil || in.refStore.private
 	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil && privateRefStore {
 		// Admit before reading cached or compiled entry metadata. Close publishes
@@ -5036,8 +5049,10 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	}
 	params := append([]uint64(nil), args...)
 	results = make([]uint64, resultSlots)
+	returned := false
 	defer func() {
-		if recovered := recover(); recovered != nil {
+		recovered := recover()
+		if !returned || recovered != nil {
 			switch value := recovered.(type) {
 			case HostTrap:
 				if value.Err == nil {
@@ -5079,12 +5094,21 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	if codeProfileEnabled && activeHostInvocationContext(in).profileSession() != nil {
 		span, restore := in.beginProfileHostCallback(importIdx)
 		defer restore()
-		defer finishProfileBoundary(span, &err)
+		completed := false
+		defer finishProfileBoundary(span, &err, &completed)
+		fn := &in.syncHosts[importIdx]
+		caller := in.ensurePluginState().hostScope.beginReservedWithID(in, id, currentInvocationReservation(in), parent)
+		defer caller.scope.end(caller.generation, caller.parentGeneration)
+		fn.call(caller, params, results)
+		completed = true
+		returned = true
+		return results, nil
 	}
 	fn := &in.syncHosts[importIdx]
 	caller := in.ensurePluginState().hostScope.beginReservedWithID(in, id, currentInvocationReservation(in), parent)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	fn.call(caller, params, results)
+	returned = true
 	return results, nil
 }
 

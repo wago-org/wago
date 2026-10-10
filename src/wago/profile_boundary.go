@@ -51,8 +51,17 @@ func (in *Instance) beginProfileBoundary(session *CodeProfile, invocation hostIn
 	return session.BeginSpan(jitprofile.Span{ParentID: parent, InvocationID: uint64(invocation.id), InstanceID: id, ModuleID: module, Kind: kind, Function: function})
 }
 
-func finishProfileBoundary(span jitprofile.SpanToken, err *error) {
-	if r := recover(); r != nil {
+func finishProfileBoundary(span jitprofile.SpanToken, err *error, completed ...*bool) {
+	r := recover()
+	panicked := r != nil
+	if len(completed) != 0 && completed[0] != nil && !*completed[0] {
+		// With GODEBUG=panicnil=1, recover returns nil for panic(nil).  A
+		// completion sentinel is therefore required at boundaries which may
+		// observe arbitrary host panics; the recovered value alone cannot
+		// distinguish that panic from an ordinary return.
+		panicked = true
+	}
+	if panicked {
 		outcome := "panic"
 		switch trap := r.(type) {
 		case HostExit, *HostExit:
@@ -117,7 +126,8 @@ func (a *hostLoopActivation) callProfiledHost(active *Instance, ctrl uintptr, im
 		session = a.root.boundaryProfile()
 	}
 	span := active.beginProfileBoundary(session, invocation, "host-callback", int(importIdx))
-	defer finishProfileBoundary(span, nil)
+	completed := false
+	defer finishProfileBoundary(span, nil, &completed)
 	invocation.traceSession = session
 	invocation.traceParent = span.ID()
 	restore := bindHostInvocationContext(ctrl, invocation)
@@ -127,6 +137,7 @@ func (a *hostLoopActivation) callProfiledHost(active *Instance, ctrl uintptr, im
 		defer restoreRoot()
 	}
 	active.callHostDispatch(ctrl, importIdx, args, results, invocation)
+	completed = true
 }
 
 // Returning unhandled sends an observed prepared call through the generic
