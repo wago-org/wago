@@ -10,8 +10,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	wago "github.com/wago-org/wago"
 	backend "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
@@ -124,8 +126,67 @@ func TestLazyFunctionEntryProfile(t *testing.T) {
 				enteredBodyBytes += stats.Funcs[localIndex].CodeBytes
 			}
 			t.Logf("standalone_backend_body_bytes=%d entered_body_bytes=%d entered_body_share=%.2f%% unentered_body_bytes=%d", allBodyBytes, enteredBodyBytes, 100*float64(enteredBodyBytes)/float64(allBodyBytes), allBodyBytes-enteredBodyBytes)
+			if m.ID == "php-buckets" {
+				measureUnenteredBodyCeiling(t, m, stdin, plain, prior)
+			}
 		})
 	}
+}
+
+// measureUnenteredBodyCeiling replaces unentered function bodies with traps in
+// a disposable module. It measures a hypothetical code floor for this exact
+// input only; another input could call any of the replaced functions.
+func measureUnenteredBodyCeiling(t *testing.T, m corpusModule, stdin []byte, plain commandOutput, entered []int) {
+	t.Helper()
+	root := t.TempDir()
+	enteredPath := filepath.Join(root, "entered.json")
+	encoded, err := json.Marshal(entered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(enteredPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "unentered-trap-ceiling.wasm")
+	cmd := exec.Command("python3", "../experiments/925-unentered-body-ceiling.py", filepath.Join(corpusDir, filepath.FromSlash(m.Artifact)), enteredPath, output)
+	if detail, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build input-specific ceiling: %v: %s", err, detail)
+	}
+	stripped, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compile := func(data []byte) (*wago.Compiled, time.Duration, uint64, uint64) {
+		t.Helper()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		start := time.Now()
+		compiled, err := wago.Compile(nil, data)
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtime.ReadMemStats(&after)
+		return compiled, elapsed, after.TotalAlloc - before.TotalAlloc, after.Mallocs - before.Mallocs
+	}
+	baseline, baseTime, baseBytes, baseAllocs := compile(m.bytes)
+	baseNative := baseline.CodeSize()
+	if err := baseline.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ceiling, ceilingTime, ceilingBytes, ceilingAllocs := compile(stripped)
+	defer ceiling.Close()
+	got, err := runWagoCommand(m, ceiling, stdin, true)
+	if err != nil {
+		t.Fatalf("input-specific ceiling command: %v", err)
+	}
+	if err := validateCommandOutput(m, got); err != nil {
+		t.Fatalf("input-specific ceiling oracle: %v", err)
+	}
+	if !slices.Equal(plain.results, got.results) || !bytes.Equal(plain.stdout, got.stdout) || !bytes.Equal(plain.stderr, got.stderr) || !reflect.DeepEqual(plain.files, got.files) {
+		t.Fatal("input-specific ceiling output differs")
+	}
+	t.Logf("input_specific_ceiling original_source_bytes=%d transformed_source_bytes=%d baseline_native_bytes=%d ceiling_native_bytes=%d baseline_compile_ms=%.2f ceiling_compile_ms=%.2f baseline_allocated_bytes=%d ceiling_allocated_bytes=%d baseline_mallocs=%d ceiling_mallocs=%d", len(m.bytes), len(stripped), baseNative, ceiling.CodeSize(), float64(baseTime.Microseconds())/1000, float64(ceilingTime.Microseconds())/1000, baseBytes, ceilingBytes, baseAllocs, ceilingAllocs)
 }
 
 func runProfiledFunctionCommand(m corpusModule, compiled *wago.Compiled, stdin []byte, functions []int) (commandOutput, []int, error) {
