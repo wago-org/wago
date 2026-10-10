@@ -99,7 +99,11 @@ func (f *integerEmitter) privateFillEntries() {
 }
 
 func (f *integerEmitter) privateTableCopy() {
-	f.privateTableRange(true)
+	f.privateTableCopyAt(0)
+}
+
+func (f *integerEmitter) privateTableCopyAt(tableIndex uint32) {
+	f.privateTableRangeAt(true, tableIndex)
 	done := f.a.BranchLong(enc.EQ, enc.X5, enc.Zero)
 	forward := f.a.BranchLong(enc.GEU, enc.X7, enc.X6)
 	// A backwards copy is safe for every dst>src range, overlapping or disjoint.

@@ -1256,15 +1256,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
 				tableIndex, tableWide := uint32(0), state.table64
-				if imm.Kind == wasm.InstrTableGrow || imm.Kind == wasm.InstrTableFill {
+				if imm.Kind == wasm.InstrTableGrow || imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy {
 					tableIndex = imm.Index
+					if imm.Kind == wasm.InstrTableCopy && imm.Index2 != tableIndex {
+						return integerSummary{}, unsupported("cross-table private copy shape")
+					}
 					var tableOK bool
 					tableWide, tableOK = state.tableWidth(tableIndex)
 					if !tableOK || imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth {
 						return integerSummary{}, unsupported("bounded private table mutation shape")
 					}
 				}
-				if !state.ownedTable || !privateRefs || imm.Kind != wasm.InstrTableGrow && imm.Kind != wasm.InstrTableFill && imm.Index != 0 || imm.Index2 != 0 {
+				if !state.ownedTable || !privateRefs || imm.Kind != wasm.InstrTableCopy && imm.Index2 != 0 {
 					return integerSummary{}, unsupported("bounded private table mutation shape")
 				}
 				if functionRefs {
@@ -1274,7 +1277,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						n, widths[0], widths[1], references[0] = 2, true, tableWide, true
 					} else if imm.Kind == wasm.InstrTableFill {
 						widths[0], widths[1], widths[2], references[1] = tableWide, true, tableWide, true
-					} else if imm.Kind == wasm.InstrTableCopy && state.table64 {
+					} else if imm.Kind == wasm.InstrTableCopy && tableWide {
 						widths = [3]bool{true, true, true}
 					}
 					if err = match(widths[:n], references[:n], false, true); err != nil {
@@ -1289,7 +1292,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), wideCount)
 				}
-				wideSource := imm.Kind == wasm.InstrTableCopy && state.table64
+				wideSource := imm.Kind == wasm.InstrTableCopy && tableWide
 				if imm.Kind == wasm.InstrTableCopy {
 					err = popWidth(wideSource)
 				} else {
@@ -1313,7 +1316,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if live && emit != nil {
 					switch imm.Kind {
 					case wasm.InstrTableCopy:
-						emit.privateTableCopy()
+						emit.privateTableCopyAt(tableIndex)
 					case wasm.InstrTableFill:
 						emit.privateTableFillAt(tableIndex)
 					case wasm.InstrTableGrow:
