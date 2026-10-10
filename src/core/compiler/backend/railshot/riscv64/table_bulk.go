@@ -104,6 +104,45 @@ func (f *integerEmitter) privateTableCopy() {
 
 func (f *integerEmitter) privateTableCopyAt(tableIndex uint32) {
 	f.privateTableRangeAt(true, tableIndex)
+	f.privateCopyEntriesOverlapSafe()
+}
+
+func (f *integerEmitter) privateTableCopyBetween(destinationIndex, sourceIndex uint32) {
+	if destinationIndex == sourceIndex {
+		f.privateTableCopyAt(destinationIndex)
+		return
+	}
+	// Preflight both full-width ranges before either address is formed or any
+	// row is written. X5/X6/X7 retain count/destination/source throughout.
+	f.privateTableDescriptor(enc.X28, destinationIndex)
+	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
+	f.a.Lwu(enc.X29, enc.X28, 0)
+	f.a.Add(enc.X30, enc.X6, enc.X5)
+	f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X30, enc.X6))
+	f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X30))
+	f.privateTableDescriptor(enc.X28, sourceIndex)
+	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
+	f.a.Lwu(enc.X29, enc.X28, 0)
+	f.a.Add(enc.X30, enc.X7, enc.X5)
+	f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X30, enc.X7))
+	f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X30))
+	f.privateTableDescriptor(enc.X28, destinationIndex)
+	f.a.Slli(enc.X6, enc.X6, 5)
+	f.a.Add(enc.X6, enc.X6, enc.X28)
+	f.a.Addi(enc.X6, enc.X6, 8)
+	f.privateTableDescriptor(enc.X28, sourceIndex)
+	f.a.Slli(enc.X7, enc.X7, 5)
+	f.a.Add(enc.X7, enc.X7, enc.X28)
+	f.a.Addi(enc.X7, enc.X7, 8)
+	// Distinct descriptors cannot overlap, so forward movement is sufficient.
+	done := f.a.BranchLong(enc.EQ, enc.X5, enc.Zero)
+	f.privateCopyEntries(32)
+	if err := f.Patch(done, f.Position()); err != nil {
+		f.err = err
+	}
+}
+
+func (f *integerEmitter) privateCopyEntriesOverlapSafe() {
 	done := f.a.BranchLong(enc.EQ, enc.X5, enc.Zero)
 	forward := f.a.BranchLong(enc.GEU, enc.X7, enc.X6)
 	// A backwards copy is safe for every dst>src range, overlapping or disjoint.

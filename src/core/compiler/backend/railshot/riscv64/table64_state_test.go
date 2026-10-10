@@ -302,6 +302,39 @@ func TestOwnedTwoTable64CopyProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable64CrossCopyProfile() *wasm.Module {
+	m := ownedTwoTable64CopyProfile()
+	m.Code[0].BodyBytes[9] = 1
+	m.Code[1].BodyBytes[9] = 0
+	m.Exports[0].Name, m.Exports[1].Name = "copy01", "copy10"
+	return m
+}
+
+func TestOwnedTwoTable64CrossCopyProfile(t *testing.T) {
+	m := ownedTwoTable64CrossCopyProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact cross-table64 copy profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"same-table":   func(m *wasm.Module) { m.Code[1].BodyBytes[9] = 1 },
+		"bad-dest":     func(m *wasm.Module) { m.Code[1].BodyBytes[8] = 0 },
+		"result":       func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"source-param": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[1] = wasm.I32 },
+		"no-max":       func(m *wasm.Module) { m.Tables[1].Type.Limits.HasMax = false },
+		"table32":      func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = false },
+		"no-export":    func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+		"element":      func(m *wasm.Module) { m.Elements = []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable64CrossCopyProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid cross-table64 copy profile admitted", err)
+			}
+		})
+	}
+}
+
 func importedTable64SizeProfile() *wasm.Module {
 	table := wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 1, Max: 4, HasMax: true, Addr64: true}}
 	return &wasm.Module{

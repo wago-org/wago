@@ -220,6 +220,27 @@ func rv64TwoTable64CopyInstructionSource() []byte {
 	)
 }
 
+func rv64TwoTable64CrossCopyInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 3, 3},
+			[]byte{0x70, 0x05, 5, 5},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("copy01", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("copy10", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 0, 1, 0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 1, 0, 0x41, 1, 0x0b}),
+		)),
+	)
+}
+
 func rv64ImportedTable64SizeInstructionSource() []byte {
 	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
 	return wasmtest.Module(
@@ -783,6 +804,84 @@ func TestRV64PublicOwnedTwoTable64Copy(t *testing.T) {
 			}
 			if got, err := in.Invoke("copy1", 1, 0, 1); err != nil || !slices.Equal(got, []uint64{1}) || slices.Equal(table1.desc, before1) || !slices.Equal(table0.desc, before0) {
 				t.Fatal("two-table64 copy reuse/isolation after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64CrossCopy(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-cross-copy", rv64TwoTable64CrossCopyInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64CopyABI || !rv64OwnedTwoTable64Copy(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("cross-table64 copy metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Copy(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 3 {
+				t.Fatal("cross-table64 copy table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 5 || table1 == table0 {
+				t.Fatal("cross-table64 copy table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("cross-table64 copy missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			seed := func() {
+				clear(table0.desc[8:])
+				clear(table1.desc[8:])
+				for _, index := range []int{0, 2} {
+					copy(table0.desc[8+index*coreruntime.TableEntryBytes:], row)
+				}
+				for _, index := range []int{1, 3, 4} {
+					copy(table1.desc[8+index*coreruntime.TableEntryBytes:], row)
+				}
+			}
+			seed()
+			want0, untouched1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			copy(want0[8:8+3*coreruntime.TableEntryBytes], untouched1[8+coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("copy01", 0, 1, 3); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table0.desc, want0) || !slices.Equal(table1.desc, untouched1) {
+				t.Fatal("cross-table64 copy table1 to table0", got, err)
+			}
+			seed()
+			untouched0, want1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			copy(want1[8+2*coreruntime.TableEntryBytes:8+5*coreruntime.TableEntryBytes], untouched0[8:8+3*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("copy10", 2, 0, 3); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table0.desc, untouched0) || !slices.Equal(table1.desc, want1) {
+				t.Fatal("cross-table64 copy table0 to table1", got, err)
+			}
+			if got, err := in.Invoke("copy01", 3, 5, 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("cross-table64 copy exact-end zero range 01", got, err)
+			}
+			if got, err := in.Invoke("copy10", 5, 3, 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("cross-table64 copy exact-end zero range 10", got, err)
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				dst      uint64
+				src      uint64
+				count    uint64
+			}{{"copy01", 0, 2, 0, 2}, {"copy01", 0, 0, 4, 2}, {"copy10", 1, 4, 0, 2}, {"copy10", 1, 0, 2, 2}, {"copy01", 0, 1 << 32, 0, 0}, {"copy01", 0, 0, 1 << 32, 0}, {"copy10", 1, 0, 0, 1 << 32}, {"copy10", 1, ^uint64(0), 0, 2}, {"copy01", 0, 0, ^uint64(0), 2}} {
+				got, err := in.Invoke(tc.name, tc.dst, tc.src, tc.count)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("cross-table64 copy range did not trap", tc, got, err)
+				}
+				if !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("cross-table64 copy trap changed storage", tc)
+				}
+			}
+			if got, err := in.Invoke("copy01", 0, 0, 1); err != nil || !slices.Equal(got, []uint64{1}) || slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+				t.Fatal("cross-table64 copy reuse/isolation after trap", got, err)
 			}
 		})
 	}
@@ -2304,6 +2403,52 @@ func TestRV64PublicOwnedTwoTable64CopyArtifactGates(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("invalid two-table64 copy artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64CrossCopyArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-cross-copy-admission", rv64TwoTable64CrossCopyInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-param":    func(v *Compiled) { v.Funcs[1].Params[1] = ValI32 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"function-export": func(v *Compiled) { v.Exports["copy10"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid cross-table64 copy metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid cross-table64 copy artifact admitted")
 			}
 		})
 	}
