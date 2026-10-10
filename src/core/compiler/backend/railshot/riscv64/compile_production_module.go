@@ -142,6 +142,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if len(m.Customs) > MaxFunctions {
 		return nil, unsupported("decoded custom section count bound")
 	}
+	if err := admitPublicBranchHints(m, true, &remaining); err != nil {
+		return nil, err
+	}
 	// Reuse the existing decoded metadata accounting with the instruction/data
 	// budget. Opaque custom payloads must stay bounded for hand-built callers,
 	// and the decoded/raw name views must not duplicate retained byte charges.

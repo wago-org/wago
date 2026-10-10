@@ -70,7 +70,7 @@ func compileTailImportSourceInvocation(source []byte, siteBase uint32, forceSWAR
 		return nil, err
 	}
 	m := d.Module
-	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Imports) > MaxHostFunctionImports || len(m.Exports) > MaxFunctions || m.UsesCompactImports || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.BranchHints) != 0 {
+	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Imports) > MaxHostFunctionImports || len(m.Exports) > MaxFunctions || m.UsesCompactImports || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || m.BranchHints != nil {
 		return nil, unsupported("private imported-tail state-free module")
 	}
 	for _, im := range m.Imports {

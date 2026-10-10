@@ -87,7 +87,7 @@ func compileDynamicTailSource(source []byte, siteBase uint32, forceSWAR bool) (*
 		return nil, err
 	}
 	m := d.Module
-	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Imports) > MaxHostFunctionImports || len(m.Tables) != 1 || m.Tables[0].Init != nil || m.Tables[0].Type.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.FuncRef) || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.Imports) > MaxHostFunctionImports || len(m.Tables) != 1 || m.Tables[0].Init != nil || m.Tables[0].Type.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.FuncRef) || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return nil, unsupported("private dynamic owned-table whole-module profile")
 	}
 	for _, im := range m.Imports {

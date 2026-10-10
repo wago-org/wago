@@ -94,9 +94,6 @@ func TestProductionCustomSectionBoundsAndSemanticGates(t *testing.T) {
 				{"aggregate", func(m *wasm.Module) {
 					m.Customs = []wasm.CustomSec{{Data: make([]byte, MaxModuleBytes/2)}, {Data: make([]byte, MaxModuleBytes/2)}}
 				}},
-				{"empty-branch-hints", func(m *wasm.Module) {
-					m.Customs = []wasm.CustomSec{{Name: "metadata.code.branch_hint", Data: []byte{0}}}
-				}},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					m, err := wasm.DecodeModule(base)
@@ -120,8 +117,17 @@ func TestProductionCustomSectionBoundsAndSemanticGates(t *testing.T) {
 			if err != nil {
 				t.Fatal("branch hint fixture", err)
 			}
-			if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true}); image != nil || !errors.Is(err, ErrUnsupported) {
-				t.Fatal("empty parsed branch hint admitted", err)
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+			if image == nil || err != nil {
+				t.Fatal("empty parsed branch hint rejected", err)
+			}
+			plain, err := wasm.DecodeModule(base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := CompileModuleWith(plain, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+			if err != nil || !bytes.Equal(image.Code, want.Code) || !reflect.DeepEqual(image.Entry, want.Entry) || !reflect.DeepEqual(image.InternalEntry, want.InternalEntry) {
+				t.Fatal("empty branch metadata changed code layout", err)
 			}
 			opaque := rv64CustomSectionSource(base, "opaque", []byte{0xff})
 			if profile == "scalar" {

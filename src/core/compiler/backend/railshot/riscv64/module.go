@@ -374,14 +374,14 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 			return err
 		}
 	}
-	if (!floating && (len(m.Tables) != 0 || len(m.Elements) != 0)) || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || len(m.BranchHints) != 0 {
+	if (!floating && (len(m.Tables) != 0 || len(m.Elements) != 0)) || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
 		return unsupported("imports, state, initializers or feature metadata")
 	}
 	for _, custom := range m.Customs {
-		// Public compilation ignores opaque custom payloads. Branch hints have
-		// a decoded semantic representation and retain their existing gate,
-		// including a present empty section. Private pilots keep their allowlist.
-		if custom.Name == "metadata.code.branch_hint" || !publicStarts && custom.Name != "name" && custom.Name != "producers" {
+		// Public compilation ignores opaque custom payloads after structured
+		// branch hints have been reconciled and validated. Private pilots keep
+		// their narrow custom-section allowlist.
+		if !publicStarts && custom.Name != "name" && custom.Name != "producers" {
 			return unsupported("custom section " + custom.Name)
 		}
 	}

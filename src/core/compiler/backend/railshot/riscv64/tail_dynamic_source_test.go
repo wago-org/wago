@@ -109,6 +109,7 @@ func TestTailDynamicSourceRejectsUnsupportedModuleState(t *testing.T) {
 		{"global", wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(4, []byte{1, 0x70, 0, 0}), wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0, 0x0b}))), wasmtest.Section(10, []byte{1, 2, 0, 0x0b}))},
 		{"reference-signature", wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(4, []byte{1, 0x70, 0, 0}), wasmtest.Section(10, []byte{1, 4, 0, 0x20, 0, 0x0b}))},
 		{"table64", wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(4, []byte{1, 0x70, 4, 0}), wasmtest.Section(10, []byte{1, 2, 0, 0x0b}))},
+		{"empty-branch-hints", rv64CustomSectionSource(dynamicTailTestSource(nil, nil, []byte{0x0b}), "metadata.code.branch_hint", []byte{0})},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := wasm.DecodeModule(tc.source); err != nil {
