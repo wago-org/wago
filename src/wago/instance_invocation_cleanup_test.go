@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,6 +67,55 @@ func invocationCleanupCompile(t *testing.T, artifact bool) *Compiled {
 	}
 	t.Cleanup(func() { _ = loaded.Close() })
 	return loaded
+}
+
+func TestCloseMappedPhysicalPanicReportsAndCompletes(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		for _, panicKind := range []string{"none", "value", "nil"} {
+			t.Run(fmt.Sprintf("artifact%t-%s", artifact, panicKind), func(t *testing.T) {
+				in, err := Instantiate(invocationCleanupCompile(t, artifact))
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { cleanupTestPanic(func() { _ = in.Close() }) })
+				if got, err := in.Invoke("run"); err != nil || len(got) != 1 || got[0] != 17 {
+					t.Fatal("mapped invocation", got, err)
+				}
+				var callbacks [2]int
+				in.referenceLifetime().afterPhysicalRelease(func() {
+					callbacks[0]++
+					switch panicKind {
+					case "value":
+						panic("physical release")
+					case "nil":
+						panic(nil)
+					}
+				})
+				in.referenceLifetime().afterPhysicalRelease(func() { callbacks[1]++ })
+				closeErr := in.Close()
+				panics := panicKind != "none"
+				if panics && !errors.Is(closeErr, ErrCallbackPanic) || !panics && closeErr != nil {
+					t.Fatal("Close panic report", closeErr, panicKind)
+				}
+				state := in.closeState.Load()
+				if state == nil || !state.completed.Load() {
+					t.Fatal("Close completion was not published", state)
+				}
+				if err := in.WaitClosed(nil); panics && !errors.Is(err, ErrCallbackPanic) || !panics && err != nil {
+					t.Fatal("completed Close panic report", err, panicKind)
+				}
+				in.lifeMu.Lock()
+				resourcesClosed, resourceRefs := in.resourcesClosed, in.resourceRefs
+				in.lifeMu.Unlock()
+				if !resourcesClosed || resourceRefs != 0 || callbacks != [2]int{1, 1} || in.jm != nil || in.ar != nil || in.eng != nil {
+					t.Fatal("physical panic interrupted mapped Close", state, resourcesClosed, resourceRefs, callbacks, in.jm, in.ar, in.eng)
+				}
+				if err := in.Close(); panics && !errors.Is(err, ErrCallbackPanic) || !panics && err != nil || callbacks != [2]int{1, 1} {
+					t.Fatal("repeated Close changed result or callbacks", err, callbacks)
+				}
+			})
+		}
+	}
 }
 
 // A producer's real physical callback closes a protected mapped instance. Its

@@ -305,12 +305,15 @@ func callHookSafely(phase string, fn func()) (err error) {
 }
 
 func callShutdownSafely(label string, fn func()) (err error) {
+	returned := false
 	defer func() {
-		if recover() != nil {
+		recovered := recover()
+		if !returned || recovered != nil {
 			err = fmt.Errorf("wago: %s: %w", label, ErrCallbackPanic)
 		}
 	}()
 	fn()
+	returned = true
 	return nil
 }
 
