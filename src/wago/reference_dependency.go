@@ -4,6 +4,7 @@ package wago
 
 import (
 	"errors"
+	"sort"
 	"sync"
 	"sync/atomic"
 )
@@ -97,6 +98,24 @@ type dependencyGraph struct {
 	afterReceiptRelease func(*dependencyMember, *dependencyMember)
 }
 
+// dependencyComponentStatus is the conservative result of passive cycle
+// discovery. A candidate is not a collection claim: a later collector must
+// atomically revalidate the returned identities, topology, root counts and
+// lifecycle state before changing any physical ownership.
+type dependencyComponentStatus uint8
+
+const (
+	dependencyComponentBlocked dependencyComponentStatus = iota
+	dependencyComponentIncomplete
+	dependencyComponentCandidate
+)
+
+type dependencyComponent struct {
+	status           dependencyComponentStatus
+	members          []*dependencyMember
+	internalReceipts int
+}
+
 func newDependencyGraph(nodeCap, receiptCap int) (*dependencyGraph, error) {
 	if nodeCap <= 0 || nodeCap > maxDependencyPrimitiveCapacity || receiptCap <= 0 || receiptCap > maxDependencyPrimitiveCapacity {
 		return nil, errDependencyCapacity
@@ -171,6 +190,148 @@ func (g *dependencyGraph) registerWithRetainedRoot(member *dependencyMember, ret
 
 func (g *dependencyGraph) authoritativeLocked(member *dependencyMember) bool {
 	return member != nil && member.owner != nil && member.graph.Load() == g && member.active.Load() && member.identity != 0 && g.owners[member.owner] == member
+}
+
+// discoverClosedComponent passively finds the strongly connected component
+// containing seed. It performs no release, lifecycle transition or admission
+// change. nodeBudget bounds reachable topology; receiptBudget charges every
+// allocated receipt slot, including released history. Together they bound the
+// cold traversal work and allocation. Exhaustion returns Incomplete and leaves
+// every physical root untouched.
+//
+// The graph lock precedes lifetime locks, matching receipt operations. Members
+// are lifetime-locked in immutable identity order. No native, store or
+// container lock is acquired here.
+func (g *dependencyGraph) discoverClosedComponent(seed *dependencyMember, nodeBudget, receiptBudget int) dependencyComponent {
+	result := dependencyComponent{status: dependencyComponentBlocked}
+	if g == nil || seed == nil {
+		return result
+	}
+	if nodeBudget <= 0 || receiptBudget <= 0 {
+		result.status = dependencyComponentIncomplete
+		return result
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.authoritativeLocked(seed) {
+		return result
+	}
+
+	type edge struct{ consumer, target *dependencyMember }
+	edges := make([]edge, 0, min(g.live, receiptBudget))
+	for i := range g.records {
+		// Released slots still consume inspection work. Charging every allocated
+		// slot keeps the caller's receipt budget an actual bound even after a
+		// graph has accumulated cold, exhausted generations.
+		if i == receiptBudget {
+			result.status = dependencyComponentIncomplete
+			return result
+		}
+		record := &g.records[i]
+		if record.state != dependencyTyped {
+			continue
+		}
+		edges = append(edges, edge{consumer: record.consumer, target: record.target})
+	}
+
+	// First find every node reachable from seed. Reverse reachability restricted
+	// to that set then selects exactly seed's strongly connected component.
+	forward := map[*dependencyMember]struct{}{seed: {}}
+	work := []*dependencyMember{seed}
+	for len(work) != 0 {
+		current := work[len(work)-1]
+		work = work[:len(work)-1]
+		for _, edge := range edges {
+			if edge.consumer != current {
+				continue
+			}
+			if _, exists := forward[edge.target]; exists {
+				continue
+			}
+			if len(forward) == nodeBudget {
+				result.status = dependencyComponentIncomplete
+				return result
+			}
+			forward[edge.target] = struct{}{}
+			work = append(work, edge.target)
+		}
+	}
+	reverse := map[*dependencyMember]struct{}{seed: {}}
+	work = append(work, seed)
+	for len(work) != 0 {
+		current := work[len(work)-1]
+		work = work[:len(work)-1]
+		for _, edge := range edges {
+			if edge.target != current {
+				continue
+			}
+			if _, reachable := forward[edge.consumer]; !reachable {
+				continue
+			}
+			if _, exists := reverse[edge.consumer]; exists {
+				continue
+			}
+			reverse[edge.consumer] = struct{}{}
+			work = append(work, edge.consumer)
+		}
+	}
+	result.members = make([]*dependencyMember, 0, len(reverse))
+	for member := range reverse {
+		result.members = append(result.members, member)
+	}
+	sort.Slice(result.members, func(i, j int) bool { return result.members[i].identity < result.members[j].identity })
+	for _, member := range result.members {
+		member.owner.lifeMu.Lock()
+	}
+	lockedMembers := result.members
+	defer func() {
+		for i := len(lockedMembers) - 1; i >= 0; i-- {
+			lockedMembers[i].owner.lifeMu.Unlock()
+		}
+	}()
+
+	component := make(map[*dependencyMember]struct{}, len(result.members))
+	for _, member := range result.members {
+		component[member] = struct{}{}
+		owner := member.owner
+		state := owner.closeState.Load()
+		if !g.authoritativeLocked(member) || !owner.closed || owner.finalizing || owner.resourcesClosed || owner.constructionActive ||
+			owner.invocationState.Load() != instanceInvocationClosed || state == nil || !state.prepared.Load() || !state.completed.Load() || !state.terminalComplete.Load() ||
+			member.external != 0 {
+			result.members = nil
+			return result
+		}
+	}
+
+	incoming := make(map[*dependencyMember]int, len(result.members))
+	internalReceipts := 0
+	for _, edge := range edges {
+		if _, targetInside := component[edge.target]; !targetInside {
+			continue
+		}
+		if _, consumerInside := component[edge.consumer]; !consumerInside {
+			result.members = nil
+			return result
+		}
+		incoming[edge.target]++
+		internalReceipts++
+	}
+	// A zero-edge singleton is ordinary finalization work, not a dependency
+	// cycle. Every physical root of a candidate must be one exact internal typed
+	// receipt; pending, external, releasing and anonymous roots all block here.
+	if internalReceipts == 0 {
+		result.members = nil
+		return result
+	}
+	for _, member := range result.members {
+		if member.receipts != incoming[member] || member.incoming != incoming[member] || member.owner.resourceRefs != incoming[member] {
+			result.members = nil
+			return result
+		}
+	}
+	result.internalReceipts = internalReceipts
+	result.status = dependencyComponentCandidate
+	return result
 }
 
 func (g *dependencyGraph) unregister(member *dependencyMember) error {
