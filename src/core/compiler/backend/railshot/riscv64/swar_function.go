@@ -1005,7 +1005,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 						emit.Load(28, spill(base+1), true)
 					}
 					emit.Load(5, spill(base), false)
-					emit.privateTableEntry(0)
+					emit.privateTableEntry(0, false)
 					if arity == 1 {
 						emit.a.Ld(enc.X5, enc.X6, 24)
 						emit.Store(spill(base), 5, true)

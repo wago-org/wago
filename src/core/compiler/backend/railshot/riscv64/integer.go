@@ -815,6 +815,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if !tableOK {
 					return integerSummary{}, unsupported("private table index")
 				}
+				compactReference, compactOK := state.tableCompactReference(idx)
+				if !compactOK {
+					return integerSummary{}, unsupported("private table reference layout")
+				}
 				if op == 0x26 {
 					if functionRefs {
 						err = match(inlineResults[1][:], inlineReference[:], false, true)
@@ -845,12 +849,20 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), tableWide)
-					emit.privateTableEntry(idx)
+					emit.privateTableEntry(idx, compactReference)
 					if op == 0x25 {
-						emit.a.Ld(enc.X5, enc.X6, 24)
+						if compactReference {
+							emit.a.Ld(enc.X5, enc.X6, 0)
+						} else {
+							emit.a.Ld(enc.X5, enc.X6, 24)
+						}
 						emit.Store(emit.SpillOffset(h), 5, true)
 					} else {
-						emit.storePrivateReference()
+						if compactReference {
+							emit.a.Sd(enc.X28, enc.X6, 0)
+						} else {
+							emit.storePrivateReference()
+						}
 					}
 				}
 				if op == 0x25 {

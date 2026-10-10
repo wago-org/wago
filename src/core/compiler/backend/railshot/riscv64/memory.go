@@ -48,21 +48,25 @@ type moduleState struct {
 	ownedTableGrowth       bool
 	table64                bool
 	tableAddr64            []bool
-	elementCount           int
-	memory                 *memorySpec
-	memoryCount            int
-	memories               []wasm.MemType
-	indexedMemories        bool
-	globals                []globalSpec
-	data                   []native.MemoryInitializer
-	passiveData            [][]byte // all Wasm data indices; active entries are dropped/nil
-	functions              []functionSpec
-	importedFunctions      int
-	types                  []functionSpec
-	resultCapacity         int
-	capacity               int
-	memoryExports          map[string]bool
-	globalExports          map[string]int
+	// Compact reference tables store one authenticated opaque carrier per
+	// eight-byte row. Funcref tables retain their 32-byte callable descriptor
+	// rows. Keep physical layout independent from the table index width.
+	tableCompactRef   []bool
+	elementCount      int
+	memory            *memorySpec
+	memoryCount       int
+	memories          []wasm.MemType
+	indexedMemories   bool
+	globals           []globalSpec
+	data              []native.MemoryInitializer
+	passiveData       [][]byte // all Wasm data indices; active entries are dropped/nil
+	functions         []functionSpec
+	importedFunctions int
+	types             []functionSpec
+	resultCapacity    int
+	capacity          int
+	memoryExports     map[string]bool
+	globalExports     map[string]int
 }
 
 func (s *moduleState) tableWidth(index uint32) (wide bool, ok bool) {
@@ -76,6 +80,22 @@ func (s *moduleState) tableWidth(index uint32) (wide bool, ok bool) {
 		return false, false
 	}
 	return s.tableAddr64[index], true
+}
+
+func (s *moduleState) tableCompactReference(index uint32) (compact bool, ok bool) {
+	if s == nil || !s.ownedTable {
+		return false, false
+	}
+	// Legacy private fixtures and single-table pilots predate the layout
+	// directory; their only admitted representation is the funcref descriptor.
+	if len(s.tableCompactRef) == 0 {
+		_, ok = s.tableWidth(index)
+		return false, ok
+	}
+	if uint64(index) >= uint64(len(s.tableCompactRef)) {
+		return false, false
+	}
+	return s.tableCompactRef[index], true
 }
 
 func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
@@ -167,9 +187,11 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.elementCount = len(m.Elements)
 	if s.ownedTable {
 		s.tableAddr64 = make([]bool, m.TableCount())
+		s.tableCompactRef = make([]bool, m.TableCount())
 		for index := range s.tableAddr64 {
 			t, _ := m.TableType(uint32(index))
 			s.tableAddr64[index] = t.Limits.Addr64
+			s.tableCompactRef[index] = wasm.EqualValType(wasm.RefVal(t.Ref), wasm.ExternRef)
 			if index == 0 {
 				// The frontend reserves max(1024,2*min) for observable no-max growth.
 				s.table64 = t.Limits.Addr64

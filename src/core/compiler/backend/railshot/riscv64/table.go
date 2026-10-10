@@ -1813,12 +1813,16 @@ func (f *integerEmitter) privateTableDescriptor(dst enc.Reg, index uint32) {
 }
 
 // Returns the entry address in X6. X28 may hold a full-width reference.
-func (f *integerEmitter) privateTableEntry(index uint32) {
+func (f *integerEmitter) privateTableEntry(index uint32, compactReference bool) {
 	f.privateTableDescriptor(enc.X6, index)
 	f.trap(trapTableBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
 	f.a.Lwu(enc.X7, enc.X6, 0)
 	f.trap(trapTableBounds, f.a.BranchLong(enc.GEU, enc.X5, enc.X7))
-	f.a.Slli(enc.X5, enc.X5, 5)
+	shift := uint8(5)
+	if compactReference {
+		shift = 3
+	}
+	f.a.Slli(enc.X5, enc.X5, shift)
 	f.a.Add(enc.X6, enc.X6, enc.X5)
 	f.a.Addi(enc.X6, enc.X6, 8)
 }
