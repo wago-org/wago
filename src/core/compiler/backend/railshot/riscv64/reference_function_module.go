@@ -102,7 +102,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
 		return err
 	}
-	types := internalReferenceTypes{decoded: m.Types, decodedSWAR: vector}
+	types := internalReferenceTypes{decoded: m.Types, decodedSWAR: vector, declarationExtern: !vector && admitCore3BrOnNullDeclarations(m)}
 	limit := 256
 	if vector {
 		limit = maxSWARLocals

@@ -215,10 +215,15 @@ rejection/repair qualify the slice. Closed typed-reference functions may also
 retain bounded, nonempty legacy passive declarations of numeric targets; the two
 executable modules from the pinned Core 3 `br_on_null.wast` now cover null/taken
 paths, `call_ref`, traps, block arguments and dirty-upper i32 ingress. This is a
-focused delta, not file-level Core 3 accounting: the declaration-only module,
-tableless active and typed-expression passive shapes, and the broader official
-typed-reference corpus remain unqualified on RV64. No new owner graph or ABI is
-needed. The first executable module from pinned Core 3 `ref_as_non_null.wast`
+focused delta, not file-level Core 3 accounting. The same pinned file's exact
+declaration-only module is now admitted separately: its three unexported and
+unreferenced functions cover nullable indexed funcref, abstract funcref and
+abstract externref `br_on_null` validation without publishing a callable externref
+ABI or descriptor. Imports, exports, start, state/resources, altered signatures
+or bodies, tableless active and typed-expression passive shapes remain closed;
+the broader official typed-reference corpus remains unqualified on RV64. No new
+owner graph or ABI is needed. The first executable module from pinned Core 3
+`ref_as_non_null.wast`
 also qualifies the exact table-free numeric-export shape through source and
 compiler-free artifacts, including unreachable-before-null trap order, full-width
 internal carriers and normalized i32 results. This does not qualify that file's

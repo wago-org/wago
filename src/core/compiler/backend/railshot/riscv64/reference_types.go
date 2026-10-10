@@ -8,10 +8,11 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // Exactly one view is used; resolving an annotation never allocates or converts
 // the scalar width directory into a second type representation.
 type internalReferenceTypes struct {
-	scalar      []functionSpec
-	swar        []*wasm.CompType
-	decoded     []wasm.RecType
-	decodedSWAR bool
+	scalar            []functionSpec
+	swar              []*wasm.CompType
+	decoded           []wasm.RecType
+	decodedSWAR       bool
+	declarationExtern bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -69,6 +70,13 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return false
 	}
 	heap := ref.Heap()
+	// The pinned Core 3 br_on_null declaration module has one nullable abstract
+	// externref parameter. Its enclosing whole-module proof establishes that no
+	// function or value is callable, nameable or publishable. Keep this exception
+	// out of every ordinary control/call directory.
+	if types.declarationExtern && ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
+		return true
+	}
 	if heap == wasm.AbsHeap(wasm.HeapFunc) {
 		return true
 	}

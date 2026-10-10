@@ -73,6 +73,127 @@ func rv64Core3BrOnNullArgsSource() []byte {
 	)
 }
 
+// rv64Core3BrOnNullDeclarationsSource is byte-identical to the second module
+// in the same pinned file. The functions are deliberately unreachable from
+// every public and internal descriptor surface; they validate the three
+// nullable reference classes exercised by br_on_null without creating a
+// callable externref ABI.
+func rv64Core3BrOnNullDeclarationsSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			[]byte{0x60, 1, 0x63, 0, 0}, // ((ref null 0)) -> ()
+			wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0xd5, 0, 0x1a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd5, 0, 0x1a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd5, 0, 0x1a, 0x0b}),
+		)),
+	)
+}
+
+func TestRV64Core3BrOnNullPinnedDeclarations(t *testing.T) {
+	source := rv64Core3BrOnNullDeclarationsSource()
+	if got, want := fmt.Sprintf("%x", sha256.Sum256(source)), "fcc2e80deb76197719945fa297657e768c4f39b5930cc31f2708eec694550993"; got != want {
+		t.Fatalf("declaration fixture hash = %s, want %s", got, want)
+	}
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" && !artifact {
+				t.Skip("compiler-free artifact case only")
+			}
+			c := rv64NativeTailCompile(t, "core3-br-on-null-declarations", source, artifact)
+			if !rv64Core3BrOnNullDeclarations(c) || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.needsFuncRefDescs() || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Funcs) != 3 || len(c.Exports) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+				t.Fatal("pinned declaration-only source/artifact witnesses")
+			}
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rt.Close()
+			in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+			c.Close()
+			if got, err := in.Invoke("missing"); got != nil || err == nil {
+				t.Fatal("declaration-only module published a callable surface", got, err)
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal("declaration-only immediate cleanup", err)
+			}
+		})
+	}
+}
+
+func rv64Core3DeclarationCompiledCopy(c *Compiled) *Compiled {
+	v := rv64ReferenceStateCopy(c)
+	v.Entry = slices.Clone(v.Entry)
+	v.InternalEntry = slices.Clone(v.InternalEntry)
+	v.FuncTypeID = slices.Clone(v.FuncTypeID)
+	v.GCTypeDescs = slices.Clone(v.GCTypeDescs)
+	v.Funcs = slices.Clone(v.Funcs)
+	for i := range v.Funcs {
+		v.Funcs[i].Params = slices.Clone(v.Funcs[i].Params)
+		v.Funcs[i].Results = slices.Clone(v.Funcs[i].Results)
+	}
+	v.Exports = make(map[string]int, len(c.Exports))
+	for name, index := range c.Exports {
+		v.Exports[name] = index
+	}
+	return v
+}
+
+func TestRV64Core3BrOnNullPinnedDeclarationGates(t *testing.T) {
+	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
+		t.Skip("source and hostile artifact admission")
+	}
+	base := rv64NativeTailCompile(t, "core3-br-on-null-declarations-gates", rv64Core3BrOnNullDeclarationsSource(), false)
+	mutations := map[string]func(*Compiled){
+		"export": func(c *Compiled) { c.Exports["escape"] = 2 },
+		"start": func(c *Compiled) {
+			c.HasStart = true
+			c.StartLocalFunc = 2
+		},
+		"extern-nonnullable": func(c *Compiled) { c.Types[3].Params[0].Ref.Nullable = false },
+		"extern-result": func(c *Compiled) {
+			c.Types[3].Results = []ValueTypeDescriptor{c.Types[3].Params[0]}
+			c.Types[3].Params = nil
+			c.Funcs[2].Results = []ValType{ValExternRef}
+			c.Funcs[2].Params = nil
+		},
+		"wrong-binding":       func(c *Compiled) { c.Funcs[2].TypeIndex = 2 },
+		"missing-type-key":    func(c *Compiled) { c.FuncTypeID = c.FuncTypeID[:2] },
+		"entry-alias":         func(c *Compiled) { c.Entry[2] = c.Entry[1] },
+		"missing-control-abi": func(c *Compiled) { c.nativeReferenceControlABI = false },
+		"callable-abi":        func(c *Compiled) { c.nativeReferenceCallABI = true },
+		"descriptor-arena":    func(c *Compiled) { c.NeedsFuncRefDescs = true },
+		"descriptor-id":       func(c *Compiled) { c.GCTypeDescs[3].ID-- },
+		"descriptor-layout":   func(c *Compiled) { c.GCTypeDescs[3].Size = 8 },
+		"extra-feature":       func(c *Compiled) { c.requiredFeatures |= CoreFeatureTailCall },
+		"passive-state": func(c *Compiled) {
+			c.passiveElems = []ElemInit{{Mode: ElemModePassive, RefType: ValExternRef}}
+		},
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			bad := rv64Core3DeclarationCompiledCopy(base)
+			mutate(bad)
+			if rv64Core3BrOnNullDeclarations(bad) || railshotValidateCompiled(bad) == nil {
+				t.Fatal("hostile declaration-only metadata admitted")
+			}
+			blob, err := marshalCompiled(bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				defer loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("hostile serialized declaration-only metadata admitted")
+			}
+		})
+	}
+}
+
 func rv64AssertCore3PassiveTarget(t *testing.T, in *Instance, target int) {
 	t.Helper()
 	if in.c.tableCount() != 0 || len(in.c.passiveElems) != 1 || in.c.passiveElems[0].Mode != ElemModePassive || len(in.c.passiveElems[0].Values) != 1 || int(in.c.passiveElems[0].Values[0].FuncIndex) != target || in.jm.PassiveElemPtr() == 0 {

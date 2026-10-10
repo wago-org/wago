@@ -160,6 +160,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.dynamicTailCalls = opts.dynamicTailCalls
 	state.referenceCalls = opts.NativeReferenceCalls
 	state.referenceFunctions = opts.referenceFunctions
+	state.declarationExternRefs = opts.referenceFunctions && admitCore3BrOnNullDeclarations(m)
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	importTailCount := 0
 	integerSummaries := make([]integerSummary, len(m.Code))
@@ -397,6 +398,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
+	declarationExtern := referenceFunctions && admitCore3BrOnNullDeclarations(m)
 	// Public modules may contain only state. Import-only modules execute through
 	// instance-owned bridges; neither shape needs placeholder instructions.
 	if len(m.Code) > MaxFunctions || len(m.Code) == 0 && (!floating || !publicStarts) {
@@ -435,7 +437,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 			return unsupported("signature arity")
 		}
 		if referencesAllowed {
-			if _, _, err := admitDeclaredControlSignature(&s.Comp, internalReferenceTypes{decoded: m.Types}, true, typed, false); err != nil {
+			if _, _, err := admitDeclaredControlSignature(&s.Comp, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern}, true, typed, false); err != nil {
 				return err
 			}
 		} else {
@@ -456,7 +458,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 				return unsupported("numeric function binding")
 			}
 			if referenceFunctions && i >= imported {
-				if _, _, err := admitDeclaredControlSignature(ft, internalReferenceTypes{decoded: m.Types}, true, typed, false); err != nil {
+				if _, _, err := admitDeclaredControlSignature(ft, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern}, true, typed, false); err != nil {
 					return err
 				}
 			} else if err := integerNumericSignature(ft, floating); err != nil {
