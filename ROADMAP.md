@@ -214,25 +214,28 @@ ordinals, exact aggregate bounds, compiler-free artifacts and retained codec
 rejection/repair qualify the slice. Closed typed-reference functions may also
 retain bounded, nonempty legacy passive declarations of numeric targets; the two
 executable modules from the pinned Core 3 `br_on_null.wast` now cover null/taken
-paths, `call_ref`, traps, block arguments and dirty-upper i32 ingress. This is a
-focused delta, not file-level Core 3 accounting. The same pinned file's exact
+paths, `call_ref`, traps, block arguments and dirty-upper i32 ingress. This is
+complete file-level qualification for that pinned test: the same file's exact
 declaration-only module is now admitted separately: its three unexported and
 unreferenced functions cover nullable indexed funcref, abstract funcref and
 abstract externref `br_on_null` validation without publishing a callable externref
 ABI or descriptor. Imports, exports, start, state/resources, altered signatures
-or bodies, tableless active and typed-expression passive shapes remain closed;
+or bodies, tableless active and typed-expression passive shapes remain closed.
+The file's remaining invalid module is pinned to its exact validation failure;
 the broader official typed-reference corpus remains unqualified on RV64. No new
 owner graph or ABI is needed. The first executable module from pinned Core 3
 `ref_as_non_null.wast` also qualifies the exact table-free numeric-export shape
 through source and compiler-free artifacts, including unreachable-before-null
 trap order, full-width internal carriers and normalized i32 results. This does
-not qualify that file's typed-expression or active elements, tables, imports,
-resource or reference-valued public/imported signatures, general ownership, or
-full-file parity. The exact 59-byte no-debug `ref_as_non_null.2.wasm`
+not qualify typed-expression or active elements, tables, imports, resource or
+reference-valued public/imported signatures, or general ownership beyond the
+pinned file. The exact 59-byte no-debug `ref_as_non_null.2.wasm`
 declaration module is qualified separately through exact wire, decoded and
 retained classifiers. Its three private bodies only validate and drop non-null
 indexed, func and extern parameters; it adds no callable externref boundary,
-ownership protocol, resources, name/custom metadata or broader file parity.
+ownership protocol, resources or name/custom metadata. Together with the
+file's exact invalid module and executable assertions, this completes
+file-level qualification for the pinned `ref_as_non_null.wast`.
 The first and third executable modules from pinned Core 3
 `br_on_non_null.wast` now qualify separately through source and compiler-free
 artifacts. Exact WABT 1.0.41 bytes from revision
@@ -240,9 +243,9 @@ artifacts. Exact WABT 1.0.41 bytes from revision
 non-null branching, internal `call_ref`, the nullable join followed by
 `ref.as_non_null`, unreachable-before-branch trap order, multi-value block
 arguments, dirty-upper i32 normalization, full-width private descriptors,
-owner-scope reuse and cleanup. This does not qualify that file's
-active or typed-expression elements, imports, resources, reference-valued
-public signatures, general ownership, or full-file/corpus parity. The same
+owner-scope reuse and cleanup. This does not qualify active or typed-expression
+elements, imports, resources, reference-valued public signatures or general
+ownership beyond the pinned file. The same
 pinned file's exact 75-byte `br_on_non_null.1.wasm` declaration module now
 qualifies separately. Its three private, unreachable functions cover non-null
 indexed-function, abstract-function and abstract-extern block annotations; an
@@ -251,7 +254,10 @@ form and keeps selects, locals, results and callable signatures closed. The
 canonical 106-byte debug-name form, altered bodies or metadata, and all
 imports, exports, starts, state and resources remain rejected. This validates
 decoding, lowering and source/artifact confinement only; it does not add a
-callable externref or ownership contract.
+callable externref or ownership contract. With the exact invalid module pinned
+to its validation failure, these three valid modules and the invalid module
+complete file-level qualification for the pinned `br_on_non_null.wast`; they
+do not imply broader typed-reference corpus parity.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
