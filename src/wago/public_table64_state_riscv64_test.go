@@ -181,6 +181,16 @@ func rv64Table64FillInstructionSource() []byte {
 	)
 }
 
+func rv64Table64CopyInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 5, 5})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 0, 0, 0x41, 1, 0x0b}))),
+	)
+}
+
 func rv64RelabelledTable32FunctionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
@@ -450,6 +460,117 @@ func TestRV64PublicOwnedTable64FillArtifactGates(t *testing.T) {
 	}
 }
 
+func TestRV64PublicOwnedTable64Copy(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-copy", rv64Table64CopyInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64CopyABI || !rv64OwnedTable64Copy(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("table64.copy metadata contract: witness=%d qualified=%v features=%#x funcs=%+v", c.nativeTable64ABI, rv64OwnedTable64Copy(c), c.requiredFeatures, c.Funcs)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 5 || len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("table64.copy export/descriptor", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			seed := func() []byte {
+				clear(table.desc[8:])
+				for _, i := range []int{0, 2, 4} {
+					copy(table.desc[8+i*coreruntime.TableEntryBytes:], row)
+				}
+				return slices.Clone(table.desc)
+			}
+			invoke := func(dst, src, count uint64) {
+				t.Helper()
+				if got, err := in.Invoke("copy", dst, src, count); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("table64.copy valid range", dst, src, count, got, err)
+				}
+			}
+			original := seed()
+			want := slices.Clone(original)
+			copy(want[8+coreruntime.TableEntryBytes:], want[8:8+4*coreruntime.TableEntryBytes])
+			invoke(1, 0, 4)
+			if !slices.Equal(table.desc, want) {
+				t.Fatal("table64.copy backwards overlap")
+			}
+			original = seed()
+			want = slices.Clone(original)
+			copy(want[8:8+4*coreruntime.TableEntryBytes], want[8+coreruntime.TableEntryBytes:])
+			invoke(0, 1, 4)
+			if !slices.Equal(table.desc, want) {
+				t.Fatal("table64.copy forwards overlap")
+			}
+			invoke(5, 5, 0)
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][3]uint64{{4, 0, 2}, {0, 4, 2}, {1 << 32, 0, 0}, {0, 1 << 32, 0}, {0, 0, 1 << 32}, {^uint64(0), 0, 2}, {0, ^uint64(0), 2}} {
+				got, err := in.Invoke("copy", invalid[0], invalid[1], invalid[2])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("table64.copy range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 5 {
+					t.Fatal("table64.copy trap changed storage", invalid)
+				}
+			}
+			invoke(0, 1, 1)
+			if slices.Equal(table.desc, before) {
+				t.Fatal("table64.copy reuse after trap did not move row")
+			}
+			clear(table.desc[8:])
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64CopyArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-copy-admission", rv64Table64CopyInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"fill-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64FillABI },
+		"first-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"second-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
+		"third-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"no-max":          func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 11)
+		},
+		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"element":        func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32":        func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.copy metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64.copy artifact admitted")
+			}
+		})
+	}
+}
+
 func TestRV64PublicOwnedTable64IndirectArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-table64-indirect-admission", rv64Table64IndirectInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
@@ -692,6 +813,9 @@ func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
 		},
 		"contradictory-fill-witness": func(v *Compiled) {
 			v.nativeTable64ABI = nativeTable64FillABI
+		},
+		"contradictory-copy-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64CopyABI
 		},
 		"table32":     func(v *Compiled) { v.TableAddr64 = false },
 		"start":       func(v *Compiled) { v.HasStart = true },

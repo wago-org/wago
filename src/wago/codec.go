@@ -24,10 +24,11 @@ const (
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
 	// low range; reserving the top fifteen bits avoids growing artifacts.
-	// Bits 44-48 are outside the known AMD64 feature set and are architecture-
+	// Bits 43-48 are outside the known AMD64 feature set and are architecture-
 	// scoped to attest exact RV64 owned table64 instruction profiles. Bit 50
 	// originally witnessed ref.as_non_null. Branches share its retained
 	// internal-carrier ABI; old non-null artifacts keep the same bit and layout.
+	compiledRV64Table64CopyABI            uint64 = 1 << 43
 	compiledRV64Table64FillABI            uint64 = 1 << 44
 	compiledRV64Table64IndirectABI        uint64 = 1 << 45
 	compiledRV64Table64GetSetABI          uint64 = 1 << 46
@@ -319,13 +320,13 @@ func measureCompiledMetadata(c *Compiled) (ArtifactSectionSizes, error) {
 
 func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, ArtifactSectionSizes, error) {
 	// CPU requirements must never alias the architecture execution markers.
-	if c.nativeTable64ABI > nativeTable64FillABI {
+	if c.nativeTable64ABI > nativeTable64CopyABI {
 		return nil, ArtifactSectionSizes{}, fmt.Errorf("unknown RV64 table64 compiler witness")
 	}
 	if uint64(c.requiredAMD64Features)&^(compiledCPUFeatures>>32) != 0 {
 		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirements exceed the encoded feature field")
 	}
-	if compiledArchitecture == 4 && uint64(c.requiredAMD64Features)&((compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI)>>32) != 0 {
+	if compiledArchitecture == 4 && uint64(c.requiredAMD64Features)&((compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI)>>32) != 0 {
 		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirement aliases an RV64 table64 compiler witness")
 	}
 	w := compiledWriter{countOnly: countOnly}
@@ -451,6 +452,12 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 			return nil, sizes, fmt.Errorf("RV64 table64.fill compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64FillABI
+	}
+	if c.nativeTable64ABI == nativeTable64CopyABI {
+		if compiledArchitecture != 4 {
+			return nil, sizes, fmt.Errorf("RV64 table64.copy compiler witness on a foreign architecture")
+		}
+		required |= compiledRV64Table64CopyABI
 	}
 	if c.stagedGCI31Product() != 0 {
 		required |= compiledGCExecutionI31Product
@@ -1190,7 +1197,8 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	getSetABI := compiledArchitecture == 4 && required&compiledRV64Table64GetSetABI != 0
 	indirectABI := compiledArchitecture == 4 && required&compiledRV64Table64IndirectABI != 0
 	fillABI := compiledArchitecture == 4 && required&compiledRV64Table64FillABI != 0
-	if bits.OnesCount64(required&(compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI)) > 1 {
+	copyABI := compiledArchitecture == 4 && required&compiledRV64Table64CopyABI != 0
+	if bits.OnesCount64(required&(compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI)) > 1 {
 		return fmt.Errorf("conflicting RV64 table64 compiler witnesses")
 	}
 	c.nativeTable64ABI = nativeTable64NoABI
@@ -1204,6 +1212,8 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		c.nativeTable64ABI = nativeTable64IndirectABI
 	} else if fillABI {
 		c.nativeTable64ABI = nativeTable64FillABI
+	} else if copyABI {
+		c.nativeTable64ABI = nativeTable64CopyABI
 	}
 	if c.nativeReferenceFunctionABI && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&compiledRegisterABIDisabled == 0 || required&uint64(CoreFeatureReferenceTypes) == 0) {
 		return fmt.Errorf("RV64 closed reference function ABI requires framed retained reference contexts")
@@ -1222,7 +1232,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	cpuRequirements := required & compiledCPUFeatures
 	if compiledArchitecture == 4 {
-		cpuRequirements &^= compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI
+		cpuRequirements &^= compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI
 	}
 	c.requiredAMD64Features = shared.AMD64Features(cpuRequirements >> 32)
 	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
@@ -1230,7 +1240,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
 	if err := railshotValidateReferenceCalls(c); err != nil {
 		return err
 	}
