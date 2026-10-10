@@ -33,11 +33,7 @@ func boundedMultiHostShapes(bindings []syncHostBinding) []uint32 {
 func (in *Instance) tryInvokeCachedMultiNumeric(export string, args []uint64) ([]uint64, error, bool) {
 	state := in.pluginState.Load()
 	if codeProfileEnabled || state == nil || state.multiHost == nil || !in.boundedHostSegments() ||
-		!in.invocationState.CompareAndSwap(0, 1) {
-		return nil, nil, false
-	}
-	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
-		in.endDirectInvocation()
+		!in.tryBeginOrdinaryInvocation(state) {
 		return nil, nil, false
 	}
 	ic := in.findInvokeCache(export)
@@ -45,15 +41,13 @@ func (in *Instance) tryInvokeCachedMultiNumeric(export string, args []uint64) ([
 	if ic == nil || ic.li < 0 || ic.hasFuncRefParams || ic.hasFuncRefResults || len(args) != int(ic.paramSlots) ||
 		!privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
 		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
 	state.invocationID = newInvocationID()
 	defer func() {
 		state.invocationID = 0
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 	}()
 	copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots], ic.paramWidthClass)
 	entry := in.base + uintptr(in.c.Entry[ic.li])
