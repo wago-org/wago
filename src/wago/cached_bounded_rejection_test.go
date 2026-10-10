@@ -4,9 +4,9 @@ package wago
 
 import "testing"
 
-// Each row changes one mutable eligibility condition after the export has been
-// cached. A rejected probe must leave both admission gates free so Invoke can
-// take the ordinary route and a later eligible probe can use the cached route.
+// Each row synthesizes one execution-flag state after the export is cached.
+// This tests predicate rejection and gate cleanup, not the publication handshake.
+// Public Invoke must still work; it may select another safe entry route.
 func TestCachedBoundedNumericRejectionMatrix(t *testing.T) {
 	c, err := Compile(goHostSegmentConfig(), hostYieldLoopModule())
 	if err != nil {
@@ -15,26 +15,28 @@ func TestCachedBoundedNumericRejectionMatrix(t *testing.T) {
 	defer c.Close()
 	for _, tc := range []struct {
 		name  string
-		flags uint32
+		flag  uint32
+		clear bool
 	}{
-		{name: "native control shared", flags: executionFlagNativeControlShared},
-		{name: "imported GC domain", flags: executionFlagImportedGCDomain},
-		{name: "dynamic GC domain", flags: executionFlagDynamicGCDomain},
-		{name: "store owned GC collector", flags: executionFlagStoreOwnedGCCollector},
-		{name: "non independent execution", flags: executionFlagIndependent},
+		// Sharing blocks both the prepared fast state and independent execution.
+		{name: "native control shared (two guards)", flag: executionFlagNativeControlShared},
+		{name: "imported GC domain", flag: executionFlagImportedGCDomain},
+		{name: "dynamic GC domain", flag: executionFlagDynamicGCDomain},
+		{name: "store owned GC collector", flag: executionFlagStoreOwnedGCCollector},
+		{name: "non independent execution", flag: executionFlagIndependent, clear: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
 			var in *Instance
-			observeFallback := false
-			fallbackAuthorityCalls := 0
+			observePublicInvoke := false
+			publicInvokeAuthorityCalls := 0
 			imports := NewImports()
 			imports.HostFunc("env", "step", func(v int32) int32 {
 				calls++
-				if observeFallback {
+				if observePublicInvoke {
 					state := in.pluginState.Load()
 					if state != nil && state.invocationID != 0 && state.invokeMu.state.Load()&invocationGateHeld != 0 {
-						fallbackAuthorityCalls++
+						publicInvokeAuthorityCalls++
 					}
 				}
 				return v + 1
@@ -71,23 +73,23 @@ func TestCachedBoundedNumericRejectionMatrix(t *testing.T) {
 			}
 			checkAuthority("positive")
 			initial := in.executionFlags.Load()
-			if tc.name == "non independent execution" {
-				in.executionFlags.Store(initial &^ tc.flags)
+			if tc.clear {
+				in.executionFlags.Store(initial &^ tc.flag)
 			} else {
-				in.executionFlags.Store(initial | tc.flags)
+				in.executionFlags.Store(initial | tc.flag)
 			}
 			if got, err, admitted := in.tryInvokeCachedBoundedNumeric("run", args); admitted || err != nil || got != nil {
 				t.Fatalf("%s admitted: %v, %v, admitted=%t", tc.name, got, err, admitted)
 			}
 			checkAuthority("rejected probe")
-			observeFallback = true
-			fallback, err := in.Invoke("run", args...)
-			observeFallback = false
-			checkResult("ordinary fallback", fallback, err)
-			if fallbackAuthorityCalls != 3 {
-				t.Fatalf("ordinary fallback callbacks with instance authority = %d; want 3", fallbackAuthorityCalls)
+			observePublicInvoke = true
+			result, err := in.Invoke("run", args...)
+			observePublicInvoke = false
+			checkResult("public Invoke after rejection", result, err)
+			if publicInvokeAuthorityCalls != 3 {
+				t.Fatalf("public Invoke callbacks with instance authority = %d; want 3", publicInvokeAuthorityCalls)
 			}
-			checkAuthority("ordinary fallback")
+			checkAuthority("public Invoke after rejection")
 			in.executionFlags.Store(initial)
 			if got, err, admitted := in.tryInvokeCachedBoundedNumeric("run", args); !admitted {
 				t.Fatal("restored positive control rejected cached entry")
