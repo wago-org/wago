@@ -262,13 +262,23 @@ func TestPublicInvocationCleanupMappedReexport(t *testing.T) {
 }
 
 func TestPublicHostScalarBodyPanicStillReconciles(t *testing.T) {
-	for _, test := range []struct {
-		name      string
-		bodyPanic bool
-	}{
-		{name: "body-and-cleanup", bodyPanic: true},
-		{name: "cleanup-only"},
-	} {
+	type panicCase struct {
+		name          string
+		bodyPanics    bool
+		nilBody       bool
+		cleanupPanics bool
+	}
+	tests := []panicCase{
+		{name: "body-and-cleanup", bodyPanics: true, cleanupPanics: true},
+		{name: "cleanup-only", cleanupPanics: true},
+	}
+	if runtime.GOARCH == "riscv64" && os.Getenv("WAGO_PUBLIC_INVOCATION_CLEANUP_NIL_BODY") == "1" {
+		tests = append(tests,
+			panicCase{name: "nil-body-and-cleanup", bodyPanics: true, nilBody: true, cleanupPanics: true},
+			panicCase{name: "nil-body-only", bodyPanics: true, nilBody: true},
+		)
+	}
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			bodyPanic, cleanupPanic := new(int), new(int)
 			writerCode := preparedCleanupCompile(t, "writer", false)
@@ -298,7 +308,9 @@ func TestPublicHostScalarBodyPanicStillReconciles(t *testing.T) {
 						if state.invokeMu.state.Load()&invocationGateHeld == 0 || state.invocationID == 0 || owner.invocationState.Load()&instanceInvocationCount != 1 {
 							panic("host cleanup callback lost public invocation authority")
 						}
-						panic(cleanupPanic)
+						if test.cleanupPanics {
+							panic(cleanupPanic)
+						}
 					})
 					if err := writer.Close(); err != nil || writer.resourcesClosed {
 						panic("logical writer Close consumed host-published root")
@@ -314,7 +326,10 @@ func TestPublicHostScalarBodyPanicStillReconciles(t *testing.T) {
 					table.mu.Unlock()
 					return v + 1
 				case 2:
-					if test.bodyPanic {
+					if test.bodyPanics {
+						if test.nilBody {
+							panic(nil)
+						}
 						panic(bodyPanic)
 					}
 					return v + 1
@@ -355,9 +370,11 @@ func TestPublicHostScalarBodyPanicStillReconciles(t *testing.T) {
 			value, panicked := cleanupTestPanic(func() {
 				_, callErr = owner.invokeEntry("run", []uint64{41}, invocationContextSet{}, false, true)
 			})
-			wantPanic := any(cleanupPanic)
-			if test.bodyPanic {
+			var wantPanic any
+			if test.bodyPanics && !test.nilBody {
 				wantPanic = bodyPanic
+			} else if !test.bodyPanics && test.cleanupPanics {
+				wantPanic = cleanupPanic
 			}
 			if callErr != nil || !panicked || value != wantPanic || hostCalls != 2 || cleanupCalls != 1 {
 				t.Fatal("host body/cleanup first panic", value, wantPanic, panicked, callErr, hostCalls, cleanupCalls)

@@ -2610,23 +2610,38 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 		return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
 	}
 	defer func() { err = in.decorateTrap(err) }()
-	defer recoverNativeSyncPanic(&err)
+	returned := false
+	defer recoverNativeSyncPanicCompletion(&err, &returned)
 	if prepared != nil {
 		if preparedActivation == nil {
-			return fmt.Errorf("wago: prepared host call has no activation")
+			err = fmt.Errorf("wago: prepared host call has no activation")
+			returned = true
+			return err
 		}
 		err = in.callPreparedHostSync(prepared, preparedFixed, preparedActivation)
 		goruntime.KeepAlive(in)
 		goruntime.KeepAlive(in.c)
+		returned = true
 		return err
 	}
-	return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
+	err = in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
+	returned = true
+	return err
 }
 
 // recoverNativeSyncPanic must be deferred directly by the native-call entry so
 // recover observes host panics on that goroutine's active stack.
 func recoverNativeSyncPanic(err *error) {
 	if r := recover(); r != nil {
+		setNativeSyncPanicError(r, err)
+	}
+}
+
+// A legacy panic(nil) makes recover return nil. The explicit normal-completion
+// sentinel keeps that real panic distinct without changing its value.
+func recoverNativeSyncPanicCompletion(err *error, returned *bool) {
+	r := recover()
+	if !*returned || r != nil {
 		setNativeSyncPanicError(r, err)
 	}
 }
