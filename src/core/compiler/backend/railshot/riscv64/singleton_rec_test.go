@@ -39,6 +39,12 @@ func singletonRecControlModule(vector bool, shape string, wrapped bool) []byte {
 	} else if shape == "nonnull" {
 		control = []byte{0x60, 0, 1, 0x64, 0x70}
 		body = []byte{0x20, 0, 0x1a, 0x02, 1, 0xd2, 0, 0x0b, 0xd1, 0x0b}
+	} else if shape == "indexed-nullable" {
+		control = []byte{0x60, 0, 1, 0x63, 0}
+		body = []byte{0x20, 0, 0x1a, 0x02, 1, 0xd0, 0, 0x0b, 0xd1, 0x0b}
+	} else if shape == "indexed-nonnull" {
+		control = []byte{0x60, 0, 1, 0x64, 0}
+		body = []byte{0x20, 0, 0x1a, 0x02, 1, 0xd2, 0, 0x0b, 0xd1, 0x0b}
 	}
 	if wrapped {
 		control = append([]byte{0x4e, 1}, control...)
@@ -115,7 +121,7 @@ func TestPublicExplicitSingletonRecStateOnly(t *testing.T) {
 
 func TestPublicExplicitSingletonRecAbstractControlIdentity(t *testing.T) {
 	for _, vector := range []bool{false, true} {
-		for _, shape := range []string{"legacy", "nullable", "nonnull"} {
+		for _, shape := range []string{"legacy", "nullable", "nonnull", "indexed-nullable", "indexed-nonnull"} {
 			compact := singletonRecControlModule(vector, shape, false)
 			wrapped := singletonRecControlModule(vector, shape, true)
 			if err := AdmitProductionSource(wrapped); err != nil {
@@ -132,8 +138,16 @@ func TestPublicExplicitSingletonRecAbstractControlIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if shape == "indexed-nullable" || shape == "indexed-nonnull" {
+				plainRef := plainModule.Types[1].SubTypes[0].Comp.Results[0]
+				wrappedRef := wrappedModule.Types[1].SubTypes[0].Comp.Results[0]
+				idx := wrappedRef.Ref().Heap().Type()
+				if !wasm.EqualValType(plainRef, wrappedRef) || idx.Index != 0 || idx.Rec {
+					t.Fatal("wrapped indexed control changed absolute type identity", plainRef, wrappedRef, idx)
+				}
+			}
 			var plainPressure, wrappedPressure int
-			typed := shape == "nonnull"
+			typed := shape != "legacy" && shape != "nullable"
 			plain, err := CompileModuleWith(plainModule, referenceControlProductionOptions(typed, &plainPressure))
 			if err != nil {
 				t.Fatal("compact control", err)
@@ -165,7 +179,8 @@ func TestPublicExplicitSingletonRecRejectsBroaderGrammar(t *testing.T) {
 		"open-subtype":    {1, 0x4e, 1, 0x50, 0, 0x60, 0, 0},
 		"struct":          {1, 0x4e, 1, 0x5f, 0},
 		"array":           {1, 0x4e, 1, 0x5e, 0x7f, 0},
-		"indexed-funcref": {1, 0x4e, 1, 0x60, 1, 0x63, 0, 0},
+		"self-indexed":    {1, 0x4e, 1, 0x60, 1, 0x63, 0, 0},
+		"forward-indexed": {2, 0x4e, 1, 0x60, 1, 0x64, 1, 0, 0x60, 0, 0},
 		"nullable-extern": {1, 0x4e, 1, 0x60, 1, 0x63, 0x6f, 0},
 		"nonnull-extern":  {1, 0x4e, 1, 0x60, 1, 0x64, 0x6f, 0},
 		"truncated":       {1, 0x4e},

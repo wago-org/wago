@@ -48,6 +48,12 @@ func rv64SingletonRecControlModule(vector bool, shape string, wrapped bool) []by
 	} else if shape == "nonnull" {
 		control = []byte{0x60, 0, 1, 0x64, 0x70}
 		body = []byte{0x20, 0, 0x1a, 0x02, 1, 0xd2, 0, 0x0b, 0xd1, 0x0b}
+	} else if shape == "indexed-nullable" {
+		control = []byte{0x60, 0, 1, 0x63, 0}
+		body = []byte{0x20, 0, 0x1a, 0x02, 1, 0xd0, 0, 0x0b, 0xd1, 0x0b}
+	} else if shape == "indexed-nonnull" {
+		control = []byte{0x60, 0, 1, 0x64, 0}
+		body = []byte{0x20, 0, 0x1a, 0x02, 1, 0xd2, 0, 0x0b, 0xd1, 0x0b}
 	}
 	if wrapped {
 		control = append([]byte{0x4e, 1}, control...)
@@ -96,13 +102,14 @@ func TestRV64PublicExplicitSingletonRec(t *testing.T) {
 
 func TestRV64PublicExplicitSingletonRecAbstractControl(t *testing.T) {
 	for _, vector := range []bool{false, true} {
-		for _, shape := range []string{"legacy", "nullable", "nonnull"} {
+		for _, shape := range []string{"legacy", "nullable", "nonnull", "indexed-nullable", "indexed-nonnull"} {
 			for _, artifact := range []bool{false, true} {
 				name := fmt.Sprintf("vector%t-%s-artifact%t", vector, shape, artifact)
 				t.Run(name, func(t *testing.T) {
 					key := fmt.Sprintf("singleton-rec-control-vector%t-%s", vector, shape)
 					compile := rv64TableStageCompile
-					if shape == "nonnull" {
+					typed := shape != "legacy" && shape != "nullable"
+					if typed {
 						if !artifact && os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
 							t.Skip("precompiled artifact path only")
 						}
@@ -113,7 +120,6 @@ func TestRV64PublicExplicitSingletonRecAbstractControl(t *testing.T) {
 					if !bytes.Equal(plain.code, wrapped.code) || !slices.Equal(plain.Entry, wrapped.Entry) || !slices.Equal(plain.InternalEntry, wrapped.InternalEntry) || !slices.Equal(plain.FuncTypeID, wrapped.FuncTypeID) || plain.requiredFeatures != wrapped.requiredFeatures || plain.nativeReferenceControlABI != wrapped.nativeReferenceControlABI || plain.nativeReferenceCallABI != wrapped.nativeReferenceCallABI {
 						t.Fatal("singleton rec changed abstract control image")
 					}
-					typed := shape == "nonnull"
 					if !wrapped.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || wrapped.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) != typed || wrapped.nativeReferenceControlABI != typed || wrapped.nativeReferenceCallABI {
 						t.Fatal("wrapped abstract control feature/ABI witness", wrapped.requiredFeatures, wrapped.nativeReferenceControlABI, wrapped.nativeReferenceCallABI)
 					}
@@ -130,7 +136,7 @@ func TestRV64PublicExplicitSingletonRecAbstractControl(t *testing.T) {
 						args = []uint64{0x0123456789abcdef, 0xfedcba9876543210}
 					}
 					want := []uint64{1}
-					if typed {
+					if shape == "nonnull" || shape == "indexed-nonnull" {
 						want[0] = 0
 					}
 					for _, in := range instances {
@@ -162,19 +168,26 @@ func TestRV64PublicExplicitSingletonRecStateOnly(t *testing.T) {
 }
 
 func TestRV64PublicExplicitSingletonRecAbstractControlStateOnly(t *testing.T) {
-	for _, shape := range []string{"legacy", "nullable", "nonnull"} {
+	for _, shape := range []string{"legacy", "nullable", "nonnull", "indexed-nullable", "indexed-nonnull"} {
 		ref := []byte{0x70}
 		if shape == "nullable" {
 			ref = []byte{0x63, 0x70}
 		} else if shape == "nonnull" {
 			ref = []byte{0x64, 0x70}
+		} else if shape == "indexed-nullable" {
+			ref = []byte{0x63, 0}
+		} else if shape == "indexed-nonnull" {
+			ref = []byte{0x64, 0}
 		}
 		typePayload := []byte{1, 0x4e, 1, 0x60, 0, 1}
+		if shape == "indexed-nullable" || shape == "indexed-nonnull" {
+			typePayload = []byte{2, 0x60, 0, 0, 0x4e, 1, 0x60, 0, 1}
+		}
 		typePayload = append(typePayload, ref...)
 		source := wasmtest.Module(wasmtest.Section(1, typePayload))
 		for _, artifact := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s-artifact%t", shape, artifact), func(t *testing.T) {
-				typed := shape == "nonnull"
+				typed := shape != "legacy" && shape != "nullable"
 				compile := rv64TableStageCompile
 				if typed {
 					if !artifact && os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
@@ -215,7 +228,7 @@ func TestRV64PublicExplicitSingletonRecWrappedReferenceFeatureGate(t *testing.T)
 		t.Skip("source compiler unavailable in compiler-free qualification")
 	}
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false)
-	for _, shape := range []string{"legacy", "nullable", "nonnull"} {
+	for _, shape := range []string{"legacy", "nullable", "nonnull", "indexed-nullable", "indexed-nonnull"} {
 		if compiled, err := Compile(cfg, rv64SingletonRecControlModule(false, shape, true)); compiled != nil || err == nil {
 			if compiled != nil {
 				compiled.Close()
@@ -223,12 +236,25 @@ func TestRV64PublicExplicitSingletonRecWrappedReferenceFeatureGate(t *testing.T)
 			t.Fatal("disabled reference types admitted wrapped abstract control", shape, err)
 		}
 	}
-	for _, cfg := range []*RuntimeConfig{compatibilityDefaultConfig(), NewRuntimeConfig().WithFeature(CoreFeatureTypedFunctionReferences, false)} {
-		if compiled, err := Compile(cfg, rv64SingletonRecControlModule(false, "nonnull", true)); compiled != nil || err == nil {
-			if compiled != nil {
-				compiled.Close()
+	for _, shape := range []string{"nonnull", "indexed-nullable", "indexed-nonnull"} {
+		for _, cfg := range []*RuntimeConfig{compatibilityDefaultConfig(), NewRuntimeConfig().WithFeature(CoreFeatureTypedFunctionReferences, false)} {
+			if compiled, err := Compile(cfg, rv64SingletonRecControlModule(false, shape, true)); compiled != nil || err == nil {
+				if compiled != nil {
+					compiled.Close()
+				}
+				t.Fatal("typed references disabled admitted wrapped typed control", shape, err)
 			}
-			t.Fatal("typed references disabled admitted wrapped non-null control", err)
 		}
+	}
+	referenceTarget := wasmtest.Module(wasmtest.Section(1, []byte{
+		2,
+		0x60, 1, 0x70, 0,
+		0x4e, 1, 0x60, 0, 1, 0x63, 0,
+	}))
+	if compiled, err := rv64NativeTailConfig().Compile(referenceTarget); compiled != nil || err == nil {
+		if compiled != nil {
+			compiled.Close()
+		}
+		t.Fatal("wrapped indexed control admitted reference-bearing target", err)
 	}
 }
