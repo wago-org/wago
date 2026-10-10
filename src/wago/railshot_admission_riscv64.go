@@ -128,8 +128,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.nativeTable64ABI == nativeTable64GetSetABI && !rv64OwnedTwoTable32GetSet(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64GetSet(c) && !rv64OwnedTwoTable64GetSet(c)) {
 		return reject("table.get/set compiler witness requires its exact owned or indexed two-table profile")
 	}
-	if c.nativeTable64ABI == nativeTable64IndirectABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Indirect(c) && !rv64OwnedTwoTable64Indirect(c) && !rv64ImportedTable64Indirect(c)) {
-		return reject("table64 indirect-call compiler witness requires its exact owned, indexed two-table, or imported table64 profile")
+	if c.nativeTable64ABI == nativeTable64IndirectABI && !rv64OwnedTwoTable32Indirect(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Indirect(c) && !rv64OwnedTwoTable64Indirect(c) && !rv64ImportedTable64Indirect(c)) {
+		return reject("table indirect-call compiler witness requires its exact owned, indexed two-table32/table64, or imported table64 profile")
 	}
 	if c.nativeTable64ABI == nativeTable64FillABI && !rv64OwnedTwoTable32Fill(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Fill(c) && !rv64OwnedTwoTable64Fill(c)) {
 		return reject("table.fill compiler witness requires its exact owned or indexed two-table profile")

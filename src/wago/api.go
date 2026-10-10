@@ -520,7 +520,7 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	}
 	exactExternrefReadWrite := stagedTwoLocalExternrefReadWriteShape(m)
 	exactExternrefFill := stagedTwoLocalExternrefFillShape(m)
-	exactIndexedIndirect := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && stagedOwnedTwoTable64IndirectShape(m)
+	exactIndexedIndirect := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedOwnedTwoTable32IndirectShape(m) || stagedOwnedTwoTable64IndirectShape(m))
 	if !exactExternrefReadWrite && !exactExternrefFill {
 		for i := range m.Tables {
 			if !m.Tables[i].Type.Limits.HasMax {

@@ -92,7 +92,7 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		return unsupported("table import count bound")
 	}
 	tableCount := len(m.Tables) + m.ImportedTableCount()
-	if tableCount > 1 && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
+	if tableCount > 1 && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable32Indirect(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
 	for index := 0; index < tableCount; index++ {
@@ -1122,6 +1122,73 @@ func admitOwnedTwoTable64Indirect(m *wasm.Module, production, public bool) bool 
 			return false
 		}
 		if i == 0 && len(sub.Comp.Params) != 0 || i == 1 && (len(sub.Comp.Params) != 1 || !wasm.EqualValType(sub.Comp.Params[0], wasm.I64)) {
+			return false
+		}
+	}
+	for i := range m.FuncTypes {
+		want := uint32(1)
+		if i == 0 {
+			want = 0
+		}
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != want || len(m.Code[i].Locals.Runs) != 0 || len(m.Code[i].Body.Instrs) != 0 {
+			return false
+		}
+	}
+	e := m.Elements[0]
+	if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) != 1 || e.Kind.Funcs[0] != 0 || len(e.Kind.Exprs) != 0 {
+		return false
+	}
+	if !bytes.Equal(m.Code[0].BodyBytes, []byte{0x41, 7, 0x0b}) {
+		return false
+	}
+	for i := 0; i < 2; i++ {
+		body := []byte{0x20, 0, 0xd2, 0, 0x26, byte(i), 0x20, 0, 0x11, 0, byte(i), 0x0b}
+		if !bytes.Equal(m.Code[i+1].BodyBytes, body) {
+			return false
+		}
+	}
+	var functions, tables [2]bool
+	for _, export := range m.Exports {
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			if export.Index.Index < 1 || export.Index.Index > 2 {
+				return false
+			}
+			functions[export.Index.Index-1] = true
+		case wasm.ExternTable:
+			if export.Index.Index > 1 {
+				return false
+			}
+			tables[export.Index.Index] = true
+		default:
+			return false
+		}
+	}
+	return functions[0] && functions[1] && tables[0] && tables[1]
+}
+
+func admitOwnedTwoTable32Indirect(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 2 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 4 {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	for i := range m.Tables {
+		table := m.Tables[i]
+		if table.Init != nil || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min > MaxOwnedTableEntries || table.Type.Limits.Max > MaxOwnedTableEntries || table.Type.Limits.Max < table.Type.Limits.Min || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) {
+			return false
+		}
+	}
+	for i := range m.Types {
+		if len(m.Types[i].SubTypes) != 1 {
+			return false
+		}
+		sub := m.Types[i].SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) {
+			return false
+		}
+		if i == 0 && len(sub.Comp.Params) != 0 || i == 1 && (len(sub.Comp.Params) != 1 || !wasm.EqualValType(sub.Comp.Params[0], wasm.I32)) {
 			return false
 		}
 	}

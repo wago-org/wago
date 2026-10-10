@@ -170,6 +170,33 @@ func rv64TwoTable32InitDropInstructionSource() []byte {
 	)
 }
 
+func rv64TwoTable32IndirectInstructionSource() []byte {
+	declaredTarget := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x01, 2, 2},
+			[]byte{0x70, 0x01, 3, 3},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("call0", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("call1", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(declaredTarget)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 7, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x26, 0, 0x20, 0, 0x11, 0, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x26, 1, 0x20, 0, 0x11, 0, 1, 0x0b}),
+		)),
+	)
+}
+
 // rv64RawTwoTable32Call deliberately writes the native argument cell after
 // public admission so the machine-code consumer, rather than API marshaling,
 // is responsible for i32 normalization.
@@ -1134,6 +1161,126 @@ func TestRV64PublicOwnedTwoTable32InitDropArtifactGates(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("invalid indexed table32.init/drop artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable32Indirect(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table32-indirect", rv64TwoTable32IndirectInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64IndirectABI || !rv64OwnedTwoTable32Indirect(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("indexed table32 indirect metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32Indirect(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 2 {
+				t.Fatal("indexed table32 indirect table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 3 || table1 == table0 {
+				t.Fatal("indexed table32 indirect table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("indexed table32 indirect missing canonical target descriptor")
+			}
+			canonical := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			for _, tc := range []struct {
+				name  string
+				index uint64
+				table *Table
+				other *Table
+			}{{"call1", 0xfeedface00000000, table1, table0}, {"call1", 0xcafebabe00000001, table1, table0}, {"call1", 0xdeadbeef00000002, table1, table0}, {"call0", 0x1234567800000000, table0, table1}, {"call0", 0x8765432100000001, table0, table1}} {
+				before, other := slices.Clone(tc.table.desc), slices.Clone(tc.other.desc)
+				want := slices.Clone(before)
+				index := int(uint32(tc.index))
+				copy(want[8+index*coreruntime.TableEntryBytes:8+(index+1)*coreruntime.TableEntryBytes], canonical)
+				got, err := rv64RawTwoTable32Call(t, in, tc.name, tc.index)
+				if err != nil || got != 7 || !slices.Equal(tc.table.desc, want) || !slices.Equal(tc.other.desc, other) {
+					t.Fatal("indexed table32 indirect dirty-index call/isolation", tc.name, tc.index, got, err)
+				}
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				index    uint64
+			}{{"call0", 1, 2}, {"call1", 2, 3}, {"call0", 1, 0xffffffff}, {"call1", 2, 0x80000000}} {
+				got, err := rv64RawTwoTable32Call(t, in, tc.name, tc.index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != ^uint64(0) || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("indexed table32 indirect low-word index did not trap", tc, got, err)
+				}
+				if !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("indexed table32 indirect trap changed storage", tc)
+				}
+			}
+			if got, err := in.Invoke("call1", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("indexed table32 indirect reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable32IndirectArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table32-indirect-admission", rv64TwoTable32IndirectInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness":  func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"missing-table":    func(v *Compiled) { v.extraTables = nil },
+		"table64-feature":  func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
+		"second-table64":   func(v *Compiled) { v.extraTables[0].Addr64 = true },
+		"second-no-max":    func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"target-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"second-param":     func(v *Compiled) { v.Funcs[2].Params[0] = ValI64 },
+		"missing-ref":      func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-bulk":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
+		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
+		"missing-key":      func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:2] },
+		"wrong-key":        func(v *Compiled) { v.FuncTypeID[2] ^= 1 },
+		"function-export":  func(v *Compiled) { v.Exports["call1"] = 1 },
+		"table-export":     func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"active-element":   func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid indexed table32 indirect metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if name == "missing-ref" {
+				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+					t.Fatal("serialization did not restore structural indexed indirect reference feature", err)
+				}
+				_ = loaded.Close()
+				return
+			}
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid indexed table32 indirect artifact admitted")
 			}
 		})
 	}

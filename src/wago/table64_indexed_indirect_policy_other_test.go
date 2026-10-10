@@ -38,4 +38,14 @@ func TestIndexedTwoTable64IndirectPolicyRemainsRV64Only(t *testing.T) {
 	if err := stagedTwoLocalTableShape(m); err == nil {
 		t.Fatal("indexed RV64 call_indirect shape widened non-RV64 two-table admission")
 	}
+	m.Types[1].SubTypes[0].Comp.Params[0] = wasm.I32
+	for i := range m.Tables {
+		m.Tables[i].Type.Limits.Addr64 = false
+	}
+	if !stagedOwnedTwoTable32IndirectShape(m) {
+		t.Fatal("policy fixture no longer matches the exact indexed table32 RV64 source shape")
+	}
+	if err := stagedTwoLocalTableShape(m); err == nil {
+		t.Fatal("indexed table32 RV64 call_indirect shape widened non-RV64 two-table admission")
+	}
 }

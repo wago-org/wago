@@ -973,6 +973,38 @@ func TestOwnedTwoTable64IndirectProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable32IndirectProfile() *wasm.Module {
+	m := ownedTwoTable64IndirectProfile()
+	for i := range m.Tables {
+		m.Tables[i].Type.Limits.Addr64 = false
+	}
+	m.Types[1].SubTypes[0].Comp.Params[0] = wasm.I32
+	return m
+}
+
+func TestOwnedTwoTable32IndirectProfile(t *testing.T) {
+	m := ownedTwoTable32IndirectProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact indexed table32 indirect-call profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"first-index":    func(m *wasm.Module) { m.Code[1].BodyBytes[5] = 1 },
+		"second-set":     func(m *wasm.Module) { m.Code[2].BodyBytes[5] = 0 },
+		"second-call":    func(m *wasm.Module) { m.Code[2].BodyBytes[10] = 0 },
+		"second-table64": func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = true },
+		"caller-i64":     func(m *wasm.Module) { m.Types[1].SubTypes[0].Comp.Params[0] = wasm.I64 },
+		"missing-export": func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable32IndirectProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed table32 indirect-call profile admitted", err)
+			}
+		})
+	}
+}
+
 func importedTable64IndirectProfile() *wasm.Module {
 	m := importedTable64SizeProfile()
 	m.Types = []wasm.RecType{
