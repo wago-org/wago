@@ -531,7 +531,7 @@ func (g *dependencyGraph) claimClosedComponentForPhysicalRelease(candidate depen
 // delayed by the supplied resourceCleanup; the completed attestation is
 // published before finish rethrows the first one. A direct journal panic before
 // return resets authority for retry.
-func (release *dependencyComponentRelease) runPhysicalJournal(index int, journal func(*resourceCleanup)) (completed bool) {
+func (release *dependencyComponentRelease) runPhysicalJournal(index int, journal func(*resourceCleanup) bool) (completed bool) {
 	if release == nil || release.claim == nil || journal == nil || index < 0 || index >= len(release.physicalJournals) || !release.claim.active.Load() || !release.physicalJournals[index].CompareAndSwap(0, 1) {
 		return false
 	}
@@ -541,7 +541,11 @@ func (release *dependencyComponentRelease) runPhysicalJournal(index int, journal
 		}
 	}()
 	var cleanup resourceCleanup
-	journal(&cleanup)
+	ready := journal(&cleanup)
+	if !ready {
+		cleanup.finish()
+		return false
+	}
 	// This journal owner is the only path that can consume the detached
 	// callback. A direct pre-return panic leaves it for retry; a callback panic
 	// is captured after the pointer is cleared and cannot be replayed.

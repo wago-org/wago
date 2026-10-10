@@ -124,9 +124,16 @@ type rv64FunctionDependencyOwnership struct {
 	frozenGlobals           atomic.Pointer[rv64FrozenGlobalDependencyRows]
 	ownedGlobalDescriptors  atomic.Pointer[globalOwner]
 	ownedTableDescriptors   atomic.Pointer[Table]
-	managed                 bool        // remains true after drain; a reentrant call never rescans imports
+	managed                 bool // remains true after drain; a reentrant call never rescans imports
+	componentRelease        atomic.Pointer[rv64DependencyComponentCoordinator]
 	physicalCleanupFinished atomic.Bool // set only after the complete physical callback journal
 	cleanupCompleted        atomic.Bool // physical journal plus every authoritative receipt holder
+}
+
+type rv64DependencyComponentCoordinator struct {
+	release      *dependencyComponentRelease
+	published    atomic.Bool
+	teardownDone []atomic.Bool
 }
 
 func rv64FunctionDependencyOwnershipFor(in *Instance) *rv64FunctionDependencyOwnership {
@@ -326,32 +333,142 @@ func railshotFunctionDependencyCleanupCompleted(in *Instance) {
 	}
 }
 
+func rv64FunctionDependencyHoldersComplete(ownership *rv64FunctionDependencyOwnership) bool {
+	if ownership == nil || !ownership.functions.complete() {
+		return false
+	}
+	if rows := ownership.memories.Load(); rows != nil && !rows.complete() {
+		return false
+	}
+	if rows := ownership.globals.Load(); rows != nil && !rows.complete() {
+		return false
+	}
+	if rows := ownership.tables.Load(); rows != nil && !rows.complete() {
+		return false
+	}
+	if rows := ownership.frozenGlobals.Load(); rows != nil && !rows.complete() {
+		return false
+	}
+	return railshotOwnedGlobalDescriptorDependenciesComplete(ownership) && railshotOwnedTableDescriptorDependenciesComplete(ownership)
+}
+
 func rv64MaybeCompleteFunctionDependencies(ownership *rv64FunctionDependencyOwnership) {
 	if ownership == nil || ownership.cleanupCompleted.Load() || !ownership.physicalCleanupFinished.Load() {
 		return
 	}
-	if !ownership.functions.complete() {
-		return
-	}
-	if rows := ownership.memories.Load(); rows != nil && !rows.complete() {
-		return
-	}
-	if rows := ownership.globals.Load(); rows != nil && !rows.complete() {
-		return
-	}
-	if rows := ownership.tables.Load(); rows != nil && !rows.complete() {
-		return
-	}
-	if rows := ownership.frozenGlobals.Load(); rows != nil && !rows.complete() {
-		return
-	}
-	if !railshotOwnedGlobalDescriptorDependenciesComplete(ownership) {
-		return
-	}
-	if !railshotOwnedTableDescriptorDependenciesComplete(ownership) {
+	if !rv64FunctionDependencyHoldersComplete(ownership) {
 		return
 	}
 	ownership.cleanupCompleted.Store(true)
+}
+
+// rv64CollectClosedDependencyComponent is an internal driver only. Admission
+// remains unchanged. It persists the irreversible release object on every
+// member before the first callback and uses the existing physical teardown
+// order rather than independently pruning individual holders.
+func rv64CollectClosedDependencyComponent(seed *dependencyMember, nodeBudget, receiptBudget int) bool {
+	return rv64CollectClosedDependencyComponentWithPublicationHook(seed, nodeBudget, receiptBudget, nil)
+}
+
+// The hook is a deterministic test seam between the first ownership pointer
+// and the remaining pointers. The coordinator's published flag is the actual
+// production gate: no worker may drive physical teardown until every member
+// can find the same persistent retry owner.
+func rv64CollectClosedDependencyComponentWithPublicationHook(seed *dependencyMember, nodeBudget, receiptBudget int, afterFirst func()) bool {
+	if seed == nil || seed.owner == nil {
+		return false
+	}
+	ownership := rv64ExistingFunctionDependencyOwnership(seed.owner)
+	if ownership == nil || &ownership.member != seed {
+		return false
+	}
+	if coordinator := ownership.componentRelease.Load(); coordinator != nil {
+		if !coordinator.published.Load() {
+			return false
+		}
+		return rv64DriveDependencyComponentRelease(coordinator)
+	}
+	g := seed.graph.Load()
+	if g == nil {
+		return false
+	}
+	candidate := g.discoverClosedComponent(seed, nodeBudget, receiptBudget)
+	if len(candidate.members) == 0 {
+		return false
+	}
+	// Resolve the complete RV ownership directory before the irreversible
+	// resourcesClosed/finalizer-detachment claim. Once that claim succeeds,
+	// publication below must have no fallible member lookup or conflict check.
+	ownerships := make([]*rv64FunctionDependencyOwnership, len(candidate.members))
+	for i, member := range candidate.members {
+		if member == nil || member.owner == nil {
+			return false
+		}
+		memberOwnership := rv64ExistingFunctionDependencyOwnership(member.owner)
+		if memberOwnership == nil || &memberOwnership.member != member || memberOwnership.componentRelease.Load() != nil {
+			return false
+		}
+		ownerships[i] = memberOwnership
+	}
+	release, ok := g.claimClosedComponentForPhysicalRelease(candidate)
+	if !ok {
+		return false
+	}
+	coordinator := &rv64DependencyComponentCoordinator{release: release, teardownDone: make([]atomic.Bool, len(release.claim.members))}
+	for i, memberOwnership := range ownerships {
+		memberOwnership.componentRelease.Store(coordinator)
+		if i == 0 && afterFirst != nil {
+			afterFirst()
+		}
+	}
+	coordinator.published.Store(true)
+	return rv64DriveDependencyComponentRelease(coordinator)
+}
+
+func rv64RetryDependencyComponentHolders(owner *Instance, cleanup *resourceCleanup) {
+	cleanup.run(func() { railshotDrainInstanceFunctionDependencies(owner) })
+	cleanup.run(func() { railshotDrainInstanceGlobalDependencies(owner) })
+	cleanup.run(func() { railshotReleaseInstanceGlobalReferences(owner) })
+	cleanup.run(func() { railshotDrainInstanceTableDependencies(owner) })
+	cleanup.run(func() { railshotReleaseOwnedTableDescriptorDependencies(owner) })
+	cleanup.run(func() { railshotReleaseOwnedGlobalDescriptorDependencies(owner) })
+	cleanup.run(func() { railshotDrainInstanceMemoryDependencies(owner) })
+}
+
+func rv64DriveDependencyComponentRelease(coordinator *rv64DependencyComponentCoordinator) (completed bool) {
+	if coordinator == nil || !coordinator.published.Load() || coordinator.release == nil || coordinator.release.claim == nil || len(coordinator.teardownDone) != len(coordinator.release.claim.members) {
+		return false
+	}
+	release := coordinator.release
+	var cleanup resourceCleanup
+	for i, member := range release.claim.members {
+		index, owner := i, member.owner
+		cleanup.run(func() {
+			release.runPhysicalJournal(index, func(memberCleanup *resourceCleanup) bool {
+				if !coordinator.teardownDone[index].Load() {
+					memberCleanup.run(func() { owner.referenceLifetime().notifyStore(owner.refStore, referenceLifetimeResourcesReleased) })
+					owner.releaseResources(memberCleanup)
+					coordinator.teardownDone[index].Store(true)
+				} else {
+					rv64RetryDependencyComponentHolders(owner, memberCleanup)
+				}
+				return rv64FunctionDependencyHoldersComplete(rv64ExistingFunctionDependencyOwnership(owner))
+			})
+		})
+		if release.physicalJournals[index].Load() == 2 {
+			cleanup.run(func() { railshotFunctionDependencyCleanupCompleted(owner) })
+		}
+	}
+	cleanup.run(func() { completed = release.complete() })
+	if completed {
+		for _, member := range release.claim.members {
+			if ownership := rv64ExistingFunctionDependencyOwnership(member.owner); ownership != nil {
+				ownership.componentRelease.CompareAndSwap(coordinator, nil)
+			}
+		}
+	}
+	cleanup.finish()
+	return completed
 }
 
 func rv64RetireFunctionDependencyMember(m *dependencyMember) {

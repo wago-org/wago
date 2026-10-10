@@ -668,24 +668,28 @@ func TestDependencyClosedComponentPhysicalClaimAndCompletion(t *testing.T) {
 	if _, panicked := cleanupTestPanic(func() { release.claim.release() }); !panicked || !release.claim.active.Load() {
 		t.Fatal("irreversible physical claim allowed rollback or lost retry authority")
 	}
+	if release.runPhysicalJournal(0, func(*resourceCleanup) bool { return false }) || release.physicalJournals[0].Load() != 0 || release.finalizers[0] == nil {
+		t.Fatal("incomplete physical journal consumed retry authority or detached finalizer")
+	}
 	if value, panicked := cleanupTestPanic(func() {
-		release.runPhysicalJournal(0, func(*resourceCleanup) { panic(directPanic) })
+		release.runPhysicalJournal(0, func(*resourceCleanup) bool { panic(directPanic) })
 	}); !panicked || value != directPanic || release.physicalJournals[0].Load() != 0 {
 		t.Fatal("direct journal abort did not preserve retry authority")
 	}
 	var cleanup resourceCleanup
 	runningJournalBlockedCompletion := false
 	cleanup.run(func() {
-		release.runPhysicalJournal(0, func(memberCleanup *resourceCleanup) {
+		release.runPhysicalJournal(0, func(memberCleanup *resourceCleanup) bool {
 			memberCleanup.run(func() {
 				if !aToB.release() {
 					panic("failed to drain first internal receipt")
 				}
 			})
+			return true
 		})
 	})
 	cleanup.run(func() {
-		if !release.runPhysicalJournal(1, func(memberCleanup *resourceCleanup) {
+		if !release.runPhysicalJournal(1, func(memberCleanup *resourceCleanup) bool {
 			memberCleanup.run(func() {
 				if !bToA.release() {
 					panic("failed to drain second internal receipt")
@@ -697,6 +701,7 @@ func TestDependencyClosedComponentPhysicalClaimAndCompletion(t *testing.T) {
 				panic("physical claim completed while a journal was running")
 			}
 			runningJournalBlockedCompletion = true
+			return true
 		}) {
 			panic("failed to run second physical journal")
 		}
@@ -705,7 +710,7 @@ func TestDependencyClosedComponentPhysicalClaimAndCompletion(t *testing.T) {
 		t.Fatalf("physical journal callbacks=%v states=%d/%d", visited, release.physicalJournals[0].Load(), release.physicalJournals[1].Load())
 	}
 	callbackReplayed := false
-	if !runningJournalBlockedCompletion || release.runPhysicalJournal(0, func(*resourceCleanup) { callbackReplayed = true }) || callbackReplayed {
+	if !runningJournalBlockedCompletion || release.runPhysicalJournal(0, func(*resourceCleanup) bool { callbackReplayed = true; return true }) || callbackReplayed {
 		t.Fatal("running/completed journal gate did not prevent completion or callback replay")
 	}
 	if release.finalizers[0] != nil || release.finalizers[1] != nil {
