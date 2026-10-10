@@ -5,6 +5,7 @@ package wago
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -102,6 +103,15 @@ func TestRV64Core3RefIsNullExecutionRetainedClassifier(t *testing.T) {
 	if !rv64Core3RefIsNullExecution(base) {
 		t.Fatal("exact retained fixture rejected")
 	}
+	if err := railshotValidateCompiled(base); err != nil {
+		t.Fatal("exact retained fixture failed admission:", err)
+	}
+	if err := base.validate(); err != nil {
+		t.Fatal("exact retained fixture failed common validation:", err)
+	}
+	if err := railshotValidateReferenceFunctionInstance(base, InstantiateOptions{railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}}); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("unqualified runtime publication was not closed:", err)
+	}
 	mutations := map[string]func(*Compiled){
 		"code":           func(c *Compiled) { c.code = bytes.Clone(c.code); c.code[0] ^= 1 },
 		"entry":          func(c *Compiled) { c.Entry[9]-- },
@@ -136,10 +146,30 @@ func TestRV64Core3RefIsNullExecutionRetainedClassifier(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := cloneCompiledMetadata(base)
 			mutate(bad)
-			if rv64Core3RefIsNullExecution(bad) {
+			if rv64Core3RefIsNullExecution(bad) || railshotValidateCompiled(bad) == nil {
 				t.Fatal("hostile retained metadata admitted")
 			}
 		})
+	}
+}
+
+func TestRV64Core3RefIsNullExecutionArtifactRoundTrip(t *testing.T) {
+	base := rv64Core3RefIsNullExecutionRetainedFixture(t)
+	blob, err := base.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadTrustedArtifact(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	view := loaded.executionView()
+	if !rv64Core3RefIsNullExecution(view) {
+		t.Fatal("trusted artifact lost exact retained witness")
+	}
+	if err := railshotValidateReferenceFunctionInstance(loaded, InstantiateOptions{railshotTailPolicy: railshotInstantiateTailPolicy{referenceFunctions: true}}); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("loaded artifact escaped the runtime publication gate:", err)
 	}
 }
 

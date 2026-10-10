@@ -77,6 +77,7 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 // source compilation before any executable image or host thunk is published.
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
+	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
 	if !c.nativeContextTrapABI {
 		return reject("native-context trap ABI is required")
 	}
@@ -260,7 +261,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if vectorProfile {
 		maxArity = 128
 	}
-	declarationExtern := rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c)
+	declarationExtern := exactCore3RefIsNull || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c)
 	for _, sig := range c.Funcs {
 		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
 			return reject("signature arity")

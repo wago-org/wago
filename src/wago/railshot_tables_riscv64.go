@@ -1078,6 +1078,9 @@ func rv64QualifiedTable64(c *Compiled) bool {
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
+	if rv64Core3RefIsNullExecution(c) {
+		return nil
+	}
 	if c.tableCount() == 0 {
 		if c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || len(c.Elems) != 0 || len(c.tableExports) != 0 {
 			return fmt.Errorf("table metadata requires a declared table")

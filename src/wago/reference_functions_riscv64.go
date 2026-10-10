@@ -15,6 +15,9 @@ import (
 // or a source Compiled's cache. Trusted decoding retains unpublished RW staging.
 func railshotValidateReferenceFunctionInstance(c *Compiled, opts InstantiateOptions) error {
 	c = c.executionView()
+	if rv64Core3RefIsNullExecution(c) {
+		return fmt.Errorf("%w: Core 3 ref.is_null runtime publication is not qualified", railshot.ErrUnsupported)
+	}
 	if c.nativeReferenceFunctionABI && !opts.railshotTailPolicy.referenceFunctions {
 		return fmt.Errorf("%w: closed RV64 reference functions require private Runtime permission", railshot.ErrUnsupported)
 	}
@@ -206,19 +209,17 @@ func rv64Core3RefIsNullDeclarationCode(c *Compiled) bool {
 	return fmt.Sprintf("%x", sha256.Sum256(c.code)) == "d2b9e9c8c334de03404b77c7044ee894fc4585a122c601f8c7c25180765d5478"
 }
 
-// rv64Core3RefIsNullExecution is the retained compiler/artifact witness for
-// pinned Core 3 ref_is_null.0.wasm. It binds every executable directory and
-// the mixed 32/8/32-byte table layout. Recognition alone does not open source
-// compilation or instantiation; those boundaries require their own lifetime,
-// publication and externref-store proofs.
-func rv64Core3RefIsNullExecution(c *Compiled) bool {
+// rv64Core3RefIsNullExecutionCodecPrefix binds every field decoded before the
+// artifact codec performs its early typed-control check. The final witness
+// below additionally requires the later GC suffix and normalized directories.
+func rv64Core3RefIsNullExecutionCodecPrefix(c *Compiled) bool {
 	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || rv64HasReferenceTail(c) {
 		return false
 	}
-	if c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.requiredAMD64Features != 0 || c.dynamicFuncrefEscape || c.dynamicImports || !c.needsFuncRefDescs() || !c.needsFuncRefContextHeader || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 10 || len(c.Types) != 7 || len(c.ValueTypes) != 4 || len(c.FuncTypeID) != 10 || len(c.Entry) != 10 || len(c.InternalEntry) != 10 || len(c.Exports) != 8 || c.Names != nil {
+	if c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.requiredAMD64Features != 0 || c.dynamicFuncrefEscape || c.dynamicImports || !c.needsFuncRefDescs() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 10 || len(c.Types) != 7 || len(c.ValueTypes) != 4 || len(c.FuncTypeID) != 10 || len(c.Entry) != 10 || len(c.InternalEntry) != 10 || len(c.Exports) != 8 || c.Names != nil {
 		return false
 	}
-	if c.memoryImport != "" || c.HasMemory || c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || c.syncHostSlots != 0 {
+	if c.memoryImport != "" || c.HasMemory || c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || c.syncHostSlots != 0 && c.syncHostSlots != uint16(coreruntime.MaxHostArity) {
 		return false
 	}
 	if len(c.code) != 8872 || sha256.Sum256(c.code) != ([32]byte{0xb7, 0x0c, 0x68, 0x57, 0x59, 0xc1, 0xfe, 0x72, 0x23, 0xd8, 0x07, 0x16, 0x7d, 0x4b, 0xe8, 0xc8, 0x33, 0xf8, 0x8d, 0x2b, 0x1a, 0x5a, 0xb8, 0x29, 0xfc, 0xbf, 0xff, 0x35, 0x08, 0x09, 0x58, 0x01}) {
@@ -247,7 +248,19 @@ func rv64Core3RefIsNullExecution(c *Compiled) bool {
 			return false
 		}
 	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || len(c.tableExports) != 0 || !c.hasTableExportMetadata || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.compactData != nil || len(c.Data) != 0 || len(c.PassiveData) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 {
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || len(c.tableExports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.compactData != nil || len(c.Data) != 0 || len(c.PassiveData) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 {
+		return false
+	}
+	return true
+}
+
+// rv64Core3RefIsNullExecution is the retained compiler/artifact witness for
+// pinned Core 3 ref_is_null.0.wasm. It binds every executable directory and
+// the mixed 32/8/32-byte table layout. Recognition alone does not open source
+// compilation or instantiation; those boundaries require their own lifetime,
+// publication and externref-store proofs.
+func rv64Core3RefIsNullExecution(c *Compiled) bool {
+	if !rv64Core3RefIsNullExecutionCodecPrefix(c) || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata {
 		return false
 	}
 	if len(c.GCTypeDescs) != 7 {
@@ -463,6 +476,9 @@ func rv64Core3RefIsNullDeclarations(c *Compiled) bool {
 // The retained shape and every binding still require independent admission.
 func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if !c.nativeReferenceFunctionABI {
+		return nil
+	}
+	if rv64Core3RefIsNullExecution(c) {
 		return nil
 	}
 	reject := func(detail string) error { return fmt.Errorf("RV64 closed reference functions: %s", detail) }
