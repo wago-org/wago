@@ -19,24 +19,40 @@ import (
 func TestRV64Core3NullabilityPinnedInvalidModules(t *testing.T) {
 	tests := []struct {
 		name, encoded, hash, detail string
+		function                    int
 	}{
 		{
-			name:    "br_on_null.3",
-			encoded: "0061736d01000000010f03600000600163000170600170017003030201020a1202040020000b0b00d0002000d5001a10000b",
-			hash:    "4c986e71dd2b81c992c1ec0274b5276889e9047304772690e71052c4b80c1fd1",
-			detail:  "funcref is not ref null type 0",
+			name:     "br_on_null.3",
+			encoded:  "0061736d01000000010f03600000600163000170600170017003030201020a1202040020000b0b00d0002000d5001a10000b",
+			hash:     "4c986e71dd2b81c992c1ec0274b5276889e9047304772690e71052c4b80c1fd1",
+			detail:   "funcref is not ref null type 0",
+			function: 1,
 		},
 		{
-			name:    "br_on_non_null.3",
-			encoded: "0061736d0100000001100360000060016300017060017002707003030201020a1302040020000b0c00d0002000d600100020000b",
-			hash:    "fa4a0cca126ce9d6b0edafc81a2bebc51cb1b2c2214bc89f9c07c1e52453929b",
-			detail:  "funcref is not ref null type 0",
+			name:     "br_on_non_null.3",
+			encoded:  "0061736d0100000001100360000060016300017060017002707003030201020a1302040020000b0c00d0002000d600100020000b",
+			hash:     "fa4a0cca126ce9d6b0edafc81a2bebc51cb1b2c2214bc89f9c07c1e52453929b",
+			detail:   "funcref is not ref null type 0",
+			function: 1,
 		},
 		{
-			name:    "ref_as_non_null.1",
-			encoded: "0061736d01000000010d036000017f600164000060000003030201020a0f0206002000d41a0b0600d00010000b",
-			hash:    "7d3cc5ca0d509b2366f97c78c002a645999839ad5f09a58ffb93e1d1a2fdb05a",
-			detail:  "ref null type 0 is not ref type 0",
+			name:     "ref_as_non_null.1",
+			encoded:  "0061736d01000000010d036000017f600164000060000003030201020a0f0206002000d41a0b0600d00010000b",
+			hash:     "7d3cc5ca0d509b2366f97c78c002a645999839ad5f09a58ffb93e1d1a2fdb05a",
+			detail:   "ref null type 0 is not ref type 0",
+			function: 1,
+		},
+		{
+			name:    "ref_is_null.2",
+			encoded: "0061736d0100000001050160017f00030201000a070105002000d10b",
+			hash:    "ac9eb27507042aa725d0658f470ebbe34c6e60b7a60073b75bd7b1ea7bdd3e29",
+			detail:  "ref.is_null",
+		},
+		{
+			name:    "ref_is_null.3",
+			encoded: "0061736d01000000010401600000030201000a05010300d10b",
+			hash:    "92d037ddb86b3a689bb5858b618a2a06063cdec5151cf7a15921e263ee574301",
+			detail:  "stack underflow",
 		},
 	}
 	for _, tc := range tests {
@@ -52,7 +68,7 @@ func TestRV64Core3NullabilityPinnedInvalidModules(t *testing.T) {
 			if err != nil || m == nil {
 				t.Fatalf("pinned assert_invalid must decode: module=%v err=%v", m, err)
 			}
-			assertRV64Core3NullabilityTypeMismatch(t, wasm.ValidateModule(m), tc.detail)
+			assertRV64Core3NullabilityTypeMismatch(t, wasm.ValidateModule(m), tc.function, tc.detail)
 			if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
 				// Invalid sources can never create an artifact for the compiler-free
 				// runtime. The architecture-neutral decoder and validator checks above
@@ -71,7 +87,7 @@ func TestRV64Core3NullabilityPinnedInvalidModules(t *testing.T) {
 					_ = compiled.Close()
 					t.Fatal("invalid module produced a compiled value and artifact path")
 				}
-				assertRV64Core3NullabilityTypeMismatch(t, err, tc.detail)
+				assertRV64Core3NullabilityTypeMismatch(t, err, tc.function, tc.detail)
 			}
 
 			rt := NewRuntime(WithRuntimeConfig(cfg))
@@ -81,7 +97,7 @@ func TestRV64Core3NullabilityPinnedInvalidModules(t *testing.T) {
 					_ = module.Close()
 					t.Fatal("invalid module reached runtime publication")
 				}
-				assertRV64Core3NullabilityTypeMismatch(t, err, tc.detail)
+				assertRV64Core3NullabilityTypeMismatch(t, err, tc.function, tc.detail)
 			}
 			rt.mu.Lock()
 			clean := rt.activeOperations == 0 && rt.compileOperations == 0 &&
@@ -99,11 +115,11 @@ func TestRV64Core3NullabilityPinnedInvalidModules(t *testing.T) {
 	}
 }
 
-func assertRV64Core3NullabilityTypeMismatch(t *testing.T, err error, detail string) {
+func assertRV64Core3NullabilityTypeMismatch(t *testing.T, err error, function int, detail string) {
 	t.Helper()
 	var validation *wasm.ValidationError
 	if !errors.As(err, &validation) || validation.Code != wasm.ErrTypeMismatch ||
-		validation.Func != 1 || validation.Detail != detail {
-		t.Fatalf("validation rejection = %#v (%v), want function 1 type mismatch %q", validation, err, detail)
+		validation.Func != function || validation.Detail != detail {
+		t.Fatalf("validation rejection = %#v (%v), want function %d type mismatch %q", validation, err, function, detail)
 	}
 }
