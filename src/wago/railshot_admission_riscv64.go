@@ -134,8 +134,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.nativeTable64ABI == nativeTable64FillABI && !rv64OwnedTwoTable32Fill(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Fill(c) && !rv64OwnedTwoTable64Fill(c)) {
 		return reject("table.fill compiler witness requires its exact owned or indexed two-table profile")
 	}
-	if c.nativeTable64ABI == nativeTable64CopyABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Copy(c) && !rv64OwnedTwoTable64Copy(c)) {
-		return reject("table64.copy compiler witness requires its exact owned table64 or indexed two-table profile")
+	if c.nativeTable64ABI == nativeTable64CopyABI && !rv64OwnedTwoTable32Copy(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Copy(c) && !rv64OwnedTwoTable64Copy(c)) {
+		return reject("table.copy compiler witness requires its exact owned or indexed two-table profile")
 	}
 	if c.nativeTable64ABI == nativeTable64InitDropABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64InitDrop(c) && !rv64OwnedTwoTable64InitDrop(c)) {
 		return reject("table64.init/drop compiler witness requires its exact owned table64 or indexed two-table profile")
