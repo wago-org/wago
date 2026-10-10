@@ -1,0 +1,13 @@
+# #922: mutable-table indirect-call cache — static admission only
+
+Base: `origin/main` `209e448c392510a0325d5b282a0d86a776fb379c`.
+
+`GOCACHE=/tmp/wago-go-cache go test ./src/wago -run '^TestMutableIndirect' -count=1 -v` decodes six large applications and all 121 shipped workload Wasm files. It counts `call_indirect`/`call_ref` sites and marks a module potentially mutable if it imports or exports a table or contains table set/grow/fill/copy/init. This is deliberately a **module-level upper bound**, not a count of mutable sites after Wago's immutable-table analysis or a dynamic target profile.
+
+SQLite has 1,998 static indirect sites, QuickJS 723, jq 547, PHP 8,188, Lua 112, and yyjson 83; each has zero table mutation instructions and no imported/exported table, so these are not new mutable-table-cache coverage. Across the 121-file corpus, eight modules have potentially mutable tables and indirect calls, totaling **191 static sites**: fasttree 25, GNU seq 14, GNU tr 12, sed 35, LCS 6, Needleman–Wunsch 35, Smith–Waterman 35, seqtk 29. The criterion is conservative: mutation may concern a different table, and sites may never execute. Their monomorphic/2-target/polymorphic distributions and hotness were not measured.
+
+Wago's `callIndirect` already does table bounds, null, canonical type, home/context, and wrapper/internal dispatch; immutable tables have separate type-check and monomorphic shortcuts. A one-entry mutable cache needs an identity guard plus a safe miss path and per-instance state. The [V8 article](https://v8.dev/blog/wasm-speculative-optimizations) concerns a feedback-driven optimizing tier with deoptimization and is not evidence of a Wago gain; #922 excludes that machinery. With no dynamic target distribution, selecting a candidate and allocating cache state would be speculative. No production cache was added.
+
+The focused test passes. Production native bytes and compile resources are identical to base. A short unchanged-code indirect-call control (`GOCACHE=/tmp/wago-go-cache go test ./src/wago -run '^$' -bench '^BenchmarkInvokeTable0IndirectFixed$' -benchtime=50ms -count=2 -benchmem`) gives base `14.61/14.73 ns/op`, head `14.42/14.76 ns/op`, all `0 B/op`, `0 allocs/op`; this is an existing fixed-table path, not an admitted mutable site. The spread is noise. No guard/miss or real-workload execution measurement exists, so no speedup or memory claim follows.
+
+Recommendation: leave draft/inconclusive. Instrument one of the eight actual candidate workloads for per-site target identity and frequency, then test a guarded path only where target concentration and lifetime rules are proven.
