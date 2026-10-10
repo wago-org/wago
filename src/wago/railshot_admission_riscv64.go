@@ -206,7 +206,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.nativeTable64ABI == nativeTable64ImportedSizeABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64Size(c) && !rv64MixedTable64Size(c)) {
 		return reject("table64.size compiler witness requires its exact imported table64 profile")
 	}
-	if c.nativeTable64ABI == nativeTable64ImportedGetSetABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64GetSet(c)) {
+	if c.nativeTable64ABI == nativeTable64ImportedGetSetABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64GetSet(c) && !rv64MixedTable64GetSet(c)) {
 		return reject("table64.get/set compiler witness requires its exact imported table64 profile")
 	}
 	if c.nativeTable64ABI == nativeTable64ImportedGrowABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64Grow(c)) {
