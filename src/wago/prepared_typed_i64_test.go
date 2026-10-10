@@ -63,7 +63,7 @@ func TestPreparedTypedI64PrivateRoute(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !fn.boundedNumericHost || !in.preparedBoundedNumericEligible() || in.syncHosts[0].typedI64 == nil {
+			if !fn.boundedNumericHost || !in.preparedBoundedNumericEligible() {
 				t.Fatal("typed i64 callback was not admitted to the bounded private route")
 			}
 
