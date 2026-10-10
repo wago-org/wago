@@ -138,7 +138,6 @@ func TestRV64PublicReferenceFunctionsSparseGenerationQuota(t *testing.T) {
 			}
 			imports := testImports("env.target", export)
 			caller := rv64NativeTokenInstantiate(t, rt, cc, imports)
-			code, metadata, base := rv64DynamicTailCharge(t, caller)
 			// These are real uncached production snapshots under the physical root.
 			func() {
 				gate := caller.lockInvocation(0)
@@ -169,6 +168,10 @@ func TestRV64PublicReferenceFunctionsSparseGenerationQuota(t *testing.T) {
 				}
 			}()
 			for _, kind := range []string{"exact", "code-below", "metadata-below"} {
+				limited := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+				t.Cleanup(func() { _ = limited.Close() })
+				in := rv64NativeTokenInstantiate(t, limited, cc, imports)
+				code, metadata, base, restore := rv64ConfigureDynamicTailQuota(t, in, kind)
 				codeLimit, metadataLimit := uint64(code), base+uint64(metadata)
 				if kind == "code-below" {
 					codeLimit--
@@ -176,9 +179,8 @@ func TestRV64PublicReferenceFunctionsSparseGenerationQuota(t *testing.T) {
 				if kind == "metadata-below" {
 					metadataLimit--
 				}
-				limited := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithMaxNativeCodeBytes(codeLimit).WithMaxInstanceMetadataBytes(metadataLimit)))
-				in := rv64NativeTokenInstantiate(t, limited, cc, imports)
 				got, err := in.Invoke("call", 37, 0)
+				restore()
 				if kind == "exact" {
 					if err != nil || !slices.Equal(got, []uint64{42}) {
 						t.Fatal("exact generation quota", got, err)

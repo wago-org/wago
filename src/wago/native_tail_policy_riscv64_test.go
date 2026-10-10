@@ -28,6 +28,35 @@ func rv64DynamicTailCharge(t *testing.T, in *Instance) (code, metadata int, base
 	return scope.tailBudget.code, scope.tailBudget.metadata, in.pluginState.Load().railshotInvocation.tailPolicy.metadataBase
 }
 
+// rv64ConfigureDynamicTailQuota probes and then configures the exact physical
+// instance under test. Address-valued Constant64 sequences make generation
+// lengths instance-specific, so a charge from a different mapping is not a
+// sound exact-limit oracle.
+func rv64ConfigureDynamicTailQuota(t *testing.T, in *Instance, kind string) (code, metadata int, base uint64, restore func()) {
+	t.Helper()
+	code, metadata, base = rv64DynamicTailCharge(t, in)
+	state := &in.pluginState.Load().railshotInvocation
+	captured := state.tailPolicy
+	policy := captured
+	policy.limits.code = code
+	policy.limits.metadata = metadata
+	policy.codeConfigured = true
+	policy.metadataConfigured = true
+	switch kind {
+	case "exact":
+	case "code-below":
+		policy.limits.code--
+	case "metadata-below":
+		policy.limits.metadata--
+	default:
+		t.Fatalf("unknown dynamic tail quota kind %q", kind)
+	}
+	state.tailPolicy = policy
+	restore = func() { state.tailPolicy = captured }
+	t.Cleanup(restore)
+	return code, metadata, base, restore
+}
+
 func TestRV64DynamicTailStaticImporterAggregatePolicy(t *testing.T) {
 	pc := rv64NativeTailCompile(t, "dynamic-static-policy-producer", rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, false), false)
 	producer, err := Instantiate(pc)

@@ -35,9 +35,11 @@ func TestRV64PublicReferenceFunctionImportsQuota(t *testing.T) {
 			}
 			cc := rv64NativeTailCompile(t, "reference-imports-quota-caller", rv64ReferenceImportsConsumer(vector, false, "reference-tail"), false)
 			imports := NewImports().Function("env", "target", pf)
-			caller := rv64NativeTokenInstantiate(t, rt, cc, imports)
-			code, metadata, base := rv64DynamicTailCharge(t, caller)
 			for _, kind := range []string{"exact", "code-below", "metadata-below"} {
+				limited := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+				t.Cleanup(func() { _ = limited.Close() })
+				in := rv64NativeTokenInstantiate(t, limited, cc, imports)
+				code, metadata, base, restore := rv64ConfigureDynamicTailQuota(t, in, kind)
 				codeLimit, metadataLimit := uint64(code), base+uint64(metadata)
 				if kind == "code-below" {
 					codeLimit--
@@ -45,8 +47,6 @@ func TestRV64PublicReferenceFunctionImportsQuota(t *testing.T) {
 				if kind == "metadata-below" {
 					metadataLimit--
 				}
-				limited := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithMaxNativeCodeBytes(codeLimit).WithMaxInstanceMetadataBytes(metadataLimit)))
-				in := rv64NativeTokenInstantiate(t, limited, cc, imports)
 				args := []uint64{0xdeadbeeffffffffd, 0x7ff0000000000001}
 				if vector {
 					args = append(args, 0x80000000deadbeef)
@@ -55,6 +55,7 @@ func TestRV64PublicReferenceFunctionImportsQuota(t *testing.T) {
 				args = append(args, 0)
 				before := calls
 				got, err := in.Invoke("call", args...)
+				restore()
 				if kind == "exact" {
 					if err != nil || !slices.Equal(got, want) || calls != before+2 {
 						t.Fatal("exact imported generation quota", got, calls, err)
