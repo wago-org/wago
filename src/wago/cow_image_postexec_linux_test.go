@@ -117,6 +117,7 @@ func cowPageProcessSnapshot() (cowPageSnapshot, error) {
 
 type cowPageReport struct {
 	Mode, Exercise, StateSHA256              string
+	Eager                                    bool
 	Instances, Pages, NativeBytes            int
 	CompileMS, InstantiateMS, ExecuteMS      float64
 	Compiled, Initialized, Executed, ReadAll cowPageSnapshot
@@ -132,12 +133,15 @@ func TestCOWImagePageReadWriteMemory(t *testing.T) {
 		t.Fatalf("invalid mode/exercise %q/%q", mode, exercise)
 	}
 	count, err := strconv.Atoi(os.Getenv("WAGO_924_POSTEXEC_INSTANCES"))
-	if err != nil || count < 1 || count > 10 {
-		t.Fatalf("instances must be 1..10: %v", err)
+	if err != nil || count < 1 || count > 100 {
+		t.Fatalf("instances must be 1..100: %v", err)
 	}
 	flag := "0"
 	if mode == "cow" {
 		flag = "1"
+		if os.Getenv("WAGO_924_EAGER") == "1" {
+			flag = "eager"
+		}
 	}
 	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", flag)
 	module, initial, pages := cowPHPPageExerciseModule(t)
@@ -151,7 +155,7 @@ func TestCOWImagePageReadWriteMemory(t *testing.T) {
 		}
 	}
 	wantState := sha256.Sum256(initial)
-	report := cowPageReport{Mode: mode, Exercise: exercise, Instances: count, Pages: int(pages)}
+	report := cowPageReport{Mode: mode, Exercise: exercise, Instances: count, Pages: int(pages), Eager: flag == "eager"}
 	started := time.Now()
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
 	report.CompileMS = float64(time.Since(started).Microseconds()) / 1000

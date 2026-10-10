@@ -69,6 +69,24 @@ func assertCOWMapping(t *testing.T, in *Instance) {
 	t.Fatalf("linear memory at %s has no private CoW image mapping", prefix)
 }
 
+func assertOrdinaryMapping(t *testing.T, in *Instance) {
+	t.Helper()
+	maps, err := os.ReadFile("/proc/self/maps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := fmt.Sprintf("%x-", in.jm.LinMemBase()-uintptr(abi.BasedataSize))
+	for _, line := range strings.Split(string(maps), "\n") {
+		if strings.HasPrefix(line, prefix) {
+			if strings.Contains(line, "memfd:wago-cow-image") {
+				t.Fatalf("fallback retained image mapping: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatalf("no linear-memory mapping at %s", prefix)
+}
+
 func processPSSKB(t *testing.T) int {
 	t.Helper()
 	data, err := os.ReadFile("/proc/self/smaps_rollup")
@@ -230,6 +248,83 @@ func TestCOWImageReuseAdmission(t *testing.T) {
 	if first.Memory().UnsafeBytes()[0] != second.Memory().UnsafeBytes()[0] {
 		t.Fatal("baseline first instance differs from CoW second instance")
 	}
+}
+
+func TestCOWImageEagerAdmission(t *testing.T) {
+	// Memory-oriented opt-in may build on the first large use, but must still
+	// exclude small modules that never repay an image.
+	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "eager")
+	small := MustCompile(cowIntegratedModule())
+	defer small.Close()
+	smallInstance, err := Instantiate(small)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer smallInstance.Close()
+	if indexes := small.loadCompileIndexes(); indexes != nil && indexes.memoryImage != nil {
+		t.Fatal("eager admission unexpectedly imaged small module")
+	}
+	large := MustCompile(cowPHPDataOnlyModule(t))
+	defer large.Close()
+	first, err := Instantiate(large)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if indexes := large.loadCompileIndexes(); indexes == nil || indexes.memoryImage == nil {
+		t.Fatal("eager admission did not image first large instance")
+	}
+	assertCOWMapping(t, first)
+}
+
+func TestCOWImageMappingFailureFallsBack(t *testing.T) {
+	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "force")
+	c := MustCompile(cowIntegratedModule())
+	defer c.Close()
+	first, err := Instantiate(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	assertCOWMapping(t, first)
+	indexes := c.loadCompileIndexes()
+	if indexes == nil || indexes.memoryImage == nil {
+		t.Fatal("fixture has no image owner")
+	}
+	// Invalidate the backing descriptor while keeping its existing private
+	// mapping alive. The next duplicate returns EBADF; the normal allocation
+	// path must still produce an independent, correctly initialized instance.
+	cc := c.codeCache
+	cc.mu.Lock()
+	err = indexes.memoryImage.Close()
+	cc.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Instantiate(c)
+	if err != nil {
+		t.Fatalf("image descriptor failure broke ordinary fallback: %v", err)
+	}
+	defer second.Close()
+	assertOrdinaryMapping(t, second)
+	if got := second.Memory().UnsafeBytes(); !bytes.Equal(got[:3], []byte("Axy")) || !bytes.Equal(got[65534:65536], []byte("QR")) {
+		t.Fatalf("fallback initialized incorrect bytes: %q / %q", got[:3], got[65534:65536])
+	}
+	first.Memory().UnsafeBytes()[0] = 'z'
+	if second.Memory().UnsafeBytes()[0] != 'A' {
+		t.Fatal("fallback instance shares CoW sibling writes")
+	}
+	snapshot := c.executionView()
+	initial, maxBytes := snapshot.memorySizeBytes()
+	if fd, ok, err := snapshot.experimentalCOWImageFD(initial, maxBytes+65536); err == nil || ok {
+		if fd >= 0 {
+			_ = syscall.Close(fd)
+		}
+		t.Fatalf("failed cleanup of replaced image must remain visible: fd=%d eligible=%t err=%v", fd, ok, err)
+	}
+	cc.mu.Lock()
+	indexes.memoryImage = nil // the fixture already closed the owner
+	cc.mu.Unlock()
 }
 
 func TestCOWImagePlanConfigurationAndQuota(t *testing.T) {

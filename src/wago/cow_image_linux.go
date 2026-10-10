@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -13,14 +14,36 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+type cowImageUnavailableError struct{ cause error }
+
+func (e *cowImageUnavailableError) Error() string { return e.cause.Error() }
+func (e *cowImageUnavailableError) Unwrap() error { return e.cause }
+
+func cowImageUnavailable(op string, err error) error {
+	return &cowImageUnavailableError{fmt.Errorf("%s: %w", op, err)}
+}
+
 func (c *Compiled) experimentalCOWImageMemory(initial, max int) (*runtime.JobMemory, bool, error) {
 	fd, eligible, err := c.experimentalCOWImageFD(initial, max)
-	if err != nil || !eligible {
+	if err != nil {
+		var unavailable *cowImageUnavailableError
+		if errors.As(err, &unavailable) {
+			return nil, false, nil // ordinary per-instance allocation
+		}
 		return nil, eligible, err
+	}
+	if !eligible {
+		return nil, false, nil
 	}
 	defer syscall.Close(fd)
 	jm, err := runtime.NewJobMemoryGrowableFromImage(initial, max, fd)
-	return jm, true, err
+	if err != nil {
+		if errors.Is(err, runtime.ErrImageMappingUnavailable) {
+			return nil, false, nil // retry ordinary memory on mapping resource failure
+		}
+		return nil, false, err
+	}
+	return jm, true, nil
 }
 
 // experimentalCOWImageFD returns a duplicate descriptor for one instantiation.
@@ -30,14 +53,14 @@ func (c *Compiled) experimentalCOWImageFD(initial, max int) (int, bool, error) {
 	mode := os.Getenv("WAGO_EXPERIMENT_COW_IMAGE")
 	if c.activeDataCount() == 0 || c.memoryCount() != 1 ||
 		c.memoryImport != "" || c.boundsMode != BoundsChecksExplicit ||
-		(mode != "1" && mode != "force") {
+		(mode != "1" && mode != "eager" && mode != "force") {
 		return -1, false, nil
 	}
-	// The ordinary opt-in needs enough repeated initialization work to have a
-	// chance of repaying image creation. The first use stays on the existing
-	// path; a single-use module therefore pays no image/setup cost. "force"
-	// bypasses only this cost gate for correctness and mechanism measurements.
-	if mode == "1" && (c.activeDataCount() < 1024 || initial < 1<<20) {
+	// Both public opt-ins require a substantial image. The default opt-in
+	// defers image creation until reuse, avoiding a single-use cost; "eager"
+	// favors memory at first use. "force" bypasses only the cost gates for
+	// correctness and mechanism measurements.
+	if mode != "force" && (c.activeDataCount() < 1024 || initial < 1<<20) {
 		return -1, false, nil
 	}
 	def := c.memoryDef(0)
@@ -73,7 +96,7 @@ func (c *Compiled) experimentalCOWImageFD(initial, max int) (int, bool, error) {
 	}
 	if !indexes.cowImageAttempted {
 		indexes.cowImageAttempted = true
-		if mode != "force" {
+		if mode == "1" {
 			return -1, false, nil
 		}
 	}
@@ -105,18 +128,18 @@ func (c *Compiled) experimentalCOWImageFD(initial, max int) (int, bool, error) {
 	if indexes.memoryImage == nil {
 		fd, err := unix.MemfdCreate("wago-cow-image", unix.MFD_CLOEXEC)
 		if err != nil {
-			return -1, false, fmt.Errorf("create CoW image: %w", err)
+			return -1, false, cowImageUnavailable("create CoW image", err)
 		}
 		file := os.NewFile(uintptr(fd), "wago-cow-image")
 		if err := file.Truncate(int64(abi.BasedataSize) + int64(max)); err != nil {
 			_ = file.Close()
-			return -1, false, fmt.Errorf("size CoW image: %w", err)
+			return -1, false, cowImageUnavailable("size CoW image", err)
 		}
 		prefix, err := syscall.Mmap(fd, 0, abi.BasedataSize+int(indexes.cowImageEnd),
 			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
 			_ = file.Close()
-			return -1, false, fmt.Errorf("build CoW image: %w", err)
+			return -1, false, cowImageUnavailable("build CoW image", err)
 		}
 		for i := 0; i < c.activeDataCount(); i++ {
 			d := c.activeDataAt(i)
@@ -130,7 +153,7 @@ func (c *Compiled) experimentalCOWImageFD(initial, max int) (int, bool, error) {
 	}
 	dup, err := unix.FcntlInt(indexes.memoryImage.Fd(), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
-		return -1, false, fmt.Errorf("duplicate CoW image: %w", err)
+		return -1, false, cowImageUnavailable("duplicate CoW image", err)
 	}
 	return dup, true, nil
 }
