@@ -41,6 +41,7 @@ type moduleState struct {
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions     bool
 	declarationExternRefs  bool
+	declarationNonnullRefs bool
 	importReferences       bool
 	localMutableReferences bool
 	ownedTable             bool

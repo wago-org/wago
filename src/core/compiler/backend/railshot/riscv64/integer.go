@@ -64,6 +64,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		profile = makeMemoryProfile(state.memories, state.indexedMemories)
 		referenceTypes.scalar = state.types
 		referenceTypes.declarationExtern = state.declarationExternRefs
+		referenceTypes.declarationNonNullExtern = state.declarationNonnullRefs
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -1760,6 +1761,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if state != nil {
 		referenceTypes.scalar = state.types
 		referenceTypes.declarationExtern = state.declarationExternRefs
+		referenceTypes.declarationNonNullExtern = state.declarationNonnullRefs
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

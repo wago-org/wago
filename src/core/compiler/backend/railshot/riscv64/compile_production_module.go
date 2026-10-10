@@ -23,7 +23,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) {
+	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -333,7 +333,12 @@ func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.Compi
 // Instruction bytes were bounded before this pass.
 func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, bool, error) {
 	referenceTails, indirectTails, hasReferenceCall, hasReferenceControl := false, false, false, false
-	types := internalReferenceTypes{decoded: m.Types, decodedSWAR: vector, declarationExtern: !vector && referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))}
+	types := internalReferenceTypes{
+		decoded:                  m.Types,
+		decodedSWAR:              vector,
+		declarationExtern:        !vector && referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
+		declarationNonNullExtern: !vector && referenceFunctions && admitCore3RefAsNonNullDeclarations(m),
+	}
 	for _, group := range m.Types {
 		if len(group.SubTypes) != 1 {
 			return false, false, false, false, unsupported("control declaration group")

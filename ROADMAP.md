@@ -226,9 +226,13 @@ owner graph or ABI is needed. The first executable module from pinned Core 3
 `ref_as_non_null.wast` also qualifies the exact table-free numeric-export shape
 through source and compiler-free artifacts, including unreachable-before-null
 trap order, full-width internal carriers and normalized i32 results. This does
-not qualify that file's declaration-only module, typed-expression or active
-elements, tables, imports, resource or reference-valued public/imported
-signatures, general ownership, or full-file parity.
+not qualify that file's typed-expression or active elements, tables, imports,
+resource or reference-valued public/imported signatures, general ownership, or
+full-file parity. The exact 59-byte no-debug `ref_as_non_null.2.wasm`
+declaration module is qualified separately through exact wire, decoded and
+retained classifiers. Its three private bodies only validate and drop non-null
+indexed, func and extern parameters; it adds no callable externref boundary,
+ownership protocol, resources, name/custom metadata or broader file parity.
 The first and third executable modules from pinned Core 3
 `br_on_non_null.wast` now qualify separately through source and compiler-free
 artifacts. Exact WABT 1.0.41 bytes from revision

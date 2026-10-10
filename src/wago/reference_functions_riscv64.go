@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"crypto/sha256"
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -163,7 +164,113 @@ func rv64Core3ReferenceDeclarationMetadata(c *Compiled) bool {
 // has no callable, descriptor, import, start, initializer, state or resource
 // path.
 func rv64Core3ReferenceDeclarations(c *Compiled) bool {
-	if !rv64Core3ReferenceDeclarationMetadata(c) || !c.needsFuncRefContextHeader || len(c.GCTypeDescs) != 4 {
+	if !rv64Core3ReferenceDeclarationMetadata(c) || !rv64Core3ReferenceDeclarationCode(c) || !c.needsFuncRefContextHeader || len(c.GCTypeDescs) != 4 {
+		return false
+	}
+	for i, desc := range c.GCTypeDescs {
+		if desc.ID != corergc.TypeID(i) || desc.Kind != corergc.KindFunc || !desc.Final || desc.HasSuper || desc.Super != 0 || len(desc.Fields) != 0 || desc.Elem != 0 || desc.Size != 0 || desc.ElemSize != 0 || desc.Align != 0 || desc.HasRefs {
+			return false
+		}
+	}
+	if d := c.memoryDir; d != nil && (len(d.defs) != 0 || len(d.exports) != 0 || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0) {
+		return false
+	}
+	return true
+}
+
+func rv64Core3ReferenceDeclarationCode(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	switch fmt.Sprintf("%x", sha256.Sum256(c.code)) {
+	case "495375f625e59894be58278d507ee66834182d853bf8873f633d78915e46e035", // br_on_null.1
+		"d05c044f01f47560b97b18aab0140831aba2c4b885edf85eeacfac5d610073c7": // br_on_non_null.1
+		return true
+	default:
+		return false
+	}
+}
+
+func rv64Core3RefAsNonNullDeclarationCode(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(c.code)) == "4ab02e20f9f4f69df8ef671c3683db5940325b8687bd2a9d556192453508b177"
+}
+
+// rv64Core3RefAsNonNullDeclarationMetadata is the exact retained metadata
+// witness for pinned ref_as_non_null.2.wasm. It is deliberately separate from
+// rv64Core3ReferenceDeclarationMetadata: all three reference parameters are
+// non-null here, including abstract externref.
+func rv64Core3RefAsNonNullDeclarationMetadata(c *Compiled) bool {
+	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || rv64HasReferenceTail(c) {
+		return false
+	}
+	if c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.requiredAMD64Features != 0 || c.dynamicFuncrefEscape || c.dynamicImports || c.needsFuncRefDescs() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 3 || len(c.Types) != 4 || len(c.ValueTypes) != 0 || len(c.FuncTypeID) != 3 || len(c.Entry) != 3 || len(c.InternalEntry) != 3 || len(c.code) == 0 || len(c.Exports) != 0 || c.Names != nil {
+		return false
+	}
+	if c.tableCount() != 0 || len(c.extraTables) != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || len(c.tableExports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 {
+		return false
+	}
+	wantEntries := [...]int{0, 656, 1312}
+	wantTypeIDs := [...]uint64{0x2e23aa23f0da9ca1, 0xc164fecadb664ff3, 0x60e6cc415c67ca8d}
+	for i := range c.Funcs {
+		sig := c.Funcs[i]
+		if !sig.HasTypeIndex || sig.TypeIndex != uint32(i+1) || len(sig.Params) != 1 || len(sig.Results) != 0 || sig.unsafeCrossTail || c.Entry[i] != wantEntries[i] || c.InternalEntry[i] != wantEntries[i] || c.FuncTypeID[i] != wantTypeIDs[i] {
+			return false
+		}
+		want := ValFuncRef
+		if i == 2 {
+			want = ValExternRef
+		}
+		if sig.Params[0] != want {
+			return false
+		}
+	}
+	for i := range c.Types {
+		typ := &c.Types[i]
+		if typ.RecGroup != uint32(i) || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.Describes != 0 || typ.HasDescriptor || typ.Descriptor != 0 || typ.Kind != CompositeTypeFunction || len(typ.Results) != 0 || len(typ.Fields) != 0 || typ.Array != (FieldTypeDescriptor{}) {
+			return false
+		}
+		if i == 0 {
+			if len(typ.Params) != 0 {
+				return false
+			}
+			continue
+		}
+		if len(typ.Params) != 1 {
+			return false
+		}
+		param := typ.Params[0]
+		if param.Kind != ValueTypeReference || param.Ref.Nullable || param.Ref.Exact {
+			return false
+		}
+		switch i {
+		case 1:
+			if !param.Ref.Heap.Defined || param.Ref.Heap.Abstract != 0 || param.Ref.Heap.TypeIndex != 0 {
+				return false
+			}
+		case 2:
+			if param.Ref.Heap.Defined || param.Ref.Heap.Abstract != AbstractHeapFunc || param.Ref.Heap.TypeIndex != 0 {
+				return false
+			}
+		case 3:
+			if param.Ref.Heap.Defined || param.Ref.Heap.Abstract != AbstractHeapExtern || param.Ref.Heap.TypeIndex != 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// rv64Core3RefAsNonNullDeclarations completes the retained artifact witness.
+// The module has no callable, descriptor, import, start, initializer, state or
+// resource path, so its non-null externref parameter remains declaration-only.
+func rv64Core3RefAsNonNullDeclarations(c *Compiled) bool {
+	if !rv64Core3RefAsNonNullDeclarationMetadata(c) || !rv64Core3RefAsNonNullDeclarationCode(c) || !c.needsFuncRefContextHeader || len(c.GCTypeDescs) != 4 {
 		return false
 	}
 	for i, desc := range c.GCTypeDescs {

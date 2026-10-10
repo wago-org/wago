@@ -260,7 +260,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if vectorProfile {
 		maxArity = 128
 	}
-	declarationExtern := rv64Core3ReferenceDeclarations(c)
+	declarationExtern := rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c)
 	for _, sig := range c.Funcs {
 		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
 			return reject("signature arity")

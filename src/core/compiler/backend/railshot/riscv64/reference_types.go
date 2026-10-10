@@ -13,6 +13,9 @@ type internalReferenceTypes struct {
 	decoded           []wasm.RecType
 	decodedSWAR       bool
 	declarationExtern bool
+	// This permission is separate from declarationExtern because it applies to
+	// an exact non-null function parameter, never block/select annotations.
+	declarationNonNullExtern bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -75,6 +78,9 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	// function or value is callable, nameable or publishable. Keep this exception
 	// out of every ordinary control/call directory.
 	if types.declarationExtern && ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
+		return true
+	}
+	if types.declarationNonNullExtern && !ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
 		return true
 	}
 	if heap == wasm.AbsHeap(wasm.HeapFunc) {
