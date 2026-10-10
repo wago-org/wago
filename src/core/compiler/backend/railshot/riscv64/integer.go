@@ -829,15 +829,19 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 				}
 				if functionRefs {
-					err = condition() // Exact i32 at this frame's current floor.
+					if state.table64 {
+						err = popWidth(true)
+					} else {
+						err = condition() // Exact i32 at this frame's current floor.
+					}
 				} else {
-					_, err = pop()
+					err = popWidth(state.table64)
 				}
 				if err != nil {
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
-					emit.Load(5, emit.SpillOffset(h), false)
+					emit.Load(5, emit.SpillOffset(h), state.table64)
 					emit.privateTableEntry()
 					if op == 0x25 {
 						emit.a.Ld(enc.X5, enc.X6, 24)

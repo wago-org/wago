@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -141,6 +143,16 @@ func rv64Table64GrowNoMaxSource() []byte {
 	)
 }
 
+func rv64Table64GetSetInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0x20, 0, 0x25, 0, 0xd1, 0x0b}))),
+	)
+}
+
 func rv64RelabelledTable32FunctionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
@@ -214,6 +226,90 @@ func TestRV64PublicOwnedTable64Grow(t *testing.T) {
 				if err != nil || !slices.Equal(got, []uint64{step.old}) || table.Size() != step.size {
 					t.Fatal("table64.grow", step, got, table.Size(), err)
 				}
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64GetSet(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-get-set", rv64Table64GetSetInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64GetSetABI || !rv64OwnedTable64GetSet(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatal("table64 get/set metadata contract")
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("table64 get/set export", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for _, index := range []uint64{0, 1} {
+				if got, err := in.Invoke("roundtrip", index); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("table64 get/set", index, got, err)
+				}
+			}
+			before := slices.Clone(table.desc)
+			for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
+				got, err := in.Invoke("roundtrip", index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("table64 get/set index did not trap", index, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("table64 get/set trap changed storage", index)
+				}
+			}
+			if got, err := in.Invoke("roundtrip", 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("table64 get/set reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64GetSetArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-get-set-admission", rv64Table64GetSetInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"grow-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
+		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"no-max":          func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 14)
+		},
+		"extra-function": func(v *Compiled) {
+			v.Funcs = append(v.Funcs, FuncSig{})
+		},
+		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32": func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64 get/set metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64 get/set artifact admitted")
 			}
 		})
 	}
@@ -363,13 +459,16 @@ func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
 		"missing-feature":            func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTable64 },
 		"contradictory-size-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
 		"contradictory-grow-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
-		"table32":                    func(v *Compiled) { v.TableAddr64 = false },
-		"start":                      func(v *Compiled) { v.HasStart = true },
-		"initializer":                func(v *Compiled) { v.HasTableInitFunc = true },
-		"element":                    func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"passive":                    func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
-		"externref":                  func(v *Compiled) { v.TableType = ValExternRef },
-		"capacity":                   func(v *Compiled) { v.TableMax = 1025 },
+		"contradictory-getset-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64GetSetABI
+		},
+		"table32":     func(v *Compiled) { v.TableAddr64 = false },
+		"start":       func(v *Compiled) { v.HasStart = true },
+		"initializer": func(v *Compiled) { v.HasTableInitFunc = true },
+		"element":     func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"passive":     func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
+		"externref":   func(v *Compiled) { v.TableType = ValExternRef },
+		"capacity":    func(v *Compiled) { v.TableMax = 1025 },
 		"extra-table": func(v *Compiled) {
 			v.extraTables = append(slices.Clone(v.extraTables), tableDef{Type: ValFuncRef})
 		},

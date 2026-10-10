@@ -13,6 +13,7 @@ const (
 	nativeTable64NoABI uint8 = iota
 	nativeTable64SizeABI
 	nativeTable64GrowABI
+	nativeTable64GetSetABI
 )
 
 func stagedNativeTable64ABI(m *wasm.Module) uint8 {
@@ -25,6 +26,9 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 	if stagedOwnedTable64GrowShape(m) {
 		return nativeTable64GrowABI
 	}
+	if stagedOwnedTable64GetSetShape(m) {
+		return nativeTable64GetSetABI
+	}
 	return nativeTable64NoABI
 }
 
@@ -33,7 +37,7 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 //
 //go:noinline
 func validateCompileTable64(m *wasm.Module) error {
-	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m))
+	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m))
 	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !rv64Qualified {
 		return fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
@@ -162,6 +166,44 @@ func stagedOwnedTable64GrowShape(m *wasm.Module) bool {
 	}
 	fn := m.Code[0]
 	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 || !bytes.Equal(fn.BodyBytes, []byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 0, 0x0b}) {
+		return false
+	}
+	hasFunctionExport := false
+	for _, export := range m.Exports {
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			if export.Index.Index != 0 {
+				return false
+			}
+			hasFunctionExport = true
+		case wasm.ExternTable:
+			if export.Index.Index != 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return hasFunctionExport
+}
+
+func stagedOwnedTable64GetSetShape(m *wasm.Module) bool {
+	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	table := m.Tables[0].Type
+	if !table.Limits.Addr64 || !table.Limits.HasMax || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 0 || len(m.Types[0].SubTypes) != 1 {
+		return false
+	}
+	sub := m.Types[0].SubTypes[0]
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 1 || !wasm.EqualValType(sub.Comp.Params[0], wasm.I64) || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) {
+		return false
+	}
+	fn := m.Code[0]
+	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 || !bytes.Equal(fn.BodyBytes, []byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0x20, 0, 0x25, 0, 0xd1, 0x0b}) {
 		return false
 	}
 	hasFunctionExport := false
