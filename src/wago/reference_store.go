@@ -1162,7 +1162,9 @@ func (s *gcPublicState) appendArgumentRootSlot(slot uint32) {
 type externrefSlot struct {
 	value      any
 	generation uint32
-	nextFree   uint32
+	// nextFree is a pin count for a live public slot, a free-list link for a
+	// released public slot, or externrefInternalSlot for an internal owner.
+	nextFree uint32
 }
 
 const externrefInternalSlot = ^uint32(0)
@@ -3028,13 +3030,60 @@ func (s *referenceStore) releaseExternref(token uint64) bool {
 		return false
 	}
 	slot := &s.externrefs[index-1]
-	if slot.generation != generation || slot.value == releasedExternrefValue || slot.nextFree == externrefInternalSlot {
+	if slot.generation != generation || slot.value == releasedExternrefValue || slot.nextFree != 0 {
 		return false
 	}
 	slot.value = releasedExternrefValue
 	slot.generation = nextExternrefGeneration(slot.generation)
 	slot.nextFree = s.externFree
 	s.externFree = index
+	return true
+}
+
+// pinExternref closes the validation-to-execution window for a public
+// argument. Release fails while any invocation owns a pin, so the slot cannot
+// be recycled under native code carrying the authenticated token.
+func (s *referenceStore) pinExternref(token uint64) bool {
+	if token == 0 {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.externKey == 0 {
+		return false
+	}
+	raw := bits.RotateLeft64(token, -17) ^ s.externKey
+	index, generation := uint32(raw), uint32(raw>>32)
+	if index == 0 || uint64(index) > uint64(len(s.externrefs)) {
+		return false
+	}
+	slot := &s.externrefs[index-1]
+	if slot.generation != generation || slot.value == releasedExternrefValue || slot.nextFree >= externrefInternalSlot-1 {
+		return false
+	}
+	slot.nextFree++
+	return true
+}
+
+func (s *referenceStore) unpinExternref(token uint64) bool {
+	if token == 0 {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.externKey == 0 {
+		return false
+	}
+	raw := bits.RotateLeft64(token, -17) ^ s.externKey
+	index, generation := uint32(raw), uint32(raw>>32)
+	if index == 0 || uint64(index) > uint64(len(s.externrefs)) {
+		return false
+	}
+	slot := &s.externrefs[index-1]
+	if slot.generation != generation || slot.value == releasedExternrefValue || slot.nextFree == 0 || slot.nextFree == externrefInternalSlot {
+		return false
+	}
+	slot.nextFree--
 	return true
 }
 

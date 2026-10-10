@@ -23,4 +23,7 @@ func railshotBeginPublicFuncrefArguments(*Instance) (railshotPublicFuncrefArgume
 func railshotStagePublicFuncrefArgument(*Instance, *railshotPublicFuncrefArguments, uint64, uint64) error {
 	return nil
 }
+func railshotStagePublicExternrefArgument(*Instance, *railshotPublicFuncrefArguments, uint64) error {
+	return nil
+}
 func railshotReleasePublicFuncrefArguments(railshotPublicFuncrefArguments) {}

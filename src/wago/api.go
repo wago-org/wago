@@ -5444,8 +5444,13 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 					return fmt.Errorf("%s: invalid externref token for argument %d: %w", subject, i, err)
 				}
 				bits = internal
-			} else if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
-				return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
+			} else if bits != 0 {
+				if in.refStore == nil || !in.validExternrefToken(bits) {
+					return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
+				}
+				if err := railshotStagePublicExternrefArgument(in, argumentOwners, bits); err != nil {
+					return fmt.Errorf("%s: externref argument %d lifetime: %w", subject, i, err)
+				}
 			}
 		case ValAnyRef, ValExnRef:
 			required, ok := exactReferenceType(exact, i, typ)

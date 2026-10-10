@@ -46,15 +46,18 @@ const rv64MaxTableEntryDepth = 32
 
 const rv64MaxInvocationArgumentOwners = 256
 
-// A scope exists only for a public call with non-null function-reference
-// arguments. Each entry owns one physical root acquired from the token store;
-// the active native target graph acquires its own root before this staging root
-// can be released. Slots follow tableDepth so parked recursive activations keep
+// A scope exists only for a public call with reference arguments. Funcref
+// entries own physical roots acquired from the token store; externref entries
+// pin their generation-checked slots through native execution and result
+// reconciliation. Slots follow tableDepth so parked recursive activations keep
 // disjoint owner sets.
 type rv64InvocationArgumentOwners struct {
-	owners [rv64MaxInvocationArgumentOwners]*Instance
-	count  int
-	active bool
+	owners         [rv64MaxInvocationArgumentOwners]*Instance
+	externrefs     [rv64MaxInvocationArgumentOwners]uint64
+	externrefStore *referenceStore
+	count          int
+	externrefCount int
+	active         bool
 }
 
 type railshotPublicFuncrefArguments struct {
@@ -64,7 +67,7 @@ type railshotPublicFuncrefArguments struct {
 }
 
 func railshotBeginPublicFuncrefArguments(in *Instance) (railshotPublicFuncrefArguments, error) {
-	if in == nil || in.c == nil || !in.c.nativeReferenceCallABI {
+	if in == nil || in.c == nil || !in.c.nativeReferenceCallABI && !rv64Core3RefIsNullExecution(in.c) {
 		return railshotPublicFuncrefArguments{}, nil
 	}
 	pool := &in.ensurePluginState().railshotInvocation
@@ -77,11 +80,35 @@ func railshotBeginPublicFuncrefArguments(in *Instance) (railshotPublicFuncrefArg
 		scope = new(rv64InvocationArgumentOwners)
 		pool.argumentOwners[slot] = scope
 	}
-	if scope.active || scope.count != 0 {
+	if scope.active || scope.count != 0 || scope.externrefCount != 0 || scope.externrefStore != nil {
 		return railshotPublicFuncrefArguments{}, fmt.Errorf("RV64 reference argument owner scope is active")
 	}
 	scope.active = true
 	return railshotPublicFuncrefArguments{in: in, scope: scope, slot: slot}, nil
+}
+
+func railshotStagePublicExternrefArgument(in *Instance, arguments *railshotPublicFuncrefArguments, token uint64) error {
+	if in == nil || in.c == nil || token == 0 || !in.c.nativeReferenceCallABI && !rv64Core3RefIsNullExecution(in.c) {
+		return nil
+	}
+	pool := &in.ensurePluginState().railshotInvocation
+	if arguments == nil || arguments.in != in || arguments.slot < 0 || arguments.slot >= len(pool.argumentOwners) || arguments.slot != pool.tableDepth || arguments.scope == nil || pool.argumentOwners[arguments.slot] != arguments.scope || !arguments.scope.active {
+		return fmt.Errorf("RV64 externref argument scope is unavailable")
+	}
+	scope := arguments.scope
+	if in.refStore == nil || scope.externrefStore != nil && scope.externrefStore != in.refStore {
+		return fmt.Errorf("RV64 externref argument token store is unavailable")
+	}
+	if scope.externrefCount == len(scope.externrefs) {
+		return fmt.Errorf("RV64 externref argument bound")
+	}
+	if !in.refStore.pinExternref(token) {
+		return fmt.Errorf("RV64 externref argument token is stale or busy")
+	}
+	scope.externrefStore = in.refStore
+	scope.externrefs[scope.externrefCount] = token
+	scope.externrefCount++
+	return nil
 }
 
 func railshotStagePublicFuncrefArgument(in *Instance, arguments *railshotPublicFuncrefArguments, token, descriptor uint64) error {
@@ -144,6 +171,18 @@ func railshotReleasePublicFuncrefArguments(arguments railshotPublicFuncrefArgume
 	valid := arguments.slot >= 0 && arguments.slot < len(pool.argumentOwners) && pool.argumentOwners[arguments.slot] == scope && pool.tableDepth == arguments.slot && scope.active
 	scope.active = false
 	var cleanup resourceCleanup
+	for scope.externrefCount != 0 {
+		scope.externrefCount--
+		token := scope.externrefs[scope.externrefCount]
+		scope.externrefs[scope.externrefCount] = 0
+		store := scope.externrefStore
+		cleanup.run(func() {
+			if store == nil || !store.unpinExternref(token) {
+				panic("RV64 externref argument pin changed")
+			}
+		})
+	}
+	scope.externrefStore = nil
 	for scope.count != 0 {
 		scope.count--
 		owner := scope.owners[scope.count]
