@@ -69,10 +69,12 @@ func rv64ValidateReferenceFunctionTable(c *Compiled, remaining *int) error {
 		}
 	}
 	for _, e := range c.passiveElems {
-		if e.Mode != ElemModeDeclarative && (!hasTable || e.Mode != ElemModeActive && e.Mode != ElemModePassive) || e.TableIndex != 0 || !elementType(e, false) || e.Mode != ElemModePassive && len(e.Values) != 0 || len(e.Values) > values || e.Offset.Base != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 {
+		modeOK := e.Mode == ElemModeDeclarative || e.Mode == ElemModePassive || hasTable && e.Mode == ElemModeActive
+		tableFreePassive := !hasTable && e.Mode == ElemModePassive
+		if !modeOK || tableFreePassive && (e.HasValueType || len(e.Values) == 0) || e.TableIndex != 0 || !elementType(e, false) || e.Mode != ElemModePassive && len(e.Values) != 0 || len(e.Values) > values || e.Offset.Base != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 {
 			return reject("canonical passive or dropped active/declarative state required")
 		}
-		if (hasTable || e.HasValueType) && (!consume(16) || e.HasValueType && !consume(4) || !consume(4*len(e.Values))) {
+		if (hasTable || tableFreePassive || e.HasValueType) && (!consume(16) || e.HasValueType && !consume(4) || !consume(4*len(e.Values))) {
 			return reject("aggregate element metadata/payload byte bound")
 		}
 		values -= len(e.Values)

@@ -289,7 +289,6 @@ func TestReferenceFunctionModuleClosedEscapeAndShape(t *testing.T) {
 		{"wrong-export-kind", func(m *wasm.Module) { m.Exports[0].Index.Kind = wasm.ExternGlobal }},
 		{"reference-declaration", func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 2 }},
 		{"bad-declaration", func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 5 }},
-		{"passive-element", func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemPassive }},
 		{"active-element", func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemActive }},
 		{"element-offset", func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x41, 0, 0x0b} }},
 		{"element-expressions", func(m *wasm.Module) { m.Elements[0].Kind.Exprs = []wasm.Expr{{BodyBytes: []byte{0xd2, 1, 0x0b}}} }},
@@ -349,6 +348,52 @@ func TestReferenceFunctionModuleClosedEscapeAndShape(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestReferenceFunctionTableFreePassiveDeclaration(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		t.Run(fmt.Sprintf("vector%t", vector), func(t *testing.T) {
+			m := closedReferenceDecode(t, vector, false, false, true)
+			m.Elements[0].Mode.Kind = wasm.ElemPassive
+			if err := admitClosedReferenceFunctionModule(m, vector); err != nil {
+				t.Fatal("table-free legacy passive declaration", err)
+			}
+			if c, err := closedReferenceCompile(m, vector, false); err != nil || c == nil {
+				t.Fatal("table-free legacy passive production", err)
+			}
+			for name, mutate := range map[string]func(*wasm.Module){
+				"empty": func(m *wasm.Module) { m.Elements[0].Kind.Funcs = nil },
+				"private-target": func(m *wasm.Module) {
+					m.Elements[0].Kind.Funcs[0] = 2
+				},
+				"typed-expression": func(m *wasm.Module) {
+					m.Elements[0].Kind = wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: wasm.FuncRef.Ref(), Exprs: []wasm.Expr{{BodyBytes: []byte{0xd2, 1, 0x0b}}}}
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					bad := closedReferenceDecode(t, vector, false, false, true)
+					bad.Elements[0].Mode.Kind = wasm.ElemPassive
+					mutate(bad)
+					if err := admitClosedReferenceFunctionModule(bad, vector); !errors.Is(err, ErrUnsupported) {
+						t.Fatal("unqualified table-free passive declaration", err)
+					}
+				})
+			}
+		})
+	}
+	for _, remaining := range []int{20, 19} {
+		t.Run(fmt.Sprintf("bytes%d", remaining), func(t *testing.T) {
+			m := &wasm.Module{Elements: []wasm.Elem{{
+				Mode: wasm.ElemMode{Kind: wasm.ElemPassive},
+				Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0}},
+			}}}
+			left := remaining
+			err := admitClosedReferenceElements(m, &left, func(index uint32) bool { return index == 0 })
+			if (err == nil) != (remaining == 20) || err == nil && left != 0 {
+				t.Fatal("table-free passive descriptor/payload byte boundary", err, left)
+			}
+		})
 	}
 }
 

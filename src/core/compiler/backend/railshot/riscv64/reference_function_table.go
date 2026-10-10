@@ -66,8 +66,17 @@ func admitClosedReferenceElements(m *wasm.Module, remaining *int, numericTarget 
 	}
 	values := MaxOwnedTableEntries
 	for _, e := range m.Elements {
-		if e.Mode.Kind != wasm.ElemDeclarative && (len(m.Tables) == 0 || e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive) || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Mode.Kind != wasm.ElemActive && len(e.Mode.Offset.BodyBytes) != 0 {
+		mode := e.Mode.Kind
+		modeOK := mode == wasm.ElemDeclarative || mode == wasm.ElemPassive || len(m.Tables) != 0 && mode == wasm.ElemActive
+		if !modeOK || e.Mode.Table != 0 || len(e.Mode.Offset.Instrs) != 0 || mode != wasm.ElemActive && len(e.Mode.Offset.BodyBytes) != 0 {
 			return unsupported("closed reference exact confined element mode")
+		}
+		tableFreePassive := len(m.Tables) == 0 && mode == wasm.ElemPassive
+		if tableFreePassive && (e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) == 0) {
+			return unsupported("closed reference table-free passive declaration requires a legacy target")
+		}
+		if tableFreePassive && !consume(16) {
+			return unsupported("closed reference passive element metadata byte bound")
 		}
 		switch e.Kind.Kind {
 		case wasm.ElemFuncs:
@@ -85,9 +94,8 @@ func admitClosedReferenceElements(m *wasm.Module, remaining *int, numericTarget 
 				return unsupported("closed reference exact nullable funcref expression elements")
 			}
 			values -= len(e.Kind.Exprs)
-			// The table proof already charges all original segment headers. Keep
-			// the qualified table-free legacy budget unchanged while charging new
-			// declarative expression headers even without a retained drop slot.
+			// The table proof already charges all original segment headers. A
+			// table-free declarative expression retains its exact type witness.
 			if len(m.Tables) == 0 && !consume(16) || e.Kind.Kind == wasm.ElemTypedExprs && !consume(1) {
 				return unsupported("closed reference expression element metadata byte bound")
 			}

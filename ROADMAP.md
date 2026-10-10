@@ -208,10 +208,17 @@ expression elements now compose with these private frames. Every original null
 or numeric function literal is proved before discarded declarative payloads are
 removed. Exact retained element type-pool bindings include empty/dropped slots;
 final declarations without retained slots do not intern unused types. Tableless
-declarative drops are bounded and idempotent; tableless active/passive state stays
-closed. Complete null replacement, expression-installed own/native/Go targets,
-original ordinals, exact aggregate bounds, compiler-free artifacts and retained
-codec rejection/repair qualify the slice. No new owner graph or ABI is needed.
+declarative drops are bounded and idempotent; tableless active state stays closed.
+Complete null replacement, expression-installed own/native/Go targets, original
+ordinals, exact aggregate bounds, compiler-free artifacts and retained codec
+rejection/repair qualify the slice. Closed typed-reference functions may also
+retain bounded, nonempty legacy passive declarations of numeric targets; the two
+executable modules from the pinned Core 3 `br_on_null.wast` now cover null/taken
+paths, `call_ref`, traps, block arguments and dirty-upper i32 ingress. This is a
+focused delta, not file-level Core 3 accounting: the declaration-only module,
+tableless active and typed-expression passive shapes, and the broader official
+typed-reference corpus remain unqualified on RV64. No new owner graph or ABI is
+needed.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
