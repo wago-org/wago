@@ -17,6 +17,16 @@ type referenceRootAccounting struct {
 	dependencies *rv64FunctionDependencyOwnership // cold native-function attachment records
 }
 
+// lifeMu is held. An active component claim freezes both graph-identified and
+// legacy/finalization-only acquisitions until its guard is rolled back or the
+// later collector has drained all outgoing ownership.
+func railshotResourceRootRetainAllowedLocked(in *Instance) bool {
+	if state := in.importState.Load(); state != nil && state.rootAccounting.dependencies != nil {
+		return !state.rootAccounting.dependencies.member.collecting.Load()
+	}
+	return true
+}
+
 // Called after resourceRefs increments, with lifeMu held.
 func railshotResourceRootAcquiredLocked(in *Instance) {
 	accounting := &in.ensureImportState().rootAccounting

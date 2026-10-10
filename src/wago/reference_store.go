@@ -3503,7 +3503,7 @@ func (in *Instance) retainResourceRootMode(finalization bool) bool {
 	}
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
-	if in.resourcesClosed || (!finalization && in.invocationState.Load()&instanceInvocationClosed != 0) || in.resourceRefs == maxInt() {
+	if in.resourcesClosed || !railshotResourceRootRetainAllowedLocked(in) || (!finalization && in.invocationState.Load()&instanceInvocationClosed != 0) || in.resourceRefs == maxInt() {
 		return false
 	}
 	in.resourceRefs++

@@ -18,14 +18,15 @@ const maxDependencyPrimitiveCapacity = 1 << dependencyReceiptSlotBits
 const maxDependencyReceiptGeneration = (uint64(1) << (64 - dependencyReceiptSlotBits)) - 1
 
 var (
-	errDependencyCapacity = errors.New("dependency metadata capacity exhausted")
-	errDependencyIdentity = errors.New("dependency identity exhausted or stale")
-	errDependencyMember   = errors.New("dependency member is not authoritative")
-	errDependencyState    = errors.New("dependency receipt state does not permit operation")
-	errDependencyClosed   = errors.New("dependency owner is closed or finalizing")
-	errDependencyLease    = errors.New("dependency consumer requires a construction or invocation lifetime")
-	errDependencyKind     = errors.New("dependency kind is invalid")
-	errDependencyGraph    = errors.New("dependency transfer requires the same graph")
+	errDependencyCapacity   = errors.New("dependency metadata capacity exhausted")
+	errDependencyIdentity   = errors.New("dependency identity exhausted or stale")
+	errDependencyMember     = errors.New("dependency member is not authoritative")
+	errDependencyState      = errors.New("dependency receipt state does not permit operation")
+	errDependencyClosed     = errors.New("dependency owner is closed or finalizing")
+	errDependencyLease      = errors.New("dependency consumer requires a construction or invocation lifetime")
+	errDependencyKind       = errors.New("dependency kind is invalid")
+	errDependencyGraph      = errors.New("dependency transfer requires the same graph")
+	errDependencyCollecting = errors.New("dependency member has an active collection claim")
 )
 
 type dependencyKind uint8
@@ -54,8 +55,9 @@ type dependencyMember struct {
 	owner *Instance // immutable; supplied by the sole future Instance holder
 	graph atomic.Pointer[dependencyGraph]
 	// Written before active publishes registration, never reused thereafter.
-	identity uint64
-	active   atomic.Bool
+	identity   uint64
+	active     atomic.Bool
+	collecting atomic.Bool
 	// Outstanding ownership, including Releasing, prevents source retirement.
 	// Cross-graph external adoption updates this under the owner's lifeMu.
 	outgoing atomic.Uint32
@@ -206,7 +208,7 @@ func (g *dependencyGraph) closedComponentMemberLocked(member *dependencyMember) 
 	}
 	owner := member.owner
 	state := owner.closeState.Load()
-	return owner.closed && !owner.finalizing && !owner.resourcesClosed && !owner.constructionActive && owner.invocationState.Load() == instanceInvocationClosed &&
+	return !member.collecting.Load() && owner.closed && !owner.finalizing && !owner.resourcesClosed && !owner.constructionActive && owner.invocationState.Load() == instanceInvocationClosed &&
 		state != nil && state.prepared.Load() && state.completed.Load() && state.terminalComplete.Load() && member.external == 0
 }
 
@@ -375,6 +377,12 @@ func (g *dependencyGraph) discoverClosedComponent(seed *dependencyMember, nodeBu
 // extent bounds this second scan; growth conservatively invalidates the
 // candidate instead of extending work after discovery.
 func (g *dependencyGraph) revalidateClosedComponent(candidate dependencyComponent) bool {
+	return g.withRevalidatedClosedComponent(candidate, nil)
+}
+
+// withRevalidatedClosedComponent optionally runs a non-callback commit while
+// the exact graph and member lifetime snapshot is still locked.
+func (g *dependencyGraph) withRevalidatedClosedComponent(candidate dependencyComponent, commit func()) bool {
 	if g == nil || candidate.status != dependencyComponentCandidate || candidate.graph != g || len(candidate.members) == 0 ||
 		len(candidate.members) != len(candidate.memberIdentities) || len(candidate.members) != len(candidate.memberOutgoing) ||
 		len(candidate.members) > g.nodeCap || candidate.receiptSlots <= 0 || candidate.receiptSlots > g.receiptCap ||
@@ -448,6 +456,78 @@ func (g *dependencyGraph) revalidateClosedComponent(candidate dependencyComponen
 			return false
 		}
 	}
+	if commit != nil {
+		commit()
+	}
+	return true
+}
+
+// dependencyComponentClaim owns one synthetic guard root on every member. It
+// only freezes acquisition; it does not drain receipts or release resources.
+// The claim is pointer-owned because copying an atomic release identity would
+// create ambiguous rollback authority.
+type dependencyComponentClaim struct {
+	graph   *dependencyGraph
+	members []*dependencyMember
+	active  atomic.Bool
+}
+
+func (g *dependencyGraph) claimClosedComponent(candidate dependencyComponent) (*dependencyComponentClaim, bool) {
+	claim := &dependencyComponentClaim{graph: g}
+	if !g.withRevalidatedClosedComponent(candidate, func() {
+		claim.members = append(claim.members, candidate.members...)
+		for _, member := range claim.members {
+			member.collecting.Store(true)
+			member.owner.resourceRefs++
+			railshotResourceRootAcquiredLocked(member.owner)
+		}
+		claim.active.Store(true)
+	}) {
+		return nil, false
+	}
+	return claim, true
+}
+
+// release rolls back this guard exactly once. A later collector can use the
+// same terminal operation after it has drained holder-specific outgoing roots;
+// ordinary finalization remains responsible for physical teardown.
+func (claim *dependencyComponentClaim) release() bool {
+	if claim == nil || claim.graph == nil || len(claim.members) == 0 || !claim.active.Load() {
+		return false
+	}
+	g := claim.graph
+	g.mu.Lock()
+	if !claim.active.Load() {
+		g.mu.Unlock()
+		return false
+	}
+	for _, member := range claim.members {
+		member.owner.lifeMu.Lock()
+	}
+	for _, member := range claim.members {
+		if !g.authoritativeLocked(member) || !member.collecting.Load() || member.owner.resourceRefs == 0 {
+			for i := len(claim.members) - 1; i >= 0; i-- {
+				claim.members[i].owner.lifeMu.Unlock()
+			}
+			g.mu.Unlock()
+			panic("dependency component claim lost its guard authority")
+		}
+	}
+	claim.active.Store(false) // g.mu serializes every release owner
+	for _, member := range claim.members {
+		member.owner.resourceRefs--
+		railshotResourceRootReleasedLocked(member.owner)
+		member.collecting.Store(false)
+	}
+	for i := len(claim.members) - 1; i >= 0; i-- {
+		claim.members[i].owner.lifeMu.Unlock()
+	}
+	g.mu.Unlock()
+	var cleanup resourceCleanup
+	for _, member := range claim.members {
+		cleanup.run(member.owner.tryFinalize)
+	}
+	cleanup.finish()
 	return true
 }
 
@@ -500,6 +580,9 @@ func (g *dependencyGraph) acquirePending(target *dependencyMember, finalization 
 	defer g.mu.Unlock()
 	if !g.authoritativeLocked(target) {
 		return dependencyReceipt{}, errDependencyMember
+	}
+	if target.collecting.Load() {
+		return dependencyReceipt{}, errDependencyCollecting
 	}
 	slot, err := g.reserveLocked()
 	if err != nil {

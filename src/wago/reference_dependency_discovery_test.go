@@ -3,6 +3,8 @@
 package wago
 
 import (
+	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -472,5 +474,156 @@ func TestDependencyClosedComponentRevalidationOutgoingBarrier(t *testing.T) {
 	fresh := g.discoverClosedComponent(a, 3, 4)
 	if fresh.status != dependencyComponentCandidate || !g.revalidateClosedComponent(fresh) {
 		t.Fatalf("fresh component after outbound release = %#v", fresh)
+	}
+}
+
+func TestDependencyClosedComponentClaimRollback(t *testing.T) {
+	g := dependencyTestGraph(t, 1, 1)
+	member := dependencyTestMember(t, g, false)
+	dependencyTestInvocationLease(member)
+	receipt := dependencyTestAcquire(t, g, member)
+	if typed, err := receipt.adopt(member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	dependencyTestClosedForDiscovery(t, member)
+	candidate := g.discoverClosedComponent(member, 1, 1)
+	claim, ok := g.claimClosedComponent(candidate)
+	if !ok || claim == nil || !claim.active.Load() || !member.collecting.Load() {
+		t.Fatal("failed to claim closed self-component")
+	}
+	t.Cleanup(func() { claim.release() })
+	dependencyTestCounts(t, g, member, 2, 1, 0, 1)
+	if duplicate, ok := g.claimClosedComponent(candidate); ok || duplicate != nil {
+		t.Fatal("duplicate component claim succeeded")
+	}
+	if result := g.discoverClosedComponent(member, 1, 1); result.status != dependencyComponentBlocked {
+		t.Fatalf("claimed component rediscovered: %#v", result)
+	}
+	if _, err := g.acquirePending(member, true); !errors.Is(err, errDependencyCollecting) {
+		t.Fatalf("claimed target acquired another receipt: %v", err)
+	}
+	if !claim.release() || claim.release() || claim.active.Load() || member.collecting.Load() {
+		t.Fatal("component claim did not roll back exactly once")
+	}
+	dependencyTestCounts(t, g, member, 1, 1, 0, 1)
+	if !g.revalidateClosedComponent(candidate) {
+		t.Fatal("rolled-back component did not restore exact candidate")
+	}
+}
+
+func TestDependencyClosedComponentConcurrentClaimAndRollback(t *testing.T) {
+	g := dependencyTestGraph(t, 1, 1)
+	member := dependencyTestMember(t, g, false)
+	dependencyTestInvocationLease(member)
+	receipt := dependencyTestAcquire(t, g, member)
+	if typed, err := receipt.adopt(member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	dependencyTestClosedForDiscovery(t, member)
+	candidate := g.discoverClosedComponent(member, 1, 1)
+	start := make(chan struct{})
+	type claimResult struct {
+		claim *dependencyComponentClaim
+		panic any
+	}
+	results := make(chan claimResult, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			result := claimResult{}
+			defer func() {
+				result.panic = recover()
+				results <- result
+			}()
+			<-start
+			result.claim, _ = g.claimClosedComponent(candidate)
+		}()
+	}
+	close(start)
+	var acquired []*dependencyComponentClaim
+	for i := 0; i < 2; i++ {
+		select {
+		case result := <-results:
+			if result.panic != nil {
+				t.Fatalf("concurrent claim panic: %v", result.panic)
+			}
+			if result.claim != nil {
+				acquired = append(acquired, result.claim)
+				t.Cleanup(func() { result.claim.release() })
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out joining concurrent claim worker")
+		}
+	}
+	if len(acquired) != 1 {
+		t.Fatalf("concurrent successful claims = %d", len(acquired))
+	}
+	claim := acquired[0]
+	type rollbackResult struct {
+		released bool
+		panic    any
+	}
+	released := make(chan rollbackResult, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			result := rollbackResult{}
+			defer func() {
+				result.panic = recover()
+				released <- result
+			}()
+			result.released = claim.release()
+		}()
+	}
+	var rollback [2]rollbackResult
+	for i := range rollback {
+		select {
+		case rollback[i] = <-released:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out joining concurrent rollback worker")
+		}
+	}
+	if rollback[0].panic != nil || rollback[1].panic != nil || rollback[0].released == rollback[1].released {
+		t.Fatalf("concurrent claim releases = %+v", rollback)
+	}
+	dependencyTestCounts(t, g, member, 1, 1, 0, 1)
+}
+
+func TestDependencyClosedComponentRollbackContinuesFinalizationAfterPanic(t *testing.T) {
+	g := dependencyTestGraph(t, 2, 2)
+	a := &dependencyMember{owner: &Instance{c: &Compiled{}}}
+	b := &dependencyMember{owner: &Instance{c: &Compiled{}}}
+	if err := g.register(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.register(b); err != nil {
+		t.Fatal(err)
+	}
+	dependencyTestInvocationLease(a, b)
+	aToB := dependencyTestAcquire(t, g, b)
+	bToA := dependencyTestAcquire(t, g, a)
+	if typed, err := aToB.adopt(a, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	if typed, err := bToA.adopt(b, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	dependencyTestClosedForDiscovery(t, a, b)
+	first := new(int)
+	var visited []int
+	a.owner.referenceLifetime().afterPhysicalRelease(func() { visited = append(visited, 0); panic(first) })
+	b.owner.referenceLifetime().afterPhysicalRelease(func() { visited = append(visited, 1) })
+	claim, ok := g.claimClosedComponent(g.discoverClosedComponent(a, 2, 2))
+	if !ok {
+		t.Fatal("component claim failed")
+	}
+	t.Cleanup(func() { claim.release() })
+	if !aToB.release() || !bToA.release() {
+		t.Fatal("failed to drain internal cycle receipts under guards")
+	}
+	value, panicked := cleanupTestPanic(func() { claim.release() })
+	if !panicked || value != first || !reflect.DeepEqual(visited, []int{0, 1}) {
+		t.Fatalf("rollback panic=%v/%t callbacks=%v", value, panicked, visited)
+	}
+	if a.owner.resourceRefs != 0 || b.owner.resourceRefs != 0 || !a.owner.resourcesClosed || !b.owner.resourcesClosed || a.collecting.Load() || b.collecting.Load() || claim.active.Load() {
+		t.Fatal("component guards or finalization state remained after panic")
 	}
 }
