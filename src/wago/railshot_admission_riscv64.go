@@ -128,7 +128,10 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.nativeTable64ABI == nativeTable64GetSetABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64GetSet(c)) {
 		return reject("table64.get/set compiler witness requires its exact owned table64 profile")
 	}
-	if c.nativeTable64ABI > nativeTable64GetSetABI {
+	if c.nativeTable64ABI == nativeTable64IndirectABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Indirect(c)) {
+		return reject("table64 indirect-call compiler witness requires its exact owned table64 profile")
+	}
+	if c.nativeTable64ABI > nativeTable64IndirectABI {
 		return reject("unknown table64 compiler witness")
 	}
 	if c.requiredFeatures.IsEnabled(CoreFeatureTable64) && !rv64QualifiedTable64(c) {

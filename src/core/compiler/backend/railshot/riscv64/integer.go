@@ -1105,9 +1105,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("indirect call count/slot budget")
 			}
 			if functionRefs {
-				err = condition()
+				if state.table64 && !tail {
+					err = popWidth(true)
+				} else {
+					err = condition()
+				}
 			} else if tail {
 				err = popWidth(false)
+			} else if state.table64 {
+				err = popWidth(true)
 			} else {
 				_, err = pop()
 			}
@@ -1140,7 +1146,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						emit.localIndirectTailCall(sig.signature, sig.key, h, indexSlot, emit.SpillOffset)
 					}
 				} else {
-					emit.indirectCall(sig, h, indexSlot)
+					emit.indirectCall(sig, h, indexSlot, state.table64)
 				}
 			}
 			if tail {

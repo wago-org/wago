@@ -153,6 +153,24 @@ func rv64Table64GetSetInstructionSource() []byte {
 	)
 }
 
+func rv64Table64IndirectInstructionSource() []byte {
+	declaredTarget := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", byte(wasm.ExternFunc), 1), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(9, wasmtest.Vec(declaredTarget)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 7, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x26, 0, 0x20, 0, 0x11, 0, 0, 0x0b}),
+		)),
+	)
+}
+
 func rv64RelabelledTable32FunctionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
@@ -266,6 +284,92 @@ func TestRV64PublicOwnedTable64GetSet(t *testing.T) {
 			}
 			if got, err := in.Invoke("roundtrip", 0); err != nil || !slices.Equal(got, []uint64{1}) {
 				t.Fatal("table64 get/set reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64Indirect(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-indirect", rv64Table64IndirectInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64IndirectABI || !rv64OwnedTable64Indirect(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("table64 indirect-call metadata contract: witness=%d qualified=%v features=%#x funcs=%+v refs=%v descs=%v typeids=%v elems=%+v passive=%+v", c.nativeTable64ABI, rv64OwnedTable64Indirect(c), c.requiredFeatures, c.Funcs, c.nativeReferenceFunctionABI, c.NeedsFuncRefDescs, c.FuncTypeID, c.Elems, c.passiveElems)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("table64 indirect-call export", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for _, index := range []uint64{0, 1} {
+				if got, err := in.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("table64 indirect call", index, got, err)
+				}
+			}
+			before := slices.Clone(table.desc)
+			for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
+				got, err := in.Invoke("call", index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 1 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("table64 indirect index did not trap", index, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("table64 indirect trap changed storage", index)
+				}
+			}
+			if got, err := in.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("table64 indirect reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64IndirectArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-indirect-admission", rv64Table64IndirectInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness":  func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"getset-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64GetSetABI },
+		"target-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"caller-param":     func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
+		"missing-ref":      func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
+		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
+		"no-max":           func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 13)
+		},
+		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"active-element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32":        func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64 indirect metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64 indirect artifact admitted")
 			}
 		})
 	}
@@ -461,6 +565,9 @@ func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
 		"contradictory-grow-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
 		"contradictory-getset-witness": func(v *Compiled) {
 			v.nativeTable64ABI = nativeTable64GetSetABI
+		},
+		"contradictory-indirect-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64IndirectABI
 		},
 		"table32":     func(v *Compiled) { v.TableAddr64 = false },
 		"start":       func(v *Compiled) { v.HasStart = true },

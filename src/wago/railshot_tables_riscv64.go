@@ -92,8 +92,33 @@ func rv64OwnedTable64GetSet(c *Compiled) bool {
 	return true
 }
 
+func rv64OwnedTable64Indirect(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || !c.TableHasMax || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) == 0 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	target, caller := c.Funcs[0], c.Funcs[1]
+	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || len(caller.Params) != 1 || caller.Params[0] != ValI64 || len(caller.Results) != 1 || caller.Results[0] != ValI32 {
+		return false
+	}
+	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) || c.nativeReferenceFunctionABI || !c.NeedsFuncRefDescs || len(c.FuncTypeID) != 2 {
+		return false
+	}
+	for _, index := range c.Exports {
+		if index != 1 {
+			return false
+		}
+	}
+	return true
+}
+
 func rv64QualifiedTable64(c *Compiled) bool {
-	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTable64GetSet(c)
+	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTable64Indirect(c)
 }
 
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy

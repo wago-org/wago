@@ -287,6 +287,59 @@ func admitOwnedTable64GetSet(m *wasm.Module, production, public bool) bool {
 	return hasFunctionExport
 }
 
+// admitOwnedTable64Indirect admits one exact local target and one exported
+// caller. A declarative legacy element only declares ref.func 0; it is dropped
+// before instantiation and cannot initialize table storage. The caller installs
+// that target at its i64 operand and immediately calls it through table 0.
+func admitOwnedTable64Indirect(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Tables[0].Init != nil || m.Start != nil {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	table := m.Tables[0].Type
+	if !table.Limits.Addr64 || !table.Limits.HasMax || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+		return false
+	}
+	for i := range m.Types {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != uint32(i) || len(m.Types[i].SubTypes) != 1 {
+			return false
+		}
+		sub := m.Types[i].SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) {
+			return false
+		}
+		if i == 0 && len(sub.Comp.Params) != 0 || i == 1 && (len(sub.Comp.Params) != 1 || !wasm.EqualValType(sub.Comp.Params[0], wasm.I64)) {
+			return false
+		}
+	}
+	e := m.Elements[0]
+	if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) != 1 || e.Kind.Funcs[0] != 0 || len(e.Kind.Exprs) != 0 {
+		return false
+	}
+	if len(m.Code[0].Locals.Runs) != 0 || len(m.Code[0].Body.Instrs) != 0 || !bytes.Equal(m.Code[0].BodyBytes, []byte{0x41, 7, 0x0b}) || len(m.Code[1].Locals.Runs) != 0 || len(m.Code[1].Body.Instrs) != 0 || !bytes.Equal(m.Code[1].BodyBytes, []byte{0x20, 0, 0xd2, 0, 0x26, 0, 0x20, 0, 0x11, 0, 0, 0x0b}) {
+		return false
+	}
+	hasFunctionExport := false
+	for _, export := range m.Exports {
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			if export.Index.Index != 1 {
+				return false
+			}
+			hasFunctionExport = true
+		case wasm.ExternTable:
+			if export.Index.Index != 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return hasFunctionExport
+}
+
 // Imported storage uses the retained canonical target ABI, never the private
 // same-instance pilot. Count and capacity limits precede validation/copies.
 func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, error) {
@@ -305,7 +358,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	if hasTable {
 		t, _ := m.TableType(0)
-		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) {
+		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) {
 			return false, unsupported("private nullable funcref table32 only")
 		}
 	}
@@ -363,8 +416,8 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	return hasTable, nil
 }
 
-func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int) {
-	f.Load(5, f.SpillOffset(indexSlot), false) // zero-normalize dirty incoming i32
+func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int, indexWide bool) {
+	f.Load(5, f.SpillOffset(indexSlot), indexWide) // table32 zero-normalizes dirty incoming i32; table64 preserves all bits
 	f.ownedIndirectTarget(sig.key)
 	// All dynamic guards precede writes to potentially smaller shared call arenas.
 	f.restoreCallTransport()

@@ -96,6 +96,57 @@ func nativeTableCallCodeRV64(t *testing.T, m *wasm.Module, vector bool) uintptr 
 	return thunkImageRV64(t, code)
 }
 
+// nativeTable64IndirectCodeRV64 deliberately omits the source-profile
+// table.set prefix. It is a trusted emitter probe for call_indirect's own i64
+// spill load and unsigned bounds guard; public admission remains exact.
+func nativeTable64IndirectCodeRV64(t *testing.T, m *wasm.Module) uintptr {
+	t.Helper()
+	specs := make([]functionSpec, len(m.Types))
+	for i := range specs {
+		ft := &m.Types[i].SubTypes[0].Comp
+		specs[i] = functionSpec{signature: ft, params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results))}
+		var ok bool
+		specs[i].key, ok = m.StructuralTypeKeyChecked(uint32(i))
+		if !ok {
+			t.Fatal("table64 indirect immutable type key")
+		}
+		for j, typ := range ft.Params {
+			specs[i].params[j] = scalarWide(typ)
+		}
+		for j, typ := range ft.Results {
+			specs[i].results[j] = scalarWide(typ)
+		}
+	}
+	state := moduleState{production: true, foreignTableCalls: true, ownedTable: true, table64: true, functions: specs, types: specs}
+	fn := wasm.Func{BodyBytes: []byte{0x20, 0, 0x11, 0, 0, 0x0b}}
+	ft := specs[1].signature
+	summary, err := walkInteger(&fn, ft, &state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mode := emissionMode{production: true, interruptible: true, foreignTableCalls: true, functionIndex: 1}
+	code, _, _, err := compileIntegerMode(&fn, ft, &state, summary, mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return thunkImageRV64(t, code)
+}
+
+func nativeTable64TargetCodeRV64(t *testing.T, m *wasm.Module) uintptr {
+	t.Helper()
+	state := moduleState{production: true}
+	ft := &m.Types[0].SubTypes[0].Comp
+	summary, err := walkInteger(&m.Code[0], ft, &state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, _, err := compileIntegerMode(&m.Code[0], ft, &state, summary, emissionMode{production: true, interruptible: true, functionIndex: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return thunkImageRV64(t, code)
+}
+
 func nativeTableCallCellsRV64(types []wasm.ValType) (input, want []uint64) {
 	for index, typ := range types {
 		switch typ {
@@ -232,5 +283,57 @@ func TestPrivateNativeTableRV64ActualScalarAndSWARIndirectCalls(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestPrivateNativeTable64RV64IndirectWideBoundsPrewriteAndReuse(t *testing.T) {
+	m := ownedTable64IndirectProfile()
+	f := nativeTableFixtureRV64(t, false)
+	d := nativeTableDescriptorRV64(f, nativeTable64TargetCodeRV64(t, m))
+	key, ok := m.StructuralTypeKeyChecked(0)
+	if !ok {
+		t.Fatal("table64 indirect target key")
+	}
+	binary.LittleEndian.PutUint64(d[8:], key)
+	ar, err := coreruntime.NewArena(8 + 2*coreruntime.TableEntryBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ar.Close() })
+	table := ar.Alloc(8 + 2*coreruntime.TableEntryBytes)
+	binary.LittleEndian.PutUint32(table, 2)
+	binary.LittleEndian.PutUint32(table[4:], 2)
+	copy(table[8:], d[:coreruntime.TableEntryBytes])
+	beforeTable := bytes.Clone(table)
+	binary.LittleEndian.PutUint64(f.callerContext[8:], uint64(thunkPointerRV64(table)))
+	f.bindCaller(t)
+	f.caller.SetRV64NativeContext(thunkPointerRV64(f.callerContext))
+	entry := nativeTable64IndirectCodeRV64(t, m)
+
+	runLow := func() {
+		binary.LittleEndian.PutUint64(f.args, 0)
+		for i := range f.results {
+			f.results[i] = 0xa5
+		}
+		if err := f.e.CallPrepared(entry, f.args, f.caller.LinMemBase(), f.trap, f.results); err != nil || binary.LittleEndian.Uint64(f.results) != 7 || !bytes.Equal(f.results[8:], bytes.Repeat([]byte{0xa5}, len(f.results)-8)) || binary.LittleEndian.Uint64(f.args) != 0 || !bytes.Equal(table, beforeTable) {
+			t.Fatal("table64 indirect low-index execution/reuse", err)
+		}
+		f.assertCaller(t)
+	}
+	runLow()
+	for _, index := range []uint64{1 << 32, ^uint64(0)} {
+		binary.LittleEndian.PutUint64(f.args, index)
+		beforeArgs := bytes.Clone(f.args)
+		for i := range f.results {
+			f.results[i] = 0xa5
+		}
+		err := f.e.CallPrepared(entry, f.args, f.caller.LinMemBase(), f.trap, f.results)
+		var trap *coreruntime.TrapError
+		if !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds || len(trap.Frames) != 1 || trap.Frames[0].FunctionIndex != 1 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 2 || !bytes.Equal(f.args, beforeArgs) || !bytes.Equal(f.results, bytes.Repeat([]byte{0xa5}, len(f.results))) || !bytes.Equal(table, beforeTable) {
+			t.Fatal("table64 indirect wide guard before transport writes", index, err)
+		}
+		clear(f.trap)
+		f.assertCaller(t)
+		runLow()
 	}
 }
