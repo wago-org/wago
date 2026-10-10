@@ -26,6 +26,10 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// Private A/B switch: retained-control trimming stays opt-in until real
+// application memory and allocation costs justify enabling it.
+var controlScratchTrimEnabled = os.Getenv("WAGO_EXPERIMENT_CONTROL_SCRATCH_TRIM") == "1"
+
 // regMergeEnabled turns on WARP-style register reconciliation of single-int-result
 // block/if merges instead of the
 // flush-to-slot + reload. Default ON (fib_rec −13.7%, json-as serialize −1.5%, no
@@ -854,6 +858,7 @@ type scratch struct {
 	controlMergeDiscarded   uint32
 	controlRootPeak         uint32
 	controlRootDiscarded    uint32
+	smallControlRuns        uint8 // two small functions before releasing a deep outlier
 	transient
 }
 
@@ -948,6 +953,46 @@ func (sc *scratch) finishControlWorker() {
 		sc.controlMergeDiscarded += uint32(capacity)
 	}
 	if capacity := cap(sc.ctrlRoots); capacity != 0 {
+		clear(sc.ctrlRoots[:capacity])
+		sc.ctrlRoots = nil
+		sc.controlRootDiscarded += uint32(capacity)
+	}
+}
+
+// A single small function between deep functions should not force a regrowth.
+// Once two shallow functions follow an outlier, release only oversized control
+// backings. No replacement buffers are allocated here; ordinary capacities
+// continue to be reused by the same worker.
+func (sc *scratch) trimControlScratch(nextDepth uint8) {
+	const maxRetainedControlFrames = 256
+	if nextDepth > 8 {
+		sc.smallControlRuns = 0
+		return
+	}
+	if sc.smallControlRuns < 2 {
+		sc.smallControlRuns++
+	}
+	if sc.smallControlRuns < 2 {
+		return
+	}
+	// Retained frames cache merge-slot indices across functions. If either cold
+	// sidecar is released while the frame backing stays small, invalidate those
+	// indices before the next pushCtrl can reuse them.
+	if cap(sc.ctrl) <= maxRetainedControlFrames &&
+		(cap(sc.ctrlMerges) > maxRetainedControlFrames || cap(sc.ctrlRoots) > maxRetainedControlFrames) {
+		clear(sc.ctrl[:cap(sc.ctrl)])
+	}
+	if capacity := cap(sc.ctrl); capacity > maxRetainedControlFrames {
+		clear(sc.ctrl[:capacity])
+		sc.ctrl = nil
+		sc.controlScratchDiscarded += capacity
+	}
+	if capacity := cap(sc.ctrlMerges); capacity > maxRetainedControlFrames {
+		clear(sc.ctrlMerges[:capacity])
+		sc.ctrlMerges = nil
+		sc.controlMergeDiscarded += uint32(capacity)
+	}
+	if capacity := cap(sc.ctrlRoots); capacity > maxRetainedControlFrames {
 		clear(sc.ctrlRoots[:capacity])
 		sc.ctrlRoots = nil
 		sc.controlRootDiscarded += uint32(capacity)
@@ -3487,6 +3532,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// local runs. Reuse that result.
 	nLocals := hints.nLocals
 
+	if controlScratchTrimEnabled {
+		sc.trimControlScratch(hints.maxControlDepth)
+	}
 	sc.reset()
 	if diagnosticsEnabled && stats != nil {
 		sc.asm.EncodingStats = &stats.Encoding

@@ -23,6 +23,10 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// Private A/B switch shared with AMD64. The ordinary worker reuse path is
+// unchanged while resource evidence remains inconclusive.
+var controlScratchTrimEnabled = os.Getenv("WAGO_EXPERIMENT_CONTROL_SCRATCH_TRIM") == "1"
+
 // regMergeEnabled turns on WARP-style register reconciliation of single-int-result
 // block/if merges instead of the
 // flush-to-slot + reload. Default ON (fib_rec −13.7%, json-as serialize −1.5%, no
@@ -676,6 +680,7 @@ type scratch struct {
 	controlMergeDiscarded   int
 	controlRootsPeak        int
 	controlRootsDiscarded   int
+	smallControlRuns        uint8 // two small functions before releasing a deep outlier
 	adapterTemplate         adapterTemplateCache
 	// adapterBacklink caches, for this scratch's single module, whether any
 	// function has a dynamic call (call_ref/return_call_ref and friends).
@@ -841,6 +846,44 @@ func (sc *scratch) finishControlWorker() {
 		sc.controlMergeDiscarded += capacity
 	}
 	if capacity := cap(sc.ctrlRoots); capacity != 0 {
+		clear(sc.ctrlRoots[:capacity])
+		sc.ctrlRoots = nil
+		sc.controlRootsDiscarded += capacity
+	}
+}
+
+// Preserve ordinary reuse and avoid deep/small/deep growth oscillation.
+// Oversized pointer-rich backings are cleared and dropped only after two
+// consecutive shallow functions; replacement storage is allocated on demand.
+func (sc *scratch) trimControlScratch(nextDepth uint8) {
+	const maxRetainedControlFrames = 256
+	if nextDepth > 8 {
+		sc.smallControlRuns = 0
+		return
+	}
+	if sc.smallControlRuns < 2 {
+		sc.smallControlRuns++
+	}
+	if sc.smallControlRuns < 2 {
+		return
+	}
+	// Retained frames cache merge-slot indices across functions. Invalidate
+	// them when an oversized sidecar is released but the frame array remains.
+	if cap(sc.ctrl) <= maxRetainedControlFrames &&
+		(cap(sc.ctrlMerges) > maxRetainedControlFrames || cap(sc.ctrlRoots) > maxRetainedControlFrames) {
+		clear(sc.ctrl[:cap(sc.ctrl)])
+	}
+	if capacity := cap(sc.ctrl); capacity > maxRetainedControlFrames {
+		clear(sc.ctrl[:capacity])
+		sc.ctrl = nil
+		sc.controlScratchDiscarded += capacity
+	}
+	if capacity := cap(sc.ctrlMerges); capacity > maxRetainedControlFrames {
+		clear(sc.ctrlMerges[:capacity])
+		sc.ctrlMerges = nil
+		sc.controlMergeDiscarded += capacity
+	}
+	if capacity := cap(sc.ctrlRoots); capacity > maxRetainedControlFrames {
 		clear(sc.ctrlRoots[:capacity])
 		sc.ctrlRoots = nil
 		sc.controlRootsDiscarded += capacity
@@ -3036,6 +3079,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// local runs. Reuse that result.
 	nLocals := hints.nLocals
 
+	if controlScratchTrimEnabled {
+		sc.trimControlScratch(hints.maxControlDepth)
+	}
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOpCount() >= 8
 	// The encoder's local instruction proof does not track branch targets.
