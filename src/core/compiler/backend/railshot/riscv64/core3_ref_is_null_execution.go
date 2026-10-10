@@ -30,7 +30,7 @@ func isCore3RefIsNullExecutionWire(data []byte) bool {
 // gate remains closed until this exact module has complete table, token,
 // initialization, artifact and lifetime qualification.
 func isCore3RefIsNullExecution(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 7 || len(m.FuncTypes) != 10 || len(m.Code) != 10 || len(m.Tables) != 3 || len(m.Elements) != 2 || len(m.Exports) != 8 || len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.NameSec != nil || len(m.RawNameSecPayload) != 0 || m.BranchHints != nil || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 7 || len(m.FuncTypes) != 10 || len(m.Code) != 10 || len(m.Tables) != 3 || len(m.Elements) != 2 || len(m.Exports) != 8 || len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Types {

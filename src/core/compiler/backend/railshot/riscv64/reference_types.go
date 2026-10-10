@@ -13,6 +13,10 @@ type internalReferenceTypes struct {
 	decoded           []wasm.RecType
 	decodedSWAR       bool
 	declarationExtern bool
+	// This exact execution permission admits nullable abstract extern carriers
+	// in function signatures and locals. Explicit block/select annotations must
+	// never inherit it.
+	executionExtern bool
 	// This permission is separate from declarationExtern because it applies to
 	// an exact non-null function parameter, never block/select annotations.
 	declarationNonNullExtern bool
@@ -73,11 +77,11 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return false
 	}
 	heap := ref.Heap()
-	// The pinned Core 3 br_on_null declaration module has one nullable abstract
-	// externref parameter. Its enclosing whole-module proof establishes that no
-	// function or value is callable, nameable or publishable. Keep this exception
-	// out of every ordinary control/call directory.
-	if types.declarationExtern && ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
+	// Exact Core 3 declaration and execution profiles contain nullable abstract
+	// externref carriers. Their enclosing whole-module proofs establish which
+	// functions may execute or publish. Keep these exceptions out of every
+	// ordinary control/call directory.
+	if (types.declarationExtern || types.executionExtern) && ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
 		return true
 	}
 	if types.declarationNonNullExtern && !ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {

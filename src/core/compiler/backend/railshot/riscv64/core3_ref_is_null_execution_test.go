@@ -61,26 +61,91 @@ func TestCore3RefIsNullExecutionWireConfinement(t *testing.T) {
 
 func TestCore3RefIsNullExecutionDecodedConfinement(t *testing.T) {
 	mutations := map[string]func(*wasm.Module){
-		"type": func(m *wasm.Module) {
+		"type-heap": func(m *wasm.Module) {
 			m.Types[2].SubTypes[0].Comp.Params[0] = wasm.FuncRef
+		},
+		"type-nullability": func(m *wasm.Module) {
+			m.Types[3].SubTypes[0].Comp.Params[0] = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{}), false))
+		},
+		"type-index": func(m *wasm.Module) {
+			m.Types[3].SubTypes[0].Comp.Params[0] = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))
+		},
+		"type-final":  func(m *wasm.Module) { m.Types[0].SubTypes[0].Final = false },
+		"type-prefix": func(m *wasm.Module) { m.Types[0].SubTypes[0].HasPrefix = true },
+		"type-super": func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Supers = []wasm.TypeIdx{{Index: 1}}
+		},
+		"type-describes": func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Metadata.Describes = wasm.SomeTypeIdx(wasm.TypeIdx{Index: 1})
+		},
+		"type-descriptor": func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Metadata.Descriptor = wasm.SomeTypeIdx(wasm.TypeIdx{Index: 1})
+		},
+		"type-fields": func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Comp.Fields = []wasm.FieldType{wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Const)}
+		},
+		"type-array": func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Comp.Array = wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Const)
+		},
+		"type-results": func(m *wasm.Module) { m.Types[4].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"type-group": func(m *wasm.Module) {
+			m.Types[0].SubTypes = append(m.Types[0].SubTypes, m.Types[0].SubTypes[0])
 		},
 		"binding": func(m *wasm.Module) { m.FuncTypes[9].Index = 5 },
 		"body":    func(m *wasm.Module) { m.Code[9].BodyBytes[3] = 1 },
+		"body-order": func(m *wasm.Module) {
+			m.Code[6].BodyBytes[0], m.Code[6].BodyBytes[2] = m.Code[6].BodyBytes[2], m.Code[6].BodyBytes[0]
+		},
+		"local-decl":   func(m *wasm.Module) { m.Code[0].LocalDeclBytes = 2 },
+		"decoded-body": func(m *wasm.Module) { m.Code[0].Body.Instrs = []wasm.Instruction{{Kind: wasm.InstrNop}} },
 		"local": func(m *wasm.Module) {
 			m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I32}}
 		},
-		"table-type":    func(m *wasm.Module) { m.Tables[1].Type.Ref = wasm.FuncRef.Ref() },
-		"table-size":    func(m *wasm.Module) { m.Tables[2].Type.Limits.Min = 3 },
+		"table-type": func(m *wasm.Module) { m.Tables[1].Type.Ref = wasm.FuncRef.Ref() },
+		"table-size": func(m *wasm.Module) { m.Tables[2].Type.Limits.Min = 3 },
+		"table-max": func(m *wasm.Module) {
+			m.Tables[1].Type.Limits.HasMax, m.Tables[1].Type.Limits.Max = true, 2
+		},
+		"table-addr64": func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = true },
+		"table-init": func(m *wasm.Module) {
+			m.Tables[1].Init = &wasm.Expr{BodyBytes: []byte{0xd0, 0x6f, 0x0b}}
+		},
+		"table-order":   func(m *wasm.Module) { m.Tables[0], m.Tables[1] = m.Tables[1], m.Tables[0] },
 		"element-table": func(m *wasm.Module) { m.Elements[1].Mode.Table = 1 },
+		"element-mode":  func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemPassive },
+		"element-kind":  func(m *wasm.Module) { m.Elements[1].Kind.Kind = wasm.ElemFuncExprs },
+		"element-ref":   func(m *wasm.Module) { m.Elements[1].Kind.Ref = wasm.FuncRef.Ref() },
+		"element-nullability": func(m *wasm.Module) {
+			m.Elements[1].Kind.Ref = wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false)
+		},
+		"element-offset":       func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes[1] = 0 },
+		"element-offset-instr": func(m *wasm.Module) { m.Elements[0].Mode.Offset.Instrs = []wasm.Instruction{{Kind: wasm.InstrNop}} },
+		"element-expr-instr":   func(m *wasm.Module) { m.Elements[1].Kind.Exprs[0].Instrs = []wasm.Instruction{{Kind: wasm.InstrNop}} },
 		"element-target": func(m *wasm.Module) {
 			m.Elements[1].Kind.Exprs[0].BodyBytes[1] = 1
 		},
-		"export":      func(m *wasm.Module) { m.Exports[0].Index.Index = 0 },
-		"import":      func(m *wasm.Module) { m.Imports = append(m.Imports, wasm.Import{}) },
-		"start":       func(m *wasm.Module) { index := wasm.FuncIdx(0); m.Start = &index },
-		"custom":      func(m *wasm.Module) { m.Customs = append(m.Customs, wasm.CustomSec{Name: "x"}) },
-		"raw-name":    func(m *wasm.Module) { m.RawNameSecPayload = []byte{0} },
-		"branch-hint": func(m *wasm.Module) { m.BranchHints = []wasm.FuncBranchHints{{FuncIndex: 0}} },
+		"element-func": func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 1 },
+		"export-index": func(m *wasm.Module) { m.Exports[0].Index.Index = 0 },
+		"export-name":  func(m *wasm.Module) { m.Exports[0].Name = "other" },
+		"export-kind":  func(m *wasm.Module) { m.Exports[0].Index.Kind = wasm.ExternTable },
+		"export-order": func(m *wasm.Module) { m.Exports[0], m.Exports[1] = m.Exports[1], m.Exports[0] },
+		"import":       func(m *wasm.Module) { m.Imports = append(m.Imports, wasm.Import{}) },
+		"memory":       func(m *wasm.Module) { m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}} },
+		"global": func(m *wasm.Module) {
+			m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.ExternRef}, Init: wasm.Expr{BodyBytes: []byte{0xd0, 0x6f, 0x0b}}}}
+		},
+		"tag":    func(m *wasm.Module) { m.Tags = []wasm.TagType{{Type: wasm.TypeIdx{}}} },
+		"string": func(m *wasm.Module) { m.StringRefs = [][]byte{{'x'}} },
+		"data": func(m *wasm.Module) {
+			m.Data = []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataPassive}, Init: []byte{1}}}
+		},
+		"data-count":      func(m *wasm.Module) { count := uint32(1); m.DataCount = &count },
+		"start":           func(m *wasm.Module) { index := wasm.FuncIdx(0); m.Start = &index },
+		"custom":          func(m *wasm.Module) { m.Customs = append(m.Customs, wasm.CustomSec{Name: "x"}) },
+		"name":            func(m *wasm.Module) { m.NameSec = &wasm.NameSec{} },
+		"raw-name":        func(m *wasm.Module) { m.RawNameSecPayload = []byte{0} },
+		"branch-hint":     func(m *wasm.Module) { m.BranchHints = []wasm.FuncBranchHints{{FuncIndex: 0}} },
+		"compact-imports": func(m *wasm.Module) { m.UsesCompactImports = true },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -89,8 +154,11 @@ func TestCore3RefIsNullExecutionDecodedConfinement(t *testing.T) {
 			if isCore3RefIsNullExecution(m) {
 				t.Fatal("hostile decoded shape admitted")
 			}
-			if image, err := CompileModuleWith(m, closedReferenceProductionOptions(false, true)); image != nil || !errors.Is(err, ErrUnsupported) {
-				t.Fatal("hostile decoded shape reached backend checkpoint", err)
+			pressure := 0
+			opts := closedReferenceProductionOptions(false, true)
+			opts.MemoryPressure = func() { pressure++ }
+			if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
+				t.Fatal("hostile decoded shape reached backend checkpoint", err, pressure)
 			}
 		})
 	}
@@ -118,5 +186,31 @@ func TestCore3RefIsNullExecutionBackendCheckpoint(t *testing.T) {
 	// still reject until retained metadata and runtime lifetime proofs exist.
 	if err := AdmitProductionSource(core3RefIsNullExecutionSource()); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("backend checkpoint escaped public source gate", err)
+	}
+}
+
+func TestCore3RefIsNullExecutionExternPermissionExcludesAnnotations(t *testing.T) {
+	types := internalReferenceTypes{executionExtern: true}
+	if !internalFunctionReferenceWithTypes(wasm.ExternRef, true, types) {
+		t.Fatal("execution extern signature carrier rejected")
+	}
+	for name, body := range map[string][]byte{
+		"nullable-block":  {0x63, 0x6f},
+		"non-null-block":  {0x64, 0x6f},
+		"nullable-select": {0x63, 0x6f},
+		"non-null-select": {0x64, 0x6f},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := wasm.ReaderFrom(body)
+			var err error
+			if name == "nullable-select" || name == "non-null-select" {
+				_, err = internalSelectType(&r, true, types)
+			} else {
+				_, err = internalReferenceBlockType(&r, true, types)
+			}
+			if err == nil {
+				t.Fatal("execution extern permission escaped into an annotation parser")
+			}
+		})
 	}
 }
