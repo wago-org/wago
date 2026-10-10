@@ -55,8 +55,8 @@ func (s *rv64NativeTableTargets) release() {
 	if s.tailBudget != (rv64NativeTailGenerationBudget{}) {
 		panic("RV64 tail generations must retire before scope roots")
 	}
-	s.publishImportedReferenceRows()
 	var cleanup resourceCleanup
+	cleanup.run(s.publishImportedReferenceRows)
 	// Remove transient writer promises and scan current rows under serialization;
 	// prune performs physical releases only after its own native lease unlocks.
 	for index, table := range s.writers {

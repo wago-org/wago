@@ -350,6 +350,109 @@ func TestRV64PublicReferenceImportHostTableFailedRefresh(t *testing.T) {
 	}
 }
 
+func TestRV64PublicReferenceImportHostTablePublishPanicStillReleasesScope(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			rt := NewRuntime()
+			var table *Table
+			var producer, in *Instance
+			t.Cleanup(func() {
+				if err := in.Close(); err != nil {
+					t.Error("close consumer:", err)
+				}
+				if err := producer.Close(); err != nil {
+					t.Error("close producer:", err)
+				}
+				if err := table.Close(); err != nil {
+					t.Error("close host table:", err)
+				}
+				if err := rt.Close(); err != nil {
+					t.Error("close runtime:", err)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := rt.WaitClosed(ctx); err != nil {
+					t.Error("wait runtime closed:", err)
+				}
+			})
+			var err error
+			table, err = NewTable(2, 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pc := rv64TableStageCompile(t, "ref-import-table-producer-vectorfalse-samefalse", rv64ReferenceImportTableProducer(t, false, false), artifact)
+			producer = rv64NativeTokenInstantiate(t, rt, pc, NewImports())
+			g, err := producer.ExportedGlobalObject("reference")
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := rv64TableStageCompile(t, "ref-import-table-consumer-vectorfalse", rv64ReferenceImportModule(false, true), artifact)
+			in = rv64NativeTokenInstantiate(t, rt, c, NewImports().Global("env", "ref", g).Table("env", "table", table))
+			canonical, valid := rv64PublishedDescriptor(producer, readGlobalObject(g, ValFuncRef))
+			if !valid {
+				t.Fatal("producer descriptor")
+			}
+			producerRoots := producer.referenceLifetime().snapshot().ResourceRoots
+			consumerRoots := in.referenceLifetime().snapshot().ResourceRoots
+			table.owner.mu.Lock()
+			storageLeases := table.owner.nativeLeases
+			table.owner.mu.Unlock()
+
+			var scope rv64NativeTableTargets
+			faultOwned := false
+			restoreFault := func() {
+				if !faultOwned {
+					return
+				}
+				producer.lifeMu.Lock()
+				producer.resourcesClosed = false
+				producer.lifeMu.Unlock()
+				faultOwned = false
+			}
+			t.Cleanup(func() {
+				restoreFault()
+				if scope.count != 0 {
+					cleanupTestPanic(scope.release)
+				}
+			})
+			nativeExecutionMu.Lock()
+			err = scope.refresh(in)
+			if err == nil {
+				copy(table.desc[8:40], canonical[:32])
+			}
+			nativeExecutionMu.Unlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			producer.lifeMu.Lock()
+			producer.resourcesClosed = true
+			producer.lifeMu.Unlock()
+			faultOwned = true
+			value, panicked := cleanupTestPanic(scope.release)
+			restoreFault()
+			if !panicked || value != "RV64 scoped descriptor owner lost physical storage" {
+				t.Fatal("publication panic", value, panicked)
+			}
+			if scope.count != 0 || scope.writers[0] != nil || scope.storage[0] != nil {
+				t.Fatal("publication panic stranded scope ownership", scope.count, scope.writers[0], scope.storage[0])
+			}
+			table.owner.mu.Lock()
+			gotLeases := table.owner.nativeLeases
+			table.owner.mu.Unlock()
+			if gotLeases != storageLeases || producer.referenceLifetime().snapshot().ResourceRoots != producerRoots || in.referenceLifetime().snapshot().ResourceRoots != consumerRoots || len(table.retained) != 0 {
+				t.Fatal("publication panic leaked roots", gotLeases, storageLeases, producer.referenceLifetime().snapshot(), in.referenceLifetime().snapshot(), len(table.retained))
+			}
+			nativeExecutionMu.Lock()
+			clear(table.desc[8:40])
+			nativeExecutionMu.Unlock()
+			if err := rv64TableTargetRefresh(&scope, in); err != nil {
+				t.Fatal("scope reuse after publication panic", err)
+			}
+			scope.release()
+		})
+	}
+}
+
 func TestRV64PublicReferenceImportHostTableProxyOwner(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
