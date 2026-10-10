@@ -11,9 +11,11 @@ import (
 // admitPublicReferenceCallBoundary is the first public owner-scoped call_ref
 // surface. It is deliberately one table-free/reference-global-free recipe:
 // a numeric target, a token-producing wrapper, and a wrapper that consumes one
-// nullable exact target reference before an ordinary call_ref. The compiler
-// witness, public token authentication, and invocation owner graph are all
-// required; no other public dynamic-reference shape inherits this exception.
+// nullable exact target reference before an ordinary call_ref. The wrapper may
+// return either the numeric target result or, after dropping it, the same
+// authenticated target as a nullable funcref. The compiler witness, public
+// token authentication, and invocation owner graph are all required; no other
+// public dynamic-reference shape inherits this exception.
 func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 3 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
 		return false
@@ -31,7 +33,12 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	producer := m.Types[1].SubTypes[0].Comp
 	caller := m.Types[2].SubTypes[0].Comp
 	indexedTarget := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
-	if len(target.Params) != 0 || len(target.Results) != 1 || !wasm.EqualValType(target.Results[0], wasm.I32) || len(producer.Params) != 0 || len(producer.Results) != 1 || !wasm.EqualValType(producer.Results[0], wasm.FuncRef) || len(caller.Params) != 1 || !wasm.EqualValType(caller.Params[0], indexedTarget) || len(caller.Results) != 1 || !wasm.EqualValType(caller.Results[0], wasm.I32) {
+	if len(target.Params) != 0 || len(target.Results) != 1 || !wasm.EqualValType(target.Results[0], wasm.I32) || len(producer.Params) != 0 || len(producer.Results) != 1 || !wasm.EqualValType(producer.Results[0], wasm.FuncRef) || len(caller.Params) != 1 || !wasm.EqualValType(caller.Params[0], indexedTarget) || len(caller.Results) != 1 {
+		return false
+	}
+	numericResult := wasm.EqualValType(caller.Results[0], wasm.I32)
+	referenceResult := wasm.EqualValType(caller.Results[0], wasm.FuncRef)
+	if !numericResult && !referenceResult {
 		return false
 	}
 	for i := range m.FuncTypes {
@@ -43,7 +50,11 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Funcs) != 1 || e.Kind.Funcs[0] != 0 || len(e.Kind.Exprs) != 0 {
 		return false
 	}
-	if len(m.Code[0].BodyBytes) != 3 || m.Code[0].BodyBytes[0] != 0x41 || m.Code[0].BodyBytes[1]&0x80 != 0 || m.Code[0].BodyBytes[2] != 0x0b || !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, []byte{0x20, 0, 0x14, 0, 0x0b}) {
+	callerBody := []byte{0x20, 0, 0x14, 0, 0x0b}
+	if referenceResult {
+		callerBody = []byte{0x20, 0, 0x14, 0, 0x1a, 0x20, 0, 0x0b}
+	}
+	if len(m.Code[0].BodyBytes) != 3 || m.Code[0].BodyBytes[0] != 0x41 || m.Code[0].BodyBytes[1]&0x80 != 0 || m.Code[0].BodyBytes[2] != 0x0b || !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, callerBody) {
 		return false
 	}
 	for i, name := range []string{"target", "get", "call"} {

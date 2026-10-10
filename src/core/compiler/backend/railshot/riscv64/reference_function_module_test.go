@@ -84,13 +84,19 @@ func closedReferenceDecode(t *testing.T, vector, tails, indexed, nullable bool) 
 	return m
 }
 
-func publicReferenceCallBoundaryDecode(t *testing.T) *wasm.Module {
+func publicReferenceCallBoundaryDecodeResult(t *testing.T, referenceResult bool) *wasm.Module {
 	t.Helper()
+	resultType := byte(0x7f)
+	callerBody := []byte{0x20, 0, 0x14, 0, 0x0b}
+	if referenceResult {
+		resultType = 0x70
+		callerBody = []byte{0x20, 0, 0x14, 0, 0x1a, 0x20, 0, 0x0b}
+	}
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
-			[]byte{0x60, 1, 0x63, 0, 1, 0x7f},
+			[]byte{0x60, 1, 0x63, 0, 1, resultType},
 		)),
 		wasmtest.Section(3, []byte{3, 0, 1, 2}),
 		wasmtest.Section(7, wasmtest.Vec(
@@ -102,7 +108,7 @@ func publicReferenceCallBoundaryDecode(t *testing.T) *wasm.Module {
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x41, 42, 0x0b}),
 			wasmtest.Code([]byte{0xd2, 0, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0, 0x14, 0, 0x0b}),
+			wasmtest.Code(callerBody),
 		)),
 	)
 	m, err := wasm.DecodeModule(source)
@@ -112,13 +118,19 @@ func publicReferenceCallBoundaryDecode(t *testing.T) *wasm.Module {
 	return m
 }
 
+func publicReferenceCallBoundaryDecode(t *testing.T) *wasm.Module {
+	return publicReferenceCallBoundaryDecodeResult(t, false)
+}
+
 func TestPublicReferenceCallBoundaryExactAdmission(t *testing.T) {
-	base := publicReferenceCallBoundaryDecode(t)
-	if !admitPublicReferenceCallBoundary(base) {
-		t.Fatal("exact public call_ref boundary was not recognized")
-	}
-	if err := admitClosedReferenceFunctionModule(base, false); err != nil {
-		t.Fatal("exact public call_ref boundary was not admitted", err)
+	for _, referenceResult := range []bool{false, true} {
+		base := publicReferenceCallBoundaryDecodeResult(t, referenceResult)
+		if !admitPublicReferenceCallBoundary(base) {
+			t.Fatal("exact public call_ref boundary was not recognized", referenceResult)
+		}
+		if err := admitClosedReferenceFunctionModule(base, false); err != nil {
+			t.Fatal("exact public call_ref boundary was not admitted", referenceResult, err)
+		}
 	}
 	for _, tc := range []struct {
 		name   string
@@ -132,6 +144,7 @@ func TestPublicReferenceCallBoundaryExactAdmission(t *testing.T) {
 		{"producer-body", func(m *wasm.Module) { m.Code[1].BodyBytes = []byte{0xd2, 0, 0x1a, 0xd2, 0, 0x0b} }},
 		{"caller-body", func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0x20, 0, 0x01, 0x14, 0, 0x0b} }},
 		{"caller-binding", func(m *wasm.Module) { m.FuncTypes[2].Index = 1 }},
+		{"reference-result-with-numeric-body", func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Results[0] = wasm.FuncRef }},
 		{"export-name", func(m *wasm.Module) { m.Exports[0].Name = "other" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -142,6 +155,25 @@ func TestPublicReferenceCallBoundaryExactAdmission(t *testing.T) {
 			}
 			if err := admitClosedReferenceFunctionModule(m, false); !errors.Is(err, ErrUnsupported) {
 				t.Fatal("nearby public call_ref shape was admitted", err)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*wasm.Module)
+	}{
+		{"numeric-body", func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0x20, 0, 0x14, 0, 0x0b} }},
+		{"extern-result", func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Results[0] = wasm.ExternRef }},
+		{"different-return", func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0x20, 0, 0x14, 0, 0x1a, 0xd0, 0x70, 0x0b} }},
+	} {
+		t.Run("reference-result-"+tc.name, func(t *testing.T) {
+			m := publicReferenceCallBoundaryDecodeResult(t, true)
+			tc.mutate(m)
+			if admitPublicReferenceCallBoundary(m) {
+				t.Fatal("nearby public call_ref reference-result shape inherited the boundary")
+			}
+			if err := admitClosedReferenceFunctionModule(m, false); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("nearby public call_ref reference-result shape was admitted", err)
 			}
 		})
 	}

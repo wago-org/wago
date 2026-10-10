@@ -59,16 +59,24 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 		}
 	}
 	target, producer, caller := c.Funcs[0], c.Funcs[1], c.Funcs[2]
-	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != 1 || caller.Params[0] != ValFuncRef || len(caller.Results) != 1 || caller.Results[0] != ValI32 {
+	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != 1 || caller.Params[0] != ValFuncRef || len(caller.Results) != 1 || (caller.Results[0] != ValI32 && caller.Results[0] != ValFuncRef) {
 		return false
 	}
 	targetType, producerType, callerType := c.Types[0], c.Types[1], c.Types[2]
-	if !targetType.Final || len(targetType.Params) != 0 || len(targetType.Results) != 1 || targetType.Results[0].Kind != ValueTypeI32 || !producerType.Final || len(producerType.Params) != 0 || len(producerType.Results) != 1 || !callerType.Final || len(callerType.Params) != 1 || len(callerType.Results) != 1 || callerType.Results[0].Kind != ValueTypeI32 {
+	if !targetType.Final || len(targetType.Params) != 0 || len(targetType.Results) != 1 || targetType.Results[0].Kind != ValueTypeI32 || !producerType.Final || len(producerType.Params) != 0 || len(producerType.Results) != 1 || !callerType.Final || len(callerType.Params) != 1 || len(callerType.Results) != 1 {
 		return false
 	}
 	produced := producerType.Results[0]
 	consumed := callerType.Params[0]
 	if produced.Kind != ValueTypeReference || !produced.Ref.Nullable || produced.Ref.Exact || produced.Ref.Heap.Defined || produced.Ref.Heap.Abstract != AbstractHeapFunc || consumed.Kind != ValueTypeReference || !consumed.Ref.Nullable || consumed.Ref.Exact || !consumed.Ref.Heap.Defined || consumed.Ref.Heap.TypeIndex != 0 {
+		return false
+	}
+	callerResult := callerType.Results[0]
+	if caller.Results[0] == ValI32 {
+		if callerResult.Kind != ValueTypeI32 {
+			return false
+		}
+	} else if callerResult.Kind != ValueTypeReference || !callerResult.Ref.Nullable || callerResult.Ref.Exact || callerResult.Ref.Heap.Defined || callerResult.Ref.Heap.Abstract != AbstractHeapFunc {
 		return false
 	}
 	for i, name := range []string{"target", "get", "call"} {
