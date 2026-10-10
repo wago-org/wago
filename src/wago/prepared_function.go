@@ -589,7 +589,16 @@ func (fn *WasmFunc) invokeGeneral(args []uint64) (result []uint64, resultErr err
 	return result, resultErr
 }
 
-func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) (result []uint64, resultErr error) {
+	var argumentOwners railshotPublicFuncrefArguments
+	var cleanup resourceCleanup
+	cleanup.run(func() { result, resultErr = fn.invokeGeneralAdmittedBody(args, &argumentOwners) })
+	cleanup.run(func() { railshotReleasePublicFuncrefArguments(argumentOwners) })
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (fn *WasmFunc) invokeGeneralAdmittedBody(args []uint64, argumentOwners *railshotPublicFuncrefArguments) ([]uint64, error) {
 	in := fn.in
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
@@ -599,7 +608,11 @@ func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 	}
 	if fn.hasReferenceParams {
 		defer in.clearGCRefArgumentRoots()
-		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes, fn.paramExact); err != nil {
+		var err error
+		if *argumentOwners, err = railshotBeginPublicFuncrefArguments(in); err != nil {
+			return nil, fmt.Errorf("%s reference argument owners: %w", fn.export, err)
+		}
+		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes, fn.paramExact, argumentOwners); err != nil {
 			return nil, err
 		}
 	} else {

@@ -42,7 +42,7 @@ func rv64PublicReferenceFunctionBoundaryModule() []byte {
 	)
 }
 
-func rv64PublicReferenceFunctionCallBoundaryModule() []byte {
+func rv64PublicReferenceFunctionCallBoundaryModule(result byte) []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
@@ -57,11 +57,28 @@ func rv64PublicReferenceFunctionCallBoundaryModule() []byte {
 		)),
 		wasmtest.Section(9, []byte{1, 3, 0, 1, 0}),
 		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x41, 42, 0x0b}),
+			wasmtest.Code([]byte{0x41, result, 0x0b}),
 			wasmtest.Code([]byte{0xd2, 0, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0, 0x14, 0, 0x0b}),
 		)),
 	)
+}
+
+func rv64AssertPublicReferenceArgumentScopesClear(t *testing.T, in *Instance) {
+	t.Helper()
+	state := in.pluginState.Load()
+	if state == nil {
+		t.Fatal("reference argument owner state was not initialized")
+	}
+	pool := &state.railshotInvocation
+	if pool.tableDepth != 0 {
+		t.Fatal("reference argument native entry leaked", pool.tableDepth)
+	}
+	for slot, scope := range pool.argumentOwners {
+		if scope != nil && (scope.active || scope.count != 0) {
+			t.Fatal("reference argument owner scope leaked", slot, scope.active, scope.count)
+		}
+	}
 }
 
 func TestRV64PublicReferenceFunctionBoundarySourceArtifact(t *testing.T) {
@@ -120,11 +137,9 @@ func TestRV64PublicReferenceFunctionBoundaryAdmission(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
 		t.Skip("source compiler path only")
 	}
-	if c, err := rv64NativeTailConfig().Compile(rv64PublicReferenceFunctionCallBoundaryModule()); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("dynamic reference target owner scope opened", err)
+	call := rv64NativeTailCompile(t, "reference-function-call-boundary-admission", rv64PublicReferenceFunctionCallBoundaryModule(42), false)
+	if !rv64PublicReferenceCallBoundary(call) {
+		t.Fatal("exact public reference call boundary rejected")
 	}
 	base := rv64NativeTailCompile(t, "reference-function-boundary-admission", rv64PublicReferenceFunctionBoundaryModule(), false)
 	for _, tc := range []struct {
@@ -143,6 +158,179 @@ func TestRV64PublicReferenceFunctionBoundaryAdmission(t *testing.T) {
 				t.Fatal("non-ephemeral reference export admitted", err)
 			}
 		})
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*Compiled)
+	}{
+		{"missing-reference-marker", func(c *Compiled) { c.nativeReferenceFunctionABI = false }},
+		{"missing-control-marker", func(c *Compiled) { c.nativeReferenceControlABI = false }},
+		{"table", func(c *Compiled) { c.HasTable, c.TableType, c.TableSize = true, ValFuncRef, 1 }},
+		{"reference-global", func(c *Compiled) { c.Globals = []GlobalDef{{Type: ValFuncRef}} }},
+		{"missing-descriptors", func(c *Compiled) { c.NeedsFuncRefDescs = false }},
+		{"extra-feature", func(c *Compiled) { c.requiredFeatures |= CoreFeatureTailCall }},
+		{"value-pool", func(c *Compiled) { c.ValueTypes = []ValueTypeDescriptor{{Kind: ValueTypeI32}} }},
+		{"rec-group", func(c *Compiled) { c.Types[2].RecGroup = 7 }},
+		{"wrong-type-binding", func(c *Compiled) { c.Funcs[2].TypeIndex = 1 }},
+		{"wrong-caller-parameter", func(c *Compiled) { c.Types[2].Params[0].Ref.Heap.TypeIndex = 1 }},
+		{"substituted-export", func(c *Compiled) {
+			delete(c.Exports, "target")
+			c.Exports["other"] = 0
+		}},
+	} {
+		t.Run("call-"+tc.name, func(t *testing.T) {
+			c := cloneCompiledMetadata(call)
+			c.validateMemo, c.codeCache = &validateMemo{}, nil
+			tc.mutate(c)
+			if err := railshotValidateCompiled(c); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("non-exact public reference call boundary admitted", err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicReferenceFunctionCallBoundarySourceArtifact(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			if !artifact && os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
+				t.Skip("precompiled artifact path only")
+			}
+			c := rv64NativeTailCompile(t, "reference-function-call-boundary", rv64PublicReferenceFunctionCallBoundaryModule(42), artifact)
+			if !rv64PublicReferenceCallBoundary(c) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences) || c.tableCount() != 0 || len(c.Globals) != 0 {
+				t.Fatal("public reference call boundary metadata", c.requiredFeatures)
+			}
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rv64HostCertificateCloseRuntime(t, rt)
+			in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+			defer in.Close()
+			got, err := in.Invoke("get")
+			if err != nil || len(got) != 1 || got[0] == 0 {
+				t.Fatal("reference target token", got, err)
+			}
+			token := got[0]
+			if got, err = in.Invoke("call", token); err != nil || !slices.Equal(got, []uint64{42}) {
+				t.Fatal("public call_ref boundary", got, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+			if got, err = in.Invoke("call", 0); got != nil {
+				t.Fatal("null call_ref returned values", got, err)
+			} else {
+				var trap *coreruntime.TrapError
+				if !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds {
+					t.Fatal("null call_ref trap", err)
+				}
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+			if got, err = in.Invoke("call", token^0x9e3779b97f4a7c15); err == nil || got != nil || !strings.Contains(err.Error(), "invalid funcref token") {
+				t.Fatal("forged call_ref ingress", got, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+			if got, err = in.Invoke("call", token); err != nil || !slices.Equal(got, []uint64{42}) {
+				t.Fatal("reuse after rejected call_ref ingress", got, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+			if got, err = in.Invoke("target"); err != nil || !slices.Equal(got, []uint64{42}) {
+				t.Fatal("reference-free entry after owner scope reuse", got, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+			fn, err := in.WasmFunc("call")
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := fn.OpenSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			if got, err = session.Invoke(token); err != nil || !slices.Equal(got, []uint64{42}) {
+				t.Fatal("prepared reference argument owner scope", got, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+		})
+	}
+}
+
+func TestRV64PublicReferenceFunctionCallBoundaryForeignOwner(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			if !artifact && os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
+				t.Skip("precompiled artifact path only")
+			}
+			producerCompiled := rv64NativeTailCompile(t, "reference-function-call-owner-producer", rv64PublicReferenceFunctionCallBoundaryModule(41), artifact)
+			consumerCompiled := rv64NativeTailCompile(t, "reference-function-call-owner-consumer", rv64PublicReferenceFunctionCallBoundaryModule(42), artifact)
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rv64HostCertificateCloseRuntime(t, rt)
+			producer := rv64NativeTokenInstantiate(t, rt, producerCompiled, NewImports())
+			consumer := rv64NativeTokenInstantiate(t, rt, consumerCompiled, NewImports())
+			got, err := producer.Invoke("get")
+			if err != nil || len(got) != 1 || got[0] == 0 {
+				t.Fatal("foreign producer token", got, err)
+			}
+			foreignToken := got[0]
+			own, err := consumer.Invoke("get")
+			if err != nil || len(own) != 1 || own[0] == 0 {
+				t.Fatal("consumer token", own, err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if !producer.hasPhysicalResources() {
+				t.Fatal("public token did not retain foreign target")
+			}
+			if !producer.usesIndependentExecution() || !consumer.usesIndependentExecution() {
+				t.Fatal("foreign owner fixture was already shared")
+			}
+			for _, tc := range []struct {
+				token uint64
+				want  uint64
+			}{{foreignToken, 41}, {own[0], 42}, {foreignToken, 41}} {
+				if got, err = consumer.Invoke("call", tc.token); err != nil || !slices.Equal(got, []uint64{tc.want}) {
+					t.Fatal("invocation-scoped reference owner transport", got, tc.want, err)
+				}
+				rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
+			}
+			if producer.usesIndependentExecution() || consumer.usesIndependentExecution() || !producer.nativeControlIsShared() || !consumer.nativeControlIsShared() {
+				t.Fatal("foreign call_ref did not quiesce both native owners")
+			}
+
+			outsideCompiled := rv64NativeTailCompile(t, "reference-function-call-owner-outside", rv64PublicReferenceFunctionBoundaryModule(), artifact)
+			outside := rv64NativeTokenInstantiate(t, rt, outsideCompiled, NewImports())
+			outsideResult, err := outside.Invoke("get")
+			if err != nil || len(outsideResult) != 1 || outsideResult[0] == 0 {
+				t.Fatal("outside owner token", outsideResult, err)
+			}
+			if got, err = consumer.Invoke("call", outsideResult[0]); err == nil || got != nil || !strings.Contains(err.Error(), "outside the public call boundary") {
+				t.Fatal("outside owner profile admitted", got, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
+
+			foreignRT := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rv64HostCertificateCloseRuntime(t, foreignRT)
+			foreign := rv64NativeTokenInstantiate(t, foreignRT, consumerCompiled, NewImports())
+			if got, err = foreign.Invoke("call", foreignToken); err == nil || got != nil || !strings.Contains(err.Error(), "invalid funcref token") {
+				t.Fatal("cross-runtime call_ref token accepted", got, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, foreign)
+			if err := foreign.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicReferenceArgumentScopeFailedBegin(t *testing.T) {
+	in := &Instance{c: &Compiled{nativeReferenceCallABI: true}}
+	pool := &in.ensurePluginState().railshotInvocation
+	pool.tableDepth = len(pool.argumentOwners)
+	outer := &rv64InvocationArgumentOwners{active: true}
+	pool.argumentOwners[len(pool.argumentOwners)-1] = outer
+	scope, err := railshotBeginPublicFuncrefArguments(in)
+	if err == nil || scope.in != nil || scope.scope != nil {
+		t.Fatal("reference argument nesting bound was not fail-closed", scope, err)
+	}
+	railshotReleasePublicFuncrefArguments(scope)
+	if !outer.active || outer.count != 0 || pool.argumentOwners[len(pool.argumentOwners)-1] != outer {
+		t.Fatal("failed scope begin disturbed the outer owner scope")
 	}
 }
 

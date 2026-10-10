@@ -14,3 +14,13 @@ func railshotRestoreSavedNativeInvocation(*Instance, uintptr)       {}
 func railshotParkedNativeInvocation(*Instance) uintptr { return 0 }
 
 func railshotParkedNativeContextChanged(*Instance, uintptr, uintptr) bool { return false }
+
+type railshotPublicFuncrefArguments struct{}
+
+func railshotBeginPublicFuncrefArguments(*Instance) (railshotPublicFuncrefArguments, error) {
+	return railshotPublicFuncrefArguments{}, nil
+}
+func railshotStagePublicFuncrefArgument(*Instance, *railshotPublicFuncrefArguments, uint64, uint64) error {
+	return nil
+}
+func railshotReleasePublicFuncrefArguments(railshotPublicFuncrefArguments) {}

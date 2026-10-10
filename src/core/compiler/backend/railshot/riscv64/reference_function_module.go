@@ -2,7 +2,58 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"bytes"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+// admitPublicReferenceCallBoundary is the first public owner-scoped call_ref
+// surface. It is deliberately one table-free/reference-global-free recipe:
+// a numeric target, a token-producing wrapper, and a wrapper that consumes one
+// nullable exact target reference before an ordinary call_ref. The compiler
+// witness, public token authentication, and invocation owner graph are all
+// required; no other public dynamic-reference shape inherits this exception.
+func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
+	if m == nil || len(m.Imports) != 0 || len(m.Types) != 3 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	for i := range m.Types {
+		if len(m.Types[i].SubTypes) != 1 {
+			return false
+		}
+		sub := m.Types[i].SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Fields) != 0 || sub.Comp.Array != (wasm.FieldType{}) {
+			return false
+		}
+	}
+	target := m.Types[0].SubTypes[0].Comp
+	producer := m.Types[1].SubTypes[0].Comp
+	caller := m.Types[2].SubTypes[0].Comp
+	indexedTarget := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
+	if len(target.Params) != 0 || len(target.Results) != 1 || !wasm.EqualValType(target.Results[0], wasm.I32) || len(producer.Params) != 0 || len(producer.Results) != 1 || !wasm.EqualValType(producer.Results[0], wasm.FuncRef) || len(caller.Params) != 1 || !wasm.EqualValType(caller.Params[0], indexedTarget) || len(caller.Results) != 1 || !wasm.EqualValType(caller.Results[0], wasm.I32) {
+		return false
+	}
+	for i := range m.FuncTypes {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != uint32(i) || len(m.Code[i].Locals.Runs) != 0 || len(m.Code[i].Body.Instrs) != 0 {
+			return false
+		}
+	}
+	e := m.Elements[0]
+	if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Funcs) != 1 || e.Kind.Funcs[0] != 0 || len(e.Kind.Exprs) != 0 {
+		return false
+	}
+	if len(m.Code[0].BodyBytes) != 3 || m.Code[0].BodyBytes[0] != 0x41 || m.Code[0].BodyBytes[1]&0x80 != 0 || m.Code[0].BodyBytes[2] != 0x0b || !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, []byte{0x20, 0, 0x14, 0, 0x0b}) {
+		return false
+	}
+	for i, name := range []string{"target", "get", "call"} {
+		export := m.Exports[i]
+		if export.Name != name || export.Index.Kind != wasm.ExternFunc || export.Index.Index != uint32(i) {
+			return false
+		}
+	}
+	return true
+}
 
 // This private decoded-module prerequisite proves that reference-bearing
 // functions cannot escape through a descriptor, import or resource. A direct
@@ -14,6 +65,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
 		return unsupported("closed reference module directory bound")
 	}
+	publicReferenceCallBoundary := !vector && admitPublicReferenceCallBoundary(m)
 	counts, err := countClosedReferenceImports(m)
 	if err != nil {
 		return err
@@ -261,7 +313,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			if op == 0xd2 && !numericTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
 			}
-			if referenceExports && (op == 0x14 || op == 0x15) {
+			if referenceExports && (op == 0x14 || op == 0x15) && !publicReferenceCallBoundary {
 				return unsupported("public reference wrapper dynamic reference call requires owner scoping")
 			}
 			if (op == 0x11 || op == 0x13) && (len(m.Tables) != 1 || imm.Index2 != 0) {

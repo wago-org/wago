@@ -84,6 +84,69 @@ func closedReferenceDecode(t *testing.T, vector, tails, indexed, nullable bool) 
 	return m
 }
 
+func publicReferenceCallBoundaryDecode(t *testing.T) *wasm.Module {
+	t.Helper()
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+			[]byte{0x60, 1, 0x63, 0, 1, 0x7f},
+		)),
+		wasmtest.Section(3, []byte{3, 0, 1, 2}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target", 0, 0),
+			wasmtest.ExportEntry("get", 0, 1),
+			wasmtest.ExportEntry("call", 0, 2),
+		)),
+		wasmtest.Section(9, []byte{1, 3, 0, 1, 0}),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 42, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestPublicReferenceCallBoundaryExactAdmission(t *testing.T) {
+	base := publicReferenceCallBoundaryDecode(t)
+	if !admitPublicReferenceCallBoundary(base) {
+		t.Fatal("exact public call_ref boundary was not recognized")
+	}
+	if err := admitClosedReferenceFunctionModule(base, false); err != nil {
+		t.Fatal("exact public call_ref boundary was not admitted", err)
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*wasm.Module)
+	}{
+		{"custom-section", func(m *wasm.Module) { m.Customs = []wasm.CustomSec{{Name: "x"}} }},
+		{"memory", func(m *wasm.Module) { m.Memories = []wasm.MemType{{}} }},
+		{"passive-element", func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemPassive }},
+		{"reference-target", func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 1 }},
+		{"inactive-element-ref", func(m *wasm.Module) { m.Elements[0].Kind.Ref = wasm.FuncRef.Ref() }},
+		{"producer-body", func(m *wasm.Module) { m.Code[1].BodyBytes = []byte{0xd2, 0, 0x1a, 0xd2, 0, 0x0b} }},
+		{"caller-body", func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0x20, 0, 0x01, 0x14, 0, 0x0b} }},
+		{"caller-binding", func(m *wasm.Module) { m.FuncTypes[2].Index = 1 }},
+		{"export-name", func(m *wasm.Module) { m.Exports[0].Name = "other" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := publicReferenceCallBoundaryDecode(t)
+			tc.mutate(m)
+			if admitPublicReferenceCallBoundary(m) {
+				t.Fatal("nearby public call_ref shape inherited the boundary")
+			}
+			if err := admitClosedReferenceFunctionModule(m, false); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("nearby public call_ref shape was admitted", err)
+			}
+		})
+	}
+}
+
 func TestReferenceFunctionModulePrivatePipeline(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, tails := range []bool{false, true} {

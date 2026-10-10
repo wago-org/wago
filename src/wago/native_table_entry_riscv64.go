@@ -44,6 +44,120 @@ func rv64NativeFunctionAttachment(owner *Instance, index int) (*InstanceExport, 
 // an outer activation's targets while a parked callback recursively reenters.
 const rv64MaxTableEntryDepth = 32
 
+const rv64MaxInvocationArgumentOwners = 256
+
+// A scope exists only for a public call with non-null function-reference
+// arguments. Each entry owns one physical root acquired from the token store;
+// the active native target graph acquires its own root before this staging root
+// can be released. Slots follow tableDepth so parked recursive activations keep
+// disjoint owner sets.
+type rv64InvocationArgumentOwners struct {
+	owners [rv64MaxInvocationArgumentOwners]*Instance
+	count  int
+	active bool
+}
+
+type railshotPublicFuncrefArguments struct {
+	in    *Instance
+	scope *rv64InvocationArgumentOwners
+	slot  int
+}
+
+func railshotBeginPublicFuncrefArguments(in *Instance) (railshotPublicFuncrefArguments, error) {
+	if in == nil || in.c == nil || !in.c.nativeReferenceCallABI {
+		return railshotPublicFuncrefArguments{}, nil
+	}
+	pool := &in.ensurePluginState().railshotInvocation
+	if pool.tableDepth < 0 || pool.tableDepth >= len(pool.argumentOwners) {
+		return railshotPublicFuncrefArguments{}, fmt.Errorf("RV64 reference argument owner nesting bound")
+	}
+	slot := pool.tableDepth
+	scope := pool.argumentOwners[slot]
+	if scope == nil {
+		scope = new(rv64InvocationArgumentOwners)
+		pool.argumentOwners[slot] = scope
+	}
+	if scope.active || scope.count != 0 {
+		return railshotPublicFuncrefArguments{}, fmt.Errorf("RV64 reference argument owner scope is active")
+	}
+	scope.active = true
+	return railshotPublicFuncrefArguments{in: in, scope: scope, slot: slot}, nil
+}
+
+func railshotStagePublicFuncrefArgument(in *Instance, arguments *railshotPublicFuncrefArguments, token, descriptor uint64) error {
+	if in == nil || in.c == nil || !in.c.nativeReferenceCallABI || token == 0 {
+		return nil
+	}
+	pool := &in.ensurePluginState().railshotInvocation
+	if arguments == nil || arguments.in != in || arguments.slot < 0 || arguments.slot >= len(pool.argumentOwners) || arguments.slot != pool.tableDepth || arguments.scope == nil || pool.argumentOwners[arguments.slot] != arguments.scope || !arguments.scope.active {
+		return fmt.Errorf("RV64 reference argument owner scope is unavailable")
+	}
+	scope := arguments.scope
+	if in.refStore == nil {
+		return fmt.Errorf("RV64 reference argument token store is unavailable")
+	}
+	resolved, owner, ok := in.refStore.resolveFuncrefTokenOwner(token)
+	if !ok || owner == nil {
+		return fmt.Errorf("RV64 reference argument owner is unavailable")
+	}
+	if resolved != descriptor {
+		owner.releaseResourceRoot()
+		return fmt.Errorf("RV64 reference argument descriptor changed")
+	}
+	if _, valid := rv64PublishedDescriptor(owner, descriptor); !valid {
+		owner.releaseResourceRoot()
+		return fmt.Errorf("RV64 reference argument descriptor is not a published callable")
+	}
+	// This first boundary deliberately admits only the same closed no-import,
+	// no-resource owner recipe. That owner cannot park in a host callback while
+	// this invocation quiesces its independent native execution. Once foreign
+	// code becomes callable, both sides permanently join the shared native domain.
+	if owner != in && !rv64PublicReferenceCallBoundary(owner.c) {
+		owner.releaseResourceRoot()
+		return fmt.Errorf("RV64 reference argument owner is outside the public call boundary")
+	}
+	for _, existing := range scope.owners[:scope.count] {
+		if existing == owner {
+			owner.releaseResourceRoot()
+			return nil
+		}
+	}
+	if scope.count == len(scope.owners) {
+		owner.releaseResourceRoot()
+		return fmt.Errorf("RV64 reference argument owner bound")
+	}
+	scope.owners[scope.count] = owner
+	scope.count++
+	if owner != in {
+		in.markNativeControlShared()
+		owner.markNativeControlShared()
+	}
+	return nil
+}
+
+func railshotReleasePublicFuncrefArguments(arguments railshotPublicFuncrefArguments) {
+	in, scope := arguments.in, arguments.scope
+	if in == nil || scope == nil {
+		return
+	}
+	pool := &in.ensurePluginState().railshotInvocation
+	valid := arguments.slot >= 0 && arguments.slot < len(pool.argumentOwners) && pool.argumentOwners[arguments.slot] == scope && pool.tableDepth == arguments.slot && scope.active
+	scope.active = false
+	var cleanup resourceCleanup
+	for scope.count != 0 {
+		scope.count--
+		owner := scope.owners[scope.count]
+		scope.owners[scope.count] = nil
+		if owner != nil {
+			cleanup.run(owner.releaseResourceRoot)
+		}
+	}
+	if !valid {
+		cleanup.run(func() { panic("RV64 reference argument owner release scope changed") })
+	}
+	cleanup.finish()
+}
+
 type railshotTableEntryLease struct {
 	root    *Instance
 	targets *rv64NativeTableTargets
@@ -127,7 +241,7 @@ func railshotAcquireNativeTableTargets(root *Instance) (railshotTableEntryLease,
 	}
 	pool.tableDepth++
 	lease := railshotTableEntryLease{root: root, targets: targets, slot: slot}
-	if err := targets.refresh(root); err != nil {
+	if err := targets.refreshWithArguments(root, pool.argumentOwners[slot]); err != nil {
 		return lease, err
 	}
 	return lease, targets.refreshTailGenerations()

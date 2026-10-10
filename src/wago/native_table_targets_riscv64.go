@@ -146,11 +146,27 @@ func (s *rv64NativeTableTargets) tableRoots(table *Table, edges *int) error {
 }
 
 func (s *rv64NativeTableTargets) refresh(root *Instance) error {
+	return s.refreshWithArguments(root, nil)
+}
+
+func (s *rv64NativeTableTargets) refreshWithArguments(root *Instance, arguments *rv64InvocationArgumentOwners) error {
 	if s.count != 0 && s.owners[0] != root {
 		return fmt.Errorf("RV64 table target set cannot change its root")
 	}
 	if err := s.add(root); err != nil {
 		return err
+	}
+	if arguments != nil {
+		if arguments.count < 0 || arguments.count > len(arguments.owners) || !arguments.active && arguments.count != 0 {
+			return fmt.Errorf("RV64 reference argument owner scope is invalid")
+		}
+		if arguments.active {
+			for _, owner := range arguments.owners[:arguments.count] {
+				if err := s.add(owner); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return s.validateReachable()
 }

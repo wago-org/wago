@@ -436,6 +436,7 @@ type railshotInvocationState struct {
 	longImportKeysOnce   sync.Once
 	longImportKeys       []string
 	tableTargets         [rv64MaxTableEntryDepth]*rv64NativeTableTargets
+	argumentOwners       [rv64MaxTableEntryDepth]*rv64InvocationArgumentOwners
 	tableDepth           int
 }
 

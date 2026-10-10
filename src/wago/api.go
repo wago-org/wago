@@ -4574,7 +4574,18 @@ func (in *Instance) invokeWithTokenLeased(export string, args []uint64, contexts
 	return result, resultErr
 }
 
-func (in *Instance) invokeWithTokenAdmitted(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld bool, reservation *pluginOperationReservation, reentry bool, restoreNativeImports *func(), reconcileAttached **Instance) ([]uint64, error) {
+func (in *Instance) invokeWithTokenAdmitted(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld bool, reservation *pluginOperationReservation, reentry bool, restoreNativeImports *func(), reconcileAttached **Instance) (result []uint64, resultErr error) {
+	var argumentOwners railshotPublicFuncrefArguments
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		result, resultErr = in.invokeWithTokenAdmittedBody(export, args, contexts, id, gateHeld, reservation, reentry, restoreNativeImports, reconcileAttached, &argumentOwners)
+	})
+	cleanup.run(func() { railshotReleasePublicFuncrefArguments(argumentOwners) })
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (in *Instance) invokeWithTokenAdmittedBody(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld bool, reservation *pluginOperationReservation, reentry bool, restoreNativeImports *func(), reconcileAttached **Instance, argumentOwners *railshotPublicFuncrefArguments) ([]uint64, error) {
 	if reentry {
 		restore, err := in.prepareHostReentryState()
 		if err != nil {
@@ -4641,11 +4652,15 @@ func (in *Instance) invokeWithTokenAdmitted(export string, args []uint64, contex
 	}
 	if ic.hasFuncRefParams {
 		defer in.clearGCRefArgumentRoots()
+		var err error
+		if *argumentOwners, err = railshotBeginPublicFuncrefArguments(in); err != nil {
+			return nil, fmt.Errorf("%s reference argument owners: %w", export, err)
+		}
 		params, _, err := exactFuncSignatureView(in.c.Funcs[li], in.c.Types)
 		if err != nil {
 			return nil, fmt.Errorf("%s exact parameters: %w", export, err)
 		}
-		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params, params); err != nil {
+		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params, params, argumentOwners); err != nil {
 			return nil, err
 		}
 	} else {
@@ -4780,7 +4795,18 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocatio
 // import attachment. The caller owns the invocation lease and active trap cell,
 // exactly as for a native dynamic import call. attachedResult permits first-time
 // funcref tokenization to transfer the attachment's finalization lifetime.
-func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool) ([]uint64, error) {
+func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool) (result []uint64, resultErr error) {
+	var argumentOwners railshotPublicFuncrefArguments
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		result, resultErr = in.invokeAttachedLocalContextBody(li, args, contexts, activeTrap, attachedResult, &argumentOwners)
+	})
+	cleanup.run(func() { railshotReleasePublicFuncrefArguments(argumentOwners) })
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (in *Instance) invokeAttachedLocalContextBody(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool, argumentOwners *railshotPublicFuncrefArguments) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
@@ -4807,11 +4833,15 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 	}
 	if hasReferenceValType(sig.Params) {
 		defer in.clearGCRefArgumentRoots()
+		var err error
+		if *argumentOwners, err = railshotBeginPublicFuncrefArguments(in); err != nil {
+			return nil, wrapContextError("function reference argument owners", err)
+		}
 		params, _, err := exactFuncSignatureView(sig, in.c.Types)
 		if err != nil {
 			return nil, wrapContextError("function exact parameters", err)
 		}
-		if err := in.marshalPublicReferenceArgs("function", args, sig.Params, params); err != nil {
+		if err := in.marshalPublicReferenceArgs("function", args, sig.Params, params, argumentOwners); err != nil {
 			return nil, err
 		}
 	} else {
@@ -5362,7 +5392,7 @@ func exactReferenceType(types []ValueTypeDescriptor, index int, legacy ValType) 
 	return valueTypeDescriptorFromValType(legacy)
 }
 
-func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
+func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor, argumentOwners *railshotPublicFuncrefArguments) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -5386,7 +5416,8 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 				if in.refStore == nil {
 					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
 				}
-				descriptor, ok := in.refStore.resolve(bits)
+				token := bits
+				descriptor, ok := in.refStore.resolve(token)
 				if !ok {
 					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
 				}
@@ -5396,6 +5427,9 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 				}
 				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
 					return fmt.Errorf("%s: funcref argument %d does not match its exact structural type", subject, i)
+				}
+				if err := railshotStagePublicFuncrefArgument(in, argumentOwners, token, descriptor); err != nil {
+					return fmt.Errorf("%s: funcref argument %d owner: %w", subject, i, err)
 				}
 				bits = descriptor
 			}

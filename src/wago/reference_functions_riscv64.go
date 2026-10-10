@@ -42,6 +42,44 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 	return false
 }
 
+func rv64PublicReferenceCallBoundary(c *Compiled) bool {
+	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || c.dynamicFuncrefEscape || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 3 || len(c.Types) != 3 || len(c.ValueTypes) != 0 || len(c.Exports) != 3 || c.tableCount() != 0 || len(c.extraTables) != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.tagImportCount() != 0 || c.HasStart {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 || !c.NeedsFuncRefDescs || len(c.FuncTypeID) != 3 {
+		return false
+	}
+	wantFeatures := CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+	if c.requiredFeatures != wantFeatures || rv64HasReferenceTail(c) {
+		return false
+	}
+	for i := range c.Funcs {
+		if !c.Funcs[i].HasTypeIndex || c.Funcs[i].TypeIndex != uint32(i) || c.Types[i].RecGroup != uint32(i) {
+			return false
+		}
+	}
+	target, producer, caller := c.Funcs[0], c.Funcs[1], c.Funcs[2]
+	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != 1 || caller.Params[0] != ValFuncRef || len(caller.Results) != 1 || caller.Results[0] != ValI32 {
+		return false
+	}
+	targetType, producerType, callerType := c.Types[0], c.Types[1], c.Types[2]
+	if !targetType.Final || len(targetType.Params) != 0 || len(targetType.Results) != 1 || targetType.Results[0].Kind != ValueTypeI32 || !producerType.Final || len(producerType.Params) != 0 || len(producerType.Results) != 1 || !callerType.Final || len(callerType.Params) != 1 || len(callerType.Results) != 1 || callerType.Results[0].Kind != ValueTypeI32 {
+		return false
+	}
+	produced := producerType.Results[0]
+	consumed := callerType.Params[0]
+	if produced.Kind != ValueTypeReference || !produced.Ref.Nullable || produced.Ref.Exact || produced.Ref.Heap.Defined || produced.Ref.Heap.Abstract != AbstractHeapFunc || consumed.Kind != ValueTypeReference || !consumed.Ref.Nullable || consumed.Ref.Exact || !consumed.Ref.Heap.Defined || consumed.Ref.Heap.TypeIndex != 0 {
+		return false
+	}
+	for i, name := range []string{"target", "get", "call"} {
+		index, ok := c.Exports[name]
+		if !ok || index != i {
+			return false
+		}
+	}
+	return true
+}
+
 // Source escape confinement is attested by the compiler-origin witness; Wasm
 // bodies and dropped declarative targets are not retained in native artifacts.
 // The retained shape and every binding still require independent admission.
@@ -184,7 +222,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 		referenceExports = referenceExports || railshotNonCallableFunction(c, index)
 	}
 	if referenceExports {
-		if c.tableCount() != 0 || c.nativeReferenceCallABI || rv64HasReferenceTail(c) {
+		if c.tableCount() != 0 || (c.nativeReferenceCallABI && !rv64PublicReferenceCallBoundary(c)) || rv64HasReferenceTail(c) {
 			return reject("public reference wrapper requires ephemeral owner-scoped transport")
 		}
 		for _, global := range c.Globals {
