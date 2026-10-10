@@ -28,16 +28,17 @@ just test native-compare
 ```
 
 The focused test recipe runs portable checked controls, native AMD64 profile/checked
-capture controls and vet. Existing ordinary/checked root tests also discover the
-portable controls. There is no new CI job. The native capture recipe requires an
-AMD64 host, `wago_profile` and existing GNU objdump; it installs no software. Use a
+capture controls and vet. The entire tool requires `wago_nativecompare`, including
+comparison-only builds. Ordinary broad builds/tests/install discovery excludes it.
+An existing Linux AMD64 CI job runs the explicit focused recipe. The native capture
+recipe additionally requires an AMD64 host, `wago_profile` and existing GNU objdump; it installs no software. Use a
 private writable GOCACHE when sharing the machine; recipes use one compiler worker,
 GOMAXPROCS=1 and -p=1. Profile capture tests require GNU objdump too.
 
 For scripts that consume exact exit codes, build the command:
 
 ```sh
-GOMAXPROCS=1 go build -p=1 -tags=wago_profile \
+GOMAXPROCS=1 go build -p=1 -tags=wago_nativecompare,wago_profile \
   -ldflags "-X main.compiledRevision=$(git rev-parse HEAD)" \
   -o /tmp/native-compare ./tests/tools/native-compare
 /tmp/native-compare capture tests/fixtures/wasm/fib.wasm /tmp/fib.json
@@ -46,8 +47,8 @@ GOMAXPROCS=1 go build -p=1 -tags=wago_profile \
 
 JSON goes to stdout; summaries go to stderr. Standalone exit 0 means the admitted
 comparison completed (changes are allowed), exit 2 invalid input, exit 3 incomplete.
-`go run` wraps nonzero tool exits as runner exit 1. Ordinary builds support comparison
-and legacy `native-compare before.json after.json`; capture requires the profile tag.
+`go run` wraps nonzero tool exits as runner exit 1. With only `wago_nativecompare`, the command supports comparison and legacy
+`native-compare before.json after.json`; capture additionally requires the profile tag.
 
 ## Read the result
 

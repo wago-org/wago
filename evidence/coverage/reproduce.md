@@ -1,5 +1,10 @@
 # Reproduce the bounded experiment
 
+Current-head reproduction additionally requires `wago_nativecompare` in each
+Go build/test tag list (the `just` recipes supply it). The commands below retain
+the original flags for the frozen measured commits; changing the current tool
+gate does not relabel those historical measurements.
+
 Source under measurement: `66dedc1decfe9061b60a3b42101400950915a7c3`.
 Previous diagnostic: `8e82e1b26e0b5ac015b761f0c4bf5c9c894fb0b2`.
 Final production control: verified main `e4bcc5244a29ddf4028fdeb3a7255ec8c76d810f`.

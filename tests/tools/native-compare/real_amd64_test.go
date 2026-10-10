@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_profile
+//go:build wago_nativecompare && linux && amd64 && wago_profile
 
 package main
 
