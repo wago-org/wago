@@ -216,6 +216,18 @@ func (in *Instance) waitTerminalClose() error {
 	return nil
 }
 
+// publishedTerminalCloseResult returns only a terminal result whose producer
+// has finished. It never waits: construction must not become coupled to an
+// active invocation or concurrent Close owner that can depend on Instantiate
+// returning first.
+func (in *Instance) publishedTerminalCloseResult() error {
+	state := in.closeState.Load()
+	if state != nil && state.terminalPublished.Load() {
+		return state.terminalResult
+	}
+	return nil
+}
+
 func (in *Instance) isLogicallyClosed() bool {
 	return in == nil || in.invocationState.Load()&instanceInvocationClosed != 0
 }
@@ -571,6 +583,7 @@ func (state *instanceCloseState) doneChannel() <-chan struct{} {
 }
 
 func (state *instanceCloseState) signalTerminalDone() {
+	state.terminalPublished.Store(true)
 	state.terminalComplete.Store(true)
 	if state.terminalDone != nil {
 		close(state.terminalDone)

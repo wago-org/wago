@@ -422,7 +422,12 @@ func TestRV64PublicFrozenGlobalDependenciesBootstrapPrefinalizerPanic(t *testing
 			if err := global.attachReferenceImporter(rt.refStore); err != nil {
 				t.Fatal(err)
 			}
-			defer global.detachReferenceImporter()
+			attached := true
+			defer func() {
+				if attached {
+					global.detachReferenceImporter()
+				}
+			}()
 			if err := a.Close(); err != nil || a.resourcesClosed {
 				t.Fatal("actual imported owner retention", err)
 			}
@@ -448,18 +453,47 @@ func TestRV64PublicFrozenGlobalDependenciesBootstrapPrefinalizerPanic(t *testing
 			before := b.resourceRefs
 			var cleanup resourceCleanup
 			entries, freezeErr := railshotFreezeGlobalReferences(&Compiled{GlobalImports: []GlobalImportDef{{Type: ValFuncRef}}}, []*resolvedGlobalImport{{global: global}}, rt.refStore, &cleanup)
-			defer railshotReleaseGlobalReferences(entries)
+			released := false
+			defer func() {
+				if !released {
+					railshotReleaseGlobalReferences(entries)
+				}
+			}()
 			valuePanic, panicked := cleanupTestPanic(cleanup.finish)
-			if freezeErr == nil || entries != nil || !panicked || valuePanic != first || callbacks != 1 || !a.resourcesClosed || b.resourceRefs != before-1 || b.resourcesClosed {
-				t.Fatal("bootstrap pre-finalizer panic allowed success or stranded a new Pending unit", freezeErr, valuePanic, panicked, callbacks, before, b.resourceRefs)
+			if freezeErr != nil || len(entries) != 1 || entries[0].dependency == nil || panicked || valuePanic != nil || callbacks != 1 || !a.resourcesClosed || b.resourceRefs != before || b.resourcesClosed {
+				t.Fatal("terminal journal prevented a complete frozen bootstrap exchange", freezeErr, valuePanic, panicked, callbacks, before, b.resourceRefs)
+			}
+			if err := b.waitTerminalClose(); !errors.Is(err, ErrCallbackPanic) {
+				t.Fatal("pre-finalizer callback failure missing from terminal journal", err)
 			}
 			bm := &rv64ExistingFunctionDependencyOwnership(b).member
 			g := bm.graph.Load()
 			g.mu.Lock()
 			receipts := bm.receipts
 			g.mu.Unlock()
-			if receipts != 0 || a.jm != nil || a.ar != nil || a.eng != nil {
-				t.Fatal("failed bootstrap exchange retained actual ownership")
+			if receipts != 1 || a.jm != nil || a.ar != nil || a.eng != nil {
+				t.Fatal("successful bootstrap exchange lost its exact pending ownership")
+			}
+			railshotReleaseGlobalReferences(entries)
+			released = true
+			g.mu.Lock()
+			receipts = bm.receipts
+			g.mu.Unlock()
+			if receipts != 0 || b.resourcesClosed || b.resourceRefs != 1 {
+				t.Fatal("released bootstrap exchange retained actual ownership", receipts, b.resourcesClosed, b.resourceRefs, b.jm != nil, b.ar != nil, b.eng != nil)
+			}
+			global.detachReferenceImporter()
+			attached = false
+			if err := global.Close(); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := rt.CloseContext(ctx); err != nil && !errors.Is(err, ErrCallbackPanic) {
+				t.Fatal(err)
+			}
+			if !b.resourcesClosed || b.resourceRefs != 0 || b.jm != nil || b.ar != nil || b.eng != nil {
+				t.Fatal("closed public global retained actual bootstrap owner", b.resourcesClosed, b.resourceRefs, b.jm != nil, b.ar != nil, b.eng != nil)
 			}
 		})
 	}
@@ -522,8 +556,8 @@ func TestRV64PublicFrozenGlobalDependenciesMultipleOwnersRecursivePanic(t *testi
 						}
 					})
 				}
-				// Delay actual terminal finalization only to inspect its raw first
-				// panic. No early frozen pruning: normal releaseResources drains the
+				// Delay actual terminal finalization so this call owns the terminal
+				// journal. No early frozen pruning: normal releaseResources drains the
 				// counted cells before these final descriptor acquisitions.
 				consumer.beginConstruction(nil)
 				construction := true
@@ -543,8 +577,9 @@ func TestRV64PublicFrozenGlobalDependenciesMultipleOwnersRecursivePanic(t *testi
 				consumer.lifeMu.Unlock()
 				construction = false
 				value, panicked := cleanupTestPanic(consumer.tryFinalize)
-				if !panicked || value != first || !rows.complete() {
-					t.Fatal("terminal frozen journal did not preserve raw first panic", value, panicked)
+				terminalErr := consumer.waitTerminalClose()
+				if panicked || value != nil || !errors.Is(terminalErr, ErrCallbackPanic) || !rows.complete() {
+					t.Fatal("terminal frozen journal did not contain callback failure", value, panicked, terminalErr)
 				}
 				if !slices.Equal(order, []int{0, 1}) {
 					t.Fatal("actual callback order", order)

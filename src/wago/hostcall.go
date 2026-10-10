@@ -706,20 +706,21 @@ type instancePluginState struct {
 }
 
 type instanceCloseState struct {
-	doneMu           sync.Mutex
-	done             chan struct{}
-	completed        atomic.Bool
-	quiesced         chan struct{}
-	quiescedOnce     sync.Once
-	prepared         atomic.Bool // publishes hook data and completion of all BeforeClose work
-	result           error
-	interruptStop    func()
-	hooks            *hookRegistry
-	event            *InstanceCloseEvent
-	terminalStarted  atomic.Bool
-	terminalComplete atomic.Bool
-	terminalDone     chan struct{} // publishes terminalResult, independently of quiescence
-	terminalResult   error
+	doneMu            sync.Mutex
+	done              chan struct{}
+	completed         atomic.Bool
+	quiesced          chan struct{}
+	quiescedOnce      sync.Once
+	prepared          atomic.Bool // publishes hook data and completion of all BeforeClose work
+	result            error
+	interruptStop     func()
+	hooks             *hookRegistry
+	event             *InstanceCloseEvent
+	terminalStarted   atomic.Bool
+	terminalComplete  atomic.Bool
+	terminalPublished atomic.Bool
+	terminalDone      chan struct{} // publishes terminalResult, independently of quiescence
+	terminalResult    error
 	// terminalCollectionMu pairs logical-result publication with RV64 terminal
 	// eligibility. Exactly one side of that crossing owns the collection try.
 	terminalCollectionMu       sync.Mutex

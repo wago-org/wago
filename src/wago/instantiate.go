@@ -1932,6 +1932,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			cleanup.run(func() { err = joinPrimary(err, in.Close()) })
 		}
 		cleanup.run(in.endConstruction)
+		// Dependency collection may run terminal callbacks during the final
+		// construction transition. Preserve a callback failure that this
+		// transition already published, without waiting on unrelated invocations
+		// or joining the logical Close result a second time.
+		cleanup.run(func() { err = joinPrimary(err, in.publishedTerminalCloseResult()) })
 	}
 	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments) || railshotHasBuilderMemoryDependencies(&memoryAttachments) || railshotHasBuilderGlobalDependencies(&b.globalAttachments) || railshotHasBuilderTableDependencies(&b.tableAttachments) || railshotHasFrozenGlobalDependencies(globalRefs)
 	if opts.runtime == nil && (c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
