@@ -492,6 +492,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		threadedControl bool
 		memoryObjs      []*Memory
 		memoryOwns      []bool
+		imageMapped     bool
 	)
 	var memoryAttachments importDedup[*Memory]
 	attachMemory := func(memory *Memory) error {
@@ -548,7 +549,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
 			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
 		} else {
-			jm, err = runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
+			jm, imageMapped, err = c.experimentalCOWImageMemory(initialBytes, maxBytes)
+			if err == nil && !imageMapped {
+				jm, err = runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
+			}
 		}
 		if err != nil {
 			runtime.ReleaseEngine(eng)
@@ -1532,7 +1536,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				initErr = fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, d.MemoryIndex, off, len(d.Bytes), len(lin))
 				break
 			}
-			copy(lin[int(off):int(end)], d.Bytes)
+			if !imageMapped || d.MemoryIndex != 0 {
+				copy(lin[int(off):int(end)], d.Bytes)
+			}
 		}
 	}
 
