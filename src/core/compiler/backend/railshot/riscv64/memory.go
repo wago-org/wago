@@ -102,22 +102,29 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	return v, nil
 }
 
-// admitStateOnlyExternrefGlobal recognizes one immutable null externref global
-// in an otherwise empty public module. This declaration-only profile does not
+// admitStateOnlyExternrefGlobals recognizes a bounded directory of immutable
+// null externref globals in an otherwise empty public module. This
+// declaration-only profile does not
 // enable executable externref carriers, imports, mutation, or initializer
 // chains.
-func admitStateOnlyExternrefGlobal(m *wasm.Module, production, public bool) bool {
-	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Globals) != 1 || len(m.Exports) > 1 || m.Start != nil {
+func admitStateOnlyExternrefGlobals(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Globals) == 0 || len(m.Globals) > 256 || len(m.Exports) > 256 || m.Start != nil {
 		return false
 	}
 	if len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
-	if len(m.Exports) == 1 && (m.Exports[0].Index.Kind != wasm.ExternGlobal || m.Exports[0].Index.Index != 0) {
-		return false
+	for _, export := range m.Exports {
+		if export.Index.Kind != wasm.ExternGlobal || uint64(export.Index.Index) >= uint64(len(m.Globals)) {
+			return false
+		}
 	}
-	g := m.Globals[0]
-	return !g.Type.Mutable && wasm.EqualValType(g.Type.Type, wasm.ExternRef) && len(g.Init.Instrs) == 0 && bytes.Equal(g.Init.BodyBytes, []byte{0xd0, 0x6f, 0x0b})
+	for _, g := range m.Globals {
+		if g.Type.Mutable || !wasm.EqualValType(g.Type.Type, wasm.ExternRef) || len(g.Init.Instrs) != 0 || !bytes.Equal(g.Init.BodyBytes, []byte{0xd0, 0x6f, 0x0b}) {
+			return false
+		}
+	}
+	return true
 }
 
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
@@ -218,9 +225,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		return s, unsupported("state count bound")
 	}
 	importedGlobals := len(s.globals)
+	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
 	for _, g := range m.Globals {
 		if wasm.EqualValType(g.Type.Type, wasm.ExternRef) {
-			if !admitStateOnlyExternrefGlobal(m, production, publicExports) {
+			if !stateOnlyExternrefs {
 				return s, unsupported("externref global requires the exact state-only null profile")
 			}
 			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})

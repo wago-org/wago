@@ -23,11 +23,170 @@ func rv64StateOnlyExternrefGlobalSource(export bool) []byte {
 	return wasmtest.Module(sections...)
 }
 
+func rv64StateOnlyExternrefGlobalDirectorySource(count int, exports ...int) []byte {
+	globals := make([][]byte, count)
+	for i := range globals {
+		globals[i] = wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b})
+	}
+	sections := [][]byte{wasmtest.Section(6, wasmtest.Vec(globals...))}
+	if len(exports) != 0 {
+		entries := make([][]byte, len(exports))
+		for i, index := range exports {
+			entries[i] = wasmtest.ExportEntry(fmt.Sprintf("g%d", index), byte(wasm.ExternGlobal), uint32(index))
+		}
+		sections = append(sections, wasmtest.Section(7, wasmtest.Vec(entries...)))
+	}
+	return wasmtest.Module(sections...)
+}
+
+func TestRV64PublicStateOnlyExternrefGlobalDirectory(t *testing.T) {
+	all := make([]int, 256)
+	for i := range all {
+		all[i] = i
+	}
+	for _, tc := range []struct {
+		name    string
+		count   int
+		exports []int
+	}{
+		{name: "two-none", count: 2},
+		{name: "two-partial", count: 2, exports: []int{1}},
+		{name: "two-complete", count: 2, exports: []int{0, 1}},
+		{name: "maximum-complete", count: 256, exports: all},
+	} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s-artifact%t", tc.name, artifact), func(t *testing.T) {
+				name := "state-only-externref-directory-" + tc.name
+				c := rv64TableStageCompile(t, name, rv64StateOnlyExternrefGlobalDirectorySource(tc.count, tc.exports...), artifact)
+				if !rv64StateOnlyExternrefGlobals(c) || len(c.Globals) != tc.count || len(c.ValueTypes) != 1 || len(c.GlobalExports) != len(tc.exports) {
+					t.Fatal("externref global directory metadata contract")
+				}
+				rv64CheckStateOnlyCode(t, c, 0)
+				instances := make([]*Instance, 0, 2)
+				for range 2 {
+					in, err := Instantiate(c)
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { _ = in.Close() })
+					instances = append(instances, in)
+					if len(in.globalCells) != tc.count {
+						t.Fatal("externref global cell count", len(in.globalCells), tc.count)
+					}
+					for i, cell := range in.globalCells {
+						if cell == nil || len(cell.cell) != 8 {
+							t.Fatal("externref global cell shape", i)
+						}
+						if i > 0 && cell == in.globalCells[i-1] {
+							t.Fatal("externref globals alias storage", i)
+						}
+					}
+					for _, index := range tc.exports {
+						export := fmt.Sprintf("g%d", index)
+						got, err := in.GlobalValue(export)
+						if err != nil || got.Type() != ValExternRef || !got.ExternRef().IsNull() {
+							t.Fatal("externref directory value", export, got, err)
+						}
+						if err := in.SetGlobalValue(export, ValueExternRef(ExternRef{})); err == nil || !strings.Contains(err.Error(), "immutable") {
+							t.Fatal("externref directory mutation", export, err)
+						}
+					}
+				}
+				rv64CheckStateOnlyCode(t, c, 2)
+				if err := c.Close(); err != nil {
+					t.Fatal(err)
+				}
+				for _, in := range instances {
+					if len(tc.exports) != 0 {
+						got, err := in.GlobalValue(fmt.Sprintf("g%d", tc.exports[0]))
+						if err != nil || !got.ExternRef().IsNull() {
+							t.Fatal("externref directory did not outlive compiled handle", got, err)
+						}
+					}
+					if err := in.Close(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				rv64CheckStateOnlyCode(t, c, 0)
+			})
+		}
+	}
+	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
+		if c, err := Compile(nil, rv64StateOnlyExternrefGlobalDirectorySource(257)); c != nil || err == nil {
+			if c != nil {
+				_ = c.Close()
+			}
+			t.Fatal("257 externref globals admitted", err)
+		}
+		exports := make([][]byte, 257)
+		for i := range exports {
+			exports[i] = wasmtest.ExportEntry(fmt.Sprintf("e%d", i), byte(wasm.ExternGlobal), 0)
+		}
+		source := wasmtest.Module(
+			wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}))),
+			wasmtest.Section(7, wasmtest.Vec(exports...)),
+		)
+		if c, err := Compile(nil, source); c != nil || err == nil {
+			if c != nil {
+				_ = c.Close()
+			}
+			t.Fatal("257 externref exports admitted", err)
+		}
+	}
+}
+
+func TestRV64PublicStateOnlyExternrefGlobalDirectoryArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "state-only-externref-directory-admission", rv64StateOnlyExternrefGlobalDirectorySource(2, 0, 1), true)
+	defer c.Close()
+	for name, mutate := range map[string]func(*Compiled){
+		"second-type":        func(v *Compiled) { v.Globals[1].Type = ValFuncRef },
+		"second-mutable":     func(v *Compiled) { v.Globals[1].Mutable = true },
+		"second-bits":        func(v *Compiled) { v.Globals[1].Bits = 1 },
+		"second-init-global": func(v *Compiled) { v.Globals[1].HasInitGlobal = true },
+		"second-init-func":   func(v *Compiled) { v.Globals[1].HasInitFunc = true },
+		"second-value-index": func(v *Compiled) { v.Globals[1].ValueTypeIndex = 1 },
+		"export-range":       func(v *Compiled) { v.GlobalExports["g1"] = 2 },
+		"export-257": func(v *Compiled) {
+			v.GlobalExports = make(map[string]int, 257)
+			for i := range 257 {
+				v.GlobalExports[fmt.Sprintf("e%d", i)] = 0
+			}
+		},
+		"global-257": func(v *Compiled) {
+			for len(v.Globals) < 257 {
+				v.Globals = append(v.Globals, v.Globals[0])
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Globals = append([]GlobalDef(nil), bad.Globals...)
+			bad.ValueTypes = append([]ValueTypeDescriptor(nil), bad.ValueTypes...)
+			bad.GlobalExports = maps.Clone(bad.GlobalExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("hostile externref directory admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("hostile externref directory artifact admitted")
+			}
+		})
+	}
+}
+
 func TestRV64PublicStateOnlyExternrefGlobalSource(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "state-only-externref-global", rv64StateOnlyExternrefGlobalSource(true), artifact)
-			if !rv64StateOnlyExternrefGlobal(c) || c.requiredFeatures != CoreFeatureReferenceTypes || compiledStructuralRequiredFeatures(c) != CoreFeatureReferenceTypes {
+			if !rv64StateOnlyExternrefGlobals(c) || c.requiredFeatures != CoreFeatureReferenceTypes || compiledStructuralRequiredFeatures(c) != CoreFeatureReferenceTypes {
 				t.Fatal("externref state-only metadata contract")
 			}
 			rv64CheckStateOnlyCode(t, c, 0)
@@ -99,7 +258,6 @@ func TestRV64PublicStateOnlyExternrefGlobalSourceGates(t *testing.T) {
 		"wrong-heap":      wasmtest.Module(global(wasm.ExternRef, false, []byte{0xd0, 0x70, 0x0b})),
 		"indexed-type":    wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 0, 0xd0, 0, 0x0b}))),
 		"imported":        wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "g", wasm.ExternRef, false)))),
-		"extra-global":    wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}), wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b})))),
 		"table":           wasmtest.Module(global(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}), wasmtest.Section(4, []byte{1, 0x70, 0, 0})),
 		"function":        wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), global(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b})))),
 		"initializer-ref": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0x23, 0, 0x0b})))),
@@ -143,7 +301,6 @@ func TestRV64PublicStateOnlyExternrefGlobalArtifactGates(t *testing.T) {
 		"function-entry":     func(v *Compiled) { v.Funcs = []FuncSig{{}} },
 		"code-entry":         func(v *Compiled) { v.Entry = []int{0} },
 		"global-import":      func(v *Compiled) { v.GlobalImports = []GlobalImportDef{{Type: ValExternRef}} },
-		"extra-global":       func(v *Compiled) { v.Globals = append(v.Globals, v.Globals[0]) },
 		"wrong-export":       func(v *Compiled) { v.GlobalExports["g"] = 1 },
 		"nonnullable-type":   func(v *Compiled) { v.ValueTypes[0].Ref.Nullable = false },
 		"table":              func(v *Compiled) { v.HasTable, v.TableSize = true, 1 },
@@ -168,7 +325,7 @@ func TestRV64PublicStateOnlyExternrefGlobalArtifactGates(t *testing.T) {
 				if err != nil || loaded == nil || loaded.requiredFeatures != CoreFeatureReferenceTypes {
 					t.Fatal("canonical externref artifact metadata was not restored", loaded, err)
 				}
-				if !rv64StateOnlyExternrefGlobal(loaded) {
+				if !rv64StateOnlyExternrefGlobals(loaded) {
 					t.Fatal("canonical externref artifact did not clear inactive metadata")
 				}
 				_ = loaded.Close()
