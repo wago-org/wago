@@ -26,3 +26,7 @@ func railshotRetryGlobalDescriptorDependenciesLocked(*globalOwner, *globalDescri
 func railshotFlushGlobalDescriptorDependencies(batch *globalDescriptorDependencyBatch) {
 	batch.releases.drain((*Instance).releaseResourceRoot)
 }
+
+func railshotLinkOwnedGlobalDescriptorHolderLocked(*Instance, *globalOwner) {}
+func railshotReleaseOwnedGlobalDescriptorDependencies(*Instance)            {}
+func railshotRetryClosedGlobalDescriptorRetirement(*Instance) error         { return nil }

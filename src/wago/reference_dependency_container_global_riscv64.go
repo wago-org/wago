@@ -7,14 +7,18 @@ import (
 	"fmt"
 )
 
-// Mutable host-container descriptors are physical acquisitions distinct from
-// their counted global-cell storage. Rows stay Pending/external in this
+// Mutable funcref-container descriptors are physical acquisitions distinct
+// from their counted global-cell storage. Rows stay Pending/external in this
 // checkpoint: a writer's invocation does not authorize adoption onto an owner.
 type globalDescriptorDependencies struct {
 	// Protected by the containing globalOwner.mu. The map-state pointer, rather
 	// than the producer alone, distinguishes an old acquisition from a later
 	// replacement for the same producer.
 	rows map[*retainedInstanceRoot]*rv64GlobalDescriptorDependency
+	// Instance-owned holders are linked under Instance.lifeMu before g.owner is
+	// published. The chain and exact authority survive globalCells teardown.
+	nextOwned *globalOwner
+	holder    *rv64FunctionDependencyOwnership
 }
 
 type rv64GlobalDescriptorDependencyPhase uint8
@@ -52,9 +56,8 @@ type globalDescriptorDependencyBatch struct {
 func railshotRecordGlobalDescriptorDependencyLocked(owner *globalOwner, producer *Instance, mapState *retainedInstanceRoot, batch *globalDescriptorDependencyBatch) {
 	// Instance-owned cells are torn down with their instance and need an
 	// authoritative instance-side holder before receipts can safely survive a
-	// denied terminal claim. This first container slice is deliberately limited
-	// to host-owned globals; their owner remains the terminal holder.
-	if owner.instance != nil {
+	// denied terminal claim. Unbound synthetic owners remain on the legacy path.
+	if owner.instance != nil && (owner.descriptorDependencies.holder == nil || owner.descriptorDependencies.holder.member.owner != owner.instance) {
 		return
 	}
 	if owner.descriptorDependencies.rows == nil {
@@ -104,6 +107,74 @@ func railshotFlushGlobalDescriptorDependencies(batch *globalDescriptorDependency
 	cleanup.run(func() { batch.retirements.drain((*rv64GlobalDescriptorDependency).release) })
 	cleanup.run(func() { batch.legacy.drain((*Instance).releaseResourceRoot) })
 	cleanup.finish()
+}
+
+// Caller holds in.lifeMu and has not published owner through g.owner yet.
+func railshotLinkOwnedGlobalDescriptorHolderLocked(in *Instance, owner *globalOwner) {
+	if in == nil || owner == nil || owner.instance != in || owner.typ != ValFuncRef || owner.descriptorDependencies.holder != nil {
+		return
+	}
+	ownership := rv64FunctionDependencyOwnershipForLocked(in)
+	owner.descriptorDependencies.holder = ownership
+	owner.descriptorDependencies.nextOwned = ownership.ownedGlobalDescriptors.Load()
+	ownership.ownedGlobalDescriptors.Store(owner)
+}
+
+func railshotOwnedGlobalDescriptorDependenciesComplete(ownership *rv64FunctionDependencyOwnership) bool {
+	if ownership == nil {
+		return true
+	}
+	for owner := ownership.ownedGlobalDescriptors.Load(); owner != nil; owner = owner.descriptorDependencies.nextOwned {
+		owner.mu.Lock()
+		complete := owner.descriptorDependencies.holder == ownership && len(owner.descriptorDependencies.rows) == 0
+		owner.mu.Unlock()
+		if !complete {
+			return false
+		}
+	}
+	return true
+}
+
+// Traverse the immutable owner chain one node at a time. Never retain an owner
+// or traversal lock across graph work, physical release, or callbacks.
+func railshotReleaseOwnedGlobalDescriptorDependencies(in *Instance) {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil {
+		return
+	}
+	var cleanup resourceCleanup
+	for owner := ownership.ownedGlobalDescriptors.Load(); owner != nil; {
+		next := owner.descriptorDependencies.nextOwned
+		var batch globalDescriptorDependencyBatch
+		owner.mu.Lock()
+		if owner.descriptorDependencies.holder == ownership {
+			railshotRetryGlobalDescriptorDependenciesLocked(owner, &batch)
+		}
+		owner.mu.Unlock()
+		cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&batch) })
+		owner = next
+	}
+	cleanup.run(func() { rv64RetireFunctionDependencyMember(&ownership.member) })
+	cleanup.finish()
+}
+
+// Repeated Close is the repair route after physical teardown has cleared the
+// instance's native directories and globalCells. Reentrant Close during the
+// physical callback journal must remain prompt and cannot drain this metadata.
+func railshotRetryClosedGlobalDescriptorRetirement(in *Instance) error {
+	if in == nil || in.invocationState.Load() != instanceInvocationClosed {
+		return nil
+	}
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil || !ownership.physicalCleanupFinished.Load() {
+		return nil
+	}
+	var cleanup resourceCleanup
+	cleanup.run(func() { railshotReleaseOwnedGlobalDescriptorDependencies(in) })
+	if cleanup.panicked {
+		return fmt.Errorf("wago: RV64 closed global descriptor retirement: %w", ErrCallbackPanic)
+	}
+	return nil
 }
 
 // Acquire a second, graph-identified physical unit while the caller's exact
@@ -237,5 +308,8 @@ func (row *rv64GlobalDescriptorDependency) release() {
 			panic("RV64 global descriptor dependency release did not claim its exact row")
 		}
 	})
+	if holder := owner.descriptorDependencies.holder; holder != nil {
+		cleanup.run(func() { rv64RetireFunctionDependencyMember(&holder.member) })
+	}
 	cleanup.finish()
 }

@@ -1207,7 +1207,9 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 	}
 	in.lifeMu.Lock()
 	if g.owner == nil {
-		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
+		owner := &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
+		railshotLinkOwnedGlobalDescriptorHolderLocked(in, owner)
+		g.owner = owner
 	}
 	in.lifeMu.Unlock()
 	in.markNativeControlShared()

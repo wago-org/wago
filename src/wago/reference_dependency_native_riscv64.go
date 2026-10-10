@@ -59,19 +59,25 @@ type functionDependencyAttachments struct {
 }
 
 type rv64FunctionDependencyOwnership struct {
-	member           dependencyMember
-	functions        importDedup[functionDependencyRoot]
-	memories         atomic.Pointer[rv64MemoryDependencyRows]
-	globals          atomic.Pointer[rv64GlobalDependencyRows]
-	tables           atomic.Pointer[rv64TableDependencyRows]
-	frozenGlobals    atomic.Pointer[rv64FrozenGlobalDependencyRows]
-	managed          bool        // remains true after drain; a reentrant call never rescans imports
-	cleanupCompleted atomic.Bool // resourcesClosed alone is only a cleanup claim
+	member                  dependencyMember
+	functions               importDedup[functionDependencyRoot]
+	memories                atomic.Pointer[rv64MemoryDependencyRows]
+	globals                 atomic.Pointer[rv64GlobalDependencyRows]
+	tables                  atomic.Pointer[rv64TableDependencyRows]
+	frozenGlobals           atomic.Pointer[rv64FrozenGlobalDependencyRows]
+	ownedGlobalDescriptors  atomic.Pointer[globalOwner]
+	managed                 bool        // remains true after drain; a reentrant call never rescans imports
+	physicalCleanupFinished atomic.Bool // set only after the complete physical callback journal
+	cleanupCompleted        atomic.Bool // physical journal plus every authoritative receipt holder
 }
 
 func rv64FunctionDependencyOwnershipFor(in *Instance) *rv64FunctionDependencyOwnership {
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
+	return rv64FunctionDependencyOwnershipForLocked(in)
+}
+
+func rv64FunctionDependencyOwnershipForLocked(in *Instance) *rv64FunctionDependencyOwnership {
 	accounting := &in.ensureImportState().rootAccounting
 	if accounting.dependencies == nil {
 		accounting.dependencies = &rv64FunctionDependencyOwnership{}
@@ -192,21 +198,31 @@ func railshotDrainInstanceFunctionDependencies(in *Instance) bool {
 
 func railshotFunctionDependencyCleanupCompleted(in *Instance) {
 	if ownership := rv64ExistingFunctionDependencyOwnership(in); ownership != nil {
-		if rows := ownership.memories.Load(); rows != nil && !rows.complete() {
-			return
-		}
-		if rows := ownership.globals.Load(); rows != nil && !rows.complete() {
-			return
-		}
-		if rows := ownership.tables.Load(); rows != nil && !rows.complete() {
-			return
-		}
-		if rows := ownership.frozenGlobals.Load(); rows != nil && !rows.complete() {
-			return
-		}
-		ownership.cleanupCompleted.Store(true)
+		ownership.physicalCleanupFinished.Store(true)
 		rv64RetireFunctionDependencyMember(&ownership.member)
 	}
+}
+
+func rv64MaybeCompleteFunctionDependencies(ownership *rv64FunctionDependencyOwnership) {
+	if ownership == nil || ownership.cleanupCompleted.Load() || !ownership.physicalCleanupFinished.Load() {
+		return
+	}
+	if rows := ownership.memories.Load(); rows != nil && !rows.complete() {
+		return
+	}
+	if rows := ownership.globals.Load(); rows != nil && !rows.complete() {
+		return
+	}
+	if rows := ownership.tables.Load(); rows != nil && !rows.complete() {
+		return
+	}
+	if rows := ownership.frozenGlobals.Load(); rows != nil && !rows.complete() {
+		return
+	}
+	if !railshotOwnedGlobalDescriptorDependenciesComplete(ownership) {
+		return
+	}
+	ownership.cleanupCompleted.Store(true)
 }
 
 func rv64RetireFunctionDependencyMember(m *dependencyMember) {
@@ -214,7 +230,11 @@ func rv64RetireFunctionDependencyMember(m *dependencyMember) {
 		return
 	}
 	ownership := rv64ExistingFunctionDependencyOwnership(m.owner)
-	if ownership == nil || &ownership.member != m || !ownership.cleanupCompleted.Load() {
+	if ownership == nil || &ownership.member != m {
+		return
+	}
+	rv64MaybeCompleteFunctionDependencies(ownership)
+	if !ownership.cleanupCompleted.Load() {
 		return
 	}
 	if g := m.graph.Load(); g != nil {
