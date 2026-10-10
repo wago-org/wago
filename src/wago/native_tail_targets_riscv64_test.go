@@ -130,7 +130,7 @@ func TestRV64PrivateTailTargetDirectoryQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	need := view.arenaNeedForImports(resolved, true)
+	need := view.arenaNeedForImports(resolved, true) + railshotNativeImportMetadataBytes(view, resolved)
 	if railshotNativeTailArenaBytes(view) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*len(view.FuncTypeID) {
 		t.Fatal("directory footprint not charged")
 	}

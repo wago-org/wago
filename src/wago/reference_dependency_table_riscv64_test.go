@@ -308,6 +308,9 @@ func TestRV64TableDependenciesAcquisitionRevalidation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if ownership := rv64ExistingFunctionDependencyOwnership(producer); ownership == nil || ownership.member.graph.Load() != nil {
+				t.Fatal("mapped table fixture dependency member state")
+			}
 			graph, err := newRV64FunctionDependencyGraph(1, 1)
 			if err != nil {
 				t.Fatal(err)
@@ -346,37 +349,59 @@ func TestRV64TableDependenciesAcquisitionRevalidation(t *testing.T) {
 					}
 				})
 			}
-			graph.mu.Lock()
-			graphLocked := true
-			defer func() {
-				if graphLocked {
-					graph.mu.Unlock()
-				}
-			}()
 			var batch tableImportAttachments
 			var cleanup resourceCleanup
-			done := make(chan error, 1)
-			joined := false
+			type acquisitionResult struct {
+				err      error
+				value    any
+				panicked bool
+			}
+			done := make(chan acquisitionResult, 1)
+			acquired, acquireResume := make(chan struct{}), make(chan struct{})
+			joined, resumed := false, false
+			graph.mu.Lock()
+			graph.afterAcquire = func(owner *Instance) {
+				if owner == producer {
+					close(acquired)
+					<-acquireResume
+				}
+			}
+			graph.mu.Unlock()
 			defer func() {
-				if graphLocked {
-					graph.mu.Unlock()
-					graphLocked = false
+				if !resumed {
+					close(acquireResume)
 				}
 				if !joined {
 					select {
 					case <-done:
+						joined = true
 					case <-time.After(3 * time.Second):
 						t.Error("acquisition worker failed to join after lock release")
 					}
 				}
-			}()
-			go func() { done <- tableDependencyTestAcquire(&batch, table, nil, graph, &cleanup) }()
-			deadline := time.Now().Add(3 * time.Second)
-			for rv64ExistingFunctionDependencyOwnership(producer) == nil {
-				if time.Now().After(deadline) {
-					t.Fatal("initial table snapshot blocked")
+				if joined {
+					graph.mu.Lock()
+					graph.afterAcquire = nil
+					graph.mu.Unlock()
+					var release resourceCleanup
+					release.run(batch.detachAll)
+					release.run(cleanup.finish)
+					if release.panicked {
+						t.Errorf("acquisition failure cleanup panicked: %v", release.value)
+					}
 				}
-				time.Sleep(time.Millisecond)
+			}()
+			go func() {
+				result := acquisitionResult{}
+				result.value, result.panicked = cleanupTestPanic(func() {
+					result.err = tableDependencyTestAcquire(&batch, table, nil, graph, &cleanup)
+				})
+				done <- result
+			}()
+			select {
+			case <-acquired:
+			case <-time.After(3 * time.Second):
+				t.Fatal("actual mapped table root was not retained")
 			}
 			owner := table.owner
 			owner.mu.Lock()
@@ -386,14 +411,11 @@ func TestRV64TableDependenciesAcquisitionRevalidation(t *testing.T) {
 					owner.mu.Unlock()
 				}
 			}()
-			graph.mu.Unlock()
-			graphLocked = false
-			for dependencyTestRefs(producer) != 1 {
-				if time.Now().After(deadline) {
-					t.Fatal("actual mapped table root was not retained")
-				}
-				time.Sleep(time.Millisecond)
+			if dependencyTestRefs(producer) != 1 {
+				t.Fatal("actual mapped table root was not retained")
 			}
+			close(acquireResume)
+			resumed = true
 			desc, typ, store, exact, types, max, addr := table.desc, owner.elementType, owner.store, owner.valueType, owner.types, owner.declaredHasMax, owner.addr64
 			cap := binary.LittleEndian.Uint32(desc[4:])
 			size := binary.LittleEndian.Uint32(desc)
@@ -434,8 +456,12 @@ func TestRV64TableDependenciesAcquisitionRevalidation(t *testing.T) {
 			owner.mu.Unlock()
 			ownerLocked = false
 			select {
-			case err = <-done:
+			case result := <-done:
 				joined = true
+				if result.panicked {
+					t.Fatalf("table acquisition worker panicked: %v", result.value)
+				}
+				err = result.err
 			case <-time.After(3 * time.Second):
 				t.Fatal("fresh table revalidation did not finish")
 			}

@@ -91,6 +91,10 @@ type dependencyGraph struct {
 	records      []dependencyRecord
 	free         []uint16
 	live         int
+	// Optional deterministic test seam after a pending receipt owns its real
+	// physical root and graph accounting, while the graph lock still excludes
+	// adoption/release. Production leaves this nil.
+	afterAcquire func(*Instance)
 	// Optional per-graph test seam, immutable before the first release and invoked
 	// only after real physical release.
 	// There is no replaceable retain or decrement operation.
@@ -807,6 +811,9 @@ func (g *dependencyGraph) acquirePending(target *dependencyMember, finalization 
 	target.receipts++
 	target.external++
 	g.live++
+	if g.afterAcquire != nil {
+		g.afterAcquire(target.owner)
+	}
 	return dependencyReceipt{graph: g, identity: record.generation<<dependencyReceiptSlotBits | uint64(slot)}, nil
 }
 

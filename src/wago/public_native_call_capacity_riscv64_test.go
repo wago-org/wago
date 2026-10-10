@@ -357,12 +357,12 @@ func TestRV64PublicIndirectTypeCallCapacityBounds(t *testing.T) {
 		wide[i] = ValueTypeDescriptor{Kind: ValueTypeV128}
 	}
 	for _, paramsWide := range []bool{false, true} {
-		typ := DefinedTypeDescriptor{Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}}, Results: wide}
+		typ := DefinedTypeDescriptor{Kind: CompositeTypeFunction, Final: true, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}}, Results: wide}
 		wantParams, wantResults := 3, 256
 		if paramsWide {
 			typ.Params, typ.Results, wantParams, wantResults = wide, []ValueTypeDescriptor{{Kind: ValueTypeI64}}, 256, 1
 		}
-		c := Compiled{HasTable: true, Types: []DefinedTypeDescriptor{typ}, Funcs: []FuncSig{{Params: []ValType{ValI32, ValI32, ValI32}, Results: []ValType{ValI32}}}}
+		c := Compiled{HasTable: true, requiredFeatures: CoreFeatureSIMD, Types: []DefinedTypeDescriptor{typ}, Funcs: []FuncSig{{Params: []ValType{ValI32, ValI32, ValI32}, Results: []ValType{ValI32}}}}
 		params, results, err := c.maxCallSlots()
 		if err != nil || params != wantParams || results != wantResults {
 			t.Fatal("indirect physical capacities", params, results, err)
@@ -370,12 +370,12 @@ func TestRV64PublicIndirectTypeCallCapacityBounds(t *testing.T) {
 	}
 	tooWide := append(slices.Clone(wide), ValueTypeDescriptor{Kind: ValueTypeV128})
 	for _, typ := range []DefinedTypeDescriptor{
-		{Kind: CompositeTypeFunction, Params: tooWide},
-		{Kind: CompositeTypeFunction, Results: tooWide},
+		{Kind: CompositeTypeFunction, Final: true, Params: tooWide},
+		{Kind: CompositeTypeFunction, Final: true, Results: tooWide},
 		{Kind: CompositeTypeStruct},
-		{Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeReference}}},
+		{Kind: CompositeTypeFunction, Final: true, Params: []ValueTypeDescriptor{{Kind: ValueTypeReference}}},
 	} {
-		c := Compiled{HasTable: true, Types: []DefinedTypeDescriptor{typ}}
+		c := Compiled{HasTable: true, requiredFeatures: CoreFeatureSIMD, Types: []DefinedTypeDescriptor{typ}}
 		if _, _, err := c.maxCallSlots(); err == nil {
 			t.Fatal("invalid unused indirect signature admitted", typ.Kind)
 		}
@@ -384,6 +384,8 @@ func TestRV64PublicIndirectTypeCallCapacityBounds(t *testing.T) {
 		types := make([]DefinedTypeDescriptor, count)
 		for i := range types {
 			types[i].Kind = CompositeTypeFunction
+			types[i].Final = true
+			types[i].RecGroup = uint32(i)
 		}
 		c := Compiled{HasTable: true, Types: types}
 		_, _, err := c.maxCallSlots()
