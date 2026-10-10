@@ -1,0 +1,144 @@
+{
+  "baseline": "matched detached main209e448c",
+  "candidate": "production inputs of the explicit diagnostic-gate commit; metadata-normalized paired controls",
+  "cgo_enabled": "1",
+  "go_version": "go version go1.27.1 linux/amd64",
+  "production_inputs": [
+    {
+      "platform": "linux/amd64",
+      "tags": "",
+      "sha256": "4f1bcf3b83921e31adc7cd16ae1fcfd0e3ae6a3c40f727a4e2147c27b04f5f32",
+      "packages": 307,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime",
+      "sha256": "33aabb9ab194bf86cbf8481b1aff8ea80cdb50b8b5f0ace5b73d0d9d4f7ac59f",
+      "packages": 181,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "sha256": "c5b15d276b53da35d1647117787487a264046fcf78b7323928955592389e5428",
+      "packages": 166,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime,wago_minimal",
+      "sha256": "89b194b2796a2b1025b62fa0f6282a4e8412662ed2204f4585a13f1615d3a43a",
+      "packages": 169,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_profile",
+      "sha256": "7a2672851bc66b5225616ba6bac8b1e33236c98f0facc501791bfcf4f6a6a16e",
+      "packages": 314,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_codegenstats",
+      "sha256": "d4a5b0c1c4afa6d9b821dc5f2fc0b15b3aee3cadd8e4090006b64fd1729a7f6a",
+      "packages": 307,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime,wago_profile",
+      "sha256": "8550c6380d2d9554327231305ff382f8b9b7dad6b7b257d261b27fd158e3950a",
+      "packages": 190,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime,wago_codegenstats",
+      "sha256": "9301158707df408bc062362adede381865d1e7496527fcbfdfcb3275e0a4896f",
+      "packages": 181,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_nativecompare,wago_runtime",
+      "sha256": "33aabb9ab194bf86cbf8481b1aff8ea80cdb50b8b5f0ace5b73d0d9d4f7ac59f",
+      "packages": 181,
+      "identical": true
+    }
+  ],
+  "discovery": [
+    {
+      "platform": "linux/amd64",
+      "tags": "",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_profile",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_codegenstats",
+      "diagnostic_excluded": true
+    }
+  ],
+  "binaries": [
+    {
+      "platform": "linux/amd64",
+      "flavor": "manager",
+      "tags": "",
+      "bytes": 14571517,
+      "sha256": "b085f62d6fb0a5363f8622c369092f88ff62626771e2b52f882778af37a34da8",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/amd64",
+      "flavor": "runtime",
+      "tags": "wago_runtime",
+      "bytes": 14760356,
+      "sha256": "8caa4445bc47376cc9d1c91b53296607eabe2d747bd741b3c1cbfe83520c3484",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/amd64",
+      "flavor": "minimal",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "bytes": 13800349,
+      "sha256": "6015988e895acd68493517329e0b127e86f7f167e1e23869c28a81ef18a8f122",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/amd64",
+      "flavor": "release-minimal",
+      "tags": "wago_runtime,wago_minimal",
+      "bytes": 14164920,
+      "sha256": "347da415045ccd0e3e25a57696ff2b39e080d3a9ec91e880adb33dc095ab9eed",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/amd64",
+      "flavor": "embed",
+      "tags": "",
+      "bytes": 11701911,
+      "sha256": "21c552d2d9115751ec1e0246ef84dbb67baed46611dbee275eeeb74c8b092c54",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    }
+  ],
+  "completed": true,
+  "baseline_commit": "209e448c392510a0325d5b282a0d86a776fb379c",
+  "candidate_code_commit": "b919acbb47f7f973c87ba8279c7de6b050679bb3",
+  "symbol_audit": "symbol-audit.json: corrected distinctive command-main symbol checks; hashes match original binaries"
+}

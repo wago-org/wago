@@ -1,0 +1,8 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkRailshotCompileSmallScalar         4098              6046 ns/op            8848 B/op         22 allocs/op
+BenchmarkRailshotCompileMediumControl       3246              7324 ns/op           10544 B/op         21 allocs/op
+BenchmarkRailshotCompileALUHeavy            1132             23626 ns/op            9456 B/op         11 allocs/op
+PASS

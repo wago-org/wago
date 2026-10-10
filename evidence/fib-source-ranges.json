@@ -1,0 +1,50 @@
+[
+  {
+    "offset": 46,
+    "size": 6,
+    "function": 0,
+    "wasm_offset": 5
+  },
+  {
+    "offset": 52,
+    "size": 12,
+    "function": 0,
+    "wasm_offset": 7
+  },
+  {
+    "offset": 64,
+    "size": 12,
+    "function": 0,
+    "wasm_offset": 14
+  },
+  {
+    "offset": 76,
+    "size": 6,
+    "function": 0,
+    "wasm_offset": 23
+  },
+  {
+    "offset": 82,
+    "size": 3,
+    "function": 0,
+    "wasm_offset": 20
+  },
+  {
+    "offset": 85,
+    "size": 4,
+    "function": 0,
+    "wasm_offset": 31
+  },
+  {
+    "offset": 89,
+    "size": 5,
+    "function": 0,
+    "wasm_offset": 34
+  },
+  {
+    "offset": 94,
+    "size": 3,
+    "function": 0,
+    "wasm_offset": 40
+  }
+]

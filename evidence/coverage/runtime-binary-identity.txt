@@ -1,0 +1,5 @@
+3552d4c0b92f427dcbfcae463b20ae89c0e01690cd55c07da064104e2d17b13e  /tmp/wago815-coverage-runtime-before
+3552d4c0b92f427dcbfcae463b20ae89c0e01690cd55c07da064104e2d17b13e  /tmp/wago815-coverage-runtime-after
+14755751 /tmp/wago815-coverage-runtime-before
+14755751 /tmp/wago815-coverage-runtime-after
+29511502 total

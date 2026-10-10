@@ -1,0 +1,9 @@
+?       github.com/wago-org/wago/bench/chart    [no test files]
+ok      github.com/wago-org/wago/bench/cmd/benchpub     0.001s
+ok      github.com/wago-org/wago/bench/cmd/corpus-shard 0.002s
+?       github.com/wago-org/wago/bench/cmd/explain      [no test files]
+ok      github.com/wago-org/wago/bench/cmd/validatestats        0.009s
+?       github.com/wago-org/wago/bench/cmd/wagoprof     [no test files]
+ok      github.com/wago-org/wago/bench/internal/corpusplan      0.002s
+ok      github.com/wago-org/wago/bench/internal/semanticcorpus  0.370s
+ok      github.com/wago-org/wago/bench/suite    30.286s

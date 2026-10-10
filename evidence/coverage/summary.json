@@ -1,0 +1,298 @@
+{
+  "portable/BenchmarkCompareScalarRegions/16": {
+    "before": [
+      {
+        "ns": 2392.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 2407.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 2401.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 2845.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 2445.0,
+        "bytes": 0,
+        "allocs": 0
+      }
+    ],
+    "after": [
+      {
+        "ns": 1088.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 1078.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 1082.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 1092.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 1071.0,
+        "bytes": 0,
+        "allocs": 0
+      }
+    ]
+  },
+  "portable/BenchmarkCompareScalarRegions/256": {
+    "before": [
+      {
+        "ns": 35818.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 36954.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 36244.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 36088.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 36474.0,
+        "bytes": 0,
+        "allocs": 0
+      }
+    ],
+    "after": [
+      {
+        "ns": 14437.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 14020.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 14034.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 14081.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 13954.0,
+        "bytes": 0,
+        "allocs": 0
+      }
+    ]
+  },
+  "portable/BenchmarkCompareScalarRegions/4096": {
+    "before": [
+      {
+        "ns": 579196.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 578017.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 574665.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 576848.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 576169.0,
+        "bytes": 0,
+        "allocs": 0
+      }
+    ],
+    "after": [
+      {
+        "ns": 226269.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 227376.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 226627.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 225982.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 226741.0,
+        "bytes": 0,
+        "allocs": 0
+      }
+    ]
+  },
+  "portable/BenchmarkCompareChangedMemory": {
+    "before": [
+      {
+        "ns": 19913.0,
+        "bytes": 32192,
+        "allocs": 6
+      },
+      {
+        "ns": 9684.0,
+        "bytes": 32192,
+        "allocs": 6
+      },
+      {
+        "ns": 7603.0,
+        "bytes": 32192,
+        "allocs": 6
+      },
+      {
+        "ns": 6809.0,
+        "bytes": 32192,
+        "allocs": 6
+      },
+      {
+        "ns": 10231.0,
+        "bytes": 32192,
+        "allocs": 6
+      }
+    ],
+    "after": [
+      {
+        "ns": 8956.0,
+        "bytes": 26912,
+        "allocs": 6
+      },
+      {
+        "ns": 7223.0,
+        "bytes": 26912,
+        "allocs": 6
+      },
+      {
+        "ns": 8193.0,
+        "bytes": 26912,
+        "allocs": 6
+      },
+      {
+        "ns": 8509.0,
+        "bytes": 26912,
+        "allocs": 6
+      },
+      {
+        "ns": 6982.0,
+        "bytes": 26912,
+        "allocs": 6
+      }
+    ]
+  },
+  "fib-compare/BenchmarkCompareCapturedFib": {
+    "before": [
+      {
+        "ns": 2361.0,
+        "bytes": 96,
+        "allocs": 8
+      },
+      {
+        "ns": 2320.0,
+        "bytes": 96,
+        "allocs": 8
+      },
+      {
+        "ns": 2366.0,
+        "bytes": 96,
+        "allocs": 8
+      }
+    ],
+    "after": [
+      {
+        "ns": 2118.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 2132.0,
+        "bytes": 0,
+        "allocs": 0
+      },
+      {
+        "ns": 2054.0,
+        "bytes": 0,
+        "allocs": 0
+      }
+    ]
+  },
+  "fib-capture/BenchmarkCaptureExistingFib": {
+    "before": [
+      {
+        "ns": 11993015.0,
+        "bytes": 132668,
+        "allocs": 813
+      },
+      {
+        "ns": 11207803.0,
+        "bytes": 132672,
+        "allocs": 813
+      },
+      {
+        "ns": 11130816.0,
+        "bytes": 132665,
+        "allocs": 813
+      }
+    ],
+    "after": [
+      {
+        "ns": 11770358.0,
+        "bytes": 134057,
+        "allocs": 836
+      },
+      {
+        "ns": 11358351.0,
+        "bytes": 133913,
+        "allocs": 835
+      },
+      {
+        "ns": 10565444.0,
+        "bytes": 133920,
+        "allocs": 835
+      }
+    ]
+  }
+}

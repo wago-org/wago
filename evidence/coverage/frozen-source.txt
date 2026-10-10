@@ -1,0 +1,5 @@
+Measured candidate source: 66dedc1decfe9061b60a3b42101400950915a7c3
+Diagnostic before: 8e82e1b26e0b5ac015b761f0c4bf5c9c894fb0b2
+Verified publication main: e4bcc5244a29ddf4028fdeb3a7255ec8c76d810f
+Source implementation: c57256f5e3b6448202e04b6f8a5d266d893453ef
+Later candidate changes are documentation/evidence only.

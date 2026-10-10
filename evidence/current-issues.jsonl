@@ -1,0 +1,12 @@
+{"assignees":[],"labels":[],"number":856,"title":"[CI] Support explicit purposeful binary-size deferrals"}
+{"assignees":[],"labels":[],"number":833,"title":"[Research] Qualify tail and exception transport as separate control contracts (W24)"}
+{"assignees":[],"labels":[],"number":832,"title":"[Research] Independently qualify reference roots at admitted safepoints (W23)"}
+{"assignees":[],"labels":[],"number":829,"title":"[Research] Qualify final native layout and kind-specific metadata sites (W17)"}
+{"assignees":[],"labels":[],"number":826,"title":"[Research] Qualify cold, first-call and prepared-call benchmark attribution (W12)"}
+{"assignees":[],"labels":[],"number":819,"title":"[Research] Define cross-architecture semantic profiles for differential compiler tests"}
+{"assignees":[],"labels":[],"number":816,"title":"[Research] Preserve real slowdowns during bounded performance testcase reduction"}
+{"assignees":[],"labels":[],"number":815,"title":"[Research] Add operand-aware native-code comparisons for performance diagnosis"}
+{"assignees":[],"labels":[],"number":813,"title":"[Research] Verify FP and SIMD transport across spills, joins, and call boundaries"}
+{"assignees":[],"labels":[],"number":812,"title":"[Research] Extend checked transport verification to loop backedges and fallback bodies"}
+{"assignees":[],"labels":[],"number":810,"title":"[Research] Generate bounded register-pressure tests with live values across calls and joins"}
+{"assignees":[],"labels":[],"number":801,"title":"[Deferred][CI] Linux ARM64 native mapping ownership mismatch in TestBenchNativeMappingRelease"}

@@ -1,0 +1,45 @@
+{
+  "version": "tinygo version 0.42.0 linux/amd64 (using go version go1.27.1 and LLVM version 22.1.4)",
+  "platform": "linux/amd64",
+  "profiles": [
+    {
+      "profile": "standard",
+      "tags": "wago_runtime",
+      "builds": [
+        {
+          "side": "before",
+          "exit": 0,
+          "bytes": 7810008,
+          "sha256": "1da7827a3b3bc362cd8973377c389e6c22664bd7c9a4f18b5dc8443a720bc035"
+        },
+        {
+          "side": "after",
+          "exit": 0,
+          "bytes": 7810008,
+          "sha256": "1da7827a3b3bc362cd8973377c389e6c22664bd7c9a4f18b5dc8443a720bc035"
+        }
+      ],
+      "identical": true
+    },
+    {
+      "profile": "minimal",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "builds": [
+        {
+          "side": "before",
+          "exit": 0,
+          "bytes": 7307640,
+          "sha256": "4eec7e06b0041a06172570ad8108243e5fc46f77aa78d17cd8068244ad1da4d0"
+        },
+        {
+          "side": "after",
+          "exit": 0,
+          "bytes": 7307640,
+          "sha256": "4eec7e06b0041a06172570ad8108243e5fc46f77aa78d17cd8068244ad1da4d0"
+        }
+      ],
+      "identical": true
+    }
+  ],
+  "completed": true
+}

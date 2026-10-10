@@ -1,0 +1,29 @@
+{"branch":"experiment/loop-unroll-vectorization","number":909,"title":"experiment: qualify loop unrolling and 128-bit vector maps"}
+{"branch":"codex/review-p5-profile-join","number":907,"title":"fix(profile): avoid repeated sorting in sample resolution"}
+{"branch":"codex/review-p2-subtype-chain","number":906,"title":"Speed up declared supertype chain checks during validation"}
+{"branch":"codex/review-p3-addtypes","number":905,"title":"Avoid rebuilding GC intervals for independent type roots"}
+{"branch":"codex/review-p4-funcref-retention","number":904,"title":"Reduce repeated funcref retention scans"}
+{"branch":"codex/review-p7-perfmap-overlap","number":901,"title":"Speed up perf-map overlap checks"}
+{"branch":"codex/review-p6-samply-metadata","number":900,"title":"Speed up Samply function metadata joins"}
+{"branch":"codex/review-c1-arm64-adr","number":899,"title":"fix(arm64): reject out-of-range adapter ADR patches"}
+{"branch":"codex/review-c2-gc-frame-depth","number":898,"title":"fix(gc): remove fixed native frame depth limit"}
+{"branch":"codex/review-p9-arm64-store","number":897,"title":"fix(arm64): avoid duplicate immediate store loads"}
+{"branch":"codex/wasmfyi-runtime-performance","number":895,"title":"perf: speed up AMD64 execution and owned numeric host calls"}
+{"branch":"codex/safe-compiler-recovery-fixtures","number":892,"title":"test(amd64): use bounds panics for compiler recovery fixtures"}
+{"branch":"experiment/810-integer-loop-pressure","number":882,"title":"test(amd64): qualify integer state across loop backedges"}
+{"branch":"experiment/810-integer-join-pressure","number":881,"title":"test(amd64): qualify integer values across conditional joins"}
+{"branch":"experiment/826-first-prepared-call","number":880,"title":"test(bench): qualify first prepared calls on fresh instances"}
+{"branch":"experiment/826-semantic-adapter-schedule","number":879,"title":"test(bench): qualify prepared semantic call schedules"}
+{"branch":"experiment/810-integer-call-pressure","number":877,"title":"test(amd64): qualify integer values live across calls"}
+{"branch":"experiment/871-floor-average","number":875,"title":"test: qualify SIMD floor average sources and bounded applicability"}
+{"branch":"experiment/870-widening-multiply","number":874,"title":"fix(arm64): reduce i64x2 multiply pressure and qualify source pairs"}
+{"branch":"perf/arm64-await-third-party","number":849,"title":"perf(arm64): avoid repeated branch-hint and stack-depth walks"}
+{"branch":"perf/ready-register-moves","number":847,"title":"perf(shared): schedule ready register moves and walk cycles once"}
+{"branch":"perf/scalar-local-constants","number":846,"title":"perf(shared): preserve constants through scalar local assignments"}
+{"branch":"perf/stream-tail-argument-slots","number":845,"title":"perf(compiler): stream tail argument slots without type snapshots"}
+{"branch":"perf/eh-module-summary","number":837,"title":"perf(compiler): reuse exception payload summaries per module"}
+{"branch":"jairus/security-bughunt-20261003","number":784,"title":"fix(cli): harden installer identity, artifact auth, and uninstall"}
+{"branch":"jairus/profiler-application-experiments","number":719,"title":"Add application profiling, artifact sidecars, and paired experiments"}
+{"branch":"jairus/dragline-mvp","number":544,"title":"compiler: add experimental Dragline backend"}
+{"branch":"feat/pico2-32bit","number":285,"title":"pico2: add experimental Arm32 and RV32 backends"}
+{"branch":"feat/riscv-linux","number":284,"title":"riscv64: add native Linux JIT backend with RV64G SIMD"}

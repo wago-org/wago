@@ -1,0 +1,29 @@
+{
+  "architecture": "amd64",
+  "provenance": {
+    "compiler_revision": "5cd443965a09e46076cce5e3dd4bf3ae69500348+diagnostic-only",
+    "binary_sha256": "664493aa97c9648cd1b3a7550e84e03264cfb1de59d4b7e01c7dc3d97a082c21",
+    "input_sha256": "8ad3e2980880c8256a8afa8327e80ee369f109f27c38fec3ac1dddb9be0d946f",
+    "cpu_features": "configured-mask=00000000;required-mask=00000000",
+    "bounds": "explicit",
+    "build": "wago_profile",
+    "compiler_path": "established/direct-backend"
+  },
+  "regions": [
+    {
+      "id": "f0.pc5.region0",
+      "function": 0,
+      "wasm_offset": 5,
+      "instructions": [
+        {
+          "offset": 34,
+          "hex": "4489c8"
+        },
+        {
+          "offset": 37,
+          "hex": "4431d8"
+        }
+      ]
+    }
+  ]
+}

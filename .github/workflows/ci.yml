@@ -494,6 +494,10 @@ jobs:
         if: matrix.runtime
         run: go test -v -count=1 -run '^TestBuild(OutputSnapshotRejectsTargetDisappearance|DarwinFilesOnlyDirectoryExplainsPrivateStageRequirement|NewWindowsOutputPreservesWriteOnlyInheritance)$' ./cli/runtime/commands/build
 
+      - name: Opt-in native comparison diagnostic
+        if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: just test native-compare
+
       - name: Diagnostic dead-code elimination
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: scripts/check-diagnostic-dce.sh

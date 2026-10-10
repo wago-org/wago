@@ -1,0 +1,2 @@
+captured amd64: native=105 mapped=51 unmapped=54 bytes; compiler=60481522292483cf94a116b17a68c69a10a8c737; snapshot=evidence/integration/fib-before.json
+captured amd64: native=105 mapped=51 unmapped=54 bytes; compiler=60481522292483cf94a116b17a68c69a10a8c737; snapshot=evidence/integration/fib-after.json
