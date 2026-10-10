@@ -5,6 +5,7 @@ package wagobench
 import (
 	"bytes"
 	"reflect"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -13,8 +14,10 @@ import (
 
 func cowPHPCommand(tb testing.TB) corpusModule {
 	tb.Helper()
-	for _, m := range commandCorpus(tb) {
-		if m.ID == "php-buckets" {
+	for _, m := range readCatalogForSelector(tb, "php-buckets") {
+		if m.ID == "php-buckets" && m.Command != nil && m.supports("CommandExec") &&
+			commandSupportsPlatform(m, runtime.GOOS, runtime.GOARCH) {
+			validateCommandInputs(tb, m)
 			return m
 		}
 	}
