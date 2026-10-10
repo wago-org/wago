@@ -42,12 +42,12 @@ func tableElementExpression(expr wasm.Expr) (wasm.FuncrefElementExpr, error) {
 }
 
 // Element payloads may copy immutable construction-time globals under the
-// retained public ABI. Keep table initializers and declarative payloads on the
-// literal profile; private owners cannot resolve shared global cells.
+// retained public ABI. Declarative payloads are validated before being dropped;
+// private owners and table initializers cannot resolve shared global cells.
 func elementInitializerExpression(expr wasm.Expr, m *wasm.Module, mode wasm.ElemModeKind, public bool) (wasm.ElementExpr, error) {
 	if len(expr.BodyBytes) != 0 && expr.BodyBytes[0] == 0x23 {
-		if !public || mode != wasm.ElemActive && mode != wasm.ElemPassive {
-			return wasm.ElementExpr{}, unsupported("element global requires an active/passive public segment")
+		if !public || mode != wasm.ElemActive && mode != wasm.ElemPassive && mode != wasm.ElemDeclarative {
+			return wasm.ElementExpr{}, unsupported("element global requires a public segment")
 		}
 		if err := admitGlobalExpression(expr, m, wasm.FuncRef, m.ImportedGlobalCount()+len(m.Globals)); err != nil {
 			return wasm.ElementExpr{}, err

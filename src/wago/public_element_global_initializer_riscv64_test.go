@@ -152,6 +152,126 @@ func TestRV64PublicElementGlobalInitializers(t *testing.T) {
 	}
 }
 
+// Declarative global expressions are validated against their construction-time
+// globals, but they never materialize a table payload or retain a callable
+// descriptor. Source and artifact execution must preserve that dropped state.
+func TestRV64PublicDeclarativeElementGlobalInitializers(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, imported := range []bool{false, true} {
+			for _, null := range []bool{false, true} {
+				for _, artifact := range []bool{false, true} {
+					t.Run(fmt.Sprintf("vector%t-imported%t-null%t-artifact%t", vector, imported, null, artifact), func(t *testing.T) {
+						rt := NewRuntime()
+						defer rt.Close()
+						imports := NewImports()
+						var producer *Instance
+						var pc *Compiled
+						if imported {
+							if null {
+								g, err := rt.NewFuncRefGlobal(FuncRef{}, false)
+								if err != nil {
+									t.Fatal(err)
+								}
+								defer g.Close()
+								imports.Global("env", "ref", g)
+							} else {
+								pc = rv64TableStageCompile(t, fmt.Sprintf("declarative-element-global-producer-vector%t", vector), rv64NativeTokenModule(vector, true, true, false), artifact)
+								producer = rv64NativeTokenInstantiate(t, rt, pc, NewImports())
+								g, err := producer.ExportedGlobalObject("reference")
+								if err != nil {
+									t.Fatal(err)
+								}
+								imports.Global("env", "ref", g)
+							}
+						}
+						key := fmt.Sprintf("declarative-element-global-vector%t-imported%t-null%t", vector, imported, null)
+						c := rv64TableStageCompile(t, key, rv64ElementGlobalModule(vector, imported, false, null, 7, 0), artifact)
+						view := c.executionView()
+						if len(view.passiveElems) != 1 || view.passiveElems[0].Mode != ElemModeDeclarative || len(view.passiveElems[0].Values) != 0 || !view.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) {
+							t.Fatal("declarative global payload was retained or lost its feature contract")
+						}
+						in := rv64NativeTokenInstantiate(t, rt, c, imports)
+						dropSource := rv64ElementGlobalModule(vector, imported, false, null, 7, 0)
+						dropSource = rv64ReplaceTableStageSection(t, dropSource, 10, wasmtest.Section(10, wasmtest.Vec(
+							wasmtest.Code([]byte{0x20, 0, 0x0b}),
+							wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x11, 0, 0, 0x0b}),
+							wasmtest.Code([]byte{0xfc, 13, 0, 0xfc, 13, 0, 0x41, 7, 0x0b}),
+						)))
+						dropC := rv64TableStageCompile(t, key+"-drop", dropSource, artifact)
+						dropIn := rv64NativeTokenInstantiate(t, rt, dropC, imports)
+						c.Close()
+						dropC.Close()
+						if producer != nil {
+							producer.Close()
+							pc.Close()
+						}
+						args, _ := rv64ElementGlobalArguments(vector)
+						for index := uint64(0); index < 3; index++ {
+							_, err := in.Invoke("call", append(slices.Clone(args), index)...)
+							tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+						}
+						beforeRoots := in.referenceLifetime().snapshot().ResourceRoots
+						beforeDropRoots := dropIn.referenceLifetime().snapshot().ResourceRoots
+						beforeTokens := len(rt.refStore.byToken)
+						producerRoots := 0
+						if producer != nil {
+							producerRoots = producer.referenceLifetime().snapshot().ResourceRoots
+						}
+						for range 3 {
+							importedGlobalInvoke(t, dropIn, "install", []uint64{7})
+						}
+						if in.referenceLifetime().snapshot().ResourceRoots != beforeRoots || dropIn.referenceLifetime().snapshot().ResourceRoots != beforeDropRoots || len(rt.refStore.byToken) != beforeTokens || producer != nil && producer.referenceLifetime().snapshot().ResourceRoots != producerRoots {
+							t.Fatal("declarative global drop changed tokens or roots")
+						}
+						_, err := in.Invoke("install")
+						tableTestExpectTrap(t, err, TrapTableOutOfBounds)
+						if table := in.tableDescriptor(0); !bytes.Equal(table[8:], make([]byte, len(table)-8)) {
+							t.Fatal("declarative global expression materialized table entries")
+						}
+						if table := dropIn.tableDescriptor(0); !bytes.Equal(table[8:], make([]byte, len(table)-8)) {
+							t.Fatal("declarative global drop materialized table entries")
+						}
+						dropIn.Close()
+						in.Close()
+						if producer != nil && producer.hasPhysicalResources() {
+							t.Fatal("declarative global retained producer after consumer close")
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestRV64PublicUnusedDeclarativeElementGlobalInitializer(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("vector%t-artifact%t", vector, artifact), func(t *testing.T) {
+				source := rv64ElementGlobalModule(vector, false, false, false, 7, 0)
+				source = rv64ReplaceTableStageSection(t, source, 10, wasmtest.Section(10, wasmtest.Vec(
+					wasmtest.Code([]byte{0x20, 0, 0x0b}),
+					wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x11, 0, 0, 0x0b}),
+					wasmtest.Code([]byte{0x41, 3, 0x0b}),
+				)))
+				c := rv64TableStageCompile(t, fmt.Sprintf("unused-declarative-element-global-vector%t", vector), source, artifact)
+				if len(c.executionView().passiveElems) != 0 || !c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) {
+					t.Fatal("unused declaration retained a directory or lost its feature contract")
+				}
+				rt := NewRuntime()
+				defer rt.Close()
+				in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+				c.Close()
+				table := in.tableDescriptor(0)
+				if in.jm.PassiveElemPtr() != 0 || !bytes.Equal(table[8:], make([]byte, len(table)-8)) {
+					t.Fatal("unused declaration materialized runtime state")
+				}
+				importedGlobalInvoke(t, in, "install", []uint64{3})
+				in.Close()
+			})
+		}
+	}
+}
+
 // A reader must see construction-time copied references without a first native
 // call through the writer to publish its imported-global descriptor owner.
 func TestRV64PublicElementGlobalHostTableConstruction(t *testing.T) {
@@ -376,12 +496,18 @@ func TestRV64PublicElementGlobalMetadataAdmission(t *testing.T) {
 			}
 		})
 	}
-	for _, flags := range []byte{4, 5} {
+	for _, flags := range []byte{4, 5, 7} {
 		if compiled, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false), rv64ElementGlobalModule(false, false, false, false, flags, 0)); compiled != nil || err == nil {
 			if compiled != nil {
 				compiled.Close()
 			}
 			t.Fatal("disabled reference feature accepted")
 		}
+	}
+	if compiled, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureExtendedConstExpressions, false), rv64ElementGlobalModule(false, false, false, false, 7, 0)); compiled != nil || err == nil {
+		if compiled != nil {
+			compiled.Close()
+		}
+		t.Fatal("disabled extended const feature accepted declarative global")
 	}
 }
