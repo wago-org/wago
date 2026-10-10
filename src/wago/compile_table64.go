@@ -17,6 +17,7 @@ const (
 	nativeTable64IndirectABI
 	nativeTable64FillABI
 	nativeTable64CopyABI
+	nativeTable64InitDropABI
 )
 
 func stagedNativeTable64ABI(m *wasm.Module) uint8 {
@@ -41,6 +42,9 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 	if stagedOwnedTable64CopyShape(m) {
 		return nativeTable64CopyABI
 	}
+	if stagedOwnedTable64InitDropShape(m) {
+		return nativeTable64InitDropABI
+	}
 	return nativeTable64NoABI
 }
 
@@ -49,7 +53,7 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 //
 //go:noinline
 func validateCompileTable64(m *wasm.Module) error {
-	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m))
+	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m) || stagedOwnedTable64InitDropShape(m))
 	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !rv64Qualified {
 		return fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
@@ -360,6 +364,55 @@ func stagedOwnedTable64CopyShape(m *wasm.Module) bool {
 		}
 	}
 	return hasFunctionExport
+}
+
+func stagedOwnedTable64InitDropShape(m *wasm.Module) bool {
+	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Tables[0].Init != nil || m.Start != nil {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	table := m.Tables[0].Type
+	if !table.Limits.Addr64 || !table.Limits.HasMax || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+		return false
+	}
+	for i := range m.Types {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != uint32(i) || len(m.Types[i].SubTypes) != 1 {
+			return false
+		}
+		sub := m.Types[i].SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) {
+			return false
+		}
+		if i == 0 && (len(sub.Comp.Params) != 3 || !wasm.EqualValType(sub.Comp.Params[0], wasm.I64) || !wasm.EqualValType(sub.Comp.Params[1], wasm.I32) || !wasm.EqualValType(sub.Comp.Params[2], wasm.I32)) || i == 1 && len(sub.Comp.Params) != 0 {
+			return false
+		}
+	}
+	e := m.Elements[0]
+	if e.Mode.Kind != wasm.ElemPassive || e.Mode.Table != 0 || len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Kind.Kind != wasm.ElemTypedExprs || !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef) || len(e.Kind.Funcs) != 0 || len(e.Kind.Exprs) != 1 || len(e.Kind.Exprs[0].Instrs) != 0 || !bytes.Equal(e.Kind.Exprs[0].BodyBytes, []byte{0xd0, 0x70, 0x0b}) {
+		return false
+	}
+	if len(m.Code[0].Locals.Runs) != 0 || len(m.Code[0].Body.Instrs) != 0 || !bytes.Equal(m.Code[0].BodyBytes, []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 0, 0, 0x41, 1, 0x0b}) || len(m.Code[1].Locals.Runs) != 0 || len(m.Code[1].Body.Instrs) != 0 || !bytes.Equal(m.Code[1].BodyBytes, []byte{0xfc, 0x0d, 0, 0x41, 1, 0x0b}) {
+		return false
+	}
+	seen := [2]bool{}
+	for _, export := range m.Exports {
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			if export.Index.Index > 1 {
+				return false
+			}
+			seen[export.Index.Index] = true
+		case wasm.ExternTable:
+			if export.Index.Index != 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return seen[0] && seen[1]
 }
 
 // stagedStateOnlyOwnedTable64DeclarationShape is the architecture-neutral

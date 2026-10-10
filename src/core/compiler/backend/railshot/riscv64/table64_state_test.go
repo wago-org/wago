@@ -277,3 +277,55 @@ func TestOwnedTable64CopyProfile(t *testing.T) {
 		})
 	}
 }
+
+func ownedTable64InitDropProfile() *wasm.Module {
+	m := stateOnlyTable64Profile()
+	m.Types = []wasm.RecType{
+		{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}}}},
+		{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}}}}},
+	}
+	m.FuncTypes = []wasm.TypeIdx{{Index: 0}, {Index: 1}}
+	m.Code = []wasm.Func{
+		{BodyBytes: []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 0, 0, 0x41, 1, 0x0b}},
+		{BodyBytes: []byte{0xfc, 0x0d, 0, 0x41, 1, 0x0b}},
+	}
+	m.Elements = []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}, Kind: wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: wasm.AbsRef(wasm.HeapFunc), Exprs: []wasm.Expr{{BodyBytes: []byte{0xd0, 0x70, 0x0b}}}}}}
+	m.Exports = append(m.Exports,
+		wasm.Export{Name: "init", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}},
+		wasm.Export{Name: "drop", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}},
+	)
+	return m
+}
+
+func TestOwnedTable64InitDropProfile(t *testing.T) {
+	m := ownedTable64InitDropProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact table64.init/drop profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"init-body":  func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x41, 1, 0x0b} },
+		"drop-body":  func(m *wasm.Module) { m.Code[1].BodyBytes = []byte{0x41, 1, 0x0b} },
+		"dest-param": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I32 },
+		"source-param": func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Comp.Params[1] = wasm.I64
+		},
+		"count-param": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[2] = wasm.I64 },
+		"drop-result": func(m *wasm.Module) { m.Types[1].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"no-max":      func(m *wasm.Module) { m.Tables[0].Type.Limits.HasMax = false },
+		"locals":      func(m *wasm.Module) { m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I64}} },
+		"active":      func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemActive },
+		"nonnull": func(m *wasm.Module) {
+			m.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xd2, 0, 0x0b}
+		},
+		"missing-drop-export": func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+		"extra":               func(m *wasm.Module) { m.Code = append(m.Code, wasm.Func{}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTable64InitDropProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid table64.init/drop profile admitted", err)
+			}
+		})
+	}
+}

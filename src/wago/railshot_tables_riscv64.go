@@ -161,8 +161,40 @@ func rv64OwnedTable64Copy(c *Compiled) bool {
 	return true
 }
 
+func rv64OwnedTable64InitDrop(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64InitDropABI || !c.TableAddr64 || !c.TableHasMax || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) < 2 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	init, drop := c.Funcs[0], c.Funcs[1]
+	if len(init.Params) != 3 || init.Params[0] != ValI64 || init.Params[1] != ValI32 || init.Params[2] != ValI32 || len(init.Results) != 1 || init.Results[0] != ValI32 || len(drop.Params) != 0 || len(drop.Results) != 1 || drop.Results[0] != ValI32 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+		return false
+	}
+	e := c.passiveElems[0]
+	if e.Mode != ElemModePassive || e.TableIndex != 0 || e.RefType != ValFuncRef || !e.HasValueType || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) != 1 {
+		return false
+	}
+	v := e.Values[0]
+	if !v.Null || v.FuncIndex != 0 || v.GlobalIndex != 0 || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 {
+		return false
+	}
+	seen := [2]bool{}
+	for _, index := range c.Exports {
+		if index < 0 || index > 1 {
+			return false
+		}
+		seen[index] = true
+	}
+	return seen[0] && seen[1]
+}
+
 func rv64QualifiedTable64(c *Compiled) bool {
-	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTable64Copy(c)
+	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTable64InitDrop(c)
 }
 
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy

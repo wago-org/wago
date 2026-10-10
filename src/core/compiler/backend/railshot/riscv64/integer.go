@@ -1233,16 +1233,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				} else {
 					if functionRefs {
 						operands := [3]bool{}
+						operands[0] = state.table64
 						if err = match(operands[:], nil, false, true); err != nil {
 							return integerSummary{}, err
 						}
 					}
-					for _, reg := range []uint8{5, 7, 6} {
-						if _, err = pop(); err != nil {
+					for i, reg := range []uint8{5, 7, 6} {
+						wide := i == 2 && state.table64
+						if err = popWidth(wide); err != nil {
 							return integerSummary{}, err
 						}
 						if live && emit != nil {
-							emit.Load(reg, emit.SpillOffset(h), false)
+							emit.Load(reg, emit.SpillOffset(h), wide)
 						}
 					}
 					if live && emit != nil {
