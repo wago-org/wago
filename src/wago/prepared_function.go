@@ -708,7 +708,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 			reserved := fn.directGate != nil && fn.directGate.state.Load()&(invocationGateHeld|invocationGateFast) == invocationGateHeld|invocationGateFast
 			err = in.callPreparedIsolated(fn.entry, in.trap, reserved, true)
 		} else if fn.boundedNumericHost && in.usesIndependentExecution() && !in.guestStorageBorrowed() {
-			if in.syncHosts[0].scalarKind == syncHostTypedI32 || in.syncHosts[0].scalarKind == syncHostTypedI32x2 {
+			if in.syncHosts[0].privateBoundedTypedHost() {
 				err = in.callCachedBoundedTypedHost(fn.entry)
 			} else {
 				err = in.callCachedBoundedHostView(fn.entry)
@@ -799,7 +799,7 @@ func (in *Instance) preparedBoundedNumericEligible() bool {
 	if b.sig == nil || b.gate != nil {
 		return false
 	}
-	if b.scalarKind == syncHostTypedI32 || b.scalarKind == syncHostTypedI32x2 {
+	if b.privateBoundedTypedHost() {
 		return true
 	}
 	_, caller := b.fn.(CallerHostCallFunc)
@@ -866,19 +866,27 @@ func (fn *WasmFunc) tryInvokeBoundedNumeric(args []uint64) (out []uint64, err er
 	}
 	binding := &in.syncHosts[0]
 	rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
-	if binding.scalarKind == syncHostTypedI32 || binding.scalarKind == syncHostTypedI32x2 {
+	if binding.privateBoundedTypedHost() {
 		if goruntime.GOARCH == "arm64" || in.eng.PreparedScalarHost() != nil {
 			fixed := wruntime.FixedScalarHostContextCall(boundedTypedHostDispatchI32)
 			fallback := wruntime.FixedScalarHostCall(activation.dispatchI32)
-			if binding.scalarKind == syncHostTypedI32x2 {
+			switch binding.scalarKind {
+			case syncHostTypedI32x2:
 				fixed = boundedTypedHostDispatchI32x2
 				fallback = activation.dispatchI32x2
+			case syncHostTypedI64:
+				fixed = boundedTypedHostDispatchI64
+				fallback = activation.dispatchI64
 			}
 			if prepared := in.eng.PreparedScalarHost(); prepared != nil {
 				if locked.privateContext() {
-					fixed = detachedNumericDispatchI32
-					if binding.scalarKind == syncHostTypedI32x2 {
+					switch binding.scalarKind {
+					case syncHostTypedI32:
+						fixed = detachedNumericDispatchI32
+					case syncHostTypedI32x2:
 						fixed = detachedNumericDispatchI32x2
+					case syncHostTypedI64:
+						fixed = detachedNumericDispatchI64
 					}
 				}
 				if prepared.IntegerGuestContext() {
@@ -895,8 +903,11 @@ func (fn *WasmFunc) tryInvokeBoundedNumeric(args []uint64) (out []uint64, err er
 			}
 		} else {
 			fixed := wruntime.FixedScalarHostCall(activation.dispatchI32)
-			if binding.scalarKind == syncHostTypedI32x2 {
+			switch binding.scalarKind {
+			case syncHostTypedI32x2:
 				fixed = activation.dispatchI32x2
+			case syncHostTypedI64:
+				fixed = activation.dispatchI64
 			}
 			err = in.eng.CallWithHostBaseScalarBoundedLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, fixed)
 		}
@@ -973,19 +984,27 @@ func (fn *WasmFunc) invokeBoundedNumericAdmitted(args []uint64) (out []uint64, e
 	}
 	binding := &in.syncHosts[0]
 	rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
-	if binding.scalarKind == syncHostTypedI32 || binding.scalarKind == syncHostTypedI32x2 {
+	if binding.privateBoundedTypedHost() {
 		if goruntime.GOARCH == "arm64" || in.eng.PreparedScalarHost() != nil {
 			fixed := wruntime.FixedScalarHostContextCall(boundedTypedHostDispatchI32)
 			fallback := wruntime.FixedScalarHostCall(activation.dispatchI32)
-			if binding.scalarKind == syncHostTypedI32x2 {
+			switch binding.scalarKind {
+			case syncHostTypedI32x2:
 				fixed = boundedTypedHostDispatchI32x2
 				fallback = activation.dispatchI32x2
+			case syncHostTypedI64:
+				fixed = boundedTypedHostDispatchI64
+				fallback = activation.dispatchI64
 			}
 			if prepared := in.eng.PreparedScalarHost(); prepared != nil {
 				if locked.privateContext() {
-					fixed = detachedNumericDispatchI32
-					if binding.scalarKind == syncHostTypedI32x2 {
+					switch binding.scalarKind {
+					case syncHostTypedI32:
+						fixed = detachedNumericDispatchI32
+					case syncHostTypedI32x2:
 						fixed = detachedNumericDispatchI32x2
+					case syncHostTypedI64:
+						fixed = detachedNumericDispatchI64
 					}
 				}
 				if prepared.IntegerGuestContext() {
@@ -1002,8 +1021,11 @@ func (fn *WasmFunc) invokeBoundedNumericAdmitted(args []uint64) (out []uint64, e
 			}
 		} else {
 			fixed := wruntime.FixedScalarHostCall(activation.dispatchI32)
-			if binding.scalarKind == syncHostTypedI32x2 {
+			switch binding.scalarKind {
+			case syncHostTypedI32x2:
 				fixed = activation.dispatchI32x2
+			case syncHostTypedI64:
+				fixed = activation.dispatchI64
 			}
 			err = in.eng.CallWithHostBaseScalarBoundedLive(runtimebridge.GrantHostScalarCall(), fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results, in.ctrl, rawSlots, fixed)
 		}

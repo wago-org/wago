@@ -1431,6 +1431,7 @@ type syncHostBinding struct {
 	fn           any
 	typedI32     i32ToI32HostFunc
 	typedI32x2   i32I32ToI32HostFunc
+	typedI64     func(int64) int64
 	gate         *pluginCallGate
 	exact        *DefinedTypeDescriptor
 	importIdx    uint32
@@ -1874,7 +1875,7 @@ func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 		if fn == nil {
 			return syncHostBinding{}, fmt.Errorf("typed host function is nil")
 		}
-		return bindSimpleTypedHostFunc(sig, ValI64, 1, syncHostBinding{fn: fn, scalarKind: syncHostTypedI64})
+		return bindSimpleTypedHostFunc(sig, ValI64, 1, syncHostBinding{fn: fn, typedI64: fn, scalarKind: syncHostTypedI64})
 	case func(int64, int64) int64:
 		if fn == nil {
 			return syncHostBinding{}, fmt.Errorf("typed host function is nil")
@@ -2792,15 +2793,23 @@ func (in *Instance) callCachedBoundedTypedHost(entry uintptr) (err error) {
 	rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
 	fixed := runtime.FixedScalarHostContextCall(boundedTypedHostDispatchI32)
 	fallback := runtime.FixedScalarHostCall(activation.dispatchI32)
-	if binding.scalarKind == syncHostTypedI32x2 {
+	switch binding.scalarKind {
+	case syncHostTypedI32x2:
 		fixed = boundedTypedHostDispatchI32x2
 		fallback = activation.dispatchI32x2
+	case syncHostTypedI64:
+		fixed = boundedTypedHostDispatchI64
+		fallback = activation.dispatchI64
 	}
 	if prepared := in.eng.PreparedScalarHost(); prepared != nil {
 		if locked.privateContext() {
-			fixed = detachedNumericDispatchI32
-			if binding.scalarKind == syncHostTypedI32x2 {
+			switch binding.scalarKind {
+			case syncHostTypedI32:
+				fixed = detachedNumericDispatchI32
+			case syncHostTypedI32x2:
 				fixed = detachedNumericDispatchI32x2
+			case syncHostTypedI64:
+				fixed = detachedNumericDispatchI64
 			}
 		}
 		if prepared.IntegerGuestContext() {

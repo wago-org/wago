@@ -27,6 +27,10 @@ func detachedNumericDispatchI32x2(context unsafe.Pointer, a0, a1 uint64) uint64 
 	a := (*boundedTypedHostActivation)(context)
 	return I32(a.root.syncHosts[0].typedI32x2(AsI32(a0), AsI32(a1)))
 }
+func detachedNumericDispatchI64(context unsafe.Pointer, a0, a1 uint64) uint64 {
+	a := (*boundedTypedHostActivation)(context)
+	return I64(a.root.syncHosts[0].typedI64(AsI64(a0)))
+}
 func detachedNumericDispatchHostCall(context unsafe.Pointer, args, results []uint64) {
 	a := (*boundedTypedHostActivation)(context)
 	b := &a.root.syncHosts[0]
