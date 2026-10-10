@@ -64,17 +64,21 @@ type Global struct {
 }
 
 type globalOwner struct {
-	mu           sync.Mutex
-	arena        *coreruntime.Arena
-	store        *referenceStore
-	instance     *Instance
-	typ          ValType
-	mutable      bool
-	valueType    ValueTypeDescriptor
-	types        []DefinedTypeDescriptor
-	hasValueType bool
-	importers    int
-	closed       bool
+	// RV64 records exact mutable funcref descriptor acquisitions here. The
+	// architecture holder is empty on existing targets, preserving their owner
+	// footprint.
+	descriptorDependencies globalDescriptorDependencies
+	mu                     sync.Mutex
+	arena                  *coreruntime.Arena
+	store                  *referenceStore
+	instance               *Instance
+	typ                    ValType
+	mutable                bool
+	valueType              ValueTypeDescriptor
+	types                  []DefinedTypeDescriptor
+	hasValueType           bool
+	importers              int
+	closed                 bool
 	// retained holds writer instances whose reachable funcref is currently stored
 	// in this global's cell (funcref globals only). Each root preserves the writer's
 	// descriptor arena and transitive import attachments until overwrite or close.
@@ -161,7 +165,7 @@ func (g *Global) retainProducerInstanceModeWithCleanup(in *Instance, finalizatio
 		return false
 	}
 	o := g.owner
-	var release []*Instance
+	var dependencies globalDescriptorDependencyBatch
 	o.mu.Lock()
 	if o.closed || len(g.cell) < 8 {
 		o.mu.Unlock()
@@ -178,15 +182,13 @@ func (g *Global) retainProducerInstanceModeWithCleanup(in *Instance, finalizatio
 		}
 		if !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(o.retained, root)
-			release = append(release, root)
+			railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 		}
 	}
 	if !in.reachesFuncrefDescriptor(current) {
 		o.mu.Unlock()
 		cleanup.run(in.releaseResourceRoot)
-		for _, root := range release {
-			cleanup.run(root.releaseResourceRoot)
-		}
+		cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 		return false
 	}
 	if o.retained == nil {
@@ -196,22 +198,24 @@ func (g *Global) retainProducerInstanceModeWithCleanup(in *Instance, finalizatio
 	if !exists {
 		state = &retainedInstanceRoot{}
 		o.retained[in] = state
+		railshotRecordGlobalDescriptorDependencyLocked(o, in, state, &dependencies)
 	}
 	state.precise = true
+	railshotPublishGlobalDescriptorDependencyLocked(o, state, &dependencies)
 	for root, retained := range o.retained {
 		if in.reachesFuncrefDescriptor(current) {
 			delete(retained.proxyDescriptors, current)
 		}
 		if !retained.precise && len(retained.proxyDescriptors) == 0 {
 			delete(o.retained, root)
-			release = append(release, root)
+			railshotRetireGlobalDescriptorDependencyLocked(o, root, retained, &dependencies)
 		}
 	}
 	o.mu.Unlock()
 	if exists {
 		cleanup.run(in.releaseResourceRoot)
 	}
-	cleanup.run(func() { releaseRetainedResourceRoots(release) })
+	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 	return true
 }
 
@@ -285,6 +289,7 @@ func (g *Global) retainDescriptorOwnerForFinalizationWithCleanup(store *referenc
 	proxyAcquired := unresolved && proxy != nil && proxy != containerOwner && proxy.retainResourceRootForFinalization()
 
 	var release []*Instance
+	var dependencies globalDescriptorDependencyBatch
 	o.mu.Lock()
 	if o.closed || len(g.cell) < 8 || readGlobalObject(g, ValFuncRef) != descriptor {
 		o.mu.Unlock()
@@ -319,11 +324,13 @@ func (g *Global) retainDescriptorOwnerForFinalizationWithCleanup(store *referenc
 		if state == nil {
 			state = &retainedInstanceRoot{precise: true}
 			o.retained[owner] = state
+			railshotRecordGlobalDescriptorDependencyLocked(o, owner, state, &dependencies)
 			owner.markNativeControlShared()
 		} else {
 			state.precise = true
 			release = append(release, owner)
 		}
+		railshotPublishGlobalDescriptorDependencyLocked(o, state, &dependencies)
 	}
 	if proxyAcquired {
 		covered := false
@@ -344,10 +351,12 @@ func (g *Global) retainDescriptorOwnerForFinalizationWithCleanup(store *referenc
 			if state == nil {
 				state = &retainedInstanceRoot{}
 				o.retained[proxy] = state
+				railshotRecordGlobalDescriptorDependencyLocked(o, proxy, state, &dependencies)
 				proxy.markNativeControlShared()
 			} else {
 				release = append(release, proxy)
 			}
+			railshotPublishGlobalDescriptorDependencyLocked(o, state, &dependencies)
 			if state.proxyDescriptors == nil {
 				state.proxyDescriptors = make(map[uint64]struct{}, 1)
 			}
@@ -357,11 +366,12 @@ func (g *Global) retainDescriptorOwnerForFinalizationWithCleanup(store *referenc
 	for root, state := range o.retained {
 		if !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(o.retained, root)
-			release = append(release, root)
+			railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 		}
 	}
 	result := descriptorRetentionResult{retained: len(o.retained) != 0, unresolved: unresolved}
 	o.mu.Unlock()
+	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 	cleanup.run(func() { releaseRetainedResourceRoots(release) })
 	return result
 }
@@ -375,7 +385,7 @@ func (g *Global) pruneRetainedInstances() {
 		return
 	}
 	o := g.owner
-	var release []*Instance
+	var dependencies globalDescriptorDependencyBatch
 	// Guest writes and public reference setters share this native-state gate.
 	// Claim stale rows while their mapped cell is stable, then release every
 	// physical root after both native state and the container are unlocked.
@@ -392,13 +402,13 @@ func (g *Global) pruneRetainedInstances() {
 			}
 			if !state.precise && len(state.proxyDescriptors) == 0 {
 				delete(o.retained, root)
-				release = append(release, root)
+				railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 			}
 		}
 	}
 	o.mu.Unlock()
 	nativeExecutionMu.Unlock()
-	releaseRetainedResourceRoots(release)
+	railshotFlushGlobalDescriptorDependencies(&dependencies)
 }
 
 func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, error) {
@@ -471,7 +481,12 @@ func (g *Global) Close() error {
 	o := g.owner
 	o.mu.Lock()
 	if o.closed || o.arena == nil {
+		var dependencies globalDescriptorDependencyBatch
+		if o.closed {
+			railshotRetryGlobalDescriptorDependenciesLocked(o, &dependencies)
+		}
 		o.mu.Unlock()
+		railshotFlushGlobalDescriptorDependencies(&dependencies)
 		return nil
 	}
 	if o.importers != 0 {
@@ -483,16 +498,20 @@ func (g *Global) Close() error {
 	arena, store := o.arena, o.store
 	o.arena = nil
 	g.cell = nil
-	roots := make([]*Instance, 0, len(o.retained))
-	for root := range o.retained {
-		roots = append(roots, root)
+	var dependencies globalDescriptorDependencyBatch
+	for root, state := range o.retained {
+		railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 	}
 	o.retained = nil
+	// A prior denied overwrite may already have removed its exact map row while
+	// leaving the stable sidecar obligation retryable. Terminal Close owns every
+	// such retired row, not only the currently live map.
+	railshotRetryGlobalDescriptorDependenciesLocked(o, &dependencies)
 	o.mu.Unlock()
 	// Root release may re-enter instance finalization, so it must not happen
 	// while globalOwner.mu is held.
 	var cleanup resourceCleanup
-	cleanup.run(func() { releaseRetainedResourceRoots(roots) })
+	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 	var err error
 	cleanup.run(func() { err = arena.Close() })
 	if store != nil {
@@ -686,9 +705,10 @@ func (g *Global) SetValue(v Value) (err error) {
 // Each slot owns an independent acquisition, including repeated owners. Record
 // bootstraps before publication and transfer only the unit installed in the map.
 type globalValueRoots struct {
-	inline [4]*Instance
-	extra  []*Instance
-	count  int
+	inline                 [4]*Instance
+	extra                  []*Instance
+	count                  int
+	descriptorDependencies globalDescriptorDependencyBatch
 }
 
 func (r *globalValueRoots) record(owner *Instance) int {
@@ -722,6 +742,7 @@ func (r *globalValueRoots) release() {
 // Keep the invocation through the whole root drain and preserve the first panic.
 func finishGlobalValueAccess(nativeMu *sync.Mutex, owner *Instance, roots *globalValueRoots, cleanup *resourceCleanup) {
 	cleanup.run(nativeMu.Unlock)
+	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&roots.descriptorDependencies) })
 	cleanup.run(roots.release)
 	if owner != nil {
 		cleanup.run(owner.endInvocation)
@@ -801,8 +822,9 @@ func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
 			if root == retainedOwner {
 				continue
 			}
-			roots.record(root)
+			state := o.retained[root]
 			delete(o.retained, root)
+			railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &roots.descriptorDependencies)
 		}
 		if retainedOwner != nil {
 			if o.retained == nil {
@@ -811,8 +833,11 @@ func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
 			if state := o.retained[retainedOwner]; state != nil {
 				state.precise = true
 				state.proxyDescriptors = nil
+				railshotPublishGlobalDescriptorDependencyLocked(o, state, &roots.descriptorDependencies)
 			} else {
-				o.retained[retainedOwner] = &retainedInstanceRoot{precise: true}
+				state := &retainedInstanceRoot{precise: true}
+				o.retained[retainedOwner] = state
+				railshotRecordGlobalDescriptorDependencyLocked(o, retainedOwner, state, &roots.descriptorDependencies)
 				roots.transfer(bootstrap)
 				retainedOwner.markNativeControlShared()
 			}
@@ -881,20 +906,26 @@ func (g *Global) instanceOwnerClosed(in *Instance) {
 		return
 	}
 	o := g.owner
-	var roots []*Instance
+	var dependencies globalDescriptorDependencyBatch
 	o.mu.Lock()
-	if o.instance != in || o.closed {
+	if o.instance != in {
 		o.mu.Unlock()
 		return
 	}
+	if o.closed {
+		railshotRetryGlobalDescriptorDependenciesLocked(o, &dependencies)
+		o.mu.Unlock()
+		railshotFlushGlobalDescriptorDependencies(&dependencies)
+		return
+	}
 	o.closed = true
-	for root := range o.retained {
-		roots = append(roots, root)
+	for root, state := range o.retained {
+		railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 	}
 	o.retained = nil
 	g.cell = nil
 	o.mu.Unlock()
-	releaseRetainedResourceRoots(roots)
+	railshotFlushGlobalDescriptorDependencies(&dependencies)
 }
 
 // GlobalImport supplies an imported global value. Prefer a *Global for mutable

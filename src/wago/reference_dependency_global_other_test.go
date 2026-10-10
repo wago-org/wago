@@ -33,3 +33,9 @@ func TestGlobalDependenciesExistingTargetFootprintAndCounter(t *testing.T) {
 		t.Fatal("ordinary exact anonymous global acquisition changed", failed, allocs)
 	}
 }
+
+func TestGlobalDescriptorDependenciesExistingTargetFootprint(t *testing.T) {
+	if unsafe.Sizeof(globalDescriptorDependencies{}) != 0 || unsafe.Offsetof(globalOwner{}.mu) != 0 {
+		t.Fatal("existing-target global descriptor sidecar changed globalOwner footprint")
+	}
+}
