@@ -88,6 +88,14 @@ the first instance. Real PHP Compile is **645.6/656.7 ms default** and
 4–5 ms first-use penalty is recovered after several warm PHP instantiations
 under this artificial no-entrypoint workload. Native code size is identical.
 
+A later `TestCOWImageFirstUseCost -count=2 -v` recheck reproduced the
+first-instance cost: real PHP default **7.50/7.75 ms** versus CoW
+**11.36/12.53 ms**; the data-only PHP fixture was **2.07/2.44 ms** versus
+**6.40/7.13 ms**. Native code bytes remained 30,164,957 for real PHP.
+This points to first-use image construction rather than native codegen;
+it does not isolate the memfd operations individually. The draft decision
+is unchanged.
+
 `TestCOWImageIntegratedPSS -count=2 -v` holds 1 or 10 **real PHP** instances
 and reads the first byte of every active data segment in every instance.
 Whole-process `/proc/self/smaps_rollup` PSS at 10 instances was **266,368 /
