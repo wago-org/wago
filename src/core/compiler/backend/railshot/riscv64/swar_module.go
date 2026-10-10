@@ -127,14 +127,17 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, err
 		}
 	}
+	if m.UsesCompactImports && !state.publicStarts {
+		return nil, unsupported("compact imports require public production")
+	}
 	tables, hosts := policy == swarModuleTables, policy == swarModuleHosts
 	hosts = hosts || tables && state.functionTableImports && state.publicStarts && state.exports && mode.interruptible && mode.foreignTableCalls
 	mode.borrowedTable = state.importedTable && mode.foreignTableCalls && mode.interruptible && m.ImportedTableCount() != 0
 	var err error
-	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{ExtendedConstGlobals: state.publicInitializers, MultiMemory: state.indexedMemories}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{CompactImports: state.publicStarts, ExtendedConstGlobals: state.publicInitializers, MultiMemory: state.indexedMemories}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
 		return nil, err
 	}
-	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || m.UsesCompactImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || len(m.BranchHints) != 0 || len(m.Memories) > MaxProductionMemories {
+	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || len(m.BranchHints) != 0 || len(m.Memories) > MaxProductionMemories {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
 	imported, memoryImports, globalImports := 0, 0, 0
@@ -423,9 +426,12 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 	if publicStarts {
 		maxMemories = MaxProductionMemories
 	}
+	if m.UsesCompactImports && !publicStarts {
+		return unsupported("compact imports require public production")
+	}
 	// Count and byte budgets precede validation, metadata expansion and payload
 	// copies. Decoded callers do not necessarily retain a bounded source blob.
-	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Memories) > maxMemories || len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Memories) > maxMemories || len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || len(m.BranchHints) != 0 {
 		return unsupported("SWAR module state/features/function bound")
 	}
 	globalCount, functionCount, memoryCount := len(m.Globals), 0, len(m.Memories)

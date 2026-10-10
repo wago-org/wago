@@ -364,12 +364,17 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 	if len(m.Code) > MaxFunctions || len(m.Code) == 0 && (!floating || !publicStarts) {
 		return unsupported("function count outside 1..1024")
 	}
+	// Public decoding has already flattened compact groups into the ordinary
+	// ordered import list. Private pilots retain their narrower wire contract.
+	if m.UsesCompactImports && !publicStarts {
+		return unsupported("compact imports require public production")
+	}
 	if publicStarts {
 		if err := admitProductionStart(m); err != nil {
 			return err
 		}
 	}
-	if m.UsesCompactImports || (!floating && (len(m.Tables) != 0 || len(m.Elements) != 0)) || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || len(m.BranchHints) != 0 {
+	if (!floating && (len(m.Tables) != 0 || len(m.Elements) != 0)) || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || len(m.BranchHints) != 0 {
 		return unsupported("imports, state, initializers or feature metadata")
 	}
 	for _, custom := range m.Customs {
