@@ -58,10 +58,31 @@ func rv64TwoTable32GetSetInstructionSource() []byte {
 	)
 }
 
-// rv64RawTwoTable32GetSet deliberately writes the native argument cell after
+func rv64TwoTable32GrowInstructionSource() []byte {
+	body := func(index byte) []byte {
+		return []byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, index, 0x0b}
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x01, 1, 2},
+			[]byte{0x70, 0x01, 2, 4},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("grow0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("grow1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body(0)), wasmtest.Code(body(1)))),
+	)
+}
+
+// rv64RawTwoTable32Call deliberately writes the native argument cell after
 // public admission so the machine-code consumer, rather than API marshaling,
 // is responsible for i32 normalization.
-func rv64RawTwoTable32GetSet(t *testing.T, in *Instance, name string, index uint64) (uint64, error) {
+func rv64RawTwoTable32Call(t *testing.T, in *Instance, name string, argument uint64) (uint64, error) {
 	t.Helper()
 	state := in.lockInvocation(0)
 	defer state.unlockInvocation()
@@ -70,7 +91,7 @@ func rv64RawTwoTable32GetSet(t *testing.T, in *Instance, name string, index uint
 	if err := in.bindAndValidateNativeContext(); err != nil {
 		t.Fatal(err)
 	}
-	binary.LittleEndian.PutUint64(in.serArgs, index)
+	binary.LittleEndian.PutUint64(in.serArgs, argument)
 	binary.LittleEndian.PutUint64(in.results, ^uint64(0))
 	if err := refreshNativeControl(true, in.eng, in.jm, in.trap); err != nil {
 		t.Fatal(err)
@@ -239,13 +260,13 @@ func TestRV64PublicOwnedTwoTable32GetSet(t *testing.T) {
 
 			// The raw bridge deliberately supplies dirty upper halves. Both table
 			// consumers must use the low i32, and the i32 result must be zeroed.
-			if got, err := rv64RawTwoTable32GetSet(t, in, "roundtrip1", 0xfeed_beef_0000_0002); err != nil || got != 1 {
+			if got, err := rv64RawTwoTable32Call(t, in, "roundtrip1", 0xfeed_beef_0000_0002); err != nil || got != 1 {
 				t.Fatal("two-table32 get/set dirty incoming carrier", got, err)
 			}
 			if !slices.Equal(table0.desc[8:8+coreruntime.TableEntryBytes], row) || !slices.Equal(table1.desc[8+2*coreruntime.TableEntryBytes:8+3*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) {
 				t.Fatal("two-table32 get/set selected wrong descriptor")
 			}
-			if got, err := rv64RawTwoTable32GetSet(t, in, "roundtrip0", 1<<32); err != nil || got != 1 {
+			if got, err := rv64RawTwoTable32Call(t, in, "roundtrip0", 1<<32); err != nil || got != 1 {
 				t.Fatal("two-table32 get/set ignored-low-zero carrier", got, err)
 			}
 
@@ -255,7 +276,7 @@ func TestRV64PublicOwnedTwoTable32GetSet(t *testing.T) {
 				function uint32
 				index    uint64
 			}{{"roundtrip0", 0, 1}, {"roundtrip1", 1, 3}, {"roundtrip1", 1, 0x1234_5678_ffff_ffff}} {
-				got, err := rv64RawTwoTable32GetSet(t, in, tc.name, tc.index)
+				got, err := rv64RawTwoTable32Call(t, in, tc.name, tc.index)
 				var trap *coreruntime.TrapError
 				if err == nil || got != ^uint64(0) || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
 					t.Fatal("two-table32 get/set index did not trap", tc, got, err)
@@ -269,6 +290,96 @@ func TestRV64PublicOwnedTwoTable32GetSet(t *testing.T) {
 			}
 			if got, err := in.Invoke("roundtrip1", 0); err != nil || !slices.Equal(got, []uint64{1}) {
 				t.Fatal("two-table32 get/set after compiled close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable32Grow(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table32-grow", rv64TwoTable32GrowInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64GrowABI || !rv64OwnedTwoTable32Grow(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+				t.Fatalf("two-table32 grow metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32Grow(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 1 {
+				t.Fatal("two-table32 grow table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 2 || table1 == table0 {
+				t.Fatal("two-table32 grow table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("two-table32 grow missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			copy(table0.desc[8+coreruntime.TableEntryBytes:], row)
+			copy(table1.desc[8+2*coreruntime.TableEntryBytes:], row)
+			copy(table1.desc[8+3*coreruntime.TableEntryBytes:], row)
+
+			second := in.tableDescriptor(1)
+			capacity := binary.LittleEndian.Uint32(second[4:])
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			binary.LittleEndian.PutUint32(second[4:], capacity+railshot.MaxOwnedTableEntries)
+			got, invokeErr := in.Invoke("grow0", 1)
+			binary.LittleEndian.PutUint32(second[4:], capacity)
+			if invokeErr == nil || len(got) != 0 || !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+				t.Fatal("unselected corrupt grow descriptor accepted or mutated storage", got, invokeErr)
+			}
+			table1.desc[8+8] = 1
+			got, invokeErr = in.Invoke("grow0", 1)
+			table1.desc[8+8] = 0
+			if invokeErr == nil || len(got) != 0 || !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+				t.Fatal("unselected corrupt grow null row accepted or mutated storage", got, invokeErr)
+			}
+
+			if got, err := rv64RawTwoTable32Call(t, in, "grow0", 0xfeed_beef_0000_0001); err != nil || got != 1 || table0.Size() != 2 || table1.Size() != 2 {
+				t.Fatal("two-table32 grow dirty delta/table 0 isolation", got, table0.Size(), table1.Size(), err)
+			}
+			if !slices.Equal(table0.desc[8+coreruntime.TableEntryBytes:8+2*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) || !slices.Equal(table1.desc[8+2*coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes], append(slices.Clone(row), row...)) {
+				t.Fatal("two-table32 grow table 0 null initialization or isolation")
+			}
+			afterGrow0 := slices.Clone(table0.desc)
+			if got, err := rv64RawTwoTable32Call(t, in, "grow1", 0xcafe_babe_0000_0001); err != nil || got != 2 || table0.Size() != 2 || table1.Size() != 3 || !slices.Equal(table0.desc, afterGrow0) {
+				t.Fatal("two-table32 grow table 1 selected descriptor", got, table0.Size(), table1.Size(), err)
+			}
+			if !slices.Equal(table1.desc[8+2*coreruntime.TableEntryBytes:8+3*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) || !slices.Equal(table1.desc[8+3*coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes], row) {
+				t.Fatal("two-table32 grow table 1 partial null initialization")
+			}
+			before0, before1 = slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, delta := range []uint64{2, 0x1234_5678_ffff_ffff, 0xdead_beef_8000_0000} {
+				if got, err := rv64RawTwoTable32Call(t, in, "grow1", delta); err != nil || got != uint64(^uint32(0)) || !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("two-table32 grow atomic failure", delta, got, err)
+				}
+			}
+			if got, err := rv64RawTwoTable32Call(t, in, "grow1", 1<<32); err != nil || got != 3 || !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+				t.Fatal("two-table32 grow low-zero dirty delta", got, err)
+			}
+			if got, err := in.Invoke("grow1", 1); err != nil || !slices.Equal(got, []uint64{3}) || table1.Size() != 4 || table0.Size() != 2 {
+				t.Fatal("two-table32 grow reuse", got, table0.Size(), table1.Size(), err)
+			}
+			for index := uint64(2); index < 4; index++ {
+				if null, err := table1.EntryIsNull(index); err != nil || !null {
+					t.Fatal("two-table32 grow null row", index, null, err)
+				}
+			}
+			before0, before1 = slices.Clone(table0.desc), slices.Clone(table1.desc)
+			if got, err := rv64RawTwoTable32Call(t, in, "grow1", 1<<32); err != nil || got != 4 || !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+				t.Fatal("two-table32 grow zero delta at capacity", got, err)
+			}
+			if err := c.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := in.Invoke("grow0", 0); err != nil || !slices.Equal(got, []uint64{2}) {
+				t.Fatal("two-table32 grow after compiled close", got, err)
 			}
 		})
 	}
@@ -328,6 +439,65 @@ func TestRV64PublicOwnedTwoTable32GetSetArtifactGates(t *testing.T) {
 			}
 			if err == nil {
 				t.Fatal("invalid two-table32 get/set artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable32GrowArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table32-grow-admission", rv64TwoTable32GrowInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"table64-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"first-table64":   func(v *Compiled) { v.TableAddr64 = true },
+		"second-table64":  func(v *Compiled) { v.extraTables[0].Addr64 = true },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-initializer": func(v *Compiled) {
+			v.extraTables[0].HasInitFunc = true
+			v.extraTables[0].InitFunc = 1
+		},
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-param":    func(v *Compiled) { v.Funcs[1].Params[0] = ValI64 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
+		"function-export": func(v *Compiled) { v.Exports["grow1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid two-table32 grow metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if name == "missing-ref" {
+				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+					t.Fatal("structural table feature was not restored", loaded, err)
+				}
+				_ = loaded.Close()
+				return
+			}
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid two-table32 grow artifact admitted")
 			}
 		})
 	}
