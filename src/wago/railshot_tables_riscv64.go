@@ -26,6 +26,44 @@ func rv64StateOnlyTable64(c *Compiled) bool {
 	return c.memoryDir == nil || len(c.memoryDir.ehTags) == 0
 }
 
+// rv64StateOnlyTwoTable32 is the persisted-artifact witness for two bounded
+// owned table32 declarations with no executable or initializer-bearing state.
+// Keep the export directory exact so hostile artifacts cannot alias one table
+// or smuggle a third resource through the state-only path.
+func rv64StateOnlyTwoTable32(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64NoABI || c.TableAddr64 || !c.hasNoFunctionCode() || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 0 || len(c.Exports) != 0 || len(c.tableExports) != 2 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	if c.requiredFeatures != CoreFeatureReferenceTypes || c.nativeReferenceFunctionABI || len(c.FuncTypeID) != 0 {
+		return false
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	if len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain {
+		return false
+	}
+	for index := 0; index < 2; index++ {
+		def := c.tableDef(index)
+		exact, err := c.tableExactType(index)
+		if err != nil || exact != plain || !def.HasValueType || def.ValueTypeIndex != 0 || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
+			return false
+		}
+	}
+	var tables [2]bool
+	for _, index := range c.tableExports {
+		if index < 0 || index > 1 || tables[index] {
+			return false
+		}
+		tables[index] = true
+	}
+	return tables[0] && tables[1]
+}
+
 func rv64OwnedTable64Size(c *Compiled) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64SizeABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) == 0 {
 		return false
@@ -1037,7 +1075,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		return fmt.Errorf("retained native table context and reference ABI are required")
 	}
 	qualifiedTable64 := rv64QualifiedTable64(c)
-	qualifiedMultiTable := rv64OwnedTwoTable32Size(c) || rv64OwnedTwoTable32GetSet(c) || rv64OwnedTwoTable32Grow(c) || rv64OwnedTwoTable32Fill(c) || rv64OwnedTwoTable32Copy(c) || rv64OwnedTwoTable32InitDrop(c) || rv64OwnedTwoTable32Indirect(c) || rv64OwnedTwoTable64Size(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTwoTable64InitDrop(c) || rv64OwnedTwoTable64Indirect(c)
+	qualifiedMultiTable := rv64StateOnlyTwoTable32(c) || rv64OwnedTwoTable32Size(c) || rv64OwnedTwoTable32GetSet(c) || rv64OwnedTwoTable32Grow(c) || rv64OwnedTwoTable32Fill(c) || rv64OwnedTwoTable32Copy(c) || rv64OwnedTwoTable32InitDrop(c) || rv64OwnedTwoTable32Indirect(c) || rv64OwnedTwoTable64Size(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTwoTable64InitDrop(c) || rv64OwnedTwoTable64Indirect(c)
 	if c.tableCount() != 1 && !qualifiedMultiTable || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 && !qualifiedTable64 || (c.TableType != 0 && c.TableType != ValFuncRef) {
 		return fmt.Errorf("one framed nullable funcref table32 or exact qualified table64/multi-table profile required")
 	}
