@@ -40,7 +40,7 @@ func TestComputedBoundsSourceUpperBound(t *testing.T) {
 			}
 			classifier := wasm.NewModuleInstructionClassifier(m, true)
 			var imm wasm.InstructionImmediate
-			var loads, forms, repeats int
+			var loads, forms, reversedForms, repeats int
 			for _, fn := range m.Code {
 				var stage uint8
 				var local uint32
@@ -58,10 +58,11 @@ func TestComputedBoundsSourceUpperBound(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						if stage == 1 {
-							add, stage = v, 2
+						add = v
+						if stage == 1 || stage == 5 {
+							stage = 2
 						} else {
-							stage = 0
+							stage = 4
 						}
 						continue
 					}
@@ -69,17 +70,29 @@ func TestComputedBoundsSourceUpperBound(t *testing.T) {
 						t.Fatal(err)
 					}
 					if op == 0x20 {
-						local, stage = imm.Index, 1
+						local = imm.Index
+						if stage == 4 {
+							stage = 5
+						} else {
+							stage = 1
+						}
 						continue
 					}
-					if op == 0x6a && stage == 2 {
-						stage = 3
+					if op == 0x6a && (stage == 2 || stage == 5) {
+						if stage == 2 {
+							stage = 3
+						} else {
+							stage = 6
+						}
 						continue
 					}
 					if op >= 0x28 && op <= 0x35 {
 						loads++
-						if stage == 3 && (!imm.HasMemIndex || imm.MemIndex == 0) {
+						if (stage == 3 || stage == 6) && (!imm.HasMemIndex || imm.MemIndex == 0) {
 							forms++
+							if stage == 6 {
+								reversedForms++
+							}
 							key := computedBoundsKey{local, add, imm.MemOffset, op}
 							if havePrior && key == prior {
 								repeats++
@@ -95,7 +108,7 @@ func TestComputedBoundsSourceUpperBound(t *testing.T) {
 					}
 				}
 			}
-			t.Logf("scalar_loads=%d local_plus_constant_load_forms=%d exact_repeats_upper_bound=%d", loads, forms, repeats)
+			t.Logf("scalar_loads=%d local_plus_constant_load_forms=%d reversed_operand_forms=%d exact_repeats_upper_bound=%d", loads, forms, reversedForms, repeats)
 		})
 	}
 }
