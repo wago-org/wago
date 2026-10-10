@@ -261,7 +261,7 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 			return err
 		}
 		for tableIndex := 0; tableIndex < owner.c.tableCount(); tableIndex++ {
-			if err := s.validateTable(owner.tableDescriptor(tableIndex)); err != nil {
+			if err := s.validateTable(owner.tableDescriptor(tableIndex), owner.c.tableEntryBytes(tableIndex)); err != nil {
 				return err
 			}
 		}
@@ -269,13 +269,23 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 	return nil
 }
 
-func (s *rv64NativeTableTargets) validateTable(table []byte) error {
+func (s *rv64NativeTableTargets) validateTable(table []byte, entryBytes int) error {
 	if len(table) < 8 {
 		return fmt.Errorf("RV64 table descriptor extent")
 	}
+	if entryBytes != 8 && entryBytes != coreruntime.TableEntryBytes {
+		return fmt.Errorf("RV64 table row width")
+	}
 	size, capacity := binary.LittleEndian.Uint32(table), binary.LittleEndian.Uint32(table[4:])
-	if size > capacity || capacity > railshot.MaxOwnedTableEntries || uint64(8)+uint64(capacity)*coreruntime.TableEntryBytes > uint64(len(table)) {
+	if size > capacity || capacity > railshot.MaxOwnedTableEntries || uint64(8)+uint64(capacity)*uint64(entryBytes) > uint64(len(table)) {
 		return fmt.Errorf("RV64 table descriptor capacity/extent")
+	}
+	// Compact reference rows are opaque store-owned tokens, never executable
+	// descriptors. Public argument and result boundaries validate their store
+	// identity; this retained-target walk must not interpret token bits as code,
+	// signature, context, or owner pointers.
+	if entryBytes == 8 {
+		return nil
 	}
 	for index := uint32(0); index < size; index++ {
 		row := table[8+int(index)*coreruntime.TableEntryBytes : 8+int(index+1)*coreruntime.TableEntryBytes]

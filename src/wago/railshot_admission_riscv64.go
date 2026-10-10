@@ -580,7 +580,7 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 	if err := roots.validateReachable(); err != nil {
 		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
 	}
-	if err := roots.validateTable(table.desc); err != nil {
+	if err := roots.validateTable(table.desc, coreruntime.TableEntryBytes); err != nil {
 		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
 	}
 	return nil
