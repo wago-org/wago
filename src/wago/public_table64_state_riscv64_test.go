@@ -146,6 +146,17 @@ func rv64ImportedTable64GrowInstructionSource() []byte {
 	)
 }
 
+func rv64ImportedTable64FillInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("fill", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x20, 1, 0xfc, 0x11, 0, 0x41, 1, 0x0b}))),
+	)
+}
+
 func rv64Table64UnsupportedInstructionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
@@ -507,6 +518,81 @@ func TestRV64PublicImportedTable64Grow(t *testing.T) {
 			}
 			if got, err := consumer.Invoke("grow", 0); err != nil || !slices.Equal(got, []uint64{4}) {
 				t.Fatal("imported table64.grow after producer close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64Fill(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-fill-producer", rv64Table64IndirectInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-fill-consumer", rv64ImportedTable64FillInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64ImportedFillABI || !rv64ImportedTable64Fill(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || view.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+				t.Fatal("imported table64.fill metadata contract")
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("imported table64.fill producer table", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for index := uint64(0); index < 2; index++ {
+				if got, err := producer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64.fill producer row", index, got, err)
+				}
+			}
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			if got, err := consumer.Invoke("fill", 0, 2); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64.fill did not clear shared rows", got, err)
+			}
+			for index := uint64(0); index < 2; index++ {
+				if null, err := table.EntryIsNull(index); err != nil || !null {
+					t.Fatal("imported table64.fill shared row remained nonnull", index, null, err)
+				}
+			}
+			if got, err := consumer.Invoke("fill", 2, 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64.fill exact-end zero range", got, err)
+			}
+			// Reinstall a genuine canonical producer descriptor so any partial
+			// null write on a failing range is observable byte-for-byte.
+			if got, err := producer.Invoke("call", 1); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("imported table64.fill producer reseed", got, err)
+			}
+			if null, err := table.EntryIsNull(1); err != nil || null {
+				t.Fatal("imported table64.fill reseed remained null", null, err)
+			}
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][2]uint64{{1, 2}, {1 << 32, 0}, {0, 1 << 32}, {^uint64(0), 2}} {
+				got, err := consumer.Invoke("fill", invalid[0], invalid[1])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("imported table64.fill range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("imported table64.fill trap changed storage", invalid)
+				}
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := consumer.Invoke("fill", 1, 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64.fill after producer close", got, err)
+			}
+			if null, err := table.EntryIsNull(1); err != nil || !null {
+				t.Fatal("imported table64.fill retained row remained nonnull", null, err)
 			}
 		})
 	}
@@ -1293,6 +1379,53 @@ func TestRV64PublicImportedTable64GrowArtifactGates(t *testing.T) {
 	}
 }
 
+func TestRV64PublicImportedTable64FillArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-fill-admission", rv64ImportedTable64FillInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64FillABI },
+		"grow-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedGrowABI },
+		"missing-import":  func(v *Compiled) { v.tableImport = "" },
+		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"unexpected-bulk": func(v *Compiled) { v.requiredFeatures |= CoreFeatureBulkMemoryOperations },
+		"first-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"second-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"export":          func(v *Compiled) { v.Exports["fill"] = 1 },
+		"table32":         func(v *Compiled) { v.TableAddr64 = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64BMI2
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64.fill metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64.fill artifact admitted")
+			}
+		})
+	}
+}
+
 func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("source admission only")
@@ -1358,6 +1491,9 @@ func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
 		},
 		"contradictory-imported-grow-witness": func(v *Compiled) {
 			v.nativeTable64ABI = nativeTable64ImportedGrowABI
+		},
+		"contradictory-imported-fill-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64ImportedFillABI
 		},
 		"table32":     func(v *Compiled) { v.TableAddr64 = false },
 		"start":       func(v *Compiled) { v.HasStart = true },
