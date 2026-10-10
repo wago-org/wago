@@ -262,105 +262,115 @@ func TestPublicInvocationCleanupMappedReexport(t *testing.T) {
 }
 
 func TestPublicHostScalarBodyPanicStillReconciles(t *testing.T) {
-	bodyPanic, cleanupPanic := new(int), new(int)
-	writerCode := preparedCleanupCompile(t, "writer", false)
-	var owner, writer *Instance
-	var table *Table
-	hostCalls, cleanupCalls := 0, 0
-	imports := NewImports()
-	imports.HostFunc("env", "target", func(v int32) int32 {
-		hostCalls++
-		switch hostCalls {
-		case 1:
-			var err error
-			table, err = owner.ExportedTable("table")
-			if err != nil {
-				panic(err)
-			}
-			writer, err = Instantiate(writerCode, InstantiateOptions{Imports: NewImports().Table("env", "table", table)})
-			if err != nil {
-				panic(err)
-			}
-			if got, err := writer.Invoke("run"); err != nil || len(got) != 1 || got[0] != 17 {
-				panic("actual host-published writer invocation")
-			}
-			state := owner.ensurePluginState()
-			writer.referenceLifetime().afterPhysicalRelease(func() {
-				cleanupCalls++
-				if state.invokeMu.state.Load()&invocationGateHeld == 0 || state.invocationID == 0 || owner.invocationState.Load()&instanceInvocationCount != 1 {
-					panic("host cleanup callback lost public invocation authority")
+	for _, test := range []struct {
+		name      string
+		bodyPanic bool
+	}{
+		{name: "body-and-cleanup", bodyPanic: true},
+		{name: "cleanup-only"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			bodyPanic, cleanupPanic := new(int), new(int)
+			writerCode := preparedCleanupCompile(t, "writer", false)
+			var owner, writer *Instance
+			var table *Table
+			hostCalls, cleanupCalls := 0, 0
+			imports := NewImports()
+			imports.HostFunc("env", "target", func(v int32) int32 {
+				hostCalls++
+				switch hostCalls {
+				case 1:
+					var err error
+					table, err = owner.ExportedTable("table")
+					if err != nil {
+						panic(err)
+					}
+					writer, err = Instantiate(writerCode, InstantiateOptions{Imports: NewImports().Table("env", "table", table)})
+					if err != nil {
+						panic(err)
+					}
+					if got, err := writer.Invoke("run"); err != nil || len(got) != 1 || got[0] != 17 {
+						panic("actual host-published writer invocation")
+					}
+					state := owner.ensurePluginState()
+					writer.referenceLifetime().afterPhysicalRelease(func() {
+						cleanupCalls++
+						if state.invokeMu.state.Load()&invocationGateHeld == 0 || state.invocationID == 0 || owner.invocationState.Load()&instanceInvocationCount != 1 {
+							panic("host cleanup callback lost public invocation authority")
+						}
+						panic(cleanupPanic)
+					})
+					if err := writer.Close(); err != nil || writer.resourcesClosed {
+						panic("logical writer Close consumed host-published root")
+					}
+					// Use a private stale-catalog seam while this callback is parked: clear
+					// the physical row but deliberately leave its retained-root catalog for
+					// completed-call reconciliation. Avoiding guest table.set keeps mutation
+					// out of the oracle. RV64 consumes the stale catalog in native-scope
+					// release; AMD64/ARM64 consume it in post-body reconciliation. Both must
+					// preserve the earlier body panic over the later cleanup panic.
+					table.mu.Lock()
+					clear(table.desc[8:])
+					table.mu.Unlock()
+					return v + 1
+				case 2:
+					if test.bodyPanic {
+						panic(bodyPanic)
+					}
+					return v + 1
+				default:
+					return v + 1
 				}
-				panic(cleanupPanic)
 			})
-			if err := writer.Close(); err != nil || writer.resourcesClosed {
-				panic("logical writer Close consumed host-published root")
+			owner = preparedCleanupInstantiate(t, publicCleanupHostCompile(t), imports)
+			t.Cleanup(func() {
+				if table != nil {
+					cleanupTestPanic(func() { _ = table.Close() })
+				}
+				if writer != nil {
+					cleanupTestPanic(func() { _ = writer.Close() })
+				}
+			})
+			state := owner.ensurePluginState()
+			ic := owner.findInvokeCache("run")
+			if ic == nil {
+				var err error
+				ic, err = owner.fillInvokeCache("run")
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
-			// Use a private stale-catalog seam while this callback is parked: clear
-			// the physical row but deliberately leave its retained-root catalog for
-			// completed-call reconciliation. Avoiding guest table.set keeps mutation
-			// out of the oracle; the architecture-specific assertion below records
-			// which cleanup boundary consumes the stale catalog.
-			table.mu.Lock()
-			clear(table.desc[8:])
-			table.mu.Unlock()
-			return v + 1
-		case 2:
-			panic(bodyPanic)
-		default:
-			return v + 1
-		}
-	})
-	owner = preparedCleanupInstantiate(t, publicCleanupHostCompile(t), imports)
-	t.Cleanup(func() {
-		if table != nil {
-			cleanupTestPanic(func() { _ = table.Close() })
-		}
-		if writer != nil {
-			cleanupTestPanic(func() { _ = writer.Close() })
-		}
-	})
-	state := owner.ensurePluginState()
-	ic := owner.findInvokeCache("run")
-	if ic == nil {
-		var err error
-		ic, err = owner.fillInvokeCache("run")
-		if err != nil {
-			t.Fatal(err)
-		}
+			executionFlags := owner.executionFlags.Load()
+			privateScalar := invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&preparedFastBlocked == 0
+			hostScalar := !privateScalar && ic.li >= 0 && owner.syncMode && !owner.threadedMemoryZero && owner.usesIndependentExecution() &&
+				(owner.hasSingleDirectTypedScalarHost() || owner.hasSingleExpandedTypedScalarHost()) && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
+				owner.table == nil && !owner.importsFuncrefStorage() && len(owner.hostLog) == 0
+			if !hostScalar {
+				t.Fatalf("fixture lacks independent host-scalar public entry: private=%t local=%d sync=%t threaded=%t independent=%t typed=%t refs=%t/%t table=%p imports-table=%t log=%d flags=%#x",
+					privateScalar, ic.li, owner.syncMode, owner.threadedMemoryZero, owner.usesIndependentExecution(),
+					owner.hasSingleDirectTypedScalarHost() || owner.hasSingleExpandedTypedScalarHost(), ic.hasFuncRefParams, ic.hasFuncRefResults,
+					owner.table, owner.importsFuncrefStorage(), len(owner.hostLog), executionFlags)
+			}
+			var callErr error
+			value, panicked := cleanupTestPanic(func() {
+				_, callErr = owner.invokeEntry("run", []uint64{41}, invocationContextSet{}, false, true)
+			})
+			wantPanic := any(cleanupPanic)
+			if test.bodyPanic {
+				wantPanic = bodyPanic
+			}
+			if callErr != nil || !panicked || value != wantPanic || hostCalls != 2 || cleanupCalls != 1 {
+				t.Fatal("host body/cleanup first panic", value, wantPanic, panicked, callErr, hostCalls, cleanupCalls)
+			}
+			if state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || owner.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatal("host body panic retained public invocation authority")
+			}
+			if got, err := owner.Invoke("run", 41); err != nil || len(got) != 1 || got[0] != 42 || hostCalls != 4 {
+				t.Fatal("host reuse after body/cleanup panic", got, err, hostCalls)
+			}
+			funcrefReconcileAssertMappedDrained(t, writer)
+		})
 	}
-	executionFlags := owner.executionFlags.Load()
-	privateScalar := invokePrivateEntryEnabled && ic.entryMode != preparedEntryGeneral && executionFlags&preparedFastBlocked == 0
-	hostScalar := !privateScalar && ic.li >= 0 && owner.syncMode && !owner.threadedMemoryZero && owner.usesIndependentExecution() &&
-		(owner.hasSingleDirectTypedScalarHost() || owner.hasSingleExpandedTypedScalarHost()) && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
-		owner.table == nil && !owner.importsFuncrefStorage() && len(owner.hostLog) == 0
-	if !hostScalar {
-		t.Fatalf("fixture lacks independent host-scalar public entry: private=%t local=%d sync=%t threaded=%t independent=%t typed=%t refs=%t/%t table=%p imports-table=%t log=%d flags=%#x",
-			privateScalar, ic.li, owner.syncMode, owner.threadedMemoryZero, owner.usesIndependentExecution(),
-			owner.hasSingleDirectTypedScalarHost() || owner.hasSingleExpandedTypedScalarHost(), ic.hasFuncRefParams, ic.hasFuncRefResults,
-			owner.table, owner.importsFuncrefStorage(), len(owner.hostLog), executionFlags)
-	}
-	var callErr error
-	value, panicked := cleanupTestPanic(func() {
-		_, callErr = owner.invokeEntry("run", []uint64{41}, invocationContextSet{}, false, true)
-	})
-	wantPanic := any(bodyPanic)
-	if runtime.GOARCH == "riscv64" {
-		// RV64's native-entry unwind currently performs this table reconciliation
-		// before the ordinary host panic reaches the outer Go journal. Preserve and
-		// assert that separate native-scope ordering here; AMD64/ARM64 exercise the
-		// newly journaled post-body host-scalar reconciliation above that boundary.
-		wantPanic = cleanupPanic
-	}
-	if callErr != nil || !panicked || value != wantPanic || hostCalls != 2 || cleanupCalls != 1 {
-		t.Fatal("host body/cleanup first panic", value, wantPanic, panicked, callErr, hostCalls, cleanupCalls)
-	}
-	if state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || owner.invocationState.Load()&instanceInvocationCount != 0 {
-		t.Fatal("host body panic retained public invocation authority")
-	}
-	if got, err := owner.Invoke("run", 41); err != nil || len(got) != 1 || got[0] != 42 || hostCalls != 4 {
-		t.Fatal("host reuse after body/cleanup panic", got, err, hostCalls)
-	}
-	funcrefReconcileAssertMappedDrained(t, writer)
 }
 
 func TestPublicInvocationCleanupAcquisitionRollback(t *testing.T) {

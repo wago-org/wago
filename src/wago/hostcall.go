@@ -2585,13 +2585,22 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 	if err != nil {
 		return err
 	}
-	defer in.unlockNativeEntry(locked)
-	// ARM64 benefits from recovering in the unprepared driver itself. Keep
-	// AMD64's existing boundary: paired measurements regressed its view calls.
-	if goruntime.GOARCH == "arm64" {
-		return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, locked.local)
-	}
-	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, nil, locked.local)
+	// Native release may reconcile retained table roots and run physical-release
+	// callbacks. Journal it after the admitted body so a later cleanup panic does
+	// not replace an arbitrary host panic, while still completing the release.
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		// ARM64 benefits from recovering in the unprepared driver itself. Keep
+		// AMD64's existing boundary: paired measurements regressed its view calls.
+		if goruntime.GOARCH == "arm64" {
+			err = in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, locked.local)
+		} else {
+			err = in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, nil, locked.local)
+		}
+	})
+	cleanup.run(func() { in.unlockNativeEntry(locked) })
+	cleanup.finish()
+	return err
 }
 
 // callNativeSyncAdmitted drives a synchronous host-call activation after native
