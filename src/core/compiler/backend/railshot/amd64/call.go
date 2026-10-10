@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -34,6 +36,33 @@ var noStackFence = os.Getenv("WAGO_Amd64_NOFENCE") == "1"
 // noStackReg disables the WARP STACK_REG lazy local model (reverts to spill-all/
 // reload-all around calls, no branch reconcile) — A/B measurement.
 var noStackReg = os.Getenv("WAGO_Amd64_NOSTACKREG") == "1"
+
+// An opt-in, single-site experiment. The four fields are the caller's global
+// function index, Wasm body PC, likely target's global index, and table index.
+// No feedback state is stored in an instance. A changed table entry takes the
+// existing general indirect-call path.
+var guardedIndirectSite = parseGuardedIndirectSite(os.Getenv("WAGO_AMD64_EXPERIMENT_INDIRECT_SITE"))
+
+type indirectGuardSite struct {
+	caller, pc, target, table uint32
+	valid                     bool
+}
+
+func parseGuardedIndirectSite(spec string) indirectGuardSite {
+	parts := strings.Split(spec, ":")
+	if len(parts) != 4 {
+		return indirectGuardSite{}
+	}
+	var fields [4]uint32
+	for i, part := range parts {
+		n, err := strconv.ParseUint(part, 10, 32)
+		if err != nil {
+			return indirectGuardSite{}
+		}
+		fields[i] = uint32(n)
+	}
+	return indirectGuardSite{fields[0], fields[1], fields[2], fields[3], true}
+}
 
 // Function calls. Internal (wasm→wasm) calls use wago's WasmWrapper ABI: the
 // arguments and result slots live in a native-stack buffer at RSP; the callee is
@@ -3334,6 +3363,65 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		return nil
 	}
 
+	// Compare the mutable entry's canonical descriptor identity with this
+	// instance's target descriptor. This also rejects references from another
+	// instance, even when they point to the same module function. The ordinary
+	// null, type, and bounds checks above remain in force on both paths.
+	guardDone := -1
+	if site := guardedIndirectSite; site.valid &&
+		uint32(f.globalIdx) == site.caller && f.wasmPC == site.pc &&
+		tableIdx == site.table && directRegisterCall && !descriptorRegisterCall &&
+		!sigIsIntOnly(ft) && f.opt(optRegABI) && !f.gcTypeSubtypingRefTest &&
+		site.target >= uint32(f.m.ImportedFuncCount()) &&
+		uint64(site.target)+1 <= uint64(0x7fffffff/runtime.FuncRefDescBytes) {
+		if targetType, ok := f.m.FuncTypeIndex(site.target); ok {
+			if targetKey, ok := f.m.StructuralTypeKeyChecked(targetType.Index); ok && targetKey == canon {
+				local := int(site.target) - f.m.ImportedFuncCount()
+				if local >= 0 && local < len(f.m.Code) {
+					roots := f.rootsBottomToTop()
+					types := make([]machineType, len(roots))
+					gcRoots := make([]bool, len(roots))
+					for i, root := range roots {
+						types[i] = root.st.typ
+						gcRoots[i] = root.isValue() && root.st.hasGCRoot()
+						if root.isDeferred() && root.valueType() != mtNone {
+							types[i] = root.valueType()
+						}
+					}
+					f.pinned = f.pinned.add(idxReg).add(code)
+					f.flush()
+					savedLocals := append([]localDef(nil), f.locals...)
+					identity := f.allocReg(maskOf(idxReg, code))
+					expected := f.allocReg(maskOf(idxReg, code, identity))
+					f.a.Load64(identity, idxReg, 32)
+					f.a.Load64(expected, RBX, -int32(offFuncRefDescPtr))
+					f.a.TestSelf(expected, true)
+					noDescriptors := f.a.JccPlaceholder(condE)
+					f.a.LeaDisp(expected, expected, int32((site.target+1)*runtime.FuncRefDescBytes))
+					f.a.Cmp64(identity, expected)
+					miss := f.a.JccPlaceholder(condNE)
+					f.release(identity)
+					f.release(expected)
+					f.pinned = f.pinned.remove(idxReg).remove(code)
+					f.release(idxReg)
+					f.release(code)
+					f.emitMixedRegisterCall(local, ft)
+					if recordRoots {
+						last := f.relocs[len(f.relocs)-1]
+						f.gcFrameRoots.RecordCallsite(uint32(last.at+4), 0, rootOffsets)
+					}
+					guardDone = f.a.JmpPlaceholder()
+					f.a.PatchRel32(noDescriptors, f.a.Len())
+					f.a.PatchRel32(miss, f.a.Len())
+					f.locals = savedLocals
+					f.setDepthTypesWithGCRoots(types, gcRoots)
+					f.pinned = f.pinned.add(idxReg).add(code)
+					f.stats.peep("mutable-indirect-descriptor-guard")
+				}
+			}
+		}
+	}
+
 	home := f.allocReg(maskOf(idxReg, code))
 	f.a.Load64(home, idxReg, 24) // entry home linMem base
 	canonical := f.allocReg(maskOf(idxReg, code, home))
@@ -3406,6 +3494,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
 		f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
+	}
+	if guardDone >= 0 {
+		f.a.PatchRel32(guardDone, f.a.Len())
 	}
 	return nil
 }
