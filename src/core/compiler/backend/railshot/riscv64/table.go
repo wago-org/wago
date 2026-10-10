@@ -135,6 +135,26 @@ func admitOwnedTable(m *wasm.Module, production bool) (bool, error) {
 	return admitTableProfile(m, production, false)
 }
 
+// admitStateOnlyTable64 recognizes the first deliberately non-executable
+// table64 profile. It permits one bounded owned table to be instantiated and
+// exported, but no instruction, initializer, import, or second resource can
+// observe 64-bit table operands until those lowering paths are qualified.
+func admitStateOnlyTable64(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil {
+		return false
+	}
+	for _, export := range m.Exports {
+		if export.Index.Kind != wasm.ExternTable || export.Index.Index != 0 {
+			return false
+		}
+	}
+	t := m.Tables[0]
+	return t.Type.Limits.Addr64 && wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef)
+}
+
 // Imported storage uses the retained canonical target ABI, never the private
 // same-instance pilot. Count and capacity limits precede validation/copies.
 func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, error) {
@@ -153,7 +173,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	if hasTable {
 		t, _ := m.TableType(0)
-		if t.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) {
+		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) {
 			return false, unsupported("private nullable funcref table32 only")
 		}
 	}

@@ -13,7 +13,8 @@ import (
 //
 //go:noinline
 func validateCompileTable64(m *wasm.Module) error {
-	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+	rv64StateOnly := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && stagedStateOnlyOwnedTable64DeclarationShape(m)
+	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !rv64StateOnly {
 		return fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
@@ -84,4 +85,23 @@ func validateCompileTable64(m *wasm.Module) error {
 		}
 	}
 	return nil
+}
+
+// stagedStateOnlyOwnedTable64DeclarationShape is the architecture-neutral
+// compile gate for the bounded RV64 declaration profile. The backend and
+// persisted-artifact admission independently repeat this exact witness.
+func stagedStateOnlyOwnedTable64DeclarationShape(m *wasm.Module) bool {
+	if m == nil || len(m.Imports) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil {
+		return false
+	}
+	for _, export := range m.Exports {
+		if export.Index.Kind != wasm.ExternTable || export.Index.Index != 0 {
+			return false
+		}
+	}
+	t := m.Tables[0]
+	return t.Type.Limits.Addr64 && wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef)
 }

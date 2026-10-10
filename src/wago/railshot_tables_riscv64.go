@@ -9,6 +9,23 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+// rv64StateOnlyTable64 is the persisted-artifact witness for the first RV64
+// table64 profile. Keep it structural and exact: admission may use this before
+// the detailed table type and capacity checks below, including on hostile
+// artifacts. Any executable or initializer-bearing shape remains rejected.
+func rv64StateOnlyTable64(c *Compiled) bool {
+	if c == nil || !c.TableAddr64 || !c.hasNoFunctionCode() || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+		return false
+	}
+	return c.memoryDir == nil || len(c.memoryDir.ehTags) == 0
+}
+
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
@@ -61,8 +78,12 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if !c.nativeTableContextABI || !c.nativeTableReferenceABI {
 		return fmt.Errorf("retained native table context and reference ABI are required")
 	}
-	if c.tableCount() != 1 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 || (c.TableType != 0 && c.TableType != ValFuncRef) {
-		return fmt.Errorf("one framed nullable funcref table32 required")
+	stateOnlyTable64 := rv64StateOnlyTable64(c)
+	if c.tableCount() != 1 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 && !stateOnlyTable64 || (c.TableType != 0 && c.TableType != ValFuncRef) {
+		return fmt.Errorf("one framed nullable funcref table32 or exact state-only table64 required")
+	}
+	if c.TableAddr64 && !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+		return fmt.Errorf("table64 requires exact feature metadata")
 	}
 	if c.HasTableInitFunc {
 		if c.tableImportCount() != 0 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || uint64(c.TableInitFunc) >= uint64(c.NumImports+len(c.Funcs)) {

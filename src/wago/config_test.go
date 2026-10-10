@@ -373,7 +373,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
 		{CoreFeatureMultiMemory, "multi-memory", supportsMultiMemoryBackend(runtime.GOOS, runtime.GOARCH)},
 		{CoreFeatureMemory64, "memory64", supportsMemory64Backend(runtime.GOOS, runtime.GOARCH)},
-		{CoreFeatureTable64, "table64", completeCore3Backend},
+		{CoreFeatureTable64, "table64", supportsTable64Backend(runtime.GOOS, runtime.GOARCH)},
 		{CoreFeatureThreads, "threads", supportsThreadsBackend(runtime.GOOS, runtime.GOARCH)},
 	} {
 		if got, want := SupportedFeatures().IsEnabled(tc.bit), tc.supported && backendAvailable; got != want {
@@ -406,7 +406,9 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 
 func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	want := coreFeaturesWithoutSidecar
-	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
+		want = platformCoreFeatures()
+	} else if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
 		want |= CoreFeaturesV3
 	}
 	if got := NewRuntimeConfig().CoreFeatures(); got != want {
@@ -598,6 +600,9 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 		}
 		if supportsMemory64Backend(runtime.GOOS, runtime.GOARCH) {
 			unsupported &^= CoreFeatureMemory64
+		}
+		if supportsTable64Backend(runtime.GOOS, runtime.GOARCH) {
+			unsupported &^= CoreFeatureTable64
 		}
 		wantFeatures &^= unsupported
 	}
