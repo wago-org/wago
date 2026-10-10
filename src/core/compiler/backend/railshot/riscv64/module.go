@@ -295,6 +295,26 @@ func admitWireStartProfile(data []byte, floating, vectors, publicStarts bool) er
 				if err != nil {
 					return err
 				}
+				explicitSingleton := false
+				if kind == 0x4e {
+					// Public decoding flattens an explicit one-member rec
+					// wrapper to the same final function type as the compact
+					// 0x60 form. Keep private wire profiles closed, and do not
+					// admit subtype prefixes or reference-bearing recursive
+					// syntax through this representation-only exception.
+					if !publicStarts {
+						return unsupported("explicit recursive type group requires public production")
+					}
+					members, err := s.U32()
+					if err != nil || members != 1 {
+						return unsupported("explicit recursive type group must contain one function")
+					}
+					kind, err = s.Byte()
+					if err != nil {
+						return err
+					}
+					explicitSingleton = true
+				}
 				if kind != 0x60 {
 					return unsupported("type grammar is not a plain function")
 				}
@@ -314,10 +334,10 @@ func admitWireStartProfile(data []byte, floating, vectors, publicStarts bool) er
 						// Wire admission preserves plain function grammar. Declared
 						// internal references are checked against the decoded type
 						// directory and feature permission before staging.
-						if publicStarts && t == 0x70 {
+						if !explicitSingleton && publicStarts && t == 0x70 {
 							continue
 						}
-						if publicStarts && (t == 0x63 || t == 0x64) {
+						if !explicitSingleton && publicStarts && (t == 0x63 || t == 0x64) {
 							heap, err := s.S33()
 							if err != nil {
 								return err

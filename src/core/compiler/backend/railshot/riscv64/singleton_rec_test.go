@@ -1,0 +1,111 @@
+//go:build linux && !tinygo
+
+package riscv64
+
+import (
+	"bytes"
+	"errors"
+	"slices"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+func explicitSingletonRecModule(f fixtureFunc) []byte {
+	compact := binaryModule(f)
+	payload := []byte{1, 0x4e, 1, 0x60, byte(len(f.params))}
+	payload = append(payload, f.params...)
+	if f.results != nil {
+		payload = append(payload, byte(len(f.results)))
+		payload = append(payload, f.results...)
+	} else if f.result == 0 {
+		payload = append(payload, 0)
+	} else {
+		payload = append(payload, 1, f.result)
+	}
+	return modifySection(compact, 1, 1, payload, true)
+}
+
+func TestPublicExplicitSingletonRecAdmissionIdentity(t *testing.T) {
+	for _, f := range []fixtureFunc{
+		{params: []byte{0x7f}, result: 0x7f, body: []byte{0x20, 0, 0x0b}},
+		{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0b}},
+	} {
+		compact := binaryModule(f)
+		wrapped := explicitSingletonRecModule(f)
+		if err := AdmitProductionSource(wrapped); err != nil {
+			t.Fatal("public singleton rec source", f.params, err)
+		}
+		if err := admitWire(wrapped); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("private singleton rec source", f.params, err)
+		}
+		cm, err := wasm.DecodeModule(compact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wm, err := wasm.DecodeModule(wrapped)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cm.Types) != 1 || len(wm.Types) != 1 || len(wm.Types[0].SubTypes) != 1 {
+			t.Fatal("decoded singleton rec shape")
+		}
+		opts := CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true}
+		plain, err := CompileModuleWith(cm, opts)
+		if err != nil {
+			t.Fatal("compact compile", err)
+		}
+		got, err := CompileModuleWith(wm, opts)
+		if err != nil {
+			t.Fatal("wrapped compile", err)
+		}
+		if !bytes.Equal(plain.Code, got.Code) || !slices.Equal(plain.Entry, got.Entry) || !slices.Equal(plain.InternalEntry, got.InternalEntry) {
+			t.Fatal("explicit singleton changed RV64 code layout")
+		}
+		if plain.CodeImage != nil {
+			plain.CodeImage.Close()
+		}
+		if got.CodeImage != nil {
+			got.CodeImage.Close()
+		}
+	}
+}
+
+func TestPublicExplicitSingletonRecStateOnly(t *testing.T) {
+	source := []byte{0, 97, 115, 109, 1, 0, 0, 0, 1, 6, 1, 0x4e, 1, 0x60, 0, 0}
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true})
+	if err != nil || image == nil || len(image.Code) != 0 || image.CodeImage != nil {
+		t.Fatal("state-only singleton rec", image, err)
+	}
+}
+
+func TestPublicExplicitSingletonRecRejectsBroaderGrammar(t *testing.T) {
+	header := []byte{0, 97, 115, 109, 1, 0, 0, 0}
+	for name, payload := range map[string][]byte{
+		"empty":           {1, 0x4e, 0},
+		"multiple":        {1, 0x4e, 2, 0x60, 0, 0, 0x60, 0, 0},
+		"nested":          {1, 0x4e, 1, 0x4e, 1, 0x60, 0, 0},
+		"final-subtype":   {1, 0x4e, 1, 0x4f, 0, 0x60, 0, 0},
+		"open-subtype":    {1, 0x4e, 1, 0x50, 0, 0x60, 0, 0},
+		"struct":          {1, 0x4e, 1, 0x5f, 0},
+		"array":           {1, 0x4e, 1, 0x5e, 0x7f, 0},
+		"funcref":         {1, 0x4e, 1, 0x60, 1, 0x70, 0},
+		"typed-reference": {1, 0x4e, 1, 0x60, 1, 0x64, 0x70, 0},
+		"truncated":       {1, 0x4e},
+		"arity":           append([]byte{1, 0x4e, 1, 0x60, 0x81, 0x02}, make([]byte, 257)...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			source := section(append([]byte(nil), header...), 1, payload)
+			if err := admitWireStartProfile(source, true, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("broader singleton rec grammar admitted", err)
+			}
+		})
+	}
+}
