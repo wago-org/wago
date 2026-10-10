@@ -166,6 +166,81 @@ func TestRV64FunctionDependenciesWarmReuse(t *testing.T) {
 	if failed || allocs != 0 || g.live != 0 || dependencyTestRefs(target) != 0 {
 		t.Fatal("warm exact receipt reuse", failed, allocs, g.live)
 	}
+	ownership := rv64ExistingFunctionDependencyOwnership(consumer)
+	if ownership.functions.n != 1 || len(ownership.functions.extra) != 0 {
+		t.Fatal("warm exact receipt rows accumulated history", ownership.functions.n, len(ownership.functions.extra))
+	}
+}
+
+func TestRV64FunctionDependenciesDeniedReceiptRetainsRetryRow(t *testing.T) {
+	g, err := newRV64FunctionDependencyGraph(2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owners := rv64FunctionDependencyUnitOwners(t, 2)
+	target, consumer := owners[0], owners[1]
+	consumer.beginConstruction(nil)
+	defer consumer.endConstruction()
+	var batch functionImportAttachments
+	if err := rv64AcquireFunctionDependency(&batch, target, g); err != nil {
+		t.Fatal(err)
+	}
+	railshotInstallFunctionDependencies(consumer, &batch)
+	if err := railshotAdoptFunctionDependencies(consumer, true); err != nil {
+		t.Fatal(err)
+	}
+	ownership := rv64ExistingFunctionDependencyOwnership(consumer)
+	row := &ownership.functions.inline[0]
+	receipt := row.root.receipt
+	t.Cleanup(func() {
+		g.mu.Lock()
+		if record, _ := g.recordLocked(receipt.identity); record != nil && record.state == dependencyReleasing {
+			record.state = dependencyTyped
+		}
+		g.mu.Unlock()
+		ownership.functions.drain(ownership)
+	})
+	g.mu.Lock()
+	record, _ := g.recordLocked(receipt.identity)
+	if record == nil || record.state != dependencyTyped {
+		g.mu.Unlock()
+		t.Fatal("missing typed function receipt")
+	}
+	// Private exact-state denial seam. This deliberately omits the real typed to
+	// external accounting transition; it only makes the receipt claim reject.
+	record.state = dependencyReleasing
+	g.mu.Unlock()
+	if _, panicked := cleanupTestPanic(func() { ownership.functions.drain(ownership) }); !panicked {
+		t.Fatal("denied exact receipt release did not report failure")
+	}
+	ownership.functions.mu.Lock()
+	retained := row.state == rv64FunctionDependencyAttached && row.root.receipt.identity == receipt.identity
+	ownership.functions.mu.Unlock()
+	if !retained || dependencyTestRefs(target) != 1 || g.live != 1 || ownership.member.outgoing.Load() != 1 {
+		t.Fatal("denied function receipt lost its stable retry owner")
+	}
+	ownership.physicalCleanupFinished.Store(true)
+	rv64MaybeCompleteFunctionDependencies(ownership)
+	if ownership.cleanupCompleted.Load() {
+		t.Fatal("denied function receipt permitted cleanup completion")
+	}
+	g.mu.Lock()
+	record, _ = g.recordLocked(receipt.identity)
+	record.state = dependencyTyped
+	g.mu.Unlock()
+	consumer.lifeMu.Lock()
+	consumer.resourcesClosed = true
+	consumer.lifeMu.Unlock()
+	ownership.functions.drain(ownership)
+	if !ownership.functions.complete() || dependencyTestRefs(target) != 0 || g.live != 0 || ownership.member.outgoing.Load() != 0 {
+		t.Fatal("restored exact function receipt did not complete")
+	}
+	if !ownership.cleanupCompleted.Load() {
+		t.Fatal("completed function rows did not unblock cleanup completion")
+	}
+	if ownership.member.active.Load() {
+		t.Fatal("late function receipt retry did not retire its exact member")
+	}
 }
 
 func TestRV64FunctionDependenciesAuthorityFailureIsNotCapacity(t *testing.T) {

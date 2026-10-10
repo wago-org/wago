@@ -58,9 +58,66 @@ type functionDependencyAttachments struct {
 	roots importDedup[functionDependencyRoot]
 }
 
+type rv64FunctionDependencyState uint8
+
+const (
+	rv64FunctionDependencyAttached rv64FunctionDependencyState = iota
+	rv64FunctionDependencyReleasing
+	rv64FunctionDependencyReleased
+)
+
+// Installed function roots use stable rows so a denied exact receipt release
+// remains owned and retryable. Builder rollback retains its private drain batch:
+// those receipts are unpublished and each release claims before callbacks.
+type rv64FunctionDependencyRow struct {
+	root  functionDependencyRoot
+	state rv64FunctionDependencyState
+}
+
+type rv64FunctionDependencyRows struct {
+	mu     sync.Mutex
+	inline [4]rv64FunctionDependencyRow
+	n      int
+	extra  []rv64FunctionDependencyRow
+}
+
+func (rows *rv64FunctionDependencyRows) push(root functionDependencyRoot) {
+	rows.mu.Lock()
+	defer rows.mu.Unlock()
+	inline := min(rows.n, len(rows.inline))
+	for i := 0; i < inline; i++ {
+		if rows.inline[i].state == rv64FunctionDependencyReleased {
+			rows.inline[i] = rv64FunctionDependencyRow{root: root}
+			return
+		}
+	}
+	for i := range rows.extra {
+		if rows.extra[i].state == rv64FunctionDependencyReleased {
+			rows.extra[i] = rv64FunctionDependencyRow{root: root}
+			return
+		}
+	}
+	if rows.n < len(rows.inline) {
+		rows.inline[rows.n].root = root
+	} else {
+		rows.extra = append(rows.extra, rv64FunctionDependencyRow{root: root})
+	}
+	rows.n++
+}
+
+func (rows *rv64FunctionDependencyRows) each(fn func(*rv64FunctionDependencyRow)) {
+	inline := min(rows.n, len(rows.inline))
+	for i := 0; i < inline; i++ {
+		fn(&rows.inline[i])
+	}
+	for i := range rows.extra {
+		fn(&rows.extra[i])
+	}
+}
+
 type rv64FunctionDependencyOwnership struct {
 	member                  dependencyMember
-	functions               importDedup[functionDependencyRoot]
+	functions               rv64FunctionDependencyRows
 	memories                atomic.Pointer[rv64MemoryDependencyRows]
 	globals                 atomic.Pointer[rv64GlobalDependencyRows]
 	tables                  atomic.Pointer[rv64TableDependencyRows]
@@ -144,7 +201,10 @@ func railshotInstallFunctionDependencies(in *Instance, a *functionImportAttachme
 		return
 	}
 	ownership := rv64FunctionDependencyOwnershipFor(in)
-	ownership.functions, ownership.managed = a.dependencies.roots, true
+	a.dependencies.roots.each(func(root functionDependencyRoot) {
+		ownership.functions.push(root)
+	})
+	ownership.managed = true
 	a.dependencies.roots = importDedup[functionDependencyRoot]{}
 	a.set.reset()
 }
@@ -169,9 +229,16 @@ func railshotAdoptFunctionDependencies(in *Instance, nativeLeaseReleased bool) e
 	if !nativeLeaseReleased {
 		return errors.New("native function dependency adoption still owns construction native lease")
 	}
+	rows := &ownership.functions
 	var result error
-	ownership.functions.each(func(root functionDependencyRoot) {
-		if result != nil || root.receipt.graph == nil {
+	rows.each(func(row *rv64FunctionDependencyRow) {
+		if result != nil {
+			return
+		}
+		rows.mu.Lock()
+		root, attached := row.root, row.state == rv64FunctionDependencyAttached
+		rows.mu.Unlock()
+		if !attached || root.receipt.graph == nil {
 			return
 		}
 		g := root.receipt.graph
@@ -188,12 +255,67 @@ func railshotAdoptFunctionDependencies(in *Instance, nativeLeaseReleased bool) e
 	return result
 }
 
+func (rows *rv64FunctionDependencyRows) release(ownership *rv64FunctionDependencyOwnership, row *rv64FunctionDependencyRow) {
+	rows.mu.Lock()
+	if row.state != rv64FunctionDependencyAttached {
+		rows.mu.Unlock()
+		return
+	}
+	row.state = rv64FunctionDependencyReleasing
+	root := row.root
+	rows.mu.Unlock()
+	claimed := false
+	var cleanup resourceCleanup
+	if root.receipt.graph != nil {
+		cleanup.run(func() {
+			root.receipt.releaseWithCleanup(func() { claimed = true })
+		})
+	} else if root.producer != nil {
+		cleanup.run(func() {
+			claimed = true
+			root.producer.releaseResourceRoot()
+		})
+	}
+	rows.mu.Lock()
+	if claimed {
+		row.root = functionDependencyRoot{}
+		row.state = rv64FunctionDependencyReleased
+	} else {
+		row.state = rv64FunctionDependencyAttached
+	}
+	rows.mu.Unlock()
+	if !claimed {
+		cleanup.run(func() { panic("function dependency release did not claim its exact receipt") })
+	} else {
+		cleanup.run(func() { rv64RetireFunctionDependencyMember(&ownership.member) })
+	}
+	cleanup.finish()
+}
+
+func (rows *rv64FunctionDependencyRows) drain(ownership *rv64FunctionDependencyOwnership) {
+	var cleanup resourceCleanup
+	rows.each(func(row *rv64FunctionDependencyRow) {
+		cleanup.run(func() { rows.release(ownership, row) })
+	})
+	cleanup.finish()
+}
+
+func (rows *rv64FunctionDependencyRows) complete() bool {
+	rows.mu.Lock()
+	defer rows.mu.Unlock()
+	complete := true
+	rows.each(func(row *rv64FunctionDependencyRow) {
+		complete = complete && row.state == rv64FunctionDependencyReleased
+	})
+	return complete
+}
+
 func railshotDrainInstanceFunctionDependencies(in *Instance) bool {
 	ownership := rv64ExistingFunctionDependencyOwnership(in)
 	if ownership == nil || !ownership.managed {
 		return false
 	}
-	ownership.functions.drain(functionDependencyRoot.release)
+	ownership.functions.drain(ownership)
 	return true
 }
 
@@ -206,6 +328,9 @@ func railshotFunctionDependencyCleanupCompleted(in *Instance) {
 
 func rv64MaybeCompleteFunctionDependencies(ownership *rv64FunctionDependencyOwnership) {
 	if ownership == nil || ownership.cleanupCompleted.Load() || !ownership.physicalCleanupFinished.Load() {
+		return
+	}
+	if !ownership.functions.complete() {
 		return
 	}
 	if rows := ownership.memories.Load(); rows != nil && !rows.complete() {

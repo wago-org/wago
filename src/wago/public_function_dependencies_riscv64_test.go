@@ -103,6 +103,30 @@ func rv64FunctionDependencyPublicFixture(t *testing.T, vector, artifact bool) (*
 	return pc, producer, export, cc
 }
 
+func rv64FunctionDependencyTestCount(ownership *rv64FunctionDependencyOwnership) int {
+	if ownership == nil {
+		return 0
+	}
+	return ownership.functions.n
+}
+
+func rv64FunctionDependencyTestRoot(ownership *rv64FunctionDependencyOwnership, index int) functionDependencyRoot {
+	rows := &ownership.functions
+	rows.mu.Lock()
+	defer rows.mu.Unlock()
+	if index < len(rows.inline) {
+		return rows.inline[index].root
+	}
+	return rows.extra[index-len(rows.inline)].root
+}
+
+func rv64FunctionDependencyTestComplete(ownership *rv64FunctionDependencyOwnership) bool {
+	if ownership == nil {
+		return false
+	}
+	return ownership.functions.complete()
+}
+
 func rv64FunctionDependencyPublicState(t *testing.T, in, producer *Instance, tableEdge ...bool) *rv64FunctionDependencyOwnership {
 	t.Helper()
 	wantOutgoing := uint32(1)
@@ -122,7 +146,11 @@ func rv64FunctionDependencyPublicState(t *testing.T, in, producer *Instance, tab
 		wantOutgoing++
 	}
 	o := rv64ExistingFunctionDependencyOwnership(in)
-	if o == nil || !o.managed || o.functions.n != 1 || o.functions.inline[0].producer != producer || o.functions.inline[0].receipt.graph != rv64FunctionDependencyGraph() || o.member.graph.Load() != rv64FunctionDependencyGraph() || o.member.outgoing.Load() != wantOutgoing {
+	if o == nil || !o.managed || rv64FunctionDependencyTestCount(o) != 1 {
+		t.Fatal("exact deduplicated terminal function receipt")
+	}
+	root := rv64FunctionDependencyTestRoot(o, 0)
+	if root.producer != producer || root.receipt.graph != rv64FunctionDependencyGraph() || o.member.graph.Load() != rv64FunctionDependencyGraph() || o.member.outgoing.Load() != wantOutgoing {
 		t.Fatal("exact deduplicated terminal function receipt")
 	}
 	return o
@@ -199,7 +227,7 @@ func TestRV64PublicFunctionDependenciesSourceArtifact(t *testing.T) {
 					}
 					for _, in := range []*Instance{producer, first, second} {
 						o := rv64ExistingFunctionDependencyOwnership(in)
-						if o == nil || !o.cleanupCompleted.Load() || o.member.active.Load() || o.functions.n != 0 {
+						if o == nil || !o.cleanupCompleted.Load() || o.member.active.Load() || !rv64FunctionDependencyTestComplete(o) {
 							t.Fatal("terminal registry/root leak")
 						}
 					}
@@ -257,7 +285,7 @@ func TestRV64PublicFunctionDependenciesRollback(t *testing.T) {
 				}
 				if captured != nil {
 					o := rv64ExistingFunctionDependencyOwnership(captured)
-					if !o.managed || !o.cleanupCompleted.Load() || o.member.active.Load() || o.functions.n != 0 || captured.jm != nil {
+					if !o.managed || !o.cleanupCompleted.Load() || o.member.active.Load() || !rv64FunctionDependencyTestComplete(o) || captured.jm != nil {
 						t.Fatal("posthandoff rollback owner")
 					}
 					if !railshotDrainInstanceFunctionDependencies(captured) {
@@ -349,7 +377,7 @@ func TestRV64PublicFunctionDependenciesPhysicalCompletion(t *testing.T) {
 					producer.Close()
 					for _, in := range []*Instance{producer, consumer} {
 						state := rv64ExistingFunctionDependencyOwnership(in)
-						if state == nil || !state.cleanupCompleted.Load() || state.member.active.Load() || state.member.outgoing.Load() != 0 || state.functions.n != 0 || !in.resourcesClosed || in.jm != nil || in.ar != nil || in.eng != nil || in.nativeContext != 0 || in.base != 0 {
+						if state == nil || !state.cleanupCompleted.Load() || state.member.active.Load() || state.member.outgoing.Load() != 0 || !rv64FunctionDependencyTestComplete(state) || !in.resourcesClosed || in.jm != nil || in.ar != nil || in.eng != nil || in.nativeContext != 0 || in.base != 0 {
 							t.Fatal("callback panic interrupted producer/consumer native teardown", path)
 						}
 					}
@@ -436,11 +464,11 @@ func TestRV64PublicFunctionDependenciesSameHome(t *testing.T) {
 					}
 					defer consumer.Close()
 					owner := rv64ExistingFunctionDependencyOwnership(consumer)
-					if owner == nil || !owner.managed || owner.functions.n != 2 || owner.member.outgoing.Load() != 2 {
+					if owner == nil || !owner.managed || rv64FunctionDependencyTestCount(owner) != 2 || owner.member.outgoing.Load() != 2 {
 						t.Fatal("same home collapsed concrete producer receipts")
 					}
 					for i, producer := range producers {
-						root := owner.functions.inline[i]
+						root := rv64FunctionDependencyTestRoot(owner, i)
 						if root.producer != producer || root.receipt.graph != rv64FunctionDependencyGraph() {
 							t.Fatal("receipt producer identity")
 						}
@@ -471,7 +499,7 @@ func TestRV64PublicFunctionDependenciesSameHome(t *testing.T) {
 					}
 					for _, in := range []*Instance{producers[0], producers[1], consumer} {
 						state := rv64ExistingFunctionDependencyOwnership(in)
-						if state == nil || !state.cleanupCompleted.Load() || state.member.active.Load() || state.member.outgoing.Load() != 0 || state.functions.n != 0 || in.jm != nil || in.nativeContext != 0 {
+						if state == nil || !state.cleanupCompleted.Load() || state.member.active.Load() || state.member.outgoing.Load() != 0 || !rv64FunctionDependencyTestComplete(state) || in.jm != nil || in.nativeContext != 0 {
 							t.Fatal("same-home or panic cleanup leak")
 						}
 					}
@@ -547,14 +575,14 @@ func TestRV64PublicFunctionDependenciesImportedTableHandoff(t *testing.T) {
 				// Removing the actual row through public guest execution must finish
 				// its installed holder. C5aj does not collect reference cycles.
 				pending := rv64ExistingFunctionDependencyOwnership(captured)
-				if pending == nil || pending.functions.n != 1 || pending.cleanupCompleted.Load() {
+				if pending == nil || rv64FunctionDependencyTestCount(pending) != 1 || pending.cleanupCompleted.Load() {
 					t.Fatal("table retention lost terminal function ownership")
 				}
 				if got, err := producer.Invoke("clear", 0); err != nil || !slices.Equal(got, []uint64{9}) {
 					t.Fatal("public table row removal", got, err)
 				}
 				state := rv64ExistingFunctionDependencyOwnership(captured)
-				if state == nil || !state.managed || !state.cleanupCompleted.Load() || state.member.active.Load() || state.functions.n != 0 || captured.jm != nil || dependencyTestRefs(producer) != before {
+				if state == nil || !state.managed || !state.cleanupCompleted.Load() || state.member.active.Load() || !rv64FunctionDependencyTestComplete(state) || captured.jm != nil || dependencyTestRefs(producer) != before {
 					t.Fatalf("imported table terminal rollback: state=%+v jm=%p producer roots=%d before=%d", state, captured.jm, dependencyTestRefs(producer), before)
 				}
 			})
