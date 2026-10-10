@@ -369,7 +369,11 @@ func railshotPublishConstructedTableProducer(table *Table, in *Instance) *Instan
 	if table.retained[in] != nil {
 		return in
 	}
-	table.retained[in] = &retainedInstanceRoot{precise: true}
+	state := &retainedInstanceRoot{precise: true}
+	table.retained[in] = state
+	// Native construction still owns outer serialization. Record the stable
+	// bootstrap only; the immediately following prune publishes after unlock.
+	railshotRecordTableDescriptorDependencyLocked(table, in, state, nil)
 	return nil
 }
 
@@ -397,6 +401,9 @@ func (s *rv64NativeTableTargets) activateWriter(table *Table, owner *Instance) e
 		}
 		state = &retainedInstanceRoot{}
 		table.retained[owner] = state
+		// The active writer root is conservatively external until scope release
+		// invokes prune outside native serialization.
+		railshotRecordTableDescriptorDependencyLocked(table, owner, state, nil)
 	}
 	state.activeWriters++
 	return nil

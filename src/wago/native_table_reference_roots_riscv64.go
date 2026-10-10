@@ -75,6 +75,9 @@ func (s *rv64NativeTableTargets) publishHostTableReferenceRows(table *Table) {
 				}
 				state = &retainedInstanceRoot{}
 				table.retained[owner] = state
+				// Publication is deferred to the scope-release prune, after the
+				// native and container locks held by this scan are gone.
+				railshotRecordTableDescriptorDependencyLocked(table, owner, state, nil)
 			}
 			state.precise = true
 			break

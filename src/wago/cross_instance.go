@@ -104,14 +104,18 @@ type descriptorRetentionResult struct {
 }
 
 type tableOwner struct {
-	mu           sync.Mutex
-	arena        *coreruntime.Arena
-	store        *referenceStore
-	instance     *Instance
-	elementType  ValType
-	valueType    ValueTypeDescriptor
-	types        []DefinedTypeDescriptor
-	hasValueType bool
+	// RV64 records exact host funcref descriptor acquisitions here. The
+	// architecture holder is empty on existing targets, preserving owner and
+	// public Table footprints there.
+	descriptorDependencies tableDescriptorDependencies
+	mu                     sync.Mutex
+	arena                  *coreruntime.Arena
+	store                  *referenceStore
+	instance               *Instance
+	elementType            ValType
+	valueType              ValueTypeDescriptor
+	types                  []DefinedTypeDescriptor
+	hasValueType           bool
 	// declaredHasMax records whether the table's external Wasm type declares an
 	// explicit maximum. The runtime descriptor's capacity field is only an
 	// allocation reservation (a no-max table still gets a finite reserve), so
@@ -278,7 +282,14 @@ func (t *Table) Close() error {
 	o := t.owner
 	o.mu.Lock()
 	if o.closed || o.arena == nil {
+		var dependencies tableDescriptorDependencyBatch
+		if o.closed {
+			t.mu.Lock()
+			railshotRetryTableDescriptorDependenciesLocked(t, &dependencies)
+			t.mu.Unlock()
+		}
 		o.mu.Unlock()
+		railshotFlushTableDescriptorDependencies(&dependencies)
 		return nil
 	}
 	if o.nativeLeases != 0 {
@@ -300,16 +311,19 @@ func (t *Table) Close() error {
 	t.mu.Lock()
 	t.closed = true
 	t.desc = nil
-	roots := make([]*Instance, 0, len(t.retained))
-	for root := range t.retained {
-		roots = append(roots, root)
+	var dependencies tableDescriptorDependencyBatch
+	for root, state := range t.retained {
+		railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
 	}
 	t.retained = nil
+	// A denied overwrite can remove the live map row while leaving its stable
+	// receipt obligation retryable. Terminal Close owns every such retired row.
+	railshotRetryTableDescriptorDependenciesLocked(t, &dependencies)
 	t.mu.Unlock()
 	o.mu.Unlock()
 
 	var cleanup resourceCleanup
-	cleanup.run(func() { releaseRetainedResourceRoots(roots) })
+	cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
 	var err error
 	cleanup.run(func() { err = arena.Close() })
 	if store != nil {
@@ -690,7 +704,7 @@ func (t *Table) retainProducerInstanceModeWithCleanup(in *Instance, finalization
 	}
 
 	railshotLockNativeTableScan()
-	var release []*Instance
+	var dependencies tableDescriptorDependencyBatch
 	t.mu.Lock()
 	if t.closed || len(t.desc) < 8 {
 		t.mu.Unlock()
@@ -708,16 +722,16 @@ func (t *Table) retainProducerInstanceModeWithCleanup(in *Instance, finalization
 		}
 		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
-			release = append(release, root)
+			railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
+		} else if state.precise || len(state.proxyDescriptors) != 0 {
+			railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 		}
 	}
 	if !t.containsReachableFuncref(in) {
 		t.mu.Unlock()
 		railshotUnlockNativeTableScan()
 		cleanup.run(in.releaseResourceRoot)
-		for _, root := range release {
-			cleanup.run(root.releaseResourceRoot)
-		}
+		cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
 		return false
 	}
 	in.markNativeControlShared()
@@ -728,8 +742,10 @@ func (t *Table) retainProducerInstanceModeWithCleanup(in *Instance, finalization
 	if !exists {
 		state = &retainedInstanceRoot{}
 		t.retained[in] = state
+		railshotRecordTableDescriptorDependencyLocked(t, in, state, &dependencies)
 	}
 	state.precise = true
+	railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 	for root, retained := range t.retained {
 		for descriptor := range retained.proxyDescriptors {
 			if in.reachesFuncrefDescriptor(descriptor) {
@@ -738,7 +754,7 @@ func (t *Table) retainProducerInstanceModeWithCleanup(in *Instance, finalization
 		}
 		if retained.activeWriters == 0 && !retained.precise && len(retained.proxyDescriptors) == 0 {
 			delete(t.retained, root)
-			release = append(release, root)
+			railshotRetireTableDescriptorDependencyLocked(t, root, retained, &dependencies)
 		}
 	}
 	t.mu.Unlock()
@@ -747,7 +763,7 @@ func (t *Table) retainProducerInstanceModeWithCleanup(in *Instance, finalization
 	if exists {
 		cleanup.run(in.releaseResourceRoot)
 	}
-	cleanup.run(func() { releaseRetainedResourceRoots(release) })
+	cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
 	return true
 }
 
@@ -850,7 +866,8 @@ func (t *Table) retainDescriptorOwnersForFinalizationWithCleanup(store *referenc
 	unresolvedSnapshot := len(resolved) != len(descriptors)
 	proxyAcquired := unresolvedSnapshot && proxy != nil && proxy != containerOwner && proxy.retainResourceRootForFinalization()
 
-	var release []*Instance
+	var release []*Instance // redundant provisional acquisitions only
+	var dependencies tableDescriptorDependencyBatch
 	railshotLockNativeTableScan()
 	t.mu.Lock()
 	if t.closed || len(t.desc) < 8 {
@@ -896,7 +913,7 @@ func (t *Table) retainDescriptorOwnersForFinalizationWithCleanup(store *referenc
 		}
 		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
-			release = append(release, root)
+			railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
 		}
 	}
 	for descriptor, owner := range resolved {
@@ -911,11 +928,13 @@ func (t *Table) retainDescriptorOwnersForFinalizationWithCleanup(store *referenc
 		if state == nil {
 			state = &retainedInstanceRoot{}
 			t.retained[owner] = state
+			railshotRecordTableDescriptorDependencyLocked(t, owner, state, &dependencies)
 			owner.markNativeControlShared()
 		} else {
 			release = append(release, owner)
 		}
 		state.precise = true
+		railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 	}
 	for descriptor := range unresolved {
 		precise := false
@@ -954,6 +973,7 @@ func (t *Table) retainDescriptorOwnersForFinalizationWithCleanup(store *referenc
 			if state == nil {
 				state = &retainedInstanceRoot{}
 				t.retained[proxy] = state
+				railshotRecordTableDescriptorDependencyLocked(t, proxy, state, &dependencies)
 				proxy.markNativeControlShared()
 			} else {
 				release = append(release, proxy)
@@ -964,17 +984,21 @@ func (t *Table) retainDescriptorOwnersForFinalizationWithCleanup(store *referenc
 			for descriptor := range needed {
 				state.proxyDescriptors[descriptor] = struct{}{}
 			}
+			railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 		}
 	}
 	for root, state := range t.retained {
 		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
-			release = append(release, root)
+			railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
+		} else if state.precise || len(state.proxyDescriptors) != 0 {
+			railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 		}
 	}
 	result := descriptorRetentionResult{retained: len(t.retained) != 0, unresolved: len(unresolved) != 0}
 	t.mu.Unlock()
 	railshotUnlockNativeTableScan()
+	cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
 	cleanup.run(func() { releaseRetainedResourceRoots(release) })
 	return result
 }
@@ -1002,7 +1026,7 @@ func (t *Table) pruneRetainedInstances() {
 		return
 	}
 	railshotLockNativeTableScan()
-	var release []*Instance
+	var dependencies tableDescriptorDependencyBatch
 	t.mu.Lock()
 	if !t.closed && len(t.desc) >= 8 && len(t.retained) != 0 {
 		current := t.funcrefDescriptorsLocked()
@@ -1021,13 +1045,15 @@ func (t *Table) pruneRetainedInstances() {
 			}
 			if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 				delete(t.retained, root)
-				release = append(release, root)
+				railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
+			} else if state.precise || len(state.proxyDescriptors) != 0 {
+				railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 			}
 		}
 	}
 	t.mu.Unlock()
 	railshotUnlockNativeTableScan()
-	releaseRetainedResourceRoots(release)
+	railshotFlushTableDescriptorDependencies(&dependencies)
 }
 
 func (t *Table) releaseRetainedInstances() {
@@ -1036,17 +1062,21 @@ func (t *Table) releaseRetainedInstances() {
 	}
 	t.mu.Lock()
 	if t.closed {
+		var dependencies tableDescriptorDependencyBatch
+		railshotRetryTableDescriptorDependenciesLocked(t, &dependencies)
 		t.mu.Unlock()
+		railshotFlushTableDescriptorDependencies(&dependencies)
 		return
 	}
 	t.closed = true
-	roots := make([]*Instance, 0, len(t.retained))
-	for root := range t.retained {
-		roots = append(roots, root)
+	var dependencies tableDescriptorDependencyBatch
+	for root, state := range t.retained {
+		railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
 	}
 	t.retained = nil
+	railshotRetryTableDescriptorDependenciesLocked(t, &dependencies)
 	t.mu.Unlock()
-	releaseRetainedResourceRoots(roots)
+	railshotFlushTableDescriptorDependencies(&dependencies)
 }
 
 // ExportedTable returns the table exported under name as a shared *Table another

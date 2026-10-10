@@ -179,7 +179,7 @@ func railshotRetryClosedGlobalDescriptorRetirement(in *Instance) error {
 
 // Acquire a second, graph-identified physical unit while the caller's exact
 // bootstrap remains live. Every error leaves that bootstrap untouched.
-func rv64AcquireGlobalDescriptorDependency(producer *Instance, graph *dependencyGraph) (dependencyReceipt, bool, error) {
+func rv64AcquireContainerDescriptorDependency(producer *Instance, graph *dependencyGraph) (dependencyReceipt, bool, error) {
 	if graph == nil {
 		graph = rv64FunctionDependencyGraph()
 	}
@@ -204,7 +204,7 @@ func (row *rv64GlobalDescriptorDependency) publish() {
 	row.phase = rv64GlobalDescriptorPublishing
 	owner.mu.Unlock()
 
-	receipt, exchange, err := rv64AcquireGlobalDescriptorDependency(row.producer, row.graph)
+	receipt, exchange, err := rv64AcquireContainerDescriptorDependency(row.producer, row.graph)
 	owner.mu.Lock()
 	if row.phase != rv64GlobalDescriptorPublishing || owner.descriptorDependencies.rows[row.mapState] != row {
 		owner.mu.Unlock()
