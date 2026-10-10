@@ -63,6 +63,7 @@ func (lifetime referenceLifetime) finalize() {
 	in.finalizing = false
 	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.constructionActive || in.invocationState.Load()&instanceInvocationCount != 0 {
 		in.lifeMu.Unlock()
+		cleanup.run(func() { railshotRequestClosedContainerDependencyAdoption(in) })
 		cleanup.finish()
 		return
 	}

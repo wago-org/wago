@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -86,6 +87,9 @@ func TestRV64OwnedTableDescriptorTerminalCallbackCompletes(t *testing.T) {
 			err := owner.Close()
 			if !errors.Is(err, ErrCallbackPanic) || callbacks != 1 || !reentrantPrompt {
 				t.Fatal("terminal callback panic/reentrant Close contract", err, callbacks, reentrantPrompt)
+			}
+			if waited := owner.WaitClosed(context.Background()); !errors.Is(waited, ErrCallbackPanic) {
+				t.Fatal("WaitClosed lost synchronous adoption cleanup failure", waited)
 			}
 			table.mu.Lock()
 			rows := len(table.owner.descriptorDependencies.rows)
@@ -395,14 +399,37 @@ func TestRV64OwnedTableDescriptorClosedAdoptionFormsCollectibleCycle(t *testing.
 					cleanup.finish()
 				})
 			})
+			invocations := false
+			if artifact {
+				if err := a.beginInstanceInvocation(); err != nil {
+					t.Fatal(err)
+				}
+				if err := b.beginInstanceInvocation(); err != nil {
+					a.endInvocation()
+					t.Fatal(err)
+				}
+				invocations = true
+				t.Cleanup(func() {
+					if invocations {
+						a.endInvocation()
+						b.endInvocation()
+					}
+				})
+			}
 			if err := a.Close(); err != nil {
 				t.Fatal(err)
 			}
 			if err := b.Close(); err != nil {
 				t.Fatal(err)
 			}
-			railshotAdoptClosedContainerDependencies(a)
-			railshotAdoptClosedContainerDependencies(b)
+			if artifact {
+				if aRow.phase != rv64TableDescriptorPending || bRow.phase != rv64TableDescriptorPending {
+					t.Fatal("active invocation allowed premature closed adoption", aRow.phase, bRow.phase)
+				}
+				a.endInvocation()
+				b.endInvocation()
+				invocations = false
+			}
 			aOwnership := rv64ExistingFunctionDependencyOwnership(a)
 			bOwnership := rv64ExistingFunctionDependencyOwnership(b)
 			if a.resourcesClosed || b.resourcesClosed || aRow.phase != rv64TableDescriptorTyped || bRow.phase != rv64TableDescriptorTyped || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {

@@ -64,3 +64,9 @@ func railshotInstallFunctionDependencies(*Instance, *functionImportAttachments) 
 func railshotAdoptFunctionDependencies(*Instance, bool) error                   { return nil }
 func railshotFunctionDependencyCleanupCompleted(*Instance)                      {}
 func railshotAdoptClosedContainerDependencies(*Instance)                        {}
+func railshotClosedContainerAdoptionReady(*Instance) bool                       { return false }
+func railshotRequestClosedContainerDependencyAdoption(*Instance)                {}
+func railshotTerminalClosedContainerDependencyAdoption(*Instance, *instanceCloseState) {
+}
+func railshotPublishClosedContainerAdoptionResult(*Instance, *instanceCloseState, error) {}
+func railshotClosedContainerAdoptionResult(*Instance, *instanceCloseState) error         { return nil }

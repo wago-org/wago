@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -73,6 +74,9 @@ func TestRV64OwnedGlobalDescriptorTerminalCallbackCompletes(t *testing.T) {
 			err := owner.Close()
 			if !errors.Is(err, ErrCallbackPanic) || callbacks != 1 || !reentrantPrompt {
 				t.Fatal("terminal callback panic/reentrant Close contract", err, callbacks, reentrantPrompt)
+			}
+			if waited := owner.WaitClosed(context.Background()); !errors.Is(waited, ErrCallbackPanic) {
+				t.Fatal("WaitClosed lost synchronous adoption cleanup failure", waited)
 			}
 			global.owner.mu.Lock()
 			rows := len(global.owner.descriptorDependencies.rows)
@@ -250,42 +254,38 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionRetirementOverlap(t *testing.T) 
 		t.Fatal("failed to retain consumer through closed adoption")
 	}
 	rootHeld := true
+	if err := owner.beginInstanceInvocation(); err != nil {
+		owner.releaseResourceRoot()
+		t.Fatal(err)
+	}
 	if err := owner.Close(); err != nil {
+		owner.endInvocation()
 		owner.releaseResourceRoot()
 		t.Fatal(err)
 	}
 	graph := row.receipt.graph
 	graph.mu.Lock()
 	graphHeld := true
-	type adoptionResult struct {
+	type terminalResult struct {
 		value    any
 		panicked bool
 	}
-	adopted := make(chan adoptionResult, 1)
-	typedPublished := make(chan struct{})
-	proceed := make(chan struct{})
+	terminal := make(chan terminalResult, 1)
 	go func() {
-		value, panicked := cleanupTestPanic(func() {
-			row.adoptClosedWithTypedHook(func() {
-				close(typedPublished)
-				<-proceed
-			})
-		})
-		adopted <- adoptionResult{value: value, panicked: panicked}
+		value, panicked := cleanupTestPanic(owner.endInvocation)
+		terminal <- terminalResult{value: value, panicked: panicked}
 	}()
 	joined := false
-	var proceedOnce sync.Once
 	t.Cleanup(func() {
 		if graphHeld {
 			graph.mu.Unlock()
 			graphHeld = false
 		}
-		proceedOnce.Do(func() { close(proceed) })
 		if !joined {
 			select {
-			case <-adopted:
+			case <-terminal:
 			case <-time.After(5 * time.Second):
-				t.Error("timed out joining closed adopter")
+				t.Error("timed out joining terminal scheduler")
 			}
 		}
 		if rootHeld {
@@ -326,29 +326,13 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionRetirementOverlap(t *testing.T) 
 	graph.mu.Unlock()
 	graphHeld = false
 	select {
-	case <-typedPublished:
-	case <-time.After(5 * time.Second):
-		t.Fatal("closed adopter did not publish the typed receipt")
-	}
-	global.owner.mu.Lock()
-	typedPhase := row.phase == rv64GlobalDescriptorTyped
-	global.owner.mu.Unlock()
-	graph.mu.Lock()
-	record, _ := graph.recordLocked(row.receiptIdentity)
-	typedTopology := record != nil && record.state == dependencyTyped && record.consumer == &ownership.member && ownership.member.outgoing.Load() == 1
-	graph.mu.Unlock()
-	if !typedPhase || !typedTopology {
-		t.Fatal("retirement overlap did not pass through the exact typed handoff", typedPhase, typedTopology)
-	}
-	proceedOnce.Do(func() { close(proceed) })
-	select {
-	case result := <-adopted:
+	case result := <-terminal:
 		joined = true
 		if result.panicked {
-			t.Fatal("closed adopter panicked after retirement overlap", result.value)
+			t.Fatal("terminal scheduler panicked after retirement overlap", result.value)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("closed adopter did not finish after graph release")
+		t.Fatal("terminal scheduler did not finish after graph release")
 	}
 	global.owner.mu.Lock()
 	rows := len(global.owner.descriptorDependencies.rows)
@@ -356,6 +340,172 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionRetirementOverlap(t *testing.T) 
 	if !retireRequested || row.phase != rv64GlobalDescriptorReleased || rows != 0 || dependencyTestRefs(producer) != 0 || graph.live != 0 || ownership.member.outgoing.Load() != 0 {
 		t.Fatal("retirement overlap did not consume the adopted row", retireRequested, row.phase, rows, dependencyTestRefs(producer), graph.live, ownership.member.outgoing.Load())
 	}
+	owner.releaseResourceRoot()
+	rootHeld = false
+}
+
+func TestRV64ClosedAdoptionDrainsPublicationAfterCallbackPanic(t *testing.T) {
+	owner, producer, global, retiring := rv64OwnedGlobalDescriptorFixture(t, false)
+	ownership := rv64ExistingFunctionDependencyOwnership(owner)
+	queuedProducer, err := Instantiate(owner.c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = cleanupTestPanic(func() { _ = queuedProducer.Close() }) })
+	// This private Go-backed holder uses the real descriptor bootstrap and graph
+	// publication path; it is not an admitted mapped Table export.
+	table := &Table{owner: &tableOwner{instance: owner, elementType: ValFuncRef}}
+	owner.lifeMu.Lock()
+	railshotLinkOwnedTableDescriptorHolderLocked(owner, table)
+	owner.lifeMu.Unlock()
+	state, queued, _ := rv64TableDescriptorTestRecord(t, table, queuedProducer, retiring.receipt.graph)
+	t.Cleanup(func() {
+		var batch tableDescriptorDependencyBatch
+		table.mu.Lock()
+		if table.retained[queuedProducer] == state {
+			delete(table.retained, queuedProducer)
+			railshotRetireTableDescriptorDependencyLocked(table, queuedProducer, state, &batch)
+		}
+		table.mu.Unlock()
+		_, _ = cleanupTestPanic(func() { railshotFlushTableDescriptorDependencies(&batch) })
+	})
+
+	global.owner.mu.Lock()
+	if global.owner.retained[producer] != retiring.mapState {
+		global.owner.mu.Unlock()
+		t.Fatal("retiring row lost exact map state")
+	}
+	delete(global.owner.retained, producer)
+	var retirement globalDescriptorDependencyBatch
+	railshotRetireGlobalDescriptorDependencyLocked(global.owner, producer, retiring.mapState, &retirement)
+	global.owner.mu.Unlock()
+
+	acquired := make(chan struct{})
+	publishProceed := make(chan struct{})
+	published := make(chan struct {
+		value    any
+		panicked bool
+	}, 1)
+	go func() {
+		value, panicked := cleanupTestPanic(func() {
+			queued.publishWithAcquireHook(func() {
+				close(acquired)
+				<-publishProceed
+			})
+		})
+		published <- struct {
+			value    any
+			panicked bool
+		}{value, panicked}
+	}()
+	var publishOnce sync.Once
+	publishJoined := false
+	callbackProceed := make(chan struct{})
+	var callbackOnce sync.Once
+	t.Cleanup(func() {
+		publishOnce.Do(func() { close(publishProceed) })
+		callbackOnce.Do(func() { close(callbackProceed) })
+		if !publishJoined {
+			select {
+			case <-published:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out joining delayed publisher")
+			}
+		}
+	})
+	select {
+	case <-acquired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delayed publisher did not acquire its receipt")
+	}
+	callbackStarted := make(chan struct{})
+	marker := new(int)
+	producer.referenceLifetime().afterPhysicalRelease(func() {
+		close(callbackStarted)
+		<-callbackProceed
+		panic(marker)
+	})
+	if err := producer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !owner.retainResourceRootForFinalization() {
+		t.Fatal("failed to retain scheduler owner")
+	}
+	rootHeld := true
+	t.Cleanup(func() {
+		if rootHeld {
+			owner.releaseResourceRoot()
+		}
+	})
+	type closeResult struct {
+		err      error
+		value    any
+		panicked bool
+	}
+	closed := make(chan closeResult, 1)
+	go func() {
+		var err error
+		value, panicked := cleanupTestPanic(func() { err = owner.Close() })
+		closed <- closeResult{err: err, value: value, panicked: panicked}
+	}()
+	closeJoined := false
+	t.Cleanup(func() {
+		publishOnce.Do(func() { close(publishProceed) })
+		callbackOnce.Do(func() { close(callbackProceed) })
+		if !closeJoined {
+			select {
+			case <-closed:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out joining terminal Close worker")
+			}
+		}
+	})
+	select {
+	case <-callbackStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("initial adoption sweep did not reach physical callback")
+	}
+	publishOnce.Do(func() { close(publishProceed) })
+	select {
+	case result := <-published:
+		publishJoined = true
+		if result.panicked {
+			t.Fatal("delayed publisher panicked", result.value)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("delayed publisher did not notify the running scheduler")
+	}
+	callbackOnce.Do(func() { close(callbackProceed) })
+	var closeOutcome closeResult
+	select {
+	case closeOutcome = <-closed:
+		closeJoined = true
+	case <-time.After(5 * time.Second):
+		t.Fatal("terminal scheduler did not drain requested publication")
+	}
+	waited := owner.WaitClosed(context.Background())
+	if closeOutcome.panicked || !errors.Is(closeOutcome.err, ErrCallbackPanic) || waited != closeOutcome.err {
+		t.Fatal("synchronous Close result lost or duplicated initial sweep panic", closeOutcome.err, closeOutcome.value, closeOutcome.panicked, waited)
+	}
+	table.mu.Lock()
+	typed := queued.phase == rv64TableDescriptorTyped
+	table.mu.Unlock()
+	ownership.closedAdoptionMu.Lock()
+	idle := !ownership.closedAdoptionRunning && !ownership.closedAdoptionRequested && ownership.closedAdoptionResult != nil
+	ownership.closedAdoptionMu.Unlock()
+	if !typed || !idle || retiring.phase != rv64GlobalDescriptorReleased {
+		t.Fatal("queued publication was stranded after first sweep panic", typed, idle, retiring.phase)
+	}
+	var queuedRetirement tableDescriptorDependencyBatch
+	table.mu.Lock()
+	if table.retained[queuedProducer] != state {
+		table.mu.Unlock()
+		t.Fatal("queued row lost its exact retained state")
+	}
+	delete(table.retained, queuedProducer)
+	railshotRetireTableDescriptorDependencyLocked(table, queuedProducer, state, &queuedRetirement)
+	table.mu.Unlock()
+	railshotFlushTableDescriptorDependencies(&queuedRetirement)
 	owner.releaseResourceRoot()
 	rootHeld = false
 }
@@ -502,14 +652,37 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionFormsCollectibleCycle(t *testing
 					cleanup.finish()
 				})
 			})
+			invocations := false
+			if artifact {
+				if err := a.beginInstanceInvocation(); err != nil {
+					t.Fatal(err)
+				}
+				if err := b.beginInstanceInvocation(); err != nil {
+					a.endInvocation()
+					t.Fatal(err)
+				}
+				invocations = true
+				t.Cleanup(func() {
+					if invocations {
+						a.endInvocation()
+						b.endInvocation()
+					}
+				})
+			}
 			if err := a.Close(); err != nil {
 				t.Fatal(err)
 			}
 			if err := b.Close(); err != nil {
 				t.Fatal(err)
 			}
-			railshotAdoptClosedContainerDependencies(a)
-			railshotAdoptClosedContainerDependencies(b)
+			if artifact {
+				if aRow.phase != rv64GlobalDescriptorPending || bRow.phase != rv64GlobalDescriptorPending {
+					t.Fatal("active invocation allowed premature closed adoption", aRow.phase, bRow.phase)
+				}
+				a.endInvocation()
+				b.endInvocation()
+				invocations = false
+			}
 			aOwnership := rv64ExistingFunctionDependencyOwnership(a)
 			bOwnership := rv64ExistingFunctionDependencyOwnership(b)
 			if a.resourcesClosed || b.resourcesClosed || aRow.phase != rv64GlobalDescriptorTyped || bRow.phase != rv64GlobalDescriptorTyped || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {

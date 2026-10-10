@@ -211,12 +211,28 @@ func (g *dependencyGraph) closedComponentMemberLocked(member *dependencyMember) 
 }
 
 func dependencyClosedConsumerLeaseLocked(owner *Instance) bool {
+	if !dependencyClosedConsumerBaseLeaseLocked(owner) {
+		return false
+	}
+	state := owner.closeState.Load()
+	return state.completed.Load() && state.terminalComplete.Load()
+}
+
+func dependencyClosedConsumerBaseLeaseLocked(owner *Instance) bool {
 	if owner == nil {
 		return false
 	}
 	state := owner.closeState.Load()
 	return owner.closed && !owner.finalizing && !owner.resourcesClosed && !owner.constructionActive && owner.invocationState.Load() == instanceInvocationClosed &&
-		state != nil && state.prepared.Load() && state.completed.Load() && state.terminalComplete.Load()
+		state != nil && state.prepared.Load()
+}
+
+func dependencyClosedConsumerAdoptionLeaseLocked(owner *Instance) bool {
+	if !dependencyClosedConsumerBaseLeaseLocked(owner) {
+		return false
+	}
+	state := owner.closeState.Load()
+	return state.completed.Load() && state.terminalComplete.Load() || railshotClosedContainerAdoptionReady(owner)
 }
 
 // discoverClosedComponent passively finds the strongly connected component
@@ -841,7 +857,7 @@ func (r dependencyReceipt) commit(consumer *dependencyMember, kind dependencyKin
 		if consumer.collecting.Load() {
 			return false, errDependencyCollecting
 		}
-		if !dependencyClosedConsumerLeaseLocked(consumer.owner) {
+		if !dependencyClosedConsumerAdoptionLeaseLocked(consumer.owner) {
 			return false, errDependencyLease
 		}
 	} else {

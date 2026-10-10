@@ -128,6 +128,12 @@ type rv64FunctionDependencyOwnership struct {
 	componentRelease        atomic.Pointer[rv64DependencyComponentCoordinator]
 	physicalCleanupFinished atomic.Bool // set only after the complete physical callback journal
 	cleanupCompleted        atomic.Bool // physical journal plus every authoritative receipt holder
+	closedAdoptionMu        sync.Mutex
+	closedAdoptionState     *instanceCloseState
+	closedAdoptionReady     bool
+	closedAdoptionRunning   bool
+	closedAdoptionRequested bool
+	closedAdoptionResult    error
 }
 
 type rv64DependencyComponentCoordinator struct {
@@ -356,6 +362,109 @@ func railshotAdoptClosedContainerDependencies(in *Instance) {
 	var cleanup resourceCleanup
 	cleanup.run(func() { railshotAdoptClosedTableDescriptorDependencies(in) })
 	cleanup.run(func() { railshotAdoptClosedGlobalDescriptorDependencies(in) })
+	cleanup.finish()
+}
+
+func railshotClosedContainerAdoptionReady(in *Instance) bool {
+	if in == nil {
+		return false
+	}
+	stateRoot := in.importState.Load()
+	if stateRoot == nil || stateRoot.rootAccounting.dependencies == nil {
+		return false
+	}
+	ownership := stateRoot.rootAccounting.dependencies
+	state := in.closeState.Load()
+	ownership.closedAdoptionMu.Lock()
+	ready := ownership.closedAdoptionReady && ownership.closedAdoptionState == state
+	ownership.closedAdoptionMu.Unlock()
+	return ready
+}
+
+func railshotTerminalClosedContainerDependencyAdoption(in *Instance, state *instanceCloseState) {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil || state == nil || in.closeState.Load() != state {
+		return
+	}
+	ownership.closedAdoptionMu.Lock()
+	if ownership.closedAdoptionState != nil && ownership.closedAdoptionState != state {
+		ownership.closedAdoptionMu.Unlock()
+		panic("RV64 closed container adoption changed close identity")
+	}
+	ownership.closedAdoptionState = state
+	ownership.closedAdoptionReady = true
+	if ownership.closedAdoptionRunning {
+		ownership.closedAdoptionRequested = true
+		ownership.closedAdoptionMu.Unlock()
+		return
+	}
+	ownership.closedAdoptionRunning = true
+	ownership.closedAdoptionRequested = false
+	ownership.closedAdoptionMu.Unlock()
+	rv64RunClosedContainerDependencyAdoption(in, ownership)
+}
+
+func railshotPublishClosedContainerAdoptionResult(in *Instance, state *instanceCloseState, err error) {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil {
+		return
+	}
+	ownership.closedAdoptionMu.Lock()
+	if ownership.closedAdoptionState == state {
+		ownership.closedAdoptionResult = err
+	}
+	ownership.closedAdoptionMu.Unlock()
+}
+
+func railshotClosedContainerAdoptionResult(in *Instance, state *instanceCloseState) error {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil {
+		return nil
+	}
+	ownership.closedAdoptionMu.Lock()
+	defer ownership.closedAdoptionMu.Unlock()
+	if ownership.closedAdoptionState == state {
+		return ownership.closedAdoptionResult
+	}
+	return nil
+}
+
+func railshotRequestClosedContainerDependencyAdoption(in *Instance) {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil || in == nil {
+		return
+	}
+	state := in.closeState.Load()
+	ownership.closedAdoptionMu.Lock()
+	if !ownership.closedAdoptionReady || ownership.closedAdoptionState != state {
+		ownership.closedAdoptionMu.Unlock()
+		return
+	}
+	if ownership.closedAdoptionRunning {
+		ownership.closedAdoptionRequested = true
+		ownership.closedAdoptionMu.Unlock()
+		return
+	}
+	ownership.closedAdoptionRunning = true
+	ownership.closedAdoptionRequested = false
+	ownership.closedAdoptionMu.Unlock()
+	rv64RunClosedContainerDependencyAdoption(in, ownership)
+}
+
+func rv64RunClosedContainerDependencyAdoption(in *Instance, ownership *rv64FunctionDependencyOwnership) {
+	var cleanup resourceCleanup
+	for {
+		cleanup.run(func() { railshotAdoptClosedContainerDependencies(in) })
+		ownership.closedAdoptionMu.Lock()
+		if ownership.closedAdoptionRequested {
+			ownership.closedAdoptionRequested = false
+			ownership.closedAdoptionMu.Unlock()
+			continue
+		}
+		ownership.closedAdoptionRunning = false
+		ownership.closedAdoptionMu.Unlock()
+		break
+	}
 	cleanup.finish()
 }
 

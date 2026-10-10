@@ -256,6 +256,7 @@ func (row *rv64GlobalDescriptorDependency) publish() {
 	if exchange {
 		// The receipt is authoritative before the original bootstrap is exchanged.
 		cleanup.run(row.producer.releaseResourceRoot)
+		cleanup.run(func() { railshotRequestClosedContainerDependencyAdoption(owner.instance) })
 	}
 	if retire {
 		cleanup.run(row.release)
@@ -267,12 +268,6 @@ func (row *rv64GlobalDescriptorDependency) publish() {
 }
 
 func (row *rv64GlobalDescriptorDependency) adoptClosed() {
-	row.adoptClosedWithTypedHook(nil)
-}
-
-// The hook is a deterministic test seam after the exact receipt becomes typed
-// but before a concurrent retirement request can consume it.
-func (row *rv64GlobalDescriptorDependency) adoptClosedWithTypedHook(afterTyped func()) {
 	owner := row.owner
 	owner.mu.Lock()
 	if row.phase != rv64GlobalDescriptorPending || owner.descriptorDependencies.rows[row.mapState] != row || owner.descriptorDependencies.holder == nil {
@@ -303,9 +298,6 @@ func (row *rv64GlobalDescriptorDependency) adoptClosedWithTypedHook(afterTyped f
 	}
 	retire := row.retireRequested
 	owner.mu.Unlock()
-	if typed && afterTyped != nil {
-		afterTyped()
-	}
 	if retire {
 		row.release()
 	}

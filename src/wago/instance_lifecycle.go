@@ -49,6 +49,9 @@ func (in *Instance) Close() (err error) {
 		err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
 		err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
 		err = joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
+		if state.terminalComplete.Load() {
+			err = joinPrimary(err, railshotClosedContainerAdoptionResult(in, state))
+		}
 		state.complete(err)
 		// Managed terminal work must not detach ownership before the logical
 		// result is available to drain and WaitClosed. Retry after publication.
@@ -186,7 +189,11 @@ func (in *Instance) waitTerminalClose() error {
 		if state.terminalDone != nil {
 			<-state.terminalDone
 		}
-		return joinPrimary(state.result, state.terminalResult)
+		result := joinPrimary(state.result, state.terminalResult)
+		if adoptionErr := railshotClosedContainerAdoptionResult(in, state); adoptionErr != nil && !errors.Is(result, adoptionErr) {
+			result = joinPrimary(result, adoptionErr)
+		}
+		return result
 	}
 	return nil
 }
@@ -370,16 +377,20 @@ func (in *Instance) hasManagedOwner() bool {
 }
 
 func (in *Instance) finishTerminalClose(state *instanceCloseState) {
+	var errs []error
 	if state.hooks != nil && state.event != nil {
-		var errs []error
 		for i := len(state.hooks.afterClose) - 1; i >= 0; i-- {
 			fn := state.hooks.afterClose[i]
 			if err := callShutdownSafely("AfterClose", func() { fn(*state.event) }); err != nil {
 				errs = append(errs, err)
 			}
 		}
-		state.terminalResult = errors.Join(errs...)
 	}
+	adoptionErr := callShutdownSafely("adopt closed container dependencies", func() {
+		railshotTerminalClosedContainerDependencyAdoption(in, state)
+	})
+	railshotPublishClosedContainerAdoptionResult(in, state, adoptionErr)
+	state.terminalResult = errors.Join(errs...)
 	in.lifeMu.Lock()
 	if in.finalizers != nil && in.finalizers.managed != nil {
 		managed := in.finalizers.managed

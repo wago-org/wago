@@ -208,6 +208,12 @@ func railshotFlushTableDescriptorDependencies(batch *tableDescriptorDependencyBa
 }
 
 func (row *rv64TableDescriptorDependency) publish() {
+	row.publishWithAcquireHook(nil)
+}
+
+// The hook is a deterministic test seam after graph acquisition but before the
+// stable row publishes Pending and notifies a terminal adoption runner.
+func (row *rv64TableDescriptorDependency) publishWithAcquireHook(afterAcquire func()) {
 	table := row.table
 	table.mu.Lock()
 	if row.phase != rv64TableDescriptorBootstrap && row.phase != rv64TableDescriptorFailed {
@@ -218,6 +224,9 @@ func (row *rv64TableDescriptorDependency) publish() {
 	table.mu.Unlock()
 
 	receipt, exchange, err := rv64AcquireContainerDescriptorDependency(row.producer, row.graph)
+	if afterAcquire != nil {
+		afterAcquire()
+	}
 	table.mu.Lock()
 	if row.phase != rv64TableDescriptorPublishing || table.owner.descriptorDependencies.rows[row.mapState] != row {
 		table.mu.Unlock()
@@ -241,6 +250,7 @@ func (row *rv64TableDescriptorDependency) publish() {
 	var cleanup resourceCleanup
 	if exchange {
 		cleanup.run(row.producer.releaseResourceRoot)
+		cleanup.run(func() { railshotRequestClosedContainerDependencyAdoption(table.owner.instance) })
 	}
 	if retire {
 		cleanup.run(row.release)
