@@ -1,0 +1,6 @@
+workload	off_us	on_us	median_paired_change_percent
+ml-inference	5.755	5.708	-0.32
+compiler-register-allocation	17.797	17.543	-0.53
+vision-components	41.734	43.524	4.29
+graph-dijkstra	6.052	6.032	0.07
+search-bk-tree	158.280	134.560	-15.16

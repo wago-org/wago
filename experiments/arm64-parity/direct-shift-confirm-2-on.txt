@@ -1,0 +1,29 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2830	     58571 ns/op	   38174 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    3049	     57765 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   10000	     16899 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   10000	     16862 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    4822	     36238 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    4947	     36294 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    4723	     44490 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    4657	     42812 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    3603	     47477 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    3718	     47612 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    4992	     40163 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    5059	     39205 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Compile-16             	    8829	     20462 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Compile-16             	    9612	     19677 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Exec-16                	    1442	    130918 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Exec-16                	    1453	    129637 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1485	    120777 ns/op	   72492 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1462	    120351 ns/op	   72487 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    4501	     43815 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    4440	     43793 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	    1116	    158314 ns/op	   93393 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	    1171	    154547 ns/op	   93390 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    5302	     37233 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    5149	     39648 ns/op	       0 B/op	       0 allocs/op
+PASS

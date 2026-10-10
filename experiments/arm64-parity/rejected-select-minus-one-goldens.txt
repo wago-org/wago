@@ -1,0 +1,2 @@
+		{"csinv w0,w1,wzr,ge", func(a *Asm) { a.Csinv(X0, X1, ZR, CondGE, false) }, 0x5a9fa020},
+		{"csinv x0,x1,xzr,ge", func(a *Asm) { a.Csinv(X0, X1, ZR, CondGE, true) }, 0xda9fa020},

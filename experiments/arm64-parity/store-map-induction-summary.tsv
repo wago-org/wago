@@ -1,0 +1,9 @@
+case	phase	before_us	after_us	change_pct
+db-sort-merge-join	Compile	41.102	38.468	-6.41
+db-sort-merge-join	Exec	47.081	47.689	+1.29
+ml-inference	Compile	32.879	32.916	+0.11
+ml-inference	Exec	5.139	5.206	+1.29
+stats-bootstrap	Compile	32.639	33.638	+3.06
+stats-bootstrap	Exec	20.353	20.075	-1.37
+vision-components	Compile	53.391	53.828	+0.82
+vision-components	Exec	28.860	29.329	+1.63

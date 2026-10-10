@@ -1,0 +1,26 @@
+Device occupied; polling ~/LOCK.md and waiting for release.
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-fir/Compile-16 	    1329	     76143 ns/op	   44858 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    1593	     76659 ns/op	   44863 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3807	     31482 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3883	     31459 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16         	    7147	     16177 ns/op	   28318 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16         	    7945	     16306 ns/op	   28318 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16            	    3061	     44360 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16            	    3019	     44637 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Compile-16    	    5467	     19239 ns/op	   30551 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Compile-16    	    6340	     18964 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Exec-16       	     997	    123717 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Exec-16       	    1026	    123172 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16         	    4326	     25139 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16         	    4341	     25331 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16            	    6199	     20095 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16            	    6004	     19883 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     709	    166950 ns/op	   96506 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     698	    168110 ns/op	   96507 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	    2853	     47067 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	    2824	     47344 ns/op	       0 B/op	       0 allocs/op
+PASS

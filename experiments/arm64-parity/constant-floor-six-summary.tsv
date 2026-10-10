@@ -1,0 +1,9 @@
+workload	phase	before_us	after_us	change_pct
+bio-global-alignment	Compile	37.241	36.465	-2.08
+bio-global-alignment	Exec	64.030	65.242	+1.89
+bio-local-alignment	Compile	36.331	35.605	-2.00
+bio-local-alignment	Exec	74.140	73.776	-0.49
+db-btree	Compile	59.933	58.976	-1.60
+db-btree	Exec	10.288	10.122	-1.61
+vision-distance-transform	Compile	61.661	60.236	-2.31
+vision-distance-transform	Exec	61.174	62.579	+2.30

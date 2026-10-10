@@ -1,0 +1,81 @@
+	// cmp reads the left comparand read-only, so a borrowed pinned-local/global
+	// register can feed the compare in place — no copy — provided nothing between
+	// the read and the compare writes it. That holds for eqz and for a constant
+	// right operand (the compare is emitted immediately, the only intervening emit
+	// being a const load into a fresh temp). For any other right operand we keep the
+	// copy: a deferred right could be condensed here and clobber, and comparing the
+	// live pinned register afterwards would read a post-write value. When L is a
+	// borrowed register the trailing cset must not clobber it, so the boolean lands
+	// in a separate register (dest or a fresh temp) instead of reusing L.
+	readSource := compareSourceReadEnabled && (!compareSourceRegisterOnly ||
+		(right.elemKind() == ekValue && (right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg)))
+	inPlaceOK := readSource || node.deferredOp() == opEqz ||
+		(right.elemKind() == ekValue && right.st.kind == stConst)
+	var L Reg
+	ownL := true
+	if inPlaceOK {
+		L, ownL = f.materializeRead(left)
+	} else {
+		L = f.materialize(left)
+	}
+	previousPins := f.pinned
+	f.pinned = f.pinned.add(L)
+
+	var cc Cond
+	if node.deferredOp() == opEqz {
+		cc = condE
+		f.cmpImm(L, 0, w) // SUBS XZR, L, #0
+	} else {
+		cc = condOf(node.deferredOp())
+		if right.isDeferred() {
+			// condense rewrites the existing operand node in place.
+			f.condense(right, regNone)
+		}
+		if regallocCheckEnabled {
+			f.checkUse(right)
+		}
+		switch right.st.kind {
+		case stConst:
+			f.cmpConst(L, right.st, w)
+		case stReg:
+			f.cmpRR(L, right.st.reg, w)
+			f.release(right.st.reg)
+		case stLocalReg, stGlobReg:
+			f.cmpRR(L, right.st.reg, w) // pinned local/global; never release
+		case stSlot:
+			t := f.allocReg(maskOf(L))
+			f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
+			if regallocCheckEnabled {
+				f.checkOccupy(right, t, false)
+			}
+			f.cmpRR(L, t, w)
+			f.release(t)
+		case stLocalRef:
+			t := f.allocReg(maskOf(L))
+			f.ld64(t, SP, f.localOff(right.st.index()))
+			if regallocCheckEnabled {
+				f.checkOccupy(right, t, false)
+			}
+			f.cmpRR(L, t, w)
+			f.release(t)
+		case stMemRef:
+			// arm64: a deferred load is never foldable into a CMP (memRefFoldable is
+			// always false), so materialize it and compare register-register. A load
+			// whose address borrows a pinned local must use a fresh destination and
+			// must not release the local's register.
+			r := f.memRefValue(right)
+			f.cmpRR(L, r, w)
+			f.release(r)
+			f.releaseMemRef(right.st)
+		}
+	}
+	if compareSourceReadEnabled {
+		f.pinned = previousPins
+	} else {
+		f.pinned = f.pinned.remove(L)
+	}
+
+	if compareSourceReadEnabled && !ownL {
+		f.stats.peep("compare-source-read")
+	}
+

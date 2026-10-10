@@ -1,0 +1,15 @@
+mode	case	before_us	after_us	change_pct	bytes_change	allocs_change
+off	compiler-register-allocation	57.395	57.502	+0.19	+0	+0
+off	db-sort-merge-join	54.425	33.935	-37.65	-2	+0
+off	image-resize	32.842	33.095	+0.77	+0	+0
+off	ml-inference	27.733	27.625	-0.39	+0	+0
+off	search-aho-corasick	186.661	183.255	-1.82	-2	+0
+off	video-dct	124.373	126.428	+1.65	-2	+0
+off	vision-components	49.414	47.293	-4.29	+0	+0
+on	compiler-register-allocation	58.199	57.355	-1.45	+0	+0
+on	db-sort-merge-join	39.057	37.769	-3.30	-0	+0
+on	image-resize	35.266	35.346	+0.23	+0	+0
+on	ml-inference	33.778	33.195	-1.73	-4099	-1
+on	search-aho-corasick	181.572	182.780	+0.67	-1	+0
+on	video-dct	124.049	122.585	-1.18	+0	+0
+on	vision-components	55.369	54.665	-1.27	+0	+0

@@ -1,0 +1,1 @@
+Clang independent goldens pass: 0x8b224020, 0x8b224820, 0x8b225020, 0x8b294a11

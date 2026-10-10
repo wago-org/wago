@@ -1,0 +1,204 @@
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -33,6 +33,10 @@
+ // the architecture-specific name is the public A/B oracle going forward.
+ var regMergeEnabled = os.Getenv("WAGO_ARM64_NO_REG_MERGE") != "1" && os.Getenv("WAGO_REG_MERGE") != "0"
+ 
++// Keep a bounded set of hot wide-table locals resident across control edges.
++// Regional caching handles the remainder and preserves the transient floor.
++var wideLocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_LOCAL_PINS") != "1"
++var wideStaticPins = 4
+ 
+ // directGoImportEnabled bypasses cross-instance marshaling for bound Go imports
+ // in bounded numeric functions. The dispatch tag remains an instance decision.
+@@ -3322,8 +3326,16 @@
+ 	}
+ 	// Wide local tables begin canonical so their many borrowed values cannot consume
+ 	// the target-derived transient floor. There is no failed-attempt retry.
+-	if !pinLocals || nLocals > 64 {
++	if !pinLocals {
+ 		gpPool = nil
++	} else if nLocals > 64 {
++		if f.opt(optWideLocalPins) && wideStaticPins > 0 && !hasCall && hints.flags.has(hintIntervalRegionStorage) && len(hints.localScore) == nLocals {
++			if len(gpPool) > wideStaticPins {
++				gpPool = gpPool[:wideStaticPins]
++			}
++		} else {
++			gpPool = nil
++		}
+ 	}
+ 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
+ 	// in the register (WARP's model). In call-free functions any loop-accessed global
+@@ -3714,7 +3726,12 @@
+ 	if len(gpPool) != 0 {
+ 		for i := 0; i < f.nLocals; i++ {
+ 			if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
+-				gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
++				score := localHotness(scores[i])
++				if f.nLocals > 64 {
++					cross := f.crossRegionPinScore(i, score)
++					score = uint32((uint64(score) + uint64(cross)) / 2)
++				}
++				gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: score}, len(gpPool))
+ 			}
+ 		}
+ 	}
+@@ -3738,7 +3755,7 @@
+ 		// are actually used (score > 0): pinning a cold local there costs prologue
+ 		// and call-spill traffic for nothing. Zero-score candidates still fill the
+ 		// base slots so byte-backed decoded bodies keep the first-N fallback.
+-		if k >= len(pinnedLocalRegs) && c.score == 0 {
++		if (k >= len(pinnedLocalRegs) || f.nLocals > 64) && c.score == 0 {
+ 			break
+ 		}
+ 		// X27 is the last, opportunistic call-making pin. Spending it adds one
+--- a/src/core/compiler/backend/railshot/arm64/interval_region.go
++++ b/src/core/compiler/backend/railshot/arm64/interval_region.go
+@@ -444,3 +444,41 @@
+ 	f.intervalActive = 0
+ }
+ 
++// Prefer permanent pins for reads that regional leases must recover after an
++// edge. This is a placement score, not a semantic liveness proof.
++func (f *fn) crossRegionPinScore(local int, score uint32) uint32 {
++	if !f.intervalControl || local >= len(f.intervalHead)-1 || len(f.intervalEvents) == 0 {
++		return 0
++	}
++	boundary := f.intervalHead[f.nLocals]
++	region, previous, first := 0, -1, -1
++	reads, crossings := uint64(0), uint64(0)
++	firstRead := false
++	for i := f.intervalHead[local]; i != noIntervalEvent; i = f.intervalEvents[i].next {
++		event := f.intervalEvents[i]
++		pos := event.pos & ^intervalEventKill
++		for boundary != noIntervalEvent && f.intervalEvents[boundary].pos < pos {
++			region++
++			boundary = f.intervalEvents[boundary].next
++		}
++		read := event.pos&intervalEventKill == 0
++		if first == -1 {
++			first = region
++			firstRead = read
++		}
++		if read {
++			reads++
++			if previous >= 0 && previous != region {
++				crossings++
++			}
++		}
++		previous = region
++	}
++	if f.hasLoop && firstRead && first != previous {
++		crossings++
++	}
++	if reads == 0 {
++		return 0
++	}
++	return uint32(uint64(score) * crossings / reads)
++}
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -44,6 +44,7 @@
+ 	optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
+ 	optimization.Bind("inverted-logical", &invertedLogicalEnabled),
+ 	optimization.Bind("select-group-guard", &selectGroupEnabled),
++	optimization.Bind("wide-local-pins", &wideLocalPinsEnabled),
+ 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
+ 	optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
+ 	optimization.Bind("value-facts", &valueFactsEnabled),
+@@ -109,6 +110,7 @@
+ 	optMemcopyQPairs        = optimizationBindings.Option("memcopy-qpairs")
+ 	optUXTWAdd              = optimizationBindings.Option("uxtw-add")
+ 	optSelectGroupGuard     = optimizationBindings.Option("select-group-guard")
++	optWideLocalPins        = optimizationBindings.Option("wide-local-pins")
+ 	optInvertedLogical      = optimizationBindings.Option("inverted-logical")
+ 	optShiftedRegisterALU   = optimizationBindings.Option("shifted-register-alu")
+ 	optFPImmediateConst     = optimizationBindings.Option("fp-immediate-const")
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -85,7 +85,7 @@
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "indexed-base-reuse",
++		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "wide-local-pins", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "indexed-base-reuse",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+--- a/src/core/compiler/backend/railshot/arm64/interval_control_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/interval_control_arm64_test.go
+@@ -197,3 +197,63 @@
+ 	}
+ }
+ 
++func TestWideStaticPinsControlEdges(t *testing.T) {
++	saved := wideStaticPins
++	defer func() { wideStaticPins = saved }()
++	for _, pins := range []int{2, 4, 6} {
++		wideStaticPins = pins
++		if diagnosticsEnabled {
++			stats := &ModuleStats{}
++			cm, err := CompileModuleWith(intervalControlModule(t), CompileOptions{Stats: stats, Optimizations: map[string]bool{"interval-region-pins": true}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				cm.CodeImage.Close()
++			}
++			if stats.Funcs[0].PinnedLocals < pins {
++				t.Fatalf("pins=%d assigned=%d", pins, stats.Funcs[0].PinnedLocals)
++			}
++		}
++		t.Run(string(rune('0'+pins))+"/diamonds", TestIntervalControlBackedgesAndDiamonds)
++		t.Run(string(rune('0'+pins))+"/detached-select", TestIntervalDetachedSelectSurvivesEviction)
++		t.Run(string(rune('0'+pins))+"/fused-exit", TestIntervalControlFusedExitCanonicalizesLocals)
++		t.Run(string(rune('0'+pins))+"/counted-loop", TestIntervalCountedLoopCanonicalizesBackedge)
++	}
++}
++
++func TestWideStaticPinsPerCompilePolicy(t *testing.T) {
++	m := intervalControlModule(t)
++	for _, enabled := range []bool{false, true} {
++		opts := CompileOptions{Optimizations: map[string]bool{"wide-local-pins": enabled, "interval-region-pins": true}}
++		if diagnosticsEnabled {
++			stats := &ModuleStats{}
++			opts.Stats = stats
++			cm, err := CompileModuleWith(m, opts)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				cm.CodeImage.Close()
++			}
++			if (stats.Funcs[0].PinnedLocals != 0) != enabled {
++				t.Fatalf("enabled=%v assigned=%d", enabled, stats.Funcs[0].PinnedLocals)
++			}
++			opts.Stats = nil
++		}
++		for _, condition := range []uint64{0, 1} {
++			got, err := runArm64WrapperWithOptions(t, m, opts, 7, condition)
++			if err != nil {
++				t.Fatal(err)
++			}
++			extra := uint64(11)
++			if condition != 0 {
++				extra = 7
++			}
++			want := uint64(7) * (2625 + extra)
++			if got != want {
++				t.Fatalf("enabled=%v condition=%d got=%d want=%d", enabled, condition, got, want)
++			}
++		}
++	}
++}
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -452,7 +452,7 @@
+ 	arm64("cold-call-local-pins", "Cold-call local pins", "pin hot locals when every direct local call is outside loops"),
+ 	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
+ 	amd64("direct-int-branch-merge", "Direct integer branch results", "deliver unconditional integer branch results directly to their merge register"),
+-	amd64("wide-local-pins", "Bounded wide-function pins", "keep up to two locals per register bank in bounded numeric functions with loops"),
++	both("wide-local-pins", "Bounded wide-function pins", "retain bounded hot locals across control edges in wide numeric functions"),
+ 	amd64("memory-compare-immediate", "Integer memory comparisons", "compare deferred integer loads with constants using the exact access width"),
+ 	amd64("float-store-borrow", "Read-only floating-point stores", "store pinned scalar floating-point locals and cached constants without scratch copies"),
+ 	amd64("float-frame-mem", "Float frame operands", "fold scalar frame locals and spills into exact-width SSE or AVX arithmetic"),

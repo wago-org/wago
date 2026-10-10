@@ -1,0 +1,1 @@
+All148 default signal images identical to retained branch-vector baseline; all148 exact oracles and diagnostics pass.

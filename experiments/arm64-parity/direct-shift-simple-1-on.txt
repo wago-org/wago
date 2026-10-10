@@ -1,0 +1,23 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    3836	     59194 ns/op	   38174 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    4153	     58542 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    4005	     58161 ns/op	   38172 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   13956	     17345 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   13754	     17306 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   13620	     17504 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    6094	     38534 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    6105	     38129 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    6136	     37653 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    6014	     46992 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    5841	     43844 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    5474	     43530 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    4678	     48564 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    4936	     48198 ns/op	   38164 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    4897	     48218 ns/op	   38164 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    6478	     37352 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    6480	     36771 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    6402	     37603 ns/op	       0 B/op	       0 allocs/op
+PASS

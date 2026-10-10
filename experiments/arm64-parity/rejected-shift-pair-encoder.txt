@@ -1,0 +1,9 @@
+// SignedBitfield and UnsignedBitfield encode SBFM/UBFM, including extraction
+// and insertion forms. W selects the 32-bit register width.
+func (a *Asm) SignedBitfield(rd, rn Reg, rotate, mask uint8, w bool) {
+	a.bfm(0x13000000, 0x93400000, rd, rn, uint32(rotate), uint32(mask), w)
+}
+func (a *Asm) UnsignedBitfield(rd, rn Reg, rotate, mask uint8, w bool) {
+	a.bfm(0x53000000, 0xD3400000, rd, rn, uint32(rotate), uint32(mask), w)
+}
+

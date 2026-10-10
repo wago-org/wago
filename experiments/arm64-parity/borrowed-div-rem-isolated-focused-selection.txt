@@ -1,0 +1,7 @@
+numeric-euclidean-gcd
+audio-adpcm
+compiler-dead-code
+db-btree
+game-cellular-automata
+game-collision-impulse
+compiler-register-allocation

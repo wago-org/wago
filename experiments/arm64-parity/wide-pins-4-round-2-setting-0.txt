@@ -1,0 +1,13 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    5893	     22520 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12903	     11092 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    4348	     31992 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    3748	     42251 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16   	    1731	     82892 ns/op	   66456 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16      	    1270	    117236 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16               	    1323	    108055 ns/op	   72491 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                  	    3804	     44465 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,5 @@
+--- FAIL: TestStoreMapLoopAliasesAndTraps (0.00s)
+    store_map_loop_arm64_test.go:152: guard=true a=65520 b=65536 wrong trap: <nil> / <nil>
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.785s
+FAIL

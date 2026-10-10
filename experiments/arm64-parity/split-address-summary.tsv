@@ -1,0 +1,9 @@
+corpus	phase	off_us	on_us	change_percent
+compiler-register-allocation	Compile	57.139	56.541	-1.05
+compiler-register-allocation	Exec	17.335	16.867	-2.70
+vision-components	Compile	48.180	47.100	-2.24
+vision-components	Exec	41.177	40.260	-2.23
+video-dct	Compile	118.030	116.691	-1.13
+video-dct	Exec	43.828	44.197	0.84
+audio-adpcm	Compile	16.737	16.755	0.10
+audio-adpcm	Exec	37.120	37.805	1.84

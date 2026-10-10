@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/image-resize/Compile-16 	    5628	     36959 ns/op	   34931 B/op	     104 allocs/op
+BenchmarkParity/image-resize/Compile-16 	    6174	     36560 ns/op	   34931 B/op	     104 allocs/op
+BenchmarkParity/image-resize/Exec-16    	   15663	     15374 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-resize/Exec-16    	   15411	     15461 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    6478	     35222 ns/op	   41391 B/op	     108 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    6960	     35144 ns/op	   41391 B/op	     108 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   45426	      5275 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   44592	      5284 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16         	    3942	     56230 ns/op	   38189 B/op	     109 allocs/op
+BenchmarkParity/vision-components/Compile-16         	    4047	     56080 ns/op	   38188 B/op	     109 allocs/op
+BenchmarkParity/vision-components/Exec-16            	    7838	     30241 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16            	    7880	     30345 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-sort-merge-join/Compile-16        	    5637	     39460 ns/op	   34962 B/op	     105 allocs/op
+BenchmarkParity/db-sort-merge-join/Compile-16        	    5931	     39467 ns/op	   34962 B/op	     105 allocs/op
+BenchmarkParity/db-sort-merge-join/Exec-16           	    5457	     44205 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-sort-merge-join/Exec-16           	    5454	     47850 ns/op	       0 B/op	       0 allocs/op
+PASS

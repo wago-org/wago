@@ -1,0 +1,13 @@
+corpus	phase	off_us	on_us	change_percent
+db-btree	Compile	57.959	58.105	0.25
+db-btree	Exec	10.035	9.782	-2.53
+db-hash-join	Compile	23.224	22.343	-3.79
+db-hash-join	Exec	2.418	2.355	-2.61
+geo-convex-hull	Compile	47.452	47.185	-0.56
+geo-convex-hull	Exec	11.696	11.647	-0.42
+graph-dijkstra	Compile	42.115	42.059	-0.13
+graph-dijkstra	Exec	6.080	5.333	-12.29
+search-bk-tree	Compile	39.658	39.264	-0.99
+search-bk-tree	Exec	155.653	142.081	-8.72
+stats-quickselect	Compile	26.703	27.047	1.29
+stats-quickselect	Exec	15.896	14.654	-7.81

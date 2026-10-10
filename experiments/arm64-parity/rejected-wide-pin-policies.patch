@@ -1,0 +1,71 @@
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -31,13 +31,32 @@
+ // regMergeEnabled carries a single scalar block/if result in the target merge
+ // register across converged edges. WAGO_REG_MERGE=0 is the legacy rollback;
+ // the architecture-specific name is the public A/B oracle going forward.
++// Disabled experiment: reserve a bounded subset of hot wide-table locals across
++// control edges while retaining regional caching for the remaining locals.
++var wideStaticCross = os.Getenv("WAGO_ARM64_EXPERIMENT_WIDE_CROSS") == "1"
++var wideStaticBlend = func() uint32 {
++	switch os.Getenv("WAGO_ARM64_EXPERIMENT_WIDE_BLEND") {
++	case "2":
++		return 2
++	case "4":
++		return 4
++	}
++	return 1
++}()
++
++var wideStaticPins = func() int {
++	switch os.Getenv("WAGO_ARM64_EXPERIMENT_WIDE_PINS") {
++	case "2":
++		return 2
++	case "4":
++		return 4
++	case "6":
++		return 6
++	}
++	return 0
++}()
++
+ var regMergeEnabled = os.Getenv("WAGO_ARM64_NO_REG_MERGE") != "1" && os.Getenv("WAGO_REG_MERGE") != "0"
+-
+-// Keep a bounded set of hot wide-table locals resident across control edges.
+-// Regional caching handles the remainder and preserves the transient floor.
+-var wideLocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_LOCAL_PINS") != "1"
+-var wideStaticPins = 4
+-
+ 
+ // directGoImportEnabled bypasses cross-instance marshaling for bound Go imports
+ // in bounded numeric functions. The dispatch tag remains an instance decision.
+@@ -3330,7 +3349,7 @@
+ 	if !pinLocals {
+ 		gpPool = nil
+ 	} else if nLocals > 64 {
+-		if f.opt(optWideLocalPins) && wideStaticPins > 0 && !hasCall && hints.flags.has(hintIntervalRegionStorage) && len(hints.localScore) == nLocals {
++		if wideStaticPins > 0 && !hasCall && hints.flags.has(hintIntervalRegionStorage) && len(hints.localScore) == nLocals {
+ 			if len(gpPool) > wideStaticPins {
+ 				gpPool = gpPool[:wideStaticPins]
+ 			}
+@@ -3728,9 +3747,9 @@
+ 		for i := 0; i < f.nLocals; i++ {
+ 			if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
+ 				score := localHotness(scores[i])
+-				if f.nLocals > 64 {
++				if wideStaticCross && f.nLocals > 64 {
+ 					cross := f.crossRegionPinScore(i, score)
+-					score = uint32((uint64(score) + uint64(cross)) / 2)
++					score = uint32((uint64(score)*uint64(wideStaticBlend-1) + uint64(cross)) / uint64(wideStaticBlend))
+ 				}
+ 				gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: score}, len(gpPool))
+ 			}
+@@ -3756,7 +3775,7 @@
+ 		// are actually used (score > 0): pinning a cold local there costs prologue
+ 		// and call-spill traffic for nothing. Zero-score candidates still fill the
+ 		// base slots so byte-backed decoded bodies keep the first-N fallback.
+-		if (k >= len(pinnedLocalRegs) || f.nLocals > 64) && c.score == 0 {
++		if (k >= len(pinnedLocalRegs) || wideStaticCross && f.nLocals > 64) && c.score == 0 {
+ 			break
+ 		}
+ 		// X27 is the last, opportunistic call-making pin. Spending it adds one

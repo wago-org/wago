@@ -1,0 +1,4 @@
+wago/coremark/2k-performance
+wago/pcre2/compile-match
+wago/polybench-adi/polybench_run
+wago/polybench-cholesky/polybench_run

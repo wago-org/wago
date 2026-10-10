@@ -1,0 +1,26 @@
+{'kind': 'loop', 'line': 1506, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 1595, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {5063812098665367110, 3472328296227680304, 10, 4294967296000100}}
+{'kind': 'loop', 'line': 1720, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 1979, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 2182, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {5063812098665367110, 3472328296227680304, 10, 4294967296000100}}
+{'kind': 'loop', 'line': 2289, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 2447, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 2610, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 3148, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 3247, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {5063812098665367110, 3472328296227680304, 10, 4294967296000100}}
+{'kind': 'loop', 'line': 3372, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 3638, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 3863, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {5063812098665367110, 3472328296227680304, 10, 4294967296000100}}
+{'kind': 'loop', 'line': 3970, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 4141, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 4267, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 4311, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 4475, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 4598, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 4643, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 5755, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {3472328296227680304, 10, 4294967296000100}}
+{'kind': 'loop', 'line': 6403, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {3472328296227680304, 10, 4294967296000100}}
+{'kind': 'loop', 'line': 7150, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 7228, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 7653, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}
+{'kind': 'loop', 'line': 7731, 'fn': 1, 'bulk': 0, 'calls': 0, 'literals': {10}}

@@ -1,0 +1,37 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/image-resize/Compile-16 	    3012	     34203 ns/op	   34906 B/op	     103 allocs/op
+BenchmarkParity/image-resize/Compile-16 	    3349	     34762 ns/op	   34907 B/op	     103 allocs/op
+BenchmarkParity/image-resize/Exec-16    	    5343	     22524 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-resize/Exec-16    	    5257	     22545 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-composite/Compile-16         	    4372	     25392 ns/op	   33041 B/op	     100 allocs/op
+BenchmarkParity/image-composite/Compile-16         	    4440	     25239 ns/op	   33042 B/op	     100 allocs/op
+BenchmarkParity/image-composite/Exec-16            	    1779	     68067 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-composite/Exec-16            	    1776	     68184 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Compile-16            	    3848	     28981 ns/op	   34554 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Compile-16            	    3924	     29386 ns/op	   34554 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Exec-16               	   20612	      5840 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16               	   20427	      5848 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    2856	     38890 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    3050	     39337 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    2718	     45258 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    3040	     40347 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16       	    2168	     50196 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16       	    2359	     49966 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16          	    3302	     36735 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16          	    3189	     36691 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-convolution/Compile-16          	    3986	     28614 ns/op	   33594 B/op	     102 allocs/op
+BenchmarkParity/ml-convolution/Compile-16          	    3846	     29031 ns/op	   33594 B/op	     102 allocs/op
+BenchmarkParity/ml-convolution/Exec-16             	    5048	     24037 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-convolution/Exec-16             	    5016	     24072 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-quickselect/Compile-16       	    3692	     28900 ns/op	   34346 B/op	     103 allocs/op
+BenchmarkParity/stats-quickselect/Compile-16       	    3942	     28895 ns/op	   34346 B/op	     103 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16          	    7815	     15154 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16          	    7776	     15046 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16               	     874	    123393 ns/op	   71210 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16               	    1035	    119717 ns/op	   71211 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                  	    2928	     41476 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                  	    2923	     41354 ns/op	       0 B/op	       0 allocs/op
+PASS

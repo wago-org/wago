@@ -104,7 +104,17 @@ type funcHints struct {
 	// The high bits retain sparse loop-constant presence and fail closed for
 	// non-table dynamic/helper calls without growing the compact hint record.
 	callRelocSites   uint16
-	immediateFreeOps uint16 // saturated arena sizing hint in the final two padding bytes
+	immediateFreeOps uint16 // low 15 bits: saturated density; high bit: decoded i32-add run
+}
+
+const streamingReductionHintMask = uint16(1 << 15)
+
+func (h funcHints) immediateFreeOpCount() uint16 {
+	return h.immediateFreeOps &^ streamingReductionHintMask
+}
+
+func (h funcHints) hasStreamingReduction() bool {
+	return h.immediateFreeOps&streamingReductionHintMask != 0
 }
 
 const (
@@ -146,7 +156,7 @@ type funcHintView struct {
 	localEventMeta    uint32                 // reconstructed from the sparse sidecar
 	residencyShadow   shared.ResidencyShadowSummary
 	loopIntConst      [4]int64
-	loopIntConstTypes uint8 // two bits per entry: 1=i32, 2=i64
+	loopIntConstTypes uint8 // two bits per entry: 1=i32, 2=i64, 3=memory page base
 	loopIntConstCount uint8
 }
 
@@ -525,13 +535,13 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHin
 	elig := newGlobalEligibilityTracker(nGlobals)
 	var accum shared.GlobalHintAccumulator
 	accum.Reset(nGlobals)
-	h, err := scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m, nil, nil, 0, &accum, true)
+	h, err := scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m, nil, nil, 0, &accum, true, loopMemoryBaseEnabled)
 	return finishGlobalHints(h, &accum), err
 }
 
-func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts bool) (funcHintView, error) {
+func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts, collectLoopMemoryBases bool) (funcHintView, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, nil, importedFuncs, globalHints, collectLoopIntConsts)
+		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, nil, importedFuncs, globalHints, collectLoopIntConsts, collectLoopMemoryBases)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, globalHints), nil
 }
@@ -640,6 +650,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if i >= 2 && in.Kind == wasm.InstrI32Add && instrs[i-1].Kind == wasm.InstrI32Add && instrs[i-2].Kind == wasm.InstrI32Add {
+				h.immediateFreeOps |= streamingReductionHintMask
+			}
 			if isExactBounds4Kind(in.Kind) {
 				memarg := in.MemArg()
 				if memarg.Offset == 0 && (memarg.Mem == nil || *memarg.Mem == 0) {
@@ -930,11 +943,11 @@ func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGl
 	elig := newGlobalEligibilityTracker(nGlobals)
 	var accum shared.GlobalHintAccumulator
 	accum.Reset(nGlobals)
-	h, err := scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil, nil, nil, nil, 0, &accum, true)
+	h, err := scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil, nil, nil, nil, 0, &accum, true, loopMemoryBaseEnabled)
 	return finishGlobalHints(h, &accum), err
 }
 
-func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts bool) (funcHintView, error) {
+func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts, collectLoopMemoryBases bool) (funcHintView, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
 	var cached wasm.ModuleInstructionClassifier
@@ -943,7 +956,7 @@ func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nG
 	} else {
 		cached = wasm.NewModuleInstructionClassifier(m, true)
 	}
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, globalHints: globalHints, m: m, classifier: cached, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, entryPrefix: true, collectLoopIntConsts: collectLoopIntConsts}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, globalHints: globalHints, m: m, classifier: cached, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, entryPrefix: true, collectLoopIntConsts: collectLoopIntConsts, collectLoopMemoryBases: collectLoopMemoryBases}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
@@ -954,7 +967,7 @@ func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nG
 	if term != 0x0b || s.r.has() {
 		return s.h, s.r.err(wasm.ErrInvalidInstruction, s.r.off())
 	}
-	if s.loopIntConstN != 0 {
+	if s.loopIntConstN != 0 || s.loopMemoryBaseN != 0 {
 		s.finishLoopIntConsts()
 	}
 	return s.h, nil
@@ -987,25 +1000,29 @@ func (c *loopIntConstCandidate) addScore(score uint64) {
 }
 
 type byteBodyScanner struct {
-	r                    byteScanReader
-	h                    funcHintView
-	nLocals              int
-	nGlobals             int
-	selfIdx              uint32
-	localDeclBytes       uint32
-	branchHints          []wasm.BranchHint
-	elig                 *globalEligibilityTracker
-	globalHints          *shared.GlobalHintAccumulator
-	m                    *wasm.Module
-	classifier           wasm.ModuleInstructionClassifier
-	moduleHints          []funcHints
-	parallelCalls        []parallelCalleeHints
-	importedFuncs        int
-	entryPrefix          bool
-	entrySeen            uint64
-	collectLoopIntConsts bool
-	loopIntConsts        [maxLoopIntConstCandidates]loopIntConstCandidate
-	loopIntConstN        uint8
+	r                      byteScanReader
+	h                      funcHintView
+	nLocals                int
+	nGlobals               int
+	selfIdx                uint32
+	localDeclBytes         uint32
+	branchHints            []wasm.BranchHint
+	elig                   *globalEligibilityTracker
+	globalHints            *shared.GlobalHintAccumulator
+	m                      *wasm.Module
+	classifier             wasm.ModuleInstructionClassifier
+	moduleHints            []funcHints
+	parallelCalls          []parallelCalleeHints
+	importedFuncs          int
+	entryPrefix            bool
+	entrySeen              uint64
+	collectLoopIntConsts   bool
+	collectLoopMemoryBases bool
+	loopIntConsts          [maxLoopIntConstCandidates]loopIntConstCandidate
+	loopIntConstN          uint8
+	loopMemoryGrow         bool
+	loopMemoryBases        [4]loopIntConstCandidate
+	loopMemoryBaseN        uint8
 }
 
 func intConstWideMoveCost(bits int64, typ uint8) int {
@@ -1069,21 +1086,34 @@ func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int,
 }
 
 func (s *byteBodyScanner) finishLoopIntConsts() {
+	addresses := s.loopMemoryBaseN != 0 && !s.loopMemoryGrow && !s.h.flags.has(hintHasCall|hintUsesBulkMem|hintMutatesTable|hintModuleEH)
+	if addresses && s.m != nil {
+		mt, ok := s.m.MemoryType(0)
+		addresses = addresses && ok && !mt.Shared && !mt.Limits.Addr64 && len(s.m.Tables) == 0
+	}
 	for out := 0; out < len(s.h.loopIntConst); out++ {
-		best := -1
+		var best *loopIntConstCandidate
 		for i := 0; i < int(s.loopIntConstN); i++ {
-			if s.loopIntConsts[i].typ() != 0 && (best < 0 || s.loopIntConsts[i].score() > s.loopIntConsts[best].score()) {
-				best = i
+			c := &s.loopIntConsts[i]
+			if c.typ() != 0 && (best == nil || c.score() > best.score()) {
+				best = c
 			}
 		}
-		if best < 0 {
+		if addresses {
+			for i := 0; i < int(s.loopMemoryBaseN); i++ {
+				c := &s.loopMemoryBases[i]
+				if c.typ() != 0 && c.score() != 0 && (best == nil || c.score() > best.score()) {
+					best = c
+				}
+			}
+		}
+		if best == nil {
 			break
 		}
-		c := s.loopIntConsts[best]
-		s.h.loopIntConst[out] = c.bits
-		s.h.loopIntConstTypes |= c.typ() << (2 * out)
+		s.h.loopIntConst[out] = best.bits
+		s.h.loopIntConstTypes |= best.typ() << (2 * out)
 		s.h.loopIntConstCount++
-		s.loopIntConsts[best].scoreType = 0
+		best.scoreType = 0
 	}
 	if s.h.loopIntConstCount != 0 {
 		s.h.markLoopIntConsts()
@@ -1129,6 +1159,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		op, err := s.r.byte()
 		if err != nil {
 			return true, 0, err
+		}
+		// Three consecutive decoded additions are necessary for the bounded
+		// product-sum recognizer. Immediate bytes never participate in this hint.
+		if op == 0x6a && prevOp == 0x6a && prevPrevOp == 0x6a {
+			s.h.immediateFreeOps |= streamingReductionHintMask
 		}
 		curIndex := ^uint32(0)
 		s.notePhysicalEvent(op, depth)
@@ -1405,6 +1440,14 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				subHasCall = true
 			}
+			if op == 0x40 {
+				s.loopMemoryGrow = true
+			}
+			if s.collectLoopMemoryBases && s.collectLoopIntConsts && loopDepth != 0 &&
+				(op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x35) &&
+				(!imm.HasMemIndex || imm.MemIndex == 0) && imm.MemOffset >= 0x1000 && imm.MemOffset <= 0x7fffffff {
+				s.noteLoopMemoryBase(int64(imm.MemOffset&^0xfff), loopDepth, pathWeight)
+			}
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
 				s.h.addMemOp()
@@ -1444,7 +1487,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.flags.set(hintModuleEH)
 		default:
 			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
-				if s.h.immediateFreeOps < defaultStackArenaCap {
+				if s.h.immediateFreeOpCount() < defaultStackArenaCap {
 					s.h.immediateFreeOps++
 				}
 				break

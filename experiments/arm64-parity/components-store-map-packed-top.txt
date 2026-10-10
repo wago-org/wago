@@ -1,0 +1,9 @@
+Capture phase: all; 3001.499 ms elapsed (sum of recorded phases; excludes unassigned overhead)
+  compile: 1.085 ms elapsed; 1 compilation
+  instantiate: 0.174 ms elapsed; 1 instantiation
+  initialize: 0.000 ms elapsed; 0 initialization
+  warmup: 0.168 ms elapsed; 5 workload iteration
+  execute: 3000.003 ms elapsed; 105014 workload iteration
+  close: 0.069 ms elapsed; 1 teardown
+27161 observations; 24181 unmapped/non-guest. May include off-CPU observations; all phases were collected.
+   2980   f0     benchmark                    2260 bytes / 304 frame bytes / 0 static spills / 0 reloads / 0 checks

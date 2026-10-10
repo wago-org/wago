@@ -1,0 +1,76 @@
+//go:build arm64
+
+package arm64
+
+import (
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	"testing"
+)
+
+func TestLeafScopedConstantPressureAndLiveRegisters(t *testing.T) {
+	h := funcHintView{loopIntConstCount: 1, loopIntConstTypes: 1, loopIntConst: [4]int64{0x1234567}}
+	for _, tc := range []struct {
+		name      string
+		free      int
+		live, pin bool
+		want      uint8
+	}{
+		{"six-free", 6, false, false, 1},
+		{"five-free", 5, false, false, 0},
+		{"live-candidate", 6, true, false, 0},
+		{"pinned-candidate", 6, false, true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := fn{a: &a64.Asm{}, policy: currentCodegenPolicy()}
+			for _, r := range gpAlloc {
+				f.reserved = f.reserved.add(r)
+			}
+			free := [...]Reg{X14, X0, X1, X2, X3, X4}
+			for _, r := range free[:tc.free] {
+				f.reserved = f.reserved.remove(r)
+			}
+			if tc.live {
+				f.regUser[X14] = &elem{}
+			}
+			if tc.pin {
+				f.pinned = f.pinned.add(X14)
+			}
+			original := f.reserved
+			f.reserveLoopIntConstsWithFloor(&h, 7)
+			if f.iconstN != 0 {
+				t.Fatal("global pressure floor changed")
+			}
+			f.reserveLoopIntConstsWithFloor(&h, 5)
+			if f.iconstN != tc.want {
+				t.Fatalf("leases=%d want=%d", f.iconstN, tc.want)
+			}
+			if tc.want != 0 && f.iconsts[0].reg != X14 {
+				t.Fatal("wrong leased register")
+			}
+			f.releaseScopedLoopConsts(0)
+			if f.reserved != original || f.iconstN != 0 {
+				t.Fatal("lease leaked beyond scope")
+			}
+		})
+	}
+}
+
+func TestLeafScopedConstantFilterKeepsOnlyUncachedLiterals(t *testing.T) {
+	h := funcHintView{loopIntConstCount: 3, loopIntConstTypes: 1 | (3 << 2) | (2 << 4), loopIntConst: [4]int64{12345, 0x10000, 0x123456789}}
+	f := fn{policy: currentCodegenPolicy(), scopedConstHints: scopedConstHintsFrom(&h), iconstN: 1}
+	if !f.opt(optLeafScopedConst) {
+		t.Skip("experimental leaf scope policy disabled")
+	}
+	f.iconsts[0] = intConstReg{typ: mtI32, bits: 12345, reg: X14}
+	f.filterLeafScopedConsts()
+	got := f.scopedConstHints
+	if got.loopIntConstCount != 1 || got.loopIntConstTypes != 2 || got.loopIntConst[0] != 0x123456789 {
+		t.Fatalf("unexpected filtered hints: %+v", got)
+	}
+	f.makesCalls = true
+	f.scopedConstHints = scopedConstHintsFrom(&h)
+	f.filterLeafScopedConsts()
+	if f.scopedConstHints != scopedConstHintsFrom(&h) {
+		t.Fatal("leaf filter changed established calling-function leases")
+	}
+}

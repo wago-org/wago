@@ -50,8 +50,8 @@ func TestLoopIntConstUsesOnlyIdleRegistersArm64(t *testing.T) {
 	h := funcHintView{loopIntConstCount: 4, loopIntConstTypes: 0x55, loopIntConst: [4]int64{1, 2, 3, 4}}
 	f := fn{a: &a64.Asm{}, reserved: maskOf(X25, X23), pinnedLocalMask: maskOf(X24), policy: currentCodegenPolicy()}
 	f.preloadLoopIntConsts(&h)
-	if f.iconstN != 1 || f.iconsts[0].reg != X27 {
-		t.Fatalf("cached constants = %#v, want only X27", f.iconsts[:f.iconstN])
+	if f.iconstN != 3 || f.iconsts[0].reg != X27 || f.iconsts[1].reg != X14 || f.iconsts[2].reg != X13 {
+		t.Fatalf("cached constants = %#v, want X27/X14/X13", f.iconsts[:f.iconstN])
 	}
 
 	called := fn{makesCalls: true, usesCalls: true, policy: currentCodegenPolicy()}
@@ -117,5 +117,28 @@ func TestLoopIntConstCompileSwitchArm64(t *testing.T) {
 	}
 	if on.CodeBytes >= off.CodeBytes {
 		t.Fatalf("cached code = %d bytes, rollback = %d; want smaller", on.CodeBytes, off.CodeBytes)
+	}
+}
+
+func TestLoopIntConstScratchAdmissionArm64(t *testing.T) {
+	h := funcHintView{loopIntConstCount: 4, loopIntConstTypes: 0x55, loopIntConst: [4]int64{1, 2, 3, 4}}
+	for _, flags := range []funcHintFlags{hintUsesBulkMem, hintMutatesTable, hintModuleEH} {
+		hints := h
+		hints.flags = flags
+		f := fn{a: &a64.Asm{}, reserved: maskOf(X25, X23), pinnedLocalMask: maskOf(X24), policy: currentCodegenPolicy()}
+		f.preloadLoopIntConsts(&hints)
+		if f.iconstN != 1 || f.iconsts[0].reg != X27 {
+			t.Fatalf("fixed-register helper flags %x admitted scratch constants", flags)
+		}
+	}
+	f := fn{a: &a64.Asm{}, reserved: maskOf(X25, X24, X23, X27), policy: currentCodegenPolicy()}
+	for _, r := range gpAlloc {
+		if r != X9 && r != X10 && r != X11 && r != X12 && r != X13 && r != X14 && r != X7 {
+			f.reserved = f.reserved.add(r)
+		}
+	}
+	f.preloadLoopIntConsts(&h)
+	if f.iconstN != 0 {
+		t.Fatalf("transient register floor violated: cached %d constants", f.iconstN)
 	}
 }

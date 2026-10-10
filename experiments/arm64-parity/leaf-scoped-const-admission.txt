@@ -1,0 +1,10 @@
+=== RUN   TestScopedConstCorpusLoops
+    scoped_const_probe_arm64_test.go:31: compiled function 0 pinned=15 spills=1 reloads=0 constant leases=0 page leases=1 scoped leases=0
+    scoped_const_probe_arm64_test.go:40: function 0 bulk=false tableMutation=false types=5d literals=[10000 10000 1000193 50000]
+    scoped_const_probe_arm64_test.go:63: function 0 loop at 61 literals mask=9
+    scoped_const_probe_arm64_test.go:63: function 0 loop at 1110 literals mask=4
+    scoped_const_probe_arm64_test.go:63: function 0 loop at 1213 literals mask=4
+    scoped_const_probe_arm64_test.go:67: function 0 loops=3 callfree=3 matched=3
+--- PASS: TestScopedConstCorpusLoops (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.190s

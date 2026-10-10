@@ -1,0 +1,41 @@
+TEXT github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).nextIntervalEvent(SB) /Users/work/Code/Wago/wago/src/core/compiler/backend/railshot/arm64/interval_region.go
+  interval_region.go:372	0x10029f600		9109d01b		ADD $628, R0, R27	
+  interval_region.go:372	0x10029f604		29400f62		LDPW (R27), (R2, R3)	
+  interval_region.go:372	0x10029f608		6b03005f		CMPW R3, R2		
+  interval_region.go:372	0x10029f60c		54000168		BHI 11(PC)		
+  interval_region.go:372	0x10029f610		b7f80141		TBNZ $63, R1, 10(PC)	
+  interval_region.go:372	0x10029f614		910d201b		ADD $840, R0, R27	
+  interval_region.go:372	0x10029f618		a9401764		LDP (R27), (R4, R5)	
+  interval_region.go:372	0x10029f61c		eb05003f		CMP R5, R1		
+  interval_region.go:372	0x10029f620		540000ca		BGE 6(PC)		
+  interval_region.go:376	0x10029f624		910cc01b		ADD $816, R0, R27	
+  interval_region.go:376	0x10029f628		a9401b65		LDP (R27), (R5, R6)	
+  interval_region.go:380	0x10029f62c		b8617887		MOVWU (R4)(R1<<2), R7	
+  interval_region.go:375	0x10029f630		cb020062		SUB R2, R3, R2		
+  interval_region.go:381	0x10029f634		14000005		JMP 5(PC)		
+  interval_region.go:373	0x10029f638		aa1f03e0		MOVD ZR, R0		
+  interval_region.go:373	0x10029f63c		aa1f03e1		MOVD ZR, R1		
+  interval_region.go:373	0x10029f640		d65f03c0		RET			
+  interval_region.go:382	0x10029f644		79400467		MOVHU 2(R3), R7		
+  interval_region.go:381	0x10029f648		eb0600ff		CMP R6, R7		
+  interval_region.go:381	0x10029f64c		540000ea		BGE 7(PC)		
+  interval_region.go:382	0x10029f650		8b0708a3		ADD R7<<2, R5, R3	
+  interval_region.go:382	0x10029f654		79400068		MOVHU (R3), R8		
+  interval_region.go:383	0x10029f658		92403908		AND $32767, R8, R8	
+  interval_region.go:383	0x10029f65c		6b02011f		CMPW R2, R8		
+  interval_region.go:383	0x10029f660		54ffff29		BLS -7(PC)		
+  interval_region.go:381	0x10029f664		eb0600ff		CMP R6, R7		
+  interval_region.go:388	0x10029f668		b8217887		MOVW R7, (R4)(R1<<2)	
+  interval_region.go:389	0x10029f66c		5400008b		BLT 4(PC)		
+  interval_region.go:390	0x10029f670		92800000		MOVD $-1, R0		
+  interval_region.go:390	0x10029f674		b24003e1		ORR $1, ZR, R1		
+  interval_region.go:390	0x10029f678		d65f03c0		RET			
+  interval_region.go:392	0x10029f67c		8b0708a2		ADD R7<<2, R5, R2	
+  interval_region.go:392	0x10029f680		79400042		MOVHU (R2), R2		
+  interval_region.go:393	0x10029f684		92403840		AND $32767, R2, R0	
+  interval_region.go:393	0x10029f688		7211005f		TSTW $32768, R2		
+  interval_region.go:393	0x10029f68c		9a9f07e1		CSET NE, R1		
+  interval_region.go:393	0x10029f690		d65f03c0		RET			
+  interval_region.go:393	0x10029f694		00000000		?			
+  interval_region.go:393	0x10029f698		00000000		?			
+  interval_region.go:393	0x10029f69c		00000000		?			

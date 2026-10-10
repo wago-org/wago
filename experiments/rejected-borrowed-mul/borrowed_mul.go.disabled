@@ -1,0 +1,54 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var borrowedMulPreserveLayout = os.Getenv("WAGO_ARM64_EXPERIMENT_BORROWED_MUL_LAYOUT") == "1"
+
+var borrowedMulEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_BORROWED_MUL") == "1"
+
+// A standalone multiply can read a pinned source directly. Concrete operands
+// cannot change that source while the instruction's other input is prepared.
+// Destination-directed and strength-reduced forms keep their existing lowering.
+func (f *fn) tryBorrowedMul(node, left, right *elem, dest Reg, wide bool) Reg {
+	if !f.opt(optBorrowedMul) || dest != regNone || node.deferredOp() != opMul ||
+		left.elemKind() != ekValue || (left.st.kind != stLocalReg && left.st.kind != stGlobReg) || right.elemKind() != ekValue {
+		return regNone
+	}
+	switch right.st.kind {
+	case stConst, stReg, stLocalReg, stGlobReg:
+	default:
+		return regNone
+	}
+	pins := f.pinned
+	lhs, _ := f.materializeRead(left)
+	f.pinned = f.pinned.add(lhs)
+	if right.st.kind != stConst {
+		f.pinned = f.pinned.add(right.st.reg)
+	}
+	result := f.allocReg(maskOf(lhs))
+	f.pinned = f.pinned.add(result)
+	if borrowedMulPreserveLayout {
+		f.a.Nop() // retain the removed source-copy footprint for the layout experiment
+	}
+	rhs, owned := regNone, false
+	if right.st.kind == stConst {
+		rhs, owned = f.intConstReadReg(right.st, maskOf(lhs, result))
+	} else {
+		rhs, owned = f.materializeRead(right)
+	}
+	if wide {
+		f.a.Mul64(result, lhs, rhs)
+	} else {
+		f.a.Mul32(result, lhs, rhs)
+	}
+	f.pinned = pins
+	if owned {
+		f.release(rhs)
+	}
+	f.stats.peep("borrowed-mul")
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	return result
+}

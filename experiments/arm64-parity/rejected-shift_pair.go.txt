@@ -1,0 +1,53 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var shiftPairExperiment = os.Getenv("WAGO_ARM64_EXPERIMENT_SHIFT_PAIR") == "1"
+
+// (x << a) >> b is a bitfield extraction or insertion. Arithmetic right shift
+// extends the selected sign bit; logical right shift zero-fills. Both Wasm
+// counts are masked before computing the bitfield immediates.
+func (f *fn) tryShiftPairBitfield(node *elem, dest Reg) Reg {
+	if !shiftPairExperiment || (node.deferredOp() != opShrS && node.deferredOp() != opShrU) {
+		return regNone
+	}
+	inner, count := f.s.arg0(node), f.s.arg1(node)
+	if inner == nil || !inner.isDeferred() || inner.deferredOp() != opShl || inner.st.typ != node.st.typ || count.elemKind() != ekValue || count.st.kind != stConst {
+		return regNone
+	}
+	leftCount := f.s.arg1(inner)
+	if leftCount.elemKind() != ekValue || leftCount.st.kind != stConst {
+		return regNone
+	}
+	width := uint8(32)
+	if node.st.typ.is64() {
+		width = 64
+	}
+	a, b := uint8(leftCount.st.cval)&(width-1), uint8(count.st.cval)&(width-1)
+	src, owned := f.materializeRead(f.s.arg0(inner))
+	savedPinned := f.pinned
+	f.pinned = f.pinned.add(src)
+	if dest == regNone {
+		if owned {
+			dest = src
+		} else {
+			dest = f.allocReg(maskOf(src))
+		}
+	}
+	rotate, mask := (b-a)&(width-1), width-1-a
+	if node.deferredOp() == opShrS {
+		f.a.SignedBitfield(dest, src, rotate, mask, width == 32)
+	} else {
+		f.a.UnsignedBitfield(dest, src, rotate, mask, width == 32)
+	}
+	f.pinned = savedPinned
+	if owned && src != dest {
+		f.release(src)
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, dest)
+	f.stats.peep("shift-pair-bitfield")
+	return dest
+}

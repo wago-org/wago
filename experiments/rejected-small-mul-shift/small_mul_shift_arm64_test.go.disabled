@@ -1,0 +1,83 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+)
+
+func TestMulShiftModularExecution(t *testing.T) {
+	saved := smallMulShiftEnabled
+	defer func() { smallMulShiftEnabled = saved }()
+	constants := []int64{3, 5, 9, 6, 10, 18, 17, 33, 65, 257, 1025, 768, 8589934593, 4611686018427387905, -9223372036854775807, -9223372036854775806, 7, -3, 0, 1}
+	inputs := []uint64{0, 1, 0xffffffff, 0x80000000, 0xffffffffffffffff, 0x8000000000000000}
+	for _, wide := range []bool{false, true} {
+		typ, constant, mul, add := wasm.I32, byte(0x41), byte(0x6c), byte(0x6a)
+		if wide {
+			typ, constant, mul, add = wasm.I64, 0x42, 0x7e, 0x7c
+		}
+		for _, c := range constants {
+			shapes := 3
+			if !wide {
+				shapes = 5
+			}
+			for shape := 0; shape < shapes; shape++ {
+				body := []byte{0, 0x20, 0}
+				if shape == 1 {
+					body = append(body, constant, 1, add)
+				}
+				body = append(body, constant)
+				if wide {
+					body = append(body, wasmtest.SLEB64(c)...)
+				} else {
+					body = append(body, wasmtest.SLEB32(int32(c))...)
+				}
+				body = append(body, mul)
+				if shape == 2 {
+					body = append(body, 0x20, 0, add)
+				}
+				resultType := typ
+				if shape == 3 {
+					body = append(body, 0xad)
+					resultType = wasm.I64
+				} // extend_i32_u
+				if shape == 4 {
+					body = append(body, 0xac)
+					resultType = wasm.I64
+				} // extend_i32_s
+				body = append(body, 0x0b)
+				m := modFuncs(t, funcDef{params: []wasm.ValType{typ}, results: []wasm.ValType{resultType}, body: body})
+				for _, enabled := range []bool{false, true} {
+					smallMulShiftEnabled = enabled
+					for _, x := range inputs {
+						operand := x
+						if shape == 1 {
+							operand++
+						}
+						want := operand * uint64(c)
+						if shape == 2 {
+							want += x
+						}
+						if !wide {
+							want = uint64(uint32(want))
+							if shape == 4 {
+								want = uint64(int64(int32(want)))
+							}
+						}
+						got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"loop-int-const": false}}, x)
+						// i32 carriers have only 32 defined value bits; identity
+						// simplification may preserve the incoming upper bits.
+						if resultType == wasm.I32 {
+							got = uint64(uint32(got))
+						}
+						if err != nil || got != want {
+							t.Fatalf("wide=%v c=%d shape=%d enabled=%v x=%x got=%x want=%x error=%v", wide, c, shape, enabled, x, got, want, err)
+						}
+					}
+				}
+			}
+		}
+	}
+}

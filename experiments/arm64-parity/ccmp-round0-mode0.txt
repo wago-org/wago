@@ -1,0 +1,19 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    6966	     24118 ns/op	   34555 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   35144	      5142 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    5239	     32266 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    4047	     43856 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16   	    2227	     79919 ns/op	   66457 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16      	    1701	    111114 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    4873	     34323 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2872	     64850 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16           	    9675	     18094 ns/op	   29239 B/op	     103 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16              	  119192	      1520 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                         	    1633	    108698 ns/op	   72491 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                            	    4891	     41726 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                     	    1298	    137034 ns/op	   93391 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                        	    5996	     31136 ns/op	       0 B/op	       0 allocs/op
+PASS

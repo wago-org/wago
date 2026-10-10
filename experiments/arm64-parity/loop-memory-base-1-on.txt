@@ -1,0 +1,29 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-fir/Compile-16 	    1632	     69727 ns/op	   44859 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    1680	     67914 ns/op	   44858 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    5077	     23605 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    5068	     23488 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    1959	     58884 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2026	     58748 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    6782	     17593 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    6716	     17700 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3084	     37532 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3160	     37443 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    2695	     42244 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    2653	     41346 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    2371	     48997 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    2436	     48883 ns/op	   38164 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    3286	     36554 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    3300	     36715 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1281	     92763 ns/op	   66457 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1292	     92603 ns/op	   66457 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1008	    119022 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1008	    119054 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1022	    116546 ns/op	   72492 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1024	    115361 ns/op	   72490 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    2900	     41413 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    2923	     41404 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    4356	     27767 ns/op	   34556 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    4326	     27331 ns/op	   34555 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   20824	      5728 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   21016	      5715 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Compile-16    	    1748	     66203 ns/op	   44858 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16    	    1821	     65531 ns/op	   44858 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16       	    5139	     22942 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16       	    5139	     23048 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Compile-16       	    1920	     59756 ns/op	   40031 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Compile-16       	    2028	     59454 ns/op	   40030 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Exec-16          	    3998	     31077 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Exec-16          	    4011	     31697 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	    5472	     20307 ns/op	   29238 B/op	     103 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	    6133	     20369 ns/op	   29239 B/op	     103 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   70956	      1700 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   71346	      1709 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16               	     970	    120409 ns/op	   72491 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16               	     999	    119918 ns/op	   72493 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                  	    2988	     43700 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                  	    2953	     44185 ns/op	       0 B/op	       0 allocs/op
+PASS

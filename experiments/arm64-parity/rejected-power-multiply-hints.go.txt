@@ -1,0 +1,6 @@
+	case 0x6c, 0x7e: // Power-of-two multiplies become immediate shifts.
+		v := uint64(bits)
+		if typ == 1 {
+			v = uint64(uint32(bits))
+		}
+		return v == 0 || v&(v-1) != 0

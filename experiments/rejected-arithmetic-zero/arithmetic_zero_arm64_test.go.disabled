@@ -1,0 +1,114 @@
+//go:build (linux || darwin || windows) && arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+)
+
+func TestArithmeticZeroPreservesSourcesAndWrapping(t *testing.T) {
+	inputs := []uint64{0, 1, 0xffffffff, 0x80000000, 0xffffffffffffffff, 0x8000000000000000}
+	constants := []int64{-9223372036854775808, -1, 0, 1, 65536}
+	for _, wide := range []bool{false, true} {
+		typ, constant, eqz := wasm.I32, byte(0x41), byte(0x45)
+		ops := []byte{0x6a, 0x6b, 0x73}
+		if wide {
+			typ, constant, eqz = wasm.I64, 0x42, 0x50
+			ops = []byte{0x7c, 0x7d, 0x85}
+		}
+		for oi, op := range ops {
+			for ci := -1; ci < len(constants); ci++ {
+				for shape := 0; shape < 3; shape++ {
+					body := []byte{0, 0x3f, 0, 0x1a, 0x20, 0}
+					if ci < 0 {
+						body = append(body, 0x20, 1)
+					} else {
+						body = append(body, constant)
+						if wide {
+							body = append(body, wasmtest.SLEB64(constants[ci])...)
+						} else {
+							body = append(body, wasmtest.SLEB32(int32(constants[ci]))...)
+						}
+					}
+					body = append(body, op, eqz)
+					result := wasm.I32
+					if shape == 1 {
+						if wide {
+							body = append(body, 0xad)
+						}
+						xor := byte(0x73)
+						if wide {
+							xor = 0x85
+						}
+						body = append(body, 0x20, 0, xor, 0x20, 1, xor)
+						result = typ
+					}
+					if shape == 2 {
+						block := byte(0x7f)
+						if wide {
+							block = 0x7e
+						}
+						body = append(body, 0x04, block, constant, 7, 0x05, constant, 11, 0x0b)
+						result = typ
+					}
+					body = append(body, 0x0b)
+					m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{result}, body)
+					m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+					for _, enabled := range []bool{false, true} {
+						for _, x := range inputs {
+							for _, y := range inputs {
+								rhs := y
+								if ci >= 0 {
+									rhs = uint64(constants[ci])
+								}
+								value := x + rhs
+								if oi == 1 {
+									value = x - rhs
+								}
+								if oi == 2 {
+									value = x ^ rhs
+								}
+								if !wide {
+									value = uint64(uint32(value))
+								}
+								want := uint64(0)
+								if value == 0 {
+									want = 1
+								}
+								if shape == 1 {
+									want ^= x ^ y
+									if !wide {
+										want = uint64(uint32(want))
+									}
+								}
+								if shape == 2 {
+									want = 11
+									if value == 0 {
+										want = 7
+									}
+								}
+								opts := CompileOptions{Optimizations: map[string]bool{"arithmetic-zero-test": enabled}}
+								var stats ModuleStats
+								if diagnosticsEnabled && ci < 0 && x == 0 && y == 0 {
+									opts.Stats = &stats
+								}
+								got, err := runArm64WrapperWithOptions(t, m, opts, x, y)
+								if opts.Stats != nil && (stats.Funcs[0].Peephole["arithmetic-zero-test"] != 0) != (enabled && shape == 2) {
+									t.Fatalf("missing direct flags wide=%v op=%x shape=%d enabled=%v stats=%v", wide, op, shape, enabled, stats.Funcs[0].Peephole)
+								}
+								if result == wasm.I32 {
+									got = uint64(uint32(got))
+								}
+								if err != nil || got != want {
+									t.Fatalf("wide=%v op=%x constant=%d shape=%d enabled=%v x=%x y=%x got=%x want=%x err=%v", wide, op, ci, shape, enabled, x, y, got, want, err)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

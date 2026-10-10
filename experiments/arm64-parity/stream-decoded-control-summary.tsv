@@ -1,0 +1,4 @@
+workload	old_compile_us	decoded_compile_us	change_percent
+compiler-register-allocation	60.094	60.224	0.22
+search-aho-corasick	170.607	174.701	2.40
+video-dct	116.430	120.841	3.79

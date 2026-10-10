@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/image-resize/Compile-16 	    3680	     29442 ns/op	   34907 B/op	     103 allocs/op
+BenchmarkParity/image-resize/Compile-16 	    4082	     29490 ns/op	   34907 B/op	     103 allocs/op
+BenchmarkParity/image-resize/Exec-16    	    5911	     20879 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-resize/Exec-16    	    5774	     20897 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Compile-16    	    1539	     73646 ns/op	   44857 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16    	    1642	     73453 ns/op	   44857 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16       	    3956	     33469 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16       	    4028	     32700 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16  	    7582	     15775 ns/op	   28318 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16  	    8053	     15695 ns/op	   28318 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16     	    3684	     36822 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16     	    3714	     37327 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16 	    1404	     82871 ns/op	   66457 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16 	    1440	     82215 ns/op	   66457 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16    	    1099	    115794 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16    	    1096	    115279 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16         	    4821	     24561 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16         	    4912	     24524 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16            	    4905	     24539 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16            	    4909	     24521 ns/op	       0 B/op	       0 allocs/op
+PASS

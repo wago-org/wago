@@ -1,0 +1,8 @@
+=== RUN   TestIntervalRegionCachesMemSizeInLeafScratchArm64
+--- PASS: TestIntervalRegionCachesMemSizeInLeafScratchArm64 (0.00s)
+=== RUN   TestLeafScratchMemorySizeSurvivesImmediateStore
+--- PASS: TestLeafScratchMemorySizeSurvivesImmediateStore (0.00s)
+=== RUN   TestRegionalMemoryReadPressureAliasesAndBounds
+--- PASS: TestRegionalMemoryReadPressureAliasesAndBounds (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.215s

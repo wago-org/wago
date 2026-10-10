@@ -1,0 +1,33 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-constant-fold/Compile-16 	    7933	     28846 ns/op	   34563 B/op	     105 allocs/op
+BenchmarkParity/compiler-constant-fold/Compile-16 	    8326	     28130 ns/op	   34563 B/op	     105 allocs/op
+BenchmarkParity/compiler-constant-fold/Exec-16    	  140034	      1681 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-constant-fold/Exec-16    	  142179	      1736 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-dead-code/Compile-16     	    6931	     31545 ns/op	   34250 B/op	     106 allocs/op
+BenchmarkParity/compiler-dead-code/Compile-16     	    7836	     30987 ns/op	   34250 B/op	     106 allocs/op
+BenchmarkParity/compiler-dead-code/Exec-16        	   63021	      3845 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-dead-code/Exec-16        	   64524	      3793 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-btree/Compile-16               	    3862	     57168 ns/op	   38053 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Compile-16               	    4132	     57393 ns/op	   38053 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Exec-16                  	   23748	     10028 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-btree/Exec-16                  	   24334	     10125 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-polyline-simplify/Compile-16  	    5245	     39688 ns/op	   34930 B/op	     105 allocs/op
+BenchmarkParity/geo-polyline-simplify/Compile-16  	    6109	     39447 ns/op	   34930 B/op	     105 allocs/op
+BenchmarkParity/geo-polyline-simplify/Exec-16     	   46681	      5206 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-polyline-simplify/Exec-16     	   45217	      5303 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graph-dijkstra/Compile-16         	    5206	     43311 ns/op	   38485 B/op	     110 allocs/op
+BenchmarkParity/graph-dijkstra/Compile-16         	    5414	     42963 ns/op	   38484 B/op	     110 allocs/op
+BenchmarkParity/graph-dijkstra/Exec-16            	   43165	      5500 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graph-dijkstra/Exec-16            	   44173	      5412 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16    	    1411	    175784 ns/op	   96250 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16    	    1345	    176743 ns/op	   96250 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16       	    5164	     49432 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16       	    5120	     51530 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16         	    5726	     39434 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16         	    5887	     39581 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16            	    1718	    143246 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16            	    1669	    520058 ns/op	       0 B/op	       0 allocs/op
+PASS

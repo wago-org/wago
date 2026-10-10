@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-fir/Compile-16 	    1429	     79861 ns/op	   44862 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    1420	     80463 ns/op	   44859 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3744	     33795 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3849	     35229 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16 	    4122	     26650 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16 	    4514	     26311 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16    	    7714	     16558 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16    	    7998	     15862 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Compile-16                 	    1899	     60120 ns/op	   40033 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Compile-16                 	    1974	     60083 ns/op	   40032 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Exec-16                    	    3475	     39237 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Exec-16                    	    3279	     39098 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16              	    1003	    117974 ns/op	   72488 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16              	    1045	    115518 ns/op	   72493 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                 	    2916	     44203 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                 	    2864	     43432 ns/op	       0 B/op	       0 allocs/op
+PASS

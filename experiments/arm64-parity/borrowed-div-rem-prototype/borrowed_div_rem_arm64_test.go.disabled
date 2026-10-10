@@ -1,0 +1,107 @@
+//go:build (linux || darwin) && arm64
+
+package arm64
+
+import (
+ "errors"
+ "testing"
+ "github.com/wago-org/wago/src/core/compiler/wasm"
+ rt "github.com/wago-org/wago/src/core/runtime"
+)
+
+func TestBorrowedDivRemSourcesAliasesAndTraps(t *testing.T) {
+ for _,wide:=range []bool{false,true} {
+  typ,xor:=wasm.I32,byte(0x73)
+  min,minusOne:=uint64(0x80000000),uint64(0xffffffff)
+  if wide {typ,xor=wasm.I64,0x85;min,minusOne=1<<63,^uint64(0)}
+  for _,op:=range divOps(wide) {
+   for _,same:=range []bool{false,true} {
+    divisorLocal:=byte(1)
+    if same {divisorLocal=0}
+    body:=[]byte{0,0x20,0,0x20,divisorLocal,op.opcode}
+    params:=make([]wasm.ValType,16)
+    for i:=range params {params[i]=typ;body=append(body,0x20,byte(i),xor)}
+    body=append(body,0x0b)
+    m:=mod1(t,params,[]wasm.ValType{typ},body)
+    for _,enabled:=range []bool{false,true} {
+     for _,guard:=range []bool{false,true} {
+      for _,pair:=range [][2]uint64{{17,5},{0,3},{1,1},{min,minusOne},{minusOne,2},{min,3},{minusOne,minusOne},{7,0},{min,min}} {
+       args:=make([]uint64,16)
+       for i:=range args {args[i]=uint64(i*13+7)}
+       args[0],args[1]=pair[0],pair[1]
+       n,d:=args[0],args[divisorLocal]
+       if !wide {n,d=uint64(uint32(n)),uint64(uint32(d))}
+       opts:=CompileOptions{ElideBoundsChecks:guard,Optimizations:map[string]bool{"borrowed-div-rem":enabled}}
+       var stats ModuleStats
+       admission:=diagnosticsEnabled && !same && pair==[2]uint64{17,5}
+       if admission {opts.Stats=&stats}
+       got,err:=runArm64WrapperWithOptions(t,m,opts,args...)
+       if admission && (stats.Funcs[0].Peephole["borrowed-div-rem"]!=0)!=enabled {t.Fatalf("missing admission %s enabled=%v stats=%v",op.name,enabled,stats.Funcs[0].Peephole)}
+       trap:=rt.TrapCode(0)
+       if d==0 {trap=rt.TrapDivZero} else if op.signed && !op.rem && n==min && d==minusOne {trap=rt.TrapDivOverflow}
+       if trap!=0 {
+        var te *rt.TrapError
+        if !errors.As(err,&te) || te.Code!=trap {t.Fatalf("%s n=%x d=%x trap=%v want=%v",op.name,n,d,err,trap)}
+        continue
+       }
+       want:=refDivRem(op,wide,n,d)
+       for _,x:=range args {want^=x}
+       if !wide {want,got=uint64(uint32(want)),uint64(uint32(got))}
+       if err!=nil || got!=want {t.Fatalf("%s same=%v enabled=%v guard=%v n=%x d=%x got=%x want=%x err=%v",op.name,same,enabled,guard,n,d,got,want,err)}
+      }
+     }
+    }
+   }
+  }
+ }
+}
+
+func TestBorrowedDivRemOperandLocalTeePreservesOldDividend(t *testing.T) {
+ for _,wide:=range []bool{false,true} {
+  typ,add:=wasm.I32,byte(0x6a)
+  if wide {typ,add=wasm.I64,0x7c}
+  for _,op:=range divOps(wide) {
+   // Capture the old local0 as dividend, then overwrite it with the divisor.
+   body:=[]byte{0,0x20,0,0x20,1,0x22,0,op.opcode,0x20,0,add,0x20,1,add,0x0b}
+   m:=mod1(t,[]wasm.ValType{typ,typ},[]wasm.ValType{typ},body)
+   for _,enabled:=range []bool{false,true} {
+    for _,guard:=range []bool{false,true} {
+     for _,pair:=range [][2]uint64{{17,5},{7,3},{0,7},{0x80000000,3},{1<<63,3},{^uint64(0),2}} {
+      n,d:=pair[0],pair[1]
+      want:=refDivRem(op,wide,n,d)+d+d
+      got,err:=runArm64WrapperWithOptions(t,m,CompileOptions{ElideBoundsChecks:guard,Optimizations:map[string]bool{"borrowed-div-rem":enabled}},n,d)
+      if !wide {want,got=uint64(uint32(want)),uint64(uint32(got))}
+      if err!=nil || got!=want {t.Fatalf("%s enabled=%v guard=%v n=%x d=%x got=%x want=%x err=%v",op.name,enabled,guard,n,d,got,want,err)}
+     }
+    }
+   }
+  }
+ }
+}
+
+func TestBorrowedDivRemDirectResultDestinationAliases(t *testing.T) {
+ for _,wide:=range []bool{false,true} {
+  typ,cons:=wasm.I32,byte(0x41)
+  if wide {typ,cons=wasm.I64,0x42}
+  for _,op:=range divOps(wide) {
+   for _,constantNumerator:=range []bool{false,true} {
+    body:=[]byte{0,0x20,0,0x20,1,op.opcode,0x0b}
+    params:=[]wasm.ValType{typ,typ}
+    if constantNumerator {body=[]byte{0,cons,0xc0,0,0x20,0,op.opcode,0x0b};params=[]wasm.ValType{typ}}
+    m:=mod1(t,params,[]wasm.ValType{typ},body)
+    for _,enabled:=range []bool{false,true} {
+     for _,guard:=range []bool{false,true} {
+      for _,d:=range []uint64{1,2,7,31,^uint64(0)} {
+       args:=[]uint64{17,d};n:=uint64(17)
+       if constantNumerator {n=64;args=[]uint64{d}}
+       want:=refDivRem(op,wide,n,d)
+       got,err:=runArm64WrapperWithOptions(t,m,CompileOptions{ElideBoundsChecks:guard,Optimizations:map[string]bool{"borrowed-div-rem":enabled}},args...)
+       if !wide {want,got=uint64(uint32(want)),uint64(uint32(got))}
+       if err!=nil || got!=want {t.Fatalf("%s constantNumerator=%v enabled=%v guard=%v d=%x got=%x want=%x err=%v",op.name,constantNumerator,enabled,guard,d,got,want,err)}
+      }
+     }
+    }
+   }
+  }
+ }
+}

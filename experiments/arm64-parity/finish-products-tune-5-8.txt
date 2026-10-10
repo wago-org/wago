@@ -1,0 +1,29 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    4614	     24328 ns/op	   34555 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    4772	     24229 ns/op	   34555 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   23372	      5134 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   23374	      5132 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Compile-16    	    1596	     73054 ns/op	   44858 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16    	    1645	     73059 ns/op	   44857 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16       	    3674	     36545 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16       	    3723	     37612 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16 	    3236	     34842 ns/op	   35826 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16 	    3423	     34867 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16    	    3031	     44206 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16    	    2989	     43683 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16    	    4646	     24203 ns/op	   34435 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16    	    4894	     23938 ns/op	   34435 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16       	    4856	     24367 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16       	    4798	     24469 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Compile-16                    	    2151	     53787 ns/op	   40031 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Compile-16                    	    2197	     53592 ns/op	   40030 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Exec-16                       	    3666	     38379 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Exec-16                       	    3632	     38069 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16   	    6333	     18324 ns/op	   29239 B/op	     103 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16   	    6724	     18255 ns/op	   29239 B/op	     103 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16      	   79363	      1513 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16      	   79101	      1519 ns/op	       0 B/op	       0 allocs/op
+PASS

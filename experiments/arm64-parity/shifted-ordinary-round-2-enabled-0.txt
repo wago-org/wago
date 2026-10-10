@@ -1,0 +1,23 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    7507	     22378 ns/op	   34267 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   16570	     10884 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    3373	     49427 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   10000	     17577 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    5377	     31730 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    4454	     40608 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Compile-16             	   10000	     17170 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Exec-16                	    1586	    117449 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    2173	     80502 ns/op	   66456 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1686	    114995 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16    	    5017	     33696 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16       	    2977	     64072 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	    1110	    161780 ns/op	   96505 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	    4321	     46438 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1562	    108555 ns/op	   72490 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    4884	     43223 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	    1190	    147920 ns/op	   93389 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    5977	     32011 ns/op	       0 B/op	       0 allocs/op
+PASS

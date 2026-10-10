@@ -1,0 +1,247 @@
+[
+  {
+    "thread_id": 0,
+    "sequence": 1,
+    "timestamp_ns": 1791637437357264000,
+    "kind": "load",
+    "image_id": 1,
+    "image": {
+      "compiler_site_coverage": "explicit-operand-spills-reloads-and-memory-bounds-branches",
+      "sources": [
+        {
+          "offset": 96,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 9
+        },
+        {
+          "offset": 104,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 17
+        },
+        {
+          "offset": 112,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 19
+        },
+        {
+          "offset": 116,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 24
+        },
+        {
+          "offset": 120,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 32
+        },
+        {
+          "offset": 128,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 34
+        },
+        {
+          "offset": 144,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 40
+        },
+        {
+          "offset": 152,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 49
+        },
+        {
+          "offset": 156,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 57
+        },
+        {
+          "offset": 160,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 64
+        },
+        {
+          "offset": 164,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 72
+        },
+        {
+          "offset": 168,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 77
+        },
+        {
+          "offset": 172,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 80
+        },
+        {
+          "offset": 176,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 91
+        },
+        {
+          "offset": 180,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 99
+        },
+        {
+          "offset": 184,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 106
+        },
+        {
+          "offset": 188,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 114
+        },
+        {
+          "offset": 192,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 119
+        },
+        {
+          "offset": 196,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 122
+        },
+        {
+          "offset": 200,
+          "size": 24,
+          "function": 0,
+          "wasm_offset": 125
+        },
+        {
+          "offset": 224,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 131
+        },
+        {
+          "offset": 232,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 133
+        },
+        {
+          "offset": 248,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 134
+        },
+        {
+          "offset": 252,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 136
+        },
+        {
+          "offset": 260,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 143
+        },
+        {
+          "offset": 264,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 149
+        },
+        {
+          "offset": 268,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 156
+        },
+        {
+          "offset": 272,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 162
+        },
+        {
+          "offset": 280,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 168
+        }
+      ],
+      "source_coverage": "opcode-lowering-and-deferred-origins",
+      "id": 1,
+      "module_id": "78be8f26a99dd92f9f593751fa12e2fb2d482c1ffe307572ac246a76e9cbbdfe",
+      "artifact_id": "517e95d53735d71af85c7f56d1293a4b77b7022ff67527afb0d4cfd45bced7bf",
+      "base": 4411801600,
+      "size": 348,
+      "target": "darwin/arm64",
+      "regions": [
+        {
+          "offset": 0,
+          "size": 28,
+          "kind": "entry-adapter",
+          "function": 0,
+          "name": "benchmark"
+        },
+        {
+          "offset": 28,
+          "size": 4,
+          "kind": "padding",
+          "function": -1
+        },
+        {
+          "offset": 32,
+          "size": 316,
+          "kind": "guest-body",
+          "function": 0,
+          "name": "benchmark"
+        }
+      ],
+      "functions": [
+        {
+          "index": 0,
+          "name": "benchmark",
+          "native_bytes": 348,
+          "frame_bytes": 0,
+          "emitted_spills": 0,
+          "emitted_reloads": 0,
+          "emitted_bounds_checks": 0,
+          "compiler_decisions": {
+            "borrowed-div-rem": 1,
+            "callfree-loop": 2,
+            "callfree-loop-entry-store-elide": 10,
+            "cmp-branch-fuse": 1,
+            "frame-adjust-elide": 1,
+            "frame-header-elide": 1,
+            "local-3op-sink": 4,
+            "loop-int-const": 4,
+            "shifted-register-alu": 4
+          }
+        }
+      ],
+      "code": "+gMBqv4Pv6kAAED5BQAAlP4PwahgAAD5wANf1h8gA9UfIAPVHyAD1R8gA9X3AwCqFgCA0hUAgNITAIDSFACA0nlNmdJ5vbDyWDeP0vjGs/I7N4/S+8az8m4ygNIOIKDy/wIAcYEAAFS2uJPSliOw8ioAABQVAIDStriT0pYjsPIfIAPVHyAD1R8gA9UfIAPV8wMVqnN6H1N0AhgLlEJUSpR+GRuUNlRKlD4AEpQGABFzAhsLc0JTSnN+GRtzNlNKcz4AEnMGABEfIAPVHyAD1R8gA9UfIAPVHyAD1R8gA9XpAxOq8wMUqn8CAHEAAgBUKwnTGmqlExv0AwqqnwIAcQH//1R2AhZK1n4OG7UGABG/Ahdr4fv/VOADFqofIAPVHyAD1R8gA9XAA1/WsRCA0gEAABRJg1n4MACA0jARALkxFQC5MAGA0jABALlQg174XgNe+B8CAJHAA1/W"
+    }
+  },
+  {
+    "thread_id": 0,
+    "sequence": 2,
+    "timestamp_ns": 1791637440358441000,
+    "kind": "retire",
+    "image_id": 1
+  }
+]

@@ -1,0 +1,7 @@
+corpus	phase	off_us	on_us	change_percent
+audio-fir	Compile	84.197	82.016	-2.59
+audio-fir	Exec	32.807	34.132	4.04
+serialization-protobuf	Compile	27.937	27.361	-2.06
+serialization-protobuf	Exec	16.249	16.025	-1.38
+grid-pathfinding	Compile	49.243	47.815	-2.90
+grid-pathfinding	Exec	37.120	37.864	2.00

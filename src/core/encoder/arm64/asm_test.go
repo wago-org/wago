@@ -83,6 +83,12 @@ func TestEncodings(t *testing.T) {
 		{"and x5,x6,x7", func(a *Asm) { a.And64(X5, X6, X7) }, 0x8a0700c5},
 		{"orr x5,x6,x7", func(a *Asm) { a.Orr64(X5, X6, X7) }, 0xaa0700c5},
 		{"eor x5,x6,x7", func(a *Asm) { a.Eor64(X5, X6, X7) }, 0xca0700c5},
+		{"bic w5,w6,w7", func(a *Asm) { a.BicReg(X5, X6, X7, true) }, 0x0a2700c5},
+		{"orn w5,w6,w7", func(a *Asm) { a.OrnReg(X5, X6, X7, true) }, 0x2a2700c5},
+		{"eon w5,w6,w7", func(a *Asm) { a.EonReg(X5, X6, X7, true) }, 0x4a2700c5},
+		{"bic x5,x6,x7", func(a *Asm) { a.BicReg(X5, X6, X7, false) }, 0x8a2700c5},
+		{"orn x5,x6,x7", func(a *Asm) { a.OrnReg(X5, X6, X7, false) }, 0xaa2700c5},
+		{"eon x5,x6,x7", func(a *Asm) { a.EonReg(X5, X6, X7, false) }, 0xca2700c5},
 		// variable shifts
 		{"lsl w5,w6,w7", func(a *Asm) { a.Lslv32(X5, X6, X7) }, 0x1ac720c5},
 		{"lsr w5,w6,w7", func(a *Asm) { a.Lsrv32(X5, X6, X7) }, 0x1ac724c5},

@@ -1,0 +1,22 @@
+File: parity-store-map-affine.test
+Type: alloc_space
+Time: 2026-10-09 21:15:07 EDT
+Showing nodes accounting for 296.62MB, 89.96% of 329.74MB total
+Dropped 285 nodes (cum <= 1.65MB)
+Showing top 15 nodes out of 70
+      flat  flat%   sum%        cum   cum%
+   87.54MB 26.55% 26.55%    87.54MB 26.55%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.newCompileScratch
+   65.25MB 19.79% 46.34%    65.25MB 19.79%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*stack).initWithCap
+   32.53MB  9.86% 56.20%    32.53MB  9.86%  github.com/wago-org/wago/src/core/runtime.(*CodeBuffer).growPreserving
+   21.35MB  6.47% 62.67%    21.35MB  6.47%  github.com/wago-org/wago/src/core/encoder/arm64.(*Asm).word
+   16.64MB  5.05% 67.72%    16.64MB  5.05%  github.com/wago-org/wago/src/core/runtime.NewHeapCodeBuffer
+   14.23MB  4.32% 72.04%    14.23MB  4.32%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).ensureCtrlMerge
+   10.16MB  3.08% 75.12%    10.16MB  3.08%  github.com/wago-org/wago/src/wago.newCompilerCompiled
+    9.40MB  2.85% 77.97%     9.40MB  2.85%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).pushCtrl
+    7.75MB  2.35% 80.32%    13.21MB  4.01%  github.com/wago-org/wago/src/wago.cloneCompiledMetadataWithDataPolicy
+    7.12MB  2.16% 82.48%    20.33MB  6.17%  github.com/wago-org/wago/src/wago.publishCompilerCompiled
+    5.59MB  1.70% 84.18%     5.59MB  1.70%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).collectDeclaredFuncsInExpr
+    5.59MB  1.70% 85.87%    15.76MB  4.78%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctionsSerial
+    5.46MB  1.66% 87.53%     5.59MB  1.70%  github.com/wago-org/wago/src/wago.compileModuleMetadata
+    4.96MB  1.50% 89.03%    10.10MB  3.06%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleInnerLimits
+    3.05MB  0.92% 89.96%     3.05MB  0.92%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*scratch).reserveControlFrames

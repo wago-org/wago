@@ -1,0 +1,53 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    6201	     23340 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    5923	     23381 ns/op	   34267 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    6219	     23028 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12754	     11115 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12684	     11368 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12896	     11338 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    4038	     33789 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    4111	     33760 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    4231	     33361 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    3264	     52419 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    3765	     47237 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    3142	     43831 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Compile-16        	    7948	     18218 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Compile-16        	    8883	     17946 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Compile-16        	    8557	     17765 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Exec-16           	    1166	    124961 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Exec-16           	    1203	    124318 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Exec-16           	    1190	    125018 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16    	    5143	     24627 ns/op	   36043 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16    	    5793	     24618 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16    	    5774	     24382 ns/op	   36043 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16       	    7209	     20769 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16       	    7143	     20520 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16       	    7465	     20433 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3934	     34931 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    4063	     34917 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    4108	     34837 ns/op	   35828 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2287	     65494 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2413	     65407 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2296	     65387 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    5274	     24114 ns/op	   34435 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    6211	     24100 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    6194	     23934 ns/op	   34435 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5905	     26214 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5956	     26033 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5892	     26041 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16           	    8880	     16582 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16           	    9352	     16608 ns/op	   29216 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16           	    9318	     16363 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16              	   36379	      3940 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16              	   36664	      3968 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16              	   36207	      3951 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                         	    1345	    112474 ns/op	   72491 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                         	    1269	    114383 ns/op	   72493 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                         	    1250	    113268 ns/op	   72491 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                            	    3540	     44913 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                            	    3577	     44328 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                            	    3586	     45014 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,5 @@
+case	phase	before_us	after_us	change_pct
+db-sort-merge-join	Compile	39.964	39.670	-0.74
+image-resize	Compile	37.368	37.333	-0.10
+ml-inference	Compile	35.559	35.714	+0.44
+vision-components	Compile	56.910	57.365	+0.80

@@ -1,0 +1,1 @@
+All changed native image words are ADD X16,base,index,LSL #0 -> NOP; sizes and other words identical.

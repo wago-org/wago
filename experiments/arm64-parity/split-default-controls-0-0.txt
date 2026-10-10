@@ -1,0 +1,41 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-fir/Compile-16 	    1478	     74819 ns/op	   44857 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    1634	     75042 ns/op	   44859 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3926	     31397 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3915	     33691 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/grid-pathfinding/Compile-16         	    2431	     46982 ns/op	   35781 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Compile-16         	    2616	    168388 ns/op	   35781 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16            	    1120	    125744 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16            	    1096	    107959 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16              	    2751	     51025 ns/op	   28319 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16              	    2916	     44138 ns/op	   28321 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16                 	    3202	     37566 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16                 	    3270	     40364 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-polygon-clipping/Compile-16     	    1779	     63246 ns/op	   39999 B/op	     114 allocs/op
+BenchmarkParity/geo-polygon-clipping/Compile-16     	    1940	     61371 ns/op	   39998 B/op	     114 allocs/op
+BenchmarkParity/geo-polygon-clipping/Exec-16        	    3746	     31593 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-polygon-clipping/Exec-16        	    3747	     31413 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16   	    3967	     27660 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16   	    4051	     27660 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16      	    7448	     16101 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16      	    7386	     16148 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/language-register-vm/Compile-16     	    3255	     34959 ns/op	   37797 B/op	     120 allocs/op
+BenchmarkParity/language-register-vm/Compile-16     	    3417	     34884 ns/op	   37797 B/op	     120 allocs/op
+BenchmarkParity/language-register-vm/Exec-16        	   10000	     11024 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/language-register-vm/Exec-16        	   10000	     11244 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-kmeans/Compile-16                	    1603	     70637 ns/op	   39479 B/op	     111 allocs/op
+BenchmarkParity/ml-kmeans/Compile-16                	    1683	     71001 ns/op	   39479 B/op	     111 allocs/op
+BenchmarkParity/ml-kmeans/Exec-16                   	    4695	     25210 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-kmeans/Exec-16                   	    4734	     25244 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16      	     687	    173741 ns/op	   96510 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16      	     670	    172400 ns/op	   96517 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16         	    2566	     48677 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16         	    2503	     45758 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                	     992	    118382 ns/op	   72490 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                	    1023	    118229 ns/op	   72492 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                   	    2842	     44067 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                   	    2755	     44300 ns/op	       0 B/op	       0 allocs/op
+PASS

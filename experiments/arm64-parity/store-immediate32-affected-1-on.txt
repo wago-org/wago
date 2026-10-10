@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/grid-pathfinding/Compile-16 	    2229	     50329 ns/op	   35781 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Compile-16 	    2312	     48544 ns/op	   35779 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16    	    3440	     38547 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16    	    3392	     37820 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-btree/Compile-16         	    1950	     59401 ns/op	   38052 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Compile-16         	    1986	     58562 ns/op	   38053 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Exec-16            	   10000	     10192 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-btree/Exec-16            	   10000	     10079 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graph-dijkstra/Compile-16   	    2577	     43953 ns/op	   38485 B/op	     110 allocs/op
+BenchmarkParity/graph-dijkstra/Compile-16   	    2752	     43723 ns/op	   38485 B/op	     110 allocs/op
+BenchmarkParity/graph-dijkstra/Exec-16      	   21999	      5436 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graph-dijkstra/Exec-16      	   21855	      5402 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Compile-16           	    1879	     60782 ns/op	   40030 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Compile-16           	    1976	     60591 ns/op	   40030 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Exec-16              	    3951	     31750 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Exec-16              	    3886	     31984 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16   	    2732	     41569 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16   	    2884	     40896 ns/op	   35844 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16      	     597	    194344 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16      	     866	    156004 ns/op	       0 B/op	       0 allocs/op
+PASS

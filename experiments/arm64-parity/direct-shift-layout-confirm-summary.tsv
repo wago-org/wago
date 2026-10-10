@@ -1,0 +1,13 @@
+corpus	phase	off_us	layout_us	change_percent
+audio-fir	Compile	65.704	65.660	-0.07
+audio-fir	Exec	23.477	23.166	-1.33
+compiler-register-allocation	Compile	59.528	56.908	-4.40
+compiler-register-allocation	Exec	17.400	17.032	-2.11
+crypto-aes128	Compile	157.364	149.532	-4.98
+crypto-aes128	Exec	37.005	37.945	2.54
+ml-inference	Compile	28.117	27.468	-2.31
+ml-inference	Exec	5.784	5.731	-0.92
+vision-components	Compile	48.030	46.570	-3.04
+vision-components	Exec	40.544	40.490	-0.13
+vision-dilation	Compile	37.761	36.150	-4.27
+vision-dilation	Exec	45.024	45.809	1.74

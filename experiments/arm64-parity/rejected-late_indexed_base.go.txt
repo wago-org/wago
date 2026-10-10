@@ -1,0 +1,72 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var experimentalLateIndexedBase = os.Getenv("WAGO_ARM64_EXPERIMENT_LATE_INDEXED_BASE") == "1" || os.Getenv("WAGO_ARM64_EXPERIMENT_LATE_INDEXED_BASE") == "2"
+var extendedLateIndexedBase = os.Getenv("WAGO_ARM64_EXPERIMENT_LATE_INDEXED_BASE") == "2"
+
+// Eliminate only a repeated X16=base+index inside one proven straight-line
+// region. Incoming targets and unknown instructions end the bounded proof.
+// Size-preserving holes keep relocation and source-map offsets intact.
+func (f *fn) foldLateIndexedBases(b []byte, n int, targets []uint64) {
+	if f.opaqueFragments {
+		return
+	}
+	const inputs = uint32(31<<16 | 31<<5)
+	for pc := 4; pc+4 <= n; pc += 4 {
+		w := rdWord(b, pc)
+		if w & ^inputs != 0x8b000010 || branchTargeted(targets, pc) {
+			continue
+		}
+		base, index := Reg((w>>5)&31), Reg((w>>16)&31)
+		if base == X16 || index == X16 {
+			continue
+		}
+		offset := uint32(0)
+		if extendedLateIndexedBase && pc+8 <= n && !branchTargeted(targets, pc+4) {
+			next := rdWord(b, pc+4)
+			if next&0xbf8003ff == 0x91000210 {
+				offset = next
+			}
+		}
+		for words := 1; words <= 8 && pc-words*4 >= 0; words++ {
+			prev := pc - words*4
+			old := rdWord(b, prev)
+			if offset == 0 && old == w {
+				wrWord(b, pc, nopWord)
+				f.recordDeadHole(pc)
+				f.stats.peep("late-indexed-base")
+				break
+			}
+			if offset != 0 && old == offset && prev >= 4 && rdWord(b, prev-4) == w && !branchTargeted(targets, prev) {
+				wrWord(b, pc, nopWord)
+				wrWord(b, pc+4, nopWord)
+				f.recordDeadHole(pc)
+				f.recordDeadHole(pc + 4)
+				f.stats.peep("late-indexed-base-offset")
+				break
+			}
+			if branchTargeted(targets, prev) || !preservesLateIndexedBase(old, base, index) {
+				break
+			}
+		}
+	}
+}
+
+func preservesLateIndexedBase(w uint32, base, index Reg) bool {
+	if w == nopWord {
+		return true
+	}
+	writesAddress := func(dst Reg) bool { return dst == X16 || dst == base || dst == index }
+	if w&0x3b000000 == 0x39000000 || w&0x3b20fc00 == 0x38206800 {
+		gpLoad := w&(1<<26) == 0 && w&(3<<22) != 0
+		return !gpLoad || !writesAddress(Reg(w&31))
+	}
+	if w&0x1f000000 == 0x11000000 || w&0x1f000000 == 0x0b000000 ||
+		w&0x1f800000 == 0x12800000 || w&0x1fe00800 == 0x1a800000 {
+		return !writesAddress(Reg(w & 31))
+	}
+	return false
+}

@@ -1,0 +1,21 @@
+case	phase	baseline ns	vector ns	change %
+crypto-aes128	Compile	138234	136738	-1.08
+crypto-aes128	Exec	31714	32110	+1.25
+graphics-reed-solomon	Compile	80575	80677	+0.13
+graphics-reed-solomon	Exec	113861	113159	-0.62
+hardware-prime-implicants	Compile	34420	34495	+0.22
+hardware-prime-implicants	Exec	64693	64282	-0.64
+ml-inference	Compile	23955	24003	+0.20
+ml-inference	Exec	5137	5134	-0.06
+search-aho-corasick	Compile	158131	158236	+0.07
+search-aho-corasick	Exec	46808	51408	+9.83
+stats-gini	Compile	66641	66824	+0.27
+stats-gini	Exec	3936	3904	-0.81
+stats-linear-regression	Compile	16061	18116	+12.79
+stats-linear-regression	Exec	3584	1519	-57.62
+stats-welford	Compile	12509	12852	+2.74
+stats-welford	Exec	16783	16948	+0.98
+video-dct	Compile	109487	109515	+0.03
+video-dct	Exec	42703	43090	+0.91
+vision-dilation	Compile	32337	32339	+0.01
+vision-dilation	Exec	42286	40099	-5.17

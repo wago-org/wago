@@ -1,0 +1,37 @@
+=== RUN   TestScopedConstCorpusLoops
+    scoped_const_probe_arm64_test.go:31: function 0 bulk=true tableMutation=false types=2 literals=[48c27395 0 0 0]
+    scoped_const_probe_arm64_test.go:53: function 0 loop at 1454 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 0 loop at 1527 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 0 loop at 1684 literals mask=1
+    scoped_const_probe_arm64_test.go:57: function 0 loops=14 callfree=14 matched=3
+    scoped_const_probe_arm64_test.go:31: function 1 bulk=true tableMutation=false types=aa literals=[a 3030303030303030 f424000000064 4646464646464646]
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 703 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 859 literals mask=f
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 1136 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 1587 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 1944 literals mask=f
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 2190 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 2506 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 2825 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 3855 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 4031 literals mask=f
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 4308 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 4769 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 5166 literals mask=f
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 5412 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 5750 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 5969 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 6061 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 6415 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 6629 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 6723 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 8875 literals mask=7
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 10109 literals mask=7
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 11532 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 11673 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 12476 literals mask=1
+    scoped_const_probe_arm64_test.go:53: function 1 loop at 12617 literals mask=1
+    scoped_const_probe_arm64_test.go:57: function 1 loops=76 callfree=75 matched=26
+--- PASS: TestScopedConstCorpusLoops (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.337s

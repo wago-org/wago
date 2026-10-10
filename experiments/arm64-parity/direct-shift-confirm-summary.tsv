@@ -1,0 +1,13 @@
+corpus	phase	off_us	on_us	change_percent
+compiler-register-allocation	Compile	58.531	57.695	-1.43
+compiler-register-allocation	Exec	17.222	16.927	-1.72
+crypto-aes128	Compile	156.845	156.204	-0.41
+crypto-aes128	Exec	61.720	36.989	-40.07
+files-glob-match	Compile	20.082	20.069	-0.06
+files-glob-match	Exec	130.883	130.278	-0.46
+video-dct	Compile	123.240	121.960	-1.04
+video-dct	Exec	44.100	43.804	-0.67
+vision-components	Compile	48.267	48.505	0.49
+vision-components	Exec	40.874	39.333	-3.77
+vision-dilation	Compile	36.749	37.585	2.27
+vision-dilation	Exec	43.075	43.974	2.08

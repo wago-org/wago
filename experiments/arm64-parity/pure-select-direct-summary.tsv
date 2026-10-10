@@ -1,0 +1,7 @@
+corpus	phase	TST_B_us	direct_us	change_percent
+db-hash-join	Compile	23.143	23.886	3.21
+db-hash-join	Exec	2.453	2.480	1.10
+search-aho-corasick	Compile	171.194	167.538	-2.14
+search-aho-corasick	Exec	47.236	46.912	-0.69
+serialization-protobuf	Compile	27.042	27.622	2.14
+serialization-protobuf	Exec	15.959	16.089	0.81

@@ -1,0 +1,13 @@
+case	phase	before_us	after_us	change_pct
+db-sort-merge-join	Compile	38.487	37.274	-3.15
+db-sort-merge-join	Exec	47.012	46.401	-1.30
+image-resize	Compile	36.925	36.188	-2.00
+image-resize	Exec	15.193	14.957	-1.55
+ml-inference	Compile	34.120	32.194	-5.65
+ml-inference	Exec	5.268	5.143	-2.38
+ml-max-pooling	Compile	27.765	26.817	-3.41
+ml-max-pooling	Exec	14.475	14.433	-0.29
+stats-bootstrap	Compile	32.367	31.422	-2.92
+stats-bootstrap	Exec	20.267	20.186	-0.40
+vision-components	Compile	56.001	52.842	-5.64
+vision-components	Exec	29.563	29.116	-1.51

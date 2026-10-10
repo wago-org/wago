@@ -1,0 +1,334 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"os"
+)
+
+var storeMapEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_STORE_MAP") == "1" && os.Getenv("WAGO_ARM64_NO_STORE_MAP") != "1"
+
+// Test diagnostics can inspect admitted plans; ordinary builds eliminate this.
+var storeMapPlanDiagnostic func(*storeMapPlan, *storeMapVectors, int)
+
+type storeMapGroup struct{ first, second int }
+
+func storeMapGroups(p *storeMapPlan) (groups [8]storeMapGroup, n int, ok bool) {
+	var used [8]bool
+	for i := 0; i < p.nWrites; i++ {
+		if used[i] {
+			continue
+		}
+		if p.writes[i].stride == 4 {
+			groups[n] = storeMapGroup{i, -1}
+			n++
+			used[i] = true
+			continue
+		}
+		if p.writes[i].stride != 8 {
+			return groups, n, false
+		}
+		a, offA := storeMapAddressKey(p, p.writes[i].address, p.writes[i].offset)
+		paired := false
+		for j := i + 1; j < p.nWrites; j++ {
+			if used[j] || p.writes[j].stride != 8 {
+				continue
+			}
+			b, offB := storeMapAddressKey(p, p.writes[j].address, p.writes[j].offset)
+			if a != b {
+				continue
+			}
+			first, second := i, j
+			if offB+4 == offA {
+				first, second = j, i
+			} else if offA+4 != offB {
+				continue
+			}
+			groups[n] = storeMapGroup{first, second}
+			n++
+			used[i], used[j] = true, true
+			paired = true
+			break
+		}
+		if !paired {
+			return groups, n, false
+		}
+	}
+	return groups, n, true
+}
+
+func (f *fn) emitStoreMapLoop(reader *wasm.Reader) {
+	if !f.opt(optStoreMap) || f.nLocals > 32 || f.storeMap != nil || f.pureReduce != nil || f.dotLoop != nil || f.usesCalls || f.interruptible || f.moduleEH || f.preserveCallerPins || f.localBase != 0 || len(f.customInstructions) != 0 || f.intervalActive != 0 || f.depth() != 0 {
+		return
+	}
+	for _, typ := range f.localType {
+		if typ != mtI32 {
+			return
+		}
+	}
+	p, ok := f.inspectStoreMap(reader)
+	if !ok {
+		return
+	}
+	groups, nGroups, ok := storeMapGroups(&p)
+	if !ok {
+		return
+	}
+	v, ok := f.planStoreMapVectors(&p)
+	if !ok {
+		return
+	}
+	// Decline without spilling or changing register ownership.
+	var registers [7]Reg
+	occupied := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+	n := 0
+	for _, reg := range gpAlloc[:len(gpAlloc)-numScratchGP] {
+		if f.regUser[reg] == nil && !occupied.has(reg) {
+			registers[n] = reg
+			occupied = occupied.add(reg)
+			n++
+			if n == len(registers) {
+				break
+			}
+		}
+	}
+	if n != len(registers) {
+		return
+	}
+	if diagnosticsEnabled && storeMapPlanDiagnostic != nil {
+		storeMapPlanDiagnostic(&p, &v, nGroups)
+	}
+	r := storeMapGuardRegs{initial: registers[0], work: registers[1], memory: registers[2], count: registers[3], lo: registers[4], hi: registers[5], tmp: registers[6]}
+	oldPinned, oldFPinned := f.pinned, f.fpinned
+	f.pinned, f.fpinned = occupied, f.fpinned.union(v.mask)
+	guardLayout := planStoreMapGuard(&p)
+	bytes := p.locals*8 + (guardLayout.n+p.nWrites)*16 + 8
+	slot := f.allocSpillSlots((bytes + 7) / 8)
+	initialOff := f.spillOff(slot)
+	workOff := initialOff + int32(p.locals*8)
+	f.storeMapStackAddress(r.initial, initialOff)
+	f.storeMapStackAddress(r.work, workOff)
+	read := func(local int, dst Reg) {
+		if reg, _, pinned := f.pinReg(local); pinned {
+			f.recoverLocal(local)
+			f.a.MovReg32(dst, reg)
+		} else if f.locals[local].state == lsConstZero {
+			f.a.MovImm64(dst, 0)
+		} else {
+			f.ld64(dst, SP, f.localOff(local))
+			f.a.MovReg32(dst, dst)
+		}
+	}
+	write := func(local int, src Reg) {
+		if reg, _, pin := f.pinReg(local); pin {
+			f.a.MovReg32(reg, src)
+		} else {
+			f.st64(SP, f.localOff(local), src)
+		}
+	}
+	sources := storeMapSourceMask(&p, &v)
+	for local := 0; local < p.locals; local++ {
+		if p.written&(1<<local) != 0 && f.locals[local].state == lsConstZero {
+			_, _, pin := f.pinReg(local)
+			f.materializeZeroLocal(local, !pin)
+		}
+		if sources&(1<<local) == 0 {
+			continue
+		}
+		read(local, X16)
+		f.a.Store64(X16, r.initial, uint32(local*8))
+	}
+	f.ld64(r.memory, linMemReg, -int32(bdCurBytes))
+	guard := f.emitStoreMapGuardLayout(&p, &guardLayout, r)
+	totalOff := uint32((guardLayout.n + p.nWrites) * 16)
+	f.a.Store64(r.count, r.work, totalOff)
+	f.a.NeonEor16b(v.zero, v.zero, v.zero)
+	for i := 0; i < p.n; i++ {
+		if !v.reachable[i] {
+			continue
+		}
+		node := p.nodes[i]
+		if node.op == 0x41 {
+			duplicate := false
+			for previous := 0; previous < i; previous++ {
+				if v.reachable[previous] && p.nodes[previous].op == 0x41 && v.regs[previous] == v.regs[i] {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+			f.a.MovImm32(X16, int32(node.v))
+			f.a.NeonDupGprS(v.regs[i], X16)
+			continue
+		}
+		if node.op != 0x20 {
+			continue
+		}
+		f.a.Load32(X16, r.initial, uint32(node.a*8))
+		f.a.NeonDupGprS(v.regs[i], X16)
+		if p.steps[node.a] != 0 {
+			f.a.MovImm64(X17, uint64(p.steps[node.a]))
+			for lane := byte(1); lane < 4; lane++ {
+				f.a.Add32(X16, X16, X17)
+				f.a.NeonInsS(v.regs[i], X16, lane)
+			}
+			f.a.MovImm64(X16, uint64(p.steps[node.a]*4))
+			f.a.NeonDupGprS(v.strides[node.a], X16)
+		}
+	}
+	rangeOff := guardLayout.n * 16
+	// Guard-only temporaries retain pointers without allocating more GPs.
+	pointers := [4]Reg{r.memory, r.tmp, r.lo, r.hi}
+	cached := nGroups
+	if cached > len(pointers) {
+		cached = 2 // Leave lo/hi for the remaining workspace streams.
+	}
+	for i, group := range groups[:cached] {
+		f.a.Load64(pointers[i], r.work, uint32(rangeOff+group.first*16))
+		f.a.Add64(pointers[i], linMemReg, pointers[i])
+	}
+	loop := f.a.Len()
+	f.emitStoreMapVectorDAG(&p, &v)
+	for i, group := range groups[:nGroups] {
+		first := p.writes[group.first]
+		base := r.hi
+		if i < cached {
+			base = pointers[i]
+		} else {
+			f.a.Load64(r.lo, r.work, uint32(rangeOff+group.first*16))
+			f.a.Add64(base, linMemReg, r.lo)
+		}
+		if group.second < 0 {
+			f.a.StrQ(base, 0, v.regs[first.value])
+		} else {
+			f.emitStoreMapInterleaved(&v, v.regs[first.value], v.regs[p.writes[group.second].value], base)
+		}
+		if i < cached {
+			f.a.AddImm64(base, base, uint32(first.stride*4))
+		} else {
+			f.a.AddImm64(r.lo, r.lo, uint32(first.stride*4))
+			f.a.Store64(r.lo, r.work, uint32(rangeOff+group.first*16))
+		}
+	}
+	for local := 0; local < p.locals; local++ {
+		if v.reachable[local] && p.steps[local] != 0 {
+			f.a.NeonAddS(v.regs[local], v.regs[local], v.strides[local])
+		}
+	}
+	f.a.SubImm32(r.count, r.count, 4)
+	f.a.CmpImm32(r.count, 4)
+	f.patchBranch19(f.a.Bcond(condAE), loop)
+	f.a.Load64(r.tmp, r.work, totalOff)
+	f.a.Sub64(r.tmp, r.tmp, r.count)
+	for local := 0; local < p.locals; local++ {
+		if p.written&(1<<local) == 0 {
+			continue
+		}
+		if p.steps[local] != 0 {
+			f.a.Load32(X16, r.initial, uint32(local*8))
+			f.a.MovImm64(X17, uint64(p.steps[local]))
+			f.a.Madd32(X16, r.tmp, X17, X16)
+		} else {
+			root := p.values[local]
+			f.a.NeonUmovS(X16, v.regs[root], 3)
+			if root < p.locals && p.steps[root] != 0 {
+				f.a.MovImm64(X17, uint64(p.steps[root]*4))
+				f.a.Sub32(X16, X16, X17)
+			}
+		}
+		write(local, X16)
+	}
+	finished := f.a.Cbz32(r.count)
+	f.patchStoreMapGuard(&guard, f.a.Len())
+	f.pinned, f.fpinned = oldPinned, oldFPinned
+	for local := 0; local < p.locals; local++ {
+		if p.written&(1<<local) != 0 {
+			f.setFactsForLocal(local, 0)
+			if _, _, pin := f.pinReg(local); pin {
+				f.locals[local].state = lsReg
+			} else {
+				f.locals[local].state = lsMem
+			}
+		}
+	}
+	f.storeMap = &pureReduceJoin{depth: len(f.ctrl) + 1, site: finished, written: p.written}
+	f.invalidateBoundsCert()
+	f.invalidateStoreForward()
+	f.stats.peep("store-map-vector")
+}
+
+func (f *fn) finishStoreMap(depth int) {
+	state := f.storeMap
+	if state == nil || state.depth != depth {
+		return
+	}
+	f.patchBranch19(state.site, f.a.Len())
+	for local := 0; local < f.nLocals; local++ {
+		if state.written&(1<<local) != 0 {
+			f.setFactsForLocal(local, 0)
+		}
+	}
+	f.invalidateBoundsCert()
+	f.invalidateStoreForward()
+	f.storeMap = nil
+}
+
+// Snapshot only original values read by guards, vectors or induction restoration.
+func storeMapSourceMask(p *storeMapPlan, v *storeMapVectors) uint32 {
+	var leaves [128]uint32
+	for i := 0; i < p.locals; i++ {
+		leaves[i] = 1 << i
+	}
+	for i := p.locals; i < p.n; i++ {
+		n := p.nodes[i]
+		operands := storeMapVectorOperands(n)
+		if operands > 0 {
+			leaves[i] |= leaves[n.a]
+		}
+		if operands > 1 {
+			leaves[i] |= leaves[n.b]
+		}
+	}
+	mask := leaves[p.limit] | 1<<p.counter
+	for i := 0; i < p.nWrites; i++ {
+		mask |= leaves[p.writes[i].address]
+	}
+	for local := 0; local < p.locals; local++ {
+		if v.reachable[local] || p.steps[local] != 0 {
+			mask |= 1 << local
+		}
+	}
+	return mask
+}
+
+// Positive constant additions are monotone until wrap. Checking the folded
+// endpoint against uint32 bounds therefore proves every peeled intermediate.
+func storeMapAddressKey(p *storeMapPlan, x int, offset uint64) (int, uint64) {
+	for p.nodes[x].op == 0x6a {
+		node := p.nodes[x]
+		a, b := node.a, node.b
+		if p.nodes[a].op == 0x41 {
+			a, b = b, a
+		}
+		if p.nodes[b].op != 0x41 {
+			break
+		}
+		offset += uint64(p.nodes[b].v)
+		x = a
+	}
+	return x, offset
+}
+
+// Deep surrounding control may reserve more than an immediate's spill range.
+func (f *fn) storeMapStackAddress(dst Reg, offset int32) {
+	if offset >= 0 && offset <= 0xfff {
+		f.a.AddImm64(dst, SP, uint32(offset))
+		return
+	}
+	f.a.AddImm64(dst, SP, 0)
+	f.a.MovImm64(X16, uint64(int64(offset)))
+	f.a.Add64(dst, dst, X16)
+}

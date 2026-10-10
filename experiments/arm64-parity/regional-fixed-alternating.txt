@@ -1,0 +1,120 @@
+round=0 regional=0
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    4596	     26863 ns/op	   34267 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12170	     11759 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2344	     57329 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    7590	     18612 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3580	     37179 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    3392	     44901 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1698	     86132 ns/op	   62128 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	     693	    209354 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     856	    165770 ns/op	   97670 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     504	    288486 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16      	    7695	     18646 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16         	   35388	      4083 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     972	    146238 ns/op	   93395 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4232	     35002 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=0 regional=1
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    5074	     26217 ns/op	   34269 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12273	     11776 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2384	     58279 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    7611	     18470 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3718	     37465 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    3211	     44675 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1551	     94997 ns/op	   62281 B/op	     114 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1060	    136090 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     883	    166774 ns/op	   97663 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     500	    282752 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16      	    7770	     18526 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16         	   35853	      4083 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     962	    149733 ns/op	   93396 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4116	     35405 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=1 regional=0
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    5001	     26860 ns/op	   34267 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12267	     11692 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2553	     56919 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    7644	     18481 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3786	     36449 ns/op	   35333 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    3338	     46889 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1708	     83619 ns/op	   62128 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	     696	    204985 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     872	    166506 ns/op	   97664 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     500	    284658 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16      	    7771	     18487 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16         	   35583	      4059 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     991	    146558 ns/op	   93400 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4165	     36251 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=1 regional=1
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    5182	     25589 ns/op	   34268 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12340	     11743 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2476	     57169 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    7693	     18477 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3660	     37532 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    3288	     44562 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1512	     93703 ns/op	   62280 B/op	     114 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1068	    136257 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     859	    166292 ns/op	   97662 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     502	    282993 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16      	    7303	     19324 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16         	   35151	      4055 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     951	    150281 ns/op	   93394 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4160	     35557 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=2 regional=0
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    5047	     25382 ns/op	   34267 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12024	     11988 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2232	     60534 ns/op	   38174 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    7634	     18833 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3559	     37464 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    3222	     46483 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1681	     90199 ns/op	   62132 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	     608	    217258 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     813	    169951 ns/op	   97662 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     496	    290636 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16      	    4838	     52842 ns/op	   29219 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16         	   10000	     23607 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     446	    306649 ns/op	   93404 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    2566	     79866 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=2 regional=1
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    4900	     26831 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   12160	     11894 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2366	     60875 ns/op	   38174 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    7422	     18874 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3069	     48893 ns/op	   35333 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    2996	     48268 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1224	    109445 ns/op	   62284 B/op	     114 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1050	    138010 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     674	    183832 ns/op	   97664 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     498	    289917 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16      	    7480	     23759 ns/op	   29217 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16         	   34604	      4242 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     643	    202973 ns/op	   93405 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4104	     35084 ns/op	       0 B/op	       0 allocs/op
+PASS

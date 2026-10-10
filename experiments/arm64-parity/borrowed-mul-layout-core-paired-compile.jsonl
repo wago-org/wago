@@ -1,0 +1,25 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+{"workload":"modular-arithmetic","phase":"compile","round":0,"on":false,"iterations":136,"us":2089.598654411765}
+{"workload":"modular-arithmetic","phase":"compile","round":0,"on":true,"iterations":136,"us":2094.1145882352944}
+{"workload":"modular-arithmetic","phase":"compile","round":1,"on":true,"iterations":136,"us":2101.803919117647}
+{"workload":"modular-arithmetic","phase":"compile","round":1,"on":false,"iterations":136,"us":2132.4209558823527}
+{"workload":"modular-arithmetic","phase":"compile","round":2,"on":false,"iterations":136,"us":2087.473955882353}
+{"workload":"modular-arithmetic","phase":"compile","round":2,"on":true,"iterations":136,"us":2108.582419117647}
+{"workload":"modular-arithmetic","phase":"compile","round":3,"on":true,"iterations":136,"us":2063.3753088235294}
+{"workload":"modular-arithmetic","phase":"compile","round":3,"on":false,"iterations":136,"us":2086.374080882353}
+{"workload":"modular-arithmetic","phase":"compile","round":4,"on":false,"iterations":136,"us":2094.936580882353}
+{"workload":"modular-arithmetic","phase":"compile","round":4,"on":true,"iterations":136,"us":2123.7738970588234}
+{"workload":"modular-arithmetic","phase":"compile","round":5,"on":true,"iterations":136,"us":2117.6816764705886}
+{"workload":"modular-arithmetic","phase":"compile","round":5,"on":false,"iterations":136,"us":2107.05025}
+{"workload":"modular-arithmetic","phase":"compile","round":6,"on":false,"iterations":136,"us":2100.3556985294117}
+{"workload":"modular-arithmetic","phase":"compile","round":6,"on":true,"iterations":136,"us":2090.942095588235}
+{"workload":"modular-arithmetic","phase":"compile","round":7,"on":true,"iterations":136,"us":2091.954963235294}
+{"workload":"modular-arithmetic","phase":"compile","round":7,"on":false,"iterations":136,"us":2085.0913014705884}
+{"workload":"modular-arithmetic","phase":"compile","round":8,"on":false,"iterations":136,"us":2215.198220588235}
+{"workload":"modular-arithmetic","phase":"compile","round":8,"on":true,"iterations":136,"us":2125.3428308823527}
+{"workload":"modular-arithmetic","phase":"compile","round":9,"on":true,"iterations":136,"us":2156.645529411765}
+{"workload":"modular-arithmetic","phase":"compile","round":9,"on":false,"iterations":136,"us":2185.24969117647}
+{"workload":"modular-arithmetic","phase":"compile","round":10,"on":false,"iterations":136,"us":2090.5140882352944}
+{"workload":"modular-arithmetic","phase":"compile","round":10,"on":true,"iterations":136,"us":2112.2634779411765}
+{"workload":"modular-arithmetic","phase":"compile","round":11,"on":true,"iterations":136,"us":2091.3605955882354}
+{"workload":"modular-arithmetic","phase":"compile","round":11,"on":false,"iterations":136,"us":2085.0738382352943}

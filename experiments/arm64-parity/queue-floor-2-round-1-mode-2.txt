@@ -1,0 +1,14 @@
+Device occupied; polling ~/LOCK.md and waiting for release.
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2530	     52723 ns/op	   38172 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8328	     17788 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1704	     85754 ns/op	   66457 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1224	    120938 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1226	    114041 ns/op	   72492 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    3580	     43732 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     943	    145308 ns/op	   93396 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4324	     33838 ns/op	       0 B/op	       0 allocs/op
+PASS

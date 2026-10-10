@@ -1,0 +1,29 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    2750	     38612 ns/op	   35335 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16 	    3003	     38432 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    2876	     40957 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    3013	     41576 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-bresenham/Compile-16         	    3261	     35392 ns/op	   35187 B/op	     107 allocs/op
+BenchmarkParity/graphics-bresenham/Compile-16         	    3237	     35172 ns/op	   35187 B/op	     107 allocs/op
+BenchmarkParity/graphics-bresenham/Exec-16            	     816	    148972 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-bresenham/Exec-16            	     802	    149373 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Compile-16                     	    1826	     66167 ns/op	   40031 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Compile-16                     	    1809	     63577 ns/op	   40031 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Exec-16                        	    3914	     31522 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Exec-16                        	    3901	     31018 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-kmeans/Compile-16                  	    1639	     70619 ns/op	   39478 B/op	     111 allocs/op
+BenchmarkParity/ml-kmeans/Compile-16                  	    1705	     70481 ns/op	   39478 B/op	     111 allocs/op
+BenchmarkParity/ml-kmeans/Exec-16                     	    4822	     24353 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-kmeans/Exec-16                     	    4862	     24409 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-quickselect/Compile-16          	    3867	     29054 ns/op	   34346 B/op	     103 allocs/op
+BenchmarkParity/stats-quickselect/Compile-16          	    4168	     28675 ns/op	   34346 B/op	     103 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16             	    7929	     15016 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16             	    7842	     14884 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stencil-wave-equation/Compile-16      	    2001	     58031 ns/op	   37669 B/op	     111 allocs/op
+BenchmarkParity/stencil-wave-equation/Compile-16      	    2019	     58152 ns/op	   37668 B/op	     111 allocs/op
+BenchmarkParity/stencil-wave-equation/Exec-16         	    1880	     64580 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stencil-wave-equation/Exec-16         	    1870	     65072 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-fir/Compile-16 	    1380	    109715 ns/op	   44858 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    1701	    113152 ns/op	   44864 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3721	     54136 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3610	     53487 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16 	    4747	     37435 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16 	    4957	     35602 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16    	    4393	     46212 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16    	    4467	     44888 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16    	    6429	     24052 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16    	    7345	     23998 ns/op	   34435 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16       	    7441	     24382 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16       	    7387	     24301 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Compile-16                    	    2979	     53927 ns/op	   40030 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Compile-16                    	    3312	     53617 ns/op	   40030 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Exec-16                       	    5638	     38127 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Exec-16                       	    5145	     37669 ns/op	       0 B/op	       0 allocs/op
+PASS

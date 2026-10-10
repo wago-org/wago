@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    1878	     59877 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    1935	     61601 ns/op	   38176 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    6746	     17667 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    6666	     17866 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    2796	     39220 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16              	    3007	     38032 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    3055	     40506 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                 	    3025	     43986 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    2348	     49358 ns/op	   38164 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    2433	     49586 ns/op	   38164 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    3151	     37893 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    3172	     38042 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     806	    148085 ns/op	   93391 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     816	    147279 ns/op	   93389 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    3446	     34871 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    3472	     35538 ns/op	       0 B/op	       0 allocs/op
+PASS

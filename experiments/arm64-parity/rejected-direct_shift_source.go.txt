@@ -1,0 +1,9 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var directShiftSourceEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_SHIFT_SOURCE") != "1"
+
+var directShiftKeepLayout = os.Getenv("WAGO_ARM64_EXPERIMENT_DIRECT_SHIFT_KEEP_LAYOUT") == "1"

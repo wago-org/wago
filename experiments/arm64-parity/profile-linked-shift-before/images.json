@@ -1,0 +1,186 @@
+[
+  {
+    "thread_id": 0,
+    "sequence": 1,
+    "timestamp_ns": 1791604924339871000,
+    "kind": "load",
+    "image_id": 1,
+    "image": {
+      "compiler_site_coverage": "explicit-operand-spills-reloads-and-memory-bounds-branches",
+      "sources": [
+        {
+          "offset": 68,
+          "size": 28,
+          "function": 0,
+          "wasm_offset": 5
+        },
+        {
+          "offset": 96,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 12
+        },
+        {
+          "offset": 104,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 18
+        },
+        {
+          "offset": 108,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 21
+        },
+        {
+          "offset": 112,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 28
+        },
+        {
+          "offset": 116,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 41
+        },
+        {
+          "offset": 132,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 55
+        },
+        {
+          "offset": 144,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 62
+        },
+        {
+          "offset": 148,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 65
+        },
+        {
+          "offset": 152,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 71
+        },
+        {
+          "offset": 156,
+          "size": 36,
+          "function": 0,
+          "wasm_offset": 75
+        },
+        {
+          "offset": 192,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 80
+        },
+        {
+          "offset": 196,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 86
+        },
+        {
+          "offset": 204,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 89
+        },
+        {
+          "offset": 208,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 94
+        },
+        {
+          "offset": 224,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 97
+        },
+        {
+          "offset": 228,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 99
+        },
+        {
+          "offset": 232,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 105
+        }
+      ],
+      "source_coverage": "opcode-lowering-and-deferred-origins",
+      "id": 1,
+      "module_id": "d3dfc4028519becbadc69f6878c0b8b4e32f3ce4713ffe0edbb3a2ac63c4bba1",
+      "artifact_id": "8ce49f3b454f4e31063cbe44807687eebecb4c01393d68b743fc7fb8acd06303",
+      "base": 4393631744,
+      "size": 260,
+      "target": "darwin/arm64",
+      "regions": [
+        {
+          "offset": 0,
+          "size": 28,
+          "kind": "entry-adapter",
+          "function": 0,
+          "name": "sum"
+        },
+        {
+          "offset": 28,
+          "size": 4,
+          "kind": "padding",
+          "function": -1
+        },
+        {
+          "offset": 32,
+          "size": 228,
+          "kind": "guest-body",
+          "function": 0,
+          "name": "sum"
+        }
+      ],
+      "functions": [
+        {
+          "index": 0,
+          "name": "sum",
+          "native_bytes": 260,
+          "frame_bytes": 48,
+          "emitted_spills": 0,
+          "emitted_reloads": 0,
+          "emitted_bounds_checks": 0,
+          "compiler_decisions": {
+            "callfree-loop": 2,
+            "callfree-loop-entry-store-elide": 10,
+            "cmp-branch-fuse": 1,
+            "frame-header-elide": 1,
+            "if-affine-csinc": 1,
+            "if-affine-select": 1,
+            "local-3op-sink": 2,
+            "loop-int-const": 1,
+            "memory-address-load-rename": 2,
+            "memory-address-zext-elim": 2,
+            "small-frame-adjust": 1,
+            "store-load-fwd": 1,
+            "strength-reduce": 1,
+            "zero-branch": 1
+          }
+        }
+      ],
+      "code": "+gMBqv4Pv6kAAED5BQAAlP4PwahgAAD5wANf1h8gA9X/wwDRHyAD1R8gA9X3AwCqEwCA0hUAgNIWAIDSFACA0hkBgNIfIAPVHyAD1R8gA9UfIAPVHyAD1R8gA9UfIAPVfwIXa6oBAFR1BgARtXIdU1NrNbhpBgARPwEXa+kHiRopcR1TUAMVixASAJEJaj+4cwYAEfP//xcUAYDSHyAD1R8gA9UfIAPVHyAD1R8gA9UfIAPVHyAD1R8gA9UfIAPVVAEANPQDFCpJa3S41gIJC/QDFCpQAxSLEBIAkQlqf7j0Awmq9///F/YXAPngAxaq/8MAkR8gA9UfIAPVwANf1h8gA9U="
+    }
+  },
+  {
+    "thread_id": 0,
+    "sequence": 2,
+    "timestamp_ns": 1791604927340423000,
+    "kind": "retire",
+    "image_id": 1
+  }
+]

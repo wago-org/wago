@@ -1,0 +1,11 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/search-bk-tree/Compile-16 	    7906	     40964 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16 	    8481	     40456 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16 	    8586	     40422 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16    	    2401	    161346 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16    	    2500	    149903 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16    	    2446	    154353 ns/op	       0 B/op	       0 allocs/op
+PASS

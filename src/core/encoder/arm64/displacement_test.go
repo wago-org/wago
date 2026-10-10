@@ -51,6 +51,17 @@ func displacementAddress(t *testing.T, a *Asm, base Reg) int64 {
 			return regs[rn] + index - 0x100000000
 		case w&0x3f000000 == 0x3d000000:
 			return regs[rn] + int64((w>>10)&0xfff)*16 - 0x100000000
+		case w&0x3b000000 == 0x39000000:
+			return regs[rn] + (int64((w>>10)&0xfff) << ((w >> 30) & 3)) - 0x100000000
+		case w&0x3b200c00 == 0x38200800:
+			index := regs[rm]
+			if rm == 31 {
+				index = 0
+			}
+			if w&(1<<12) != 0 {
+				index <<= (w >> 30) & 3
+			}
+			return regs[rn] + index - 0x100000000
 		case w&0x3f200c00 == 0x3c000000:
 			off := int64(int32(w<<11) >> 23)
 			return regs[rn] + off - 0x100000000
@@ -180,7 +191,6 @@ func TestIndexedDisplacementAddresses(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%x", tc.name, disp), func(t *testing.T) {
 				a := Asm{DisableLogicalMoveImmediate: true}
 				tc.emit(&a, disp)
-				a.B = a.B[:len(a.B)-4] // The final register-offset access has zero index.
 				if got := displacementAddress(t, &a, X0); got != int64(disp) {
 					t.Fatalf("address = %#x, want %#x", got, disp)
 				}

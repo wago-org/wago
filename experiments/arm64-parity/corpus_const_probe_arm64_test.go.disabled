@@ -1,0 +1,16 @@
+//go:build arm64
+package arm64
+import("os";"testing";"github.com/wago-org/wago/src/core/compiler/wasm")
+func TestCorpusConstProbe(t *testing.T) {
+ path:=os.Getenv("WAGO_CONST_PROBE");if path=="" {t.Skip("diagnostic corpus probe")}
+ data,err:=os.ReadFile(path);if err!=nil {t.Fatal(err)}
+ m,err:=wasm.DecodeModule(data);if err!=nil {t.Fatal(err)}
+ for i,body:=range m.Code {
+ h,err:=scanFuncBody(body,256,len(m.Globals),uint32(i),nil,m);if err!=nil {t.Fatal(err)}
+ t.Logf("function %d selected types=%x constants=%x",i,h.loopIntConstTypes,h.loopIntConst)
+ }
+ var stats ModuleStats
+ cm,err:=CompileModuleWith(m,CompileOptions{Stats:&stats});if err!=nil {t.Fatal(err)}
+ if cm.CodeImage!=nil {defer cm.CodeImage.Close()}
+ for i,s:=range stats.Funcs {t.Logf("function %d stats=%+v",i,s)}
+}

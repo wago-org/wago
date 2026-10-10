@@ -1,0 +1,13 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-fir/Compile-16 	    3258	     69955 ns/op	   44859 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    3492	     70830 ns/op	   44860 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	   10000	     23587 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    9948	     23629 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Compile-16    	    3576	     63009 ns/op	   40030 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Compile-16    	    3754	     62875 ns/op	   40029 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Exec-16       	    7795	     31069 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Exec-16       	    7812	     33343 ns/op	       0 B/op	       0 allocs/op
+PASS

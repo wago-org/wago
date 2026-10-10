@@ -1,0 +1,11 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkCachedSimple/Compile-16         	    6356	    108737 ns/op	   82481 B/op	     165 allocs/op
+BenchmarkCachedSimple/Compile-16         	    6687	    108085 ns/op	   82480 B/op	     165 allocs/op
+BenchmarkCachedSimple/Compile-16         	    6987	    108904 ns/op	   82480 B/op	     165 allocs/op
+BenchmarkCachedSimple/Exec-16            	    4863	    147799 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCachedSimple/Exec-16            	    5012	    151592 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCachedSimple/Exec-16            	    4885	    151515 ns/op	       0 B/op	       0 allocs/op
+PASS

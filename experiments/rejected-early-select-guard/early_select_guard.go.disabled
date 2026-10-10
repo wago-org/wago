@@ -1,0 +1,180 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"math/bits"
+	"os"
+)
+
+var earlySelectGuardEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_EARLY_SELECT_GUARD") == "1"
+
+type earlySelectValue struct {
+	kind     uint8 // local, constant, expression, simple comparison, guarded selection
+	local    int
+	constant int32
+	cost     int
+	cc       Cond
+	skip     Cond
+}
+
+type earlySelectPlan struct {
+	end, destination, conditionLocal int
+	constant                         int32
+	skip                             Cond
+	keepTrue                         bool
+	reads                            uint64
+}
+
+// The region contains only pure i32 operations. A final select keeps its old
+// destination on one arm, and its unchanged local/constant condition can guard
+// the complete region before nested selects eagerly realize the other arm.
+func (f *fn) scanEarlySelect(reader *wasm.Reader, destination int) (earlySelectPlan, bool) {
+	r := *reader
+	var stack [16]earlySelectValue
+	stack[0] = earlySelectValue{kind: 1, local: destination}
+	depth := 1
+	reads := uint64(1) << uint(destination)
+	comparisons := [10]Cond{condE, condNE, condL, condB, condG, condA, condLE, condBE, condGE, condAE}
+	for count := 0; count < 64 && r.HasNext(); count++ {
+		op, err := r.Byte()
+		if err != nil {
+			break
+		}
+		switch {
+		case op == 0x20:
+			x, err := r.U32()
+			if err != nil || x >= 64 || int(x) >= f.nLocals || f.localType[x] != mtI32 || depth == len(stack) {
+				return earlySelectPlan{}, false
+			}
+			stack[depth] = earlySelectValue{kind: 1, local: int(x)}
+			depth++
+			reads |= uint64(1) << x
+		case op == 0x41:
+			c, err := r.I32()
+			if err != nil || depth == len(stack) {
+				return earlySelectPlan{}, false
+			}
+			stack[depth] = earlySelectValue{kind: 2, constant: c}
+			depth++
+		case op == 0x45:
+			if depth < 1 {
+				return earlySelectPlan{}, false
+			}
+			a := stack[depth-1]
+			v := earlySelectValue{kind: 3, cost: a.cost + 1}
+			if a.kind == 1 {
+				v = earlySelectValue{kind: 4, local: a.local, cc: condE, cost: 1}
+			}
+			stack[depth-1] = v
+		case op >= 0x46 && op <= 0x4f:
+			if depth < 2 {
+				return earlySelectPlan{}, false
+			}
+			a, b := stack[depth-2], stack[depth-1]
+			v := earlySelectValue{kind: 3, cost: a.cost + b.cost + 1}
+			if a.kind == 1 && b.kind == 2 {
+				v = earlySelectValue{kind: 4, local: a.local, constant: b.constant, cc: comparisons[op-0x46], cost: 1}
+			}
+			stack[depth-2] = v
+			depth--
+		case op == 0x6a || op == 0x6b || op == 0x6c || op >= 0x71 && op <= 0x78:
+			if depth < 2 {
+				return earlySelectPlan{}, false
+			}
+			weight := 1
+			if op == 0x6c {
+				weight = 4
+			}
+			stack[depth-2] = earlySelectValue{kind: 3, cost: stack[depth-2].cost + stack[depth-1].cost + weight}
+			depth--
+		case op == 0x1b:
+			if depth < 3 {
+				return earlySelectPlan{}, false
+			}
+			a, b, c := stack[depth-3], stack[depth-2], stack[depth-1]
+			v := earlySelectValue{kind: 3, cost: a.cost + b.cost + c.cost + 1}
+			if c.kind == 4 {
+				if b.kind == 1 && b.local == destination && a.cost >= 5 {
+					v = earlySelectValue{kind: 5, local: c.local, constant: c.constant, cc: c.cc, skip: invertCond(c.cc), cost: v.cost}
+				}
+				if a.kind == 1 && a.local == destination && b.cost >= 5 {
+					v = earlySelectValue{kind: 5, local: c.local, constant: c.constant, cc: c.cc, skip: c.cc, cost: v.cost}
+				}
+			}
+			stack[depth-3] = v
+			depth -= 2
+		case op == 0x21:
+			x, err := r.U32()
+			if err != nil || int(x) != destination || depth != 1 || stack[0].kind != 5 {
+				return earlySelectPlan{}, false
+			}
+			v := stack[0]
+			return earlySelectPlan{end: r.Offset(), destination: destination, conditionLocal: v.local, constant: v.constant, skip: v.skip, reads: reads, keepTrue: v.skip == v.cc}, true
+		default:
+			return earlySelectPlan{}, false
+		}
+	}
+	return earlySelectPlan{}, false
+}
+
+func (f *fn) beginEarlySelectGuard(reader *wasm.Reader) {
+	if !f.opt(optEarlySelectGuard) || f.selectGroupEnd != 0 || f.unreachable || f.usesCalls || f.moduleEH || f.tracksGCFrameRoots() || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 {
+		return
+	}
+	top := f.s.back()
+	if top == nil || f.s.prev(top) != f.s.head || top.elemKind() != ekValue || top.st.kind != stLocalReg || top.st.typ != mtI32 {
+		return
+	}
+	destination := top.st.index()
+	if destination < f.nParams || destination >= 64 || !f.canonicalI32Local(destination) {
+		return
+	}
+	next, ok := reader.Peek()
+	if !ok || next != 0x20 && next != 0x41 {
+		return
+	}
+	plan, ok := f.scanEarlySelect(reader, destination)
+	if !ok {
+		return
+	}
+	// Every source remains pinned across the region; recover lazy declarations
+	// before branching so skipped paths cannot inherit uninitialized registers.
+	for reads := plan.reads; reads != 0; reads &= reads - 1 {
+		x := bits.TrailingZeros64(reads)
+		_, floating, pinned := f.pinReg(x)
+		if !pinned || floating {
+			return
+		}
+	}
+	for reads := plan.reads; reads != 0; reads &= reads - 1 {
+		f.recoverLocal(bits.TrailingZeros64(reads))
+	}
+	f.invalidateGlobalsCache()
+	f.invalidateStoreForward()
+	f.invalidateBoundsCert()
+	reg, _, _ := f.pinReg(plan.conditionLocal)
+	f.cmpConst(reg, storage{kind: stConst, typ: mtI32, cval: int64(plan.constant)}, false)
+	f.earlySelectActive = true
+	f.earlySelectKeepTrue = plan.keepTrue
+	f.selectGroupSite = f.a.Bcond(plan.skip)
+	f.selectGroupEnd = plan.end
+	f.selectGroupLocal = destination
+	f.stats.peep("early-select-guard")
+}
+
+// The entry guard already decides the outer selection. Its pure condition and
+// keep arm are dead on fallthrough; only the expensive arm writes the local.
+func (f *fn) finishEarlySelectSink(a, b, condition *elem, destination Reg) {
+	work, keep := a, b
+	if f.earlySelectKeepTrue {
+		work, keep = b, a
+	}
+	f.discardTree(condition)
+	f.discardTree(keep)
+	f.condenseInto(work, destination)
+	f.release(destination)
+	f.erase(work)
+	f.stats.peep("early-select-sink-eliminated")
+}

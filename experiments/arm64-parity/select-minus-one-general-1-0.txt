@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-adpcm/Compile-16 	    6057	     17102 ns/op	   28318 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16 	    7359	     17641 ns/op	   28319 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3634	     38154 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3696	     35539 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Compile-16         	    6214	     19639 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Compile-16         	    6625	     19547 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Exec-16            	     948	    130131 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Exec-16            	     968	    130239 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16      	     679	    174953 ns/op	   96505 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16      	     697	    173507 ns/op	   96508 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16         	    2701	     48390 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16         	    2706	     47819 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                	     998	    118821 ns/op	   72489 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                	    1018	    119289 ns/op	   72489 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                   	    2882	     44543 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                   	    2871	     44714 ns/op	       0 B/op	       0 allocs/op
+PASS

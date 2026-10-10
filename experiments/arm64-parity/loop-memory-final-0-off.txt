@@ -1,0 +1,29 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    4569	     25935 ns/op	   34555 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    4724	     52603 ns/op	   34555 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	    9188	     21237 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   10000	     16074 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	     868	    208951 ns/op	   38180 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    1246	     80886 ns/op	   38178 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    5670	     33087 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    6783	     17516 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    2228	     50443 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    2300	     49798 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    3195	     37946 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    3194	     38035 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graph-dijkstra/Compile-16               	    2613	     44161 ns/op	   38485 B/op	     110 allocs/op
+BenchmarkParity/graph-dijkstra/Compile-16               	    2666	     43726 ns/op	   38484 B/op	     110 allocs/op
+BenchmarkParity/graph-dijkstra/Exec-16                  	   19226	      6219 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graph-dijkstra/Exec-16                  	   19297	      6159 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16               	    2721	     40781 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16               	    2803	     41144 ns/op	   35844 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16                  	     850	    161925 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16                  	     813	    135810 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-quickselect/Compile-16            	    3927	     27951 ns/op	   34346 B/op	     103 allocs/op
+BenchmarkParity/stats-quickselect/Compile-16            	    4188	     27916 ns/op	   34347 B/op	     103 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16               	    7040	     16814 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16               	    7119	     16650 ns/op	       0 B/op	       0 allocs/op
+PASS

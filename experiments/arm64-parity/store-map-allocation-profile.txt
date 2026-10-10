@@ -1,0 +1,6 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    4821	    247964 ns/op	   41391 B/op	     108 allocs/op
+PASS

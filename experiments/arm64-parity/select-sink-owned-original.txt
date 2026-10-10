@@ -1,0 +1,12 @@
+	if isFusableCondition(cond) {
+		aReg := f.materialize(a)
+		f.pinned = f.pinned.add(aReg)
+		bReg := f.materialize(b)
+		f.pinned = f.pinned.add(bReg)
+		cc := f.condenseToFlags(cond)
+		f.a.Csel(dest, bReg, aReg, invertCond(cc), w)
+		f.pinned = f.pinned.remove(aReg).remove(bReg)
+		f.release(aReg)
+		f.release(bReg)
+		f.erase(b)
+		f.erase(a)

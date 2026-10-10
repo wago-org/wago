@@ -1,0 +1,54 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64
+cpu: Apple M4 Max
+BenchmarkSelectGroupConditions/zero/contiguous/eager-16         	     174	    819055 ns/op
+BenchmarkSelectGroupConditions/zero/contiguous/eager-16         	     175	    819869 ns/op
+BenchmarkSelectGroupConditions/zero/contiguous/eager-16         	     175	    819108 ns/op
+BenchmarkSelectGroupConditions/zero/contiguous/guarded-16       	    4753	     36364 ns/op
+BenchmarkSelectGroupConditions/zero/contiguous/guarded-16       	    4810	     36180 ns/op
+BenchmarkSelectGroupConditions/zero/contiguous/guarded-16       	    4809	     34319 ns/op
+BenchmarkSelectGroupConditions/zero/spread/eager-16             	     175	    819740 ns/op
+BenchmarkSelectGroupConditions/zero/spread/eager-16             	     175	    820234 ns/op
+BenchmarkSelectGroupConditions/zero/spread/eager-16             	     175	    819478 ns/op
+BenchmarkSelectGroupConditions/zero/spread/guarded-16           	    4838	     36389 ns/op
+BenchmarkSelectGroupConditions/zero/spread/guarded-16           	    4809	     34244 ns/op
+BenchmarkSelectGroupConditions/zero/spread/guarded-16           	    4801	     34460 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/eager-16         	     175	    824231 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/eager-16         	     174	    824183 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/eager-16         	     175	    824343 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/guarded-16       	     176	    817694 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/guarded-16       	     175	    818898 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/guarded-16       	     175	    817296 ns/op
+BenchmarkSelectGroupConditions/full/spread/eager-16             	     175	    825204 ns/op
+BenchmarkSelectGroupConditions/full/spread/eager-16             	     174	    824970 ns/op
+BenchmarkSelectGroupConditions/full/spread/eager-16             	     174	    824302 ns/op
+BenchmarkSelectGroupConditions/full/spread/guarded-16           	     175	    814784 ns/op
+BenchmarkSelectGroupConditions/full/spread/guarded-16           	     175	    817196 ns/op
+BenchmarkSelectGroupConditions/full/spread/guarded-16           	     176	    814881 ns/op
+BenchmarkSelectGroupConditions/alternating/contiguous/eager-16  	     175	    820182 ns/op
+BenchmarkSelectGroupConditions/alternating/contiguous/eager-16  	     175	    822376 ns/op
+BenchmarkSelectGroupConditions/alternating/contiguous/eager-16  	     175	    821124 ns/op
+BenchmarkSelectGroupConditions/alternating/contiguous/guarded-16         	     175	    818094 ns/op
+BenchmarkSelectGroupConditions/alternating/contiguous/guarded-16         	     176	    816480 ns/op
+BenchmarkSelectGroupConditions/alternating/contiguous/guarded-16         	     175	    820284 ns/op
+BenchmarkSelectGroupConditions/alternating/spread/eager-16               	     175	    820072 ns/op
+BenchmarkSelectGroupConditions/alternating/spread/eager-16               	     175	    823543 ns/op
+BenchmarkSelectGroupConditions/alternating/spread/eager-16               	     175	    820665 ns/op
+BenchmarkSelectGroupConditions/alternating/spread/guarded-16             	     176	    815658 ns/op
+BenchmarkSelectGroupConditions/alternating/spread/guarded-16             	     151	    815503 ns/op
+BenchmarkSelectGroupConditions/alternating/spread/guarded-16             	     176	    815895 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/eager-16                	     175	    818072 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/eager-16                	     175	    820047 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/eager-16                	     175	    821740 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/guarded-16              	     178	    804779 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/guarded-16              	     178	    805329 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/guarded-16              	     178	    804762 ns/op
+BenchmarkSelectGroupConditions/random/spread/eager-16                    	     175	    823518 ns/op
+BenchmarkSelectGroupConditions/random/spread/eager-16                    	     175	    821529 ns/op
+BenchmarkSelectGroupConditions/random/spread/eager-16                    	     175	    819118 ns/op
+BenchmarkSelectGroupConditions/random/spread/guarded-16                  	     180	    796938 ns/op
+BenchmarkSelectGroupConditions/random/spread/guarded-16                  	     180	    798138 ns/op
+BenchmarkSelectGroupConditions/random/spread/guarded-16                  	     178	    796720 ns/op
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	11.128s

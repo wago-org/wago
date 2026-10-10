@@ -1,0 +1,12 @@
+
+// Csinv selects rn when c holds, otherwise the bitwise inverse of rm.
+func (a *Asm) Csinv(rd, rn, rm Reg, c Cond, wide bool) {
+	word := uint32(0x5A800000)
+	if wide {
+		word |= 0x80000000
+	}
+	a.word(word | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}

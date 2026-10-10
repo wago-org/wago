@@ -1,0 +1,13 @@
+corpus	phase	off_us	on_us	change_percent
+audio-fir	Compile	109.834	73.446	-33.13
+audio-fir	Exec	56.489	32.816	-41.91
+hardware-prime-implicants	Compile	36.987	37.344	0.96
+hardware-prime-implicants	Exec	46.718	45.067	-3.54
+ml-inference	Compile	25.756	25.558	-0.77
+ml-inference	Exec	5.274	5.261	-0.23
+ml-knn	Compile	56.057	55.588	-0.84
+ml-knn	Exec	38.160	38.253	0.24
+serialization-protobuf	Compile	25.834	25.538	-1.15
+serialization-protobuf	Exec	25.277	24.912	-1.45
+stats-linear-regression	Compile	19.169	19.274	0.55
+stats-linear-regression	Exec	1.612	1.570	-2.64

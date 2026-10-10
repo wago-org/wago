@@ -1,0 +1,14 @@
+wago__blake3__hash
+wago__coremark__2k-performance
+wago__json-as-simd__serializeN
+wago__kissfft__complex-roundtrip
+wago__polybench-adi__polybench_run
+wago__polybench-correlation__polybench_run
+wago__polybench-floyd-warshall__polybench_run
+wago__polybench-gemm__polybench_run
+wago__polybench-seidel-2d__polybench_run
+wago__polybench-trisolv__polybench_run
+wago__qoi__encode
+wago__utf8proc__normalize-casefold
+applications__stats-gini
+applications__vision-otsu

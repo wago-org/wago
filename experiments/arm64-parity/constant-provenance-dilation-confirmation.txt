@@ -1,0 +1,80 @@
+round=0 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4488	     36694 ns/op	   35333 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    4395	     47872 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=0 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4508	     35626 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    3991	     44299 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=1 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4820	     33809 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    4382	     45568 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=1 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4557	     35822 ns/op	   35332 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    4038	     43160 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=2 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4413	     34397 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    4478	     48738 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=2 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4682	     36589 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    3800	     47719 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=3 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4389	     35900 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    3771	     46458 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=3 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4765	     33689 ns/op	   35332 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    4546	     46046 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=4 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4438	     36010 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    4278	     45433 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=4 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-dilation/Compile-16 	    4513	     33694 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16    	    4256	     49339 ns/op	       0 B/op	       0 allocs/op
+PASS

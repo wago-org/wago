@@ -1,0 +1,95 @@
+=== RUN   TestCachedCoreOracles
+=== RUN   TestCachedCoreOracles/wago/tiny/add
+=== RUN   TestCachedCoreOracles/wago/fib_rec/fib
+=== RUN   TestCachedCoreOracles/wago/memory/sum
+=== RUN   TestCachedCoreOracles/wago/memory_tree/run
+=== RUN   TestCachedCoreOracles/wago/dispatch/apply
+=== RUN   TestCachedCoreOracles/wago/many_funcs/run
+=== RUN   TestCachedCoreOracles/wago/linked_list/sum
+=== RUN   TestCachedCoreOracles/wago/json-as-simd/serializeN
+=== RUN   TestCachedCoreOracles/wago/utf-as-simd/validateN
+=== RUN   TestCachedCoreOracles/wago/coremark/2k-performance
+=== RUN   TestCachedCoreOracles/wago/blake3/hash
+=== RUN   TestCachedCoreOracles/wago/qoi/encode
+=== RUN   TestCachedCoreOracles/wago/lz4/compress
+=== RUN   TestCachedCoreOracles/wago/zlib/inflate
+=== RUN   TestCachedCoreOracles/wago/zstd/decompress
+=== RUN   TestCachedCoreOracles/wago/yyjson/parse-edit-write
+=== RUN   TestCachedCoreOracles/wago/utf8proc/normalize-casefold
+=== RUN   TestCachedCoreOracles/wago/xxhash/xxh64-boundaries
+=== RUN   TestCachedCoreOracles/wago/libtommath/modular-arithmetic
+=== RUN   TestCachedCoreOracles/wago/nanosvg/parse-structure
+=== RUN   TestCachedCoreOracles/wago/kissfft/complex-roundtrip
+=== RUN   TestCachedCoreOracles/wago/monocypher/aead-blake2b
+=== RUN   TestCachedCoreOracles/wago/drwav/pcm-decode-seek
+=== RUN   TestCachedCoreOracles/wago/fastfloat/decimal-parse
+=== RUN   TestCachedCoreOracles/wago/pcre2/compile-match
+=== RUN   TestCachedCoreOracles/wago/polybench-adi/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-cholesky/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-correlation/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-deriche/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-durbin/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-fdtd-2d/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-floyd-warshall/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-gemm/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-gramschmidt/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-jacobi-2d/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-lu/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-nussinov/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-seidel-2d/polybench_run
+=== RUN   TestCachedCoreOracles/wago/polybench-trisolv/polybench_run
+=== RUN   TestCachedCoreOracles/wago/nbody/step
+=== RUN   TestCachedCoreOracles/wago/fannkuch/run
+=== RUN   TestCachedCoreOracles/wago/sha256/hashN
+=== RUN   TestCachedCoreOracles/wago/raytrace/render
+=== RUN   TestCachedCoreOracles/mechanisms/host-to-wasm-call
+=== RUN   TestCachedCoreOracles/mechanisms/wasm-to-host-call
+=== RUN   TestCachedCoreOracles/mechanisms/wasm-host-wasm-loop
+--- PASS: TestCachedCoreOracles (0.13s)
+    --- PASS: TestCachedCoreOracles/wago/tiny/add (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/fib_rec/fib (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/memory/sum (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/memory_tree/run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/dispatch/apply (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/many_funcs/run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/linked_list/sum (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/json-as-simd/serializeN (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/utf-as-simd/validateN (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/coremark/2k-performance (0.03s)
+    --- PASS: TestCachedCoreOracles/wago/blake3/hash (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/qoi/encode (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/lz4/compress (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/zlib/inflate (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/zstd/decompress (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/yyjson/parse-edit-write (0.01s)
+    --- PASS: TestCachedCoreOracles/wago/utf8proc/normalize-casefold (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/xxhash/xxh64-boundaries (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/libtommath/modular-arithmetic (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/nanosvg/parse-structure (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/kissfft/complex-roundtrip (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/monocypher/aead-blake2b (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/drwav/pcm-decode-seek (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/fastfloat/decimal-parse (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/pcre2/compile-match (0.01s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-adi/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-cholesky/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-correlation/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-deriche/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-durbin/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-fdtd-2d/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-floyd-warshall/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-gemm/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-gramschmidt/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-jacobi-2d/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-lu/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-nussinov/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-seidel-2d/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/polybench-trisolv/polybench_run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/nbody/step (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/fannkuch/run (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/sha256/hashN (0.00s)
+    --- PASS: TestCachedCoreOracles/wago/raytrace/render (0.00s)
+    --- PASS: TestCachedCoreOracles/mechanisms/host-to-wasm-call (0.00s)
+    --- PASS: TestCachedCoreOracles/mechanisms/wasm-to-host-call (0.00s)
+    --- PASS: TestCachedCoreOracles/mechanisms/wasm-host-wasm-loop (0.04s)
+PASS

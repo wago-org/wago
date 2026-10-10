@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-adpcm/Compile-16 	    6411	     18167 ns/op	   28317 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16 	    6676	     17907 ns/op	   28317 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3292	     36802 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3310	     36857 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    1886	     62821 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2020	     60802 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    6876	     17751 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    6721	     17715 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    2346	     49707 ns/op	   38164 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    2426	     49516 ns/op	   38164 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    3169	     38621 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    3204	     38275 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16         	    4063	     27935 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16         	    4014	     27703 ns/op	   36043 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16            	    5570	     21379 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16            	    5649	     21281 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1020	    117263 ns/op	   72492 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1023	    116487 ns/op	   72492 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    2862	     41645 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    2916	     41691 ns/op	       0 B/op	       0 allocs/op
+PASS

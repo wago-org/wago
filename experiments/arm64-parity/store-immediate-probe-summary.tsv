@@ -1,0 +1,9 @@
+case	phase	before_us	after_us	change_pct
+compiler-register-allocation	Compile	58.450	56.020	-4.16
+compiler-register-allocation	Exec	16.532	16.230	-1.83
+db-btree	Compile	58.715	57.318	-2.38
+db-btree	Exec	10.056	9.876	-1.79
+image-resize	Compile	32.222	31.997	-0.70
+image-resize	Exec	22.128	22.099	-0.13
+search-bk-tree	Compile	40.294	39.638	-1.63
+search-bk-tree	Exec	148.415	157.045	+5.81

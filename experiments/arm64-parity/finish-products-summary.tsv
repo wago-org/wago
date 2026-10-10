@@ -1,0 +1,9 @@
+corpus	phase	off_us	on_us	change_percent
+audio-fir	Compile	107.282	73.057	-31.90
+audio-fir	Exec	54.022	37.599	-30.40
+hardware-prime-implicants	Compile	35.590	34.799	-2.22
+hardware-prime-implicants	Exec	44.742	44.055	-1.54
+ml-knn	Compile	53.959	53.951	-0.01
+ml-knn	Exec	37.898	38.299	1.06
+serialization-protobuf	Compile	24.157	23.939	-0.90
+serialization-protobuf	Exec	24.456	24.329	-0.52

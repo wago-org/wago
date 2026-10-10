@@ -1,0 +1,17 @@
+workload	phase	off_us	on_us	change_percent
+image-composite	Compile	26.414	28.178	6.68
+image-composite	Exec	70.724	62.493	-11.64
+image-resize	Compile	36.411	37.711	3.57
+image-resize	Exec	22.845	15.405	-32.57
+ml-convolution	Compile	31.985	31.759	-0.71
+ml-convolution	Exec	25.125	21.552	-14.22
+ml-inference	Compile	53.058	36.464	-31.28
+ml-inference	Exec	6.043	5.277	-12.67
+stats-quickselect	Compile	29.389	32.207	9.59
+stats-quickselect	Exec	46.013	13.140	-71.44
+video-dct	Compile	130.930	124.398	-4.99
+video-dct	Exec	42.244	41.728	-1.22
+vision-components	Compile	53.928	57.239	6.14
+vision-components	Exec	37.543	30.384	-19.07
+vision-dilation	Compile	43.432	41.883	-3.57
+vision-dilation	Exec	42.633	38.112	-10.61

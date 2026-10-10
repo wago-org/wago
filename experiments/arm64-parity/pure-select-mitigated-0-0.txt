@@ -1,0 +1,17 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/db-hash-join/Compile-16 	    4618	     23704 ns/op	   31241 B/op	     104 allocs/op
+BenchmarkParity/db-hash-join/Compile-16 	    5340	     23735 ns/op	   31240 B/op	     104 allocs/op
+BenchmarkParity/db-hash-join/Exec-16    	   33070	      3657 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-hash-join/Exec-16    	   32805	      3622 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16 	    3943	     27751 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16 	    3997	     27552 ns/op	   34436 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16    	    4338	     27453 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16    	    4346	     27562 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16    	     704	    168569 ns/op	   96506 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16    	     716	    168773 ns/op	   96509 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16       	    2496	     48475 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16       	    2492	     48319 ns/op	       0 B/op	       0 allocs/op
+PASS

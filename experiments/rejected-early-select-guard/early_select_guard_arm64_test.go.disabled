@@ -1,0 +1,127 @@
+//go:build (linux || darwin) && arm64
+
+package arm64
+
+import (
+	"errors"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	rt "github.com/wago-org/wago/src/core/runtime"
+	"testing"
+)
+
+func earlySelectFixture(t testing.TB, reverse, older, trapping bool, cmp byte) *wasm.Module {
+	// Locals2/3: destination and a lazy-zero source used by the expensive arm.
+	body := []byte{1, 2, 0x7f, 0x20, 0, 0x21, 2}
+	if older {
+		body = append(body, 0x41, 0xe3, 0)
+	} // signed LEB 99
+	if reverse {
+		body = append(body, 0x20, 2)
+	}
+	body = append(body, 0x20, 2, 0x20, 1, 0x73, 0x41, 17, 0x6c, 0x20, 3, 0x6a)
+	// Avoid cancellation: inner select chooses work when bit1 is set.
+	body = append(body, 0x20, 2, 0x20, 1, 0x41, 2, 0x71, 0x1b)
+	if trapping {
+		body = append(body, 0x41, 0, 0x6e)
+	} // a divide that must still trap
+	if !reverse {
+		body = append(body, 0x20, 2)
+	}
+	body = append(body, 0x20, 1, 0x41, 2, cmp, 0x1b, 0x21, 2, 0x20, 2)
+	if older {
+		body = append(body, 0x73)
+	}
+	body = append(body, 0x0b)
+	return mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+}
+
+func TestEarlySelectGuardNestedDirectionsAndLazySources(t *testing.T) {
+	for _, cmp := range []byte{0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f} {
+		for _, reverse := range []bool{false, true} {
+			for _, older := range []bool{false, true} {
+				m := earlySelectFixture(t, reverse, older, false, cmp)
+				for _, enabled := range []bool{false, true} {
+					for _, guard := range []bool{false, true} {
+						for _, c := range []uint32{0, 1, 2, 3, 4, 0x7fffffff, 0x80000000, 0xffffffff} {
+							n := uint32(0x81234567)
+							work := (n ^ c) * 17
+							inner := n
+							if c&2 != 0 {
+								inner = work
+							}
+							choose := false
+							switch cmp {
+							case 0x46:
+								choose = c == 2
+							case 0x47:
+								choose = c != 2
+							case 0x48:
+								choose = int32(c) < 2
+							case 0x49:
+								choose = c < 2
+							case 0x4a:
+								choose = int32(c) > 2
+							case 0x4b:
+								choose = c > 2
+							case 0x4c:
+								choose = int32(c) <= 2
+							case 0x4d:
+								choose = c <= 2
+							case 0x4e:
+								choose = int32(c) >= 2
+							case 0x4f:
+								choose = c >= 2
+							}
+							if reverse {
+								choose = !choose
+							}
+							want := n
+							if choose {
+								want = inner
+							}
+							if older {
+								want ^= 99
+							}
+							var stats ModuleStats
+							opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"early-select-guard": enabled}}
+							if diagnosticsEnabled {
+								opts.Stats = &stats
+							}
+							got, err := runArm64WrapperWithOptions(t, m, opts, uint64(n), uint64(c))
+							if err != nil || got != uint64(want) {
+								t.Fatalf("cmp=%x reverse=%v older=%v on=%v guard=%v c=%x got=%x want=%x err=%v", cmp, reverse, older, enabled, guard, c, got, want, err)
+							}
+							if diagnosticsEnabled && (stats.Funcs[0].Peephole["early-select-sink-eliminated"] != 0) != (enabled && !older) {
+								t.Fatalf("sink elimination mismatch %+v", stats.Funcs[0].Peephole)
+							}
+							if diagnosticsEnabled && (stats.Funcs[0].Peephole["early-select-guard"] != 0) != (enabled && !older) {
+								t.Fatalf("admission mismatch %+v", stats.Funcs[0].Peephole)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestEarlySelectGuardRejectsTrappingArms(t *testing.T) {
+	m := earlySelectFixture(t, false, false, true, 0x46)
+	for _, enabled := range []bool{false, true} {
+		for _, guard := range []bool{false, true} {
+			var stats ModuleStats
+			opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"early-select-guard": enabled}}
+			if diagnosticsEnabled {
+				opts.Stats = &stats
+			}
+			_, err := runArm64WrapperWithOptions(t, m, opts, 17, 0)
+			var trap *rt.TrapError
+			if !errors.As(err, &trap) || trap.Code != rt.TrapDivZero {
+				t.Fatalf("on=%v guard=%v got=%v", enabled, guard, err)
+			}
+			if diagnosticsEnabled && stats.Funcs[0].Peephole["early-select-guard"] != 0 {
+				t.Fatal("trapping region admitted")
+			}
+		}
+	}
+}

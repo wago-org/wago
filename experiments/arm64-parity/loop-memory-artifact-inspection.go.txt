@@ -1,0 +1,41 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"os"
+	"testing"
+)
+
+func TestInspectMemoryBaseArtifacts(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, name := range []string{"compiler-register-allocation", "vision-components"} {
+		b, e := os.ReadFile("/Users/work/Code/Web/wasm.fyi/corpora/applications/artifacts/" + name + ".wasm")
+		if e != nil {
+			t.Fatal(e)
+		}
+		m, e := wasm.DecodeModule(b)
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, c := range m.Code {
+			h, e := scanBodyBytes(c.BodyBytes, 128, 0, 0)
+			if e != nil {
+				t.Fatal(e)
+			}
+			t.Logf("%s hints flags=%x count=%d types=%x bits=%v", name, h.flags, h.loopIntConstCount, h.loopIntConstTypes, h.loopIntConst)
+		}
+		st := &ModuleStats{}
+		cm, e := CompileModuleWith(m, CompileOptions{Stats: st})
+		if e != nil {
+			t.Fatal(e)
+		}
+		if cm.CodeImage != nil {
+			cm.CodeImage.Close()
+		}
+		for _, f := range st.Funcs {
+			t.Logf("%s peepholes=%v", name, f.Peephole)
+		}
+	}
+}

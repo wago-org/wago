@@ -1,0 +1,6 @@
+=== RUN   TestLoopMemoryBaseValues
+--- PASS: TestLoopMemoryBaseValues (0.02s)
+=== RUN   TestLoopMemoryBaseAdmissionAndGrowRejection
+--- PASS: TestLoopMemoryBaseAdmissionAndGrowRejection (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.300s

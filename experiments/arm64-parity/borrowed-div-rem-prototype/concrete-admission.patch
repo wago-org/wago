@@ -1,0 +1,11 @@
+--- emit.go
++++ emit.go
+@@ -1202,7 +1202,7 @@
+ // fixed division registers, x86's spill-RAX/spill-RDX/pin/Cdq dance disappears —
+ // three ordinary registers (dividend, divisor, result) suffice.
+ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
+-	if f.opt(optBorrowedDivRem) {
++	if f.opt(optBorrowedDivRem) && f.canBorrowDivRemOperands(node) {
+ 		return f.condenseBorrowedDivRem(node, dest)
+ 	}
+ 	w := node.st.typ.is64()

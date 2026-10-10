@@ -1,0 +1,29 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/image-resize/Compile-16 	    5941	     35656 ns/op	   34930 B/op	     104 allocs/op
+BenchmarkParity/image-resize/Compile-16 	    6717	     34771 ns/op	   34930 B/op	     104 allocs/op
+BenchmarkParity/image-resize/Exec-16    	   16287	     14643 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-resize/Exec-16    	   16395	     15050 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    6885	     32091 ns/op	   34602 B/op	     106 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    7237	     32090 ns/op	   34603 B/op	     106 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   46837	      5117 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   46974	      5156 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16         	    4441	     52680 ns/op	   38189 B/op	     109 allocs/op
+BenchmarkParity/vision-components/Compile-16         	    4440	     53409 ns/op	   38189 B/op	     109 allocs/op
+BenchmarkParity/vision-components/Exec-16            	    8716	     29195 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16            	    8419	     28560 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-sort-merge-join/Compile-16        	    6231	     37039 ns/op	   34963 B/op	     105 allocs/op
+BenchmarkParity/db-sort-merge-join/Compile-16        	    6307	     36995 ns/op	   34962 B/op	     105 allocs/op
+BenchmarkParity/db-sort-merge-join/Exec-16           	    5724	     46317 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-sort-merge-join/Exec-16           	    6008	     46127 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-max-pooling/Compile-16            	    8816	     26694 ns/op	   33361 B/op	     103 allocs/op
+BenchmarkParity/ml-max-pooling/Compile-16            	    8862	     26575 ns/op	   33361 B/op	     103 allocs/op
+BenchmarkParity/ml-max-pooling/Exec-16               	   16766	     14296 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-max-pooling/Exec-16               	   16648	     14576 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-bootstrap/Compile-16           	    7288	     31286 ns/op	   34586 B/op	     107 allocs/op
+BenchmarkParity/stats-bootstrap/Compile-16           	    7516	     31106 ns/op	   34586 B/op	     107 allocs/op
+BenchmarkParity/stats-bootstrap/Exec-16              	   10000	     20122 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-bootstrap/Exec-16              	   10000	     20539 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,11 @@
+corpus	phase	off_us	on_us	change_percent
+audio-adpcm	Compile	16.295	16.295	0.00
+audio-adpcm	Exec	44.307	37.932	-14.39
+audio-fir	Compile	77.204	77.980	1.00
+audio-fir	Exec	33.886	34.568	2.01
+files-glob-match	Compile	18.532	19.038	2.73
+files-glob-match	Exec	122.444	125.333	2.36
+geo-point-in-polygon	Compile	25.367	25.778	1.62
+geo-point-in-polygon	Exec	20.707	20.337	-1.79
+search-aho-corasick	Compile	176.596	174.855	-0.99
+search-aho-corasick	Exec	47.951	49.648	3.54

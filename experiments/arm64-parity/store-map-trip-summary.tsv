@@ -1,0 +1,17 @@
+case	phase	off_us	on_us	change_pct
+image-composite	Compile	25.413	28.820	+13.40
+image-composite	Exec	69.088	62.149	-10.04
+image-resize	Compile	34.275	38.289	+11.71
+image-resize	Exec	42.794	15.357	-64.12
+ml-convolution	Compile	28.358	32.154	+13.38
+ml-convolution	Exec	24.052	21.672	-9.89
+ml-inference	Compile	29.131	35.779	+22.82
+ml-inference	Exec	5.855	6.135	+4.78
+stats-quickselect	Compile	47.177	32.124	-31.91
+stats-quickselect	Exec	14.957	13.117	-12.30
+video-dct	Compile	124.894	124.696	-0.16
+video-dct	Exec	42.297	41.779	-1.22
+vision-components	Compile	49.511	57.637	+16.41
+vision-components	Exec	37.249	30.384	-18.43
+vision-dilation	Compile	38.097	42.705	+12.10
+vision-dilation	Exec	42.410	41.099	-3.09

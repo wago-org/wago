@@ -1,0 +1,13 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-dead-code/Compile-16 	    6862	     30227 ns/op	   34250 B/op	     106 allocs/op
+BenchmarkParity/compiler-dead-code/Compile-16 	    7813	     29547 ns/op	   34250 B/op	     106 allocs/op
+BenchmarkParity/db-btree/Compile-16           	    4345	     55074 ns/op	   38052 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Compile-16           	    4372	     55855 ns/op	   38053 B/op	     109 allocs/op
+BenchmarkParity/geo-polyline-simplify/Compile-16         	    5901	     38117 ns/op	   34930 B/op	     105 allocs/op
+BenchmarkParity/geo-polyline-simplify/Compile-16         	    6324	     38183 ns/op	   34930 B/op	     105 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16           	    1411	    167357 ns/op	   96249 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16           	    1423	    165532 ns/op	   96250 B/op	     118 allocs/op
+PASS

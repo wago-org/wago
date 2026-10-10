@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-dead-code/Compile-16 	   10946	     29612 ns/op	   34250 B/op	     106 allocs/op
+BenchmarkParity/compiler-dead-code/Compile-16 	   12150	     29666 ns/op	   34250 B/op	     106 allocs/op
+BenchmarkParity/compiler-dead-code/Exec-16    	   98754	      3687 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-dead-code/Exec-16    	   99084	      3671 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-btree/Compile-16           	    6080	     55855 ns/op	   38052 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Compile-16           	    6290	     55572 ns/op	   38053 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Exec-16              	   37874	      9540 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-btree/Exec-16              	   38028	      9689 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16         	    1888	    191455 ns/op	   96250 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16         	    1886	    189764 ns/op	   96250 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16            	    7825	     51055 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16            	    8103	     52305 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16              	    8245	     40521 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16              	    8895	     39962 ns/op	   35843 B/op	     109 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16                 	    2826	    143242 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16                 	    2644	    144495 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,164 @@
+--- src/core/compiler/backend/railshot/arm64/scoped_loop_const.go
++++ src/core/compiler/backend/railshot/arm64/scoped_loop_const.go
+@@ -9,6 +9,8 @@
+ 
+ // Immutable leases exist only inside proven call-free loops. The process
+ // default is opt-in; the per-compilation policy owns each selected state.
++var leafScopedConstsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_LEAF_SCOPED_CONST") == "1"
++
+ var scopedLoopConstsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SCOPED_LOOP_CONST") != "0"
+ 
+ // Keep only the lease metadata in compiler scratch state. A pointer
+@@ -110,7 +112,11 @@
+ 		}
+ 	}
+ 	base := f.iconstN
+-	f.reserveLoopIntConsts(&h)
++	if !f.makesCalls && f.opt(optLeafScopedConst) {
++		f.reserveLoopIntConstsWithFloor(&h, 5)
++	} else {
++		f.reserveLoopIntConsts(&h)
++	}
+ 	if f.iconstN != base {
+ 		fr.flags |= ctrlLoopConstScope | ctrlFlags(base)<<12
+ 		f.stats.peep("scoped-loop-int-const")
+@@ -130,3 +136,30 @@
+ 		f.intervalRegLimit = f.currentIntervalRegLimit()
+ 	}
+ }
++
++// Leaf scans cannot add value for constants already reserved by the global
++// cache. Address leases remain function-wide; this experiment leases literals.
++func (f *fn) filterLeafScopedConsts() {
++	if f.makesCalls || !f.opt(optLeafScopedConst) {
++		return
++	}
++	old := f.scopedConstHints
++	f.scopedConstHints = scopedLoopConstHints{flags: old.flags}
++	for i := 0; i < int(old.loopIntConstCount); i++ {
++		typ := old.loopIntConstTypes >> (2 * i) & 3
++		if typ == 3 {
++			continue
++		}
++		mt := mtI32
++		if typ == 2 {
++			mt = mtI64
++		}
++		if _, ok := f.cachedIntConst(storage{typ: mt, cval: old.loopIntConst[i]}); ok {
++			continue
++		}
++		j := f.scopedConstHints.loopIntConstCount
++		f.scopedConstHints.loopIntConst[j] = old.loopIntConst[i]
++		f.scopedConstHints.loopIntConstTypes |= typ << (2 * j)
++		f.scopedConstHints.loopIntConstCount++
++	}
++}
+--- src/core/compiler/backend/railshot/arm64/regalloc.go
++++ src/core/compiler/backend/railshot/arm64/regalloc.go
+@@ -31,6 +31,10 @@
+ }
+ 
+ func (f *fn) reserveLoopIntConsts(h *funcHintView) {
++	f.reserveLoopIntConstsWithFloor(h, 7)
++}
++
++func (f *fn) reserveLoopIntConstsWithFloor(h *funcHintView, literalFloor int) {
+ 	for i := 0; i < int(h.loopIntConstCount) && int(f.iconstN) < len(f.iconsts); i++ {
+ 		if h.loopIntConstTypes>>(2*i)&3 != 3 {
+ 			typ := mtI32
+@@ -63,7 +67,7 @@
+ 						free++
+ 					}
+ 				}
+-				floor := 7
++				floor := literalFloor
+ 				if address {
+ 					floor = 4
+ 				}
+@@ -71,7 +75,8 @@
+ 					continue
+ 				}
+ 			}
+-			if !f.reserved.has(candidate) && !f.pinnedLocalMask.has(candidate) {
++			if !f.reserved.has(candidate) && !f.pinnedLocalMask.has(candidate) &&
++				(literalFloor == 7 || f.regUser[candidate] == nil && !f.pinned.has(candidate)) {
+ 				reg = candidate
+ 				break
+ 			}
+--- src/core/compiler/backend/railshot/arm64/compile.go
++++ src/core/compiler/backend/railshot/arm64/compile.go
+@@ -3419,7 +3419,7 @@
+ 	// workaround; the actual root cause was the opElse merge edge skipping
+ 	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
+ 	f.makesCalls = hasCall
+-	if f.opt(optScopedLoopIntConst) && hasCall && hints.loopIntConstCount != 0 {
++	if f.opt(optScopedLoopIntConst) && (hasCall || f.opt(optLeafScopedConst)) && hints.loopIntConstCount != 0 {
+ 		f.scopedConstHints = scopedConstHintsFrom(hints)
+ 	}
+ 	f.usesCalls = hasCall && policy.EnabledOption(optStackReg)
+@@ -3487,6 +3487,7 @@
+ 
+ 	f.prologue(hints.localScore)
+ 	f.preloadLoopIntConsts(hints)
++	f.filterLeafScopedConsts()
+ 	if hints.flags.has(hintHasFloatConst) {
+ 		f.preloadFloatConsts(c.BodyBytes)
+ 	}
+@@ -4513,6 +4514,7 @@
+ 	f.preloadV128Consts(c.BodyBytes)
+ 	f.derivePinnedGlobals()
+ 	f.preloadLoopIntConsts(intConstHints)
++	f.filterLeafScopedConsts()
+ 	if f.memSizeReg == X17 {
+ 		// X17 is caller-clobbered backend scratch, so establish this leaf-local
+ 		// cache after entry setup and immediately before the body that consumes it.
+--- src/core/compiler/backend/railshot/arm64/control.go
++++ src/core/compiler/backend/railshot/arm64/control.go
+@@ -1625,7 +1625,7 @@
+ 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
+ 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
+ 	fr.set(ctrlCallFreeRegion, callFreeLoopRegionEnabled && kind != cfLoop && f.inCallFreeLoop())
+-	if kind == cfLoop && !f.unreachable && ((diagnosticsEnabled && f.stats != nil) || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0)) {
++	if kind == cfLoop && !f.unreachable && ((diagnosticsEnabled && f.stats != nil) || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0) || f.opt(optLeafScopedConst) && f.scopedConstHints.loopIntConstCount != 0) {
+ 		base := len(f.loopSetLocals)
+ 		uses, collectConsts := f.scopedLoopConstUses()
+ 		var collect *scopedLoopConstUses
+--- src/core/compiler/backend/railshot/arm64/knobs.go
++++ src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -26,6 +26,7 @@
+ 	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
+ 	optimization.Bind("loop-int-const", &loopIntConstEnabled),
+ 	optimization.Bind("scoped-loop-int-const", &scopedLoopConstsEnabled),
++	optimization.Bind("leaf-scoped-int-const", &leafScopedConstsEnabled),
+ 	optimization.Bind("loop-memory-base", &loopMemoryBaseEnabled),
+ 	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
+ 	optimization.Bind("dominated-indexed-base", &dominatedIndexedBaseEnabled),
+@@ -105,6 +106,7 @@
+ 	optNativeLeafHost       = optimizationBindings.Option("native-leaf-host")
+ 	optDirectGoHostImport   = optimizationBindings.Option("direct-go-host-import")
+ 	optLoopIntConst         = optimizationBindings.Option("loop-int-const")
++	optLeafScopedConst      = optimizationBindings.Option("leaf-scoped-int-const")
+ 	optScopedLoopIntConst   = optimizationBindings.Option("scoped-loop-int-const")
+ 	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
+ 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
+--- src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -85,7 +85,7 @@
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare",
++		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "leaf-scoped-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+--- src/core/compiler/optimization/catalog.go
++++ src/core/compiler/optimization/catalog.go
+@@ -457,6 +457,7 @@
+ 	{Name: "loop-memory-base", Label: "Loop memory page bases", Description: "hoist repeated linear-memory page bases into idle loop-constant registers", Default: true, Architectures: []string{"arm64"}},
+ 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
+ 	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: []string{"arm64"}},
++	{Name: "leaf-scoped-int-const", Label: "Leaf scoped integer constants", Description: "lease constants inside call-free leaf loops with a bounded temporary floor", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: []string{"arm64"}},

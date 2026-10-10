@@ -1,0 +1,1 @@
+PASS: 24 ARM64 vector arithmetic and interleaved-store cases

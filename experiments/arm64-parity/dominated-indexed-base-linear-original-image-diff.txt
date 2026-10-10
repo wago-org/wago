@@ -1,0 +1,10 @@
+core wago__json-as-simd__serializeN.bin 3
+core wago__libtommath__modular-arithmetic.bin 15
+core wago__pcre2__compile-match.bin 8
+core wago__yyjson__parse-edit-write.bin 13
+core wago__drwav__pcm-decode-seek.bin 13
+core wago__utf8proc__normalize-casefold.bin 11
+core wago__nanosvg__parse-structure.bin 13
+core wago__coremark__2k-performance.bin 2
+core wago__kissfft__complex-roundtrip.bin 6
+app search-kmp.bin 5

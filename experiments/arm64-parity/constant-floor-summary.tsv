@@ -1,0 +1,13 @@
+workload	phase	before_us	after_us	change_pct
+audio-fir	Compile	68.046	68.502	+0.67
+audio-fir	Exec	23.859	23.598	-1.09
+compiler-register-allocation	Compile	59.901	60.598	+1.16
+compiler-register-allocation	Exec	16.809	16.816	+0.04
+image-resize	Compile	34.105	34.456	+1.03
+image-resize	Exec	22.738	22.768	+0.13
+search-aho-corasick	Compile	180.888	187.035	+3.40
+search-aho-corasick	Exec	48.793	48.838	+0.09
+video-dct	Compile	216.541	124.837	-42.35
+video-dct	Exec	43.003	43.578	+1.34
+vision-components	Compile	49.660	50.248	+1.18
+vision-components	Exec	36.979	37.952	+2.63

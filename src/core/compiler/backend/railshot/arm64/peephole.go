@@ -24,9 +24,9 @@ const (
 // data words would be misread and its case stubs are reached through computed
 // targets), and each rewrite must not disturb a word another branch targets. So
 // the branch-target set is collected once here and threaded into both passes.
-func (f *fn) finalizePeepholes() {
+func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	compact := nativeFinalizerEnabled && f.compactNative()
-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !compact {
+	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !compact {
 		return
 	}
 	// The established size-stable peephole abandons a function when it reaches
@@ -69,12 +69,23 @@ func (f *fn) finalizePeepholes() {
 			}
 		}
 	}
+	if f.opt(optDominatedIndexedBase) && !f.moduleEH && len(f.customInstructions) == 0 {
+		for hits := f.a.FoldDominatedIndexedBases(entryOffsets...); hits > 0; hits-- {
+			f.stats.peep("dominated-indexed-base")
+		}
+	}
 	if f.opt(optBranchFold) {
 		f.foldSingleBitBranches(b, n, targets)
 		f.foldBranchPairs(b, n, targets)
 	}
 	if f.opt(optStoreLoadFwd) {
 		f.forwardStoreLoads(b, n, targets)
+	}
+	if f.opt(optCommonExitCompare) {
+		f.foldCommonExitCompares(b, n, targets, entryOffsets...)
+	}
+	if f.opt(optGuardedTestCCMP) {
+		f.foldGuardedTests(b, n, targets)
 	}
 }
 

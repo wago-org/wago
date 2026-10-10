@@ -1,0 +1,45 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-fir/Compile-16 	    1560	    107292 ns/op	   44859 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    1687	    104831 ns/op	   44859 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3777	     52271 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    3709	     52422 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/grid-pathfinding/Compile-16         	    4000	     42133 ns/op	   35778 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Compile-16         	    4252	     42709 ns/op	   35779 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16            	    5595	     31825 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16            	    5676	     31939 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16              	   10000	     15551 ns/op	   28318 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16              	   10000	     15359 ns/op	   28318 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16                 	    4585	     43769 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16                 	    4572	     43766 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16         	    3410	     50616 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16         	    3585	     50762 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16            	   10000	     16162 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16            	   10000	     16199 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16                    	    4002	     42683 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16                    	    4135	     42480 ns/op	   38164 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16                       	    5248	     35288 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16                       	    5320	     35529 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Compile-16                     	    9854	     17597 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Compile-16                     	   10000	     17492 ns/op	   30552 B/op	     108 allocs/op
+BenchmarkParity/files-glob-match/Exec-16                        	    1579	    117127 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-glob-match/Exec-16                        	    1568	    118514 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16                 	    6816	     24018 ns/op	   36042 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16                 	    7376	     23659 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16                    	    9087	     19485 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16                    	    9325	     19357 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16               	    6718	     23956 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16               	    7596	     23768 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16                  	    7422	     24438 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16                  	    7314	     24288 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/language-register-vm/Compile-16                 	    5424	     29862 ns/op	   37797 B/op	     120 allocs/op
+BenchmarkParity/language-register-vm/Compile-16                 	    5950	     29770 ns/op	   37796 B/op	     120 allocs/op
+BenchmarkParity/language-register-vm/Exec-16                    	   18944	      9717 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/language-register-vm/Exec-16                    	   18932	      9649 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Compile-16                               	    3091	     53193 ns/op	   40029 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Compile-16                               	    3387	     53231 ns/op	   40030 B/op	     110 allocs/op
+BenchmarkParity/ml-knn/Exec-16                                  	    5649	     33754 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-knn/Exec-16                                  	    5683	     33576 ns/op	       0 B/op	       0 allocs/op
+PASS

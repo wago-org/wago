@@ -1,0 +1,90 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"testing"
+)
+
+func TestCompareSourceRead(t *testing.T) {
+	old := compareSourceReadEnabled
+	defer func() { compareSourceReadEnabled = old }()
+	for _, wide := range []bool{false, true} {
+		typ, eq, add, extend := wasm.I32, byte(0x46), byte(0x6a), []byte(nil)
+		if wide {
+			typ, eq, add, extend = wasm.I64, 0x51, 0x7c, []byte{0xad}
+		}
+		for _, complex := range []bool{false, true} {
+			for _, alias := range []bool{false, true} {
+				body := []byte{0, 0x20, 0, 0x20, 1}
+				if complex {
+					body = append(body, 0x20, 0, add)
+				}
+				body = append(body, eq)
+				body = append(body, extend...)
+				dst := byte(2)
+				if alias {
+					dst = 0
+				}
+				body = append(body, 0x21, dst, 0x20, dst, 0x20, 0, add, 0x0b)
+				m := mod1(t, []wasm.ValType{typ, typ, typ}, []wasm.ValType{typ}, body)
+				for _, on := range []bool{false, true} {
+					compareSourceReadEnabled = on
+					for _, guard := range []bool{false, true} {
+						for _, xy := range [][2]uint64{{0, 0}, {1, 0}, {1, 1}, {0x80000000, 0xffffffff}, {0xffffffffffffffff, 0x8000000000000000}} {
+							x, y := xy[0], xy[1]
+							if !wide {
+								x, y = uint64(uint32(x)), uint64(uint32(y))
+							}
+							rhs := y
+							if complex {
+								rhs += x
+							}
+							if !wide {
+								rhs = uint64(uint32(rhs))
+							}
+							var b uint64
+							if x == rhs {
+								b = 1
+							}
+							want := b + x
+							if alias {
+								want = b + b
+							}
+							if !wide {
+								want = uint64(uint32(want))
+							}
+							got, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, CompactNative: false}, x, y, 17)
+							if err != nil || got != want {
+								t.Fatalf("wide=%v complex=%v alias=%v on=%v guard=%v x=%x y=%x got=%x want=%x err=%v", wide, complex, alias, on, guard, x, y, got, want, err)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestCompareSourceReadAdmission(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	old := compareSourceReadEnabled
+	defer func() { compareSourceReadEnabled = old }()
+	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x20, 1, 0x46, 0x0b})
+	for _, on := range []bool{false, true} {
+		compareSourceReadEnabled = on
+		stats := &ModuleStats{}
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: stats})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			cm.CodeImage.Close()
+		}
+		hits := stats.Funcs[0].Peephole["compare-source-read"]
+		if on && hits != 1 || !on && hits != 0 {
+			t.Fatalf("on=%v hits=%d", on, hits)
+		}
+	}
+}

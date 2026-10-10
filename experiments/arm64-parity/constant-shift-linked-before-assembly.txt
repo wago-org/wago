@@ -1,0 +1,65 @@
+0000 mov      x26, x1
+0004 stp      x30, x3, [sp, #-0x10]!
+0008 ldr      x0, [x0]
+000c bl       #0x20
+0010 ldp      x30, x3, [sp], #0x10
+0014 str      x0, [x3]
+0018 ret      
+001c nop      
+0020 sub      sp, sp, #0x30
+0024 nop      
+0028 nop      
+002c mov      x23, x0
+0030 mov      x19, #0
+0034 mov      x21, #0
+0038 mov      x22, #0
+003c mov      x20, #0
+0040 mov      x25, #8
+0044 nop      
+0048 nop      
+004c nop      
+0050 nop      
+0054 nop      
+0058 nop      
+005c nop      
+0060 cmp      w19, w23
+0064 b.ge     #0x98
+0068 add      w21, w19, #1
+006c lsl      w21, w21, #3
+0070 str      w19, [x26, x21]
+0074 add      w9, w19, #1
+0078 cmp      w9, w23
+007c csinc    w9, wzr, w9, eq
+0080 lsl      w9, w9, #3
+0084 add      x16, x26, x21
+0088 add      x16, x16, #4
+008c str      w9, [x16, xzr]
+0090 add      w19, w19, #1
+0094 b        #0x60
+0098 mov      x20, #8
+009c nop      
+00a0 nop      
+00a4 nop      
+00a8 nop      
+00ac nop      
+00b0 nop      
+00b4 nop      
+00b8 nop      
+00bc nop      
+00c0 cbz      w20, #0xe8
+00c4 mov      w20, w20
+00c8 ldr      w9, [x26, x20]
+00cc add      w22, w22, w9
+00d0 mov      w20, w20
+00d4 add      x16, x26, x20
+00d8 add      x16, x16, #4
+00dc ldr      w9, [x16, xzr]
+00e0 mov      x20, x9
+00e4 b        #0xc0
+00e8 str      x22, [sp, #0x28]
+00ec mov      x0, x22
+00f0 add      sp, sp, #0x30
+00f4 nop      
+00f8 nop      
+00fc ret      
+0100 nop      

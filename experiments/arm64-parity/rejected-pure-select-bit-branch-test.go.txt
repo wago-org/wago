@@ -1,0 +1,36 @@
+package arm64
+
+import "testing"
+
+func TestBitBranchEncodingsAndRanges(t *testing.T) {
+	for _, tc := range []struct {
+		bit     uint8
+		nonzero bool
+		want    uint32
+	}{
+		{7, false, 0x36380001}, {31, true, 0x37f80001}, {32, false, 0xb6000001}, {63, true, 0xb7f80001},
+	} {
+		var a Asm
+		site := 0
+		if tc.nonzero {
+			site = a.Tbnz(X1, tc.bit)
+		} else {
+			site = a.Tbz(X1, tc.bit)
+		}
+		if got := a.wordAt(site); got != tc.want {
+			t.Fatalf("bit=%d nonzero=%v got=%08x want=%08x", tc.bit, tc.nonzero, got, tc.want)
+		}
+		if !a.PatchBranch14(site, site+8) || a.wordAt(site) != tc.want|0x40 {
+			t.Fatal("forward displacement corrupted register/bit")
+		}
+	}
+	for _, delta := range []int{-32772, -32768, 32764, 32768} {
+		var a Asm
+		site := a.Tbnz(X1, 63)
+		ok := a.PatchBranch14(site, site+delta)
+		want := delta >= -32768 && delta <= 32764
+		if ok != want {
+			t.Fatalf("delta=%d ok=%v want=%v", delta, ok, want)
+		}
+	}
+}

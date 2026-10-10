@@ -1,0 +1,6 @@
+workload	phase	before_us	after_us	change_pct
+audio-fir	Compile	65.499	66.541	+1.59
+search-aho-corasick	Compile	175.373	183.481	+4.62
+vision-components	Compile	47.398	49.013	+3.41
+wago/linked_list/sum	Compile	11.630	11.624	-0.05
+wago/linked_list/sum	Exec	3.397	8.166	+140.35

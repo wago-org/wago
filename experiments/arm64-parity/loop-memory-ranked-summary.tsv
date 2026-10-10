@@ -1,0 +1,13 @@
+corpus	phase	off_us	on_us	change_percent
+audio-fir	Compile	68.139	66.653	-2.18
+audio-fir	Exec	23.337	23.120	-0.93
+compiler-register-allocation	Compile	58.234	57.312	-1.58
+compiler-register-allocation	Exec	17.987	16.580	-7.82
+graphics-reed-solomon	Compile	91.811	94.176	2.58
+graphics-reed-solomon	Exec	119.365	119.940	0.48
+video-dct	Compile	123.093	120.307	-2.26
+video-dct	Exec	43.638	43.578	-0.14
+vision-components	Compile	48.455	49.055	1.24
+vision-components	Exec	39.247	38.553	-1.77
+vision-dilation	Compile	38.891	38.472	-1.08
+vision-dilation	Exec	45.648	44.362	-2.82

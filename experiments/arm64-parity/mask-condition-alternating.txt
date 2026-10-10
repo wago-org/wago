@@ -1,0 +1,96 @@
+round=0 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/graphics-reed-solomon/Compile-16 	    1660	     85285 ns/op	   66463 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16    	    1206	    123035 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3895	     34302 ns/op	   35828 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2251	     66946 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-boolean-anf/Compile-16              	    2757	     51091 ns/op	   36892 B/op	     103 allocs/op
+BenchmarkParity/hardware-boolean-anf/Exec-16                 	    2192	     71658 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    5155	     24402 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5557	     25686 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16               	     883	    161682 ns/op	   97016 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16                  	     568	    256866 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=0 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/graphics-reed-solomon/Compile-16 	    1485	     83998 ns/op	   66461 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16    	    1256	    120552 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3985	     34223 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2288	     67319 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-boolean-anf/Compile-16              	    2794	     50278 ns/op	   36891 B/op	     103 allocs/op
+BenchmarkParity/hardware-boolean-anf/Exec-16                 	    2157	     69284 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    5685	     23655 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5536	     25750 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16               	     910	    159661 ns/op	   97017 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16                  	     561	    258129 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=1 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/graphics-reed-solomon/Compile-16 	    1647	     85844 ns/op	   66457 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16    	    1221	    123937 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3679	     35307 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2245	     67396 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-boolean-anf/Compile-16              	    2745	     49910 ns/op	   36894 B/op	     103 allocs/op
+BenchmarkParity/hardware-boolean-anf/Exec-16                 	    2287	     69230 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    5466	     24097 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5719	     26480 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16               	     908	    159651 ns/op	   97018 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16                  	     552	    258242 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=1 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/graphics-reed-solomon/Compile-16 	    1641	     85276 ns/op	   66458 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16    	    1210	    121684 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3710	     35448 ns/op	   35828 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2227	     67170 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-boolean-anf/Compile-16              	    2715	     51412 ns/op	   36891 B/op	     103 allocs/op
+BenchmarkParity/hardware-boolean-anf/Exec-16                 	    2205	     68951 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    5487	     24309 ns/op	   34435 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5656	     25845 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16               	     915	    159605 ns/op	   97018 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16                  	     562	    257515 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=2 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/graphics-reed-solomon/Compile-16 	    1654	     85263 ns/op	   66457 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16    	    1174	    124313 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3574	     34741 ns/op	   35828 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2266	     67338 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-boolean-anf/Compile-16              	    2760	     51221 ns/op	   36891 B/op	     103 allocs/op
+BenchmarkParity/hardware-boolean-anf/Exec-16                 	    2234	     69954 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    5085	     23997 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5894	     25705 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16               	     894	    160301 ns/op	   97019 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16                  	     566	    256904 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=2 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/graphics-reed-solomon/Compile-16 	    1683	     84489 ns/op	   66456 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16    	    1246	    121062 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3951	     34917 ns/op	   35828 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2281	     67017 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-boolean-anf/Compile-16              	    2793	     50632 ns/op	   36891 B/op	     103 allocs/op
+BenchmarkParity/hardware-boolean-anf/Exec-16                 	    2281	     69179 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16            	    5282	     23761 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	    5516	     25641 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16               	     902	    157988 ns/op	   97020 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16                  	     562	    256603 ns/op	       0 B/op	       0 allocs/op
+PASS

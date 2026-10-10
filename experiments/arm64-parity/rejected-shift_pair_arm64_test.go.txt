@@ -1,0 +1,99 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+func shiftPairConst(body []byte, op byte, v int64) []byte {
+	body = append(body, op)
+	for {
+		b := byte(v) & 127
+		v >>= 7
+		done := v == 0 && b&64 == 0 || v == -1 && b&64 != 0
+		if !done {
+			b |= 128
+		}
+		body = append(body, b)
+		if done {
+			return body
+		}
+	}
+}
+
+func shiftPairModule(t *testing.T, wide, signed, alias bool, a, b int64) *wasm.Module {
+	typ, constant, shl, shr, add := wasm.I32, byte(0x41), byte(0x74), byte(0x76), byte(0x6a)
+	if wide {
+		typ, constant, shl, shr, add = wasm.I64, 0x42, 0x86, 0x88, 0x7c
+	}
+	if signed {
+		shr--
+	}
+	body := []byte{0, 0x3f, 0, 0x1a}
+	if alias {
+		body = append(body, 0x20, 0)
+	}
+	body = append(body, 0x20, 0)
+	body = shiftPairConst(body, constant, a)
+	body = append(body, shl)
+	body = shiftPairConst(body, constant, b)
+	body = append(body, shr)
+	if alias {
+		body = append(body, 0x21, 0, 0x20, 0, add)
+	}
+	body = append(body, 0x0b)
+	return modMem(t, 1, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
+}
+
+func TestShiftPairBitfieldExecution(t *testing.T) {
+	old := shiftPairExperiment
+	defer func() { shiftPairExperiment = old }()
+	counts := []int64{0, 1, 7, 15, 24, 31, 32, 63, 64, -1}
+	for _, wide := range []bool{false, true} {
+		for _, signed := range []bool{false, true} {
+			for _, alias := range []bool{false, true} {
+				for _, a := range counts {
+					for _, b := range counts {
+						m := shiftPairModule(t, wide, signed, alias, a, b)
+						for _, enabled := range []bool{false, true} {
+							shiftPairExperiment = enabled
+							for _, x := range []uint64{0, 1, 0x8000000180000001, 0x0123456789abcdef, ^uint64(0)} {
+								var want uint64
+								if wide {
+									shifted := x << uint64(a&63)
+									want = shifted >> uint64(b&63)
+									if signed {
+										want = uint64(int64(shifted) >> uint64(b&63))
+									}
+									if alias {
+										want += x
+									}
+								} else {
+									shifted := uint32(x) << uint64(a&31)
+									v := shifted >> uint64(b&31)
+									if signed {
+										v = uint32(int32(shifted) >> uint64(b&31))
+									}
+									if alias {
+										v += uint32(x)
+									}
+									want = uint64(v)
+								}
+								got := runArm64u(t, m, x)
+								if !wide {
+									got = uint64(uint32(got))
+								}
+								if got != want {
+									t.Fatalf("wide=%v signed=%v alias=%v enabled=%v a=%d b=%d x=%x got=%x want=%x", wide, signed, alias, enabled, a, b, x, got, want)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

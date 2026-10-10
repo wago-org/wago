@@ -1,0 +1,34 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64
+cpu: Apple M4 Max
+BenchmarkPureReduceGeneral/complexfalse/count1/vectorfalse-16         	 4686268	        22.81 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count1/vectortrue-16          	 5159311	        23.13 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count3/vectorfalse-16         	 4954974	        23.39 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count3/vectortrue-16          	 5121328	        23.57 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count4/vectorfalse-16         	 5103405	        23.27 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count4/vectortrue-16          	 5052231	        23.60 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count8/vectorfalse-16         	 4972358	        24.33 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count8/vectortrue-16          	 5182848	        23.53 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count16/vectorfalse-16        	 4635546	        26.51 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count16/vectortrue-16         	 5094999	        23.53 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count64/vectorfalse-16        	 3234718	        37.23 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count64/vectortrue-16         	 4478767	        26.77 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count4096/vectorfalse-16      	  126278	       951.7 ns/op
+BenchmarkPureReduceGeneral/complexfalse/count4096/vectortrue-16       	  261862	       458.1 ns/op
+BenchmarkPureReduceGeneral/complextrue/count1/vectorfalse-16          	 5121082	        23.31 ns/op
+BenchmarkPureReduceGeneral/complextrue/count1/vectortrue-16           	 4931067	        23.70 ns/op
+BenchmarkPureReduceGeneral/complextrue/count3/vectorfalse-16          	 4945036	        24.42 ns/op
+BenchmarkPureReduceGeneral/complextrue/count3/vectortrue-16           	 4925071	        24.36 ns/op
+BenchmarkPureReduceGeneral/complextrue/count4/vectorfalse-16          	 4823990	        24.74 ns/op
+BenchmarkPureReduceGeneral/complextrue/count4/vectortrue-16           	 4910870	        24.61 ns/op
+BenchmarkPureReduceGeneral/complextrue/count8/vectorfalse-16          	 4552848	        26.66 ns/op
+BenchmarkPureReduceGeneral/complextrue/count8/vectortrue-16           	 4887369	        24.80 ns/op
+BenchmarkPureReduceGeneral/complextrue/count16/vectorfalse-16         	 3837390	        30.95 ns/op
+BenchmarkPureReduceGeneral/complextrue/count16/vectortrue-16          	 4692624	        25.73 ns/op
+BenchmarkPureReduceGeneral/complextrue/count64/vectorfalse-16         	 2171552	        55.55 ns/op
+BenchmarkPureReduceGeneral/complextrue/count64/vectortrue-16          	 3895782	        31.29 ns/op
+BenchmarkPureReduceGeneral/complextrue/count4096/vectorfalse-16       	   56542	      2187 ns/op
+BenchmarkPureReduceGeneral/complextrue/count4096/vectortrue-16        	  144728	       832.8 ns/op
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	4.516s

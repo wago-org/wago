@@ -1,0 +1,53 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    3639	     31817 ns/op	   34555 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    3631	     30088 ns/op	   34555 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   20149	      5923 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   20242	      5920 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-autocorrelation/Compile-16 	    3374	     32086 ns/op	   34602 B/op	     104 allocs/op
+BenchmarkParity/audio-autocorrelation/Compile-16 	    3769	     31544 ns/op	   34602 B/op	     104 allocs/op
+BenchmarkParity/audio-autocorrelation/Exec-16    	    2942	     43042 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-autocorrelation/Exec-16    	    2858	     43556 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-sort-merge-join/Compile-16    	    3009	     37812 ns/op	   34938 B/op	     104 allocs/op
+BenchmarkParity/db-sort-merge-join/Compile-16    	    3231	     37160 ns/op	   34939 B/op	     104 allocs/op
+BenchmarkParity/db-sort-merge-join/Exec-16       	    2652	     45869 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-sort-merge-join/Exec-16       	    2676	     46233 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/document-bidi-reorder/Compile-16 	    1914	     57746 ns/op	   37261 B/op	     105 allocs/op
+BenchmarkParity/document-bidi-reorder/Compile-16 	    1956	     58115 ns/op	   37261 B/op	     105 allocs/op
+BenchmarkParity/document-bidi-reorder/Exec-16    	    6465	     18108 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/document-bidi-reorder/Exec-16    	    6580	     18038 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-path-trie/Compile-16       	    2226	     51755 ns/op	   37293 B/op	     107 allocs/op
+BenchmarkParity/files-path-trie/Compile-16       	    2280	     51515 ns/op	   37294 B/op	     107 allocs/op
+BenchmarkParity/files-path-trie/Exec-16          	   21168	      5661 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-path-trie/Exec-16          	   21093	      5645 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-error-diffusion/Compile-16 	    2632	     42575 ns/op	   35563 B/op	     105 allocs/op
+BenchmarkParity/image-error-diffusion/Compile-16 	    2674	     42384 ns/op	   35564 B/op	     105 allocs/op
+BenchmarkParity/image-error-diffusion/Exec-16    	    2138	     55390 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-error-diffusion/Exec-16    	    2188	     55403 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/language-register-vm/Compile-16  	    3044	     37011 ns/op	   37797 B/op	     120 allocs/op
+BenchmarkParity/language-register-vm/Compile-16  	    3199	     36046 ns/op	   37797 B/op	     120 allocs/op
+BenchmarkParity/language-register-vm/Exec-16     	    9884	     11724 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/language-register-vm/Exec-16     	   10000	     11551 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-max-pooling/Compile-16        	    4398	     27952 ns/op	   33338 B/op	     102 allocs/op
+BenchmarkParity/ml-max-pooling/Compile-16        	    4423	     27477 ns/op	   33338 B/op	     102 allocs/op
+BenchmarkParity/ml-max-pooling/Exec-16           	    5376	     21921 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-max-pooling/Exec-16           	    5444	     21783 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-quickselect/Compile-16     	    3787	     29336 ns/op	   34346 B/op	     103 allocs/op
+BenchmarkParity/stats-quickselect/Compile-16     	    3768	     29273 ns/op	   34346 B/op	     103 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16        	    7580	     15163 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16        	    7678	     15120 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-bootstrap/Compile-16       	    3454	     31587 ns/op	   34563 B/op	     106 allocs/op
+BenchmarkParity/stats-bootstrap/Compile-16       	    3561	     31556 ns/op	   34563 B/op	     106 allocs/op
+BenchmarkParity/stats-bootstrap/Exec-16          	    5629	     20977 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-bootstrap/Exec-16          	    5590	     21103 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-deblocking/Compile-16      	    2928	     38206 ns/op	   35556 B/op	     107 allocs/op
+BenchmarkParity/video-deblocking/Compile-16      	    3104	     38388 ns/op	   35555 B/op	     107 allocs/op
+BenchmarkParity/video-deblocking/Exec-16         	    4328	     26330 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-deblocking/Exec-16         	    4556	     26126 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-temporal-denoise/Compile-16         	     907	    134276 ns/op	   65340 B/op	     112 allocs/op
+BenchmarkParity/video-temporal-denoise/Compile-16         	     895	    135886 ns/op	   65341 B/op	     112 allocs/op
+BenchmarkParity/video-temporal-denoise/Exec-16            	    1221	     96766 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-temporal-denoise/Exec-16            	    1260	     96748 ns/op	       0 B/op	       0 allocs/op
+PASS

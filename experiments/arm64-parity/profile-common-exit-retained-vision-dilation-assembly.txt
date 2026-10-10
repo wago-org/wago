@@ -1,0 +1,181 @@
+wago:5e2a5dff50fb7f2c4cc15276e1e21852b30d7b412966036cf0c4c88b31db47a8:f19dcd0f00bb969dee14f6689b41523ac864dae0cd44b39a128a67d0218432a5:g1:f0:r20:guest-body:benchmark: 2978 leaf observations
+  341 (11.5%) +0x0100 str      w12, [x26, x19]  Wasm 136
+  201 ( 6.7%) +0x02e4 cmp      w20, #1  Wasm 538
+  199 ( 6.7%) +0x02fc ldr      w12, [x26, x12]  Wasm 555
+  196 ( 6.6%) +0x028c cmp      w20, #1  Wasm 443
+  194 ( 6.5%) +0x0228 mov      x19, #0  Wasm 333
+  191 ( 6.4%) +0x0318 ldr      w12, [x26, x12]  Wasm 585
+  189 ( 6.3%) +0x0354 cmp      w22, w20  Wasm 660
+  184 ( 6.2%) +0x0244 ldr      w19, [x26, x12]  Wasm 359
+  182 ( 6.1%) +0x02a0 ldr      w12, [x26, x12]  Wasm 457
+  141 ( 4.7%) +0x0220 mov      x19, #0  Wasm 322
+  114 ( 3.8%) +0x026c add      w12, w20, #1  Wasm 406
+  113 ( 3.8%) +0x02b8 ldr      w12, [x26, x21]  Wasm 484
+  106 ( 3.6%) +0x0280 ldr      w12, [x26, x12]  Wasm 420
+  104 ( 3.5%) +0x02c8 add      w12, w20, #1  Wasm 504
+  100 ( 3.4%) +0x025c ldr      w12, [x26, x12]  Wasm 386
+   92 ( 3.1%) +0x0288 cbz      w9, #0x2e0  Wasm 434
+   88 ( 3.0%) +0x02d8 ldr      w12, [x26, x12]  Wasm 515
+   29 ( 1.0%) +0x0248 cmp      w20, #0  Wasm 372
+   25 ( 0.8%) +0x0308 ccmp     w20, w22, #0, ge  Wasm 571
+   25 ( 0.8%) +0x0230 ccmp     w20, w22, #0, ge  Wasm 342
+   22 ( 0.7%) +0x02a8 cmp      w20, #0  Wasm 473
+   22 ( 0.7%) +0x0328 ccmp     w8, w22, #0, ge  Wasm 604
+   21 ( 0.7%) +0x0348 eor      w23, w19, w23  Wasm 641
+   21 ( 0.7%) +0x02e8 ccmp     w20, w22, #0, ge  Wasm 538
+   17 ( 0.6%) +0x0268 b.lt     #0x288  Wasm 400
+
+Assembly for sampled range:
+    4 +0x00fc and      w12, w12, #1
+  341 +0x0100 str      w12, [x26, x19]
+    0 +0x0104 add      w19, w19, #8
+    0 +0x0108 add      w20, w20, #2
+    0 +0x010c cmp      w23, w20
+    0 +0x0110 b.ne     #0xc0
+    0 +0x0114 cbz      w9, #0x14c
+    0 +0x0118 mov      x12, x20
+    0 +0x011c mov      x7, #0x79b9
+    0 +0x0120 movk     x7, #0x9e37, lsl #16
+    0 +0x0124 add      w20, w20, w7
+    0 +0x0128 eor      w20, w20, w20, lsr #16
+    0 +0x012c mul      w20, w20, w13
+    0 +0x0130 eor      w7, w20, w20, lsr #13
+    0 +0x0134 and      w7, w7, #1
+    0 +0x0138 mov      x6, x12
+    0 +0x013c lsl      w6, w6, #2
+    0 +0x0140 add      x16, x26, x6
+    0 +0x0144 add      x16, x16, #0x10, lsl #12
+    0 +0x0148 str      w7, [x16]
+    0 +0x014c cmp      w22, #0
+    0 +0x0150 b.ne     #0x164
+    0 +0x0154 mov      x12, #0x9dc5
+    0 +0x0158 movk     x12, #0x811c, lsl #16
+    0 +0x015c str      x12, [sp, #0x68]
+    0 +0x0160 b        #0x370
+    0 +0x0164 mov      x24, x22
+    0 +0x0168 lsl      w24, w24, #2
+    0 +0x016c mov      x25, #0
+    0 +0x0170 sub      w25, w25, w24
+    0 +0x0174 mov      x23, #0x9dc5
+    0 +0x0178 movk     x23, #0x811c, lsl #16
+    0 +0x017c mov      x14, #0x10000
+    0 +0x0180 mov      x20, #0
+    0 +0x0184 nop      
+    0 +0x0188 nop      
+    0 +0x018c nop      
+    0 +0x0190 nop      
+    0 +0x0194 nop      
+    0 +0x0198 nop      
+    0 +0x019c nop      
+    0 +0x01a0 nop      
+    0 +0x01a4 nop      
+    0 +0x01a8 nop      
+    0 +0x01ac nop      
+    0 +0x01b0 cmn      w20, #1
+    0 +0x01b4 cset     w12, gt
+    0 +0x01b8 mov      x7, x20
+    0 +0x01bc cmp      w7, w22
+    0 +0x01c0 cset     w9, lt
+    0 +0x01c4 and      w9, w9, w12
+    0 +0x01c8 add      w15, w20, #1
+    0 +0x01cc cmn      w15, #1
+    0 +0x01d0 cset     w12, gt
+    0 +0x01d4 mov      x7, x15
+    0 +0x01d8 cmp      w7, w22
+    0 +0x01dc cset     w10, lt
+    0 +0x01e0 and      w10, w10, w12
+    0 +0x01e4 sub      w20, w20, #1
+    0 +0x01e8 cmn      w20, #1
+    0 +0x01ec cset     w12, gt
+    0 +0x01f0 mov      x7, x20
+    0 +0x01f4 cmp      w7, w22
+    0 +0x01f8 cset     w11, lt
+    0 +0x01fc and      w11, w11, w12
+    0 +0x0200 mov      x20, #0
+    0 +0x0204 mov      x21, x14
+    0 +0x0208 nop      
+    0 +0x020c nop      
+    0 +0x0210 nop      
+    0 +0x0214 nop      
+    0 +0x0218 nop      
+    0 +0x021c nop      
+  141 +0x0220 mov      x19, #0
+    0 +0x0224 cbz      w11, #0x288
+  194 +0x0228 mov      x19, #0
+    0 +0x022c cmp      w20, #1
+   25 +0x0230 ccmp     w20, w22, #0, ge
+    3 +0x0234 nop      
+    0 +0x0238 b.gt     #0x248
+    0 +0x023c add      w12, w21, w25
+    0 +0x0240 sub      w12, w12, #4
+  184 +0x0244 ldr      w19, [x26, x12]
+   29 +0x0248 cmp      w20, #0
+    3 +0x024c ccmp     w20, w22, #0, ge
+   14 +0x0250 nop      
+    4 +0x0254 b.ge     #0x264
+    0 +0x0258 add      w12, w21, w25
+  100 +0x025c ldr      w12, [x26, x12]
+    1 +0x0260 orr      w19, w12, w19
+    0 +0x0264 cmn      w20, #1
+   17 +0x0268 b.lt     #0x288
+  114 +0x026c add      w12, w20, #1
+    3 +0x0270 cmp      w12, w22
+    0 +0x0274 b.ge     #0x288
+    0 +0x0278 add      w12, w21, w25
+    0 +0x027c add      w12, w12, #4
+  106 +0x0280 ldr      w12, [x26, x12]
+    0 +0x0284 orr      w19, w12, w19
+   92 +0x0288 cbz      w9, #0x2e0
+  196 +0x028c cmp      w20, #1
+    4 +0x0290 ccmp     w20, w22, #0, ge
+    0 +0x0294 nop      
+    0 +0x0298 b.gt     #0x2a8
+    0 +0x029c sub      w12, w21, #4
+  182 +0x02a0 ldr      w12, [x26, x12]
+    0 +0x02a4 orr      w19, w12, w19
+   22 +0x02a8 cmp      w20, #0
+    1 +0x02ac ccmp     w20, w22, #0, ge
+    1 +0x02b0 nop      
+    0 +0x02b4 b.ge     #0x2c0
+  113 +0x02b8 ldr      w12, [x26, x21]
+    0 +0x02bc orr      w19, w12, w19
+    0 +0x02c0 cmn      w20, #1
+    0 +0x02c4 b.lt     #0x2e0
+  104 +0x02c8 add      w12, w20, #1
+    0 +0x02cc cmp      w12, w22
+    0 +0x02d0 b.ge     #0x2e0
+    0 +0x02d4 add      w12, w21, #4
+   88 +0x02d8 ldr      w12, [x26, x12]
+    0 +0x02dc orr      w19, w12, w19
+    2 +0x02e0 cbz      w10, #0x344
+  201 +0x02e4 cmp      w20, #1
+   21 +0x02e8 ccmp     w20, w22, #0, ge
+    2 +0x02ec nop      
+    0 +0x02f0 b.gt     #0x304
+    0 +0x02f4 add      w12, w21, w24
+    0 +0x02f8 sub      w12, w12, #4
+  199 +0x02fc ldr      w12, [x26, x12]
+    0 +0x0300 orr      w19, w12, w19
+    2 +0x0304 cmp      w20, #0
+   25 +0x0308 ccmp     w20, w22, #0, ge
+    2 +0x030c nop      
+    5 +0x0310 b.ge     #0x320
+    0 +0x0314 add      w12, w21, w24
+  191 +0x0318 ldr      w12, [x26, x12]
+    0 +0x031c orr      w19, w12, w19
+    0 +0x0320 add      w8, w20, #1
+    0 +0x0324 cmp      w8, #0
+   22 +0x0328 ccmp     w8, w22, #0, ge
+    2 +0x032c nop      
+    3 +0x0330 b.ge     #0x344
+    0 +0x0334 add      w12, w21, w24
+    0 +0x0338 add      w12, w12, #4
+    0 +0x033c ldr      w12, [x26, x12]
+    0 +0x0340 orr      w19, w12, w19
+    2 +0x0344 add      w21, w21, #4
+   21 +0x0348 eor      w23, w19, w23
+    1 +0x034c mul      w23, w23, w27
+    0 +0x0350 add      w20, w20, #1
+  189 +0x0354 cmp      w22, w20
+    0 +0x0358 b.ne     #0x220
+    2 +0x035c add      w14, w14, w24

@@ -1,0 +1,94 @@
+--- a/src/core/compiler/backend/railshot/arm64/regalloc.go
++++ b/src/core/compiler/backend/railshot/arm64/regalloc.go
+@@ -7,7 +7,8 @@
+ 	"os"
+ )
+ 
+-var mulAddConstReadEnabled = os.Getenv("WAGO_ARM64_NO_MULADD_CONST_READ") != "1"
++var loopIntConstReadEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_CONST_READ") == "1"
++var loopIntConstMACReadOnly = os.Getenv("WAGO_ARM64_EXPERIMENT_CONST_READ_SCOPE") == "mac"
+ 
+ type intConstReg struct {
+ 	typ  machineType
+@@ -353,6 +354,12 @@
+ 		f.checkUse(e)
+ 	}
+ 
++	if loopIntConstReadEnabled && !loopIntConstMACReadOnly && e.elemKind() == ekValue && e.st.kind == stConst && (e.st.typ == mtI32 || e.st.typ == mtI64) {
++		if reg, okay := f.cachedIntConst(e.st); okay {
++			f.stats.peep("loop-int-const-read")
++			return reg, false
++		}
++	}
+ 	if e.elemKind() == ekValue && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
+ 		return e.st.reg, false
+ 	}
+@@ -465,15 +472,15 @@
+ 	}
+ }
+ 
+-// materializeMulAddRead borrows immutable cached integer constants for fused
+-// multiply-accumulate sources. Cache misses retain ordinary read-only lowering.
+-func (f *fn) materializeMulAddRead(e *elem) (Reg, bool) {
+-	if f.opt(optMulAddConstRead) && e.elemKind() == ekValue && e.st.kind == stConst && (e.st.typ == mtI32 || e.st.typ == mtI64) {
++// materializeMACRead applies the cache borrowing experiment only to the three
++// immutable integer sources of a fused multiply-accumulate operation.
++func (f *fn) materializeMACRead(e *elem) (Reg, bool) {
++	if loopIntConstReadEnabled && loopIntConstMACReadOnly && e.elemKind() == ekValue && e.st.kind == stConst && (e.st.typ == mtI32 || e.st.typ == mtI64) {
+ 		if reg, okay := f.cachedIntConst(e.st); okay {
+ 			if regallocCheckEnabled {
+ 				f.checkUse(e)
+ 			}
+-			f.stats.peep("mul-add-const-read")
++			f.stats.peep("loop-int-const-read")
+ 			return reg, false
+ 		}
+ 	}
+--- a/src/core/compiler/backend/railshot/arm64/emit.go
++++ b/src/core/compiler/backend/railshot/arm64/emit.go
+@@ -1367,11 +1367,11 @@
+ 	savedPinned := f.pinned
+ 	// Realize the accumulator first: nested accumulations must not recurse
+ 	// while both outer multiplicands consume the transient register floor.
+-	ra, ownRa := f.materializeMulAddRead(addend)
++	ra, ownRa := f.materializeMACRead(addend)
+ 	f.pinned = f.pinned.add(ra)
+-	n, ownN := f.materializeMulAddRead(f.s.arg0(mul))
++	n, ownN := f.materializeMACRead(f.s.arg0(mul))
+ 	f.pinned = f.pinned.add(n)
+-	m, ownM := f.materializeMulAddRead(f.s.arg1(mul))
++	m, ownM := f.materializeMACRead(f.s.arg1(mul))
+ 	f.pinned = f.pinned.add(m)
+ 	d := dest
+ 	if d == regNone {
+--- a/src/core/compiler/backend/railshot/arm64/loop_int_const_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/loop_int_const_arm64_test.go
+@@ -144,8 +144,8 @@
+ }
+ 
+ func TestReadOnlyLoopConstantMADDArm64(t *testing.T) {
+-	saved := mulAddConstReadEnabled
+-	defer func() { mulAddConstReadEnabled = saved }()
++	saved := loopIntConstReadEnabled
++	defer func() { loopIntConstReadEnabled = saved }()
+ 	for _, wide := range []bool{false, true} {
+ 		typ, constOp, mulOp, addOp := wasm.I32, byte(0x41), byte(0x6c), byte(0x6a)
+ 		if wide {
+@@ -173,7 +173,7 @@
+ 		m := mod1(t, []wasm.ValType{typ, typ, wasm.I32}, []wasm.ValType{typ}, body)
+ 		m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+ 		for _, enabled := range []bool{false, true} {
+-			mulAddConstReadEnabled = enabled
++			loopIntConstReadEnabled = enabled
+ 			if diagnosticsEnabled {
+ 				stats := &ModuleStats{}
+ 				cm, err := CompileModuleWith(m, CompileOptions{Stats: stats})
+@@ -183,7 +183,7 @@
+ 				if cm.CodeImage != nil {
+ 					cm.CodeImage.Close()
+ 				}
+-				if (stats.Funcs[0].Peephole["mul-add-const-read"] != 0) != enabled {
++				if (stats.Funcs[0].Peephole["loop-int-const-read"] != 0) != enabled {
+ 					t.Fatalf("wide=%v enabled=%v stats=%v", wide, enabled, stats.Funcs[0].Peephole)
+ 				}
+ 			}

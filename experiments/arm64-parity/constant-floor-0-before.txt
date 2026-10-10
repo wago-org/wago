@@ -1,0 +1,29 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/image-resize/Compile-16 	    7038	     33843 ns/op	   34907 B/op	     103 allocs/op
+BenchmarkParity/image-resize/Compile-16 	    6950	     34474 ns/op	   34907 B/op	     103 allocs/op
+BenchmarkParity/image-resize/Exec-16    	   10000	     22728 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/image-resize/Exec-16    	   10000	     22772 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Compile-16    	    3376	     72940 ns/op	   44860 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16    	    3465	     68295 ns/op	   44859 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16       	    9982	     23859 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16       	   10000	     24146 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    3830	     60030 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    3862	     59772 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   14277	     16799 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   14420	     16636 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    4720	     48733 ns/op	   38165 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    4958	     49348 ns/op	   38166 B/op	     108 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    6594	     36814 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	    6674	     36576 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	    1332	    174140 ns/op	   96255 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	    1375	    177910 ns/op	   96251 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	    5202	     49144 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	    5059	     48148 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	    1875	    309163 ns/op	   71215 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                    	     830	    303121 ns/op	   71221 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    5774	     81251 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                       	    5866	     42394 ns/op	       0 B/op	       0 allocs/op
+PASS

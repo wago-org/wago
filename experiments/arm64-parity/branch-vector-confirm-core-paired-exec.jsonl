@@ -1,0 +1,17 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+{"workload":"compile-match","phase":"exec","round":0,"on":false,"iterations":7951,"us":32.615373286379075}
+{"workload":"compile-match","phase":"exec","round":0,"on":true,"iterations":7951,"us":40.790251792227394}
+{"workload":"compile-match","phase":"exec","round":1,"on":true,"iterations":7951,"us":50.85614488743554}
+{"workload":"compile-match","phase":"exec","round":1,"on":false,"iterations":7951,"us":12.577259715759025}
+{"workload":"compile-match","phase":"exec","round":2,"on":false,"iterations":7951,"us":8.119832851213683}
+{"workload":"compile-match","phase":"exec","round":2,"on":true,"iterations":7951,"us":8.144106527480819}
+{"workload":"compile-match","phase":"exec","round":3,"on":true,"iterations":7951,"us":8.140286379071815}
+{"workload":"compile-match","phase":"exec","round":3,"on":false,"iterations":7951,"us":8.113628348635391}
+{"workload":"compile-match","phase":"exec","round":4,"on":false,"iterations":7951,"us":8.129365362847441}
+{"workload":"compile-match","phase":"exec","round":4,"on":true,"iterations":7951,"us":8.118816249528361}
+{"workload":"compile-match","phase":"exec","round":5,"on":true,"iterations":7951,"us":8.070143126650736}
+{"workload":"compile-match","phase":"exec","round":5,"on":false,"iterations":7951,"us":8.081609231543203}
+{"workload":"compile-match","phase":"exec","round":6,"on":false,"iterations":7951,"us":8.128589737139983}
+{"workload":"compile-match","phase":"exec","round":6,"on":true,"iterations":7951,"us":8.199943403345491}
+{"workload":"compile-match","phase":"exec","round":7,"on":true,"iterations":7951,"us":8.187969060495535}
+{"workload":"compile-match","phase":"exec","round":7,"on":false,"iterations":7951,"us":8.189556785310025}

@@ -1,0 +1,35 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/search-aho-corasick/Compile-16 	     919	    153680 ns/op	   97658 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16    	     561	    256359 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/search-aho-corasick/Compile-16 	     921	    163047 ns/op	   97664 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16    	     530	    260241 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/search-aho-corasick/Compile-16 	     932	    154002 ns/op	   97659 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16    	     567	    262566 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/search-aho-corasick/Compile-16 	     912	    154151 ns/op	   97663 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16    	     567	    261172 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/search-aho-corasick/Compile-16 	     858	    165057 ns/op	   97659 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16    	     530	    271496 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,58 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+)
+
+func storeMapStreamsModule(t testing.TB, streams int) *wasm.Module {
+	body := []byte{1, 5, 0x7f, 0x20, 1, 0x21, 7, 0x02, 0x40, 0x20, 0, 0x45, 0x0d, 0, 0x03, 0x40}
+	for stream := 0; stream < streams; stream++ {
+		body = append(body, 0x20, 1, 0x20, 3, 0x20, 2, 0x6a, 0x41, byte(stream), 0x6a, 0x22, 4, 0x36, 0)
+		body = append(body, wasmtest.ULEB(uint32(stream*256))...)
+	}
+	body = append(body, 0x20, 1, 0x41, 4, 0x6a, 0x21, 1, 0x20, 3, 0x41, 1, 0x6a, 0x22, 3, 0x20, 0, 0x47, 0x0d, 0, 0x0b, 0x03, 0x40)
+	for stream := 0; stream < streams; stream++ {
+		body = append(body, 0x20, 5, 0x20, 7, 0x28, 0)
+		body = append(body, wasmtest.ULEB(uint32(stream*256))...)
+		body = append(body, 0x6a, 0x21, 5)
+	}
+	body = append(body, 0x20, 7, 0x41, 4, 0x6a, 0x21, 7, 0x20, 6, 0x41, 1, 0x6a, 0x22, 6, 0x20, 0, 0x47, 0x0d, 0, 0x0b, 0x0b, 0x20, 5, 0x20, 3, 0x6a, 0x20, 1, 0x6a, 0x20, 4, 0x6a, 0x0b)
+	return modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+}
+
+func TestStoreMapStreamPointers(t *testing.T) {
+	old := storeMapEnabled
+	defer func() { storeMapEnabled = old }()
+	storeMapEnabled = true
+	for _, streams := range []int{1, 2, 3, 4, 5, 8} {
+		m := storeMapStreamsModule(t, streams)
+		if diagnosticsEnabled {
+			stats := compileWithStats(t, m, false).Funcs[0]
+			if stats.Peephole["store-map-vector"] != 1 {
+				t.Fatalf("streams=%d: vector path declined", streams)
+			}
+		}
+		for _, guard := range []bool{false, true} {
+			for _, count := range []uint32{0, 3, 4, 9, 17} {
+				for _, seed := range []uint32{0, 0xfffffff0} {
+					var sum, last uint32
+					for i := uint32(0); i < count; i++ {
+						for stream := 0; stream < streams; stream++ {
+							last = i + seed + uint32(stream)
+							sum += last
+						}
+					}
+					want := sum + count + 1 + count*4 + last
+					got, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: guard}, uint64(count), 1, uint64(seed))
+					if err != nil || uint32(got) != want {
+						t.Fatalf("streams=%d guard=%v count=%d seed=%x got=%x want=%x err=%v", streams, guard, count, seed, got, want, err)
+					}
+				}
+			}
+		}
+	}
+}

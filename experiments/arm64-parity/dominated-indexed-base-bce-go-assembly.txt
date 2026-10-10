@@ -1,0 +1,369 @@
+TEXT github.com/wago-org/wago/src/core/encoder/arm64.(*Asm).FoldDominatedIndexedBases(SB) /Users/work/Code/Wago/wago/src/core/encoder/arm64/dominated_indexed_base.go
+  dominated_indexed_base.go:9	0x1001991e0		f9400b90		MOVD 16(R28), R16										
+  dominated_indexed_base.go:9	0x1001991e4		d11f03f1		SUB $1984, RSP, R17										
+  dominated_indexed_base.go:9	0x1001991e8		eb10023f		CMP R16, R17											
+  dominated_indexed_base.go:9	0x1001991ec		54002c89		BLS 356(PC)											
+  dominated_indexed_base.go:9	0x1001991f0		d12103f4		SUB $2112, RSP, R20										
+  dominated_indexed_base.go:9	0x1001991f4		a93ffa9d		STP (R29, R30), -8(R20)										
+  dominated_indexed_base.go:9	0x1001991f8		9100029f		MOVD R20, RSP											
+  dominated_indexed_base.go:9	0x1001991fc		d10023fd		SUB $8, RSP, R29										
+  dominated_indexed_base.go:9	0x100199200		f9042be1		MOVD R1, 2128(RSP)										
+  dominated_indexed_base.go:10	0x100199204		a9401003		LDP (R0), (R3, R4)										
+  dominated_indexed_base.go:10	0x100199208		927ef484		AND $-4, R4, R4											
+  dominated_indexed_base.go:11	0x10019920c		f140049f		CMP $(1<<12), R4										
+  dominated_indexed_base.go:11	0x100199210		5400018c		BGT 12(PC)											
+  dominated_indexed_base.go:18	0x100199214		910063e5		ADD $24, RSP, R5										
+  dominated_indexed_base.go:18	0x100199218		b27b03e6		ORR $32, ZR, R6											
+  dominated_indexed_base.go:18	0x10019921c		a8817cbf		STP.P (ZR, ZR), 16(R5)										
+  dominated_indexed_base.go:18	0x100199220		a8817cbf		STP.P (ZR, ZR), 16(R5)										
+  dominated_indexed_base.go:18	0x100199224		a8817cbf		STP.P (ZR, ZR), 16(R5)										
+  dominated_indexed_base.go:18	0x100199228		a8817cbf		STP.P (ZR, ZR), 16(R5)										
+  dominated_indexed_base.go:18	0x10019922c		d10004c6		SUB $1, R6, R6											
+  dominated_indexed_base.go:18	0x100199230		b5ffff66		CBNZ R6, -5(PC)											
+  dominated_indexed_base.go:20	0x100199234		aa1f03e0		MOVD ZR, R0											
+  dominated_indexed_base.go:20	0x100199238		aa1f03e5		MOVD ZR, R5											
+  dominated_indexed_base.go:20	0x10019923c		14000006		JMP 6(PC)											
+  dominated_indexed_base.go:12	0x100199240		aa1f03e0		MOVD ZR, R0											
+  dominated_indexed_base.go:12	0x100199244		a97ffbfd		LDP -8(RSP), (R29, R30)										
+  dominated_indexed_base.go:12	0x100199248		912103ff		ADD $2112, RSP, RSP										
+  dominated_indexed_base.go:12	0x10019924c		d65f03c0		RET												
+  dominated_indexed_base.go:20	0x100199250		aa0603e0		MOVD R6, R0											
+  dominated_indexed_base.go:20	0x100199254		91001006		ADD $4, R0, R6											
+  dominated_indexed_base.go:20	0x100199258		eb06009f		CMP R6, R4											
+  dominated_indexed_base.go:20	0x10019925c		540009eb		BLT 79(PC)											
+  dominated_indexed_base.go:21	0x100199260		540028a3		BCC 325(PC)											
+  dominated_indexed_base.go:21	0x100199264		eb06001f		CMP R6, R0											
+  dominated_indexed_base.go:21	0x100199268		54002848		BHI 322(PC)											
+  binary.go:92			0x10019926c		b8606867		MOVWU (R3)(R0), R7										
+  dominated_indexed_base.go:22	0x100199270		d29bfc28		MOVD $57313, R8											
+  dominated_indexed_base.go:22	0x100199274		f2a55f88		MOVK $(11004<<16), R8										
+  dominated_indexed_base.go:22	0x100199278		2b0800ff		CMNW R8, R7											
+  dominated_indexed_base.go:22	0x10019927c		54fffea0		BEQ -11(PC)											
+  dominated_indexed_base.go:22	0x100199280		926608e9		AND $469762048, R7, R9										
+  dominated_indexed_base.go:22	0x100199284		d2a2800a		MOVD $335544320, R10										
+  dominated_indexed_base.go:22	0x100199288		6b0a013f		CMPW R10, R9											
+  dominated_indexed_base.go:22	0x10019928c		54fffe21		BNE -15(PC)											
+  dominated_indexed_base.go:25	0x100199290		9276e8e9		AND $-993, R7, R9										
+  dominated_indexed_base.go:25	0x100199294		d2a53c2b		MOVD $702611456, R11										
+  dominated_indexed_base.go:25	0x100199298		2b09017f		CMNW R9, R11											
+  dominated_indexed_base.go:25	0x10019929c		54000760		BEQ 59(PC)											
+  dominated_indexed_base.go:158	0x1001992a0		926610e9		AND $2080374784, R7, R9										
+  dominated_indexed_base.go:158	0x1001992a4		6b0a013f		CMPW R10, R9											
+  dominated_indexed_base.go:158	0x1001992a8		54000101		BNE 8(PC)											
+  dominated_indexed_base.go:159	0x1001992ac		934064e7		SBFX $0, R7, $26, R7										
+  dominated_indexed_base.go:159	0x1001992b0		8b070807		ADD R7<<2, R0, R7										
+  dominated_indexed_base.go:160	0x1001992b4		929ffde9		MOVD $-65520, R9										
+  dominated_indexed_base.go:160	0x1001992b8		f2bfe009		MOVK $(65280<<16), R9										
+  dominated_indexed_base.go:160	0x1001992bc		d2aa800d		MOVD $1409286144, R13										
+  dominated_indexed_base.go:160	0x1001992c0		b24003ec		ORR $1, ZR, R12											
+  dominated_indexed_base.go:28	0x1001992c4		14000018		JMP 24(PC)											
+  dominated_indexed_base.go:160	0x1001992c8		929ffde9		MOVD $-65520, R9										
+  dominated_indexed_base.go:160	0x1001992cc		f2bfe009		MOVK $(65280<<16), R9										
+  dominated_indexed_base.go:160	0x1001992d0		8a0900ec		AND R9, R7, R12											
+  dominated_indexed_base.go:160	0x1001992d4		d2aa800d		MOVD $1409286144, R13										
+  dominated_indexed_base.go:160	0x1001992d8		6b0d019f		CMPW R13, R12											
+  dominated_indexed_base.go:160	0x1001992dc		540000a0		BEQ 5(PC)											
+  dominated_indexed_base.go:160	0x1001992e0		926714ec		AND $2113929216, R7, R12									
+  dominated_indexed_base.go:160	0x1001992e4		d2a6800e		MOVD $872415232, R14										
+  dominated_indexed_base.go:160	0x1001992e8		6b0e019f		CMPW R14, R12											
+  dominated_indexed_base.go:160	0x1001992ec		540000a1		BNE 5(PC)											
+  dominated_indexed_base.go:161	0x1001992f0		93455ce7		SBFX $5, R7, $19, R7										
+  dominated_indexed_base.go:161	0x1001992f4		8b070807		ADD R7<<2, R0, R7										
+  dominated_indexed_base.go:161	0x1001992f8		b24003ec		ORR $1, ZR, R12											
+  dominated_indexed_base.go:28	0x1001992fc		1400000a		JMP 10(PC)											
+  dominated_indexed_base.go:162	0x100199300		d2a6c00f		MOVD $905969664, R15										
+  dominated_indexed_base.go:162	0x100199304		6b0f019f		CMPW R15, R12											
+  dominated_indexed_base.go:162	0x100199308		540000a1		BNE 5(PC)											
+  dominated_indexed_base.go:163	0x10019930c		934548e7		SBFX $5, R7, $14, R7										
+  dominated_indexed_base.go:163	0x100199310		8b070807		ADD R7<<2, R0, R7										
+  dominated_indexed_base.go:163	0x100199314		b24003ec		ORR $1, ZR, R12											
+  dominated_indexed_base.go:28	0x100199318		14000003		JMP 3(PC)											
+  dominated_indexed_base.go:28	0x10019931c		aa1f03e7		MOVD ZR, R7											
+  dominated_indexed_base.go:28	0x100199320		aa1f03ec		MOVD ZR, R12											
+  dominated_indexed_base.go:28	0x100199324		3600026c		TBZ $0, R12, 19(PC)										
+  dominated_indexed_base.go:29	0x100199328		910004a5		ADD $1, R5, R5											
+  dominated_indexed_base.go:30	0x10019932c		f10200bf		CMP $128, R5											
+  dominated_indexed_base.go:30	0x100199330		5400024c		BGT 18(PC)											
+  dominated_indexed_base.go:33	0x100199334		b7f801a7		TBNZ $63, R7, 13(PC)										
+  dominated_indexed_base.go:33	0x100199338		eb0400ff		CMP R4, R7											
+  dominated_indexed_base.go:33	0x10019933c		5400016a		BGE 11(PC)											
+  dominated_indexed_base.go:34	0x100199340		d342fcec		LSR $2, R7, R12											
+  dominated_indexed_base.go:34	0x100199344		910063ee		ADD $24, RSP, R14										
+  dominated_indexed_base.go:34	0x100199348		786c79cf		MOVHU (R14)(R12<<1), R15									
+  dominated_indexed_base.go:34	0x10019934c		b271c1f0		ORR $-32768, R15, R16										
+  dominated_indexed_base.go:34	0x100199350		782c79d0		MOVH R16, (R14)(R12<<1)										
+  dominated_indexed_base.go:35	0x100199354		eb0000ff		CMP R0, R7											
+  dominated_indexed_base.go:35	0x100199358		54fff7cc		BGT -66(PC)											
+  dominated_indexed_base.go:36	0x10019935c		b272c5e7		ORR $-16384, R15, R7										
+  dominated_indexed_base.go:36	0x100199360		782c79c7		MOVH R7, (R14)(R12<<1)										
+  dominated_indexed_base.go:36	0x100199364		17ffffbb		JMP -69(PC)											
+  dominated_indexed_base.go:18	0x100199368		910063ee		ADD $24, RSP, R14										
+  dominated_indexed_base.go:33	0x10019936c		17ffffb9		JMP -71(PC)											
+  dominated_indexed_base.go:18	0x100199370		910063ee		ADD $24, RSP, R14										
+  dominated_indexed_base.go:28	0x100199374		17ffffb7		JMP -73(PC)											
+  dominated_indexed_base.go:31	0x100199378		aa1f03e0		MOVD ZR, R0											
+  dominated_indexed_base.go:31	0x10019937c		a97ffbfd		LDP -8(RSP), (R29, R30)										
+  dominated_indexed_base.go:31	0x100199380		912103ff		ADD $2112, RSP, RSP										
+  dominated_indexed_base.go:31	0x100199384		d65f03c0		RET												
+  dominated_indexed_base.go:26	0x100199388		aa1f03e0		MOVD ZR, R0											
+  dominated_indexed_base.go:26	0x10019938c		a97ffbfd		LDP -8(RSP), (R29, R30)										
+  dominated_indexed_base.go:26	0x100199390		912103ff		ADD $2112, RSP, RSP										
+  dominated_indexed_base.go:26	0x100199394		d65f03c0		RET												
+  dominated_indexed_base.go:42	0x100199398		aa1f03e0		MOVD ZR, R0											
+  dominated_indexed_base.go:42	0x10019939c		14000007		JMP 7(PC)											
+  dominated_indexed_base.go:46	0x1001993a0		d342fca5		LSR $2, R5, R5											
+  dominated_indexed_base.go:46	0x1001993a4		910063e6		ADD $24, RSP, R6										
+  dominated_indexed_base.go:46	0x1001993a8		786578c7		MOVHU (R6)(R5<<1), R7										
+  dominated_indexed_base.go:46	0x1001993ac		b272c4e7		ORR $-16384, R7, R7										
+  dominated_indexed_base.go:46	0x1001993b0		782578c7		MOVH R7, (R6)(R5<<1)										
+  dominated_indexed_base.go:42	0x1001993b4		91000400		ADD $1, R0, R0											
+  dominated_indexed_base.go:42	0x1001993b8		eb00005f		CMP R0, R2											
+  dominated_indexed_base.go:42	0x1001993bc		5400016d		BLE 11(PC)											
+  dominated_indexed_base.go:42	0x1001993c0		f8607825		MOVD (R1)(R0<<3), R5										
+  dominated_indexed_base.go:43	0x1001993c4		b7f800a5		TBNZ $63, R5, 5(PC)										
+  dominated_indexed_base.go:43	0x1001993c8		eb0400bf		CMP R4, R5											
+  dominated_indexed_base.go:43	0x1001993cc		5400006a		BGE 3(PC)											
+  dominated_indexed_base.go:43	0x1001993d0		f24004bf		TST $3, R5											
+  dominated_indexed_base.go:43	0x1001993d4		54fffe60		BEQ -13(PC)											
+  dominated_indexed_base.go:44	0x1001993d8		aa1f03e0		MOVD ZR, R0											
+  dominated_indexed_base.go:44	0x1001993dc		a97ffbfd		LDP -8(RSP), (R29, R30)										
+  dominated_indexed_base.go:44	0x1001993e0		912103ff		ADD $2112, RSP, RSP										
+  dominated_indexed_base.go:44	0x1001993e4		d65f03c0		RET												
+  dominated_indexed_base.go:10	0x1001993e8		f9040fe4		MOVD R4, 2072(RSP)										
+  dominated_indexed_base.go:10	0x1001993ec		f9041be3		MOVD R3, 2096(RSP)										
+  dominated_indexed_base.go:42	0x1001993f0		aa1f03e0		MOVD ZR, R0											
+  dominated_indexed_base.go:42	0x1001993f4		aa1f03e5		MOVD ZR, R5											
+  dominated_indexed_base.go:42	0x1001993f8		b24003e6		ORR $1, ZR, R6											
+  dominated_indexed_base.go:51	0x1001993fc		aa1f03e1		MOVD ZR, R1											
+  dominated_indexed_base.go:42	0x100199400		14000002		JMP 2(PC)											
+  dominated_indexed_base.go:51	0x100199404		aa0703e0		MOVD R7, R0											
+  dominated_indexed_base.go:51	0x100199408		91001007		ADD $4, R0, R7											
+  dominated_indexed_base.go:51	0x10019940c		eb07009f		CMP R7, R4											
+  dominated_indexed_base.go:51	0x100199410		5400198b		BLT 204(PC)											
+  dominated_indexed_base.go:52	0x100199414		937ffc08		ASR $63, R0, R8											
+  dominated_indexed_base.go:52	0x100199418		8b48f808		ADD R8>>62, R0, R8										
+  dominated_indexed_base.go:52	0x10019941c		9342fd08		ASR $2, R8, R8											
+  dominated_indexed_base.go:52	0x100199420		f110011f		CMP $1024, R8											
+  dominated_indexed_base.go:52	0x100199424		54001a22		BCS 209(PC)											
+  dominated_indexed_base.go:52	0x100199428		910063e9		ADD $24, RSP, R9										
+  dominated_indexed_base.go:52	0x10019942c		7868792a		MOVHU (R9)(R8<<1), R10										
+  dominated_indexed_base.go:51	0x100199430		eb07009f		CMP R7, R4											
+  dominated_indexed_base.go:53	0x100199434		3678024a		TBZ $15, R10, 18(PC)										
+  dominated_indexed_base.go:55	0x100199438		3670008a		TBZ $14, R10, 4(PC)										
+  dominated_indexed_base.go:55	0x10019943c		aa1f03e5		MOVD ZR, R5											
+  dominated_indexed_base.go:55	0x100199440		b24003e6		ORR $1, ZR, R6											
+  dominated_indexed_base.go:58	0x100199444		1400000e		JMP 14(PC)											
+  dominated_indexed_base.go:59	0x100199448		366801aa		TBZ $13, R10, 13(PC)										
+  dominated_indexed_base.go:61	0x10019944c		36000146		TBZ $0, R6, 10(PC)										
+  dominated_indexed_base.go:64	0x100199450		d3403cab		UBFX $0, R5, $16, R11										
+  dominated_indexed_base.go:64	0x100199454		9240294a		AND $2047, R10, R10										
+  dominated_indexed_base.go:64	0x100199458		6b0a017f		CMPW R10, R11											
+  dominated_indexed_base.go:64	0x10019945c		54000080		BEQ 4(PC)											
+  dominated_indexed_base.go:51	0x100199460		eb07009f		CMP R7, R4											
+  dominated_indexed_base.go:51	0x100199464		aa1f03e5		MOVD ZR, R5											
+  dominated_indexed_base.go:61	0x100199468		14000005		JMP 5(PC)											
+  dominated_indexed_base.go:51	0x10019946c		eb07009f		CMP R7, R4											
+  dominated_indexed_base.go:64	0x100199470		14000003		JMP 3(PC)											
+  dominated_indexed_base.go:60	0x100199474		92402945		AND $2047, R10, R5										
+  dominated_indexed_base.go:60	0x100199478		b24003e6		ORR $1, ZR, R6											
+  dominated_indexed_base.go:69	0x10019947c		54001743		BCC 186(PC)											
+  dominated_indexed_base.go:69	0x100199480		eb07001f		CMP R7, R0											
+  dominated_indexed_base.go:69	0x100199484		540016e8		BHI 183(PC)											
+  binary.go:92			0x100199488		b860686a		MOVWU (R3)(R0), R10										
+  dominated_indexed_base.go:70	0x10019948c		d29bfc2b		MOVD $57313, R11										
+  dominated_indexed_base.go:70	0x100199490		f2a55f8b		MOVK $(11004<<16), R11										
+  dominated_indexed_base.go:70	0x100199494		2b0b015f		CMNW R11, R10											
+  dominated_indexed_base.go:70	0x100199498		540000e1		BNE 7(PC)											
+  dominated_indexed_base.go:75	0x10019949c		d2ad8008		MOVD $1811939328, R8										
+  dominated_indexed_base.go:160	0x1001994a0		929ffdec		MOVD $-65520, R12										
+  dominated_indexed_base.go:160	0x1001994a4		f2bfe00c		MOVK $(65280<<16), R12										
+  dominated_indexed_base.go:154	0x1001994a8		d2a2800d		MOVD $335544320, R13										
+  dominated_indexed_base.go:160	0x1001994ac		d2aa800f		MOVD $1409286144, R15										
+  dominated_indexed_base.go:71	0x1001994b0		17ffffd5		JMP -43(PC)											
+  dominated_indexed_base.go:154	0x1001994b4		9266094c		AND $469762048, R10, R12									
+  dominated_indexed_base.go:154	0x1001994b8		d2a2800d		MOVD $335544320, R13										
+  dominated_indexed_base.go:154	0x1001994bc		6b0d019f		CMPW R13, R12											
+  dominated_indexed_base.go:154	0x1001994c0		540000e0		BEQ 7(PC)											
+  dominated_indexed_base.go:160	0x1001994c4		929ffdec		MOVD $-65520, R12										
+  dominated_indexed_base.go:160	0x1001994c8		f2bfe00c		MOVK $(65280<<16), R12										
+  dominated_indexed_base.go:160	0x1001994cc		d2aa800f		MOVD $1409286144, R15										
+  dominated_indexed_base.go:73	0x1001994d0		aa1f03ee		MOVD ZR, R14											
+  dominated_indexed_base.go:73	0x1001994d4		aa1f03e2		MOVD ZR, R2											
+  dominated_indexed_base.go:73	0x1001994d8		14000023		JMP 35(PC)											
+  dominated_indexed_base.go:158	0x1001994dc		9266114c		AND $2080374784, R10, R12									
+  dominated_indexed_base.go:158	0x1001994e0		6b0d019f		CMPW R13, R12											
+  dominated_indexed_base.go:158	0x1001994e4		54000121		BNE 9(PC)											
+  dominated_indexed_base.go:159	0x1001994e8		9340654c		SBFX $0, R10, $26, R12										
+  dominated_indexed_base.go:159	0x1001994ec		8b0c080c		ADD R12<<2, R0, R12										
+  dominated_indexed_base.go:160	0x1001994f0		d2aa800f		MOVD $1409286144, R15										
+  dominated_indexed_base.go:73	0x1001994f4		aa0c03ee		MOVD R12, R14											
+  dominated_indexed_base.go:73	0x1001994f8		b24003e2		ORR $1, ZR, R2											
+  dominated_indexed_base.go:160	0x1001994fc		929ffdec		MOVD $-65520, R12										
+  dominated_indexed_base.go:160	0x100199500		f2bfe00c		MOVK $(65280<<16), R12										
+  dominated_indexed_base.go:73	0x100199504		14000018		JMP 24(PC)											
+  dominated_indexed_base.go:160	0x100199508		929ffdec		MOVD $-65520, R12										
+  dominated_indexed_base.go:160	0x10019950c		f2bfe00c		MOVK $(65280<<16), R12										
+  dominated_indexed_base.go:160	0x100199510		8a0c014e		AND R12, R10, R14										
+  dominated_indexed_base.go:160	0x100199514		d2aa800f		MOVD $1409286144, R15										
+  dominated_indexed_base.go:160	0x100199518		6b0f01df		CMPW R15, R14											
+  dominated_indexed_base.go:160	0x10019951c		540000a0		BEQ 5(PC)											
+  dominated_indexed_base.go:160	0x100199520		9267154e		AND $2113929216, R10, R14									
+  dominated_indexed_base.go:160	0x100199524		d2a68010		MOVD $872415232, R16										
+  dominated_indexed_base.go:160	0x100199528		6b1001df		CMPW R16, R14											
+  dominated_indexed_base.go:160	0x10019952c		540000a1		BNE 5(PC)											
+  dominated_indexed_base.go:161	0x100199530		93455d4e		SBFX $5, R10, $19, R14										
+  dominated_indexed_base.go:161	0x100199534		8b0e080e		ADD R14<<2, R0, R14										
+  dominated_indexed_base.go:161	0x100199538		b24003e2		ORR $1, ZR, R2											
+  dominated_indexed_base.go:73	0x10019953c		1400000a		JMP 10(PC)											
+  dominated_indexed_base.go:162	0x100199540		d2a6c011		MOVD $905969664, R17										
+  dominated_indexed_base.go:162	0x100199544		6b1101df		CMPW R17, R14											
+  dominated_indexed_base.go:162	0x100199548		540000a1		BNE 5(PC)											
+  dominated_indexed_base.go:163	0x10019954c		9345494e		SBFX $5, R10, $14, R14										
+  dominated_indexed_base.go:163	0x100199550		8b0e080e		ADD R14<<2, R0, R14										
+  dominated_indexed_base.go:163	0x100199554		b24003e2		ORR $1, ZR, R2											
+  dominated_indexed_base.go:73	0x100199558		14000003		JMP 3(PC)											
+  dominated_indexed_base.go:73	0x10019955c		aa1f03ee		MOVD ZR, R14											
+  dominated_indexed_base.go:73	0x100199560		aa1f03e2		MOVD ZR, R2											
+  dominated_indexed_base.go:73	0x100199564		360003a2		TBZ $0, R2, 29(PC)										
+  dominated_indexed_base.go:75	0x100199568		92669540		AND $-67108864, R10, R0										
+  dominated_indexed_base.go:75	0x10019956c		d2ad8008		MOVD $1811939328, R8										
+  dominated_indexed_base.go:75	0x100199570		2b00011f		CMNW R0, R8											
+  dominated_indexed_base.go:76	0x100199574		54000041		BNE 2(PC)											
+  dominated_indexed_base.go:80	0x100199578		aa1f03e5		MOVD ZR, R5											
+  dominated_indexed_base.go:80	0x10019957c		36000246		TBZ $0, R6, 18(PC)										
+  dominated_indexed_base.go:80	0x100199580		b7f8022e		TBNZ $63, R14, 17(PC)										
+  dominated_indexed_base.go:80	0x100199584		eb0401df		CMP R4, R14											
+  dominated_indexed_base.go:80	0x100199588		540001ea		BGE 15(PC)											
+  dominated_indexed_base.go:81	0x10019958c		d342fdca		LSR $2, R14, R10										
+  dominated_indexed_base.go:82	0x100199590		786a792e		MOVHU (R9)(R10<<1), R14										
+  dominated_indexed_base.go:82	0x100199594		376800ce		TBNZ $13, R14, 6(PC)										
+  dominated_indexed_base.go:83	0x100199598		9275d1ce		AND $-2048, R14, R14										
+  dominated_indexed_base.go:83	0x10019959c		aa0e00ae		ORR R14, R5, R14										
+  dominated_indexed_base.go:83	0x1001995a0		b27301ce		ORR $8192, R14, R14										
+  dominated_indexed_base.go:83	0x1001995a4		782a792e		MOVH R14, (R9)(R10<<1)										
+  dominated_indexed_base.go:83	0x1001995a8		14000007		JMP 7(PC)											
+  dominated_indexed_base.go:84	0x1001995ac		924029d0		AND $2047, R14, R16										
+  dominated_indexed_base.go:84	0x1001995b0		d3403cb1		UBFX $0, R5, $16, R17										
+  dominated_indexed_base.go:84	0x1001995b4		6b10023f		CMPW R16, R17											
+  dominated_indexed_base.go:84	0x1001995b8		54000060		BEQ 3(PC)											
+  dominated_indexed_base.go:85	0x1001995bc		9275d1ce		AND $-2048, R14, R14										
+  dominated_indexed_base.go:85	0x1001995c0		782a792e		MOVH R14, (R9)(R10<<1)										
+  dominated_indexed_base.go:88	0x1001995c4		6b0d001f		CMPW R13, R0											
+  dominated_indexed_base.go:88	0x1001995c8		54fff1e1		BNE -113(PC)											
+  dominated_indexed_base.go:92	0x1001995cc		aa1f03e6		MOVD ZR, R6											
+  dominated_indexed_base.go:92	0x1001995d0		aa1f03e5		MOVD ZR, R5											
+  dominated_indexed_base.go:92	0x1001995d4		17ffff8c		JMP -116(PC)											
+  dominated_indexed_base.go:94	0x1001995d8		36000b06		TBZ $0, R6, 88(PC)										
+  dominated_indexed_base.go:97	0x1001995dc		92807c0e		MOVD $-993, R14											
+  dominated_indexed_base.go:97	0x1001995e0		f2bffc0e		MOVK $(65504<<16), R14										
+  dominated_indexed_base.go:97	0x1001995e4		8a0a01d0		AND R10, R14, R16										
+  dominated_indexed_base.go:97	0x1001995e8		d29ffe11		MOVD $65520, R17										
+  dominated_indexed_base.go:97	0x1001995ec		f2ae9ff1		MOVK $(29951<<16), R17										
+  dominated_indexed_base.go:97	0x1001995f0		2b10023f		CMNW R16, R17											
+  dominated_indexed_base.go:97	0x1001995f4		54000521		BNE 41(PC)											
+  dominated_indexed_base.go:98	0x1001995f8		aa0a03f0		MOVD R10, R16											
+  dominated_indexed_base.go:99	0x1001995fc		d3452613		UBFX $5, R16, $5, R19										
+  dominated_indexed_base.go:99	0x100199600		7100427f		CMPW $16, R19											
+  dominated_indexed_base.go:99	0x100199604		54000100		BEQ 8(PC)											
+  dominated_indexed_base.go:99	0x100199608		d3505210		UBFX $16, R16, $5, R16										
+  dominated_indexed_base.go:99	0x10019960c		7100421f		CMPW $16, R16											
+  dominated_indexed_base.go:99	0x100199610		540000a0		BEQ 5(PC)											
+  dominated_indexed_base.go:99	0x100199614		71007e7f		CMPW $31, R19											
+  dominated_indexed_base.go:99	0x100199618		54000060		BEQ 3(PC)											
+  dominated_indexed_base.go:99	0x10019961c		71007e1f		CMPW $31, R16											
+  dominated_indexed_base.go:99	0x100199620		54000081		BNE 4(PC)											
+  dominated_indexed_base.go:75	0x100199624		d2ad8008		MOVD $1811939328, R8										
+  dominated_indexed_base.go:51	0x100199628		aa1f03e5		MOVD ZR, R5											
+  dominated_indexed_base.go:101	0x10019962c		17ffff76		JMP -138(PC)											
+  dominated_indexed_base.go:103	0x100199630		d3403cb0		UBFX $0, R5, $16, R16										
+  dominated_indexed_base.go:103	0x100199634		340002d0		CBZW R16, 22(PC)										
+  dominated_indexed_base.go:105	0x100199638		f100201f		CMP $8, R0											
+  dominated_indexed_base.go:105	0x10019963c		5400028b		BLT 20(PC)											
+  dominated_indexed_base.go:104	0x100199640		d10004b0		SUB $1, R5, R16											
+  dominated_indexed_base.go:104	0x100199644		d3403e13		UBFX $0, R16, $16, R19										
+  dominated_indexed_base.go:105	0x100199648		cb130814		SUB R19<<2, R0, R20										
+  dominated_indexed_base.go:105	0x10019964c		f104029f		CMP $256, R20											
+  dominated_indexed_base.go:105	0x100199650		540001ec		BGT 15(PC)											
+  dominated_indexed_base.go:104	0x100199654		d37e3e10		UBFIZ $2, R16, $16, R16										
+  dominated_indexed_base.go:105	0x100199658		91001210		ADD $4, R16, R16										
+  dominated_indexed_base.go:105	0x10019965c		eb10009f		CMP R16, R4											
+  dominated_indexed_base.go:105	0x100199660		540007c3		BCC 62(PC)											
+  binary.go:92			0x100199664		b8737870		MOVWU (R3)(R19<<2), R16										
+  dominated_indexed_base.go:105	0x100199668		6b0a021f		CMPW R10, R16											
+  dominated_indexed_base.go:105	0x10019966c		54000101		BNE 8(PC)											
+  dominated_indexed_base.go:106	0x100199670		d503201f		NOOP												
+  binary.go:98			0x100199674		929bfc08		MOVD $-57313, R8										
+  binary.go:98			0x100199678		f2baa068		MOVK $(54531<<16), R8										
+  binary.go:98			0x10019967c		b8206868		MOVW R8, (R3)(R0)										
+  dominated_indexed_base.go:107	0x100199680		91000421		ADD $1, R1, R1											
+  dominated_indexed_base.go:75	0x100199684		d2ad8008		MOVD $1811939328, R8										
+  dominated_indexed_base.go:108	0x100199688		17ffff5f		JMP -161(PC)											
+  dominated_indexed_base.go:111	0x10019968c		91000505		ADD $1, R8, R5											
+  dominated_indexed_base.go:75	0x100199690		d2ad8008		MOVD $1811939328, R8										
+  dominated_indexed_base.go:112	0x100199694		17ffff5c		JMP -164(PC)											
+  dominated_indexed_base.go:114	0x100199698		d3403ca8		UBFX $0, R5, $16, R8										
+  dominated_indexed_base.go:114	0x10019969c		340004a8		CBZW R8, 37(PC)											
+  dominated_indexed_base.go:115	0x1001996a0		d10004a8		SUB $1, R5, R8											
+  dominated_indexed_base.go:115	0x1001996a4		d37e3d10		UBFIZ $2, R8, $16, R16										
+  dominated_indexed_base.go:116	0x1001996a8		91001210		ADD $4, R16, R16										
+  dominated_indexed_base.go:116	0x1001996ac		eb10009f		CMP R16, R4											
+  dominated_indexed_base.go:116	0x1001996b0		54000503		BCC 40(PC)											
+  dominated_indexed_base.go:51	0x1001996b4		f90417e7		MOVD R7, 2088(RSP)										
+  dominated_indexed_base.go:51	0x1001996b8		f90413e1		MOVD R1, 2080(RSP)										
+  dominated_indexed_base.go:69	0x1001996bc		79002fe5		MOVH R5, 22(RSP)										
+  dominated_indexed_base.go:69	0x1001996c0		390057e6		MOVB R6, 21(RSP)										
+  dominated_indexed_base.go:115	0x1001996c4		d3403d04		UBFX $0, R8, $16, R4										
+  binary.go:92			0x1001996c8		b8647863		MOVWU (R3)(R4<<2), R3										
+  dominated_indexed_base.go:117	0x1001996cc		d3452461		UBFX $5, R3, $5, R1										
+  dominated_indexed_base.go:117	0x1001996d0		d3505062		UBFX $16, R3, $5, R2										
+  dominated_indexed_base.go:118	0x1001996d4		aa0a03e0		MOVD R10, R0											
+  dominated_indexed_base.go:118	0x1001996d8		94000032		CALL github.com/wago-org/wago/src/core/encoder/arm64.preservesDominatedIndexedBase(SB)		
+  dominated_indexed_base.go:118	0x1001996dc		36000060		TBZ $0, R0, 3(PC)										
+  dominated_indexed_base.go:118	0x1001996e0		79402fe0		MOVHU 22(RSP), R0										
+  dominated_indexed_base.go:118	0x1001996e4		14000002		JMP 2(PC)											
+  dominated_indexed_base.go:118	0x1001996e8		aa1f03e0		MOVD ZR, R0											
+  dominated_indexed_base.go:51	0x1001996ec		f94413e1		MOVD 2080(RSP), R1										
+  binary.go:92			0x1001996f0		f9441be3		MOVD 2096(RSP), R3										
+  dominated_indexed_base.go:51	0x1001996f4		f9440fe4		MOVD 2072(RSP), R4										
+  dominated_indexed_base.go:51	0x1001996f8		394057e6		MOVBU 21(RSP), R6										
+  dominated_indexed_base.go:51	0x1001996fc		f94417e7		MOVD 2088(RSP), R7										
+  dominated_indexed_base.go:18	0x100199700		910063e9		ADD $24, RSP, R9										
+  dominated_indexed_base.go:70	0x100199704		d29bfc2b		MOVD $57313, R11										
+  dominated_indexed_base.go:70	0x100199708		f2a55f8b		MOVK $(11004<<16), R11										
+  dominated_indexed_base.go:160	0x10019970c		929ffdec		MOVD $-65520, R12										
+  dominated_indexed_base.go:160	0x100199710		f2bfe00c		MOVK $(65280<<16), R12										
+  dominated_indexed_base.go:154	0x100199714		d2a2800d		MOVD $335544320, R13										
+  dominated_indexed_base.go:97	0x100199718		92807c0e		MOVD $-993, R14											
+  dominated_indexed_base.go:97	0x10019971c		f2bffc0e		MOVK $(65504<<16), R14										
+  dominated_indexed_base.go:160	0x100199720		d2aa800f		MOVD $1409286144, R15										
+  dominated_indexed_base.go:97	0x100199724		d29ffe11		MOVD $65520, R17										
+  dominated_indexed_base.go:97	0x100199728		f2ae9ff1		MOVK $(29951<<16), R17										
+  dominated_indexed_base.go:97	0x10019972c		aa0003e5		MOVD R0, R5											
+  dominated_indexed_base.go:75	0x100199730		d2ad8008		MOVD $1811939328, R8										
+  dominated_indexed_base.go:75	0x100199734		17ffff34		JMP -204(PC)											
+  dominated_indexed_base.go:75	0x100199738		d2ad8008		MOVD $1811939328, R8										
+  dominated_indexed_base.go:95	0x10019973c		17ffff32		JMP -206(PC)											
+  dominated_indexed_base.go:123	0x100199740		aa0103e0		MOVD R1, R0											
+  dominated_indexed_base.go:123	0x100199744		a97ffbfd		LDP -8(RSP), (R29, R30)										
+  dominated_indexed_base.go:123	0x100199748		912103ff		ADD $2112, RSP, RSP										
+  dominated_indexed_base.go:123	0x10019974c		d65f03c0		RET												
+  dominated_indexed_base.go:116	0x100199750		aa1003e0		MOVD R16, R0											
+  dominated_indexed_base.go:116	0x100199754		97fba2f7		CALL runtime.panicBounds(SB)									
+  dominated_indexed_base.go:105	0x100199758		aa1003e0		MOVD R16, R0											
+  dominated_indexed_base.go:105	0x10019975c		97fba2f5		CALL runtime.panicBounds(SB)									
+  dominated_indexed_base.go:69	0x100199760		97fba2f4		CALL runtime.panicBounds(SB)									
+  dominated_indexed_base.go:69	0x100199764		97fba2f3		CALL runtime.panicBounds(SB)									
+  dominated_indexed_base.go:52	0x100199768		b27603e0		ORR $1024, ZR, R0										
+  dominated_indexed_base.go:52	0x10019976c		97fba2f1		CALL runtime.panicBounds(SB)									
+  dominated_indexed_base.go:21	0x100199770		97fba2f0		CALL runtime.panicBounds(SB)									
+  dominated_indexed_base.go:21	0x100199774		97fba2ef		CALL runtime.panicBounds(SB)									
+  dominated_indexed_base.go:21	0x100199778		d503201f		NOOP												
+  dominated_indexed_base.go:9	0x10019977c		a90087e0		STP (R0, R1), 8(RSP)										
+  dominated_indexed_base.go:9	0x100199780		a9018fe2		STP (R2, R3), 24(RSP)										
+  dominated_indexed_base.go:9	0x100199784		aa1e03e3		MOVD R30, R3											
+  dominated_indexed_base.go:9	0x100199788		97fb9a52		CALL runtime.morestack_noctxt.abi0(SB)								
+  dominated_indexed_base.go:9	0x10019978c		a94087e0		LDP 8(RSP), (R0, R1)										
+  dominated_indexed_base.go:9	0x100199790		a9418fe2		LDP 24(RSP), (R2, R3)										
+  dominated_indexed_base.go:9	0x100199794		17fffe93		JMP github.com/wago-org/wago/src/core/encoder/arm64.(*Asm).FoldDominatedIndexedBases(SB)	
+  dominated_indexed_base.go:9	0x100199798		00000000		?												
+  dominated_indexed_base.go:9	0x10019979c		00000000		?												

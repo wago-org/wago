@@ -1,0 +1,296 @@
+[
+  {
+    "thread_id": 0,
+    "sequence": 1,
+    "timestamp_ns": 1791644496682156000,
+    "kind": "load",
+    "image_id": 1,
+    "image": {
+      "compiler_site_coverage": "explicit-operand-spills-reloads-and-memory-bounds-branches",
+      "sources": [
+        {
+          "offset": 96,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 9
+        },
+        {
+          "offset": 104,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 17
+        },
+        {
+          "offset": 112,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 19
+        },
+        {
+          "offset": 116,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 24
+        },
+        {
+          "offset": 120,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 32
+        },
+        {
+          "offset": 128,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 36
+        },
+        {
+          "offset": 132,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 40
+        },
+        {
+          "offset": 136,
+          "size": 24,
+          "function": 0,
+          "wasm_offset": 42
+        },
+        {
+          "offset": 160,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 52
+        },
+        {
+          "offset": 164,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 60
+        },
+        {
+          "offset": 168,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 67
+        },
+        {
+          "offset": 172,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 91
+        },
+        {
+          "offset": 176,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 75
+        },
+        {
+          "offset": 180,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 80
+        },
+        {
+          "offset": 184,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 83
+        },
+        {
+          "offset": 188,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 88
+        },
+        {
+          "offset": 196,
+          "size": 32,
+          "function": 0,
+          "wasm_offset": 91
+        },
+        {
+          "offset": 228,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 92
+        },
+        {
+          "offset": 232,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 101
+        },
+        {
+          "offset": 244,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 111
+        },
+        {
+          "offset": 256,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 119
+        },
+        {
+          "offset": 260,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 133
+        },
+        {
+          "offset": 272,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 147
+        },
+        {
+          "offset": 284,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 160
+        },
+        {
+          "offset": 292,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 170
+        },
+        {
+          "offset": 300,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 163
+        },
+        {
+          "offset": 304,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 166
+        },
+        {
+          "offset": 308,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 170
+        },
+        {
+          "offset": 316,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 173
+        },
+        {
+          "offset": 320,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 183
+        },
+        {
+          "offset": 332,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 190
+        },
+        {
+          "offset": 340,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 193
+        },
+        {
+          "offset": 344,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 199
+        },
+        {
+          "offset": 348,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 208
+        },
+        {
+          "offset": 352,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 212
+        },
+        {
+          "offset": 360,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 218
+        }
+      ],
+      "source_coverage": "opcode-lowering-and-deferred-origins",
+      "id": 1,
+      "module_id": "4bfcd111e7fc92e2a06c09684626d20486a6c88b0abb1f463088598b3d645d05",
+      "artifact_id": "b0b8526157f1785af16f87f97ec547b20b053b855d51e68d3aa2117cbd2d1c88",
+      "base": 4390322176,
+      "size": 476,
+      "target": "darwin/arm64",
+      "regions": [
+        {
+          "offset": 0,
+          "size": 28,
+          "kind": "entry-adapter",
+          "function": 0,
+          "name": "benchmark"
+        },
+        {
+          "offset": 28,
+          "size": 4,
+          "kind": "padding",
+          "function": -1
+        },
+        {
+          "offset": 32,
+          "size": 444,
+          "kind": "guest-body",
+          "function": 0,
+          "name": "benchmark"
+        }
+      ],
+      "functions": [
+        {
+          "index": 0,
+          "name": "benchmark",
+          "native_bytes": 476,
+          "frame_bytes": 0,
+          "emitted_spills": 0,
+          "emitted_reloads": 0,
+          "emitted_bounds_checks": 0,
+          "compiler_decisions": {
+            "callfree-loop": 1,
+            "callfree-loop-entry-store-elide": 7,
+            "cmp-branch-fuse": 7,
+            "frame-adjust-elide": 1,
+            "frame-header-elide": 1,
+            "local-3op-sink": 3,
+            "loop-int-const": 3,
+            "mul-add-fuse": 1,
+            "old-dest-rhs-sink": 2,
+            "select-const-reuse": 2,
+            "select-flags": 1,
+            "select-local-sink": 5,
+            "select-local-tee-sink": 3,
+            "select-source-read": 5,
+            "shifted-register-alu": 2,
+            "single-negative-move32": 4
+          }
+        }
+      ],
+      "code": "+gMBqv4Pv6kAAED5BQAAlP4PwahgAAD5wANf1h8gA9UfIAPVHyAD1R8gA9X5AwCqFwCA0hQAgNIVAIDSFgCA0hMAgNIYAIDSOzeP0vvGs/JuTZnSbr2w8m0ygNINIKDyPwMAcYEAAFS3uJPSlyOw8j4AABQUAIDSt7iT0pcjsPIVAoDSFgCA0h8gA9UfIAPVHyAD1R8gA9UfIAPVHyAD1dMCGwtzQlNKc34OG+kDFapqNlNKSj0AEkoBFEvr/48SSgELCz8BAHGgBQBUPwUAMYEAAFQQALDSXwEQa4AGAFRLDcka8wMLqukAgBJ/IgAxM9GTGukAgNJ/HgBxM6GTGnRSFRvp/48SnwIJazTRlBrp/4/SnwIJazShlBr4AxOqGH8fE0kAgNIKAIASawIYSmsBGEt/DQBxSZGJGjUBFQspAIDSvwYAcTXRlRrpAxOqKQ0AEjcBF0r3fg0b1gYAET8DFmvh+f9U4AMXqh8gA9UfIAPVHyAD1cADX9ZxC4DSAQAAFEmDWfgwAIDSMBEAuTEVALkwAYDSMAEAuVCDXvheA174HwIAkcADX9ZxC4DSAQAAFEmDWfgwAIDSMBEAuTEVALlQAYDSMAEAuVCDXvheA174HwIAkcADX9Y="
+    }
+  },
+  {
+    "thread_id": 0,
+    "sequence": 2,
+    "timestamp_ns": 1791644499682510000,
+    "kind": "retire",
+    "image_id": 1
+  }
+]

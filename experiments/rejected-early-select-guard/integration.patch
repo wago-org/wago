@@ -1,0 +1,81 @@
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -219,6 +219,8 @@
+ 	intervalControl     bool
+ 	intervalNext        bool
+ 	streamingReduction  bool
++	earlySelectActive   bool
++	earlySelectKeepTrue bool
+ 	selectGroupEnd      int
+ 	selectGroupSite     int
+ 	selectGroupLocal    int
+--- a/src/core/compiler/backend/railshot/arm64/driver.go
++++ b/src/core/compiler/backend/railshot/arm64/driver.go
+@@ -123,6 +123,9 @@
+ 		if err != nil {
+ 			return err
+ 		}
++		if op == 0x20 && f.opt(optEarlySelectGuard) && !f.usesCalls && f.selectGroupEnd == 0 {
++			f.beginEarlySelectGuard(r)
++		}
+ 		if op == 0x1b || op == 0x22 {
+ 			f.beginSelectGroup(r)
+ 		}
+@@ -762,7 +765,9 @@
+ 	// operand blocks are consumed before the final CSEL overwrites dest.
+ 	f.realizeLocalRefs(x, f.s.baseOfValentBlock(a))
+ 	w := at.is64() || bt.is64()
+-	if f.tryPureSelectSinkGuard(a, b, cond, x, dest, w) {
++	if f.earlySelectActive && r.Offset() == f.selectGroupEnd && !tee {
++		f.finishEarlySelectSink(a, b, cond, dest)
++	} else if f.tryPureSelectSinkGuard(a, b, cond, x, dest, w) {
+ 	} else if isFusableCondition(cond) {
+ 		savedPinned := f.pinned
+ 		constA, constB := storage{kind: stReg}, storage{kind: stReg}
+--- a/src/core/compiler/backend/railshot/arm64/select_group.go
++++ b/src/core/compiler/backend/railshot/arm64/select_group.go
+@@ -178,4 +178,5 @@
+ 	f.invalidateStoreForward()
+ 	f.invalidateBoundsCert()
+ 	f.selectGroupEnd = 0
++	f.earlySelectActive = false
+ }
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -50,6 +50,7 @@
+ 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
+ 	optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
+ 	optimization.Bind("inverted-logical", &invertedLogicalEnabled),
++	optimization.Bind("early-select-guard", &earlySelectGuardEnabled),
+ 	optimization.Bind("select-group-guard", &selectGroupEnabled),
+ 	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
+ 	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
+@@ -111,6 +112,7 @@
+ 	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
+ 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
+ 	optBorrowedDivRem       = optimizationBindings.Option("borrowed-div-rem")
++	optEarlySelectGuard     = optimizationBindings.Option("early-select-guard")
+ 	optBrTableBranchVector  = optimizationBindings.Option("br-table-branch-vector")
+ 	optDominatedIndexedBase = optimizationBindings.Option("dominated-indexed-base")
+ 	optIndexedBaseReuse     = optimizationBindings.Option("indexed-base-reuse")
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -85,7 +85,7 @@
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector",
++		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "early-select-guard",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -458,6 +458,7 @@
+ 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
+ 	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: []string{"arm64"}},
++	{Name: "early-select-guard", Label: "Early pure select guards", Description: "guard pure nested integer selections before realizing an expensive update", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},

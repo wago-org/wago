@@ -1,0 +1,113 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/image-blur/Exec-16    	       1	    280125 ns/op	     448 B/op	       3 allocs/op
+BenchmarkParity/image-resize/Exec-16  	       1	     67166 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/image-composite/Exec-16         	       1	    130042 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/vision-sobel/Exec-16            	       1	    136250 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/video-motion/Exec-16            	       1	    766791 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/mesh-skinning/Exec-16           	       1	     45209 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/triangle-raster/Exec-16         	       1	    212625 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/particle-physics/Exec-16        	       1	    830750 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/ml-inference/Exec-16            	       1	     29125 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/audio-fir/Exec-16               	       1	     76083 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/columnar-query/Exec-16          	       1	     36000 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/map-point-segment/Exec-16       	       1	     47458 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/document-layout/Exec-16         	       1	    153666 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16        	       1	     64666 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/frustum-culling/Exec-16         	       1	     19291 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/ray-box/Exec-16                 	       1	     33333 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/bezier-tessellation/Exec-16     	       1	     20250 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/audio-biquad/Exec-16            	       1	     30125 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/audio-autocorrelation/Exec-16   	       1	     67375 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16             	       1	     59583 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/compiler-constant-fold/Exec-16  	       1	      9834 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/compiler-dead-code/Exec-16      	       1	     13000 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16         	       1	     30833 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/compression-rle/Exec-16                      	       1	     21708 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/compression-lzw/Exec-16                      	       1	    392125 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/vision-otsu/Exec-16                          	       1	     19709 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/vision-dilation/Exec-16                      	       1	     86208 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/vision-components/Exec-16                    	       1	     58625 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/vision-fast-corners/Exec-16                  	       1	   1174500 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/vision-distance-transform/Exec-16            	       1	     77708 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/db-btree/Exec-16                             	       1	     41959 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/db-hash-join/Exec-16                         	       1	     11750 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/db-sort-merge-join/Exec-16                   	       1	     73292 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/db-bitmap-index/Exec-16                      	       1	     27958 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/document-optimal-wrap/Exec-16                	       1	     14292 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/document-edit-distance/Exec-16               	       1	    123709 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/document-kerning/Exec-16                     	       1	     34417 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/document-bidi-reorder/Exec-16                	       1	     33583 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/document-page-packing/Exec-16                	       1	     60250 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/files-path-normalize/Exec-16                 	       1	     22500 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/files-content-chunking/Exec-16               	       1	     42250 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/files-merkle-tree/Exec-16                    	       1	     16333 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/files-glob-match/Exec-16                     	       1	    165375 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/files-path-trie/Exec-16                      	       1	     14042 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/game-collision-impulse/Exec-16               	       1	     29042 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/game-flocking/Exec-16                        	       1	     86542 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/game-spatial-hash/Exec-16                    	       1	     42584 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/game-cellular-automata/Exec-16               	       1	    122333 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16                 	       1	     31916 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/geo-convex-hull/Exec-16                      	       1	     18375 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/geo-polygon-clipping/Exec-16                 	       1	     52750 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/geo-polyline-simplify/Exec-16                	       1	     13041 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/geo-geohash/Exec-16                          	       1	     49959 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/graphics-bresenham/Exec-16                   	       1	    153333 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/graphics-png-paeth/Exec-16                   	       1	     45458 ns/op	     128 B/op	       1 allocs/op
+--- FAIL: BenchmarkParity/graphics-reed-solomon/Exec
+    parity_test.go:89: oracle: got 3334862866, want 3255182738
+--- FAIL: BenchmarkParity/graphics-reed-solomon
+BenchmarkParity/hardware-prime-implicants/Exec-16            	       1	     97625 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/hardware-boolean-anf/Exec-16                 	       1	     94708 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/image-median/Exec-16                         	       1	    409792 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/image-error-diffusion/Exec-16                	       1	     61917 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/image-ycocg/Exec-16                          	       1	     63167 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/graph-dijkstra/Exec-16                       	       1	     15625 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/serialization-msgpack/Exec-16                	       1	     18583 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16               	       1	     39875 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/language-forth/Exec-16                       	       1	     24791 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/language-brainfuck/Exec-16                   	       1	     40708 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/language-register-vm/Exec-16                 	       1	     24334 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/ml-convolution/Exec-16                       	       1	     37500 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/ml-max-pooling/Exec-16                       	       1	     39375 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/ml-decision-tree/Exec-16                     	       1	    121750 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/ml-knn/Exec-16                               	       1	     54500 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/ml-kmeans/Exec-16                            	       1	     42542 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/numeric-integer-sqrt/Exec-16                 	       1	    174042 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/numeric-euclidean-gcd/Exec-16                	       1	    147041 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/numeric-cordic/Exec-16                       	       1	     66208 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/numeric-simpson/Exec-16                      	       1	      3500 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/search-kmp/Exec-16                           	       1	     99083 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/search-horspool/Exec-16                      	       1	     86541 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/search-rabin-karp/Exec-16                    	       1	    243666 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16                  	       1	    267625 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16                       	       1	    174833 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/stats-quickselect/Exec-16                    	       1	     25292 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/stats-welford/Exec-16                        	       1	     29542 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16              	       1	      8208 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/stats-gini/Exec-16                           	       1	     10083 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/stats-bootstrap/Exec-16                      	       1	     37917 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/video-dct/Exec-16                            	       1	     59166 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/video-yuv420/Exec-16                         	       1	     63208 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/video-deblocking/Exec-16                     	       1	     37584 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/video-temporal-denoise/Exec-16               	       1	    109708 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/video-optical-flow/Exec-16                   	       1	     32500 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/graph-kruskal/Exec-16                        	       1	     47208 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                        	       1	     48792 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/checksum-crc32/Exec-16                       	       1	    127750 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/stencil-lattice-boltzmann/Exec-16            	       1	    174541 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/stencil-wave-equation/Exec-16                	       1	     86209 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/bio-lcs/Exec-16                              	       1	     80250 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/bio-global-alignment/Exec-16                 	       1	     93250 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/bio-local-alignment/Exec-16                  	       1	    100042 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/bio-kmer-count/Exec-16                       	       1	     50375 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/bio-reverse-complement/Exec-16               	       1	     55625 ns/op	     128 B/op	       1 allocs/op
+BenchmarkParity/text-substitution/Exec-16                    	       1	     78500 ns/op	     128 B/op	       1 allocs/op
+--- FAIL: BenchmarkParity
+FAIL
+exit status 1
+FAIL	github.com/wago-org/wago/experiments/arm64-parity	0.347s
+FAIL

@@ -1,0 +1,284 @@
+//go:build arm64
+
+package arm64
+
+import (
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	"math/bits"
+)
+
+// All registers here are caller-owned temporaries. Initial points to unchanged
+// 8-byte local snapshots; work points to packed address proofs plus store ranges.
+// No guest memory or scalar-local home is written by this guard.
+type storeMapGuardRegs struct{ initial, work, memory, count, lo, hi, tmp Reg }
+type storeMapGuardBranches struct {
+	sites [512]int
+	n     int
+}
+
+type storeMapGuardLayout struct {
+	needed [128]bool
+	slots  [128]uint16
+	direct [8]bool
+	roots  [8]int
+	biases [8]uint64
+	n      int
+}
+
+func planStoreMapGuard(p *storeMapPlan) (l storeMapGuardLayout) {
+	for i := 0; i < p.nWrites; i++ {
+		l.roots[i], l.biases[i] = storeMapAddressKey(p, p.writes[i].address, 0)
+		l.direct[i] = p.nodes[l.roots[i]].op == 0x20
+		root := p.writes[i].address
+		if l.direct[i] {
+			root = l.roots[i]
+		}
+		l.needed[root] = true
+	}
+	for i := p.n - 1; i >= p.locals; i-- {
+		if l.needed[i] && p.nodes[i].op != 0x41 {
+			l.needed[p.nodes[i].a], l.needed[p.nodes[i].b] = true, true
+		}
+	}
+	for i := 0; i < p.n; i++ {
+		if l.needed[i] {
+			l.slots[i] = uint16(l.n)
+			l.n++
+		}
+	}
+	return l
+}
+
+func (f *fn) patchStoreMapGuard(g *storeMapGuardBranches, target int) {
+	for _, site := range g.sites[:g.n] {
+		f.patchBranch19(site, target)
+	}
+}
+
+func (f *fn) emitStoreMapGuard(p *storeMapPlan, r storeMapGuardRegs) (g storeMapGuardBranches) {
+	l := planStoreMapGuard(p)
+	return f.emitStoreMapGuardLayout(p, &l, r)
+}
+
+func (f *fn) emitStoreMapGuardLayout(p *storeMapPlan, l *storeMapGuardLayout, r storeMapGuardRegs) (g storeMapGuardBranches) {
+	reject := func(cond Cond) {
+		if g.n == len(g.sites) {
+			panic("arm64: store-map guard branch bound")
+		}
+		g.sites[g.n] = f.a.Bcond(cond)
+		g.n++
+	}
+	load := func(dst Reg, node int, last bool) {
+		off := uint32(l.slots[node]) * 16
+		if last {
+			off += 8
+		}
+		f.a.Load64(dst, r.work, off)
+	}
+	save := func(src Reg, node int, last bool) {
+		off := uint32(l.slots[node]) * 16
+		if last {
+			off += 8
+		}
+		f.a.Store64(src, r.work, off)
+	}
+	f.a.Load32(r.lo, r.initial, uint32(p.counter*8))
+	limit := p.nodes[p.limit]
+	if limit.op == 0x20 {
+		f.a.Load32(X16, r.initial, uint32(limit.a*8))
+	} else {
+		f.a.MovImm64(X16, uint64(limit.v))
+	}
+	f.a.CmpReg64(X16, r.lo)
+	reject(condBE)
+	f.a.Sub64(r.lo, X16, r.lo)
+	step := p.steps[p.counter]
+	if step == 1 {
+		f.a.MovReg64(r.count, r.lo)
+	} else if step&(step-1) == 0 {
+		f.a.LsrImm(r.count, r.lo, uint8(bits.TrailingZeros32(step)), false)
+		if !f.a.AndImm64(r.hi, r.lo, uint64(step-1)) {
+			panic("arm64: store-map power-of-two remainder")
+		}
+		f.a.CmpImm64(r.hi, 0)
+		reject(condNE)
+	} else {
+		f.a.MovImm64(r.tmp, uint64(step))
+		f.a.Udiv64(r.count, r.lo, r.tmp)
+		f.a.Msub64(r.hi, r.count, r.tmp, r.lo)
+		f.a.CmpImm64(r.hi, 0)
+		reject(condNE)
+	}
+	f.a.CmpImm64(r.count, 4)
+	reject(condB)
+	f.a.MovImm64(X17, 0xffffffff)
+	for local := 0; local < p.locals; local++ {
+		if !l.needed[local] && p.steps[local] == 0 {
+			continue
+		}
+		f.a.Load32(r.lo, r.initial, uint32(local*8))
+		if p.steps[local] != 0 {
+			if p.steps[local] == 1 {
+				f.a.Add64(r.hi, r.lo, r.count)
+			} else {
+				f.a.MovImm64(r.tmp, uint64(p.steps[local]))
+				f.a.Madd64(r.hi, r.count, r.tmp, r.lo)
+			}
+			// Integral trips and limit > initial already prove that the final
+			// counter equals the zero-extended limit. Other inductions still
+			// require their independent no-wrap proof.
+			if local != p.counter {
+				f.a.CmpReg64(r.hi, X17)
+				reject(condA)
+			}
+			if p.steps[local] == 1 {
+				f.a.SubImm64(r.hi, r.hi, 1)
+			} else {
+				f.a.Sub64(r.hi, r.hi, r.tmp)
+			}
+		} else {
+			f.a.MovReg64(r.hi, r.lo)
+		}
+		if l.needed[local] {
+			save(r.lo, local, false)
+			save(r.hi, local, true)
+		}
+	}
+	for i := p.locals; i < p.n; i++ {
+		if !l.needed[i] {
+			continue
+		}
+		n := p.nodes[i]
+		switch n.op {
+		case 0x41:
+			f.a.MovImm64(r.lo, uint64(n.v))
+			f.a.MovReg64(r.hi, r.lo)
+		case 0x6a:
+			load(r.lo, n.a, false)
+			load(r.hi, n.a, true)
+			load(r.tmp, n.b, false)
+			load(X16, n.b, true)
+			f.a.Add64(r.lo, r.lo, r.tmp)
+			f.a.Add64(r.hi, r.hi, X16)
+		case 0x6c, 0x74:
+			a, b := n.a, n.b
+			if n.op == 0x6c && p.nodes[a].op == 0x41 {
+				a, b = b, a
+			}
+			factor := uint64(p.nodes[b].v)
+			if n.op == 0x74 {
+				factor = uint64(1) << (factor & 31)
+			}
+			load(r.lo, a, false)
+			load(r.hi, a, true)
+			f.a.MovImm64(r.tmp, factor)
+			f.a.Mul64(r.lo, r.lo, r.tmp)
+			f.a.Mul64(r.hi, r.hi, r.tmp)
+		default:
+			panic("arm64: invalid store-map address proof")
+		}
+		f.a.CmpReg64(r.hi, X17)
+		reject(condA)
+		save(r.lo, i, false)
+		save(r.hi, i, true)
+	}
+	rangeOff := l.n * 16
+	for i := 0; i < p.nWrites; i++ {
+		w := p.writes[i]
+		address := w.address
+		if l.direct[i] {
+			address = l.roots[i]
+		}
+		load(r.lo, address, false)
+		load(r.hi, address, true)
+		if l.direct[i] && l.biases[i] != 0 {
+			f.addStoreMapRangeConstant(r, l.biases[i])
+			f.a.CmpReg64(r.hi, X17)
+			reject(condA)
+		}
+		if w.offset != 0 {
+			f.addStoreMapRangeConstant(r, w.offset)
+		}
+		f.a.AddImm64(r.hi, r.hi, 4)
+		f.a.CmpReg64(r.hi, r.memory)
+		reject(condA)
+		f.a.Store64(r.lo, r.work, uint32(rangeOff+i*16))
+		f.a.Store64(r.hi, r.work, uint32(rangeOff+i*16+8))
+	}
+	for i := 0; i < p.nWrites; i++ {
+		for j := 0; j < i; j++ {
+			// A shared decoded address root fixes the unsigned distance between
+			// stream starts. Bounds/wrap proofs above make constant residues safe.
+			a, biasA := storeMapAddressKey(p, p.writes[i].address, p.writes[i].offset)
+			b, biasB := storeMapAddressKey(p, p.writes[j].address, p.writes[j].offset)
+			if a == b && p.writes[i].stride == p.writes[j].stride {
+				lower, higher := i, j
+				distance := biasB - biasA
+				if biasA > biasB {
+					lower, higher = j, i
+					distance = biasA - biasB
+				}
+				stride := p.writes[i].stride
+				remainder := distance % stride
+				if remainder >= 4 && stride-remainder >= 4 {
+					continue
+				}
+				// Overlapping residues require disjoint ranges. Their ordering is
+				// already known, so one endpoint comparison proves that condition.
+				f.a.Load64(r.lo, r.work, uint32(rangeOff+lower*16+8))
+				f.a.Load64(r.hi, r.work, uint32(rangeOff+higher*16))
+				f.a.CmpReg64(r.lo, r.hi)
+				reject(condA)
+				continue
+			}
+			f.a.Load64(r.lo, r.work, uint32(rangeOff+i*16))
+			f.a.Load64(r.hi, r.work, uint32(rangeOff+i*16+8))
+			f.a.Load64(r.tmp, r.work, uint32(rangeOff+j*16))
+			f.a.Load64(X16, r.work, uint32(rangeOff+j*16+8))
+			f.a.CmpReg64(r.hi, r.tmp)
+			skipA := f.a.Bcond(condBE)
+			f.a.CmpReg64(X16, r.lo)
+			skipB := f.a.Bcond(condBE)
+			if p.writes[i].stride != p.writes[j].stride {
+				reject(condA)
+			} else {
+				// Absolute starting-address distance, without signed interpretations.
+				f.a.CmpReg64(r.lo, r.tmp)
+				f.a.Sub64(r.tmp, r.lo, r.tmp)
+				f.a.Sub64(X17, a64.XZR, r.tmp)
+				f.a.Csel64(r.tmp, r.tmp, X17, condAE)
+				stride := p.writes[i].stride
+				if stride&(stride-1) == 0 {
+					f.a.AndImm64(r.tmp, r.tmp, stride-1)
+				} else {
+					f.a.MovImm64(X16, stride)
+					f.a.Udiv64(r.lo, r.tmp, X16)
+					f.a.Msub64(r.tmp, r.lo, X16, r.tmp)
+				}
+				f.a.CmpImm64(r.tmp, 4)
+				reject(condB)
+				f.a.MovImm64(X16, stride)
+				f.a.Sub64(r.tmp, X16, r.tmp)
+				f.a.CmpImm64(r.tmp, 4)
+				reject(condB)
+			}
+			f.patchBranch19(skipA, f.a.Len())
+			f.patchBranch19(skipB, f.a.Len())
+		}
+	}
+	return g
+}
+
+func (f *fn) addStoreMapRangeConstant(r storeMapGuardRegs, value uint64) {
+	if value <= 0xfff {
+		f.a.AddImm64(r.lo, r.lo, uint32(value))
+		f.a.AddImm64(r.hi, r.hi, uint32(value))
+	} else if value&0xfff == 0 && value>>12 <= 0xfff {
+		f.a.AddImm64LSL12(r.lo, r.lo, uint32(value))
+		f.a.AddImm64LSL12(r.hi, r.hi, uint32(value))
+	} else {
+		f.a.MovImm64(r.tmp, value)
+		f.a.Add64(r.lo, r.lo, r.tmp)
+		f.a.Add64(r.hi, r.hi, r.tmp)
+	}
+}

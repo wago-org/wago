@@ -1,0 +1,76 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"encoding/json"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestStoreMapPlanReport(t *testing.T) {
+	out := os.Getenv("WAGO_STORE_MAP_PLAN_REPORT")
+	if out == "" {
+		t.Skip("optional corpus diagnostics")
+	}
+	requireCompilerDiagnostics(t)
+	root := os.Getenv("WAGO_PARITY_CORPUS")
+	paths, err := filepath.Glob(filepath.Join(root, "artifacts", "*.wasm"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("corpus paths: %v", err)
+	}
+	type record struct {
+		Workload                                        string
+		SignalBounds                                    bool
+		Locals, Nodes, Stores, Groups, ValueOps, Leaves int
+		CounterStep                                     uint32
+		StoreRoots                                      []byte
+		Opcodes                                         map[byte]int
+	}
+	var records []record
+	oldEnabled, oldDiagnostic := storeMapEnabled, storeMapPlanDiagnostic
+	defer func() { storeMapEnabled, storeMapPlanDiagnostic = oldEnabled, oldDiagnostic }()
+	storeMapEnabled = true
+	for _, path := range paths {
+		guard := false
+		storeMapPlanDiagnostic = func(p *storeMapPlan, v *storeMapVectors, groups int) {
+			r := record{Workload: filepath.Base(path), SignalBounds: guard, Locals: p.locals, Nodes: p.n, Stores: p.nWrites, Groups: groups, CounterStep: p.steps[p.counter], Opcodes: make(map[byte]int)}
+			for i := 0; i < p.n; i++ {
+				if !v.reachable[i] {
+					continue
+				}
+				op := p.nodes[i].op
+				if op == 0x20 || op == 0x41 {
+					r.Leaves++
+				} else {
+					r.ValueOps++
+					r.Opcodes[op]++
+				}
+			}
+			for i := 0; i < p.nWrites; i++ {
+				r.StoreRoots = append(r.StoreRoots, p.nodes[p.writes[i].value].op)
+			}
+			records = append(records, r)
+		}
+		code, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := wasm.DecodeModule(code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		compileWithStats(t, m, false)
+		guard = true
+		compileWithStats(t, m, true)
+	}
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(out, append(data, '\n'), 0644); err != nil {
+		t.Fatal(err)
+	}
+}

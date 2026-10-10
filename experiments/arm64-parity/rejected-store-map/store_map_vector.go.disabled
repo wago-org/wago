@@ -1,0 +1,200 @@
+//go:build arm64
+
+package arm64
+
+// Plan every assignment before emission. Store values and final scalar-local
+// values are roots, so register reuse cannot destroy them before stores or
+// last-lane extraction. Original local/constant vectors remain resident.
+type storeMapVectors struct {
+	regs               [128]Reg
+	reachable          [128]bool
+	refs               [128]int
+	strides            [32]Reg
+	zero, zipLo, zipHi Reg
+	mask               regMask
+}
+
+func storeMapVectorOperands(n dotNode) int {
+	switch n.op {
+	case 0x20, 0x41:
+		return 0
+	case 0x45, 0x74, 0x75, 0x76:
+		return 1
+	default:
+		return 2
+	}
+}
+
+func (f *fn) planStoreMapVectors(p *storeMapPlan) (v storeMapVectors, ok bool) {
+	for i := range v.regs {
+		v.regs[i] = regNone
+	}
+	for i := range v.strides {
+		v.strides[i] = regNone
+	}
+	root := func(x int) { v.refs[x]++; v.reachable[x] = true }
+	for i := 0; i < p.nWrites; i++ {
+		root(p.writes[i].value)
+	}
+	for local := 0; local < p.locals; local++ {
+		if p.written&(1<<local) != 0 && p.steps[local] == 0 {
+			root(p.values[local])
+		}
+	}
+	// Decoding appends every operation after its operands. A reverse walk
+	// therefore propagates roots and counts each reachable operand use once.
+	for i := p.n - 1; i >= p.locals; i-- {
+		if !v.reachable[i] {
+			continue
+		}
+		n := p.nodes[i]
+		operands := storeMapVectorOperands(n)
+		if operands > 0 {
+			v.refs[n.a]++
+			v.reachable[n.a] = true
+		}
+		if operands > 1 {
+			v.refs[n.b]++
+			v.reachable[n.b] = true
+		}
+	}
+	inuse := f.blockedFRegs(0)
+	alloc := func() Reg {
+		for _, r := range fpAllocRegs {
+			if !inuse.has(r) && f.fregUser[r] == nil {
+				inuse = inuse.add(r)
+				v.mask = v.mask.add(r)
+				return r
+			}
+		}
+		return regNone
+	}
+	v.zero, v.zipLo, v.zipHi = alloc(), alloc(), alloc()
+	if v.zero == regNone || v.zipLo == regNone || v.zipHi == regNone {
+		return v, false
+	}
+	for i := 0; i < p.n; i++ {
+		if !v.reachable[i] {
+			continue
+		}
+		n := p.nodes[i]
+		if n.op != 0x20 && n.op != 0x41 {
+			continue
+		}
+		if n.op == 0x41 {
+			for j := 0; j < i; j++ {
+				if v.reachable[j] && p.nodes[j].op == 0x41 && p.nodes[j].v == n.v {
+					v.regs[i] = v.regs[j]
+					break
+				}
+			}
+		}
+		if v.regs[i] == regNone {
+			v.regs[i] = alloc()
+			if v.regs[i] == regNone {
+				return v, false
+			}
+		}
+		if n.op == 0x20 && p.steps[n.a] != 0 {
+			v.strides[n.a] = alloc()
+			if v.strides[n.a] == regNone {
+				return v, false
+			}
+		}
+	}
+	refs := v.refs
+	for i := p.locals; i < p.n; i++ {
+		if !v.reachable[i] || p.nodes[i].op == 0x41 {
+			continue
+		}
+		n := p.nodes[i]
+		operands := storeMapVectorOperands(n)
+		// A last-use DAG temporary can be its own destination. Immutable leaves
+		// and roots remain protected. Count a repeated operand twice.
+		inputs := [2]int{n.a, n.b}
+		for k := 0; k < operands; k++ {
+			x := inputs[k]
+			uses := 1
+			if operands == 2 && n.a == n.b {
+				uses = 2
+			}
+			if refs[x] == uses && p.nodes[x].op != 0x20 && p.nodes[x].op != 0x41 {
+				v.regs[i] = v.regs[x]
+				break
+			}
+		}
+		if v.regs[i] == regNone {
+			v.regs[i] = alloc()
+			if v.regs[i] == regNone {
+				return v, false
+			}
+		}
+		for k := 0; k < operands; k++ {
+			x := inputs[k]
+			refs[x]--
+			if refs[x] == 0 && p.nodes[x].op != 0x20 && p.nodes[x].op != 0x41 && v.regs[x] != v.regs[i] {
+				inuse = inuse.remove(v.regs[x])
+			}
+		}
+	}
+	return v, true
+}
+
+// Emit only pure lane arithmetic. The caller must initialize leaf vectors and
+// the zero vector, reserve the preflight mask, and prove all stores safe before
+// executing this body. No scalar locals, memory accesses, or reader state change.
+func (f *fn) emitStoreMapVectorDAG(p *storeMapPlan, v *storeMapVectors) {
+	for i := p.locals; i < p.n; i++ {
+		if !v.reachable[i] {
+			continue
+		}
+		n := p.nodes[i]
+		dst, a, b := v.regs[i], v.regs[n.a], v.regs[n.b]
+		switch n.op {
+		case 0x41:
+			continue
+		case 0x6a:
+			f.a.NeonAddS(dst, a, b)
+		case 0x6b:
+			f.a.NeonSubS(dst, a, b)
+		case 0x6c:
+			f.a.NeonMulS(dst, a, b)
+		case 0x71:
+			f.a.NeonAnd16b(dst, a, b)
+		case 0x72:
+			f.a.NeonOrr16b(dst, a, b)
+		case 0x73:
+			f.a.NeonEor16b(dst, a, b)
+		case 0x45, 0x46, 0x47:
+			if n.op == 0x45 {
+				b = v.zero
+			}
+			f.a.NeonCmeqS(dst, a, b)
+			if n.op == 0x47 {
+				f.a.NeonNot16b(dst, dst)
+			}
+			f.a.NeonUshrS(dst, dst, 31)
+		case 0x74, 0x75, 0x76:
+			shift := uint8(p.nodes[n.b].v & 31)
+			if shift == 0 {
+				f.a.NeonOrr16b(dst, a, a)
+			} else if n.op == 0x74 {
+				f.a.NeonShlS(dst, a, shift)
+			} else if n.op == 0x75 {
+				f.a.NeonSshrS(dst, a, shift)
+			} else {
+				f.a.NeonUshrS(dst, a, shift)
+			}
+		default:
+			panic("arm64: invalid store-map vector plan")
+		}
+	}
+}
+
+// Two independent four-lane streams become eight consecutive scalar stores.
+// ZIP1/ZIP2 plus STP Q avoid requiring adjacent source vector registers.
+func (f *fn) emitStoreMapInterleaved(v *storeMapVectors, a, b, base Reg) {
+	f.a.NeonZip1S(v.zipLo, a, b)
+	f.a.NeonZip2S(v.zipHi, a, b)
+	f.a.StpQ(v.zipLo, v.zipHi, base, 0)
+}

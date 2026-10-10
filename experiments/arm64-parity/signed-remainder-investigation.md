@@ -1,0 +1,7 @@
+# General signed remainder lowering: next investigation
+
+The retained ARM64 dynamic signed-remainder paths in emit.go and borrowed_div_rem.go branch around divisor -1, emit a zero result, and otherwise use SDIV plus MSUB. ARM64 SDIV does not fault on INT_MIN / -1: it returns INT_MIN. MSUB then computes INT_MIN - INT_MIN*(-1) modulo the operand width, which is zero. Thus the same SDIV/MSUB pair appears sufficient for every nonzero signed divisor; the existing divide-by-zero trap must remain, and signed division must retain its separate overflow trap.
+
+Architecture reference: [Armv8-A reference manual, integer divide](https://www.ece.lsu.edu/ee4720/doc/arm-v8.pdf). Confirm independently on this device with raw W/X SDIV/MSUB fixtures before changing guest lowering. Exercise minimum/maximum inputs, -1/1/0 divisors, mixed signs, source/destination aliasing, both bounds modes, and strict actual admission. An experiment must cover both ordinary and borrowed paths, retain constant-divisor strength reduction, and stay default off until qualified.
+
+Potential benefit is removing compare/branch/zero/branch overhead around general dynamic signed remainder; no workload identity or manifest input belongs in admission. Determine affected corpus images first, time those cases with compile time, then mitigate layout effects before deciding retention. This is a proposed next experiment, not a measured gain or implementation.

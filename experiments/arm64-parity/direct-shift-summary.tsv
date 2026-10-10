@@ -1,0 +1,11 @@
+corpus	phase	off_us	on_us	change_percent
+audio-adpcm	Compile	18.137	18.267	0.72
+audio-adpcm	Exec	36.829	36.791	-0.10
+compiler-register-allocation	Compile	60.382	60.046	-0.56
+compiler-register-allocation	Exec	17.659	17.205	-2.57
+geo-point-in-polygon	Compile	27.819	28.239	1.51
+geo-point-in-polygon	Exec	21.418	21.221	-0.92
+video-dct	Compile	120.027	116.126	-3.25
+video-dct	Exec	43.176	41.780	-3.23
+vision-components	Compile	49.673	50.176	1.01
+vision-components	Exec	38.436	37.551	-2.30

@@ -1,0 +1,13 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64
+cpu: Apple M4 Max
+BenchmarkSelectGroupConditions/full/contiguous/eager-16         	     128	    928247 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/eager-16         	     128	    928483 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/guarded-16       	     128	    932137 ns/op
+BenchmarkSelectGroupConditions/full/contiguous/guarded-16       	     128	    929302 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/eager-16       	     128	    928156 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/eager-16       	     128	    928453 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/guarded-16     	     130	    913858 ns/op
+BenchmarkSelectGroupConditions/random/contiguous/guarded-16     	     130	    916754 ns/op
+PASS

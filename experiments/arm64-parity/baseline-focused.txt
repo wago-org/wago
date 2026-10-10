@@ -1,0 +1,35 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    7117	     23534 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    7766	     23602 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    6744	     23802 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   15228	     11908 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   15212	     11872 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   15207	     11858 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    4849	     35558 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    5032	     35500 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    4668	     35216 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    4060	     47476 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    4370	     46407 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    3847	     49060 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16   	    2227	     80723 ns/op	   62126 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16   	    2314	     80426 ns/op	   62126 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16   	    2244	     80743 ns/op	   62126 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16      	     801	    225372 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16      	     812	    220316 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16      	     831	    219721 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16     	    1098	    162385 ns/op	   97659 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16     	    1116	    163608 ns/op	   97659 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16     	    1072	    169217 ns/op	   97665 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16        	     675	    268535 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16        	     684	    268535 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16        	     687	    270579 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	    9566	     18262 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	    9613	     18577 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	   10000	     18079 ns/op	   29216 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   41685	      4318 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   41826	      4332 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   41055	      4372 ns/op	       0 B/op	       0 allocs/op
+PASS

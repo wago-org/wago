@@ -1,0 +1,14 @@
+core wago__drwav__pcm-decode-seek.bin
+core wago__libtommath__modular-arithmetic.bin
+app audio-adpcm.bin
+app compiler-dead-code.bin
+app db-btree.bin
+app game-cellular-automata.bin
+app game-collision-impulse.bin
+app geo-polygon-clipping.bin
+app ray-box.bin
+app stats-bootstrap.bin
+app stats-linear-regression.bin
+app stencil-lattice-boltzmann.bin
+app stencil-wave-equation.bin
+app video-optical-flow.bin

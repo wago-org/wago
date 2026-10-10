@@ -1,0 +1,9 @@
+corpus	phase	old_us	off_us	on_us	on_vs_old_percent	on_vs_off_percent
+compiler-register-allocation	Compile	59.010	59.242	59.716	1.20	0.80
+compiler-register-allocation	Exec	17.501	17.562	17.001	-2.85	-3.20
+ml-inference	Compile	28.664	29.233	28.608	-0.19	-2.13
+ml-inference	Exec	5.849	5.857	5.837	-0.21	-0.35
+video-dct	Compile	116.132	116.265	114.536	-1.37	-1.49
+video-dct	Exec	41.966	42.245	41.262	-1.68	-2.33
+vision-components	Compile	49.385	49.059	48.734	-1.32	-0.66
+vision-components	Exec	37.991	37.400	36.269	-4.53	-3.02

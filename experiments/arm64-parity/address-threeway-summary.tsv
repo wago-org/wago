@@ -1,0 +1,9 @@
+corpus	phase	off_us	aligned_us	full_us	aligned_percent	full_percent
+audio-fir	Compile	83.052	86.534	82.885	4.19	-0.20
+audio-fir	Exec	33.240	33.079	32.593	-0.48	-1.95
+video-dct	Compile	122.179	117.366	113.843	-3.94	-6.82
+video-dct	Exec	44.421	43.341	42.690	-2.43	-3.90
+compiler-register-allocation	Compile	60.053	59.594	59.060	-0.77	-1.65
+compiler-register-allocation	Exec	17.642	17.694	17.495	0.29	-0.83
+vision-components	Compile	51.378	83.017	49.062	61.58	-4.51
+vision-components	Exec	40.654	39.848	38.406	-1.98	-5.53

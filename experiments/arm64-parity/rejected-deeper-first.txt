@@ -1,0 +1,11 @@
+var experimentalDeeperFirst = os.Getenv("WAGO_ARM64_EXPERIMENT_DEEPER_FIRST") == "1"
+
+	// Experimental pressure ordering after instruction covers have declined.
+    if experimentalDeeperFirst && node.deferredOp().commutative() &&
+        deferDepthOf(left) > deferDepthOf(right) && deferDepthOf(left) >= 1 &&
+        !(right.elemKind() == ekValue && right.st.kind == stConst) {
+        _, pureLeft := pureSelectSinkCost(f.s, left, maxDeferDepth+1)
+        _, pureRight := pureSelectSinkCost(f.s, right, maxDeferDepth+1)
+        if pureLeft && pureRight { left, right = right, left }
+    }
+

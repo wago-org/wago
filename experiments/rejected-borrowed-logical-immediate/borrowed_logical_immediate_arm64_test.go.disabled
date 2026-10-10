@@ -1,0 +1,106 @@
+//go:build (linux || darwin || windows) && arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+)
+
+func TestBorrowedLogicalImmediateSourceReuse(t *testing.T) {
+	inputs := []uint64{0, 1, 0xffffffff, 0x80000000, 0x8000000100000001, ^uint64(0)}
+	masks := []uint64{0, 15, 0xff00ff00, 0x80000000, 0x00ff00ff00ff00ff, ^uint64(0), 0x123456789abcdef0}
+	for _, wide := range []bool{false, true} {
+		typ, cons, xor := wasm.I32, byte(0x41), byte(0x73)
+		ops := []byte{0x71, 0x72, 0x73}
+		if wide {
+			typ, cons, xor = wasm.I64, 0x42, 0x85
+			ops = []byte{0x83, 0x84, 0x85}
+		}
+		for oi, op := range ops {
+			for _, mask := range masks {
+				for _, commuted := range []bool{false, true} {
+					literal := []byte{cons}
+					if wide {
+						literal = append(literal, wasmtest.SLEB64(int64(mask))...)
+					} else {
+						literal = append(literal, wasmtest.SLEB32(int32(mask))...)
+					}
+					body := []byte{0, 0x3f, 0, 0x1a}
+					if commuted {
+						body = append(body, literal...)
+						body = append(body, 0x20, 0)
+					} else {
+						body = append(body, 0x20, 0)
+						body = append(body, literal...)
+					}
+					body = append(body, op, 0x20, 0, xor, 0x0b)
+					m := mod1(t, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
+					m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+					for _, enabled := range []bool{false, true} {
+						for _, guard := range []bool{false, true} {
+							for _, x := range inputs {
+								value := x & mask
+								if oi == 1 {
+									value = x | mask
+								}
+								if oi == 2 {
+									value = x ^ mask
+								}
+								want := value ^ x
+								if !wide {
+									want = uint64(uint32(want))
+								}
+								opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"borrowed-logical-immediate": enabled}}
+								var stats ModuleStats
+								if diagnosticsEnabled && oi == 0 && mask == 15 && !commuted && x == 0 {
+									opts.Stats = &stats
+								}
+								got, err := runArm64WrapperWithOptions(t, m, opts, x)
+								if opts.Stats != nil && (stats.Funcs[0].Peephole["borrowed-logical-immediate"] != 0) != enabled {
+									t.Fatalf("logical immediate admission wide=%v enabled=%v stats=%v", wide, enabled, stats.Funcs[0].Peephole)
+								}
+								if !wide {
+									got = uint64(uint32(got))
+								}
+								if err != nil || got != want {
+									t.Fatalf("wide=%v op=%x mask=%x commuted=%v enabled=%v guard=%v x=%x got=%x want=%x err=%v", wide, op, mask, commuted, enabled, guard, x, got, want, err)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// The old value remains live below a write into the same pinned local.
+func TestBorrowedLogicalImmediateDestinationAlias(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		typ, cons, and, xor := wasm.I32, byte(0x41), byte(0x71), byte(0x73)
+		if wide {
+			typ, cons, and, xor = wasm.I64, 0x42, 0x83, 0x85
+		}
+		body := []byte{0, 0x3f, 0, 0x1a, 0x20, 0, 0x20, 0, cons, 15, and, 0x21, 0, 0x20, 0, xor, 0x0b}
+		m := mod1(t, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
+		m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+		for _, enabled := range []bool{false, true} {
+			for _, guard := range []bool{false, true} {
+				for _, x := range []uint64{0, 1, 0xffffffff, 0x8000000100000001, ^uint64(0)} {
+					opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"borrowed-logical-immediate": enabled}}
+					got, err := runArm64WrapperWithOptions(t, m, opts, x)
+					want := x ^ (x & 15)
+					if !wide {
+						got = uint64(uint32(got))
+						want = uint64(uint32(want))
+					}
+					if err != nil || got != want {
+						t.Fatalf("alias wide=%v enabled=%v guard=%v x=%x got=%x want=%x err=%v", wide, enabled, guard, x, got, want, err)
+					}
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,17 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+{"workload":"compiler-constant-fold","phase":"compile","round":0,"on":false,"iterations":5528,"us":35.325479377713464}
+{"workload":"compiler-constant-fold","phase":"compile","round":0,"on":true,"iterations":5528,"us":34.67407597684515}
+{"workload":"compiler-constant-fold","phase":"compile","round":1,"on":true,"iterations":5528,"us":34.7159234804631}
+{"workload":"compiler-constant-fold","phase":"compile","round":1,"on":false,"iterations":5528,"us":34.54731982633864}
+{"workload":"compiler-constant-fold","phase":"compile","round":2,"on":false,"iterations":5528,"us":34.21594609261939}
+{"workload":"compiler-constant-fold","phase":"compile","round":2,"on":true,"iterations":5528,"us":34.243103292329955}
+{"workload":"compiler-constant-fold","phase":"compile","round":3,"on":true,"iterations":5528,"us":34.11164381331404}
+{"workload":"compiler-constant-fold","phase":"compile","round":3,"on":false,"iterations":5528,"us":33.972880426917506}
+{"workload":"compiler-constant-fold","phase":"compile","round":4,"on":false,"iterations":5528,"us":34.04749312590449}
+{"workload":"compiler-constant-fold","phase":"compile","round":4,"on":true,"iterations":5528,"us":34.02163223589002}
+{"workload":"compiler-constant-fold","phase":"compile","round":5,"on":true,"iterations":5528,"us":34.11954287264834}
+{"workload":"compiler-constant-fold","phase":"compile","round":5,"on":false,"iterations":5528,"us":34.081773154848044}
+{"workload":"compiler-constant-fold","phase":"compile","round":6,"on":false,"iterations":5528,"us":34.883072539797396}
+{"workload":"compiler-constant-fold","phase":"compile","round":6,"on":true,"iterations":5528,"us":35.06616316931983}
+{"workload":"compiler-constant-fold","phase":"compile","round":7,"on":true,"iterations":5528,"us":34.28519211287988}
+{"workload":"compiler-constant-fold","phase":"compile","round":7,"on":false,"iterations":5528,"us":34.010009587554265}

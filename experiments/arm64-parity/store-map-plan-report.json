@@ -1,0 +1,230 @@
+[
+  {
+    "Workload": "db-sort-merge-join.wasm",
+    "Locals": 9,
+    "Nodes": 42,
+    "Stores": 2,
+    "Groups": 2,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 1,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "document-bidi-reorder.wasm",
+    "Locals": 7,
+    "Nodes": 46,
+    "Stores": 4,
+    "Groups": 2,
+    "ValueOps": 15,
+    "Leaves": 8,
+    "CounterStep": 2,
+    "StoreRoots": "IGpxcQ==",
+    "Opcodes": {
+      "106": 3,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "files-path-trie.wasm",
+    "Locals": 5,
+    "Nodes": 11,
+    "Stores": 1,
+    "Groups": 1,
+    "ValueOps": 0,
+    "Leaves": 1,
+    "CounterStep": 4,
+    "StoreRoots": "QQ==",
+    "Opcodes": {}
+  },
+  {
+    "Workload": "image-composite.wasm",
+    "Locals": 6,
+    "Nodes": 37,
+    "Stores": 2,
+    "Groups": 1,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 2,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "language-register-vm.wasm",
+    "Locals": 8,
+    "Nodes": 39,
+    "Stores": 2,
+    "Groups": 2,
+    "ValueOps": 13,
+    "Leaves": 6,
+    "CounterStep": 1,
+    "StoreRoots": "c3E=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 1,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "ml-convolution.wasm",
+    "Locals": 10,
+    "Nodes": 41,
+    "Stores": 2,
+    "Groups": 1,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 2,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "ml-inference.wasm",
+    "Locals": 10,
+    "Nodes": 41,
+    "Stores": 2,
+    "Groups": 1,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 2,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "ml-inference.wasm",
+    "Locals": 10,
+    "Nodes": 38,
+    "Stores": 2,
+    "Groups": 1,
+    "ValueOps": 11,
+    "Leaves": 8,
+    "CounterStep": 2,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 1,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 2
+    }
+  },
+  {
+    "Workload": "ml-max-pooling.wasm",
+    "Locals": 12,
+    "Nodes": 43,
+    "Stores": 2,
+    "Groups": 1,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 2,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "stats-bootstrap.wasm",
+    "Locals": 11,
+    "Nodes": 42,
+    "Stores": 2,
+    "Groups": 1,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 2,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "stats-quickselect.wasm",
+    "Locals": 10,
+    "Nodes": 41,
+    "Stores": 2,
+    "Groups": 1,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 2,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "video-deblocking.wasm",
+    "Locals": 11,
+    "Nodes": 48,
+    "Stores": 4,
+    "Groups": 2,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 2,
+    "StoreRoots": "cXFxcQ==",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  },
+  {
+    "Workload": "video-temporal-denoise.wasm",
+    "Locals": 9,
+    "Nodes": 40,
+    "Stores": 2,
+    "Groups": 1,
+    "ValueOps": 14,
+    "Leaves": 7,
+    "CounterStep": 2,
+    "StoreRoots": "cXE=",
+    "Opcodes": {
+      "106": 2,
+      "108": 2,
+      "113": 2,
+      "115": 4,
+      "118": 4
+    }
+  }
+]

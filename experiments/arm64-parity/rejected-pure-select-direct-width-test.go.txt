@@ -1,0 +1,64 @@
+func TestPureSelectDirectBranchWidths(t *testing.T) {
+	oldGuard, oldDirect := selectSinkPureGuardEnabled, pureSelectDirectBranch
+	defer func() { selectSinkPureGuardEnabled, pureSelectDirectBranch = oldGuard, oldDirect }()
+	selectSinkPureGuardEnabled = true
+	for _, wideMask := range []bool{false, true} {
+		for _, zeroOnly := range []bool{false, true} {
+			for _, onTrue := range []bool{false, true} {
+				params := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}
+				body := []byte{1, 1, 0x7f, 0x3f, 0, 0x1a, 0x20, 0, 0x21, 3, 0x20, 3}
+				work, keep := []byte{0x20, 3, 0x20, 2, 0x73, 0x41, 19, 0x6c}, []byte{0x20, 3}
+				if onTrue {
+					body = append(body, work...)
+					body = append(body, keep...)
+				} else {
+					body = append(body, keep...)
+					body = append(body, work...)
+				}
+				body = append(body, 0x20, 1)
+				if wideMask {
+					params[1] = wasm.I64
+					if !zeroOnly {
+						body = append(body, 0x42)
+						body = append(body, wasmtest.SLEB64(-1<<63)...)
+						body = append(body, 0x83)
+					}
+					body = append(body, 0x50)
+				} else {
+					if !zeroOnly {
+						body = append(body, 0x41)
+						body = append(body, wasmtest.SLEB32(-1<<31)...)
+						body = append(body, 0x71)
+					}
+					body = append(body, 0x45)
+				}
+				body = append(body, 0x1b, 0x22, 3, 0x6a, 0x0b)
+				m := modMem(t, 1, params, []wasm.ValType{wasm.I32}, body)
+				for _, direct := range []bool{false, true} {
+					pureSelectDirectBranch = direct
+					for _, flag := range []uint64{0, 1, 0x80000000, 0x100000000, 0x8000000000000000, ^uint64(0)} {
+						tested := flag
+						if !wideMask {
+							tested = uint64(uint32(tested))
+						}
+						if !zeroOnly {
+							if wideMask {
+								tested &= 1 << 63
+							} else {
+								tested &= 1 << 31
+							}
+						}
+						value := uint32(7)
+						if (tested == 0) == onTrue {
+							value = (7 ^ 0xabcdef) * 19
+						}
+						want := uint32(7) + value
+						if got := uint32(runArm64u(t, m, 7, flag, 0xabcdef)); got != want {
+							t.Fatalf("wide=%v zero=%v true=%v direct=%v flag=%x got=%x want=%x", wideMask, zeroOnly, onTrue, direct, flag, got, want)
+						}
+					}
+				}
+			}
+		}
+	}
+}

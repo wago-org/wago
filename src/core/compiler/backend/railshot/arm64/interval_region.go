@@ -2,16 +2,26 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"os"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+var intervalCallRegionsEnabled = os.Getenv("WAGO_ARM64_NO_INTERVAL_CALL_REGIONS") != "1" && os.Getenv("WAGO_ARM64_EXPERIMENT_INTERVAL_CALL_REGIONS") != "0"
+
+var intervalControlsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_CONTROLS") != "0"
 
 const (
 	noIntervalEvent   = ^uint32(0)
-	intervalEventKill = uint32(1 << 31)
+	intervalEventKill = uint32(1 << 15)
 )
 
+// Region bodies are bounded at 16 KiB. Offsets fit below bit 15, and
+// there is at most one event per opcode, so event links fit in uint16 too.
 type intervalLocalEvent struct {
-	pos  uint32
-	next uint32
+	pos  uint16
+	next uint16
 }
 
 const (
@@ -24,13 +34,17 @@ const (
 )
 
 func intervalRegionRegLimit(reserved regMask) int {
+	return intervalRegionRegLimitWithFloor(reserved, intervalRegionTransientFloor)
+}
+
+func intervalRegionRegLimitWithFloor(reserved regMask, floor int) int {
 	available := 0
 	for _, reg := range intervalRegionOrder {
 		if !reserved.has(reg) {
 			available++
 		}
 	}
-	limit := available - intervalRegionTransientFloor
+	limit := available - floor
 	if limit < 0 {
 		return 0
 	}
@@ -52,9 +66,11 @@ func intervalRegionHintStorageEligible(enabled bool, bodyLen, nLocals int, modul
 		nLocals >= minIntervalRegionLocals && nLocals <= maxIntervalRegionLocals
 }
 
-// prepareIntervalRegion discovers profitable integer-local lifetimes in one
-// call-free straight-line body. Storage is worker scratch and capped by body and
-// local counts; unsupported shapes keep the existing whole-function allocator.
+// prepareIntervalRegion discovers profitable integer-local lifetimes in bounded
+// functions. Control edges and admitted call/helper barriers canonicalize state
+// and bound
+// next-use proofs. Final-read transfers require a whole straight-line body.
+// Worker scratch is capped by body and local counts.
 func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	if !intervalRegionHintStorageEligible(f.opt(optIntervalRegionPins), len(body), f.nLocals, f.moduleEH) ||
 		len(hints.localScore) != f.nLocals || len(hints.localLastGet) != f.nLocals {
@@ -71,11 +87,16 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		return false
 	}
 	f.intervalLast, f.intervalScore = hints.localLastGet, hints.localScore
-	f.intervalNext = f.opt(optIntervalNextUse) && !hints.flags.has(hintModuleSIMD)
+	f.intervalCalls = f.opt(optIntervalCallRegions) && hints.flags.has(hintHasCall)
+	f.intervalControl = hints.flags.has(hintHasControlFlow) || f.intervalCalls
+	// Wide local tables have no whole-function GP pins: regional residency is
+	// their primary cache. Keep the cheaper score policy where permanent pins
+	// already retain the hottest locals.
+	f.intervalNext = f.opt(optIntervalNextUse) && !hints.flags.has(hintModuleSIMD) && (!f.intervalControl || f.nLocals > 64 || f.intervalCalls)
 	if f.intervalNext {
-		f.prepareIntervalEvents(body, hints.localEventCount())
+		f.prepareIntervalEvents(body, hints.localEventCount(), f.intervalCalls)
 	}
-	f.intervalRegLimit = intervalRegionRegLimit(f.reserved)
+	f.intervalRegLimit = f.currentIntervalRegLimit()
 	for i := range f.intervalOwner {
 		f.intervalOwner[i] = -1
 	}
@@ -105,13 +126,27 @@ func (f *fn) intervalEligible(x int) bool {
 // prepareIntervalEvents builds one intrusive source-ordered access list per
 // eligible local. Victim selection advances a monotonic cursor instead of
 // repeatedly decoding the rest of the function.
-func (f *fn) prepareIntervalEvents(body []byte, reserve int) {
+func (f *fn) prepareIntervalEvents(body []byte, reserve int, callBoundaries bool) {
+	if len(body) > maxIntervalRegionBody {
+		f.intervalEvents, f.intervalHead = nil, nil
+		return
+	}
 	events := f.tmpIntervalEvents[:0]
 	if cap(events) < reserve {
 		events = make([]intervalLocalEvent, 0, reserve)
 	}
-	index := resizeIntervalIndexScratch(f.tmpIntervalIndex, 2*f.nLocals)
-	head, tail := index[:f.nLocals], index[f.nLocals:]
+	index := resizeIntervalIndexScratch(f.tmpIntervalIndex, 2*(f.nLocals+1))
+	head, tail := index[:f.nLocals+1], index[f.nLocals+1:]
+	appendEvent := func(x int, pos uint32) {
+		i := uint32(len(events))
+		events = append(events, intervalLocalEvent{pos: uint16(pos), next: ^uint16(0)})
+		if tail[x] == noIntervalEvent {
+			head[x] = i
+		} else {
+			events[tail[x]].next = uint16(i)
+		}
+		tail[x] = i
+	}
 	r := wasm.ReaderFrom(body)
 scan:
 	for r.HasNext() {
@@ -119,6 +154,11 @@ scan:
 		op, err := r.Byte()
 		if err != nil {
 			break
+		}
+		if f.intervalControl {
+			if intervalRegionBoundary(op, callBoundaries) {
+				appendEvent(f.nLocals, pos)
+			}
 		}
 		kill := false
 		switch op {
@@ -129,8 +169,25 @@ scan:
 			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
 				continue
 			}
-			var imm wasm.InstructionImmediate
-			if err := f.classifier.ClassifyInto(&r, op, &imm); err != nil {
+			// The access list needs positions only. Avoid a second decoder call
+			// and zeroed operand record for common scalar immediates.
+			var err error
+			switch op {
+			case 0x41:
+				_, err = r.I32()
+			case 0x42:
+				_, err = r.I64()
+			case 0x43:
+				_, err = r.Bytes(4)
+			case 0x44:
+				_, err = r.Bytes(8)
+			case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
+				_, err = r.U32()
+			default:
+				var imm wasm.InstructionImmediate
+				err = f.classifier.ClassifyInto(&r, op, &imm)
+			}
+			if err != nil {
 				events = events[:0]
 				break scan
 			}
@@ -145,17 +202,10 @@ scan:
 		if !f.intervalEligible(x) {
 			continue
 		}
-		i := uint32(len(events))
 		if kill {
 			pos |= intervalEventKill
 		}
-		events = append(events, intervalLocalEvent{pos: pos, next: noIntervalEvent})
-		if tail[x] == noIntervalEvent {
-			head[x] = i
-		} else {
-			events[tail[x]].next = i
-		}
-		tail[x] = i
+		appendEvent(x, pos)
 	}
 	f.tmpIntervalEvents, f.tmpIntervalIndex = events, index
 	if len(events) != 0 {
@@ -181,6 +231,13 @@ func (f *fn) activateIntervalLocal(x, pos int, load bool) {
 	if x < 0 || x >= len(f.intervalLast) || f.intervalLast[x] == 0 || localHotness(f.intervalScore[x]) < 2 ||
 		(f.localType[x] != mtI32 && f.localType[x] != mtI64) || uint32(pos) > f.intervalLast[x] || f.locals[x].reg != regNone {
 		return
+	}
+	if f.intervalControl && f.nextUsePolicy() {
+		next, dead := f.nextIntervalLocalAccess(x)
+		boundary, _ := f.nextIntervalEvent(f.nLocals)
+		if dead || next >= boundary {
+			return
+		}
 	}
 	reg := f.claimIntervalReg(x)
 	if reg == regNone {
@@ -221,7 +278,7 @@ func (f *fn) claimIntervalReg(x int) Reg {
 // takeFinalIntervalGet transfers a dying local's register directly to the
 // operand stack. Older borrowed references are realized before ownership moves.
 func (f *fn) takeFinalIntervalGet(x, pos int) (Reg, bool) {
-	if x < 0 || x >= len(f.intervalLast) || f.intervalLast[x] != uint32(pos) || f.locals[x].reg == regNone {
+	if f.intervalControl || x < 0 || x >= len(f.intervalLast) || f.intervalLast[x] != uint32(pos) || f.locals[x].reg == regNone {
 		return regNone, false
 	}
 	f.realizeLocalRefs(x, nil)
@@ -298,21 +355,42 @@ func (f *fn) nextUsePolicy() bool {
 	return f.intervalNext && len(f.intervalEvents) != 0
 }
 
+// A control edge ends the proof region. Reads and overwrites beyond it cannot
+// establish liveness or dead stores on the current path.
 func (f *fn) nextIntervalLocalAccess(x int) (next uint32, dead bool) {
+	next, dead = f.nextIntervalEvent(x)
+	if f.intervalControl {
+		boundary, _ := f.nextIntervalEvent(f.nLocals)
+		if next >= boundary {
+			return boundary, false
+		}
+	}
+	return next, dead
+}
+
+func (f *fn) nextIntervalEvent(x int) (next uint32, dead bool) {
 	if f.wasmPC < f.tracePCBase || x < 0 || x >= len(f.intervalHead) {
 		return 0, false
 	}
 	current := uint32(f.wasmPC - f.tracePCBase)
-	i := f.intervalHead[x]
-	for i != noIntervalEvent && i < uint32(len(f.intervalEvents)) && f.intervalEvents[i].pos&^intervalEventKill <= current {
-		i = f.intervalEvents[i].next
+	head, events := f.intervalHead, f.intervalEvents
+	// uint32 links extend losslessly to the native 64-bit int. Comparing the
+	// actual slice length lets Go prove the following accesses are in bounds.
+	// Both terminal values (all-one uint32/uint16) exceed the bounded list.
+	i := int(head[x])
+	for i < len(events) {
+		e := events[i]
+		if uint32(e.pos)&^intervalEventKill > current {
+			break
+		}
+		i = int(e.next)
 	}
-	f.intervalHead[x] = i
-	if i == noIntervalEvent || i >= uint32(len(f.intervalEvents)) {
+	head[x] = uint32(i)
+	if i >= len(events) {
 		return noIntervalEvent, true
 	}
-	e := f.intervalEvents[i]
-	return e.pos &^ intervalEventKill, e.pos&intervalEventKill != 0
+	e := events[i]
+	return uint32(e.pos) &^ intervalEventKill, uint32(e.pos)&intervalEventKill != 0
 }
 
 func (f *fn) noteResidencyCandidates(n int) {
@@ -379,4 +457,51 @@ func (f *fn) demoteIntervalLocalRefs(x int) {
 			e.st.reg = regNone
 		}
 	}
+}
+
+// Dynamic residency is local to one native straight-line region. Canonicalize
+// every local and operand before a control edge, so all predecessors agree.
+func (f *fn) clearIntervalControlRegion() {
+	if !f.intervalControl || f.intervalActive == 0 {
+		return
+	}
+	f.flush()
+	for reg, x := range f.intervalOwner {
+		if x < 0 {
+			continue
+		}
+		if f.locals[x].state == lsReg {
+			f.st64(SP, f.localOff(x), Reg(reg))
+		}
+		f.demoteIntervalLocalRefs(x)
+		f.locals[x].reg = regNone
+		f.locals[x].state = lsMem
+		f.intervalOwner[reg] = -1
+		f.pinnedLocalMask = f.pinnedLocalMask.remove(Reg(reg))
+	}
+	f.intervalActive = 0
+}
+
+// Call-making regions must leave all homes current before native callees or
+// fixed-scratch bulk helpers. Prefix boundaries intentionally include harmless
+// suboperations so admission does not depend on a helper's current lowering.
+func intervalRegionBoundary(op byte, calls bool) bool {
+	switch op {
+	case 0x02, 0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f:
+		return true
+	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x40, 0xfb, 0xfc:
+		return calls
+	}
+	return false
+}
+
+// Call-making regions detach borrowed operands for ABI-safe evaluation. Keep
+// the same seven-register transient allowance used by constant leases so this
+// cache does not turn those detached values into temporary stack traffic.
+func (f *fn) currentIntervalRegLimit() int {
+	floor := intervalRegionTransientFloor
+	if f.intervalCalls {
+		floor = 7
+	}
+	return intervalRegionRegLimitWithFloor(f.reserved.union(f.pinnedLocalMask), floor)
 }

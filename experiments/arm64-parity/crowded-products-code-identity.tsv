@@ -1,0 +1,7 @@
+corpus	off_bytes	on_bytes	identical
+audio-fir	4104	3856	False
+hardware-prime-implicants	1464	1464	True
+ml-inference	884	896	False
+ml-knn	2004	2004	True
+serialization-protobuf	688	688	True
+stats-linear-regression	872	872	True

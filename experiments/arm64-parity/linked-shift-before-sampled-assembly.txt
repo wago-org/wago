@@ -1,0 +1,43 @@
+wago:d3dfc4028519becbadc69f6878c0b8b4e32f3ce4713ffe0edbb3a2ac63c4bba1:8ce49f3b454f4e31063cbe44807687eebecb4c01393d68b743fc7fb8acd06303:g1:f0:r20:guest-body:sum: 2929 leaf observations
+ 2236 (76.3%) +0x00c0 cbz      w20, #0xe8  Wasm 80
+  678 (23.1%) +0x0060 cmp      w19, w23  Wasm 12
+   12 ( 0.4%) +0x00e8 str      x22, [sp, #0x28]  Wasm 105
+    2 ( 0.1%) +0x0098 mov      x20, #8  Wasm 71
+    1 ( 0.0%) +0x00c8 ldr      w9, [x26, x20]  Wasm 86
+
+Assembly for sampled range:
+  678 +0x0060 cmp      w19, w23
+    0 +0x0064 b.ge     #0x98
+    0 +0x0068 add      w21, w19, #1
+    0 +0x006c lsl      w21, w21, #3
+    0 +0x0070 str      w19, [x26, x21]
+    0 +0x0074 add      w9, w19, #1
+    0 +0x0078 cmp      w9, w23
+    0 +0x007c csinc    w9, wzr, w9, eq
+    0 +0x0080 lsl      w9, w9, #3
+    0 +0x0084 add      x16, x26, x21
+    0 +0x0088 add      x16, x16, #4
+    0 +0x008c str      w9, [x16, xzr]
+    0 +0x0090 add      w19, w19, #1
+    0 +0x0094 b        #0x60
+    2 +0x0098 mov      x20, #8
+    0 +0x009c nop      
+    0 +0x00a0 nop      
+    0 +0x00a4 nop      
+    0 +0x00a8 nop      
+    0 +0x00ac nop      
+    0 +0x00b0 nop      
+    0 +0x00b4 nop      
+    0 +0x00b8 nop      
+    0 +0x00bc nop      
+ 2236 +0x00c0 cbz      w20, #0xe8
+    0 +0x00c4 mov      w20, w20
+    1 +0x00c8 ldr      w9, [x26, x20]
+    0 +0x00cc add      w22, w22, w9
+    0 +0x00d0 mov      w20, w20
+    0 +0x00d4 add      x16, x26, x20
+    0 +0x00d8 add      x16, x16, #4
+    0 +0x00dc ldr      w9, [x16, xzr]
+    0 +0x00e0 mov      x20, x9
+    0 +0x00e4 b        #0xc0
+   12 +0x00e8 str      x22, [sp, #0x28]

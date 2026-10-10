@@ -1,0 +1,185 @@
+[
+  {
+    "thread_id": 0,
+    "sequence": 1,
+    "timestamp_ns": 1791604928835132000,
+    "kind": "load",
+    "image_id": 1,
+    "image": {
+      "compiler_site_coverage": "explicit-operand-spills-reloads-and-memory-bounds-branches",
+      "sources": [
+        {
+          "offset": 64,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 5
+        },
+        {
+          "offset": 80,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 12
+        },
+        {
+          "offset": 88,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 18
+        },
+        {
+          "offset": 92,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 21
+        },
+        {
+          "offset": 96,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 28
+        },
+        {
+          "offset": 100,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 41
+        },
+        {
+          "offset": 116,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 55
+        },
+        {
+          "offset": 128,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 62
+        },
+        {
+          "offset": 132,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 65
+        },
+        {
+          "offset": 136,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 71
+        },
+        {
+          "offset": 140,
+          "size": 36,
+          "function": 0,
+          "wasm_offset": 75
+        },
+        {
+          "offset": 176,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 80
+        },
+        {
+          "offset": 180,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 86
+        },
+        {
+          "offset": 188,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 89
+        },
+        {
+          "offset": 192,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 94
+        },
+        {
+          "offset": 208,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 97
+        },
+        {
+          "offset": 212,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 99
+        },
+        {
+          "offset": 216,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 105
+        }
+      ],
+      "source_coverage": "opcode-lowering-and-deferred-origins",
+      "id": 1,
+      "module_id": "d3dfc4028519becbadc69f6878c0b8b4e32f3ce4713ffe0edbb3a2ac63c4bba1",
+      "artifact_id": "a2b2983d01c2de88273e92f6131c92122abb4f42b1b871f145942bc9daf72c88",
+      "base": 4344692736,
+      "size": 244,
+      "target": "darwin/arm64",
+      "regions": [
+        {
+          "offset": 0,
+          "size": 28,
+          "kind": "entry-adapter",
+          "function": 0,
+          "name": "sum"
+        },
+        {
+          "offset": 28,
+          "size": 4,
+          "kind": "padding",
+          "function": -1
+        },
+        {
+          "offset": 32,
+          "size": 212,
+          "kind": "guest-body",
+          "function": 0,
+          "name": "sum"
+        }
+      ],
+      "functions": [
+        {
+          "index": 0,
+          "name": "sum",
+          "native_bytes": 244,
+          "frame_bytes": 48,
+          "emitted_spills": 0,
+          "emitted_reloads": 0,
+          "emitted_bounds_checks": 0,
+          "compiler_decisions": {
+            "callfree-loop": 2,
+            "callfree-loop-entry-store-elide": 10,
+            "cmp-branch-fuse": 1,
+            "frame-header-elide": 1,
+            "if-affine-csinc": 1,
+            "if-affine-select": 1,
+            "local-3op-sink": 2,
+            "memory-address-load-rename": 2,
+            "memory-address-zext-elim": 2,
+            "small-frame-adjust": 1,
+            "store-load-fwd": 1,
+            "strength-reduce": 1,
+            "zero-branch": 1
+          }
+        }
+      ],
+      "code": "+gMBqv4Pv6kAAED5BQAAlP4PwahgAAD5wANf1h8gA9X/wwDRHyAD1R8gA9X3AwCqEwCA0hUAgNIWAIDSFACA0h8gA9UfIAPVHyAD1R8gA9V/AhdrqgEAVHUGABG1ch1TU2s1uGkGABE/ARdr6QeJGilxHVNQAxWLEBIAkQlqP7hzBgAR8///FxQBgNIfIAPVHyAD1R8gA9UfIAPVHyAD1R8gA9UfIAPVHyAD1R8gA9VUAQA09AMUKklrdLjWAgkL9AMUKlADFIsQEgCRCWp/uPQDCar3//8X9hcA+eADFqr/wwCRHyAD1R8gA9XAA1/WHyAD1Q=="
+    }
+  },
+  {
+    "thread_id": 0,
+    "sequence": 2,
+    "timestamp_ns": 1791604931835371000,
+    "kind": "retire",
+    "image_id": 1
+  }
+]

@@ -1,0 +1,7 @@
+core wago__drwav__pcm-decode-seek.bin
+core wago__libtommath__modular-arithmetic.bin
+core wago__qoi__encode.bin
+app language-register-vm.bin
+app ml-kmeans.bin
+app numeric-euclidean-gcd.bin
+app ray-box.bin

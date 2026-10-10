@@ -1,0 +1,30 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64
+cpu: Apple M4 Max
+BenchmarkDotLoopGeneral/bytes8/vectorfalse-16         	 7129525	        23.64 ns/op
+BenchmarkDotLoopGeneral/bytes8/vectorfalse-16         	 7797171	        23.66 ns/op
+BenchmarkDotLoopGeneral/bytes8/vectortrue-16          	 7659696	        24.10 ns/op
+BenchmarkDotLoopGeneral/bytes8/vectortrue-16          	 7487209	        24.09 ns/op
+BenchmarkDotLoopGeneral/bytes16/vectorfalse-16        	 7334900	        24.41 ns/op
+BenchmarkDotLoopGeneral/bytes16/vectorfalse-16        	 7416333	        24.26 ns/op
+BenchmarkDotLoopGeneral/bytes16/vectortrue-16         	 7570884	        24.27 ns/op
+BenchmarkDotLoopGeneral/bytes16/vectortrue-16         	 7300417	        24.24 ns/op
+BenchmarkDotLoopGeneral/bytes32/vectorfalse-16        	 6897574	        26.29 ns/op
+BenchmarkDotLoopGeneral/bytes32/vectorfalse-16        	 6890028	        26.20 ns/op
+BenchmarkDotLoopGeneral/bytes32/vectortrue-16         	 7350663	        24.40 ns/op
+BenchmarkDotLoopGeneral/bytes32/vectortrue-16         	 7401150	        24.46 ns/op
+BenchmarkDotLoopGeneral/bytes64/vectorfalse-16        	 6105739	        29.96 ns/op
+BenchmarkDotLoopGeneral/bytes64/vectorfalse-16        	 6036730	        30.13 ns/op
+BenchmarkDotLoopGeneral/bytes64/vectortrue-16         	 7248139	        24.95 ns/op
+BenchmarkDotLoopGeneral/bytes64/vectortrue-16         	 7350651	        24.93 ns/op
+BenchmarkDotLoopGeneral/bytes256/vectorfalse-16       	 3512685	        51.45 ns/op
+BenchmarkDotLoopGeneral/bytes256/vectorfalse-16       	 3579082	        51.20 ns/op
+BenchmarkDotLoopGeneral/bytes256/vectortrue-16        	 6303909	        28.42 ns/op
+BenchmarkDotLoopGeneral/bytes256/vectortrue-16        	 6483643	        28.48 ns/op
+BenchmarkDotLoopGeneral/bytes4096/vectorfalse-16      	  406954	       457.5 ns/op
+BenchmarkDotLoopGeneral/bytes4096/vectorfalse-16      	  426140	       457.9 ns/op
+BenchmarkDotLoopGeneral/bytes4096/vectortrue-16       	 1444196	       125.6 ns/op
+BenchmarkDotLoopGeneral/bytes4096/vectortrue-16       	 1407765	       125.5 ns/op
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	5.656s

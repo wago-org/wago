@@ -1,0 +1,139 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"math/bits"
+	"testing"
+)
+
+func TestDirectShiftSource(t *testing.T) {
+	old := directShiftSourceEnabled
+	defer func() { directShiftSourceEnabled = old }()
+	for _, enabled := range []bool{false, true} {
+		directShiftSourceEnabled = enabled
+		for _, wide := range []bool{false, true} {
+			typ, constant, xor := wasm.I32, byte(0x41), byte(0x73)
+			if wide {
+				typ, constant, xor = wasm.I64, 0x42, 0x85
+			}
+			for kind := 0; kind < 5; kind++ {
+				op := byte(0x74 + kind)
+				if wide {
+					op = byte(0x86 + kind)
+				}
+				for _, count := range []int32{-1, 0, 1, 31, 32, 63, 64, 127} {
+					for _, alias := range []bool{false, true} {
+						dst := byte(1)
+						if alias {
+							dst = 0
+						}
+						body := []byte{0, 0x20, 0, constant}
+						if wide {
+							body = append(body, wasmtest.SLEB64(int64(count))...)
+						} else {
+							body = append(body, wasmtest.SLEB32(count)...)
+						}
+						body = append(body, op, 0x21, dst, 0x20, dst)
+						if !alias {
+							body = append(body, 0x20, 0, xor)
+						}
+						body = append(body, 0x0b)
+						m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
+						for _, guard := range []bool{false, true} {
+							for _, x := range []uint64{0, 1, 0x80000000, 0xffffffff, 0x8000000000000001, 0xffffffffffffffff} {
+								if !wide {
+									x = uint64(uint32(x))
+								}
+								k := uint(count) & 31
+								v := uint64(uint32(x))
+								if wide {
+									k = uint(count) & 63
+									v = x
+								}
+								want := v
+								switch kind {
+								case 0:
+									want = v << k
+								case 1:
+									if wide {
+										want = uint64(int64(v) >> k)
+									} else {
+										want = uint64(uint32(int32(v) >> k))
+									}
+								case 2:
+									want = v >> k
+								case 3:
+									if wide {
+										want = bits.RotateLeft64(v, int(k))
+									} else {
+										want = uint64(bits.RotateLeft32(uint32(v), int(k)))
+									}
+								case 4:
+									if wide {
+										want = bits.RotateLeft64(v, -int(k))
+									} else {
+										want = uint64(bits.RotateLeft32(uint32(v), -int(k)))
+									}
+								}
+								if !alias {
+									want ^= v
+								}
+								if !wide {
+									want = uint64(uint32(want))
+								}
+								got, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, CompactNative: false}, x, 17)
+								if err != nil || got != want {
+									t.Fatalf("enabled=%v wide=%v kind=%d count=%d alias=%v guard=%v x=%x got=%x want=%x err=%v", enabled, wide, kind, count, alias, guard, x, got, want, err)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestDirectShiftSourceAdmission(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	old := directShiftSourceEnabled
+	defer func() { directShiftSourceEnabled = old }()
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 2, 0x74, 0x0b})
+	for _, enabled := range []bool{false, true} {
+		directShiftSourceEnabled = enabled
+		stats := &ModuleStats{}
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: stats, CompactNative: false})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			cm.CodeImage.Close()
+		}
+		hits := stats.Funcs[0].Peephole["direct-shift-source"]
+		if enabled && hits != 1 || !enabled && hits != 0 {
+			t.Fatalf("enabled=%v hits=%d", enabled, hits)
+		}
+	}
+}
+
+func TestDirectShiftSourcePolicyRollback(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	old := directShiftSourceEnabled
+	defer func() { directShiftSourceEnabled = old }()
+	directShiftSourceEnabled = true
+	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{0, 0x20, 0, 0x42, 3, 0x88, 0x0b})
+	stats := &ModuleStats{}
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: stats, Optimizations: map[string]bool{"direct-shift-source": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		cm.CodeImage.Close()
+	}
+	if hits := stats.Funcs[0].Peephole["direct-shift-source"]; hits != 0 {
+		t.Fatalf("disabled hits=%d", hits)
+	}
+}

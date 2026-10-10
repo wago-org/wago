@@ -1,0 +1,100 @@
+func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+	w := node.st.typ.is64()
+	digit := shiftDigit(node.deferredOp())
+	left := f.s.arg0(node)
+	right := f.s.arg1(node)
+
+	if right.elemKind() == ekValue && right.st.kind == stConst {
+		if dest == regNone {
+			dest = f.allocReg(0)
+		}
+		// Preserve ordinary allocation and inspect the source afterwards: a
+		// pressure eviction must retain its original materialization path.
+		if f.opt(optDirectShiftSource) && left.elemKind() == ekValue &&
+			(left.st.kind == stLocalReg || left.st.kind == stGlobReg) {
+			mask := int64(31)
+			if w {
+				mask = 63
+			}
+			if directShiftKeepLayout && dest != left.st.reg {
+				f.a.Nop()
+			}
+			f.shiftImmFrom(digit, dest, left.st.reg, byte(right.st.cval&mask), w)
+			f.stats.peep("direct-shift-source")
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+			return dest
+		}
+		f.pinned = f.pinned.add(dest)
+		f.condenseInto(left, dest)
+		mask := int64(31)
+		if w {
+			mask = 63
+		}
+		f.shiftImm(digit, dest, byte(right.st.cval&mask), w)
+		f.pinned = f.pinned.remove(dest)
+		f.consumeBlockBelow(node)
+		f.occupy(node, dest)
+		return dest
+	}
+
+	// Variable count. AArch64's shift-by-register ops are fully orthogonal, so any
+	// register can hold the value and any register the count — no fixed-register
+	// scratch avoidance is needed (unlike x86's RAX/RDX/RCX constraints). A pinned
+	// local self-update can use its destination directly, matching condenseBinary's
+	// in-place local-set path. Keep the scratch path when the count is that same
+	// register: wasm requires the old count after the value destination is written.
+	// Evaluate left before right (wasm order).
+	val := regNone
+	if dest != regNone && left.elemKind() == ekValue && left.st.kind == stLocalReg && left.st.reg == dest &&
+		!(right.elemKind() == ekValue && right.st.kind == stLocalReg && right.st.reg == dest) {
+		val = dest
+	}
+	if val == regNone {
+		val = f.allocReg(0)
+	}
+	f.pinned = f.pinned.add(val)
+	f.condenseInto(left, val)
+	cnt := f.materialize(right)
+	f.pinned = f.pinned.add(cnt)
+	f.shiftVar(digit, val, cnt, w)
+	f.pinned = f.pinned.remove(cnt)
+	f.release(cnt)
+	f.pinned = f.pinned.remove(val)
+	result := val
+	if dest != regNone && dest != val {
+		f.a.MovReg64(dest, val)
+		f.release(val)
+		result = dest
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	return result
+}
+
+// shiftImm emits a constant-count shift/rotate. rotl has no direct arm64 op:
+// rotl(x,c) = ror(x, width-c), so it lowers to RorImm over the complemented count.
+func (f *fn) shiftImm(k shiftKind, dst Reg, cnt byte, w bool) {
+	f.shiftImmFrom(k, dst, dst, cnt, w)
+}
+
+func (f *fn) shiftImmFrom(k shiftKind, dst, src Reg, cnt byte, w bool) {
+	ew := !w // encoder shift helpers use true for the 32-bit W-form.
+	switch k {
+	case shLSL:
+		f.a.LslImm(dst, src, cnt, ew)
+	case shLSR:
+		f.a.LsrImm(dst, src, cnt, ew)
+	case shASR:
+		f.a.AsrImm(dst, src, cnt, ew)
+	case shROR:
+		f.a.RorImm(dst, src, cnt, ew)
+	case shROL:
+		width := byte(32)
+		if w {
+			width = 64
+		}
+		f.a.RorImm(dst, src, (width-cnt)&(width-1), ew) // rotl(x,c) = ror(x, width-c)
+	}
+}
+

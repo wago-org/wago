@@ -1,0 +1,25 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-adpcm/Compile-16 	   25606	     17957 ns/op	   28766 B/op	     102 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16 	   27309	     17821 ns/op	   28767 B/op	     102 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	   13195	     36403 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	   13105	     36217 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    7806	     60547 ns/op	   38621 B/op	     108 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    7663	     60304 ns/op	   38621 B/op	     108 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   28274	     17087 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	   27691	     17114 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-otsu/Compile-16                  	    9963	     46314 ns/op	   44964 B/op	     136 allocs/op
+BenchmarkParity/vision-otsu/Compile-16                  	   10000	     46497 ns/op	   44963 B/op	     136 allocs/op
+BenchmarkParity/vision-otsu/Exec-16                     	   52944	      9148 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-otsu/Exec-16                     	   52351	      9124 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    8766	     49975 ns/op	   38613 B/op	     110 allocs/op
+BenchmarkParity/vision-components/Compile-16            	    9808	     49559 ns/op	   38613 B/op	     110 allocs/op
+BenchmarkParity/vision-components/Exec-16               	   13071	     36464 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-components/Exec-16               	   12409	     37276 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-gini/Compile-16                   	    7302	     59020 ns/op	   49422 B/op	     139 allocs/op
+BenchmarkParity/stats-gini/Compile-16                   	    8092	     62563 ns/op	   49423 B/op	     139 allocs/op
+BenchmarkParity/stats-gini/Exec-16                      	  113928	      4228 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-gini/Exec-16                      	  113640	      4254 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,13 @@
+corpus	phase	off_us	on_us	change_percent
+graphics-bresenham	Compile	33.752	34.317	1.67
+graphics-bresenham	Exec	146.988	148.351	0.93
+ml-kmeans	Compile	68.019	70.928	4.28
+ml-kmeans	Exec	24.776	24.059	-2.90
+ml-knn	Compile	61.374	62.337	1.57
+ml-knn	Exec	31.162	31.931	2.47
+stats-quickselect	Compile	28.354	27.985	-1.30
+stats-quickselect	Exec	14.755	14.746	-0.06
+stencil-wave-equation	Compile	56.151	55.555	-1.06
+stencil-wave-equation	Exec	65.701	66.230	0.80
+vision-dilation	Compile	37.709	38.323	1.63
+vision-dilation	Exec	45.701	43.044	-5.81

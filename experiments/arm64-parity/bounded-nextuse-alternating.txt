@@ -1,0 +1,84 @@
+round=0 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2313	     53550 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8492	     17965 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1620	     89318 ns/op	   62278 B/op	     114 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1081	    137329 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     864	    165640 ns/op	   97658 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     501	    272765 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     988	    145399 ns/op	   93394 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4302	     38476 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=0 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2290	     54433 ns/op	   38175 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8373	     17824 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1423	     99781 ns/op	   66442 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1089	    134155 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     871	    165820 ns/op	   97658 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     560	    260409 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     925	    153970 ns/op	   99187 B/op	     126 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4276	     37104 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=1 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2503	     53265 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8283	     17909 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1591	     89480 ns/op	   62279 B/op	     114 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1082	    135949 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     873	    162992 ns/op	   97657 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     556	    260369 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	    1004	    144853 ns/op	   93394 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4166	     37219 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=1 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2491	     54510 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8191	     17953 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1389	    102251 ns/op	   66441 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1075	    135646 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     884	    164019 ns/op	   97658 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     560	    265539 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     916	    153830 ns/op	   99187 B/op	     126 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4281	     38176 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=2 mode=before
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2510	     53868 ns/op	   38174 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8076	     17897 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1591	     89831 ns/op	   62278 B/op	     114 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1087	    135265 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     866	    164465 ns/op	   97658 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     566	    260236 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     967	    145741 ns/op	   93389 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4315	     38893 ns/op	       0 B/op	       0 allocs/op
+PASS
+round=2 mode=candidate
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2328	     54521 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8403	     18029 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1411	    100333 ns/op	   66441 B/op	     116 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1095	    134595 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16          	     871	    165196 ns/op	   97658 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16             	     558	    260227 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	     936	    153602 ns/op	   99188 B/op	     126 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4125	     37991 ns/op	       0 B/op	       0 allocs/op
+PASS

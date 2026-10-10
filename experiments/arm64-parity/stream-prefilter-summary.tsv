@@ -1,0 +1,11 @@
+corpus	phase	old_us	off_us	on_us	on_vs_old_percent	on_vs_off_percent
+audio-fir	Compile	80.620	79.478	66.510	-17.50	-16.32
+audio-fir	Exec	32.477	33.663	23.247	-28.42	-30.94
+ml-inference	Compile	27.969	27.580	27.852	-0.42	0.99
+ml-inference	Exec	5.793	5.712	5.797	0.06	1.49
+ml-knn	Compile	60.543	60.183	60.609	0.11	0.71
+ml-knn	Exec	37.469	39.196	31.007	-17.25	-20.89
+stats-linear-regression	Compile	20.831	20.443	20.326	-2.42	-0.57
+stats-linear-regression	Exec	1.728	1.702	1.704	-1.39	0.09
+video-dct	Compile	115.511	118.867	120.881	4.65	1.69
+video-dct	Exec	42.774	43.505	43.669	2.09	0.38

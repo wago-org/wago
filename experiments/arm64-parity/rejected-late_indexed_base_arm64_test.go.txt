@@ -1,0 +1,72 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"encoding/binary"
+	"testing"
+)
+
+func TestLateIndexedBaseProof(t *testing.T) {
+	const seed = uint32(0x8b140350)
+	for _, tc := range []struct {
+		name         string
+		middle       uint32
+		target       int
+		opaque, fold bool
+	}{
+		{"safe", 0x110004a5, -1, false, true},
+		{"entry-at-seed", 0x110004a5, 0, false, true},
+		{"entry-at-load", 0x110004a5, 4, false, false},
+		{"entry-at-middle", 0x110004a5, 8, false, false},
+		{"entry-at-candidate", 0x110004a5, 12, false, false},
+		{"scratch-clobber", 0x91000610, -1, false, false},
+		{"base-clobber", 0x9100075a, -1, false, false},
+		{"index-clobber", 0x91000694, -1, false, false},
+		{"branch", 0x14000001, -1, false, false},
+		{"unknown", 0xffffffff, -1, false, false},
+		{"opaque", 0x110004a5, -1, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			words := []uint32{seed, 0xb9400200, tc.middle, seed, 0xb9400601}
+			b := make([]byte, 4*len(words))
+			for i, w := range words {
+				binary.LittleEndian.PutUint32(b[4*i:], w)
+			}
+			targets := make([]uint64, 1)
+			if tc.target >= 0 {
+				branchTargetAdd(targets, tc.target, len(b))
+			}
+			f := fn{opaqueFragments: tc.opaque}
+			f.foldLateIndexedBases(b, len(b), targets)
+			if got := rdWord(b, 12) == nopWord; got != tc.fold {
+				t.Fatalf("fold=%v want=%v", got, tc.fold)
+			}
+		})
+	}
+}
+
+func TestLateIndexedOffsetProof(t *testing.T) {
+	old := extendedLateIndexedBase
+	defer func() { extendedLateIndexedBase = old }()
+	extendedLateIndexedBase = true
+	const seed = uint32(0x8b140350)
+	const offset = uint32(0x91404210)
+	for _, target := range []int{-1, 0, 4, 8, 12, 16, 20} {
+		words := []uint32{seed, offset, 0xb9400200, 0x110004a5, seed, offset, 0xb9400601}
+		b := make([]byte, 4*len(words))
+		for i, w := range words {
+			binary.LittleEndian.PutUint32(b[4*i:], w)
+		}
+		targets := make([]uint64, 1)
+		if target >= 0 {
+			branchTargetAdd(targets, target, len(b))
+		}
+		f := fn{}
+		f.foldLateIndexedBases(b, len(b), targets)
+		want := target == -1 || target == 0
+		if got := rdWord(b, 16) == nopWord && rdWord(b, 20) == nopWord; got != want {
+			t.Fatalf("target=%d fold=%v want=%v", target, got, want)
+		}
+	}
+}

@@ -1,0 +1,5 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+{"workload":"complex-roundtrip","phase":"exec","round":0,"on":false,"iterations":6,"us":159.39583333333334}
+{"workload":"complex-roundtrip","phase":"exec","round":0,"on":true,"iterations":6,"us":156.75}
+{"workload":"decimal-parse","phase":"exec","round":0,"on":false,"iterations":1317,"us":0.7338648443432042}
+{"workload":"decimal-parse","phase":"exec","round":0,"on":true,"iterations":1317,"us":0.6952034927866363}

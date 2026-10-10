@@ -1,0 +1,37 @@
+--- a/src/core/compiler/backend/railshot/arm64/control.go
++++ b/src/core/compiler/backend/railshot/arm64/control.go
+@@ -1511,9 +1511,22 @@
+ 	if loopAlign == 0 {
+ 		loopAlign = 4
+ 	}
++	switch loopLayoutExperiment {
++	case "align32":
++		loopAlign = 5
++	case "align64":
++		loopAlign = 6
++	}
+ 	f.alignCode(loopAlign)
+ 	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
+-		f.a.Nop4()
++		switch loopLayoutExperiment {
++		case "phase0", "align32", "align64":
++		case "phase8":
++			f.a.Nop()
++			f.a.Nop()
++		default:
++			f.a.Nop4()
++		}
+ 	}
+ }
+ 
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/loop_layout_experiment.go
+@@ -0,0 +1,8 @@
++//go:build arm64
++
++package arm64
++
++import "os"
++
++// Temporary bounded layout sweep. Empty restores the production policy.
++var loopLayoutExperiment = os.Getenv("WAGO_ARM64_EXPERIMENT_LOOP_LAYOUT")

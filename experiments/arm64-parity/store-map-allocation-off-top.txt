@@ -1,0 +1,22 @@
+File: parity-store-map-affine.test
+Type: alloc_space
+Time: 2026-10-09 21:16:40 EDT
+Showing nodes accounting for 165.59MB, 89.83% of 184.33MB total
+Dropped 283 nodes (cum <= 0.92MB)
+Showing top 15 nodes out of 62
+      flat  flat%   sum%        cum   cum%
+   58.46MB 31.72% 31.72%    58.46MB 31.72%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.newCompileScratch
+   43.57MB 23.64% 55.36%    43.57MB 23.64%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*stack).initWithCap
+   11.12MB  6.03% 61.39%    11.12MB  6.03%  github.com/wago-org/wago/src/core/runtime.NewHeapCodeBuffer
+    9.50MB  5.16% 66.54%     9.50MB  5.16%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).ensureCtrlMerge
+    6.79MB  3.68% 70.22%     6.79MB  3.68%  github.com/wago-org/wago/src/wago.newCompilerCompiled
+    6.28MB  3.41% 73.63%     6.28MB  3.41%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).pushCtrl
+    5.18MB  2.81% 76.44%     8.82MB  4.79%  github.com/wago-org/wago/src/wago.cloneCompiledMetadataWithDataPolicy
+    4.75MB  2.58% 79.02%    13.58MB  7.37%  github.com/wago-org/wago/src/wago.publishCompilerCompiled
+    3.73MB  2.03% 81.04%     3.73MB  2.03%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).collectDeclaredFuncsInExpr
+    3.73MB  2.03% 83.07%    10.52MB  5.71%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctionsSerial
+    3.65MB  1.98% 85.05%     3.73MB  2.03%  github.com/wago-org/wago/src/wago.compileModuleMetadata
+    3.31MB  1.80% 86.84%     6.75MB  3.66%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleInnerLimits
+    2.04MB  1.10% 87.95%     2.04MB  1.10%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*scratch).reserveControlFrames
+    1.87MB  1.01% 88.96%     2.04MB  1.10%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).resolvedCompType
+    1.61MB  0.87% 89.83%     1.61MB  0.87%  github.com/wago-org/wago/src/wago.cloneExportMap (inline)

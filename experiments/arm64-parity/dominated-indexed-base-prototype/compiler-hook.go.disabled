@@ -1,0 +1,6 @@
+// In finalizePeepholes after indirect/opaque-fragment exclusion, before other rewrites:
+if f.opt(optDominatedIndexedBase) && !f.moduleEH && len(f.customInstructions) == 0 {
+ for hits := f.a.FoldDominatedIndexedBases(); hits > 0; hits-- {
+  f.stats.peep("dominated-indexed-base")
+ }
+}

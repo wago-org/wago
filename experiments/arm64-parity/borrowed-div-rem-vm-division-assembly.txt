@@ -1,0 +1,28 @@
+base
+divide +0x2ac
++0x0290 b        #0x30c
++0x0294 add      w9, w21, w25, lsl #2
++0x0298 ldr      w9, [x26, x9]
++0x029c mov      x10, x8
++0x02a0 mov      x11, x9
++0x02a4 cmp      w10, #0
++0x02a8 b.eq     #0x434
++0x02ac udiv     w12, w11, w10
++0x02b0 msub     w9, w12, w10, w11
++0x02b4 mov      x10, x9
++0x02b8 lsl      w10, w10, #2
++0x02bc add      x16, x26, x10
+concrete
+divide +0x2a4
++0x0288 ror      w10, w10, #0x1f
++0x028c str      w10, [x26, x19]
++0x0290 b        #0x304
++0x0294 add      w9, w21, w25, lsl #2
++0x0298 ldr      w9, [x26, x9]
++0x029c cmp      w8, #0
++0x02a0 b.eq     #0x42c
++0x02a4 udiv     w11, w9, w8
++0x02a8 msub     w10, w11, w8, w9
++0x02ac mov      x9, x10
++0x02b0 lsl      w9, w9, #2
++0x02b4 add      x16, x26, x9

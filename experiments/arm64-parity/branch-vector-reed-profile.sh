@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+export WAGO_SHARED_SCALAR=0 WAGO_ARM64_EXPERIMENT_BORROWED_MUL=0
+unset WAGO_ARM64_EXPERIMENT_BORROWED_DIV_REM WAGO_ARM64_NO_BORROWED_DIV_REM
+python3 - <<'PY'
+from pathlib import Path
+import json,subprocess
+base=Path('/Users/work/Code/Web/wasm.fyi/corpora/applications')
+manifest=json.loads((base/'manifest.json').read_text())
+root=Path('/Users/work/Code/Wago/wago/experiments/arm64-parity')
+for name in ['graphics-reed-solomon']:
+ w=next(w for w in manifest if w['id']=='applications/'+name)
+ assert len(w['args'])==1 and w['oracle']['kind']=='exact_u64'
+ prefix='profile-branch-vector-retained-residency-'+name
+ with (root/(prefix+'.txt')).open('w') as out:
+  subprocess.run(['/tmp/wago-branch-vector-retained-profile','profile','record','--module',str(base/w['artifact']),'--export',w['export'],'--args',str(w['args'][0]),'--want',w['oracle']['expected'][0],'--bounds','signals','--mode','prepared','--duration','3s','--backend','samply','--samply','/opt/homebrew/bin/samply','--rate','1000','--include-code','--source-maps','--out',str(root/prefix)],check=True,stdout=out,stderr=subprocess.STDOUT)
+ with (root/(prefix+'-assembly.txt')).open('w') as out:
+  subprocess.run(['/tmp/wago-profile-tools/bin/python',str(root/'sampled_assembly.py'),str(root/prefix)],check=True,stdout=out)
+PY

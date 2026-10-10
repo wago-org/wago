@@ -1,0 +1,24 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2726	     51339 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2899	     52905 ns/op	   38173 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Compile-16 	    2576	     54091 ns/op	   38172 B/op	     106 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8658	     17319 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8400	     17237 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/compiler-register-allocation/Exec-16    	    8725	     17255 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1704	     84895 ns/op	   62110 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1706	     84431 ns/op	   62112 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16        	    1666	     83843 ns/op	   62110 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1141	    129934 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1159	    130267 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16           	    1161	    130491 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	    1026	    140842 ns/op	   93396 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	    1021	    140563 ns/op	   93393 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Compile-16                	    1051	    138862 ns/op	   93393 B/op	     124 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4410	     37762 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4466	     37696 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/crypto-aes128/Exec-16                   	    4507	     38090 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/wago-org/wago/experiments/arm64-parity	3.186s

@@ -1,0 +1,53 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var experimentalSelectMinusOne = os.Getenv("WAGO_ARM64_EXPERIMENT_SELECT_MINUS_ONE") == "1"
+
+func (f *fn) trySelectMinusOne(a, b, cond *elem, dest *Reg, wide bool) bool {
+	if !experimentalSelectMinusOne || !isFusableCondition(cond) {
+		return false
+	}
+	minusOne := func(e *elem) bool {
+		if e.elemKind() != ekValue || e.st.kind != stConst {
+			return false
+		}
+		if wide {
+			return uint64(e.st.cval) == ^uint64(0)
+		}
+		return uint32(e.st.cval) == ^uint32(0)
+	}
+	keep, constant, keepTrue := a, b, true
+	if !minusOne(b) {
+		if !minusOne(a) {
+			return false
+		}
+		keep, constant, keepTrue = b, a, false
+	}
+	savedPinned := f.pinned
+	value, owned := f.selectSinkRead(keep)
+	f.pinned = f.pinned.add(value)
+	if *dest == regNone {
+		if owned {
+			*dest = value
+		} else {
+			*dest = f.allocReg(0)
+		}
+		f.pinned = f.pinned.add(*dest)
+	}
+	cc := f.condenseToFlags(cond)
+	if !keepTrue {
+		cc = invertCond(cc)
+	}
+	f.a.Csinv(*dest, value, ZR, cc, wide)
+	f.pinned = savedPinned
+	if owned {
+		f.release(value)
+	}
+	f.erase(keep)
+	f.erase(constant)
+	f.stats.peep("select-minus-one")
+	return true
+}

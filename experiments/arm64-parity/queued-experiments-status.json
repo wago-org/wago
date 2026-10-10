@@ -1,0 +1,369 @@
+{
+  "jobs": [
+    {
+      "name": "queue-build-signals",
+      "command": [
+        "go",
+        "test",
+        "-tags",
+        "wago_guardpage",
+        "-c",
+        "-o",
+        "/tmp/arm64-parity-pressure-signals.test",
+        "./experiments/arm64-parity"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-build-explicit",
+      "command": [
+        "go",
+        "test",
+        "-c",
+        "-o",
+        "/tmp/arm64-parity-pressure-explicit.test",
+        "./experiments/arm64-parity"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-residual-subset",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(hardware-prime-implicants|serialization-protobuf|video-dct|geo-point-in-polygon|files-glob-match|stats-linear-regression|ml-inference|vision-dilation)/",
+        "-test.benchtime=120ms",
+        "-test.count=3"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-2-explicit-oracles",
+      "command": [
+        "/tmp/arm64-parity-pressure-explicit.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/.*/Exec",
+        "-test.benchtime=1x"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-2-signals-oracles",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/.*/Exec",
+        "-test.benchtime=1x"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-2-round-0-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-2-round-0-mode-2",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-2-round-1-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-2-round-1-mode-2",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-2-round-2-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-2-round-2-mode-2",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-4-explicit-oracles",
+      "command": [
+        "/tmp/arm64-parity-pressure-explicit.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/.*/Exec",
+        "-test.benchtime=1x"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-4-signals-oracles",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/.*/Exec",
+        "-test.benchtime=1x"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-4-round-0-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-4-round-0-mode-4",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-4-round-1-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-4-round-1-mode-4",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-4-round-2-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-4-round-2-mode-4",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-5-explicit-oracles",
+      "command": [
+        "/tmp/arm64-parity-pressure-explicit.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/.*/Exec",
+        "-test.benchtime=1x"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-5-signals-oracles",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/.*/Exec",
+        "-test.benchtime=1x"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-5-round-0-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-5-round-0-mode-5",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-5-round-1-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-5-round-1-mode-5",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-5-round-2-mode-3",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-floor-5-round-2-mode-5",
+      "command": [
+        "/tmp/arm64-parity-pressure-signals.test",
+        "-test.run=^$",
+        "-test.bench=BenchmarkParity/(graphics-reed-solomon|compiler-register-allocation|crypto-aes128|video-dct)/",
+        "-test.benchtime=120ms"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-build-profiler",
+      "command": [
+        "go",
+        "build",
+        "-tags",
+        "wago_runtime wago_profile wago_guardpage",
+        "-o",
+        "/tmp/wago-arm64-prof",
+        "./cli/wago"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-profile-video-dct",
+      "command": [
+        "/tmp/wago-arm64-prof",
+        "profile",
+        "record",
+        "--backend=samply",
+        "--samply=/opt/homebrew/bin/samply",
+        "--module=/Users/work/Code/Web/wasm.fyi/corpora/applications/artifacts/video-dct.wasm",
+        "--export=benchmark",
+        "--args=256",
+        "--want=2678657190",
+        "--mode=prepared",
+        "--bounds=signals",
+        "--duration=3s",
+        "--rate=1000",
+        "--include-code",
+        "--source-maps",
+        "--out=/Users/work/Code/Wago/wago/experiments/arm64-parity/profile-video-dct-queued"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    },
+    {
+      "name": "queue-profile-geo-point-in-polygon",
+      "command": [
+        "/tmp/wago-arm64-prof",
+        "profile",
+        "record",
+        "--backend=samply",
+        "--samply=/opt/homebrew/bin/samply",
+        "--module=/Users/work/Code/Web/wasm.fyi/corpora/applications/artifacts/geo-point-in-polygon.wasm",
+        "--export=benchmark",
+        "--args=8192",
+        "--want=3744639311",
+        "--mode=prepared",
+        "--bounds=signals",
+        "--duration=3s",
+        "--rate=1000",
+        "--include-code",
+        "--source-maps",
+        "--out=/Users/work/Code/Wago/wago/experiments/arm64-parity/profile-geo-point-in-polygon-queued"
+      ],
+      "status": "passed",
+      "exit_code": 0
+    }
+  ],
+  "started_at": 1791527015.628077
+}

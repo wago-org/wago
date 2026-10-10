@@ -1,0 +1,160 @@
+--- a/src/core/compiler/backend/railshot/arm64/regalloc.go
++++ b/src/core/compiler/backend/railshot/arm64/regalloc.go
+@@ -4,8 +4,10 @@
+ 
+ import (
+ 	"github.com/wago-org/wago/src/core/runtime"
++	"os"
+ )
+ 
++var mulAddConstReadEnabled = os.Getenv("WAGO_ARM64_NO_MULADD_CONST_READ") != "1"
+ 
+ type intConstReg struct {
+ 	typ  machineType
+@@ -463,3 +465,17 @@
+ 	}
+ }
+ 
++// materializeMulAddRead borrows immutable cached integer constants for fused
++// multiply-accumulate sources. Cache misses retain ordinary read-only lowering.
++func (f *fn) materializeMulAddRead(e *elem) (Reg, bool) {
++	if f.opt(optMulAddConstRead) && e.elemKind() == ekValue && e.st.kind == stConst && (e.st.typ == mtI32 || e.st.typ == mtI64) {
++		if reg, okay := f.cachedIntConst(e.st); okay {
++			if regallocCheckEnabled {
++				f.checkUse(e)
++			}
++			f.stats.peep("mul-add-const-read")
++			return reg, false
++		}
++	}
++	return f.materializeRead(e)
++}
+--- a/src/core/compiler/backend/railshot/arm64/emit.go
++++ b/src/core/compiler/backend/railshot/arm64/emit.go
+@@ -1367,11 +1367,11 @@
+ 	savedPinned := f.pinned
+ 	// Realize the accumulator first: nested accumulations must not recurse
+ 	// while both outer multiplicands consume the transient register floor.
+-	ra, ownRa := f.materializeRead(addend)
++	ra, ownRa := f.materializeMulAddRead(addend)
+ 	f.pinned = f.pinned.add(ra)
+-	n, ownN := f.materializeRead(f.s.arg0(mul))
++	n, ownN := f.materializeMulAddRead(f.s.arg0(mul))
+ 	f.pinned = f.pinned.add(n)
+-	m, ownM := f.materializeRead(f.s.arg1(mul))
++	m, ownM := f.materializeMulAddRead(f.s.arg1(mul))
+ 	f.pinned = f.pinned.add(m)
+ 	d := dest
+ 	if d == regNone {
+--- a/src/core/compiler/backend/railshot/arm64/loop_int_const_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/loop_int_const_arm64_test.go
+@@ -143,3 +143,70 @@
+ 	}
+ }
+ 
++func TestReadOnlyLoopConstantMADDArm64(t *testing.T) {
++	saved := mulAddConstReadEnabled
++	defer func() { mulAddConstReadEnabled = saved }()
++	for _, wide := range []bool{false, true} {
++		typ, constOp, mulOp, addOp := wasm.I32, byte(0x41), byte(0x6c), byte(0x6a)
++		if wide {
++			typ, constOp, mulOp, addOp = wasm.I64, 0x42, 0x7e, 0x7c
++		}
++		constants := []uint64{0x1234567, 0x2345671, 0x3456712, 0x4567123}
++		if wide {
++			for i := range constants {
++				constants[i] |= uint64(i+1) << 40
++			}
++		}
++		body := []byte{1, 1, 0x7f, 0x3f, 0, 0x1a, 0x20, 2, 0x21, 3, 0x02, 0x40, 0x20, 3, 0x45, 0x0d, 0, 0x03, 0x40}
++		for _, c := range constants {
++			for range 2 {
++				body = append(body, 0x20, 0, 0x20, 1, constOp)
++				if wide {
++					body = append(body, wasmtest.SLEB64(int64(c))...)
++				} else {
++					body = append(body, wasmtest.SLEB32(int32(c))...)
++				}
++				body = append(body, mulOp, addOp, 0x21, 0)
++			}
++		}
++		body = append(body, 0x20, 3, 0x41, 1, 0x6b, 0x22, 3, 0x0d, 0, 0x0b, 0x0b, 0x20, 0, 0x0b)
++		m := mod1(t, []wasm.ValType{typ, typ, wasm.I32}, []wasm.ValType{typ}, body)
++		m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
++		for _, enabled := range []bool{false, true} {
++			mulAddConstReadEnabled = enabled
++			if diagnosticsEnabled {
++				stats := &ModuleStats{}
++				cm, err := CompileModuleWith(m, CompileOptions{Stats: stats})
++				if err != nil {
++					t.Fatal(err)
++				}
++				if cm.CodeImage != nil {
++					cm.CodeImage.Close()
++				}
++				if (stats.Funcs[0].Peephole["mul-add-const-read"] != 0) != enabled {
++					t.Fatalf("wide=%v enabled=%v stats=%v", wide, enabled, stats.Funcs[0].Peephole)
++				}
++			}
++			for _, n := range []uint64{0, 1, 3, 17} {
++				accumulator, input := uint64(0x34567812), uint64(0x12345679)
++				want := accumulator
++				for range n {
++					for _, c := range constants {
++						want += input * c
++						want += input * c
++					}
++				}
++				if !wide {
++					want = uint64(uint32(want))
++				}
++				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{}, accumulator, input, n)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if got != want {
++					t.Fatalf("wide=%v enabled=%v n=%d got=%x want=%x", wide, enabled, n, got, want)
++				}
++			}
++		}
++	}
++}
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -44,6 +44,7 @@
+ 	optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
+ 	optimization.Bind("inverted-logical", &invertedLogicalEnabled),
+ 	optimization.Bind("select-group-guard", &selectGroupEnabled),
++	optimization.Bind("mul-add-const-read", &mulAddConstReadEnabled),
+ 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
+ 	optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
+ 	optimization.Bind("value-facts", &valueFactsEnabled),
+@@ -109,6 +110,7 @@
+ 	optMemcopyQPairs        = optimizationBindings.Option("memcopy-qpairs")
+ 	optUXTWAdd              = optimizationBindings.Option("uxtw-add")
+ 	optSelectGroupGuard     = optimizationBindings.Option("select-group-guard")
++	optMulAddConstRead      = optimizationBindings.Option("mul-add-const-read")
+ 	optInvertedLogical      = optimizationBindings.Option("inverted-logical")
+ 	optShiftedRegisterALU   = optimizationBindings.Option("shifted-register-alu")
+ 	optFPImmediateConst     = optimizationBindings.Option("fp-immediate-const")
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -85,7 +85,7 @@
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "indexed-base-reuse",
++		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "mul-add-const-read", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "indexed-base-reuse",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -408,6 +408,7 @@
+ 	arm64("memcopy-qpairs", "Paired vector memory-copy", "copy 32-byte groups with paired 128-bit loads and stores"),
+ 	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
+ 	{Name: "select-group-guard", Label: "Select group guard", Description: "skip pure update groups when their unchanged mask has no selected bits", Default: true, Architectures: []string{"arm64"}},
++	arm64("mul-add-const-read", "Cached multiply-accumulate constants", "borrow immutable integer constants for fused multiply-accumulate sources"),
+ 	arm64("inverted-logical", "Inverted logical operands", "fold integer bitwise complements into logical register operations"),
+ 	arm64("shifted-register-alu", "Shifted-register ALU", "fold constant shifts into integer ALU operands"),
+ 	arm64("fp-immediate-const", "Float immediates", "materialize exact AArch64 floating-point immediates directly"),

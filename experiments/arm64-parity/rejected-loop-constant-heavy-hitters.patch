@@ -1,0 +1,110 @@
+--- a/src/core/compiler/backend/railshot/arm64/hints.go
++++ b/src/core/compiler/backend/railshot/arm64/hints.go
+@@ -3,6 +3,7 @@
+ package arm64
+ 
+ import (
++	"os"
+ 	"unsafe"
+ 
+ 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+@@ -961,12 +962,14 @@
+ }
+ 
+ type loopIntConstCandidate struct {
++	errorScore uint64
+ 	bits       int64
+ 	scoreType  uint64 // saturated score in low 62 bits; value type in high 2 bits
+ }
+ 
+-const maxLoopIntConstCandidates = 8
+-
++const maxLoopIntConstCandidates = 32
++
++var loopConstHeavyHittersEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_CONST_HEAVY") == "1"
+ 
+ const loopIntConstScoreMask = uint64(1<<62 - 1)
+ 
+@@ -976,7 +979,9 @@
+ 
+ func (c loopIntConstCandidate) typ() uint8    { return uint8(c.scoreType >> 62) }
+ func (c loopIntConstCandidate) score() uint64 { return c.scoreType & loopIntConstScoreMask }
+-
++func (c loopIntConstCandidate) observedScore() uint64 {
++	return c.score() - min(c.score(), c.errorScore)
++}
+ 
+ func (c *loopIntConstCandidate) addScore(score uint64) {
+ 	current := c.score()
+@@ -1068,7 +1073,25 @@
+ 			return
+ 		}
+ 	}
+-	if int(s.loopIntConstN) == len(s.loopIntConsts) {
++	limit := 8
++	if loopConstHeavyHittersEnabled {
++		limit = len(s.loopIntConsts)
++	}
++	if int(s.loopIntConstN) == limit {
++		if !loopConstHeavyHittersEnabled {
++			return
++		}
++		weakest := 0
++		for i := 1; i < len(s.loopIntConsts); i++ {
++			if s.loopIntConsts[i].score() < s.loopIntConsts[weakest].score() {
++				weakest = i
++			}
++		}
++		errorScore := s.loopIntConsts[weakest].score()
++		c := newLoopIntConstCandidate(bits, errorScore, typ)
++		c.errorScore = errorScore
++		c.addScore(score)
++		s.loopIntConsts[weakest] = c
+ 		return
+ 	}
+ 	s.loopIntConsts[s.loopIntConstN] = newLoopIntConstCandidate(bits, score, typ)
+@@ -1079,7 +1102,7 @@
+ 	for out := 0; out < len(s.h.loopIntConst); out++ {
+ 		best := -1
+ 		for i := 0; i < int(s.loopIntConstN); i++ {
+-			if s.loopIntConsts[i].typ() != 0 && (best < 0 || s.loopIntConsts[i].score() > s.loopIntConsts[best].score()) {
++			if s.loopIntConsts[i].typ() != 0 && (best < 0 || s.loopIntConsts[i].observedScore() > s.loopIntConsts[best].observedScore()) {
+ 				best = i
+ 			}
+ 		}
+--- a/src/core/compiler/backend/railshot/arm64/loop_int_const_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/loop_int_const_arm64_test.go
+@@ -142,3 +142,33 @@
+ 		t.Fatalf("transient register floor violated: cached %d constants", f.iconstN)
+ 	}
+ }
++
++func TestLoopIntConstKeepsLaterFrequentCandidatesArm64(t *testing.T) {
++	saved := loopConstHeavyHittersEnabled
++	defer func() { loopConstHeavyHittersEnabled = saved }()
++	for _, enabled := range []bool{false, true} {
++		loopConstHeavyHittersEnabled = enabled
++		scanner := byteBodyScanner{}
++		for i := 0; i < maxLoopIntConstCandidates; i++ {
++			scanner.noteLoopIntConst(int64(0x123456701+i), 2, 1, 1)
++		}
++		late := int64(0x23456789abcdef1)
++		for range 16 {
++			scanner.noteLoopIntConst(late, 2, 1, 1)
++		}
++		scanner.noteLoopIntConst(0x3456789abcdef12, 2, 1, 1)
++		scanner.finishLoopIntConsts()
++		found := false
++		for i := 0; i < int(scanner.h.loopIntConstCount); i++ {
++			if scanner.h.loopIntConst[i] == late {
++				found = true
++				if scanner.h.loopIntConstTypes>>(2*i)&3 != 2 {
++					t.Fatal("late i64 constant lost width")
++				}
++			}
++		}
++		if found != enabled {
++			t.Fatalf("enabled=%v selected=%v", enabled, scanner.h.loopIntConst[:scanner.h.loopIntConstCount])
++		}
++	}
++}

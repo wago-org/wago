@@ -1,0 +1,63 @@
+wago:b3404832b1cf5274f85c6853ac39b4c85757b267b39f2ee19eb15951d0f6c80a:21729acb89f01df1ca757370da7848f86d9c30b6df1b7eb8e248aa1a486056c2:g1:f0:r20:guest-body:benchmark: 2984 leaf observations
+  698 (23.4%) +0x00d0 mov      x21, x19  Wasm 73
+  659 (22.1%) +0x00fc ldrsb    w10, [x26, x10]  Wasm 124
+  508 (17.0%) +0x0128 mov      x19, x21  Wasm 175
+  407 (13.6%) +0x0140 cmp      w20, #0x18  Wasm 209
+  283 ( 9.5%) +0x0108 add      w20, w20, #1  Wasm 135
+  251 ( 8.4%) +0x0114 tst      w21, #0xfffffffb  Wasm 157
+   74 ( 2.5%) +0x0180 cmp      w8, w9  Wasm 259
+   36 ( 1.2%) +0x013c mov      x23, x20  Wasm 201
+   26 ( 0.9%) +0x0164 mov      x15, x19  Wasm 234
+   22 ( 0.7%) +0x00d4 cmp      w21, #2  Wasm 78
+    6 ( 0.2%) +0x0110 b        #0x140  Wasm 145
+    6 ( 0.2%) +0x0168 orr      w15, w15, w12  Wasm 234
+    4 ( 0.1%) +0x0148 eor      w10, w25, w8  Wasm 217
+    3 ( 0.1%) +0x00d8 b.eq     #0x108  Wasm 78
+    1 ( 0.0%) +0x0170 csel     w10, w11, w10, ne  Wasm 238
+
+Assembly for sampled range:
+  698 +0x00d0 mov      x21, x19
+   22 +0x00d4 cmp      w21, #2
+    3 +0x00d8 b.eq     #0x108
+    0 +0x00dc add      w19, w24, w20
+    0 +0x00e0 eor      w19, w19, w19, lsr #16
+    0 +0x00e4 mul      w19, w19, w27
+    0 +0x00e8 mov      x16, #0x10000
+    0 +0x00ec add      w10, w21, w16
+    0 +0x00f0 eor      w11, w19, w19, lsr #13
+    0 +0x00f4 and      w11, w11, #3
+    0 +0x00f8 add      w11, w11, #0x41
+  659 +0x00fc ldrsb    w10, [x26, x10]
+    0 +0x0100 cmp      w11, w10
+    0 +0x0104 b.ne     #0x114
+  283 +0x0108 add      w20, w20, #1
+    0 +0x010c add      w19, w21, #1
+    6 +0x0110 b        #0x140
+  251 +0x0114 tst      w21, #0xfffffffb
+    0 +0x0118 b.ne     #0x128
+    0 +0x011c orr      w19, w21, #1
+    0 +0x0120 mov      x22, x21
+    0 +0x0124 b        #0x13c
+  508 +0x0128 mov      x19, x21
+    0 +0x012c cmp      w22, #0
+    0 +0x0130 b.lt     #0x148
+    0 +0x0134 add      w20, w23, #1
+    0 +0x0138 add      w19, w22, #1
+   36 +0x013c mov      x23, x20
+  407 +0x0140 cmp      w20, #0x18
+    0 +0x0144 b.lo     #0xd0
+    4 +0x0148 eor      w10, w25, w8
+    0 +0x014c mov      x11, #0x193
+    0 +0x0150 movk     x11, #0x100, lsl #16
+    0 +0x0154 mul      w10, w10, w11
+    0 +0x0158 mov      x11, x25
+    0 +0x015c tst      w19, #0xfffffffb
+    0 +0x0160 cset     w12, eq
+   26 +0x0164 mov      x15, x19
+    6 +0x0168 orr      w15, w15, w12
+    0 +0x016c cmp      w15, #5
+    1 +0x0170 csel     w10, w11, w10, ne
+    0 +0x0174 cmp      w20, #0x18
+    0 +0x0178 csel     w25, w25, w10, ne
+    0 +0x017c add      w8, w8, #1
+   74 +0x0180 cmp      w8, w9

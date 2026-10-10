@@ -1,0 +1,111 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"testing"
+)
+
+func TestSelectMinusOneWidthsAndAliasing(t *testing.T) {
+	old := experimentalSelectMinusOne
+	defer func() { experimentalSelectMinusOne = old }()
+	for _, wide := range []bool{false, true} {
+		typ, c, lt, add := wasm.I32, byte(0x41), byte(0x48), byte(0x6a)
+		if wide {
+			typ, c, lt, add = wasm.I64, 0x42, 0x53, 0x7c
+		}
+		for _, inverse := range []bool{false, true} {
+			for _, tee := range []bool{false, true} {
+				body := []byte{0, 0x3f, 0, 0x1a, 0x20, 0}
+				if inverse {
+					body = append(body, c, 0x7f, 0x20, 0)
+				} else {
+					body = append(body, 0x20, 0, c, 0x7f)
+				}
+				body = append(body, 0x20, 0, c, 0, lt, 0x1b)
+				if tee {
+					body = append(body, 0x22, 0)
+				} else {
+					body = append(body, 0x21, 0, 0x20, 0)
+				}
+				body = append(body, add, 0x0b)
+				m := modMem(t, 1, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
+				for _, on := range []bool{false, true} {
+					experimentalSelectMinusOne = on
+					for _, x := range []uint64{0, 1, 7, 0x80000000, 0xffffffff, 0x8000000000000000, ^uint64(0)} {
+						chosen := ^uint64(0)
+						negative := int32(x) < 0
+						if wide {
+							negative = int64(x) < 0
+						}
+						if negative != inverse {
+							chosen = x
+						}
+						want := x + chosen
+						got := runArm64u(t, m, x)
+						if !wide {
+							want, got = uint64(uint32(want)), uint64(uint32(got))
+						}
+						if got != want {
+							t.Fatalf("wide=%v inverse=%v tee=%v on=%v x=%x got=%x want=%x", wide, inverse, tee, on, x, got, want)
+						}
+					}
+					if on && wide && !inverse && tee {
+						requireCompilerDiagnostics(t)
+						if compileWithStats(t, m, false).Funcs[0].Peephole["select-minus-one"] == 0 {
+							t.Fatal("not admitted")
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestSelectMinusOneOrdinary(t *testing.T) {
+	old := experimentalSelectMinusOne
+	defer func() { experimentalSelectMinusOne = old }()
+	for _, wide := range []bool{false, true} {
+		typ, c, lt, add := wasm.I32, byte(0x41), byte(0x48), byte(0x6a)
+		if wide {
+			typ, c, lt, add = wasm.I64, 0x42, 0x53, 0x7c
+		}
+		for _, inverse := range []bool{false, true} {
+			body := []byte{0, 0x3f, 0, 0x1a, 0x20, 0}
+			if inverse {
+				body = append(body, c, 0x7f, 0x20, 0)
+			} else {
+				body = append(body, 0x20, 0, c, 0x7f)
+			}
+			body = append(body, 0x20, 0, c, 0, lt, 0x1b, add, 0x0b)
+			m := modMem(t, 1, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
+			for _, on := range []bool{false, true} {
+				experimentalSelectMinusOne = on
+				for _, x := range []uint64{0, 1, 7, 0xffffffff, 0x80000000, 0x8000000000000000, ^uint64(0)} {
+					negative := int32(x) < 0
+					if wide {
+						negative = int64(x) < 0
+					}
+					chosen := ^uint64(0)
+					if negative != inverse {
+						chosen = x
+					}
+					got, want := runArm64u(t, m, x), x+chosen
+					if !wide {
+						got, want = uint64(uint32(got)), uint64(uint32(want))
+					}
+					if got != want {
+						t.Fatalf("wide=%v inverse=%v on=%v x=%x got=%x want=%x", wide, inverse, on, x, got, want)
+					}
+				}
+				if on {
+					requireCompilerDiagnostics(t)
+					if compileWithStats(t, m, false).Funcs[0].Peephole["select-minus-one"] == 0 {
+						t.Fatal("not admitted")
+					}
+				}
+			}
+		}
+	}
+}

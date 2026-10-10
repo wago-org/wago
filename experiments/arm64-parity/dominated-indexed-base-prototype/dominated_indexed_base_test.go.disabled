@@ -1,0 +1,35 @@
+package arm64
+
+import "testing"
+
+func TestDominatedIndexedBaseDiamond(t *testing.T) {
+ for _,outside:=range []bool{false,true} {
+  var a Asm
+  if outside { a.word(0x14000007) } // outside origin jumps directly to candidate
+  a.AddShifted(X16,X26,X20,0,false)
+  a.word(0xB9400601) // LDR W1,[X16,#4]
+  a.word(0x34000060) // CBZ W0, +12
+  a.MovImm32(X1,1)
+  a.word(0x14000002) // B +8
+  a.MovImm32(X1,2)
+  candidate:=a.Len()
+  a.AddShifted(X16,X26,X20,0,false)
+  a.word(0xB9400A02) // LDR W2,[X16,#8]
+  original:=a.Len()
+  hits:=a.FoldDominatedIndexedBases()
+  want:=1
+  if outside { want=0 }
+  if hits!=want||a.Len()!=original { t.Fatalf("outside=%v hits=%d want=%d bytes=%d want=%d",outside,hits,want,a.Len(),original) }
+  if hits==1&&a.wordAt(candidate)!=0xD503201F { t.Fatal("candidate is not NOP") }
+ }
+}
+
+func TestDominatedIndexedBaseProtectedWrites(t *testing.T) {
+ for _,reg:=range []Reg{X16,X26,X20} { for _,wide:=range []bool{false,true} {
+  var a Asm
+  a.AddShifted(X16,X26,X20,0,false)
+  if wide { a.MovImm64(reg,1) } else { a.MovImm32(reg,1) }
+  a.AddShifted(X16,X26,X20,0,false)
+  if hits:=a.FoldDominatedIndexedBases();hits!=0 { t.Fatalf("write reg=%d wide=%v hits=%d",reg,wide,hits) }
+ } }
+}

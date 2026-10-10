@@ -1,0 +1,41 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/mesh-skinning/Compile-16 	   15883	     29020 ns/op	   33858 B/op	     100 allocs/op
+BenchmarkParity/mesh-skinning/Compile-16 	   16598	     29161 ns/op	   33858 B/op	     100 allocs/op
+BenchmarkParity/mesh-skinning/Exec-16    	   19647	     24537 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/mesh-skinning/Exec-16    	   19088	     24893 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/map-point-segment/Compile-16         	   25826	     18201 ns/op	   30424 B/op	     101 allocs/op
+BenchmarkParity/map-point-segment/Compile-16         	   26236	     18402 ns/op	   30424 B/op	     101 allocs/op
+BenchmarkParity/map-point-segment/Exec-16            	   14397	     32854 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/map-point-segment/Exec-16            	   14392	     34433 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/bezier-tessellation/Compile-16       	   14037	     34391 ns/op	   35146 B/op	     101 allocs/op
+BenchmarkParity/bezier-tessellation/Compile-16       	   13272	     34658 ns/op	   35146 B/op	     101 allocs/op
+BenchmarkParity/bezier-tessellation/Exec-16          	   36202	     13447 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/bezier-tessellation/Exec-16          	   35637	     13492 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-biquad/Compile-16              	   31294	     15817 ns/op	   27277 B/op	      99 allocs/op
+BenchmarkParity/audio-biquad/Compile-16              	   31064	     15630 ns/op	   27278 B/op	      99 allocs/op
+BenchmarkParity/audio-biquad/Exec-16                 	   20799	     23616 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-biquad/Exec-16                 	   20310	     23023 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-path-trie/Compile-16           	    9507	     49050 ns/op	   37741 B/op	     109 allocs/op
+BenchmarkParity/files-path-trie/Compile-16           	    9586	     51928 ns/op	   37740 B/op	     109 allocs/op
+BenchmarkParity/files-path-trie/Exec-16              	   78640	      5896 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/files-path-trie/Exec-16              	   81356	      5912 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16       	    2721	    175367 ns/op	   96697 B/op	     120 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16       	    2791	    337717 ns/op	   96705 B/op	     120 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16          	   10000	     85391 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16          	   10000	     47254 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16            	    9487	     43446 ns/op	   36292 B/op	     111 allocs/op
+BenchmarkParity/search-bk-tree/Compile-16            	   10000	     42914 ns/op	   36292 B/op	     111 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16               	    3111	    153553 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-bk-tree/Exec-16               	    3217	    157066 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-yuv420/Compile-16              	   15932	     30754 ns/op	   34106 B/op	     103 allocs/op
+BenchmarkParity/video-yuv420/Compile-16              	   15410	     31606 ns/op	   34107 B/op	     103 allocs/op
+BenchmarkParity/video-yuv420/Exec-16                 	   10000	     47316 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-yuv420/Exec-16                 	    9900	     47829 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-optical-flow/Compile-16        	    6494	     71724 ns/op	   41528 B/op	     115 allocs/op
+BenchmarkParity/video-optical-flow/Compile-16        	    6860	     71887 ns/op	   41529 B/op	     115 allocs/op
+BenchmarkParity/video-optical-flow/Exec-16           	   24831	     19286 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-optical-flow/Exec-16           	   24524	     19283 ns/op	       0 B/op	       0 allocs/op
+PASS

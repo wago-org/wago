@@ -1,0 +1,9 @@
+corpus	phase	off_us	on_us	change_percent
+audio-adpcm	Compile	17.419	17.052	-2.11
+audio-adpcm	Exec	37.573	37.392	-0.48
+video-dct	Compile	119.308	120.184	0.73
+video-dct	Exec	44.629	44.578	-0.11
+files-glob-match	Compile	19.480	20.095	3.15
+files-glob-match	Exec	130.185	130.524	0.26
+search-aho-corasick	Compile	173.502	174.802	0.75
+search-aho-corasick	Exec	48.433	48.886	0.93

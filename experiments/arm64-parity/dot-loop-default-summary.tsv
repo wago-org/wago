@@ -1,0 +1,13 @@
+case	phase	baseline median ns	vector median ns	change %
+crypto-aes128	Compile	140561	145055	+3.20
+crypto-aes128	Exec	34943	32050	-8.28
+graphics-reed-solomon	Compile	79509	79910	+0.50
+graphics-reed-solomon	Exec	114588	114684	+0.08
+ml-inference	Compile	22379	23840	+6.53
+ml-inference	Exec	10789	5138	-52.38
+search-aho-corasick	Compile	151081	153095	+1.33
+search-aho-corasick	Exec	50909	49637	-2.50
+video-dct	Compile	108908	112847	+3.62
+video-dct	Exec	43564	47154	+8.24
+vision-dilation	Compile	31786	32015	+0.72
+vision-dilation	Exec	44437	44422	-0.03

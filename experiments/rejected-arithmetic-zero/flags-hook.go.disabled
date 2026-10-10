@@ -1,0 +1,7 @@
+	if cc, ok := f.tryArithmeticEqzToFlags(node); ok {
+		f.erase(node)
+		if invert {
+			cc = invertCond(cc)
+		}
+		return cc
+	}

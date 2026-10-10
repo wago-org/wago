@@ -1,0 +1,10 @@
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	1.206s
+--- FAIL: TestIndexedDisplacementAddresses (0.00s)
+    --- FAIL: TestIndexedDisplacementAddresses/GP_load/40f8 (0.00s)
+        displacement_test.go:185: address = 0x4000, want 0x40f8
+    --- FAIL: TestIndexedDisplacementAddresses/GP_store/40f8 (0.00s)
+        displacement_test.go:185: address = 0x4000, want 0x40f8
+FAIL
+FAIL	github.com/wago-org/wago/src/core/encoder/arm64	0.347s
+ok  	github.com/wago-org/wago/src/core/runtime	0.500s
+FAIL

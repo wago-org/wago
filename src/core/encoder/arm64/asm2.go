@@ -2,6 +2,8 @@ package arm64
 
 import "os"
 
+var shiftedAddressDispEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_ADDRESS_DISP") != "1"
+
 var foldIdxDispEnabled = os.Getenv("WAGO_ARM64_NO_FOLD_IDX_DISP") != "1"
 
 // Port batch: integer data-processing methods the railshot arm64 backend needs
@@ -63,6 +65,22 @@ func (a *Asm) EorShiftedReg(rd, rn, rm Reg, kind RegShift, shift uint8, w bool) 
 	a.shiftedReg(0x4A000000, 0xCA000000, rd, rn, rm, kind, shift, w)
 }
 
+// Inverted logical register operations fold a bitwise complement of Rm.
+func (a *Asm) BicReg(rd, rn, rm Reg, w bool) {
+	a.shiftedReg(0x0A200000, 0x8A200000, rd, rn, rm, RegShiftLSL, 0, w)
+}
+func (a *Asm) OrnReg(rd, rn, rm Reg, w bool) {
+	a.shiftedReg(0x2A200000, 0xAA200000, rd, rn, rm, RegShiftLSL, 0, w)
+}
+func (a *Asm) EonReg(rd, rn, rm Reg, w bool) {
+	a.shiftedReg(0x4A200000, 0xCA200000, rd, rn, rm, RegShiftLSL, 0, w)
+}
+
+// TstNotReg tests rn & ~rm without retaining the bitmask result.
+func (a *Asm) TstNotReg(rn, rm Reg, w bool) {
+	a.shiftedReg(0x6A200000, 0xEA200000, ZR, rn, rm, RegShiftLSL, 0, w)
+}
+
 // AddExtUXTW is ADD Xd, Xn, Wm, UXTW — the 64-bit extended-register add that
 // zero-extends Rm's low 32 bits before adding. It folds `i64.extend_i32_u(y)`
 // into an add without a separate zero-extend. option=UXTW(010), imm3=0.
@@ -71,6 +89,18 @@ func (a *Asm) AddExtUXTW(rd, rn, rm Reg) {
 	if regallocCheckEnabled {
 		a.regallocGPWrites(regallocGPMask(rd, true))
 	}
+}
+
+// AddExtUXTWShift adds a zero-extended W operand shifted by 0..4 bits.
+func (a *Asm) AddExtUXTWShift(rd, rn, rm Reg, shift uint8) bool {
+	if shift > 4 {
+		return false
+	}
+	a.word(0x8B204000 | uint32(shift)<<10 | r(rm)<<16 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, true))
+	}
+	return true
 }
 
 // Adds32 is 32-bit flag-setting ADD (Adds64 is in asm.go).
@@ -766,6 +796,10 @@ func (a *Asm) addDispX16(disp int32) {
 		a.AddImm64(X16, X16, uint32(disp))
 	case disp < 0 && disp >= -0xFFF:
 		a.SubImm64(X16, X16, uint32(-disp))
+	case shiftedAddressDispEnabled && disp > 0 && disp&0xfff == 0 && uint32(disp) <= 0xfff000:
+		a.AddImm64LSL12(X16, X16, uint32(disp))
+	case shiftedAddressDispEnabled && disp < 0 && disp&0xfff == 0 && -int64(disp) <= 0xfff000:
+		a.SubImm64LSL12(X16, X16, uint32(-int64(disp)))
 	default:
 		a.MovImm64(X17, uint64(int64(disp)))
 		a.AddShifted(X16, X16, X17, 0, false)
@@ -837,6 +871,17 @@ func (a *Asm) storeDisp(src, base Reg, disp int32, size int) bool {
 	return false
 }
 
+// Probe without emitting the value: a failed fold must not materialize a
+// constant that displacement setup immediately overwrites in X17.
+func canStoreDisp(disp int32, size int) bool {
+	switch size {
+	case 1, 2, 4, 8:
+		return disp >= 0 && uint32(disp)&uint32(size-1) == 0 && uint32(disp) <= 0xfff*uint32(size)
+	default:
+		return false
+	}
+}
+
 func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDest bool) {
 	if disp == 0 {
 		a.LdrIdx(dst, base, index, size, signed, wideDest)
@@ -852,6 +897,14 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 		}
 	} else {
 		a.AddShifted(X16, base, index, 0, false)
+	}
+	if shiftedAddressDispEnabled && disp > 0xfff && uint32(disp) <= 0xffffff &&
+		(size == 1 || size == 2 || size == 4 || size == 8 && !signed) && disp%int32(size) == 0 {
+		a.AddImm64LSL12(X16, X16, uint32(disp)&^uint32(0xfff))
+		if !a.loadDisp(dst, X16, disp&0xfff, size, signed, wideDest) {
+			panic("arm64: split load offset not encodable")
+		}
+		return
 	}
 	a.addDispX16(disp)
 	a.LdrIdx(dst, X16, XZR, size, signed, wideDest)
@@ -885,6 +938,14 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 		}
 	} else {
 		a.AddShifted(X16, base, index, 0, false)
+	}
+	if shiftedAddressDispEnabled && disp > 0xfff && uint32(disp) <= 0xffffff &&
+		(size == 1 || size == 2 || size == 4 || size == 8) && disp%int32(size) == 0 {
+		a.AddImm64LSL12(X16, X16, uint32(disp)&^uint32(0xfff))
+		if !a.storeDisp(src, X16, disp&0xfff, size) {
+			panic("arm64: split store offset not encodable")
+		}
+		return
 	}
 	a.addDispX16(disp)
 	a.StrIdx(src, X16, XZR, size)
@@ -994,7 +1055,11 @@ func (a *Asm) StoreImmIdx(base, index Reg, disp, val int32, size int) {
 		if val == 0 {
 			return XZR
 		}
-		a.MovImm64(X17, uint64(uint32(val)))
+		if a.AllowSingleNegativeMove32 && size <= 4 && val < 0 && val >= -65536 {
+			a.MovImm32(X17, val)
+		} else {
+			a.MovImm64(X17, uint64(uint32(val)))
+		}
 		return X17
 	}
 	if disp == 0 {
@@ -1002,7 +1067,7 @@ func (a *Asm) StoreImmIdx(base, index Reg, disp, val int32, size int) {
 		return
 	}
 	a.AddShifted(X16, base, index, 0, false)
-	if foldIdxDispEnabled && a.DenseIdxDisp {
+	if foldIdxDispEnabled && a.DenseIdxDisp && canStoreDisp(disp, size) {
 		// storeDisp folds disp into a scaled immediate (no X17 use), so the value
 		// may be parked in X17 first.
 		if a.storeDisp(immSrc(), X16, disp, size) {
@@ -2219,6 +2284,11 @@ func (a *Asm) StrF(base Reg, disp int32, rt Reg, f64 bool) {
 func (a *Asm) MovImm32(rd Reg, val int32) {
 	u := uint32(val)
 	if a.DisableCompactMoveImmediate32 {
+		if a.AllowSingleNegativeMove32 && u >= 0xffff0000 {
+			a.Movn32(rd, ^uint16(u), 0)
+			a.SingleNegativeMoves32++
+			return
+		}
 		a.MovImm64(rd, uint64(u))
 		return
 	}

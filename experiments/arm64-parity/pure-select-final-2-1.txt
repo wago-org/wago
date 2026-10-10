@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-adpcm/Compile-16 	    6110	     17857 ns/op	   28320 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16 	    7686	     17590 ns/op	   28318 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3324	     36314 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3319	     36541 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-hash-join/Compile-16         	    4857	     23708 ns/op	   31240 B/op	     104 allocs/op
+BenchmarkParity/db-hash-join/Compile-16         	    5221	     23517 ns/op	   31240 B/op	     104 allocs/op
+BenchmarkParity/db-hash-join/Exec-16            	   32445	      3619 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-hash-join/Exec-16            	   33057	      3635 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16         	    4119	     27693 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16         	    4282	     27671 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16            	    4344	     27524 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16            	    4183	     27659 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16            	     668	    170354 ns/op	   96507 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16            	     717	    167037 ns/op	   96509 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16               	    2487	     48242 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16               	    2476	     48358 ns/op	       0 B/op	       0 allocs/op
+PASS

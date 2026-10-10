@@ -1,0 +1,77 @@
+//go:build arm64
+
+package arm64
+
+import "encoding/binary"
+
+// Size-stable bounded proof over finalized direct branches. The scratch edge
+// list is stack allocated; overflow abandons the function without rewriting.
+func (a *Asm) FoldDominatedIndexedBases() int {
+ b:=a.B
+ n:=len(b)&^3
+ if n > 4096 { return 0 }
+ hits:=0
+ type edge struct { from, to int }
+ var edges [128]edge
+ count:=0
+ for pc:=0;pc<n;pc+=4 {
+  if a.wordAt(pc)&0xFFFFFC1F==0xD61F0000 { return 0 }
+  if to,ok:=dominatedDirectBranchTarget(pc,a.wordAt(pc));ok {
+   if count==len(edges) { return 0 }
+   edges[count]=edge{pc,to};count++
+  }
+ }
+ for pc:=8;pc<n;pc+=4 {
+  word:=a.wordAt(pc)
+  // ADD X16,Xbase,Xindex,LSL #0; both sources must be real distinct inputs.
+  if word&0xFFE0FC1F!=0x8B000010 { continue }
+  base,index:=Reg(word>>5&31),Reg(word>>16&31)
+  if base==X16||index==X16||base==ZR||index==ZR { continue }
+  for prev:=pc-4;prev>=0&&pc-prev<=256;prev-=4 {
+   earlier:=a.wordAt(prev)
+   if earlier==word {
+    safe:=true
+    // Entering the seed itself is safe. Every later incoming edge must
+    // originate after the seed and before the candidate, or it can bypass
+    // initialization or bring an unproven address state from another path.
+    for _,e:=range edges[:count] {
+     if e.to>prev&&e.to<=pc&&(e.from<prev||e.from>=pc) { safe=false;break }
+    }
+    if safe { binary.LittleEndian.PutUint32(b[pc:],0xD503201F);hits++ }
+    break
+   }
+   if !preservesDominatedIndexedBase(earlier,base,index) { break }
+  }
+ }
+ return hits
+}
+
+func preservesDominatedIndexedBase(word uint32,base,index Reg) bool {
+ if word==0xD503201F { return true }
+ // Direct non-call control transfers write no GPR. Edges are checked above.
+ if word&0xFC000000==0x14000000||word&0xFF000010==0x54000000||
+  word&0x7E000000==0x34000000||word&0x7E000000==0x36000000 { return true }
+ // Conditional compares affect only NZCV, not the cached pointer inputs.
+ if word&0x1FE00000==0x1A400000 { return true }
+ // Recognized integer families each write only Rd. Calls, indirect control,
+ // writeback memory, system instructions and unknown encodings are rejected.
+ writesRd:=word&0x1F000000==0x0A000000||
+  word&0x1F800000==0x12000000||word&0x1F800000==0x12800000||
+  word&0x1F800000==0x13000000||word&0x1F000000==0x1B000000||
+  word&0x1FE00000==0x1AC00000||word&0x5FE00000==0x5AC00000||
+  word&0x1FE00000==0x1A800000
+ if writesRd { dst:=Reg(word&31);return dst!=X16&&dst!=base&&dst!=index }
+ return preservesIndexedBase(word,base,index)
+}
+
+func dominatedDirectBranchTarget(pc int,w uint32) (int,bool) {
+ switch {
+ case w&0x7C000000==0x14000000:
+  return pc+int(int32(w<<6)>>6)*4,true
+ case w&0xFF000010==0x54000000||w&0x7E000000==0x34000000:
+  return pc+int(int32(w<<8)>>13)*4,true
+ case w&0x7E000000==0x36000000:
+  return pc+int(int32(w<<13)>>18)*4,true
+ }
+ return 0,false
+}

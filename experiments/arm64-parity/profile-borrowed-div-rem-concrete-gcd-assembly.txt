@@ -1,0 +1,49 @@
+wago:78be8f26a99dd92f9f593751fa12e2fb2d482c1ffe307572ac246a76e9cbbdfe:517e95d53735d71af85c7f56d1293a4b77b7022ff67527afb0d4cfd45bced7bf:g1:f0:r20:guest-body:benchmark: 2980 leaf observations
+  826 (27.7%) +0x00e0 mov      x9, x19  Wasm 131
+  795 (26.7%) +0x0104 eor      w22, w19, w22  Wasm 143
+  789 (26.5%) +0x00f0 udiv     w11, w9, w19  Wasm 133
+  137 ( 4.6%) +0x00e4 mov      x19, x20  Wasm 131
+  103 ( 3.5%) +0x00c8 nop        Wasm 125
+   84 ( 2.8%) +0x00ac add      w20, w20, #1  Wasm 80
+   73 ( 2.4%) +0x00e8 cmp      w19, #0  Wasm 133
+   41 ( 1.4%) +0x00fc cmp      w20, #0  Wasm 136
+   23 ( 0.8%) +0x00d4 nop        Wasm 125
+   22 ( 0.7%) +0x00d8 nop        Wasm 125
+   12 ( 0.4%) +0x00dc nop        Wasm 125
+   12 ( 0.4%) +0x00d0 nop        Wasm 125
+   12 ( 0.4%) +0x00b8 mul      w19, w19, w25  Wasm 106
+   12 ( 0.4%) +0x00b4 eor      w19, w19, w19, lsr #16  Wasm 99
+   11 ( 0.4%) +0x00c0 and      w19, w19, #0xffff  Wasm 119
+   10 ( 0.3%) +0x00bc eor      w19, w19, w19, lsr #13  Wasm 114
+    8 ( 0.3%) +0x010c add      w21, w21, #1  Wasm 156
+    5 ( 0.2%) +0x00c4 add      w19, w19, #1  Wasm 122
+    3 ( 0.1%) +0x00cc nop        Wasm 125
+    1 ( 0.0%) +0x00f4 msub     w10, w11, w19, w9  Wasm 133
+    1 ( 0.0%) +0x0100 b.ne     #0xe0  Wasm 136
+
+Assembly for sampled range:
+   84 +0x00ac add      w20, w20, #1
+    0 +0x00b0 add      w19, w19, w27
+   12 +0x00b4 eor      w19, w19, w19, lsr #16
+   12 +0x00b8 mul      w19, w19, w25
+   10 +0x00bc eor      w19, w19, w19, lsr #13
+   11 +0x00c0 and      w19, w19, #0xffff
+    5 +0x00c4 add      w19, w19, #1
+  103 +0x00c8 nop      
+    3 +0x00cc nop      
+   12 +0x00d0 nop      
+   23 +0x00d4 nop      
+   22 +0x00d8 nop      
+   12 +0x00dc nop      
+  826 +0x00e0 mov      x9, x19
+  137 +0x00e4 mov      x19, x20
+   73 +0x00e8 cmp      w19, #0
+    0 +0x00ec b.eq     #0x12c
+  789 +0x00f0 udiv     w11, w9, w19
+    1 +0x00f4 msub     w10, w11, w19, w9
+    0 +0x00f8 mov      x20, x10
+   41 +0x00fc cmp      w20, #0
+    1 +0x0100 b.ne     #0xe0
+  795 +0x0104 eor      w22, w19, w22
+    0 +0x0108 mul      w22, w22, w14
+    8 +0x010c add      w21, w21, #1

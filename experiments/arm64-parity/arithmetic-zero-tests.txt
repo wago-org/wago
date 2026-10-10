@@ -1,0 +1,7 @@
+--- FAIL: TestArithmeticZeroPreservesSourcesAndWrapping (0.12s)
+    arithmetic_zero_arm64_test.go:105: wide=true op=7c constant=0 shape=0 enabled=false x=0 y=0 got=1 want=0 err=<nil>
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	1.123s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.265s
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.581s
+FAIL

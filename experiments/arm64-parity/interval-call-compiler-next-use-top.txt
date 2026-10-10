@@ -1,0 +1,33 @@
+File: parity-interval-call-next-use.test
+Type: cpu
+Time: 2026-10-10 03:13:38 EDT
+Duration: 3.61s, Total samples = 3.55s (98.31%)
+Showing nodes accounting for 3.29s, 92.68% of 3.55s total
+Dropped 98 nodes (cum <= 0.02s)
+Showing top 25 nodes out of 123
+      flat  flat%   sum%        cum   cum%
+     2.43s 68.45% 68.45%      2.43s 68.45%  runtime.pthread_cond_signal
+     0.19s  5.35% 73.80%      0.19s  5.35%  runtime.kevent
+     0.12s  3.38% 77.18%      0.12s  3.38%  runtime.pthread_cond_wait
+     0.12s  3.38% 80.56%      0.12s  3.38%  runtime.pthread_kill
+     0.05s  1.41% 81.97%      0.05s  1.41%  runtime.madvise
+     0.05s  1.41% 83.38%      0.05s  1.41%  runtime.usleep
+     0.04s  1.13% 84.51%      0.04s  1.13%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).decodeDirectOp
+     0.03s  0.85% 85.35%      0.06s  1.69%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).convergeEdgeToWithDead
+     0.02s  0.56% 85.92%      0.03s  0.85%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*byteBodyScanner).scanExpr
+     0.02s  0.56% 86.48%      0.17s  4.79%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).emitPlain
+     0.02s  0.56% 87.04%      0.02s  0.56%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).nextIntervalEvent
+     0.02s  0.56% 87.61%      0.09s  2.54%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).opBlock
+     0.02s  0.56% 88.17%      0.02s  0.56%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).pinReg (inline)
+     0.02s  0.56% 88.73%      0.02s  0.56%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*stack).recycle (inline)
+     0.02s  0.56% 89.30%      0.02s  0.56%  github.com/wago-org/wago/src/core/compiler/optimization.Selection.EnabledResolvedOption (inline)
+     0.02s  0.56% 89.86%      0.02s  0.56%  github.com/wago-org/wago/src/core/compiler/wasm.(*Reader).leb128
+     0.02s  0.56% 90.42%      0.03s  0.85%  github.com/wago-org/wago/src/core/compiler/wasm.classifyInstructionImmediateIntoWithWidths
+     0.01s  0.28% 90.70%      0.40s 11.27%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).bodyLoop
+     0.01s  0.28% 90.99%      0.02s  0.56%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).materialize
+     0.01s  0.28% 91.27%      0.06s  1.69%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).opEnd
+     0.01s  0.28% 91.55%      0.03s  0.85%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).popValue
+     0.01s  0.28% 91.83%      0.02s  0.56%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*stack).alloc
+     0.01s  0.28% 92.11%      0.03s  0.85%  github.com/wago-org/wago/src/core/compiler/backend/railshot/shared.CodegenPolicy.EnabledResolvedOption (inline)
+     0.01s  0.28% 92.39%      0.04s  1.13%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).stepDirectOp
+     0.01s  0.28% 92.68%      0.02s  0.56%  github.com/wago-org/wago/src/core/encoder/arm64.(*Asm).MovImm64

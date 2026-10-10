@@ -1,0 +1,15 @@
+case	phase	before_us	after_us	change_pct
+compiler-constant-fold	Compile	29.590	30.076	+1.64
+compiler-constant-fold	Exec	1.758	1.770	+0.65
+compiler-dead-code	Compile	31.960	32.760	+2.50
+compiler-dead-code	Exec	3.988	4.176	+4.73
+db-btree	Compile	58.350	59.914	+2.68
+db-btree	Exec	10.184	10.197	+0.13
+geo-polyline-simplify	Compile	40.786	42.031	+3.05
+geo-polyline-simplify	Exec	5.272	5.305	+0.63
+graph-dijkstra	Compile	43.352	43.944	+1.37
+graph-dijkstra	Exec	5.498	5.482	-0.28
+search-aho-corasick	Compile	176.263	180.764	+2.55
+search-aho-corasick	Exec	49.995	49.111	-1.77
+search-bk-tree	Compile	40.374	40.473	+0.24
+search-bk-tree	Exec	164.204	149.351	-9.05

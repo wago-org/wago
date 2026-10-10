@@ -1,0 +1,282 @@
+--- a/src/core/compiler/backend/railshot/arm64/emit.go
++++ b/src/core/compiler/backend/railshot/arm64/emit.go
+@@ -406,6 +406,17 @@
+ 	} else {
+ 		switch right.st.kind {
+ 		case stConst:
++			if scaledConstMulEnabled && node.deferredOp() == opMul {
++				if small, shift, okay := scaledAddMultiplier(right.st.cval, w); okay {
++					f.a.AddShifted(dest, left.st.reg, left.st.reg, small, !w)
++					f.a.LslImm(dest, dest, shift, !w)
++					f.stats.peep("scaled-const-mul")
++					f.consumeBlockBelow(node)
++					f.occupy(node, dest)
++					return true
++				}
++			}
++
+ 			if f.aluImm3(node.deferredOp(), dest, left.st.reg, right.st.cval, w) {
+ 				f.stats.peep("local-3op-sink")
+ 				f.consumeBlockBelow(node)
+@@ -1362,6 +1373,9 @@
+ 	if mul == nil || (addend.elemKind() != ekValue && !pureMulAddOperand(f.s, addend, 4)) {
+ 		return regNone
+ 	}
++	if result := f.tryScaledConstMulAdd(node, mul, addend, dest, w); result != regNone {
++		return result
++	}
+ 	// Three read-only sources; pin each so materializing the next (e.g. a load or
+ 	// const) cannot reuse it.
+ 	savedPinned := f.pinned
+@@ -1640,6 +1654,14 @@
+ 	}
+ 	switch right.st.kind {
+ 	case stConst:
++		if scaledConstMulEnabled {
++			if small, shift, okay := scaledAddMultiplier(right.st.cval, w); okay {
++				f.a.AddShifted(dest, dest, dest, small, !w)
++				f.a.LslImm(dest, dest, shift, !w)
++				f.stats.peep("scaled-const-mul")
++				return
++			}
++		}
+ 		// x*{3,5,9} → one add-shifted [x+x*{2,4,8}] (powers of two already became
+ 		// shifts at pushBinOp).
+ 		switch right.st.cval {
+--- a/src/core/compiler/backend/railshot/arm64/hints.go
++++ b/src/core/compiler/backend/railshot/arm64/hints.go
+@@ -1036,6 +1036,11 @@
+ func loopIntConstNeedsRegister(next byte, bits int64, typ uint8) bool {
+ 	switch next {
+ 	case 0x6c, 0x7e: // i32/i64.mul have no immediate form.
++		if scaledConstMulEnabled {
++			if _, _, okay := scaledAddMultiplier(bits, typ == 2); okay {
++				return false
++			}
++		}
+ 		return true
+ 	case 0x6a, 0x6b, 0x7c, 0x7d: // add/sub admit a signed +/- 12-bit magnitude.
+ 		return bits < -0xfff || bits > 0xfff
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/scaled_const_mul.go
+@@ -0,0 +1,90 @@
++//go:build arm64
++
++package arm64
++
++import (
++	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
++	"math/bits"
++	"os"
++)
++
++var scaledConstMulEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SCALED_CONST_MUL") == "1"
++
++// scaledAddMultiplier represents (1 + 2^small) * 2^shift. Both steps preserve
++// modular integer multiplication, including unsigned i32 representatives.
++func scaledAddMultiplier(value int64, wide bool) (small, shift uint8, okay bool) {
++	var v uint64
++	if wide {
++		if value <= 0 {
++			return 0, 0, false
++		}
++		v = uint64(value)
++	} else {
++		v = uint64(uint32(value))
++	}
++	if v == 0 {
++		return 0, 0, false
++	}
++	k := bits.TrailingZeros64(v)
++	odd := v >> k
++	if k == 0 || (odd != 3 && odd != 5 && odd != 9) {
++		return 0, 0, false
++	}
++	return uint8(bits.TrailingZeros64(odd - 1)), uint8(k), true
++}
++
++func (f *fn) tryScaledConstMulAdd(node, mul, addend *elem, dest Reg, wide bool) Reg {
++	if !scaledConstMulEnabled {
++		return regNone
++	}
++	n, c := f.s.arg0(mul), f.s.arg1(mul)
++	if n.elemKind() == ekValue && n.st.kind == stConst {
++		n, c = c, n
++	}
++	if c.elemKind() != ekValue || c.st.kind != stConst {
++		return regNone
++	}
++	small, shift, okay := scaledAddMultiplier(c.st.cval, wide)
++	if !okay {
++		return regNone
++	}
++	saved := f.pinned
++	var ra Reg
++	var ownRa bool
++	if addend.elemKind() == ekValue && addend.st.kind == stConst {
++		ra, ownRa = f.intConstReadReg(addend.st, 0)
++	} else {
++		ra, ownRa = f.materializeRead(addend)
++	}
++	f.pinned = f.pinned.add(ra)
++	rn, ownN := f.materializeRead(n)
++	f.pinned = f.pinned.add(rn)
++	d := dest
++	if d == regNone {
++		d = f.allocReg(0)
++	}
++	product := d
++	if d == ra {
++		product = f.allocReg(0)
++	}
++	f.a.AddShifted(product, rn, rn, small, !wide)
++	if node.deferredOp() == opAdd {
++		f.a.AddShifted(d, ra, product, shift, !wide)
++	} else {
++		f.a.SubShiftedReg(d, ra, product, a64.RegShiftLSL, shift, !wide)
++	}
++	if product != d {
++		f.release(product)
++	}
++	f.pinned = saved
++	if ownN {
++		f.release(rn)
++	}
++	if ownRa && ra != rn {
++		f.release(ra)
++	}
++	f.stats.peep("scaled-const-mul-add")
++	f.consumeBlockBelow(node)
++	f.occupy(node, d)
++	return d
++}
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/scaled_const_mul_arm64_test.go
+@@ -0,0 +1,127 @@
++//go:build (linux || darwin) && arm64
++
++package arm64
++
++import (
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"testing"
++)
++
++func TestScaledConstMulAddAliasesAndWrapping(t *testing.T) {
++	saved := scaledConstMulEnabled
++	defer func() { scaledConstMulEnabled = saved }()
++	for _, wide := range []bool{false, true} {
++		typ, constOp, mulOp, addOp := wasm.I32, byte(0x41), byte(0x6c), byte(0x6a)
++		localType := byte(0x7f)
++		if wide {
++			typ, constOp, mulOp, addOp = wasm.I64, 0x42, 0x7e, 0x7c
++			localType = 0x7e
++		}
++		constants := []int64{6, 10, 24, 72, 3 << 29}
++		if wide {
++			constants = append(constants, 3<<61)
++		}
++		for _, coefficient := range constants {
++			for _, subtract := range []bool{false, true} {
++				for _, destination := range []int{-1, 0, 1, 2} {
++					body := []byte{1, 1, localType, 0x3f, 0, 0x1a, 0x20, 0, 0x20, 1, constOp}
++					if wide {
++						body = append(body, wasmtest.SLEB64(coefficient)...)
++					} else {
++						body = append(body, wasmtest.SLEB32(int32(coefficient))...)
++					}
++					operation := addOp
++					if subtract {
++						operation++
++					}
++					body = append(body, mulOp, operation)
++					if destination >= 0 {
++						body = append(body, 0x21, byte(destination), 0x20, byte(destination))
++					}
++					body = append(body, 0x0b)
++					m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
++					m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
++					for _, enabled := range []bool{false, true} {
++						scaledConstMulEnabled = enabled
++						if diagnosticsEnabled && coefficient == 24 && destination == 2 {
++							stats := &ModuleStats{}
++							cm, err := CompileModuleWith(m, CompileOptions{Stats: stats})
++							if err != nil {
++								t.Fatal(err)
++							}
++							if cm.CodeImage != nil {
++								cm.CodeImage.Close()
++							}
++							if (stats.Funcs[0].Peephole["scaled-const-mul-add"] != 0) != enabled {
++								t.Fatalf("enabled=%v stats=%v", enabled, stats.Funcs[0].Peephole)
++							}
++						}
++
++						for _, input := range []uint64{0, 1, 0xffffffff, 0xfedcba9876543210} {
++							accumulator := uint64(0x123456789abcdef0)
++							want := accumulator + input*uint64(coefficient)
++							if subtract {
++								want = accumulator - input*uint64(coefficient)
++							}
++							if !wide {
++								want = uint64(uint32(want))
++							}
++							got, err := runArm64WrapperWithOptions(t, m, CompileOptions{}, accumulator, input)
++							if err != nil {
++								t.Fatal(err)
++							}
++							if got != want {
++								t.Fatalf("wide=%v coefficient=%d subtract=%v destination=%d enabled=%v input=%x got=%x want=%x", wide, coefficient, subtract, destination, enabled, input, got, want)
++							}
++						}
++					}
++				}
++			}
++		}
++	}
++}
++
++func TestScaledConstStandaloneMultiply(t *testing.T) {
++	saved := scaledConstMulEnabled
++	defer func() { scaledConstMulEnabled = saved }()
++	for _, wide := range []bool{false, true} {
++		typ, constOp, mulOp, localType := wasm.I32, byte(0x41), byte(0x6c), byte(0x7f)
++		if wide {
++			typ, constOp, mulOp, localType = wasm.I64, 0x42, 0x7e, 0x7e
++		}
++		for _, coefficient := range []int64{6, 10, 24, 72, 3 << 29} {
++			for _, sink := range []bool{false, true} {
++				body := []byte{1, 1, localType, 0x3f, 0, 0x1a, 0x20, 0, constOp}
++				if wide {
++					body = append(body, wasmtest.SLEB64(coefficient)...)
++				} else {
++					body = append(body, wasmtest.SLEB32(int32(coefficient))...)
++				}
++				body = append(body, mulOp)
++				if sink {
++					body = append(body, 0x21, 0, 0x20, 0)
++				}
++				body = append(body, 0x0b)
++				m := mod1(t, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
++				m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
++				for _, enabled := range []bool{false, true} {
++					scaledConstMulEnabled = enabled
++					for _, input := range []uint64{0, 1, 0xffffffff, 0xfedcba9876543210} {
++						want := input * uint64(coefficient)
++						if !wide {
++							want = uint64(uint32(want))
++						}
++						got, err := runArm64WrapperWithOptions(t, m, CompileOptions{}, input)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if got != want {
++							t.Fatalf("wide=%v coefficient=%d sink=%v enabled=%v input=%x got=%x want=%x", wide, coefficient, sink, enabled, input, got, want)
++						}
++					}
++				}
++			}
++		}
++	}
++}

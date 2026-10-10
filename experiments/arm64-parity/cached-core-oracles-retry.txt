@@ -1,0 +1,4 @@
+# github.com/wago-org/wago/experiments/arm64-parity [github.com/wago-org/wago/experiments/arm64-parity.test]
+experiments/arm64-parity/cached_core_test.go:156:36: cannot use s (variable of type string) as "encoding/json".RawMessage value in argument to parseCachedUint
+FAIL	github.com/wago-org/wago/experiments/arm64-parity [build failed]
+FAIL

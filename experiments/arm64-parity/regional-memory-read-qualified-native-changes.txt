@@ -1,0 +1,4 @@
+core wago__blake3__hash.bin
+core wago__fastfloat__decimal-parse.bin
+core wago__kissfft__complex-roundtrip.bin
+app graphics-reed-solomon.bin

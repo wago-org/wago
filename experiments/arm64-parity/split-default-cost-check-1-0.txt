@@ -1,0 +1,23 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-fir/Compile-16 	    2076	     83433 ns/op	   44860 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    2118	     83874 ns/op	   44860 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Compile-16 	    2133	     83822 ns/op	   44858 B/op	     114 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    5593	     32588 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    5532	     32198 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-fir/Exec-16    	    5589	     35054 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/grid-pathfinding/Compile-16         	    3466	     48606 ns/op	   35778 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Compile-16         	    3660	     49319 ns/op	   35779 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Compile-16         	    3572	     49168 ns/op	   35779 B/op	     106 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16            	    4983	     37096 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16            	    4914	     37144 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/grid-pathfinding/Exec-16            	    4834	     39492 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16   	    5840	     28288 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16   	    6290	     27683 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Compile-16   	    5965	     27959 ns/op	   34434 B/op	     105 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16      	    9740	     16166 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16      	   10000	     16719 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/serialization-protobuf/Exec-16      	   10000	     16257 ns/op	       0 B/op	       0 allocs/op
+PASS

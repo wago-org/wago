@@ -1,0 +1,6 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+panic: select one cached core mode matching the phase
+
+goroutine 1 [running]:
+main.main()
+	/Users/work/Code/Wago/wago/experiments/arm64-parity/paired/main.go:61 +0x1700

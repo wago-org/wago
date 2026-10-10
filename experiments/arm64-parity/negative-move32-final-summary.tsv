@@ -1,0 +1,5 @@
+corpus	phase	off_us	on_us	change_percent
+geo-point-in-polygon	Compile	25.425	25.104	-1.27
+geo-point-in-polygon	Exec	19.880	19.166	-3.59
+video-dct	Compile	115.538	114.452	-0.94
+video-dct	Exec	44.662	44.133	-1.19

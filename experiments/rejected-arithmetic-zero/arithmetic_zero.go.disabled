@@ -1,0 +1,75 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var arithmeticZeroTestEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_ARITHMETIC_ZERO") == "1"
+
+// Only Z is consumed: SUB/XOR equal zero precisely when their operands match.
+// Register ADD uses CMN; constant ADD compares against modular negation.
+// No signed-order or carry predicate is inferred from arithmetic overflow.
+func (f *fn) tryArithmeticEqzToFlags(node *elem) (Cond, bool) {
+	if !f.opt(optArithmeticZeroTest) || node.deferredOp() != opEqz {
+		return 0, false
+	}
+	inner := f.s.arg0(node)
+	if inner == nil || !inner.isDeferred() {
+		return 0, false
+	}
+	op := inner.deferredOp()
+	if op != opSub && op != opXor && op != opAdd {
+		return 0, false
+	}
+	left, right := f.s.arg0(inner), f.s.arg1(inner)
+	if op.commutative() && left.elemKind() == ekValue && left.st.kind == stConst {
+		left, right = right, left
+	}
+	constant := right.elemKind() == ekValue && right.st.kind == stConst
+	// Leave immediate arithmetic in its established lowering to avoid moving
+	// surrounding hot blocks for a zero-test that already uses cheap immediates.
+	if constant {
+		return 0, false
+	}
+	saved := f.pinned
+	wide := inner.st.typ.is64()
+	if constant {
+		value := right.st
+		if op == opAdd {
+			value.cval = -value.cval
+			if !wide {
+				value.cval = int64(int32(value.cval))
+			}
+		}
+		x, owned := f.materializeRead(left)
+		f.pinned = f.pinned.add(x)
+		f.cmpConst(x, value, wide)
+		if owned {
+			f.release(x)
+		}
+	} else {
+		// Preserve the ordinary binary lowering's RHS-before-LHS realization.
+		y, ownY := f.materializeRead(right)
+		f.pinned = f.pinned.add(y)
+		x, ownX := f.materializeRead(left)
+		if op == opAdd {
+			if wide {
+				f.a.CmnReg64(x, y)
+			} else {
+				f.a.CmnReg32(x, y)
+			}
+		} else {
+			f.cmpRR(x, y, wide)
+		}
+		if ownX {
+			f.release(x)
+		}
+		if ownY && y != x {
+			f.release(y)
+		}
+	}
+	f.pinned = saved
+	f.consumeBlockBelow(node)
+	f.stats.peep("arithmetic-zero-test")
+	return condE, true
+}

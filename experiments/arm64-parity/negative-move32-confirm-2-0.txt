@@ -1,0 +1,29 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/audio-adpcm/Compile-16 	    6166	     16779 ns/op	   28319 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16 	    7506	     17231 ns/op	   28319 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Compile-16 	    7562	     16765 ns/op	   28319 B/op	     100 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3542	     33756 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3764	     33591 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/audio-adpcm/Exec-16    	    3697	     33980 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16 	    4160	     26107 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16 	    4569	     26161 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16 	    4657	     25865 ns/op	   36043 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16    	    5779	     21422 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16    	    6056	     21403 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16    	    5966	     21197 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    2756	     39064 ns/op	   35826 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3070	     38841 ns/op	   35826 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Compile-16         	    3045	     38822 ns/op	   35827 B/op	     109 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2800	     47544 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2769	     47536 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/hardware-prime-implicants/Exec-16            	    2748	     47507 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16                         	    1016	    116734 ns/op	   72487 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                         	    1029	    116018 ns/op	   72491 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16                         	    1022	    116043 ns/op	   72492 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                            	    2949	     44393 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                            	    2890	     44310 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                            	    2902	     44470 ns/op	       0 B/op	       0 allocs/op
+PASS

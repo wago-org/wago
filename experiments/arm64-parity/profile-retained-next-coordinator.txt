@@ -1,0 +1,16 @@
+Device occupied; polling ~/LOCK.md and waiting for release.
+Device occupied; polling ~/LOCK.md and waiting for release.
+Device occupied; polling ~/LOCK.md and waiting for release.
+# github.com/wago-org/wago/experiments/arm64-parity
+src/wago/api.go:17:2: no required module provides package github.com/wago-org/wago/internal/functionworkers; to add it:
+	go get github.com/wago-org/wago/internal/functionworkers
+FAIL	github.com/wago-org/wago/experiments/arm64-parity [setup failed]
+FAIL
+Traceback (most recent call last):
+  File "/Users/work/Code/Wago/wago/experiments/arm64-parity/profile-retained-next.py", line 8, in <module>
+    subprocess.run(['go','test','-tags','wago_guardpage','-c','-o','/tmp/parity-arithmetic-zero-rollback.test','./experiments/arm64-parity'],check=True,cwd='/tmp/wago-retained-before-logical-immediate')
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['go', 'test', '-tags', 'wago_guardpage', '-c', '-o', '/tmp/parity-arithmetic-zero-rollback.test', './experiments/arm64-parity']' returned non-zero exit status 1.

@@ -29,13 +29,37 @@ func TestIntervalNextUseCoordinatesArm64(t *testing.T) {
 		wasmPC:        0x1234,
 	}
 	f.classifier = wasm.NewModuleInstructionClassifier(f.m, true)
-	f.prepareIntervalEvents(body, 5)
+	f.prepareIntervalEvents(body, 5, false)
 	if next, dead := f.nextIntervalLocalAccess(0); next != 2 || dead {
 		t.Fatalf("next read = (%d, %t), want (2, false)", next, dead)
 	}
 	f.wasmPC = f.tracePCBase + 4
 	if next, dead := f.nextIntervalLocalAccess(0); next != 5 || !dead {
 		t.Fatalf("next overwrite = (%d, %t), want (5, true)", next, dead)
+	}
+}
+
+func TestIntervalNextUseStopsAtControlEdgeArm64(t *testing.T) {
+	// The overwrite after br_if must not discard a value needed by the taken
+	// edge. Within the same straight-line region, overwrites remain safe kills.
+	body := []byte{0x20, 0, 0x1a, 0x41, 1, 0x0d, 0, 0x21, 0, 0x20, 0, 0x1a, 0x21, 0, 0x0b}
+	f := fn{
+		m: &wasm.Module{}, nLocals: 1, localType: []machineType{mtI32},
+		intervalLast: []uint32{9}, intervalScore: []uint32{8}, intervalControl: true,
+		tracePCBase: 0x1234, wasmPC: 0x1234,
+	}
+	f.classifier = wasm.NewModuleInstructionClassifier(f.m, true)
+	f.prepareIntervalEvents(body, 5, false)
+	if next, dead := f.nextIntervalLocalAccess(0); next != 5 || dead {
+		t.Fatalf("across branch = (%d, %t), want (5, false)", next, dead)
+	}
+	f.wasmPC = f.tracePCBase + 7
+	if next, dead := f.nextIntervalLocalAccess(0); next != 9 || dead {
+		t.Fatalf("within region read = (%d, %t), want (9, false)", next, dead)
+	}
+	f.wasmPC = f.tracePCBase + 9
+	if next, dead := f.nextIntervalLocalAccess(0); next != 12 || !dead {
+		t.Fatalf("within region overwrite = (%d, %t), want (12, true)", next, dead)
 	}
 }
 

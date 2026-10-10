@@ -1,0 +1,5 @@
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.330s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.809s
+ok  	github.com/wago-org/wago/src/core/runtime	(cached)
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	(cached)

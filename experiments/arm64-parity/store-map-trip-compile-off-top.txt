@@ -1,0 +1,33 @@
+File: parity-store-map-affine.test
+Type: cpu
+Time: 2026-10-09 20:44:03 EDT
+Duration: 2.81s, Total samples = 3.07s (109.09%)
+Showing nodes accounting for 2.83s, 92.18% of 3.07s total
+Dropped 94 nodes (cum <= 0.02s)
+Showing top 25 nodes out of 110
+      flat  flat%   sum%        cum   cum%
+     1.88s 61.24% 61.24%      1.88s 61.24%  runtime.kevent
+     0.30s  9.77% 71.01%      0.30s  9.77%  runtime.pthread_cond_wait
+     0.20s  6.51% 77.52%      0.20s  6.51%  runtime.madvise
+     0.13s  4.23% 81.76%      0.13s  4.23%  runtime.pthread_cond_signal
+     0.11s  3.58% 85.34%      0.11s  3.58%  runtime.usleep
+     0.09s  2.93% 88.27%      0.09s  2.93%  runtime.pthread_kill
+     0.06s  1.95% 90.23%      0.06s  1.95%  runtime.pthread_cond_timedwait_relative_np
+     0.03s  0.98% 91.21%      0.03s  0.98%  internal/runtime/atomic.(*UnsafePointer).Load (inline)
+     0.01s  0.33% 91.53%      0.02s  0.65%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).step
+     0.01s  0.33% 91.86%      0.02s  0.65%  runtime.mallocgcSmallNoscan
+     0.01s  0.33% 92.18%      0.02s  0.65%  runtime.typePointers.next
+         0     0% 92.18%      0.21s  6.84%  github.com/wago-org/wago.Compile (inline)
+         0     0% 92.18%      0.21s  6.84%  github.com/wago-org/wago/experiments/arm64-parity.BenchmarkParity.func1.1
+         0     0% 92.18%      0.03s  0.98%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*byteBodyScanner).scanExpr
+         0     0% 92.18%      0.02s  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).body (inline)
+         0     0% 92.18%      0.02s  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).bodyLoop
+         0     0% 92.18%      0.02s  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).emitRegABI
+         0     0% 92.18%      0.02s  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).runBody
+         0     0% 92.18%      0.10s  3.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.CompileModuleWith
+         0     0% 92.18%      0.04s  1.30%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.compileFunc
+         0     0% 92.18%      0.04s  1.30%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.compileFuncAttempt
+         0     0% 92.18%      0.10s  3.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.compileModuleWith
+         0     0% 92.18%      0.03s  0.98%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.computeModuleHintsWithWorkersResidencyPolicy
+         0     0% 92.18%      0.02s  0.65%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.newCompileScratch (inline)
+         0     0% 92.18%      0.03s  0.98%  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.scanBodyBytesIntoModule

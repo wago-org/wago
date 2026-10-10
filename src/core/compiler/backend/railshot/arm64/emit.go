@@ -155,8 +155,12 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		left, right = right, left
 	}
 
+	if r := f.tryInvertedLogical(node, left, right, dest); r != regNone {
+		return r
+	}
+
 	// MADD/MSUB fusion: add(c, a*b) → MADD (c + a*b), sub(c, a*b) → MSUB (c - a*b)
-	// in one instruction when the multiply is an un-condensed value*value node.
+	// in one instruction when the multiply operands have a safe bounded cover.
 	// Checked before the LEA/local-sink forms so a*b±c never splits into MUL + ADD.
 	if node.deferredOp() == opAdd || node.deferredOp() == opSub {
 		if r := f.tryMulAddFuse(node, dest, w); r != regNone {
@@ -554,6 +558,16 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 		return regNone
 	}
 	shiftArg, kind, count, ok := constShiftOperand(f.s, right, node.st.typ)
+	// Commutative integer operations can use a shift from either operand.
+	// Only swap across a concrete, nontrapping integer value: deferred RHS
+	// arithmetic and memory reads retain the established evaluation order.
+	if !ok && op.commutative() && left.isDeferred() && right.elemKind() == ekValue &&
+		!right.st.typ.isXMM() && right.st.kind != stMemRef && right.st.kind != stFuncRef {
+		shiftArg, kind, count, ok = constShiftOperand(f.s, left, node.st.typ)
+		if ok {
+			left, right = right, left
+		}
+	}
 	if !ok || shiftArg == nil || ((op == opAdd || op == opSub) && kind == a64.RegShiftROR) {
 		return regNone
 	}
@@ -598,6 +612,77 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 		f.release(rm)
 	}
 	f.stats.peep("shifted-register-alu")
+	f.consumeBlockBelow(node)
+	f.occupy(node, rd)
+	return rd
+}
+
+// invertedOperand recognizes bitwise NOT expressed as XOR with all one bits.
+func invertedOperand(s *stack, e *elem, typ machineType) *elem {
+	if e == nil || !e.isDeferred() || e.deferredOp() != opXor || e.st.typ != typ {
+		return nil
+	}
+	a, b := s.arg0(e), s.arg1(e)
+	for _, pair := range [][2]*elem{{a, b}, {b, a}} {
+		constant := pair[1]
+		if constant.elemKind() == ekValue && constant.st.kind == stConst &&
+			(typ == mtI32 && uint32(constant.st.cval) == ^uint32(0) || typ == mtI64 && constant.st.cval == -1) {
+			return pair[0]
+		}
+	}
+	return nil
+}
+
+func (f *fn) tryInvertedLogical(node, left, right *elem, dest Reg) Reg {
+	if !f.opt(optInvertedLogical) {
+		return regNone
+	}
+	switch node.deferredOp() {
+	case opAnd, opOr, opXor:
+	default:
+		return regNone
+	}
+	inverted := invertedOperand(f.s, right, node.st.typ)
+	if inverted == nil && right.elemKind() == ekValue && right.st.kind != stMemRef && !right.st.typ.isXMM() && right.st.kind != stFuncRef {
+		inverted = invertedOperand(f.s, left, node.st.typ)
+		if inverted != nil {
+			left = right
+		}
+	}
+	if inverted == nil {
+		return regNone
+	}
+	savedPinned := f.pinned
+	rm, ownRM := f.materializeRead(inverted)
+	f.pinned = f.pinned.add(rm)
+	rn, ownRN := f.materializeRead(left)
+	f.pinned = f.pinned.add(rn)
+	rd := dest
+	if rd == regNone {
+		if ownRN {
+			rd = rn
+		} else if ownRM {
+			rd = rm
+		} else {
+			rd = f.allocReg(maskOf(rn, rm))
+		}
+	}
+	switch node.deferredOp() {
+	case opAnd:
+		f.a.BicReg(rd, rn, rm, !node.st.typ.is64())
+	case opOr:
+		f.a.OrnReg(rd, rn, rm, !node.st.typ.is64())
+	case opXor:
+		f.a.EonReg(rd, rn, rm, !node.st.typ.is64())
+	}
+	f.pinned = savedPinned
+	if ownRN && rn != rd {
+		f.release(rn)
+	}
+	if ownRM && rm != rd && rm != rn {
+		f.release(rm)
+	}
+	f.stats.peep("inverted-logical")
 	f.consumeBlockBelow(node)
 	f.occupy(node, rd)
 	return rd
@@ -659,7 +744,7 @@ func isZExt32Deferred(e *elem) bool {
 	return e != nil && e.elemKind() == ekDeferred && e.deferredOp() == opZExt32
 }
 
-// tryLeaMul lowers x * {3,5,9} as a single add-shifted `dest = x + x*{2,4,8}` (base
+// tryLeaMul lowers eligible constant products as an add-shifted `dest = x + x*{2,4,8}` (base
 // == index == x), replacing a MUL by a small constant. Returns regNone when the
 // shape doesn't match. The multiplicand must be concrete: condensing a deferred
 // operand here could clobber a register under the add-shifted (same hazard as
@@ -823,6 +908,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		if dest == regNone {
 			dest = f.allocReg(0)
 		}
+
 		f.pinned = f.pinned.add(dest)
 		f.condenseInto(left, dest)
 		mask := int64(31)
@@ -1000,15 +1086,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		}
 		switch right.st.kind {
 		case stConst:
-			if f.fitsAddSubImmediate(right.st.cval) {
-				f.cmpImmS(L, right.st.cval, w)
-			} else {
-				t, owned := f.intConstReadReg(right.st, maskOf(L))
-				f.cmpRR(L, t, w)
-				if owned {
-					f.release(t)
-				}
-			}
+			f.cmpConst(L, right.st, w)
 		case stReg:
 			f.cmpRR(L, right.st.reg, w)
 			f.release(right.st.reg)
@@ -1124,6 +1202,9 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 // fixed division registers, x86's spill-RAX/spill-RDX/pin/Cdq dance disappears —
 // three ordinary registers (dividend, divisor, result) suffice.
 func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
+	if f.opt(optBorrowedDivRem) && f.canBorrowDivRemOperands(node) {
+		return f.condenseBorrowedDivRem(node, dest)
+	}
 	w := node.st.typ.is64()
 	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
 	wantRem := node.deferredOp() == opRemS || node.deferredOp() == opRemU
@@ -1228,21 +1309,38 @@ func (f *fn) madd(d, n, m, ra Reg, w bool) {
 	}
 }
 
-// isValueMul reports whether e is a deferred integer multiply whose two operands
-// are both concrete values (not nested deferred subtrees). Such a mul can fuse
-// into a single MADD/MSUB with a value addend without any nested-subtree consume.
-func isValueMul(s *stack, e *elem) bool {
+// pureMulAddOperand bounds nested fusion to scalar arithmetic without effects.
+// Value loads use the existing materialization path; division is excluded.
+func pureMulAddOperand(s *stack, e *elem, budget int) bool {
+	if e == nil || budget <= 0 {
+		return false
+	}
+	if e.elemKind() == ekValue {
+		return (e.st.typ == mtI32 || e.st.typ == mtI64) && e.st.kind != stFuncRef
+	}
+	if !e.isDeferred() {
+		return false
+	}
+	switch e.deferredOp() {
+	case opAdd, opSub, opMul, opAnd, opOr, opXor:
+		return pureMulAddOperand(s, s.arg0(e), budget-1) && pureMulAddOperand(s, s.arg1(e), budget-1)
+	}
+	return false
+}
+
+func isFusableMul(s *stack, e *elem) bool {
 	if e == nil || e.elemKind() != ekDeferred || e.deferredOp() != opMul {
 		return false
 	}
 	arg0, arg1 := s.arg0(e), s.arg1(e)
-	return arg0 != nil && arg0.elemKind() == ekValue &&
-		arg1 != nil && arg1.elemKind() == ekValue
+	return arg0 != nil && arg1 != nil &&
+		(arg0.elemKind() == ekValue && arg1.elemKind() == ekValue ||
+			pureMulAddOperand(s, arg0, 4) && pureMulAddOperand(s, arg1, 4))
 }
 
 // tryMulAddFuse fuses add(c, a*b) → MADD (d = c + a*b) and sub(c, a*b) → MSUB
 // (d = c - a*b) into one instruction when the multiply is an un-condensed opMul
-// node with value operands and the addend is a value. a*b - c is NOT MSUB-shaped
+// node with value or bounded arithmetic operands. a*b - c is NOT MSUB-shaped
 // (MSUB computes ra - n*m), so only the c-minus-mul sub form fuses. Returns the
 // result register or regNone when the shape does not apply. Gated by
 // WAGO_NO_MULADD as the A/B oracle.
@@ -1255,27 +1353,30 @@ func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
 	switch node.deferredOp() {
 	case opAdd:
 		switch {
-		case isValueMul(f.s, arg1):
+		case isFusableMul(f.s, arg1):
 			mul, addend = arg1, arg0
-		case isValueMul(f.s, arg0):
+		case isFusableMul(f.s, arg0):
 			mul, addend = arg0, arg1
 		}
 	case opSub:
-		if isValueMul(f.s, arg1) { // c - a*b → MSUB; a*b - c is not representable
+		if isFusableMul(f.s, arg1) { // c - a*b → MSUB; a*b - c is not representable
 			mul, addend = arg1, arg0
 		}
 	}
-	if mul == nil || addend.elemKind() != ekValue {
+	if mul == nil || (addend.elemKind() != ekValue && !pureMulAddOperand(f.s, addend, 4)) {
 		return regNone
 	}
 	// Three read-only sources; pin each so materializing the next (e.g. a load or
 	// const) cannot reuse it.
+	savedPinned := f.pinned
+	// Realize the accumulator first: nested accumulations must not recurse
+	// while both outer multiplicands consume the transient register floor.
+	ra, ownRa := f.materializeRead(addend)
+	f.pinned = f.pinned.add(ra)
 	n, ownN := f.materializeRead(f.s.arg0(mul))
 	f.pinned = f.pinned.add(n)
 	m, ownM := f.materializeRead(f.s.arg1(mul))
 	f.pinned = f.pinned.add(m)
-	ra, ownRa := f.materializeRead(addend)
-	f.pinned = f.pinned.add(ra)
 	d := dest
 	if d == regNone {
 		d = f.allocReg(0)
@@ -1285,9 +1386,7 @@ func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
 	} else {
 		f.msub(d, n, m, ra, w)
 	}
-	f.pinned = f.pinned.remove(n)
-	f.pinned = f.pinned.remove(m)
-	f.pinned = f.pinned.remove(ra)
+	f.pinned = savedPinned
 	if ownN {
 		f.release(n)
 	}
@@ -1525,7 +1624,7 @@ func (f *fn) addFoldImm3(dest, base Reg, v int64, w bool) bool {
 			f.a.AddImm32(dest, base, uint32(v))
 		}
 		return true
-	case v < 0 && -v <= 0xFFF:
+	case v < 0 && v >= -0xFFF:
 		if w {
 			f.a.SubImm64(dest, base, uint32(-v))
 		} else {
@@ -1602,6 +1701,24 @@ func (f *fn) cmpRR(x, y Reg, w bool) {
 		f.a.CmpReg64(x, y)
 	} else {
 		f.a.CmpReg32(x, y)
+	}
+}
+
+// cmpConst shares width-correct signed immediate admission between standalone
+// comparisons and flags consumed directly by branches/selects.
+func (f *fn) cmpConst(x Reg, st storage, wide bool) {
+	cval := st.cval
+	if !wide {
+		cval = int64(int32(cval))
+	}
+	if f.fitsAddSubImmediate(cval) {
+		f.cmpImmS(x, cval, wide)
+		return
+	}
+	t, owned := f.intConstReadReg(st, maskOf(x))
+	f.cmpRR(x, t, wide)
+	if owned {
+		f.release(t)
 	}
 }
 

@@ -1,0 +1,9 @@
+corpus	phase	off_us	on_us	change_percent
+audio-adpcm	Compile	16.538	15.729	-4.90
+audio-adpcm	Exec	34.110	36.006	5.56
+db-hash-join	Compile	22.111	31.109	40.69
+db-hash-join	Exec	3.423	2.453	-28.33
+search-aho-corasick	Compile	164.642	171.692	4.28
+search-aho-corasick	Exec	47.447	47.382	-0.14
+serialization-protobuf	Compile	26.086	27.218	4.34
+serialization-protobuf	Exec	26.342	15.981	-39.33

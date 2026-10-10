@@ -1,0 +1,6 @@
+corpus	off_bytes	on_bytes	identical
+audio-adpcm	524	492	False
+audio-fir	3856	3856	True
+files-glob-match	440	436	False
+geo-point-in-polygon	680	680	True
+search-aho-corasick	5516	5484	False

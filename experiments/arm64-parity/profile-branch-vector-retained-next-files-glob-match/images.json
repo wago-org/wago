@@ -1,0 +1,351 @@
+[
+  {
+    "thread_id": 0,
+    "sequence": 1,
+    "timestamp_ns": 1791644794429384000,
+    "kind": "load",
+    "image_id": 1,
+    "image": {
+      "compiler_site_coverage": "explicit-operand-spills-reloads-and-memory-bounds-branches",
+      "sources": [
+        {
+          "offset": 100,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 7
+        },
+        {
+          "offset": 108,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 15
+        },
+        {
+          "offset": 124,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 23
+        },
+        {
+          "offset": 132,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 27
+        },
+        {
+          "offset": 136,
+          "size": 24,
+          "function": 0,
+          "wasm_offset": 29
+        },
+        {
+          "offset": 160,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 42
+        },
+        {
+          "offset": 176,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 47
+        },
+        {
+          "offset": 180,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 51
+        },
+        {
+          "offset": 184,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 55
+        },
+        {
+          "offset": 188,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 59
+        },
+        {
+          "offset": 192,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 63
+        },
+        {
+          "offset": 208,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 73
+        },
+        {
+          "offset": 212,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 78
+        },
+        {
+          "offset": 220,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 84
+        },
+        {
+          "offset": 224,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 92
+        },
+        {
+          "offset": 228,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 99
+        },
+        {
+          "offset": 232,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 123
+        },
+        {
+          "offset": 240,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 107
+        },
+        {
+          "offset": 244,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 110
+        },
+        {
+          "offset": 248,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 114
+        },
+        {
+          "offset": 252,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 124
+        },
+        {
+          "offset": 256,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 128
+        },
+        {
+          "offset": 264,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 135
+        },
+        {
+          "offset": 268,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 142
+        },
+        {
+          "offset": 272,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 145
+        },
+        {
+          "offset": 276,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 157
+        },
+        {
+          "offset": 284,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 163
+        },
+        {
+          "offset": 288,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 168
+        },
+        {
+          "offset": 292,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 170
+        },
+        {
+          "offset": 296,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 175
+        },
+        {
+          "offset": 300,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 182
+        },
+        {
+          "offset": 308,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 188
+        },
+        {
+          "offset": 312,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 195
+        },
+        {
+          "offset": 316,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 201
+        },
+        {
+          "offset": 320,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 209
+        },
+        {
+          "offset": 328,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 217
+        },
+        {
+          "offset": 332,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 223
+        },
+        {
+          "offset": 344,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 238
+        },
+        {
+          "offset": 348,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 233
+        },
+        {
+          "offset": 356,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 234
+        },
+        {
+          "offset": 364,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 238
+        },
+        {
+          "offset": 372,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 246
+        },
+        {
+          "offset": 380,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 253
+        },
+        {
+          "offset": 384,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 259
+        },
+        {
+          "offset": 392,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 264
+        }
+      ],
+      "source_coverage": "opcode-lowering-and-deferred-origins",
+      "id": 1,
+      "module_id": "b3404832b1cf5274f85c6853ac39b4c85757b267b39f2ee19eb15951d0f6c80a",
+      "artifact_id": "21729acb89f01df1ca757370da7848f86d9c30b6df1b7eb8e248aa1a486056c2",
+      "base": 4354359296,
+      "size": 420,
+      "target": "darwin/arm64",
+      "regions": [
+        {
+          "offset": 0,
+          "size": 28,
+          "kind": "entry-adapter",
+          "function": 0,
+          "name": "benchmark"
+        },
+        {
+          "offset": 28,
+          "size": 4,
+          "kind": "padding",
+          "function": -1
+        },
+        {
+          "offset": 32,
+          "size": 388,
+          "kind": "guest-body",
+          "function": 0,
+          "name": "benchmark"
+        }
+      ],
+      "functions": [
+        {
+          "index": 0,
+          "name": "benchmark",
+          "native_bytes": 420,
+          "frame_bytes": 80,
+          "emitted_spills": 0,
+          "emitted_reloads": 0,
+          "emitted_bounds_checks": 0,
+          "compiler_decisions": {
+            "callfree-loop": 2,
+            "callfree-loop-entry-store-elide": 18,
+            "cmp-branch-fuse": 8,
+            "compare-setcc": 1,
+            "frame-header-elide": 1,
+            "local-3op-sink": 8,
+            "loop-int-const": 3,
+            "mask-condition-test": 1,
+            "memory-address-zext-elim": 1,
+            "mul-add-fuse": 1,
+            "select-flags": 1,
+            "select-local-sink": 1,
+            "select-source-read": 1,
+            "shifted-register-alu": 2,
+            "single-negative-move32": 1,
+            "small-frame-adjust": 1,
+            "swar-mask-test": 1
+          }
+        }
+      ],
+      "code": "+gMBqv4Pv6kAAED5BQAAlP4PwahgAAD5wANf1h8gA9X/QwHRHyAD1R8gA9XpAwCqGQCA0ggAgNIYAIDSFgCA0hcAgNIUAIDSEwCA0hUAgNJ7TZnSe72w8i4AoNItN4/S7caz8j8BAHGhAABUqriT0oojsPLqJwD5RQAAFLm4k9KZI7DyCACA0h8gA9UfIAPVHyAD1R8gA9UfIAPVHyAD1So3j9LqxrPyCwOA0hgpCxsWAIASFwCA0hQAgNITAIDSHyAD1R8gA9UfIAPVHyAD1fUDE6q/CgBxgAEAVBMDFAtzQlNKc34bGzAAoNKqAhALazZTSmsFABJrBQERSmvqOH8BCmuBAABUlAYAEbMGABEMAAAUv3odcoEAAFSzAgAy9gMVqgYAABTzAxWq3wIAccsAAFT0BgAR0wYAEfcDFKqfYgBxY/z/VCoDCEprMoDSCyCg8kp9CxvrAxmqf3odcuwXnxrvAxOq7wEMKv8VAHFqEYoan2IAcTkTihoIBQARHwEJa+H4/1T5JwD54CdA+f9DAZEfIAPVHyAD1cADX9YfIAPV"
+    }
+  },
+  {
+    "thread_id": 0,
+    "sequence": 2,
+    "timestamp_ns": 1791644797430607000,
+    "kind": "retire",
+    "image_id": 1
+  }
+]

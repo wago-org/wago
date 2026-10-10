@@ -1,0 +1,15 @@
+case	phase	baseline ns	CCMP ns	change %
+crypto-aes128	Compile	138274	139369	+0.79
+crypto-aes128	Exec	31547	31770	+0.71
+graphics-reed-solomon	Compile	80230	81925	+2.11
+graphics-reed-solomon	Exec	112202	112877	+0.60
+hardware-prime-implicants	Compile	34500	34949	+1.30
+hardware-prime-implicants	Exec	65138	44834	-31.17
+ml-inference	Compile	23988	24301	+1.30
+ml-inference	Exec	5127	5131	+0.08
+stats-linear-regression	Compile	18128	18519	+2.16
+stats-linear-regression	Exec	1522	1511	-0.72
+video-dct	Compile	109024	110752	+1.58
+video-dct	Exec	42659	42833	+0.41
+vision-dilation	Compile	32262	32470	+0.64
+vision-dilation	Exec	40959	41692	+1.79

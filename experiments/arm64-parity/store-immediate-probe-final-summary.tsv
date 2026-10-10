@@ -1,0 +1,9 @@
+workload	phase	before_us	after_us	change_pct
+compiler-dead-code	Compile	31.425	31.184	-0.76
+compiler-dead-code	Exec	3.952	3.909	-1.06
+db-btree	Compile	57.498	57.813	+0.55
+db-btree	Exec	9.992	9.960	-0.33
+search-aho-corasick	Compile	169.147	185.238	+9.51
+search-aho-corasick	Exec	51.555	50.698	-1.66
+search-bk-tree	Compile	41.069	40.871	-0.48
+search-bk-tree	Exec	153.099	151.796	-0.85

@@ -382,3 +382,15 @@ func (f *fn) checkTerminalWrites() regallocWriteMask {
 func (f *fn) checkRestoreWrites(saved regallocWriteMask) {
 	f.immutableGPMask, f.immutableFPMask = saved.gp, saved.fp
 }
+
+func (f *fn) checkReleaseImmutableGP(reg Reg) {
+	loc := checkReg(reg, false)
+	kept := f.immutableValues[:0]
+	for _, goal := range f.immutableValues {
+		if goal.loc != loc {
+			kept = append(kept, goal)
+		}
+	}
+	f.immutableValues = kept
+	f.immutableGPMask &^= uint32(1) << uint8(reg)
+}

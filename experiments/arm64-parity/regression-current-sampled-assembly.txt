@@ -1,0 +1,59 @@
+wago:f75b7e038eb5bf4efe2bf0cad87c8bbcdd69d82a65c6ddc844d4daf9d573d5b4:ae06580e7c90f16a59e1db7f8f6f5befc019164555fe4123de09959e71543297:g1:f0:r0:entry-adapter:benchmark: 1 leaf observations
+    1 (100.0%) +0x0014 str      x0, [x3]  Wasm ?
+
+Assembly for sampled range:
+    1 +0x0014 str      x0, [x3]
+wago:f75b7e038eb5bf4efe2bf0cad87c8bbcdd69d82a65c6ddc844d4daf9d573d5b4:ae06580e7c90f16a59e1db7f8f6f5befc019164555fe4123de09959e71543297:g1:f0:r20:guest-body:benchmark: 2903 leaf observations
+ 1846 (63.6%) +0x00e4 add      x23, x23, x21  Wasm 146
+ 1026 (35.3%) +0x00e8 madd     x25, x21, x21, x25  Wasm 156
+   15 ( 0.5%) +0x00f4 cmp      w8, #0  Wasm 173
+    7 ( 0.2%) +0x00b0 add      w19, w20, #1  Wasm 70
+    3 ( 0.1%) +0x00fc mov      w21, w10  Wasm 181
+    3 ( 0.1%) +0x0054 mov      x27, #0xca6b  Wasm ?
+    2 ( 0.1%) +0x00ec add      w20, w20, #2  Wasm 163
+    1 ( 0.0%) +0x00e0 madd     x22, x21, x9, x22  Wasm 139
+
+Assembly for sampled range:
+    3 +0x0054 mov      x27, #0xca6b
+    0 +0x0058 movk     x27, #0x85eb, lsl #16
+    0 +0x005c cmp      w10, #0
+    0 +0x0060 b.ne     #0x78
+    0 +0x0064 mov      x22, #0
+    0 +0x0068 mov      x25, #0
+    0 +0x006c mov      x24, #0
+    0 +0x0070 mov      x23, #0
+    0 +0x0074 b        #0xfc
+    0 +0x0078 mov      x23, #0
+    0 +0x007c mov      x20, #0x79b9
+    0 +0x0080 movk     x20, #0x9e37, lsl #16
+    0 +0x0084 mov      x8, x10
+    0 +0x0088 mov      w8, w8
+    0 +0x008c mov      x24, #0
+    0 +0x0090 mov      x25, #0
+    0 +0x0094 mov      x22, #0
+    0 +0x0098 nop      
+    0 +0x009c nop      
+    0 +0x00a0 nop      
+    0 +0x00a4 nop      
+    0 +0x00a8 nop      
+    0 +0x00ac nop      
+    7 +0x00b0 add      w19, w20, #1
+    0 +0x00b4 eor      w19, w19, w19, lsr #16
+    0 +0x00b8 mul      w19, w19, w27
+    0 +0x00bc eor      w11, w19, w19, lsr #13
+    0 +0x00c0 and      w11, w11, #0x3ff
+    0 +0x00c4 mov      w9, w11
+    0 +0x00c8 add      x24, x24, x9
+    0 +0x00cc eor      w19, w20, w20, lsr #16
+    0 +0x00d0 mul      w19, w19, w27
+    0 +0x00d4 eor      w11, w19, w19, lsr #13
+    0 +0x00d8 and      w11, w11, #0x3ff
+    0 +0x00dc mov      w21, w11
+    1 +0x00e0 madd     x22, x21, x9, x22
+ 1846 +0x00e4 add      x23, x23, x21
+ 1026 +0x00e8 madd     x25, x21, x21, x25
+    2 +0x00ec add      w20, w20, #2
+    0 +0x00f0 sub      w8, w8, #1
+   15 +0x00f4 cmp      w8, #0
+    0 +0x00f8 b.ne     #0xb0
+    3 +0x00fc mov      w21, w10

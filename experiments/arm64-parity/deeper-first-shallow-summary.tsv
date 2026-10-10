@@ -1,0 +1,9 @@
+corpus	phase	off_us	on_us	change_percent
+audio-fir	Compile	79.802	78.035	-2.21
+audio-fir	Exec	34.512	34.664	0.44
+video-dct	Compile	116.502	119.005	2.15
+video-dct	Exec	43.863	44.514	1.49
+ml-knn	Compile	59.180	59.074	-0.18
+ml-knn	Exec	39.142	39.362	0.56
+serialization-protobuf	Compile	26.162	38.637	47.69
+serialization-protobuf	Exec	15.979	15.832	-0.92

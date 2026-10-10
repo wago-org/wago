@@ -1,0 +1,5 @@
+corpus	phase	off_us	on_us	change_percent
+ml-knn	Compile	63.288	62.549	-1.17
+ml-knn	Exec	37.521	31.815	-15.21
+video-dct	Compile	120.205	117.412	-2.32
+video-dct	Exec	42.995	43.421	0.99

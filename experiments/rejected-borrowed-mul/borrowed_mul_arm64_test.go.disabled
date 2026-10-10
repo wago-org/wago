@@ -1,0 +1,98 @@
+//go:build (linux || darwin) && arm64
+
+package arm64
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"testing"
+)
+
+func TestBorrowedMulConcreteSourcesAndSnapshots(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		typ, mul, xor, cons := wasm.I32, byte(0x6c), byte(0x73), byte(0x41)
+		if wide {
+			typ, mul, xor, cons = wasm.I64, 0x7e, 0x85, 0x42
+		}
+		for _, shape := range []string{"register", "same", "constant", "snapshot", "destination"} {
+			body := []byte{0, 0x20, 0}
+			switch shape {
+			case "same":
+				body = append(body, 0x20, 0)
+			case "constant":
+				body = append(body, cons, 17)
+			default:
+				body = append(body, 0x20, 1)
+			}
+			if shape == "snapshot" {
+				body = append(body, 0x22, 0)
+			}
+			body = append(body, mul)
+			if shape == "destination" {
+				body = append(body, 0x22, 0)
+			}
+			if wide {
+				body = append(body, 0x50, 0xad) // eqz, then widen the boolean
+			} else {
+				body = append(body, 0x45)
+			}
+			params := make([]wasm.ValType, 16)
+			for i := range params {
+				params[i] = typ
+				body = append(body, 0x20, byte(i), xor)
+			}
+			body = append(body, 0x0b)
+			m := mod1(t, params, []wasm.ValType{typ}, body)
+			for _, enabled := range []bool{false, true} {
+				for _, guard := range []bool{false, true} {
+					for _, pair := range [][2]uint64{{17, 5}, {0, 3}, {1, 1}, {1 << 63, ^uint64(0)}, {0x80000000, 0xffffffff}, {^uint64(0), 2}} {
+						args := make([]uint64, 16)
+						for i := range args {
+							args[i] = uint64(13*i + 7)
+						}
+						args[0], args[1] = pair[0], pair[1]
+						n, d := args[0], args[1]
+						if shape == "same" {
+							d = n
+						}
+						if shape == "constant" {
+							d = 17
+						}
+						product := n * d
+						if !wide {
+							product = uint64(uint32(product))
+						}
+						want := uint64(0)
+						if product == 0 {
+							want = 1
+						}
+						locals := append([]uint64(nil), args...)
+						if shape == "snapshot" {
+							locals[0] = d
+						}
+						if shape == "destination" {
+							locals[0] = product
+						}
+						for _, x := range locals {
+							want ^= x
+						}
+						if !wide {
+							want = uint64(uint32(want))
+						}
+						var stats ModuleStats
+						opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"borrowed-mul": enabled}}
+						if diagnosticsEnabled {
+							opts.Stats = &stats
+						}
+						got, err := runArm64WrapperWithOptions(t, m, opts, args...)
+						if err != nil || got != want {
+							t.Fatalf("wide=%v shape=%s on=%v guard=%v n=%x d=%x got=%x want=%x err=%v", wide, shape, enabled, guard, n, d, got, want, err)
+						}
+						if diagnosticsEnabled && shape == "register" && (stats.Funcs[0].Peephole["borrowed-mul"] != 0) != enabled {
+							t.Fatalf("missing admission: %+v", stats.Funcs[0].Peephole)
+						}
+					}
+				}
+			}
+		}
+	}
+}

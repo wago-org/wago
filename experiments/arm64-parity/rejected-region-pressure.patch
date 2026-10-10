@@ -1,0 +1,32 @@
+--- a/src/core/compiler/backend/railshot/arm64/interval_region.go
++++ b/src/core/compiler/backend/railshot/arm64/interval_region.go
+@@ -29,6 +29,20 @@
+ 	intervalRegionTransientFloor = 3
+ )
+ 
++// Diagnostic switch for the rejected transient-floor experiment.
++var intervalExperimentTransientFloor = func() int {
++	switch os.Getenv("WAGO_ARM64_EXPERIMENT_INTERVAL_FLOOR") {
++	case "2":
++		return 2
++	case "4":
++		return 4
++	case "5":
++		return 5
++	default:
++		return intervalRegionTransientFloor
++	}
++}()
++
+ func intervalRegionRegLimit(reserved regMask) int {
+ 	available := 0
+ 	for _, reg := range intervalRegionOrder {
+@@ -36,7 +50,7 @@
+ 			available++
+ 		}
+ 	}
+-	limit := available - intervalRegionTransientFloor
++	limit := available - intervalExperimentTransientFloor
+ 	if limit < 0 {
+ 		return 0
+ 	}

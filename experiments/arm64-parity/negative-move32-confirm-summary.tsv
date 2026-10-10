@@ -1,0 +1,9 @@
+corpus	phase	off_us	on_us	change_percent
+audio-adpcm	Compile	16.818	16.933	0.69
+audio-adpcm	Exec	33.962	33.963	0.00
+geo-point-in-polygon	Compile	26.169	25.889	-1.07
+geo-point-in-polygon	Exec	21.397	20.566	-3.89
+hardware-prime-implicants	Compile	38.806	38.520	-0.74
+hardware-prime-implicants	Exec	47.522	47.588	0.14
+video-dct	Compile	116.082	116.933	0.73
+video-dct	Exec	44.378	43.489	-2.00

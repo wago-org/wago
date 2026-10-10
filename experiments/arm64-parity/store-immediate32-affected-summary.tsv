@@ -1,0 +1,11 @@
+workload	phase	off_us	on_us	change_percent
+db-btree	Compile	58.943	58.925	-0.03
+db-btree	Exec	10.094	10.006	-0.87
+graph-dijkstra	Compile	43.833	43.657	-0.40
+graph-dijkstra	Exec	5.394	5.422	0.51
+grid-pathfinding	Compile	48.745	48.883	0.28
+grid-pathfinding	Exec	38.124	38.324	0.52
+ml-knn	Compile	60.467	60.482	0.03
+ml-knn	Exec	32.607	31.867	-2.27
+search-bk-tree	Compile	40.906	40.855	-0.13
+search-bk-tree	Exec	151.515	162.468	7.23

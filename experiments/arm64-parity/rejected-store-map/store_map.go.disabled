@@ -1,0 +1,348 @@
+//go:build arm64
+
+package arm64
+
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
+// A store-map plan is a bounded, pure modular-i32 DAG. This preflight emits
+// nothing and does not advance the caller's reader. Runtime range/disjointness
+// guards and vector-register planning are required before it can be lowered.
+type storeMapWrite struct {
+	address, value int
+	offset         uint64
+	stride         uint64
+}
+type storeMapPlan struct {
+	nodes                                   [128]dotNode
+	values                                  [32]int
+	steps                                   [32]uint32
+	writes                                  [8]storeMapWrite
+	n, locals, nWrites, counter, limit, end int
+	written                                 uint32
+}
+
+func (f *fn) inspectStoreMap(r *wasm.Reader) (p storeMapPlan, ok bool) {
+	if mt, exists := f.memoryType(0); exists && (mt.Shared || mt.Limits.Addr64) {
+		return p, false
+	}
+	if f.nLocals > len(p.values) || len(f.localType) != f.nLocals {
+		return p, false
+	}
+	p.locals, p.n = f.nLocals, f.nLocals
+	for i, typ := range f.localType {
+		if typ != mtI32 {
+			return p, false
+		}
+		p.nodes[i] = dotNode{op: 0x20, a: i}
+		p.values[i] = i
+	}
+	scan := *r
+	start := scan.Offset()
+	var stack [24]int
+	depth := 0
+	push := func(x int) bool {
+		if x < 0 || depth == len(stack) {
+			return false
+		}
+		stack[depth] = x
+		depth++
+		return true
+	}
+	node := func(v dotNode) int {
+		if p.n == len(p.nodes) {
+			return -1
+		}
+		x := p.n
+		p.nodes[x] = v
+		p.n++
+		return x
+	}
+	for scan.Offset()-start < 1024 {
+		op, err := scan.Byte()
+		if err != nil {
+			return p, false
+		}
+		switch op {
+		case 0x20, 0x21, 0x22:
+			local, err := scan.U32()
+			if err != nil || int(local) >= p.locals {
+				return p, false
+			}
+			if op == 0x20 {
+				if !push(p.values[local]) {
+					return p, false
+				}
+				continue
+			}
+			if depth == 0 {
+				return p, false
+			}
+			p.values[local] = stack[depth-1]
+			p.written |= 1 << local
+			if op == 0x21 {
+				depth--
+			}
+		case 0x41:
+			v, err := scan.I32()
+			if err != nil || !push(node(dotNode{op: op, v: uint32(v)})) {
+				return p, false
+			}
+		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x46, 0x47:
+			if depth < 2 {
+				return p, false
+			}
+			depth -= 2
+			a, b := stack[depth], stack[depth+1]
+			if (op == 0x74 || op == 0x75 || op == 0x76) && p.nodes[b].op != 0x41 {
+				return p, false
+			}
+			if !push(node(dotNode{op: op, a: a, b: b})) {
+				return p, false
+			}
+		case 0x45:
+			if depth == 0 {
+				return p, false
+			}
+			x := node(dotNode{op: op, a: stack[depth-1]})
+			if x < 0 {
+				return p, false
+			}
+			stack[depth-1] = x
+		case 0x36:
+			memory, offset, err := f.readMemArg(&scan)
+			if err != nil || memory != 0 || depth < 2 || p.nWrites == len(p.writes) {
+				return p, false
+			}
+			depth -= 2
+			p.writes[p.nWrites] = storeMapWrite{address: stack[depth], value: stack[depth+1], offset: offset}
+			p.nWrites++
+		case 0x0d:
+			label, err := scan.U32()
+			if err != nil || label != 0 || depth != 1 {
+				return p, false
+			}
+			end, err := scan.Byte()
+			if err != nil || end != 0x0b {
+				return p, false
+			}
+			p.end = scan.Offset()
+			return proveStoreMap(p, stack[0])
+		default:
+			// Loads, calls, grow, nested control and trapping arithmetic all decline.
+			return p, false
+		}
+	}
+	return p, false
+}
+
+func proveStoreMap(p storeMapPlan, predicate int) (storeMapPlan, bool) {
+	if p.nWrites == 0 {
+		return p, false
+	}
+	for local := 0; local < p.locals; local++ {
+		if p.written&(1<<local) == 0 {
+			continue
+		}
+		v := p.nodes[p.values[local]]
+		if v.op != 0x6a {
+			continue
+		}
+		a, b := v.a, v.b
+		if p.nodes[a].op == 0x41 {
+			a, b = b, a
+		}
+		if a == local && p.nodes[b].op == 0x41 && p.nodes[b].v > 0 && p.nodes[b].v <= 0x7fffffff {
+			p.steps[local] = p.nodes[b].v
+		}
+	}
+	cmp := p.nodes[predicate]
+	if cmp.op != 0x47 {
+		return p, false
+	}
+	p.counter = -1
+	for local := 0; local < p.locals; local++ {
+		if p.steps[local] == 0 {
+			continue
+		}
+		a, b := cmp.a, cmp.b
+		if b == p.values[local] {
+			a, b = b, a
+		}
+		if a != p.values[local] {
+			continue
+		}
+		limit := p.nodes[b]
+		if limit.op != 0x41 && (limit.op != 0x20 || p.written&(1<<limit.a) != 0) {
+			continue
+		}
+		if p.counter >= 0 {
+			return p, false
+		}
+		p.counter, p.limit = local, b
+	}
+	if p.counter < 0 {
+		return p, false
+	}
+	// Any use of the original value of a written non-induction local is a
+	// cross-iteration recurrence. Reject it, including in final local restoration.
+	for i := p.locals; i < p.n; i++ {
+		n := p.nodes[i]
+		if n.op == 0x41 {
+			continue
+		}
+		for operand, x := range [2]int{n.a, n.b} {
+			if n.op == 0x45 && operand == 1 {
+				continue
+			}
+			if x < p.locals && p.written&(1<<x) != 0 && p.steps[x] == 0 {
+				return p, false
+			}
+		}
+	}
+	// Compute address change per iteration in widened arithmetic. This is only
+	// a static affine proof, not permission to reorder stores: all original
+	// address DAG intermediates still require runtime nonwrapping checks.
+	var slope [128]uint64
+	var affine [128]bool
+	for i := 0; i < p.n; i++ {
+		n := p.nodes[i]
+		switch n.op {
+		case 0x20:
+			affine[i] = true
+			slope[i] = uint64(p.steps[n.a])
+		case 0x41:
+			affine[i] = true
+		case 0x6a:
+			if affine[n.a] && affine[n.b] && slope[n.a]+slope[n.b] <= 0xffffffff {
+				affine[i] = true
+				slope[i] = slope[n.a] + slope[n.b]
+			}
+		case 0x6c, 0x74:
+			a, b := n.a, n.b
+			if n.op == 0x6c && p.nodes[a].op == 0x41 {
+				a, b = b, a
+			}
+			if !affine[a] || p.nodes[b].op != 0x41 {
+				continue
+			}
+			factor := uint64(p.nodes[b].v)
+			if n.op == 0x74 {
+				factor = uint64(1) << (factor & 31)
+			}
+			if factor != 0 && slope[a] > 0xffffffff/factor {
+				continue
+			}
+			affine[i] = true
+			slope[i] = slope[a] * factor
+		}
+	}
+	for i := 0; i < p.nWrites; i++ {
+		x := p.writes[i].address
+		if !affine[x] || slope[x] < 4 || slope[x] > 0xffffffff || slope[x]%4 != 0 {
+			return p, false
+		}
+		p.writes[i].stride = slope[x]
+	}
+	return p, true
+}
+
+// storeMapRanges is the reference predicate for runtime guard lowering. It
+// proves an entire invocation safe before permitting reordered stores; failure
+// requires the original scalar loop, including its original partial trap effects.
+type storeMapRange struct{ first, end, stride uint64 }
+
+func (p *storeMapPlan) storeMapRanges(initial []uint32, memoryBytes uint64) (trips uint32, ranges [8]storeMapRange, ok bool) {
+	if len(initial) < p.locals {
+		return 0, ranges, false
+	}
+	limitNode := p.nodes[p.limit]
+	limit := limitNode.v
+	if limitNode.op == 0x20 {
+		limit = initial[limitNode.a]
+	}
+	current, step := initial[p.counter], p.steps[p.counter]
+	if limit <= current || step == 0 || (limit-current)%step != 0 {
+		return 0, ranges, false
+	}
+	trips = (limit - current) / step
+	var needed [128]bool
+	var visit func(int)
+	visit = func(x int) {
+		if needed[x] {
+			return
+		}
+		needed[x] = true
+		n := p.nodes[x]
+		if n.op != 0x20 && n.op != 0x41 {
+			visit(n.a)
+			visit(n.b)
+		}
+	}
+	for i := 0; i < p.nWrites; i++ {
+		visit(p.writes[i].address)
+	}
+	var first, last [128]uint64
+	for local := 0; local < p.locals; local++ {
+		first[local] = uint64(initial[local])
+		last[local] = first[local] + uint64(trips-1)*uint64(p.steps[local])
+		if first[local]+uint64(trips)*uint64(p.steps[local]) > 0xffffffff {
+			return 0, ranges, false
+		}
+	}
+	for i := p.locals; i < p.n; i++ {
+		if !needed[i] {
+			continue
+		}
+		n := p.nodes[i]
+		switch n.op {
+		case 0x41:
+			first[i], last[i] = uint64(n.v), uint64(n.v)
+		case 0x6a:
+			first[i], last[i] = first[n.a]+first[n.b], last[n.a]+last[n.b]
+		case 0x6c, 0x74:
+			a, b := n.a, n.b
+			if n.op == 0x6c && p.nodes[a].op == 0x41 {
+				a, b = b, a
+			}
+			factor := uint64(p.nodes[b].v)
+			if n.op == 0x74 {
+				factor = uint64(1) << (factor & 31)
+			}
+			// Avoid host multiplication overflow even for a rejected address proof.
+			if factor != 0 && last[a] > 0xffffffff/factor {
+				return 0, ranges, false
+			}
+			first[i], last[i] = first[a]*factor, last[a]*factor
+		default:
+			return 0, ranges, false
+		}
+		if last[i] > 0xffffffff {
+			return 0, ranges, false
+		}
+	}
+	for i := 0; i < p.nWrites; i++ {
+		w := p.writes[i]
+		ranges[i] = storeMapRange{first: first[w.address] + w.offset, end: last[w.address] + w.offset + 4, stride: w.stride}
+		if ranges[i].end > memoryBytes {
+			return 0, ranges, false
+		}
+		for j := 0; j < i; j++ {
+			a, b := ranges[i], ranges[j]
+			if a.end <= b.first || b.end <= a.first {
+				continue
+			}
+			if a.stride != b.stride {
+				return 0, ranges, false
+			}
+			distance := a.first - b.first
+			if a.first < b.first {
+				distance = b.first - a.first
+			}
+			remainder := distance % a.stride
+			if remainder < 4 || a.stride-remainder < 4 {
+				return 0, ranges, false
+			}
+		}
+	}
+	return trips, ranges, true
+}

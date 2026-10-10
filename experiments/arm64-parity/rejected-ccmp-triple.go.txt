@@ -1,0 +1,92 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var ccmpTripleMode = os.Getenv("WAGO_ARM64_EXPERIMENT_CCMP_TRIPLE")
+var ccmpTripleExperiment = ccmpTripleMode != ""
+
+// Combine a compare plus two guarded bit tests into one final branch. The two
+// early branches must skip the entire remaining chain. All six words retain
+// their addresses; pure AND/BIC operands are hoisted into fixed scratch regs.
+func (f *fn) foldCCMPTriple(b []byte, n int, targets []uint64) {
+	if f.opaqueFragments || f.memSizeReg == X17 || f.memLimitReg == X17 || f.globalCellReg == X17 || f.trapCellReg == X17 {
+		return
+	}
+	for pc := 0; pc+24 <= n; pc += 4 {
+		cmp := rdWord(b, pc)
+		if cmp&0x7FE0FC1F != 0x6B00001F {
+			continue
+		}
+		one, two, three := rdWord(b, pc+4), rdWord(b, pc+12), rdWord(b, pc+20)
+		if one&0xFF000010 != 0x54000000 || two&0xFF000010 != 0x54000000 || three&0xFF000010 != 0x54000000 {
+			continue
+		}
+		c1, c2, c3 := Cond(one&15), Cond(two&15), Cond(three&15)
+		if (c1 != condE && c1 != condNE) || (c2 != condE && c2 != condNE) || (c3 != condE && c3 != condNE) {
+			continue
+		}
+		first, second := rdWord(b, pc+8), rdWord(b, pc+16)
+		if first&0x7FE0FC1F != 0x6A00001F || (second&0x7FE0FC1F != 0x6A00001F && second&0x7FE0FC1F != 0x6A20001F) || (cmp^first)&0x80000000 != 0 || (cmp^second)&0x80000000 != 0 {
+			continue
+		}
+		a, oka := branchTarget(pc+4, one)
+		d, okd := branchTarget(pc+12, two)
+		exit, oke := branchTarget(pc+20, three)
+		if !oka || !okd || !oke || a != pc+24 || d != a || exit < pc+24 || !deadFlagsPath(b, pc+24, n) || !deadFlagsPath(b, exit, n) {
+			continue
+		}
+		safe := true
+		for off := 4; off < 24; off += 4 {
+			if branchTargeted(targets, pc+off) {
+				safe = false
+			}
+		}
+		for _, w := range []uint32{cmp, first, second} {
+			rn, rm := (w>>5)&31, (w>>16)&31
+			if rn == 16 || rn == 17 || rm == 16 || rm == 17 {
+				safe = false
+			}
+		}
+		if !safe {
+			continue
+		}
+		wide := cmp & 0x80000000
+		and := wide | 0x0A000000 | (first & 0x001F03E0) | 16
+		alu := wide | 0x0A000000 | (second & 0x003F03E0) | 17
+		forcedSkip := uint32(0)
+		if c2 == condE {
+			forcedSkip = 4
+		}
+		forcedFalse := uint32(0)
+		if c3 == condNE {
+			forcedFalse = 4
+		}
+		checkOne := wide | 0x7A400800 | uint32(invertCond(c1))<<12 | 16<<5 | forcedSkip
+		checkTwo := wide | 0x7A400800 | uint32(invertCond(c2))<<12 | 17<<5 | forcedFalse
+		if ccmpTripleMode == "2" {
+			forcedFirstSkip := uint32(0)
+			if c1 == condE {
+				forcedFirstSkip = 4
+			}
+			checkCompare := wide | 0x7A400000 | (cmp & 0x001F03E0) | uint32(invertCond(c2))<<12 | forcedFirstSkip
+			checkLast := wide | 0x7A400800 | uint32(invertCond(c1))<<12 | 17<<5 | forcedFalse
+			wrWord(b, pc, alu)
+			wrWord(b, pc+4, first)
+			wrWord(b, pc+8, checkCompare)
+			wrWord(b, pc+12, checkLast)
+			wrWord(b, pc+16, 0xD503201F)
+			f.stats.peep("ccmp-three-predicates-reordered")
+			pc += 20
+			continue
+		}
+		wrWord(b, pc, and)
+		wrWord(b, pc+4, alu)
+		wrWord(b, pc+8, cmp)
+		wrWord(b, pc+12, checkOne)
+		wrWord(b, pc+16, checkTwo)
+		f.stats.peep("ccmp-three-predicates")
+		pc += 20
+	}
+}

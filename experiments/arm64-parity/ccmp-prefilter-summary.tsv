@@ -1,0 +1,8 @@
+case	off ns	before ns	prefilter ns	prefilter vs off %
+crypto-aes128	138214	139988	137673	-0.39
+graphics-reed-solomon	80142	81636	80436	+0.37
+hardware-prime-implicants	34578	35150	34724	+0.43
+ml-inference	23868	24512	24168	+1.26
+stats-linear-regression	18010	18432	18062	+0.29
+video-dct	111010	111292	109698	-1.18
+vision-dilation	32398	32749	32476	+0.24

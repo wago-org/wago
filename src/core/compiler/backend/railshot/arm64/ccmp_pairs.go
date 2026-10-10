@@ -1,0 +1,92 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var guardedTestCCMPEnabled = os.Getenv("WAGO_ARM64_NO_GUARDED_TEST_CCMP") != "1"
+
+// deadFlagsPath proves overwrite before reuse along a short straight path,
+// following direct jumps. Unknown instructions and conditional control decline.
+func deadFlagsPath(b []byte, pc, n int) bool {
+	for steps := 0; steps < 12 && pc >= 0 && pc+4 <= n; steps++ {
+		w := rdWord(b, pc)
+		if w == 0xD65F03C0 {
+			return true
+		} // RET: Wasm call boundaries have no NZCV value.
+		if w&0xFC000000 == 0x14000000 {
+			target, ok := branchTarget(pc, w)
+			if !ok {
+				return false
+			}
+			pc = target
+			continue
+		}
+		add := w&0x1F000000 == 0x11000000 || w&0x1F000000 == 0x0B000000
+		logic := w&0x1F000000 == 0x0A000000 || w&0x1F800000 == 0x12000000
+		if add && w&(1<<29) != 0 || logic && w&0x60000000 == 0x60000000 {
+			return true
+		}
+		move := w&0x1F800000 == 0x12800000
+		load := w&0x3B000000 == 0x38000000 || w&0x3B000000 == 0x39000000 || w&0x3B000000 == 0x29000000
+		bitfield := w&0x1F800000 == 0x13000000
+		mul := w&0x1F000000 == 0x1B000000
+		if !add && !logic && !move && !load && !bitfield && !mul && w != nopWord {
+			return false
+		}
+		pc += 4
+	}
+	return false
+}
+
+// Fold two flag tests where the first branch skips precisely the second test.
+// The speculative second AND/BIC is pure; CCMP executes only when the first
+// condition would have fallen through. Its forced flags make the last branch
+// false on the skipped path. Both continuations require dead output flags.
+// X16 is fixed backend scratch, never a resident Wasm operand; all explicit
+// scratch inputs and external entries into the rewritten words are excluded.
+func (f *fn) foldGuardedTests(b []byte, n int, targets []uint64) {
+	if f.opaqueFragments {
+		return
+	}
+	for pc := 0; pc+16 <= n; pc += 4 {
+		first := rdWord(b, pc)
+		if first&0x7FE0FC1F != 0x6A00001F {
+			continue
+		}
+		skip, second, last := rdWord(b, pc+4), rdWord(b, pc+8), rdWord(b, pc+12)
+		if (second&0x7FE0FC1F != 0x6A00001F && second&0x7FE0FC1F != 0x6A20001F) || (first^second)&0x80000000 != 0 {
+			continue
+		}
+		if skip&0xFF000010 != 0x54000000 || last&0xFF000010 != 0x54000000 {
+			continue
+		}
+		cc1, cc2 := Cond(skip&15), Cond(last&15)
+		if (cc1 != condE && cc1 != condNE) || (cc2 != condE && cc2 != condNE) {
+			continue
+		}
+		a, ok := branchTarget(pc+4, skip)
+		target, ok2 := branchTarget(pc+12, last)
+		if !ok || !ok2 || a != pc+16 || target < pc+16 || !deadFlagsPath(b, pc+16, n) || !deadFlagsPath(b, target, n) {
+			continue
+		}
+		if branchTargeted(targets, pc+4) || branchTargeted(targets, pc+8) || branchTargeted(targets, pc+12) {
+			continue
+		}
+		if (first>>5)&31 == 16 || (first>>16)&31 == 16 || (second>>5)&31 == 16 || (second>>16)&31 == 16 {
+			continue
+		}
+		wide := first & 0x80000000
+		alu := wide | 0x0A000000 | (second & 0x003F03E0) | 16
+		nzcv := uint32(0)
+		if cc2 == condNE {
+			nzcv = 4
+		}
+		ccmp := wide | 0x7A400800 | uint32(invertCond(cc1))<<12 | 16<<5 | nzcv
+		wrWord(b, pc, alu)
+		wrWord(b, pc+4, first)
+		wrWord(b, pc+8, ccmp)
+		f.stats.peep("ccmp-guarded-tests")
+		pc += 12
+	}
+}

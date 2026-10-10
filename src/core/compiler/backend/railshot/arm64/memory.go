@@ -463,7 +463,7 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // bounds check (unless guard permits elision), and returns the register
 // holding the effective offset plus the displacement to fold into the access.
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
-// valid when the access is emitted immediately (stores), not deferred (loads);
+// valid for immediate stores and loads that publish a tracked borrowed memRef;
 // eaOwned reports whether the caller must release ea. Passing guard=false
 // requires a full-access bounds proof even in a guard-page function.
 func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, guard bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
@@ -472,7 +472,14 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		return f.memAddr64(off, size)
 	}
 	off32 := uint32(off)
-	e := f.popValue()
+	addressPins := f.pinned
+	var e *elem
+	addressLoan := false
+	if f.opt(optRegionalMemoryRead) && len(f.intervalLast) != 0 && aliasPinned && int64(off32)+int64(size) <= 0x7fffffff {
+		e, addressLoan = f.popRegionalMemoryAddress()
+	} else {
+		e = f.popValue()
+	}
 	// Do not infer this from the Wasm i32 type alone: serialized parameters and
 	// other external carriers may have non-canonical upper bits. Constants are
 	// materialized with a W-register move; the fact is set only by producers
@@ -530,6 +537,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	}
 
 	if guard {
+		if addressLoan {
+			f.pinned = addressPins
+		}
 		return ea, eaOwned, borrow, disp
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
@@ -540,6 +550,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// on every path. WAGO_NO_BOUNDS_FACTS=1 forces every check (A/B + kill switch).
 	if f.boundsFacts && f.boundsCertCovers(bcKind, bcIdx, leaDisp) {
 		f.stats.addBoundsElidable()
+		if addressLoan {
+			f.pinned = addressPins
+		}
 		return ea, eaOwned, borrow, disp
 	}
 	if rangeExtent > leaDisp {
@@ -563,6 +576,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		// this function's cold tail instead of shifting the rest of the module.
 		f.phasePadWords++
 		f.pinned = f.pinned.remove(ea)
+		if addressLoan {
+			f.pinned = addressPins
+		}
 		return ea, eaOwned, borrow, disp
 	}
 	t := f.allocReg(0)
@@ -578,6 +594,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	f.trapIf(condA, trapMemOOB) // out of bounds when ea+off+size > memBytes
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
+	if addressLoan {
+		f.pinned = addressPins
+	}
 	return ea, eaOwned, borrow, disp
 }
 

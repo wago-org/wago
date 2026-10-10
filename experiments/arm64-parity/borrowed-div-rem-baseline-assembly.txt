@@ -1,0 +1,16 @@
+Native divide at +0xf8
++0x00d4 nop      
++0x00d8 nop      
++0x00dc nop      
++0x00e0 mov      x9, x19
++0x00e4 mov      x19, x20
++0x00e8 mov      x10, x19
++0x00ec mov      x11, x9
++0x00f0 cmp      w10, #0
++0x00f4 b.eq     #0x134
++0x00f8 udiv     w12, w11, w10
++0x00fc msub     w9, w12, w10, w11
++0x0100 mov      x20, x9
++0x0104 cmp      w20, #0
++0x0108 b.ne     #0xe0
++0x010c eor      w22, w19, w22

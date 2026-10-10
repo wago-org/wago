@@ -1,0 +1,31 @@
+Compiler output for e367028d368de67455a1823ce25c37f3b406a25bec79e66612d277651283f4e8 / f0 (static counts):
+{
+  "index": 0,
+  "name": "benchmark",
+  "native_bytes": 2724,
+  "frame_bytes": 1152,
+  "emitted_spills": 0,
+  "emitted_reloads": 0,
+  "emitted_bounds_checks": 0,
+  "compiler_decisions": {
+    "callfree-loop": 14,
+    "callfree-loop-entry-store-elide": 182,
+    "cmp-branch-fuse": 19,
+    "compare-setcc": 3,
+    "frame-header-elide": 1,
+    "local-3op-sink": 20,
+    "loop-memory-base": 2,
+    "loop-memory-base-hit": 15,
+    "memory-address-zext-elim": 29,
+    "select-local-sink": 2,
+    "select-local-tee-sink": 2,
+    "shifted-register-alu": 6,
+    "small-frame-adjust": 1,
+    "store-load-fwd": 1,
+    "store-map-vector": 1,
+    "swar-mask-test": 3,
+    "zero-branch": 11
+  }
+}
+Sparse Wasm origins: opcode-lowering-and-deferred-origins. Unmapped PCs remain unknown.
+Guest call chains are not qualified for this capture.

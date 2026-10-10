@@ -1,0 +1,726 @@
+{
+  "collection_timeout_ns": 300000000000,
+  "conversion_timeout_ns": 120000000000,
+  "native_compiler_sites": false,
+  "compiler_site_coverage": "explicit-operand-spills-reloads-and-memory-bounds-branches",
+  "raw_stack_bytes_limit": 0,
+  "unwind_maps_requested": false,
+  "native_unwind_maps": false,
+  "artifact_reloaded": false,
+  "source_maps_requested": true,
+  "source_map_coverage": "opcode-lowering-and-deferred-origins",
+  "cpu_model": "Apple M4 Max",
+  "os_version": "26.6.2",
+  "sampling_rate_accounting": "requested rate only; raw collector samples retain actual observations",
+  "version": 1,
+  "complete": true,
+  "diagnostics": [
+    "perf-map has no collector handshake or address-reuse support"
+  ],
+  "wago_revision": "2286d676facdfa1cabe2d1c61072e505438ca7f2",
+  "wago_dirty": "true",
+  "go_version": "go1.27.1",
+  "target": "darwin/arm64",
+  "logical_cpus": 16,
+  "workload": "custom",
+  "module_sha256": "5e2a5dff50fb7f2c4cc15276e1e21852b30d7b412966036cf0c4c88b31db47a8",
+  "workload_contract_sha256": "f246fb0dc2317872d696828b7bfcf21f99421e76a4ead8bfb1117d091e010dfd",
+  "backend": "samply",
+  "collector_version": "samply 0.13.1",
+  "event": "samply observations (may include off-CPU)",
+  "requested_rate_hz": 1000,
+  "capture_phase": "execute",
+  "phase_isolation": "external-collector-uncontrolled",
+  "invocation_mode": "prepared",
+  "requested_duration_ns": 3000000000,
+  "execution_duration_ns": 3000007000,
+  "completed_iterations": 72446,
+  "completed_invocations": 72446,
+  "warmup_iterations": 5,
+  "phases": [
+    {
+      "completed_work": 1,
+      "work_unit": "compilation",
+      "name": "compile",
+      "start_ns": 1791633421856134000,
+      "end_ns": 1791633421856528000,
+      "elapsed_ns": 394084
+    },
+    {
+      "completed_work": 1,
+      "work_unit": "instantiation",
+      "name": "instantiate",
+      "start_ns": 1791633421856535000,
+      "end_ns": 1791633421856595000,
+      "elapsed_ns": 60084
+    },
+    {
+      "completed_work": 0,
+      "work_unit": "initialization",
+      "name": "initialize",
+      "start_ns": 1791633421857017000,
+      "end_ns": 1791633421857017000,
+      "elapsed_ns": 583
+    },
+    {
+      "completed_work": 5,
+      "work_unit": "workload iteration",
+      "name": "warmup",
+      "start_ns": 1791633421857026000,
+      "end_ns": 1791633421857239000,
+      "elapsed_ns": 213709
+    },
+    {
+      "completed_work": 72446,
+      "work_unit": "workload iteration",
+      "name": "execute",
+      "start_ns": 1791633421857240000,
+      "end_ns": 1791633424857254000,
+      "elapsed_ns": 3000007000
+    },
+    {
+      "completed_work": 1,
+      "work_unit": "teardown",
+      "name": "close",
+      "start_ns": 1791633424857289000,
+      "end_ns": 1791633424857364000,
+      "elapsed_ns": 74791
+    }
+  ],
+  "effective_configuration": {
+    "bounds": "signals",
+    "features": 65535,
+    "import_environment": "env.abort traps; all other imports must be supplied by module",
+    "native_stack_bytes": 4194304,
+    "optimizations": [
+      {
+        "default": true,
+        "description": "straight-line bounds-check elision",
+        "experimental": false,
+        "label": "Bounds facts",
+        "name": "bounds-facts",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "recognize bounded multi-operation SIMD sequences",
+        "experimental": false,
+        "label": "SIMD superoptimization",
+        "name": "simd-superopt",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "reuse registers across bounded straight-line local lifetimes",
+        "experimental": false,
+        "label": "Interval-region pins",
+        "name": "interval-region-pins",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "lower constant integer division through multiply-high sequences",
+        "experimental": false,
+        "label": "Magic division",
+        "name": "magic-div",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "share repeated cold trap bodies in size-oriented code",
+        "experimental": false,
+        "label": "Shared trap bodies",
+        "name": "shared-trap-body",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "share byte-identical host adapters in size-oriented code",
+        "experimental": false,
+        "label": "Shared adapters",
+        "name": "shared-adapters",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "keep comparison results in the flags register",
+        "experimental": false,
+        "label": "Flags results",
+        "name": "st-flags",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "keep block results in registers across joins",
+        "experimental": false,
+        "label": "Register merge",
+        "name": "reg-merge",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "sink local.tee expressions into local registers",
+        "experimental": false,
+        "label": "Tee sinking",
+        "name": "tee-sink",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "sink unary and conversion expressions in place",
+        "experimental": false,
+        "label": "Unary sinking",
+        "name": "unary-sink",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "sink binary operations into pinned locals",
+        "experimental": false,
+        "label": "Three-operand sinking",
+        "name": "three-op-sink",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "reuse an old destination register as the right operand",
+        "experimental": false,
+        "label": "Old destination reuse",
+        "name": "olddest-rhs-sink",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "fold branch pairs into one conditional branch",
+        "experimental": false,
+        "label": "Branch folding",
+        "name": "branch-fold",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "forward stores into loads after assembly",
+        "experimental": false,
+        "label": "Store/load forwarding",
+        "name": "store-load-fwd",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "finish small dynamic memory copies with one four-byte tail chunk",
+        "experimental": false,
+        "label": "Four-byte memory-copy tails",
+        "name": "memcopy-tail4",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "copy 32-byte groups with paired 128-bit loads and stores",
+        "experimental": false,
+        "label": "Paired vector memory-copy",
+        "name": "memcopy-qpairs",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "fold zero-extension into ADD UXTW",
+        "experimental": false,
+        "label": "Extended adds",
+        "name": "uxtw-add",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "skip pure update groups when their unchanged mask has no selected bits",
+        "experimental": false,
+        "label": "Select group guard",
+        "name": "select-group-guard",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "vectorize bounded read-only i32 dot reductions with guarded scalar fallback",
+        "experimental": false,
+        "label": "Integer dot loop vectorization",
+        "name": "dot-loop-vector",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "vectorize independent i32 expressions accumulated into i64 sums with exact scalar tails",
+        "experimental": false,
+        "label": "Pure integer reduction vectorization",
+        "name": "pure-reduce-vector",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "skip bounded costly pure work when an integer select keeps its pinned local",
+        "experimental": false,
+        "label": "Pure integer select update guard",
+        "name": "select-sink-pure-guard",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "reassociate proven wrapping product sums into a concrete streaming accumulator",
+        "experimental": false,
+        "label": "Streaming i32 product reductions",
+        "name": "streaming-i32-reduction",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "use one zero-extending W-MOVN for negative constants representable by its 16-bit immediate",
+        "experimental": false,
+        "label": "Single-word negative i32 constants",
+        "name": "single-negative-move32",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "borrow protected integer select sources and share large constants with their comparison",
+        "experimental": false,
+        "label": "Read-only select sink sources",
+        "name": "select-source-read",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "finish bounded pure products after pending effects to reduce live operand factors",
+        "experimental": false,
+        "label": "Crowded integer product scheduling",
+        "name": "crowded-products",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "combine adjacent short-circuit bit tests when both continuations overwrite flags",
+        "experimental": false,
+        "label": "Guarded bit test conditional compare",
+        "name": "guarded-test-ccmp",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "fold integer bitwise complements into logical register operations",
+        "experimental": false,
+        "label": "Inverted logical operands",
+        "name": "inverted-logical",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "fold constant shifts into integer ALU operands",
+        "experimental": false,
+        "label": "Shifted-register ALU",
+        "name": "shifted-register-alu",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "materialize exact AArch64 floating-point immediates directly",
+        "experimental": false,
+        "label": "Float immediates",
+        "name": "fp-immediate-const",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "load non-immediate scalar float constants from a deduplicated PC-relative pool",
+        "experimental": false,
+        "label": "Float literal pool",
+        "name": "fp-literal-pool",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "propagate bounded upper-zero and boolean provenance",
+        "experimental": false,
+        "label": "Value facts",
+        "name": "value-facts",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "combine adjacent full-width scalar loads from one local address into LDP",
+        "experimental": false,
+        "label": "Adjacent load pairs",
+        "name": "load-pair",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "pair adjacent serialized wrapper parameter homes in function prologues",
+        "experimental": false,
+        "label": "Entry parameter pairs",
+        "name": "entry-param-pairs",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "pair adjacent declared-local zero stores in function prologues",
+        "experimental": false,
+        "label": "Entry zero pairs",
+        "name": "entry-zero-pairs",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "keep entry arguments in incoming registers",
+        "experimental": false,
+        "label": "Entry argument pins",
+        "name": "entry-arg-pins",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "pin a scratch value in call-free functions",
+        "experimental": false,
+        "label": "X8 scratch pin",
+        "name": "x8-pin",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "use the larger floating-point register pool",
+        "experimental": false,
+        "label": "Extended float pins",
+        "name": "ext-fp-pins",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "keep dead forward-merge locals lazy with bounded post-merge lookahead",
+        "experimental": false,
+        "label": "Merge next-use",
+        "name": "merge-next-use",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "move local reconciliation from a call-free loop's hot conditional fall-through to its taken exit edge",
+        "experimental": false,
+        "label": "Call-free loop cold exits",
+        "name": "callfree-loop-cold-exit",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "reserve the canonical merge register for loop-hot scalar result joins",
+        "experimental": false,
+        "label": "Weighted scalar merges",
+        "name": "weighted-scalar-merge",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "pin scratch values in leaf functions",
+        "experimental": false,
+        "label": "Leaf scratch pins",
+        "name": "leaf-scratch-pins",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "cache memory size in backend scratch for straight-line regional leaves",
+        "experimental": false,
+        "label": "Leaf scratch memory size",
+        "name": "leaf-scratch-memsize",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "cache the stable cancellation cell across call-free loops",
+        "experimental": false,
+        "label": "Loop trap cell",
+        "name": "loop-trap-cell",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "fold exact top-tested i32 countdown loops into an architecture-safe latch",
+        "experimental": false,
+        "label": "Counted loop latch",
+        "name": "counted-loop-latch",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "hoist bounds and split exact i64 memory reductions across four accumulators",
+        "experimental": false,
+        "label": "Linear sum loops",
+        "name": "linear-sum-loop",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "enter compiler-proved integer functions through the register ABI",
+        "experimental": false,
+        "label": "Direct prepared entry",
+        "name": "prepared-direct-entry",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "use caller-clobber proofs to select a smaller native entry thunk",
+        "experimental": false,
+        "label": "Light prepared entry",
+        "name": "prepared-light-entry",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "keep compiler-bounded native leaves on the Go scheduler",
+        "experimental": false,
+        "label": "Bounded prepared entry",
+        "name": "prepared-bounded-entry",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "lower proven pure Go scalar callbacks into native import trampolines",
+        "experimental": false,
+        "label": "Native scalar host leaves",
+        "name": "native-leaf-host",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "bypass cross-instance marshaling for bound Go imports in bounded numeric functions",
+        "experimental": false,
+        "label": "Direct Go host imports",
+        "name": "direct-go-host-import",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "use a compact local-event tape to evict the farthest local version and elide dead stores",
+        "experimental": false,
+        "label": "Regional next-use eviction",
+        "name": "interval-next-use",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "hoist repeated linear-memory page bases into idle loop-constant registers",
+        "experimental": false,
+        "label": "Loop memory page bases",
+        "name": "loop-memory-base",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "keep costly loop-invariant integer constants in otherwise-idle registers",
+        "experimental": false,
+        "label": "Loop integer constants",
+        "name": "loop-int-const",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers",
+        "experimental": false,
+        "label": "Local regions around calls",
+        "name": "interval-call-regions",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere",
+        "experimental": false,
+        "label": "Scoped loop integer constants",
+        "name": "scoped-loop-int-const",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "combine consecutive integer comparison branches sharing an exit",
+        "experimental": false,
+        "label": "Common-exit compares",
+        "name": "common-exit-compare",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "reuse indexed addresses through proven bounded direct branch regions",
+        "experimental": false,
+        "label": "Dominated indexed addresses",
+        "name": "dominated-indexed-base",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "reuse an unchanged base-plus-index address across adjacent memory accesses",
+        "experimental": false,
+        "label": "Adjacent indexed base reuse",
+        "name": "indexed-base-reuse",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "read pinned integer conversion inputs without a temporary copy",
+        "experimental": false,
+        "label": "Direct conversion reads",
+        "name": "convert-read",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "pin hot locals when every direct local call is outside loops",
+        "experimental": false,
+        "label": "Cold-call local pins",
+        "name": "cold-call-local-pins",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "retain independent proofs for interleaved arrays",
+        "experimental": false,
+        "label": "Multiple bounds proofs",
+        "name": "multi-bounds-cert",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "specialize calls through never-written tables",
+        "experimental": false,
+        "label": "Immutable tables",
+        "name": "immutable-table",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "skip redundant immutable-table type checks",
+        "experimental": false,
+        "label": "Immutable table types",
+        "name": "immutable-table-type",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "prioritize call-free functions for inlining",
+        "experimental": false,
+        "label": "Call-free inline hints",
+        "name": "inline-callfree",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "forward straight-line stores into loads",
+        "experimental": false,
+        "label": "Store forwarding",
+        "name": "store-forward",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "omit frames when locals remain in registers",
+        "experimental": false,
+        "label": "Register-homed frames",
+        "name": "frame-elide-reghomed",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "use compact stack adjustment forms",
+        "experimental": false,
+        "label": "Small frames",
+        "name": "small-frame",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "select direct zero-test branches when flags are not live",
+        "experimental": false,
+        "label": "Zero branches",
+        "name": "zero-branch",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "fuse multiply-add and multiply-subtract expressions",
+        "experimental": false,
+        "label": "Multiply-add fusion",
+        "name": "mul-add-fuse",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "skip initialization of locals overwritten before their first read",
+        "experimental": false,
+        "label": "Entry initialization elision",
+        "name": "entry-init-elision",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "write vector results directly into eligible pinned locals",
+        "experimental": false,
+        "label": "Direct vector results",
+        "name": "v128-direct-results",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "reserve repeated vector constants and target-specific masks",
+        "experimental": false,
+        "label": "Vector constant cache",
+        "name": "v128-const-cache",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "pin hot vector locals in registers",
+        "experimental": false,
+        "label": "Vector pins",
+        "name": "v128-pins",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "use Wago's internal register calling convention",
+        "experimental": false,
+        "label": "Register ABI",
+        "name": "reg-abi",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "inline eligible callees",
+        "experimental": false,
+        "label": "Inlining",
+        "name": "inline",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "emit the stack-overflow guard fence",
+        "experimental": false,
+        "label": "Stack fence",
+        "name": "stack-fence",
+        "on": true
+      },
+      {
+        "default": true,
+        "description": "keep the guest stack pointer in a register",
+        "experimental": false,
+        "label": "Stack register",
+        "name": "stack-reg",
+        "on": true
+      }
+    ],
+    "result_validation": "every invocation"
+  },
+  "native_code_included": true,
+  "qualified_guest_stacks": false,
+  "static_inline_ancestry": false,
+  "wasm_instruction_maps": true,
+  "metadata_status": {
+    "clock": "unix",
+    "dropped_spans": 0,
+    "dropped_records": 0,
+    "retained_bytes": 6826,
+    "closed": false
+  }
+}

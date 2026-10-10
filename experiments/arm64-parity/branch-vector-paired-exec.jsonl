@@ -1,0 +1,25 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+{"workload":"language-register-vm","phase":"exec","round":0,"on":false,"iterations":21347,"us":10.844053028528599}
+{"workload":"language-register-vm","phase":"exec","round":0,"on":true,"iterations":21347,"us":10.703385346887151}
+{"workload":"language-register-vm","phase":"exec","round":1,"on":true,"iterations":21347,"us":10.595952218110273}
+{"workload":"language-register-vm","phase":"exec","round":1,"on":false,"iterations":21347,"us":10.977256757389798}
+{"workload":"language-register-vm","phase":"exec","round":2,"on":false,"iterations":21347,"us":11.20379716119361}
+{"workload":"language-register-vm","phase":"exec","round":2,"on":true,"iterations":21347,"us":10.616187286269733}
+{"workload":"language-register-vm","phase":"exec","round":3,"on":true,"iterations":21347,"us":10.530035414812387}
+{"workload":"language-register-vm","phase":"exec","round":3,"on":false,"iterations":21347,"us":15.627375462594275}
+{"workload":"language-register-vm","phase":"exec","round":4,"on":false,"iterations":21347,"us":50.077776362018085}
+{"workload":"language-register-vm","phase":"exec","round":4,"on":true,"iterations":21347,"us":10.855555441045581}
+{"workload":"language-register-vm","phase":"exec","round":5,"on":true,"iterations":21347,"us":10.832205134210895}
+{"workload":"language-register-vm","phase":"exec","round":5,"on":false,"iterations":21347,"us":11.17050990771537}
+{"workload":"language-register-vm","phase":"exec","round":6,"on":false,"iterations":21347,"us":11.008381318218017}
+{"workload":"language-register-vm","phase":"exec","round":6,"on":true,"iterations":21347,"us":10.654469386799082}
+{"workload":"language-register-vm","phase":"exec","round":7,"on":true,"iterations":21347,"us":10.750548507987071}
+{"workload":"language-register-vm","phase":"exec","round":7,"on":false,"iterations":21347,"us":11.223596992551647}
+{"workload":"language-register-vm","phase":"exec","round":8,"on":false,"iterations":21347,"us":11.163682250433316}
+{"workload":"language-register-vm","phase":"exec","round":8,"on":true,"iterations":21347,"us":10.916770084789432}
+{"workload":"language-register-vm","phase":"exec","round":9,"on":true,"iterations":21347,"us":10.658500023422496}
+{"workload":"language-register-vm","phase":"exec","round":9,"on":false,"iterations":21347,"us":11.222148685998032}
+{"workload":"language-register-vm","phase":"exec","round":10,"on":false,"iterations":21347,"us":11.142174544432473}
+{"workload":"language-register-vm","phase":"exec","round":10,"on":true,"iterations":21347,"us":10.833015177776737}
+{"workload":"language-register-vm","phase":"exec","round":11,"on":true,"iterations":21347,"us":10.750585562374104}
+{"workload":"language-register-vm","phase":"exec","round":11,"on":false,"iterations":21347,"us":11.281727736918535}

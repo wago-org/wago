@@ -1,0 +1,11 @@
+corpus	phase	off_us	on_us	change_percent
+audio-fir	Compile	83.260	83.841	0.70
+audio-fir	Exec	32.408	32.694	0.88
+compiler-register-allocation	Compile	59.363	59.399	0.06
+compiler-register-allocation	Exec	17.633	17.731	0.56
+serialization-protobuf	Compile	27.616	28.234	2.24
+serialization-protobuf	Exec	16.261	16.362	0.62
+video-dct	Compile	117.301	114.027	-2.79
+video-dct	Exec	42.602	41.837	-1.79
+vision-components	Compile	48.760	49.648	1.82
+vision-components	Exec	39.569	38.410	-2.93

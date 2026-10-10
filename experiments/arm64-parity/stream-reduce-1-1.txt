@@ -1,0 +1,28 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    3445	     30926 ns/op	   34554 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    3604	     30734 ns/op	   34554 B/op	     104 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   20630	      5859 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   20632	      6655 ns/op	       0 B/op	       0 allocs/op
+--- FAIL: BenchmarkParity/audio-fir/Compile
+    parity_test.go:50: compile: arm64: function 0: arm64: internal compiler error in function 0 at wasm offset 0x5de: no GP register available after applying the transient register floor
+--- FAIL: BenchmarkParity/audio-fir/Exec
+    parity_test.go:60: compile: arm64: function 0: arm64: internal compiler error in function 0 at wasm offset 0x5de: no GP register available after applying the transient register floor
+--- FAIL: BenchmarkParity/audio-fir
+--- FAIL: BenchmarkParity/ml-knn/Compile
+    parity_test.go:50: compile: arm64: function 0: arm64: internal compiler error in function 0 at wasm offset 0x2f1: no GP register available after applying the transient register floor
+--- FAIL: BenchmarkParity/ml-knn/Exec
+    parity_test.go:60: compile: arm64: function 0: arm64: internal compiler error in function 0 at wasm offset 0x2f1: no GP register available after applying the transient register floor
+--- FAIL: BenchmarkParity/ml-knn
+BenchmarkParity/stats-linear-regression/Compile-16 	    5214	     22437 ns/op	   29239 B/op	     103 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	    5680	     22978 ns/op	   29238 B/op	     103 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   69423	      1723 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   68850	      1758 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16               	     916	    126021 ns/op	   72490 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16               	     956	    126355 ns/op	   72490 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16                  	    2913	     41497 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16                  	    2883	     41422 ns/op	       0 B/op	       0 allocs/op
+--- FAIL: BenchmarkParity
+FAIL

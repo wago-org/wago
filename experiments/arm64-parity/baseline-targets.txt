@@ -1,0 +1,36 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/ml-inference/Compile-16 	    6606	     23083 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    7384	     23887 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Compile-16 	    7650	     23604 ns/op	   34266 B/op	     103 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   15201	     11794 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   15226	     11919 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/ml-inference/Exec-16    	   14900	     11963 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    5131	     33824 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    5119	     33661 ns/op	   35330 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Compile-16         	    5203	     33918 ns/op	   35331 B/op	     105 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    3984	     44994 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    4285	     46056 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-dilation/Exec-16            	    4266	     45841 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16   	    2200	     79386 ns/op	   62127 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16   	    2131	     81006 ns/op	   62127 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Compile-16   	    2324	     79344 ns/op	   62126 B/op	     111 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16      	     825	    223811 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16      	     824	    220626 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/graphics-reed-solomon/Exec-16      	     831	    222699 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16     	    1076	    166370 ns/op	   97661 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16     	    1090	    165573 ns/op	   97657 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Compile-16     	    1087	    165411 ns/op	   97659 B/op	     118 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16        	     673	    269129 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16        	     708	    263072 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/search-aho-corasick/Exec-16        	     715	    265868 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	    9723	     17071 ns/op	   29214 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	   10000	     16685 ns/op	   29215 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Compile-16 	   10000	     16764 ns/op	   29214 B/op	     102 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   41874	      4296 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   42114	      4306 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/stats-linear-regression/Exec-16    	   41780	      4380 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/wago-org/wago/experiments/arm64-parity	6.697s

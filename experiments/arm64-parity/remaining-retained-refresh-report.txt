@@ -1,0 +1,19 @@
+# Remaining retained arm64 gaps: focused refresh
+
+Apple M4 Max, arm64. Frozen fully qualified retained branch-vector build, with the early-select experiment excluded. Two100ms execution samples per workload, with three anomalous/variable cases replaced by eight300ms same-thread/QoS confirmation samples from the enabled retained branch-vector build. Exact checks supplied by both harnesses. The w2c2 column is the historical device capture from the complete ranking, not a simultaneous paired measurement. This ten-case subset is for prioritization; it does not establish full-corpus parity or replace the original recorded ranking. Times are microseconds per invocation.
+
+| Corpus | Retained Wago median | Sample range | Recorded w2c2 | Ratio | Samples |
+|---|---:|---:|---:|---:|---|
+| geo-point-in-polygon | 21.135 | 20.998–21.271 | 12.208 | 1.731× | 2 harness |
+| audio-adpcm | 39.280 | 37.805–40.884 | 23.458 | 1.674× | 8 paired enabled |
+| files-glob-match | 130.431 | 130.050–130.812 | 78.542 | 1.661× | 2 harness |
+| compiler-register-allocation | 16.408 | 16.306–16.510 | 9.916 | 1.655× | 2 harness |
+| vision-components | 37.493 | 37.337–37.650 | 23.084 | 1.624× | 2 harness |
+| video-dct | 43.718 | 42.391–45.044 | 27.417 | 1.595× | 2 harness |
+| language-register-vm | 10.764 | 10.680–10.944 | 6.875 | 1.566× | 8 paired enabled |
+| vision-dilation | 43.857 | 43.655–44.059 | 29.375 | 1.493× | 2 harness |
+| graphics-reed-solomon | 119.576 | 118.692–120.459 | 87.792 | 1.362× | 2 harness |
+| ml-knn | 30.525 | 30.332–30.942 | 22.917 | 1.332× | 8 paired enabled |
+
+Evidence: `remaining-retained-refresh.txt`; binary `/tmp/parity-branch-vector-retained.test`. Current manifest SHA256: `69c1c542346deeca8af2c9dc67a39f615a046fdcf0b05d2245d240ffcc6e85fa`. The binary was qualified on all148contracts in both bounds modes before this refresh. No new full-set timing sweep.
+

@@ -1,0 +1,17 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+{"workload":"modular-arithmetic","phase":"exec","round":0,"on":false,"iterations":16801,"us":11.78618088209035}
+{"workload":"modular-arithmetic","phase":"exec","round":0,"on":true,"iterations":16801,"us":11.887729897029939}
+{"workload":"modular-arithmetic","phase":"exec","round":1,"on":true,"iterations":16801,"us":12.029350931492173}
+{"workload":"modular-arithmetic","phase":"exec","round":1,"on":false,"iterations":16801,"us":11.897012558776263}
+{"workload":"modular-arithmetic","phase":"exec","round":2,"on":false,"iterations":16801,"us":11.78132504017618}
+{"workload":"modular-arithmetic","phase":"exec","round":2,"on":true,"iterations":16801,"us":11.761886673412297}
+{"workload":"modular-arithmetic","phase":"exec","round":3,"on":true,"iterations":16801,"us":11.806432652818284}
+{"workload":"modular-arithmetic","phase":"exec","round":3,"on":false,"iterations":16801,"us":11.836227545979405}
+{"workload":"modular-arithmetic","phase":"exec","round":4,"on":false,"iterations":16801,"us":11.843856020474972}
+{"workload":"modular-arithmetic","phase":"exec","round":4,"on":true,"iterations":16801,"us":11.807650318433428}
+{"workload":"modular-arithmetic","phase":"exec","round":5,"on":true,"iterations":16801,"us":11.815239152431403}
+{"workload":"modular-arithmetic","phase":"exec","round":5,"on":false,"iterations":16801,"us":11.778961549907745}
+{"workload":"modular-arithmetic","phase":"exec","round":6,"on":false,"iterations":16801,"us":11.75977376346646}
+{"workload":"modular-arithmetic","phase":"exec","round":6,"on":true,"iterations":16801,"us":11.97220653532528}
+{"workload":"modular-arithmetic","phase":"exec","round":7,"on":true,"iterations":16801,"us":11.834612999226236}
+{"workload":"modular-arithmetic","phase":"exec","round":7,"on":false,"iterations":16801,"us":11.757216832331409}

@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/vision-distance-transform/Compile-16 	    5301	     62608 ns/op	   38093 B/op	     111 allocs/op
+BenchmarkParity/vision-distance-transform/Compile-16 	    5716	     61458 ns/op	   38092 B/op	     111 allocs/op
+BenchmarkParity/vision-distance-transform/Exec-16    	    6003	     60362 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/vision-distance-transform/Exec-16    	    5892	     64742 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-btree/Compile-16                  	    5844	     60105 ns/op	   38052 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Compile-16                  	    5905	     60073 ns/op	   38052 B/op	     109 allocs/op
+BenchmarkParity/db-btree/Exec-16                     	   34900	     10185 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/db-btree/Exec-16                     	   35520	     10218 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/bio-global-alignment/Compile-16      	    8829	     37904 ns/op	   35579 B/op	     106 allocs/op
+BenchmarkParity/bio-global-alignment/Compile-16      	    9571	     37583 ns/op	   35579 B/op	     106 allocs/op
+BenchmarkParity/bio-global-alignment/Exec-16         	    5628	     63890 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/bio-global-alignment/Exec-16         	    5708	     68377 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/bio-local-alignment/Compile-16       	    9078	     36606 ns/op	   35338 B/op	     109 allocs/op
+BenchmarkParity/bio-local-alignment/Compile-16       	    9660	     36587 ns/op	   35338 B/op	     109 allocs/op
+BenchmarkParity/bio-local-alignment/Exec-16          	    4975	     73341 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/bio-local-alignment/Exec-16          	    4934	     77311 ns/op	       0 B/op	       0 allocs/op
+PASS

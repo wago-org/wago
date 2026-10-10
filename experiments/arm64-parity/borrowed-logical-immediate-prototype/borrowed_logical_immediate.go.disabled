@@ -1,0 +1,36 @@
+//go:build arm64
+
+package arm64
+
+import a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+
+// Read a borrowed local/global directly in a logical immediate instruction.
+// Only concrete inputs are admitted, so no deferred evaluation order changes.
+func (f *fn) tryBorrowedLogicalImmediate(node, left, right *elem, dest Reg) Reg {
+ if !f.opt(optBorrowedLogicalImmediate) || left.elemKind() != ekValue ||
+  (left.st.kind != stLocalReg && left.st.kind != stGlobReg) ||
+  right.elemKind() != ekValue || right.st.kind != stConst {
+  return regNone
+ }
+ op := node.deferredOp()
+ if op != opAnd && op != opOr && op != opXor { return regNone }
+ wide := node.st.typ.is64()
+ c := right.st.cval
+ if wide {
+  if !a64.LogicalImmediate64(uint64(c)) { return regNone }
+ } else if !a64.LogicalImmediate32(uint32(c)) { return regNone }
+ // Pin the borrowed input across result allocation. Restore inherited pins.
+ saved := f.pinned
+ source := left.st.reg
+ f.pinned = f.pinned.add(source)
+ result := dest
+ if result == regNone { result = f.allocReg(maskOf(source)) }
+ if !f.aluImm3(op, result, source, c, wide) {
+  panic("logical immediate preflight disagrees with encoder")
+ }
+ f.pinned = saved
+ f.stats.peep("borrowed-logical-immediate")
+ f.consumeBlockBelow(node)
+ f.occupy(node, result)
+ return result
+}

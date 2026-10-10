@@ -1,0 +1,23 @@
+//go:build darwin && arm64 && wago_guardpage
+
+package arm64
+
+import coreruntime "github.com/wago-org/wago/src/core/runtime"
+
+const storeMapGuardPageTests = true
+
+func newStoreMapTestMemory(guard bool) (*coreruntime.JobMemory, error) {
+	if guard {
+		if err := coreruntime.InstallGuardTrapHandler(); err != nil {
+			return nil, err
+		}
+		return coreruntime.NewJobMemoryGuarded(65536, 65536)
+	}
+	return coreruntime.NewJobMemory(65536)
+}
+func callStoreMapTest(engine *coreruntime.Engine, entry uintptr, args, trap, result []byte, memory *coreruntime.JobMemory, guard bool) error {
+	if guard {
+		return engine.CallGuarded(entry, args, memory.LinMemBase(), trap, result, memory)
+	}
+	return engine.Call(entry, args, memory.LinearMemory(), trap, result)
+}

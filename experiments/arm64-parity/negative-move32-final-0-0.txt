@@ -1,0 +1,17 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/wago-org/wago/experiments/arm64-parity
+cpu: Apple M4 Max
+BenchmarkParity/geo-point-in-polygon/Compile-16 	    5943	     25440 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16 	    7222	     24683 ns/op	   36043 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Compile-16 	    7384	     24717 ns/op	   36044 B/op	     106 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16    	    9171	     19848 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16    	    9235	     19835 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/geo-point-in-polygon/Exec-16    	    9122	     19753 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Compile-16            	    1548	    115591 ns/op	   72488 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16            	    1556	    113081 ns/op	   72490 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Compile-16            	    1615	    112683 ns/op	   72489 B/op	     126 allocs/op
+BenchmarkParity/video-dct/Exec-16               	    4536	     44254 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16               	    4652	     44507 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParity/video-dct/Exec-16               	    4318	     44817 ns/op	       0 B/op	       0 allocs/op
+PASS

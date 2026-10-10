@@ -1,0 +1,7 @@
+	if experimentalSelectMinusOne {
+		dest := regNone
+		if f.trySelectMinusOne(aRoot, bRoot, cond, &dest, w) {
+			f.pushReg(dest, mtI32OrWide(w)).st.setGCRoot(gcRoot)
+			return true
+		}
+	}

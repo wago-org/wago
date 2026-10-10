@@ -1,0 +1,29 @@
+//go:build arm64
+
+package arm64
+
+import (
+ "math/bits"
+ "os"
+)
+
+var smallMulShiftEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SMALL_MUL_SHIFT") == "1"
+
+// Match c = (2^n + 1)*2^k in the operand's modular integer width. The result
+// needs one ADD with a shifted source, followed by at most one LSL, without
+// allocating or materializing a multiplier register.
+func mulShiftPlan(value int64, wide bool) (addShift, postShift uint8, ok bool) {
+ switch value {
+ case 3: return 1,0,true
+ case 5: return 2,0,true
+ case 9: return 3,0,true
+ }
+ if !smallMulShiftEnabled {return 0,0,false}
+ v:=uint64(value)
+ if !wide {v=uint64(uint32(value))}
+ if v==0 {return 0,0,false}
+ k:=bits.TrailingZeros64(v)
+ odd:=v>>k
+ if odd<3 || (odd-1)&(odd-2)!=0 {return 0,0,false}
+ return uint8(bits.TrailingZeros64(odd-1)),uint8(k),true
+}

@@ -1,0 +1,73 @@
+TEXT github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).nextIntervalEvent(SB) /Users/work/Code/Wago/wago/src/core/compiler/backend/railshot/arm64/interval_region.go
+  interval_region.go:371	0x10029f600		f9400b90		MOVD 16(R28), R16											
+  interval_region.go:371	0x10029f604		eb3063ff		CMP R16, RSP												
+  interval_region.go:371	0x10029f608		54000809		BLS 64(PC)												
+  interval_region.go:371	0x10029f60c		f81f0ffe		MOVD.W R30, -16(RSP)											
+  interval_region.go:371	0x10029f610		f81f83fd		MOVD R29, -8(RSP)											
+  interval_region.go:371	0x10029f614		d10023fd		SUB $8, RSP, R29											
+  interval_region.go:372	0x10029f618		9109d01b		ADD $628, R0, R27											
+  interval_region.go:372	0x10029f61c		29400f62		LDPW (R27), (R2, R3)											
+  interval_region.go:372	0x10029f620		6b03005f		CMPW R3, R2												
+  interval_region.go:372	0x10029f624		54000128		BHI 9(PC)												
+  interval_region.go:372	0x10029f628		b7f80101		TBNZ $63, R1, 8(PC)											
+  interval_region.go:372	0x10029f62c		910d201b		ADD $840, R0, R27											
+  interval_region.go:372	0x10029f630		a9401764		LDP (R27), (R4, R5)											
+  interval_region.go:372	0x10029f634		eb05003f		CMP R5, R1												
+  interval_region.go:372	0x10029f638		5400008a		BGE 4(PC)												
+  interval_region.go:375	0x10029f63c		cb020062		SUB R2, R3, R2												
+  interval_region.go:376	0x10029f640		b8617883		MOVWU (R4)(R1<<2), R3											
+  interval_region.go:377	0x10029f644		14000007		JMP 7(PC)												
+  interval_region.go:373	0x10029f648		aa1f03e0		MOVD ZR, R0												
+  interval_region.go:373	0x10029f64c		aa1f03e1		MOVD ZR, R1												
+  interval_region.go:373	0x10029f650		f85f83fd		MOVD -8(RSP), R29											
+  interval_region.go:373	0x10029f654		f84107fe		MOVD.P 16(RSP), R30											
+  interval_region.go:373	0x10029f658		d65f03c0		RET													
+  interval_region.go:378	0x10029f65c		794004a3		MOVHU 2(R5), R3												
+  interval_region.go:377	0x10029f660		3100047f		CMNW $1, R3												
+  interval_region.go:377	0x10029f664		54000200		BEQ 16(PC)												
+  interval_region.go:377	0x10029f668		910cc01b		ADD $816, R0, R27											
+  interval_region.go:377	0x10029f66c		a9401b65		LDP (R27), (R5, R6)											
+  interval_region.go:377	0x10029f670		6b06007f		CMPW R6, R3												
+  interval_region.go:377	0x10029f674		54000162		BCS 11(PC)												
+  interval_region.go:377	0x10029f678		2a0303e7		MOVW R3, R7												
+  interval_region.go:377	0x10029f67c		eb0600ff		CMP R6, R7												
+  interval_region.go:377	0x10029f680		54000402		BCS 32(PC)												
+  interval_region.go:377	0x10029f684		8b0708a5		ADD R7<<2, R5, R5											
+  interval_region.go:377	0x10029f688		794000a6		MOVHU (R5), R6												
+  interval_region.go:377	0x10029f68c		924038c6		AND $32767, R6, R6											
+  interval_region.go:377	0x10029f690		6b0200df		CMPW R2, R6												
+  interval_region.go:377	0x10029f694		54fffe49		BLS -14(PC)												
+  interval_region.go:377	0x10029f698		3100047f		CMNW $1, R3												
+  interval_region.go:377	0x10029f69c		14000002		JMP 2(PC)												
+  interval_region.go:377	0x10029f6a0		3100047f		CMNW $1, R3												
+  interval_region.go:380	0x10029f6a4		b8217883		MOVW R3, (R4)(R1<<2)											
+  interval_region.go:381	0x10029f6a8		540000a0		BEQ 5(PC)												
+  interval_region.go:381	0x10029f6ac		910cc01b		ADD $816, R0, R27											
+  interval_region.go:381	0x10029f6b0		a9401362		LDP (R27), (R2, R4)											
+  interval_region.go:381	0x10029f6b4		6b04007f		CMPW R4, R3												
+  interval_region.go:381	0x10029f6b8		540000c3		BCC 6(PC)												
+  interval_region.go:382	0x10029f6bc		92800000		MOVD $-1, R0												
+  interval_region.go:382	0x10029f6c0		b24003e1		ORR $1, ZR, R1												
+  interval_region.go:382	0x10029f6c4		f85f83fd		MOVD -8(RSP), R29											
+  interval_region.go:382	0x10029f6c8		f84107fe		MOVD.P 16(RSP), R30											
+  interval_region.go:382	0x10029f6cc		d65f03c0		RET													
+  interval_region.go:384	0x10029f6d0		2a0303e3		MOVW R3, R3												
+  interval_region.go:384	0x10029f6d4		eb04007f		CMP R4, R3												
+  interval_region.go:384	0x10029f6d8		54000122		BCS 9(PC)												
+  interval_region.go:384	0x10029f6dc		8b030842		ADD R3<<2, R2, R2											
+  interval_region.go:384	0x10029f6e0		79400042		MOVHU (R2), R2												
+  interval_region.go:385	0x10029f6e4		92403840		AND $32767, R2, R0											
+  interval_region.go:385	0x10029f6e8		7211005f		TSTW $32768, R2												
+  interval_region.go:385	0x10029f6ec		9a9f07e1		CSET NE, R1												
+  interval_region.go:385	0x10029f6f0		f85f83fd		MOVD -8(RSP), R29											
+  interval_region.go:385	0x10029f6f4		f84107fe		MOVD.P 16(RSP), R30											
+  interval_region.go:385	0x10029f6f8		d65f03c0		RET													
+  interval_region.go:384	0x10029f6fc		97f79bc5		CALL runtime.panicBounds(SB)										
+  interval_region.go:377	0x10029f700		97f79bc4		CALL runtime.panicBounds(SB)										
+  interval_region.go:377	0x10029f704		d503201f		NOOP													
+  interval_region.go:371	0x10029f708		a90087e0		STP (R0, R1), 8(RSP)											
+  interval_region.go:371	0x10029f70c		aa1e03e3		MOVD R30, R3												
+  interval_region.go:371	0x10029f710		97f7937c		CALL runtime.morestack_noctxt.abi0(SB)									
+  interval_region.go:371	0x10029f714		a94087e0		LDP 8(RSP), (R0, R1)											
+  interval_region.go:371	0x10029f718		17ffffba		JMP github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).nextIntervalEvent(SB)	
+  interval_region.go:371	0x10029f71c		00000000		?													

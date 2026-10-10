@@ -1,0 +1,7 @@
+corpus	phase	off_us	on_us	change_percent
+compiler-register-allocation	Compile	59.099	59.047	-0.09
+compiler-register-allocation	Exec	17.665	17.425	-1.36
+vision-components	Compile	49.954	48.391	-3.13
+vision-components	Exec	38.767	38.752	-0.04
+vision-dilation	Compile	38.755	37.867	-2.29
+vision-dilation	Exec	40.893	43.355	6.02

@@ -1,0 +1,9 @@
+corpus	phase	off_us	on_us	change_percent
+compiler-register-allocation	Compile	58.103	62.350	7.31
+compiler-register-allocation	Exec	17.845	17.614	-1.29
+crypto-aes128	Compile	152.130	153.274	0.75
+crypto-aes128	Exec	37.614	36.100	-4.02
+vision-components	Compile	48.457	50.498	4.21
+vision-components	Exec	39.583	37.240	-5.92
+vision-dilation	Compile	37.419	39.055	4.37
+vision-dilation	Exec	41.693	42.647	2.29

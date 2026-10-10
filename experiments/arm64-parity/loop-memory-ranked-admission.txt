@@ -1,0 +1,16 @@
+=== RUN   TestLoopMemoryBaseValues
+--- PASS: TestLoopMemoryBaseValues (0.01s)
+=== RUN   TestLoopMemoryBaseAdmissionAndGrowRejection
+--- PASS: TestLoopMemoryBaseAdmissionAndGrowRejection (0.00s)
+=== RUN   TestLoopMemoryBaseHintEligibility
+--- PASS: TestLoopMemoryBaseHintEligibility (0.00s)
+=== RUN   TestLoopMemoryBaseCannotAliasIntegerConstant
+--- PASS: TestLoopMemoryBaseCannotAliasIntegerConstant (0.00s)
+=== RUN   TestInspectMemoryBaseArtifacts
+    loop_memory_inspect_test.go:27: compiler-register-allocation hints flags=8c count=4 types=5d bits=[65536 65536 16777619 327680]
+    loop_memory_inspect_test.go:38: compiler-register-allocation peepholes=map[callfree-loop:3 callfree-loop-entry-store-elide:45 cmp-branch-fuse:41 cmp-tee-branch-fuse:1 common-bounds-limit:1 common-bounds-limit-candidate:34 common-bounds-limit-hit:34 compare-setcc:1 entry-arg-local-pin:3 entry-init-elide:1 frame-header-elide:1 lea-scaled-index:20 local-3op-sink:9 loop-int-const:1 loop-memory-base:1 loop-memory-base-hit:8 memory-address-zext-elim:59 old-dest-rhs-sink:1 select-cmov:1 select-flags:6 select-local-sink:14 select-local-tee-sink:6 select-source-read:12 shifted-register-alu:4 single-negative-move32:8 small-frame-adjust:1 store-imm:14 zero-branch:1]
+    loop_memory_inspect_test.go:27: vision-components hints flags=8c count=4 types=5f bits=[327680 65536 327680 -2048144789]
+    loop_memory_inspect_test.go:38: vision-components peepholes=map[callfree-loop:14 callfree-loop-entry-store-elide:182 cmp-branch-fuse:19 common-bounds-limit:1 common-bounds-limit-candidate:12 common-bounds-limit-hit:12 compare-setcc:3 entry-arg-local-pin:1 frame-header-elide:1 local-3op-sink:20 loop-int-const:1 loop-memory-base:1 loop-memory-base-hit:9 memory-address-zext-elim:29 select-local-sink:2 select-local-tee-sink:2 shifted-register-alu:6 small-frame-adjust:1 store-load-fwd:1 swar-mask-test:3 zero-branch:11]
+--- PASS: TestInspectMemoryBaseArtifacts (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	1.365s

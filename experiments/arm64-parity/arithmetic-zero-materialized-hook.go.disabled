@@ -1,0 +1,10 @@
+	if cc, ok := f.tryArithmeticEqzToFlags(node); ok {
+		result := dest
+		if result == regNone {
+			result = f.allocReg(0)
+		}
+		f.a.Cset32(result, cc)
+		f.occupy(node, result)
+		node.st.typ = mtI32
+		return result
+	}

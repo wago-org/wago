@@ -1,0 +1,54 @@
+wago:78be8f26a99dd92f9f593751fa12e2fb2d482c1ffe307572ac246a76e9cbbdfe:5a2518b95cd40e42119ced1741b42baf14e74007c205eb8d4525d2181d8e5200:g1:f0:r20:guest-body:benchmark: 2970 leaf observations
+ 1074 (36.2%) +0x00f0 udiv     w10, w9, w19  Wasm 133
+  992 (33.4%) +0x00e0 mov      x9, x19  Wasm 131
+  506 (17.0%) +0x0104 eor      w22, w19, w22  Wasm 143
+  152 ( 5.1%) +0x00e4 mov      x19, x20  Wasm 131
+   73 ( 2.5%) +0x00e8 cmp      w19, #0  Wasm 133
+   42 ( 1.4%) +0x00fc cmp      w20, #0  Wasm 136
+   29 ( 1.0%) +0x00c8 nop        Wasm 125
+   29 ( 1.0%) +0x00d8 nop        Wasm 125
+   20 ( 0.7%) +0x00ac add      w20, w20, #1  Wasm 80
+   14 ( 0.5%) +0x00dc nop        Wasm 125
+   11 ( 0.4%) +0x00d4 nop        Wasm 125
+    6 ( 0.2%) +0x010c add      w21, w21, #1  Wasm 156
+    4 ( 0.1%) +0x00c0 and      w19, w19, #0xffff  Wasm 119
+    4 ( 0.1%) +0x00b4 eor      w19, w19, w19, lsr #16  Wasm 99
+    4 ( 0.1%) +0x00c4 add      w19, w19, #1  Wasm 122
+    4 ( 0.1%) +0x00b8 mul      w19, w19, w25  Wasm 106
+    2 ( 0.1%) +0x0090 mov      x19, x21  Wasm 40
+    2 ( 0.1%) +0x00bc eor      w19, w19, w19, lsr #13  Wasm 114
+    2 ( 0.1%) +0x00d0 nop        Wasm 125
+
+Assembly for sampled range:
+    2 +0x0090 mov      x19, x21
+    0 +0x0094 lsl      w19, w19, #1
+    0 +0x0098 add      w20, w19, w24
+    0 +0x009c eor      w20, w20, w20, lsr #16
+    0 +0x00a0 mul      w20, w20, w25
+    0 +0x00a4 eor      w20, w20, w20, lsr #13
+    0 +0x00a8 and      w20, w20, #0xffff
+   20 +0x00ac add      w20, w20, #1
+    0 +0x00b0 add      w19, w19, w27
+    4 +0x00b4 eor      w19, w19, w19, lsr #16
+    4 +0x00b8 mul      w19, w19, w25
+    2 +0x00bc eor      w19, w19, w19, lsr #13
+    4 +0x00c0 and      w19, w19, #0xffff
+    4 +0x00c4 add      w19, w19, #1
+   29 +0x00c8 nop      
+    0 +0x00cc nop      
+    2 +0x00d0 nop      
+   11 +0x00d4 nop      
+   29 +0x00d8 nop      
+   14 +0x00dc nop      
+  992 +0x00e0 mov      x9, x19
+  152 +0x00e4 mov      x19, x20
+   73 +0x00e8 cmp      w19, #0
+    0 +0x00ec b.eq     #0x12c
+ 1074 +0x00f0 udiv     w10, w9, w19
+    0 +0x00f4 msub     w9, w10, w19, w9
+    0 +0x00f8 mov      x20, x9
+   42 +0x00fc cmp      w20, #0
+    0 +0x0100 b.ne     #0xe0
+  506 +0x0104 eor      w22, w19, w22
+    0 +0x0108 mul      w22, w22, w14
+    6 +0x010c add      w21, w21, #1

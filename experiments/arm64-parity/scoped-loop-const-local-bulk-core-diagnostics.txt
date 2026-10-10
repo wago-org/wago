@@ -1,0 +1,1 @@
+ok  	github.com/wago-org/wago/experiments/arm64-parity	0.403s

@@ -1,0 +1,22 @@
+// Tbz/Tbnz test a register bit (0..63); patch with PatchBranch14.
+func (a *Asm) Tbz(rt Reg, bit uint8) int {
+	at := a.Len()
+	a.word(0x36000000 | uint32(bit>>5)<<31 | uint32(bit&31)<<19 | r(rt))
+	return at
+}
+func (a *Asm) Tbnz(rt Reg, bit uint8) int {
+	at := a.Len()
+	a.word(0x37000000 | uint32(bit>>5)<<31 | uint32(bit&31)<<19 | r(rt))
+	return at
+}
+
+// PatchBranch14 fills the signed word displacement of TBZ/TBNZ.
+func (a *Asm) PatchBranch14(at, target int) bool {
+	d := (target - at) / 4
+	if d < -(1<<13) || d >= 1<<13 {
+		return false
+	}
+	a.patchWord(at, (uint32(d)&0x3fff)<<5)
+	return true
+}
+

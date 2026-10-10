@@ -1,0 +1,5 @@
+corpus	off_bytes	on_bytes	identical
+audio-adpcm	492	492	True
+db-hash-join	768	764	False
+search-aho-corasick	5484	5484	False
+serialization-protobuf	676	676	False
