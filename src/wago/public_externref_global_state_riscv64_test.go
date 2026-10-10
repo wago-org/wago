@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"os"
@@ -12,6 +13,49 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+type rv64StateOnlyMixedGlobal struct {
+	typ    wasm.ValType
+	bits   uint64
+	parent int
+}
+
+func rv64StateOnlyMixedExternrefSource(globals []rv64StateOnlyMixedGlobal, exports ...int) []byte {
+	entries := make([][]byte, len(globals))
+	for i, g := range globals {
+		var init []byte
+		switch {
+		case wasm.EqualValType(g.typ, wasm.I32):
+			init = append([]byte{0x41}, wasmtest.SLEB32(int32(g.bits))...)
+		case wasm.EqualValType(g.typ, wasm.I64):
+			init = append([]byte{0x42}, wasmtest.SLEB64(int64(g.bits))...)
+		case wasm.EqualValType(g.typ, wasm.F32):
+			init = make([]byte, 5)
+			init[0] = 0x43
+			binary.LittleEndian.PutUint32(init[1:], uint32(g.bits))
+		case wasm.EqualValType(g.typ, wasm.F64):
+			init = make([]byte, 9)
+			init[0] = 0x44
+			binary.LittleEndian.PutUint64(init[1:], g.bits)
+		case wasm.EqualValType(g.typ, wasm.ExternRef) && g.parent < 0:
+			init = []byte{0xd0, 0x6f}
+		case wasm.EqualValType(g.typ, wasm.ExternRef):
+			init = append([]byte{0x23}, wasmtest.ULEB(uint32(g.parent))...)
+		default:
+			panic("unsupported mixed-global test type")
+		}
+		entries[i] = wasmtest.GlobalEntry(g.typ, false, append(init, 0x0b))
+	}
+	sections := [][]byte{wasmtest.Section(6, wasmtest.Vec(entries...))}
+	if len(exports) != 0 {
+		out := make([][]byte, len(exports))
+		for i, index := range exports {
+			out[i] = wasmtest.ExportEntry(fmt.Sprintf("g%d", index), byte(wasm.ExternGlobal), uint32(index))
+		}
+		sections = append(sections, wasmtest.Section(7, wasmtest.Vec(out...)))
+	}
+	return wasmtest.Module(sections...)
+}
 
 func rv64StateOnlyExternrefGlobalSource(export bool) []byte {
 	sections := [][]byte{wasmtest.Section(6, wasmtest.Vec(
@@ -115,6 +159,207 @@ func TestRV64PublicStateOnlyExternrefGlobalChain(t *testing.T) {
 				rv64CheckStateOnlyCode(t, c, 0)
 			})
 		}
+	}
+}
+
+func rv64StateOnlyMixedExternrefFixture() []rv64StateOnlyMixedGlobal {
+	return []rv64StateOnlyMixedGlobal{
+		{typ: wasm.I32, bits: 0xffffffff},
+		{typ: wasm.ExternRef, parent: -1},
+		{typ: wasm.F32, bits: 0x80000000},
+		{typ: wasm.ExternRef, parent: 1},
+		{typ: wasm.I64, bits: 0x8000000000000001},
+		{typ: wasm.F64, bits: 0x7ff8000000000042},
+		{typ: wasm.ExternRef, parent: -1},
+		{typ: wasm.ExternRef, parent: 3},
+	}
+}
+
+func TestRV64PublicStateOnlyMixedExternrefGlobals(t *testing.T) {
+	globals := rv64StateOnlyMixedExternrefFixture()
+	exports := make([]int, len(globals))
+	for i := range exports {
+		exports[i] = i
+	}
+	wantTypes := []ValType{ValI32, ValExternRef, ValF32, ValExternRef, ValI64, ValF64, ValExternRef, ValExternRef}
+	wantBits := map[int]uint64{0: 0xffffffff, 2: 0x80000000, 4: 0x8000000000000001, 5: 0x7ff8000000000042}
+	wantParents := map[int]int{3: 1, 7: 3}
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "state-only-mixed-externref-globals", rv64StateOnlyMixedExternrefSource(globals, exports...), artifact)
+			wantFeatures := CoreFeatureReferenceTypes | CoreFeatureExtendedConstExpressions
+			if !rv64StateOnlyExternrefGlobals(c) || c.requiredFeatures != wantFeatures || compiledStructuralRequiredFeatures(c) != wantFeatures || len(c.Globals) != len(globals) || len(c.ValueTypes) != 5 {
+				t.Fatal("mixed state-only metadata contract")
+			}
+			for i, g := range c.Globals {
+				plain, _ := valueTypeDescriptorFromValType(wantTypes[i])
+				exact, err := c.globalExactType(i)
+				if err != nil || exact != plain || g.Type != wantTypes[i] || g.Mutable || g.V128 != (V128{}) || g.HasInitFunc || len(g.InitExpr) != 0 {
+					t.Fatal("mixed state-only global type", i, g, exact, err)
+				}
+				if parent, ok := wantParents[i]; ok {
+					if !g.HasInitGlobal || g.InitGlobal != parent || g.Bits != 0 {
+						t.Fatal("mixed state-only externref chain", i, g)
+					}
+				} else if g.HasInitGlobal || g.InitGlobal != 0 || g.Bits != wantBits[i] {
+					t.Fatal("mixed state-only literal", i, g)
+				}
+			}
+			rv64CheckStateOnlyCode(t, c, 0)
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			for i := range in.globalCells {
+				if in.globalCells[i] == nil || len(in.globalCells[i].cell) != 8 {
+					t.Fatal("mixed state-only cell", i)
+				}
+				for j := 0; j < i; j++ {
+					if in.globalCells[i] == in.globalCells[j] {
+						t.Fatal("mixed state-only aliased cells", i, j)
+					}
+				}
+			}
+			for i, bits := range wantBits {
+				got, err := in.Global(fmt.Sprintf("g%d", i))
+				if err != nil || got != bits {
+					t.Fatal("mixed scalar value", i, got, err)
+				}
+			}
+			for _, i := range []int{1, 3, 6, 7} {
+				got, err := in.GlobalValue(fmt.Sprintf("g%d", i))
+				if err != nil || got.Type() != ValExternRef || !got.ExternRef().IsNull() {
+					t.Fatal("mixed externref value", i, got, err)
+				}
+			}
+			if err := c.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := in.Global("g5"); err != nil || got != wantBits[5] {
+				t.Fatal("mixed scalar did not outlive compiled owner", got, err)
+			}
+			if got, err := in.GlobalValue("g7"); err != nil || !got.ExternRef().IsNull() {
+				t.Fatal("mixed externref did not outlive compiled owner", got, err)
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal(err)
+			}
+			rv64CheckStateOnlyCode(t, c, 0)
+		})
+	}
+}
+
+func TestRV64PublicStateOnlyMixedExternrefRequiresExternref(t *testing.T) {
+	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
+		t.Skip("source compiler unavailable in precompiled runtime")
+	}
+	c, err := Compile(nil, rv64StateOnlyMixedExternrefSource([]rv64StateOnlyMixedGlobal{{typ: wasm.I64, bits: 7}}, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if rv64StateOnlyExternrefGlobals(c) {
+		t.Fatal("pure scalar artifact misclassified as the externref profile")
+	}
+	in, err := Instantiate(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Global("g0"); err != nil || got != 7 {
+		t.Fatal("ordinary pure scalar state changed", got, err)
+	}
+}
+
+func TestRV64PublicStateOnlyMixedExternrefTypePoolGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "state-only-mixed-externref-pool-admission", rv64StateOnlyMixedExternrefSource([]rv64StateOnlyMixedGlobal{
+		{typ: wasm.I32, bits: 7},
+		{typ: wasm.ExternRef, parent: -1},
+	}, 0, 1), true)
+	defer c.Close()
+	if len(c.ValueTypes) != 2 || !rv64StateOnlyExternrefGlobals(c) {
+		t.Fatal("small mixed type-pool baseline")
+	}
+	for name, exact := range map[string]ValueTypeDescriptor{
+		"unused":    {Kind: ValueTypeF64},
+		"duplicate": c.ValueTypes[c.Globals[0].ValueTypeIndex],
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Globals = append([]GlobalDef(nil), bad.Globals...)
+			bad.ValueTypes = append(append([]ValueTypeDescriptor(nil), bad.ValueTypes...), exact)
+			bad.GlobalExports = maps.Clone(bad.GlobalExports)
+			if len(bad.ValueTypes) > 5 || rv64StateOnlyExternrefGlobals(&bad) {
+				t.Fatal("hostile in-bound mixed type pool admitted")
+			}
+			if err := bad.validate(); err == nil {
+				t.Fatal("hostile in-bound mixed type pool passed railshot validation")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				t.Fatal("hostile in-bound mixed type pool did not reach codec load", err)
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("hostile in-bound mixed type pool artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicStateOnlyMixedExternrefArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "state-only-mixed-externref-admission", rv64StateOnlyMixedExternrefSource(rv64StateOnlyMixedExternrefFixture(), 0, 1, 7), true)
+	defer c.Close()
+	for name, mutate := range map[string]func(*Compiled){
+		"mutable-scalar":            func(v *Compiled) { v.Globals[0].Mutable = true },
+		"scalar-chain":              func(v *Compiled) { v.Globals[2].HasInitGlobal = true; v.Globals[2].InitGlobal = 0 },
+		"scalar-expression":         func(v *Compiled) { v.Globals[2].InitExpr = []byte{0x41, 0, 0x0b} },
+		"i32-upper-bits":            func(v *Compiled) { v.Globals[0].Bits |= 1 << 32 },
+		"f32-upper-bits":            func(v *Compiled) { v.Globals[2].Bits |= 1 << 32 },
+		"extern-live-bits":          func(v *Compiled) { v.Globals[1].Bits = 1 },
+		"extern-self":               func(v *Compiled) { v.Globals[1].HasInitGlobal = true; v.Globals[1].InitGlobal = 1 },
+		"extern-scalar-parent":      func(v *Compiled) { v.Globals[3].InitGlobal = 0 },
+		"extern-scalar-binding":     func(v *Compiled) { v.Globals[1].ValueTypeIndex = v.Globals[0].ValueTypeIndex },
+		"scalar-extern-binding":     func(v *Compiled) { v.Globals[0].ValueTypeIndex = v.Globals[1].ValueTypeIndex },
+		"missing-reference-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-extended-feature":  func(v *Compiled) { v.requiredFeatures &^= CoreFeatureExtendedConstExpressions },
+		"extra-feature":             func(v *Compiled) { v.requiredFeatures |= CoreFeatureSIMD },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Globals = append([]GlobalDef(nil), bad.Globals...)
+			bad.ValueTypes = append([]ValueTypeDescriptor(nil), bad.ValueTypes...)
+			bad.GlobalExports = maps.Clone(bad.GlobalExports)
+			mutate(&bad)
+			if rv64StateOnlyExternrefGlobals(&bad) {
+				t.Fatal("hostile mixed exact profile admitted")
+			}
+			if err := bad.validate(); err == nil {
+				t.Fatal("hostile mixed state-only metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if name == "missing-reference-feature" || name == "missing-extended-feature" {
+				if err != nil || loaded == nil || loaded.requiredFeatures != c.requiredFeatures || !rv64StateOnlyExternrefGlobals(loaded) {
+					t.Fatal("mixed state-only feature metadata was not reconstructed", loaded, err)
+				}
+				_ = loaded.Close()
+				return
+			}
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("hostile mixed state-only artifact admitted")
+			}
+		})
 	}
 }
 
@@ -332,6 +577,8 @@ func TestRV64PublicStateOnlyExternrefGlobalSourceGates(t *testing.T) {
 	global := func(typ wasm.ValType, mutable bool, init []byte) []byte {
 		return wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(typ, mutable, init)))
 	}
+	v128Init := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	v128Init = append(v128Init, 0x0b)
 	for name, source := range map[string][]byte{
 		"mutable":         wasmtest.Module(global(wasm.ExternRef, true, []byte{0xd0, 0x6f, 0x0b})),
 		"wrong-heap":      wasmtest.Module(global(wasm.ExternRef, false, []byte{0xd0, 0x70, 0x0b})),
@@ -358,6 +605,19 @@ func TestRV64PublicStateOnlyExternrefGlobalSourceGates(t *testing.T) {
 		"chain-trailing": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
 			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}),
 			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0x23, 0, 0xd1, 0x0b}),
+		))),
+		"mixed-mutable-scalar": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0, 0x0b}),
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}),
+		))),
+		"mixed-scalar-chain": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0, 0x0b}),
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}),
+		))),
+		"mixed-vector": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.V128, false, v128Init),
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}),
 		))),
 	} {
 		t.Run(name, func(t *testing.T) {

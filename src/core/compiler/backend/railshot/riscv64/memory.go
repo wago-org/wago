@@ -102,11 +102,13 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 	return v, nil
 }
 
-// admitStateOnlyExternrefGlobals recognizes a bounded directory of immutable
-// null externref globals in an otherwise empty public module. This
-// declaration-only profile does not enable executable externref carriers,
-// imports, mutation, or non-null reference ownership. Initializers may only
-// copy null from an earlier immutable externref global.
+// admitStateOnlyExternrefGlobals recognizes a bounded directory containing at
+// least one immutable null externref global plus optional immutable literal
+// scalar globals in an otherwise empty public module. This declaration-only
+// profile does not enable executable externref carriers, imports, mutation, or
+// non-null reference ownership. Externref initializers may only copy null from
+// an earlier immutable externref global; scalar initializer chains remain out
+// of scope.
 func admitStateOnlyExternrefGlobals(m *wasm.Module, production, public bool) bool {
 	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Globals) == 0 || len(m.Globals) > 256 || len(m.Exports) > 256 || m.Start != nil {
 		return false
@@ -119,18 +121,29 @@ func admitStateOnlyExternrefGlobals(m *wasm.Module, production, public bool) boo
 			return false
 		}
 	}
+	hasExternref := false
 	for i, g := range m.Globals {
-		if g.Type.Mutable || !wasm.EqualValType(g.Type.Type, wasm.ExternRef) || len(g.Init.Instrs) != 0 {
+		if g.Type.Mutable || len(g.Init.Instrs) != 0 {
 			return false
 		}
-		if bytes.Equal(g.Init.BodyBytes, []byte{0xd0, 0x6f, 0x0b}) {
-			continue
+		if wasm.EqualValType(g.Type.Type, wasm.ExternRef) {
+			hasExternref = true
+			if bytes.Equal(g.Init.BodyBytes, []byte{0xd0, 0x6f, 0x0b}) {
+				continue
+			}
+			if admitGlobalExpression(g.Init, m, wasm.ExternRef, i) == nil {
+				continue
+			}
+			return false
 		}
-		if admitGlobalExpression(g.Init, m, wasm.ExternRef, i) != nil {
+		if !scalarType(g.Type.Type, true) {
+			return false
+		}
+		if _, err := plainScalarConst(g.Init, g.Type.Type, true); err != nil {
 			return false
 		}
 	}
-	return true
+	return hasExternref
 }
 
 func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {

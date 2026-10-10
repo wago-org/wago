@@ -15,15 +15,15 @@ import (
 )
 
 // rv64StateOnlyExternrefGlobals is the persisted-artifact witness for a
-// bounded directory of immutable null externref globals in an otherwise empty
-// module. It must remain declaration-only: executable reference carriers and
-// every imported or initializer-dependent owner path require separate
-// qualification.
+// bounded directory containing at least one immutable null externref global
+// plus optional immutable literal scalar globals in an otherwise empty module.
+// It must remain declaration-only: executable reference carriers and every
+// imported or initializer-dependent owner path require separate qualification.
 func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 	if c == nil || !c.hasNoFunctionCode() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 || len(c.FuncTypeID) != 0 || len(c.Exports) != 0 {
 		return false
 	}
-	if len(c.Globals) == 0 || len(c.Globals) > 256 || len(c.GlobalImports) != 0 || len(c.GlobalExports) > 256 || len(c.ValueTypes) != 1 || c.tableCount() != 0 || c.memoryCount() != 0 || c.tagImportCount() != 0 || c.HasStart {
+	if len(c.Globals) == 0 || len(c.Globals) > 256 || len(c.GlobalImports) != 0 || len(c.GlobalExports) > 256 || len(c.ValueTypes) == 0 || len(c.ValueTypes) > 5 || c.tableCount() != 0 || c.memoryCount() != 0 || c.tagImportCount() != 0 || c.HasStart {
 		return false
 	}
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
@@ -34,15 +34,35 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 			return false
 		}
 	}
-	plain, _ := valueTypeDescriptorFromValType(ValExternRef)
+	plainExternref, _ := valueTypeDescriptorFromValType(ValExternRef)
+	var kinds, used uint8
+	for _, exact := range c.ValueTypes {
+		if exact.Kind > ValueTypeF64 && exact != plainExternref || exact.Kind <= ValueTypeF64 && exact.Ref != (ReferenceTypeDescriptor{}) || kinds&(1<<exact.Kind) != 0 {
+			return false
+		}
+		kinds |= 1 << exact.Kind
+	}
 	required := CoreFeatureReferenceTypes
+	hasExternref := false
 	for i, g := range c.Globals {
 		exact, err := c.globalExactType(i)
-		if err != nil || exact != plain || g.Type != ValExternRef || !g.HasValueType || g.ValueTypeIndex != 0 || g.Mutable || g.Bits != 0 || g.V128 != (V128{}) || g.HasInitFunc || g.InitFunc != 0 || len(g.InitExpr) != 0 {
+		plain, ok := valueTypeDescriptorFromValType(g.Type)
+		if err != nil || !ok || exact != plain || !g.HasValueType || uint64(g.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || g.Mutable || g.V128 != (V128{}) || g.HasInitFunc || g.InitFunc != 0 || len(g.InitExpr) != 0 {
+			return false
+		}
+		used |= 1 << g.ValueTypeIndex
+		if g.Type != ValExternRef {
+			if g.Type != ValI32 && g.Type != ValI64 && g.Type != ValF32 && g.Type != ValF64 || g.HasInitGlobal || g.InitGlobal != 0 || (g.Type == ValI32 || g.Type == ValF32) && g.Bits>>32 != 0 {
+				return false
+			}
+			continue
+		}
+		hasExternref = true
+		if exact != plainExternref || g.Bits != 0 {
 			return false
 		}
 		if g.HasInitGlobal {
-			if g.InitGlobal < 0 || g.InitGlobal >= i {
+			if g.InitGlobal < 0 || g.InitGlobal >= i || c.Globals[g.InitGlobal].Type != ValExternRef {
 				return false
 			}
 			required |= CoreFeatureExtendedConstExpressions
@@ -50,7 +70,7 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 			return false
 		}
 	}
-	return c.requiredFeatures == required && compiledStructuralRequiredFeatures(c) == required
+	return hasExternref && used == uint8((1<<len(c.ValueTypes))-1) && c.requiredFeatures == required && compiledStructuralRequiredFeatures(c) == required
 }
 
 // Loading and hand-built metadata must enforce the same bounded public ABI as

@@ -140,3 +140,66 @@ func TestStateOnlyExternrefGlobalChainProfile(t *testing.T) {
 		})
 	}
 }
+
+func stateOnlyMixedExternrefGlobalProfile() *wasm.Module {
+	return &wasm.Module{
+		Globals: []wasm.Global{
+			{Type: wasm.GlobalType{Type: wasm.I32}, Init: wasm.Expr{BodyBytes: []byte{0x41, 0x2a, 0x0b}}},
+			{Type: wasm.GlobalType{Type: wasm.ExternRef}, Init: wasm.Expr{BodyBytes: []byte{0xd0, 0x6f, 0x0b}}},
+			{Type: wasm.GlobalType{Type: wasm.F64}, Init: wasm.Expr{BodyBytes: []byte{0x44, 0x42, 0, 0, 0, 0, 0, 0xf8, 0x7f, 0x0b}}},
+			{Type: wasm.GlobalType{Type: wasm.ExternRef}, Init: wasm.Expr{BodyBytes: []byte{0x23, 1, 0x0b}}},
+		},
+		Exports: []wasm.Export{
+			{Name: "n", Index: wasm.ExternIdx{Kind: wasm.ExternGlobal, Index: 0}},
+			{Name: "r", Index: wasm.ExternIdx{Kind: wasm.ExternGlobal, Index: 3}},
+		},
+	}
+}
+
+func TestStateOnlyMixedExternrefGlobalProfile(t *testing.T) {
+	m := stateOnlyMixedExternrefGlobalProfile()
+	if !admitStateOnlyExternrefGlobals(m, true, true) {
+		t.Fatal("exact mixed state-only externref globals rejected")
+	}
+	state, err := admitStatePolicy(m, true, false, true, false)
+	if err != nil || len(state.globals) != 4 || state.globals[0].typ != wasm.I32 || state.globals[0].value != 42 || state.globals[1].typ != wasm.ExternRef || state.globals[1].value != 0 || state.globals[2].typ != wasm.F64 || state.globals[2].value != 0x7ff8000000000042 || state.globals[3].typ != wasm.ExternRef || state.globals[3].value != 0 {
+		t.Fatal("mixed state-only externref metadata", state.globals, err)
+	}
+	if err := AdmitPublicInitializers(m); err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"mutable-scalar": func(v *wasm.Module) { v.Globals[0].Type.Mutable = true },
+		"scalar-chain": func(v *wasm.Module) {
+			v.Globals[2].Type.Type = wasm.I32
+			v.Globals[2].Init.BodyBytes = []byte{0x23, 0, 0x0b}
+		},
+		"vector": func(v *wasm.Module) {
+			v.Globals[2].Type.Type = wasm.V128
+			v.Globals[2].Init.BodyBytes = append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+			v.Globals[2].Init.BodyBytes = append(v.Globals[2].Init.BodyBytes, 0x0b)
+		},
+		"externref-wrong-type": func(v *wasm.Module) { v.Globals[1].Type.Type = wasm.FuncRef },
+		"externref-scalar-parent": func(v *wasm.Module) {
+			v.Globals[3].Init.BodyBytes = []byte{0x23, 0, 0x0b}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := stateOnlyMixedExternrefGlobalProfile()
+			mutate(v)
+			if admitStateOnlyExternrefGlobals(v, true, true) {
+				t.Fatal("unsupported mixed state-only externref profile admitted")
+			}
+			if _, err := admitStatePolicy(v, true, false, true, false); err == nil {
+				t.Fatal("unsupported mixed state-only externref state admitted")
+			}
+		})
+	}
+	pureScalar := &wasm.Module{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32}, Init: wasm.Expr{BodyBytes: []byte{0x41, 7, 0x0b}}}}}
+	if admitStateOnlyExternrefGlobals(pureScalar, true, true) {
+		t.Fatal("pure scalar directory misclassified as the externref profile")
+	}
+	if _, err := admitStatePolicy(pureScalar, true, false, true, false); err != nil {
+		t.Fatal("ordinary pure scalar state rejected", err)
+	}
+}
