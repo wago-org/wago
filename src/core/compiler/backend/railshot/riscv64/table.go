@@ -158,6 +158,41 @@ func admitStateOnlyTable64(m *wasm.Module, production, public bool) bool {
 	return t.Type.Limits.Addr64 && wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef)
 }
 
+// admitOwnedTable64ActiveElement qualifies one bounded active expression
+// segment with an i64 offset. The sole private empty function exists only as
+// the segment's canonical ref.func target; no callable export or table
+// instruction is admitted by this profile.
+func admitOwnedTable64ActiveElement(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Tables[0].Init != nil || m.Start != nil || len(m.Exports) != 1 {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	table := m.Tables[0].Type
+	if !table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min != 3 || table.Limits.Max != 3 || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+		return false
+	}
+	if m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 0 || len(m.Types[0].SubTypes) != 1 {
+		return false
+	}
+	sub := m.Types[0].SubTypes[0]
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 || len(sub.Comp.Results) != 0 {
+		return false
+	}
+	fn := m.Code[0]
+	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 || !bytes.Equal(fn.BodyBytes, []byte{0x0b}) {
+		return false
+	}
+	export := m.Exports[0]
+	if export.Name != "table" || export.Index.Kind != wasm.ExternTable || export.Index.Index != 0 {
+		return false
+	}
+	e := m.Elements[0]
+	return e.Mode.Kind == wasm.ElemActive && e.Mode.Table == 0 && len(e.Mode.Offset.Instrs) == 0 && bytes.Equal(e.Mode.Offset.BodyBytes, []byte{0x42, 0x01, 0x0b}) &&
+		e.Kind.Kind == wasm.ElemFuncExprs && len(e.Kind.Funcs) == 0 && len(e.Kind.Exprs) == 1 && len(e.Kind.Exprs[0].Instrs) == 0 && bytes.Equal(e.Kind.Exprs[0].BodyBytes, []byte{0xd2, 0x00, 0x0b})
+}
+
 // admitStateOnlyTable32ScalarGlobals recognizes one deliberately
 // non-executable composition of existing owned state: a bounded nullable
 // funcref table32 and four immutable literal scalar globals. Requiring every
@@ -1653,7 +1688,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	if hasTable {
 		t, _ := m.TableType(0)
-		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTwoTable64Size(m, production, importedTables) && !admitOwnedTwoTable64GetSet(m, production, importedTables) && !admitOwnedTwoTable64Grow(m, production, importedTables) && !admitOwnedTwoTable64Fill(m, production, importedTables) && !admitOwnedTwoTable64Copy(m, production, importedTables) && !admitOwnedTwoTable64CrossCopy(m, production, importedTables) && !admitOwnedTwoTable64InitDrop(m, production, importedTables) && !admitOwnedTwoTable64Indirect(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
+		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTable64ActiveElement(m, production, importedTables) && !admitOwnedTwoTable64Size(m, production, importedTables) && !admitOwnedTwoTable64GetSet(m, production, importedTables) && !admitOwnedTwoTable64Grow(m, production, importedTables) && !admitOwnedTwoTable64Fill(m, production, importedTables) && !admitOwnedTwoTable64Copy(m, production, importedTables) && !admitOwnedTwoTable64CrossCopy(m, production, importedTables) && !admitOwnedTwoTable64InitDrop(m, production, importedTables) && !admitOwnedTwoTable64Indirect(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
 			return false, unsupported("private nullable funcref table32 only")
 		}
 	}
@@ -1696,7 +1731,13 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 			return false, unsupported("element payload kind")
 		}
 		if e.Mode.Kind == wasm.ElemActive {
-			if err := admitI32Offset(e.Mode.Offset, m, importedTables); err != nil {
+			var err error
+			if admitOwnedTable64ActiveElement(m, production, importedTables) {
+				err = admitI64Offset(e.Mode.Offset, m, importedTables)
+			} else {
+				err = admitI32Offset(e.Mode.Offset, m, importedTables)
+			}
+			if err != nil {
 				return false, err
 			}
 		} else if len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 {

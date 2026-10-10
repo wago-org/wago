@@ -33,6 +33,10 @@ func admittedScalarConst(expr wasm.Expr, typ wasm.ValType, production bool, impo
 func admitI32Offset(expr wasm.Expr, m *wasm.Module, public bool) error {
 	return admitMemoryOffset(expr, m, wasm.I32, public)
 }
+
+func admitI64Offset(expr wasm.Expr, m *wasm.Module, public bool) error {
+	return admitMemoryOffset(expr, m, wasm.I64, public)
+}
 func admitMemoryOffset(expr wasm.Expr, m *wasm.Module, want wasm.ValType, public bool) error {
 	if public {
 		return admitModuleIntegerInitializer(expr, want, m, m.ImportedGlobalCount()+len(m.Globals))

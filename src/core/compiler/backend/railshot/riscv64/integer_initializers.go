@@ -178,7 +178,11 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	}
 	for _, element := range m.Elements {
 		if element.Mode.Kind == wasm.ElemActive {
-			if err := admitModuleIntegerInitializer(element.Mode.Offset, wasm.I32, m, m.ImportedGlobalCount()+len(m.Globals)); err != nil {
+			offsetType := wasm.I32
+			if admitOwnedTable64ActiveElement(m, true, true) {
+				offsetType = wasm.I64
+			}
+			if err := admitModuleIntegerInitializer(element.Mode.Offset, offsetType, m, m.ImportedGlobalCount()+len(m.Globals)); err != nil {
 				return err
 			}
 		}

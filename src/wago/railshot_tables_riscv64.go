@@ -3,6 +3,8 @@
 package wago
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -24,6 +26,48 @@ func rv64StateOnlyTable64(c *Compiled) bool {
 		return false
 	}
 	return c.memoryDir == nil || len(c.memoryDir.ehTags) == 0
+}
+
+func rv64OwnedTable64ActiveElement(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64NoABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) != 0 || len(c.tableExports) != 1 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 1 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	def := c.tableDef(0)
+	exact, err := c.tableExactType(0)
+	if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || !def.Addr64 || !def.HasMax || def.Size != 3 || def.Max != 3 || c.tableRuntimeCapacity(0) != 3 {
+		return false
+	}
+	if index, ok := c.tableExports["table"]; !ok || index != 0 {
+		return false
+	}
+	fn := c.Funcs[0]
+	// Bind the only private target's exact framed RV64G image. The table export
+	// can later be imported by another instance, so retained metadata alone must
+	// not relabel arbitrary callable code as this narrow initializer profile.
+	wantCode := [32]byte{0x1d, 0xf4, 0x1d, 0xb6, 0xda, 0x6c, 0xf7, 0x49, 0x1e, 0x95, 0x1a, 0x23, 0xe0, 0x52, 0x51, 0xba, 0xc1, 0x48, 0x0b, 0xe5, 0xaa, 0x36, 0xe1, 0x01, 0x5d, 0x3c, 0xd9, 0x75, 0x4c, 0x4d, 0x65, 0x03}
+	if len(fn.Params) != 0 || len(fn.Results) != 0 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 1 || c.FuncTypeID[0] != voidFuncTypeKey() || len(c.Entry) != 1 || c.Entry[0] != 0 || len(c.InternalEntry) != 1 || c.InternalEntry[0] != 0 || len(c.code) != 576 || sha256.Sum256(c.code) != wantCode {
+		return false
+	}
+	if c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTable64 || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {
+		return false
+	}
+	e := c.Elems[0]
+	if e.Mode != ElemModeActive || e.TableIndex != 0 || e.RefType != ValFuncRef || !e.HasValueType || e.Offset.Base != 0 || e.Offset.HasGlobal || !bytes.Equal(e.Offset.Expr, []byte{0x42, 0x01, 0x0b}) || len(e.Values) != 1 {
+		return false
+	}
+	elemExact, err := c.elemExactType(e)
+	if err != nil || elemExact != plain {
+		return false
+	}
+	v := e.Values[0]
+	return !v.Null && v.FuncIndex == 0 && v.GlobalIndex == 0 && !v.HasGlobal && !v.I31Wrap && !v.RepeatPrevious && len(v.Expr) == 0
 }
 
 // rv64StateOnlyTable32ScalarGlobals is the persisted-artifact witness for one
@@ -1072,7 +1116,7 @@ func rv64OwnedTwoTable64InitDrop(c *Compiled) bool {
 }
 
 func rv64QualifiedTable64(c *Compiled) bool {
-	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTwoTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTwoTable64Indirect(c) || rv64ImportedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTable64InitDrop(c) || rv64OwnedTwoTable64InitDrop(c) || rv64ImportedTable64Size(c) || rv64ImportedTable64GetSet(c) || rv64ImportedTable64Grow(c) || rv64ImportedTable64Fill(c) || rv64ImportedTable64Copy(c) || rv64ImportedTable64InitDrop(c)
+	return rv64StateOnlyTable64(c) || rv64OwnedTable64ActiveElement(c) || rv64OwnedTable64Size(c) || rv64OwnedTwoTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTwoTable64Indirect(c) || rv64ImportedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTable64InitDrop(c) || rv64OwnedTwoTable64InitDrop(c) || rv64ImportedTable64Size(c) || rv64ImportedTable64GetSet(c) || rv64ImportedTable64Grow(c) || rv64ImportedTable64Fill(c) || rv64ImportedTable64Copy(c) || rv64ImportedTable64InitDrop(c)
 }
 
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
@@ -1173,6 +1217,10 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		return fmt.Errorf("element descriptor bound")
 	}
 	remaining := railshot.MaxOwnedTableEntries
+	activeOffsetType := ValI32
+	if rv64OwnedTable64ActiveElement(c) {
+		activeOffsetType = ValI64
+	}
 
 	for _, e := range c.Elems {
 		if e.Mode != ElemModeActive || e.TableIndex != 0 || (e.RefType != 0 && e.RefType != ValFuncRef) || len(e.Values) > remaining {
@@ -1182,12 +1230,12 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 			if e.Offset.HasGlobal {
 				return fmt.Errorf("conflicting element initializer")
 			}
-			if err := rv64ValidateIntegerInitializer(c, e.Offset.Expr, ValI32, len(c.Globals)); err != nil {
+			if err := rv64ValidateIntegerInitializer(c, e.Offset.Expr, activeOffsetType, len(c.Globals)); err != nil {
 				return err
 			}
 		}
-		if e.Offset.HasGlobal && (e.Offset.Base != 0 || !rv64InitializerGlobal(c, e.Offset.Global, ValI32, len(c.Globals))) {
-			return fmt.Errorf("element offset requires exact available immutable i32")
+		if e.Offset.HasGlobal && (e.Offset.Base != 0 || !rv64InitializerGlobal(c, e.Offset.Global, activeOffsetType, len(c.Globals))) {
+			return fmt.Errorf("element offset requires exact available immutable table index")
 		}
 		remaining -= len(e.Values)
 		if err := rv64ValidateElementPayload(c, e); err != nil {
