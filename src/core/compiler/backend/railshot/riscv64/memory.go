@@ -42,6 +42,7 @@ type moduleState struct {
 	localMutableReferences bool
 	ownedTable             bool
 	ownedTableGrowth       bool
+	table64                bool
 	elementCount           int
 	memory                 *memorySpec
 	memoryCount            int
@@ -104,6 +105,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	if s.ownedTable {
 		// The frontend reserves max(1024,2*min) for observable no-max growth.
 		t, _ := m.TableType(0)
+		s.table64 = t.Limits.Addr64
 		s.ownedTableGrowth = importedTables && m.ImportedTableCount() != 0 || t.Limits.HasMax || t.Limits.Min <= MaxOwnedTableEntries/2
 	}
 	if tableErr != nil {

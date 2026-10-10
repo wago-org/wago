@@ -1303,9 +1303,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if live && emit != nil {
 					emit.a.Ld(enc.X6, enc.X25, -80)
 					emit.a.Lwu(enc.X5, enc.X6, 0)
-					emit.Store(emit.SpillOffset(h), 5, false)
+					emit.Store(emit.SpillOffset(h), 5, state.table64)
 				}
-				if err = push(false); err != nil {
+				if err = push(state.table64); err != nil {
 					return integerSummary{}, err
 				}
 				continue

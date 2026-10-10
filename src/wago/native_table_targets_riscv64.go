@@ -119,7 +119,8 @@ func (s *rv64NativeTableTargets) tableRoots(table *Table, edges *int) error {
 	defer table.owner.mu.Unlock()
 	table.mu.Lock()
 	defer table.mu.Unlock()
-	if table.owner.closed || table.closed || table.owner.addr64 || table.owner.elementType != ValFuncRef || len(table.desc) < 8 {
+	qualifiedTable64Size := table.owner.addr64 && table.owner.instance != nil && rv64OwnedTable64Size(table.owner.instance.c)
+	if table.owner.closed || table.closed || table.owner.addr64 && !qualifiedTable64Size || table.owner.elementType != ValFuncRef || len(table.desc) < 8 {
 		return fmt.Errorf("RV64 retained table storage/type is invalid")
 	}
 	if table.owner.instance != nil {

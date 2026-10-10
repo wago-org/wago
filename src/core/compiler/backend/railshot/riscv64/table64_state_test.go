@@ -63,3 +63,35 @@ func TestStateOnlyTable64ProfileRejectsExecutableAndResourceShapes(t *testing.T)
 		})
 	}
 }
+
+func ownedTable64SizeProfile() *wasm.Module {
+	m := stateOnlyTable64Profile()
+	m.Types = []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I64}}}}}}
+	m.FuncTypes = []wasm.TypeIdx{{Index: 0}}
+	m.Code = []wasm.Func{{BodyBytes: []byte{0xfc, 0x10, 0, 0x0b}}}
+	m.Exports = append(m.Exports, wasm.Export{Name: "size", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}})
+	return m
+}
+
+func TestOwnedTable64SizeProfile(t *testing.T) {
+	m := ownedTable64SizeProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact table64.size profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body":      func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x42, 0, 0x0b} },
+		"result":    func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.I32 },
+		"param":     func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params = []wasm.ValType{wasm.I64} },
+		"locals":    func(m *wasm.Module) { m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I64}} },
+		"no-export": func(m *wasm.Module) { m.Exports = m.Exports[:2] },
+		"extra":     func(m *wasm.Module) { m.Code = append(m.Code, wasm.Func{}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTable64SizeProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid table64.size profile admitted", err)
+			}
+		})
+	}
+}

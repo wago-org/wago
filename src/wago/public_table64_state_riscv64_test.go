@@ -4,6 +4,7 @@ package wago
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -103,10 +104,120 @@ func rv64Table64SizeInstructionSource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0, 4})),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0, 0x0b}))),
 	)
+}
+
+func rv64Table64UnsupportedInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0, 0x1a, 0x42, 0, 0x0b}))),
+	)
+}
+
+func rv64RelabelledTable32FunctionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("value", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x42, 7, 0x0b}))),
+	)
+}
+
+func TestRV64PublicOwnedTable64Size(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-size", rv64Table64SizeInstructionSource(), artifact)
+			if !c.nativeTable64SizeABI || !rv64OwnedTable64Size(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+				t.Fatal("table64.size metadata contract")
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("table64.size export", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for range 3 {
+				if got, err := in.Invoke("size"); err != nil || !slices.Equal(got, []uint64{2}) {
+					t.Fatal("table64.size", got, err)
+				}
+			}
+			if err := c.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := in.Invoke("size"); err != nil || !slices.Equal(got, []uint64{2}) {
+				t.Fatal("table64.size after compiled close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64SizeArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-size-admission", rv64Table64SizeInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-witness": func(v *Compiled) { v.nativeTable64SizeABI = false },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
+		"export":          func(v *Compiled) { v.Exports["size"] = 1 },
+		"extra-function": func(v *Compiled) {
+			v.Funcs = append(v.Funcs, FuncSig{})
+		},
+		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32": func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.size metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64.size artifact admitted")
+			}
+		})
+	}
+
+	relabelled := rv64TableStageCompile(t, "ordinary-table32-i64", rv64RelabelledTable32FunctionSource(), false)
+	if relabelled.nativeTable64SizeABI {
+		t.Fatal("ordinary table32 function acquired table64.size compiler witness")
+	}
+	bad := *relabelled.executionView()
+	bad.TableAddr64 = true
+	bad.requiredFeatures |= CoreFeatureTable64
+	if err := bad.validate(); err == nil {
+		t.Fatal("ordinary table32 function relabelled as table64.size")
+	}
+	blob, err := marshalCompiled(&bad)
+	if err == nil {
+		loaded, loadErr := LoadTrustedArtifact(blob)
+		if loaded != nil {
+			_ = loaded.Close()
+		}
+		if loadErr == nil {
+			t.Fatal("ordinary table32 artifact relabelled as table64.size")
+		}
+	}
 }
 
 func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
@@ -126,7 +237,7 @@ func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
 	importedTable := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(imported)))
 	overCapacity := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0, 0x81, 0x08})))
 	for name, bad := range map[string][]byte{
-		"instruction": rv64Table64SizeInstructionSource(),
+		"instruction": rv64Table64UnsupportedInstructionSource(),
 		"second":      secondTable,
 		"memory":      withMemory,
 		"imported":    importedTable,
@@ -147,14 +258,15 @@ func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
 func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "state-only-table64-admission", rv64StateOnlyTable64Source(0, 4, "table"), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTable64 },
-		"table32":         func(v *Compiled) { v.TableAddr64 = false },
-		"start":           func(v *Compiled) { v.HasStart = true },
-		"initializer":     func(v *Compiled) { v.HasTableInitFunc = true },
-		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
-		"passive":         func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
-		"externref":       func(v *Compiled) { v.TableType = ValExternRef },
-		"capacity":        func(v *Compiled) { v.TableMax = 1025 },
+		"missing-feature":            func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTable64 },
+		"contradictory-size-witness": func(v *Compiled) { v.nativeTable64SizeABI = true },
+		"table32":                    func(v *Compiled) { v.TableAddr64 = false },
+		"start":                      func(v *Compiled) { v.HasStart = true },
+		"initializer":                func(v *Compiled) { v.HasTableInitFunc = true },
+		"element":                    func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"passive":                    func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
+		"externref":                  func(v *Compiled) { v.TableType = ValExternRef },
+		"capacity":                   func(v *Compiled) { v.TableMax = 1025 },
 		"extra-table": func(v *Compiled) {
 			v.extraTables = append(slices.Clone(v.extraTables), tableDef{Type: ValFuncRef})
 		},

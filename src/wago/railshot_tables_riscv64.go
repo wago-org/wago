@@ -26,6 +26,32 @@ func rv64StateOnlyTable64(c *Compiled) bool {
 	return c.memoryDir == nil || len(c.memoryDir.ehTags) == 0
 }
 
+func rv64OwnedTable64Size(c *Compiled) bool {
+	if c == nil || !c.nativeTable64SizeABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) == 0 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	sig := c.Funcs[0]
+	if len(sig.Params) != 0 || len(sig.Results) != 1 || sig.Results[0] != ValI64 {
+		return false
+	}
+	for _, index := range c.Exports {
+		if index != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func rv64QualifiedTable64(c *Compiled) bool {
+	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c)
+}
+
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
@@ -78,9 +104,9 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if !c.nativeTableContextABI || !c.nativeTableReferenceABI {
 		return fmt.Errorf("retained native table context and reference ABI are required")
 	}
-	stateOnlyTable64 := rv64StateOnlyTable64(c)
-	if c.tableCount() != 1 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 && !stateOnlyTable64 || (c.TableType != 0 && c.TableType != ValFuncRef) {
-		return fmt.Errorf("one framed nullable funcref table32 or exact state-only table64 required")
+	qualifiedTable64 := rv64QualifiedTable64(c)
+	if c.tableCount() != 1 || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 && !qualifiedTable64 || (c.TableType != 0 && c.TableType != ValFuncRef) {
+		return fmt.Errorf("one framed nullable funcref table32 or exact qualified table64 required")
 	}
 	if c.TableAddr64 && !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
 		return fmt.Errorf("table64 requires exact feature metadata")
