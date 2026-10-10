@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Admit exact typed i64 synchronous host callbacks to the private prepared
+  integer route when the bounded-work and detached-context proofs hold. Other
+  callback shapes retain their existing route; each synchronous host binding
+  grows by one function-value slot.
 - Reduce ordinary and prepared numeric host-to-Wasm call overhead by combining
   instance lifetime and invocation-gate admission, preserving close, revocation,
   and waiter handoff behavior.
