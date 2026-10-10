@@ -367,7 +367,10 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		}
 		params, results = max(params, p), max(results, r)
 	}
-	if c.tableCount() != 0 || c.nativeReferenceCallABI {
+	// A function-free module cannot reach an indirect or reference call. Its
+	// table may still be public state, but the frozen type directory remains
+	// declarative and contributes no callable transport slots.
+	if !c.hasNoFunctionCode() && (c.tableCount() != 0 || c.nativeReferenceCallABI) {
 		if len(c.Types) > railshot.MaxFunctions {
 			return 0, 0, fmt.Errorf("RV64 indirect type directory bound")
 		}

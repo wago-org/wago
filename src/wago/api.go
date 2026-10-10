@@ -2446,7 +2446,7 @@ func (c *Compiled) validate() error {
 		}
 	}
 	staged |= c.stagedFeatures()
-	if c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+	if c.hasNoFunctionCode() || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 		staged |= compiledStructuralRequiredFeatures(c) & CoreFeatureTypedFunctionReferences
 	}
 	// Aggregate storage declarations are fully represented by exact persisted

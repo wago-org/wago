@@ -115,7 +115,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, err
 	}
 	if referenceControl && len(m.Code) == 0 {
-		return nil, unsupported("typed control declarations require a defined code owner")
+		if m.FuncCount() != 0 {
+			return nil, unsupported("typed control declarations require a defined code owner")
+		}
+		// A function-free module retains exact declared type metadata but owns no
+		// executable carrier state.  Keep the source feature requirement while
+		// withholding the native control ABI/owner-lifetime witness.
+		referenceControl = false
 	}
 	opts.referenceTailInstructions = referenceTails
 	opts.indirectTailInstructions = indirectTails

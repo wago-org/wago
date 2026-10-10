@@ -24,6 +24,118 @@ func rv64CheckStateOnlyCode(t *testing.T, c *Compiled, refs int) {
 	}
 }
 
+func rv64StateOnlyTypedDeclarationSource(vector bool, shape string, table bool) []byte {
+	numeric := wasm.I32
+	if vector {
+		numeric = wasm.V128
+	}
+	ref := []byte{0x64, 0x70} // (ref func)
+	if shape == "indexed" {
+		ref = []byte{0x63, 0} // (ref null 0)
+	}
+	control := []byte{0x60, 1}
+	control = append(control, ref...)
+	control = append(control, 1)
+	control = append(control, ref...)
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(
+		wasmtest.FuncType([]wasm.ValType{numeric}, []wasm.ValType{numeric}),
+		control,
+	))}
+	if table {
+		sections = append(sections,
+			wasmtest.Section(4, []byte{1, 0x70, 1, 1, 1}),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", 1, 0))),
+		)
+	}
+	return wasmtest.Module(sections...)
+}
+
+func TestRV64PublicStateOnlyTypedDeclarations(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, shape := range []string{"nonnull", "indexed"} {
+			for _, table := range []bool{false, true} {
+				source := rv64StateOnlyTypedDeclarationSource(vector, shape, table)
+				if c, err := compatibilityDefaultConfig().Compile(source); err == nil || c != nil {
+					if c != nil {
+						_ = c.Close()
+					}
+					t.Fatal("typed declaration bypassed feature gate", shape)
+				}
+				for _, artifact := range []bool{false, true} {
+					name := fmt.Sprintf("state-only-typed-v%t-%s-table%t", vector, shape, table)
+					t.Run(fmt.Sprintf("artifact%t-%s", artifact, name), func(t *testing.T) {
+						c := rv64NativeTailCompile(t, name, source, artifact)
+						if !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences|CoreFeatureReferenceTypes) || (!artifact && !c.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences)) || !compiledStructuralRequiredFeatures(c).IsEnabled(CoreFeatureTypedFunctionReferences) || c.nativeReferenceControlABI || c.nativeReferenceCallABI || railshotRequiresNativeOwnerScope(c) != table {
+							t.Fatal("declarative typed metadata/owner contract")
+						}
+						if c.requiredFeatures.IsEnabled(CoreFeatureSIMD) != vector {
+							t.Fatal("declarative typed profile")
+						}
+						if p, r, err := railshotImportedCallSlots(c, 3, 4); err != nil || p != 3 || r != 4 {
+							t.Fatal("declarative directory contributed callable slots", p, r, err)
+						}
+						rv64CheckStateOnlyCode(t, c, 0)
+						instances := make([]*Instance, 0, 2)
+						for range 2 {
+							in, err := Instantiate(c)
+							if err != nil {
+								t.Fatal(err)
+							}
+							t.Cleanup(func() { _ = in.Close() })
+							instances = append(instances, in)
+							if table {
+								exported, err := in.ExportedTable("table")
+								if err != nil {
+									t.Fatal(err)
+								}
+								t.Cleanup(func() { _ = exported.Close() })
+								if null, err := exported.EntryIsNull(0); err != nil || !null {
+									t.Fatal("declarative typed table state", null, err)
+								}
+								if err := exported.Close(); err != nil {
+									t.Fatal(err)
+								}
+							}
+						}
+						rv64CheckStateOnlyCode(t, c, 2)
+						if err := c.Close(); err != nil {
+							t.Fatal(err)
+						}
+						for _, in := range instances {
+							if err := in.Close(); err != nil {
+								t.Fatal(err)
+							}
+						}
+						rv64CheckStateOnlyCode(t, c, 0)
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestRV64PublicStateOnlyTypedDeclarationAdmission(t *testing.T) {
+	c := rv64NativeTailCompile(t, "state-only-typed-admission", rv64StateOnlyTypedDeclarationSource(false, "indexed", false), false)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTypedFunctionReferences },
+		"native-marker":   func(v *Compiled) { v.nativeReferenceControlABI = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid declarative typed metadata admitted")
+			}
+		})
+	}
+	plain := rv64TableStageCompile(t, "state-only-typed-spurious", wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil)))), false)
+	bad := *plain.executionView()
+	bad.requiredFeatures |= CoreFeatureTypedFunctionReferences
+	if err := bad.validate(); err == nil {
+		t.Fatal("typed feature without exact declaration witness admitted")
+	}
+}
+
 func TestRV64PublicStateOnlyModules(t *testing.T) {
 	want, vector := rv64StateOnlyVector()
 	for _, tc := range []struct {

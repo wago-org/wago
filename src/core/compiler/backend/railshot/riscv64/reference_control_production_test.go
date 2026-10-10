@@ -55,14 +55,14 @@ func TestReferenceControlProductionDeclarations(t *testing.T) {
 									opts.ImportBindings = hostImportBindings(1)
 								}
 								image, err := CompileModuleWith(m, opts)
-								allowed := !witness || typed && defined
+								allowed := !witness || typed && (defined || !imported)
 								if !allowed {
 									if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
 										t.Fatal("closed typed declaration", typed, err, pressure)
 									}
 									continue
 								}
-								if image == nil || err != nil || image.NativeReferenceControl != witness || image.NativeReferenceCalls || image.CodeImage != nil || pressure != 1 {
+								if image == nil || err != nil || image.NativeReferenceControl != (witness && defined) || image.NativeReferenceCalls || image.CodeImage != nil || pressure != 1 {
 									t.Fatal("unused declaration witness", typed, err, pressure)
 								}
 							}

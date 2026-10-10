@@ -122,6 +122,18 @@ func railshotValidateCompiled(c *Compiled) error {
 	if rv64HasReferenceTail(c) || c.nativeReferenceCallABI || c.nativeReferenceControlABI {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
+	declarativeTyped := false
+	if c.hasNoFunctionCode() && c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
+		var err error
+		declarativeTyped, err = rv64ValidateDeclarativeControlTypes(c)
+		if err != nil {
+			return reject(err.Error())
+		}
+		if !declarativeTyped {
+			return reject("declarative typed feature requires an exact type witness")
+		}
+		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+	}
 	if c.requiredFeatures & ^qualifiedFeatures != 0 || c.requiredAMD64Features != 0 || c.preparedIsolatedTables {
 		return reject("feature or ISA contract")
 	}
@@ -156,8 +168,10 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if err := rv64ValidateDeclaredControlTypes(c); err != nil {
-		return reject(err.Error())
+	if !declarativeTyped {
+		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
+			return reject(err.Error())
+		}
 	}
 	if err := rv64ValidateOwnedTable(c); err != nil {
 		return reject(err.Error())
