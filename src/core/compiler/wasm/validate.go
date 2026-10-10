@@ -326,6 +326,9 @@ type moduleValidator struct {
 	typeIndexReady bool
 	flatSubTypes   []moduleSubTypeRef
 	typeGroupBases []int
+	// Built after subtype validation. Function workers only read these slices.
+	superEnter []uint32
+	superExit  []uint32
 
 	// constFV is serial module-validation scratch for global/table/data offsets
 	// and element initializer expressions. Function-body validation never reaches

@@ -111,6 +111,7 @@ func (v *moduleValidator) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int,
 
 func (v *moduleValidator) validateSubtypeMetadata() error {
 	flat := v.flattenedSubTypeRefs()
+	hasSuper := false
 	for flatIdx, cur := range flat {
 		member := flatIdx - v.typeGroupBases[cur.recGroup]
 		// Most modules have no custom descriptors. Keep their validation path to
@@ -121,6 +122,7 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			}
 		}
 		for _, supIdx := range cur.st.Supers {
+			hasSuper = true
 			supFlat, ok := v.flatTypeIdxInRecGroup(supIdx, cur.recGroup)
 			if !ok {
 				return v.err(ErrUnknownType, "supertype")
@@ -143,16 +145,25 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			}
 		}
 	}
+	// No declared edges means no supertype cycle or ancestry index to build.
+	if !hasSuper {
+		return nil
+	}
+	// Encode completed depth in the existing cycle states, capped at the
+	// minimum useful chain depth. Shallow graphs need no ancestry arrays.
+	const ancestryDepth = uint8(32)
 	state := make([]uint8, len(flat))
+	hasDeepSuper := false
 	var visit func(int) error
 	visit = func(i int) error {
-		switch state[i] {
-		case 1:
+		if state[i] == 1 {
 			return v.err(ErrTypeMismatch, "cyclic supertype chain")
-		case 2:
+		}
+		if state[i] >= 2 {
 			return nil
 		}
 		state[i] = 1
+		var depth uint8
 		for _, supIdx := range flat[i].st.Supers {
 			sup, ok := v.flatTypeIdxInRecGroup(supIdx, flat[i].recGroup)
 			if !ok {
@@ -161,8 +172,16 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			if err := visit(sup); err != nil {
 				return err
 			}
+			parentDepth := state[sup] - 2
+			if parentDepth < ancestryDepth {
+				parentDepth++
+			}
+			if parentDepth > depth {
+				depth = parentDepth
+			}
 		}
-		state[i] = 2
+		state[i] = depth + 2
+		hasDeepSuper = hasDeepSuper || depth == ancestryDepth
 		return nil
 	}
 	for i := range flat {
@@ -170,7 +189,62 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			return err
 		}
 	}
+	if hasDeepSuper && len(flat) >= 64 && uint64(len(flat)) <= uint64(^uint32(0)) && len(flat) <= int(^uint(0)>>1)/3 {
+		v.buildSupertypeAncestry(flat)
+	}
 	return nil
+}
+
+// buildSupertypeAncestry numbers the validated single-supertype forest. Its
+// intervals answer declared-ancestor matches without walking the same chain
+// for every reference check. The temporary link arrays are not retained.
+func (v *moduleValidator) buildSupertypeAncestry(flat []moduleSubTypeRef) {
+	n := len(flat)
+	const none = ^uint32(0)
+	links := make([]uint32, 3*n)
+	parent := links[:n]
+	firstChild := links[n : 2*n]
+	nextSibling := links[2*n:]
+	for i := range firstChild {
+		parent[i] = none
+		firstChild[i] = none
+	}
+	for i, ref := range flat {
+		if len(ref.st.Supers) == 0 {
+			continue
+		}
+		super, _ := v.flatTypeIdxInRecGroup(ref.st.Supers[0], ref.recGroup)
+		parent[i] = uint32(super)
+		nextSibling[i] = firstChild[super]
+		firstChild[super] = uint32(i)
+	}
+	intervals := make([]uint32, 2*n)
+	v.superEnter = intervals[:n]
+	v.superExit = intervals[n:]
+	var tick uint32
+	for root := range flat {
+		if parent[root] != none {
+			continue
+		}
+		cur := uint32(root)
+		tick++
+		v.superEnter[cur] = tick
+		for {
+			child := firstChild[cur]
+			if child != none {
+				firstChild[cur] = nextSibling[child]
+				cur = child
+				tick++
+				v.superEnter[cur] = tick
+				continue
+			}
+			v.superExit[cur] = tick
+			if cur == uint32(root) {
+				break
+			}
+			cur = parent[cur]
+		}
+	}
 }
 
 func (v *moduleValidator) validateDescriptorMetadata(st *SubType, recGroup, member int) error {
@@ -483,6 +557,9 @@ func (v *moduleValidator) typeIdxSuperSubtype(a, b TypeIdx) bool {
 	bFlat, bok := v.flatTypeIdxInRecGroup(b, -1)
 	if !aok || !bok {
 		return false
+	}
+	if len(v.superEnter) != 0 && v.superEnter[bFlat] <= v.superEnter[aFlat] && v.superExit[aFlat] <= v.superExit[bFlat] {
+		return true
 	}
 	seen := map[int]bool{}
 	var visit func(int) bool
