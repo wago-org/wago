@@ -1,0 +1,16 @@
+[
+  {
+    "flavor": "runtime",
+    "input": "trusted repository fib.wasm; fib(20)",
+    "exit": 0,
+    "stdout": "6765\n",
+    "stderr": ""
+  },
+  {
+    "flavor": "minimal",
+    "input": "trusted repository fib.wasm; fib(20)",
+    "exit": 0,
+    "stdout": "6765\n",
+    "stderr": ""
+  }
+]

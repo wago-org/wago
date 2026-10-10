@@ -1,0 +1,23 @@
+{"command": ["/home/jtenner/.local/share/mise/installs/just/latest/just", "test", "native-compare"], "exit": 0}
+ok  	github.com/wago-org/wago/tests/tools/native-compare	0.110s
+ok  	github.com/wago-org/wago/tests/tools/native-compare	0.148s
+GOMAXPROCS=1 go test -p=1 -count=1 -tags=wago_nativecompare,wago_regalloccheck ./tests/tools/native-compare
+GOMAXPROCS=1 go test -p=1 -count=1 -tags=wago_nativecompare,wago_profile,wago_regalloccheck ./tests/tools/native-compare
+GOMAXPROCS=1 go vet -p=1 -tags=wago_nativecompare,wago_profile,wago_regalloccheck ./tests/tools/native-compare
+{"command": ["/home/jtenner/.local/share/mise/installs/go/1.27.1/bin/staticcheck", "-tags=wago_nativecompare", "./tests/tools/native-compare"], "exit": 0}
+{"command": ["/home/jtenner/.local/share/mise/installs/go/1.27.1/bin/staticcheck", "-tags=wago_nativecompare,wago_profile", "./tests/tools/native-compare"], "exit": 0}
+{"command": ["/home/jtenner/.local/share/mise/installs/go/1.27.1/bin/staticcheck", "-tags=wago_nativecompare,wago_codegenstats", "./tests/tools/native-compare"], "exit": 0}
+{"command": ["go", "test", "-p=1", "-count=1", "-v", "-tags=wago_nativecompare,wago_profile,wago_regalloccheck", "-run", "TestCaptureInline|TestInline|TestCommandRequiresExplicitOptIn", "./tests/tools/native-compare"], "exit": 0}
+=== RUN   TestCaptureInlineCallerLocations
+    capture_test.go:89: inline capture: 153 bytes, mapped=34 raw=119; supported=9 unknown=2 complete=false
+--- PASS: TestCaptureInlineCallerLocations (0.01s)
+=== RUN   TestCaptureInlineOwnerRejection
+--- PASS: TestCaptureInlineOwnerRejection (0.00s)
+=== RUN   TestInlineOwnershipUsesRootCaller
+--- PASS: TestInlineOwnershipUsesRootCaller (0.00s)
+=== RUN   TestInlineMetadataRejection
+--- PASS: TestInlineMetadataRejection (0.00s)
+=== RUN   TestCommandRequiresExplicitOptIn
+--- PASS: TestCommandRequiresExplicitOptIn (0.12s)
+PASS
+ok  	github.com/wago-org/wago/tests/tools/native-compare	0.129s

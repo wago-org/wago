@@ -1,0 +1,688 @@
+{
+  "baseline": "matched detached main209e448c",
+  "candidate": "production inputs of the explicit diagnostic-gate commit; metadata-normalized paired controls",
+  "go_version": "go version go1.27.1 linux/amd64",
+  "production_inputs": [
+    {
+      "platform": "linux/amd64",
+      "tags": "",
+      "sha256": "6cae9473176780ab54d53561ed0a4bfe70a70770862123114d2055e4cf8cd53d",
+      "packages": 306,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime",
+      "sha256": "33aabb9ab194bf86cbf8481b1aff8ea80cdb50b8b5f0ace5b73d0d9d4f7ac59f",
+      "packages": 181,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "sha256": "c5b15d276b53da35d1647117787487a264046fcf78b7323928955592389e5428",
+      "packages": 166,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_profile",
+      "sha256": "3d5a0948278a872e9cf95f7cda859f9db660bebd1346455205f50e94222cc657",
+      "packages": 313,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_codegenstats",
+      "sha256": "c5391722337d4a15a7a0e1979be296b81891f43c9ee993e567e97ecb1abf7f25",
+      "packages": 306,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime,wago_profile",
+      "sha256": "8550c6380d2d9554327231305ff382f8b9b7dad6b7b257d261b27fd158e3950a",
+      "packages": 190,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime,wago_codegenstats",
+      "sha256": "9301158707df408bc062362adede381865d1e7496527fcbfdfcb3275e0a4896f",
+      "packages": 181,
+      "identical": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_nativecompare,wago_runtime",
+      "sha256": "33aabb9ab194bf86cbf8481b1aff8ea80cdb50b8b5f0ace5b73d0d9d4f7ac59f",
+      "packages": 181,
+      "identical": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "",
+      "sha256": "dbc9cd9d6afe3e2ef955d2f58aeb85f3afdc5cacb9df482dc5d38a2d5e282451",
+      "packages": 305,
+      "identical": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_runtime",
+      "sha256": "a22a16643f404d9aa10d8b7e09c4c314af5acc23750c24236501a6e2f9617e8c",
+      "packages": 181,
+      "identical": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "sha256": "690fb5b3aba9a3192c9f9c4c6012db8978baeaefbf3776deb83c8520e31f0c4d",
+      "packages": 166,
+      "identical": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_profile",
+      "sha256": "5a06b854a170ad950e618bd74b0f6aa62415fbcb7b15cb03506225538a06339f",
+      "packages": 312,
+      "identical": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_codegenstats",
+      "sha256": "d9054508bcf822d17d063b4a7cd172f75f95f9ba6afadd78fdf4081b5cf78456",
+      "packages": 305,
+      "identical": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_runtime,wago_profile",
+      "sha256": "3b59ad765d4768d9a8d26d1642b845f5e8ca775a745c2d849bce02af739402e8",
+      "packages": 190,
+      "identical": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_runtime,wago_codegenstats",
+      "sha256": "83a1343f270231d74667f65af96324304943a3e39646b7556e4133d0a4a16c2e",
+      "packages": 181,
+      "identical": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_nativecompare,wago_runtime",
+      "sha256": "a22a16643f404d9aa10d8b7e09c4c314af5acc23750c24236501a6e2f9617e8c",
+      "packages": 181,
+      "identical": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "",
+      "sha256": "18028e52245e60f1dccd465413893410fc769f906e9bc745820c421c66cd6bdb",
+      "packages": 306,
+      "identical": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_runtime",
+      "sha256": "da13a0ef0ff13b1aaee88adc2a94bc04e31b8a1402f1bcfef7ee79c356541bb4",
+      "packages": 177,
+      "identical": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "sha256": "49b2269ba35a59d2e00c9a0c953bd82cfde0d2a4f5819017b5551eec2df93b75",
+      "packages": 164,
+      "identical": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_profile",
+      "sha256": "c811c55156559092babbda4bd5999a19e6b533452d718838e945cd2b880df52b",
+      "packages": 313,
+      "identical": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_codegenstats",
+      "sha256": "c71c1b6a4427e680920a255a57055bb80ea2fdf528907fc09b6df02d262e0a68",
+      "packages": 306,
+      "identical": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_runtime,wago_profile",
+      "sha256": "c5fc38559bbc3bd2c9cf75d3a941dc309b70b2bc848d92ee255fb5ceace2debc",
+      "packages": 187,
+      "identical": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_runtime,wago_codegenstats",
+      "sha256": "685b8cbc1b44c666c842342636d860f6863eadf0d8d2e5258f20b56aca10f40d",
+      "packages": 177,
+      "identical": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_nativecompare,wago_runtime",
+      "sha256": "da13a0ef0ff13b1aaee88adc2a94bc04e31b8a1402f1bcfef7ee79c356541bb4",
+      "packages": 177,
+      "identical": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "",
+      "sha256": "af3cb386aeab2aa6886c18948317dcde3f1d3b58b5cc843d183f4c7ff87f52d8",
+      "packages": 305,
+      "identical": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_runtime",
+      "sha256": "1bbdf06195863d124ebe173b8f90358f278d4ffc9d78c59786da6ffa51ccf8d4",
+      "packages": 177,
+      "identical": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "sha256": "ff78c47b8edf58879f9a03e1c36c44b50e75d94dfe7c26dafa833ce40a725503",
+      "packages": 164,
+      "identical": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_profile",
+      "sha256": "d421e179993366325ef6b1058e82731ad8e2e575eda7ae328f44002d3b373a12",
+      "packages": 312,
+      "identical": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_codegenstats",
+      "sha256": "f19839b36c2baae419386feb1a19b84c3d89a7e9259f4e4bca50f643f91ca3aa",
+      "packages": 305,
+      "identical": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_runtime,wago_profile",
+      "sha256": "03ce0c6d7e186644dcacf7501b31a647b12d1db0333ee632bc023928289a641d",
+      "packages": 187,
+      "identical": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_runtime,wago_codegenstats",
+      "sha256": "b629458287cc58a9490f53ffa67ab3a5a9b65d9281d7a3d81dc049a108119cfc",
+      "packages": 177,
+      "identical": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_nativecompare,wago_runtime",
+      "sha256": "1bbdf06195863d124ebe173b8f90358f278d4ffc9d78c59786da6ffa51ccf8d4",
+      "packages": 177,
+      "identical": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "",
+      "sha256": "77fbdae0b558eecb2d29aaabcbf070780fd8c3a2180b7e88a6ad84502392c32d",
+      "packages": 309,
+      "identical": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_runtime",
+      "sha256": "beb12e98ad72a20d347f9668cad0a46ee75db95007d12004ead750c3d3c4d3bf",
+      "packages": 189,
+      "identical": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "sha256": "806f9cb42bc4bd7cf9533b4ecaaea7f01477f2a671a7551904eb99236b2d52fc",
+      "packages": 176,
+      "identical": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_profile",
+      "sha256": "82562303ac5a88e8f7668267bb835e0debd08a84df77071e75f69c2c8bc52933",
+      "packages": 316,
+      "identical": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_codegenstats",
+      "sha256": "0867d7fd0df42a34b8856583fccad8400be0d6d8302e6dc248b00bb225d9b9e8",
+      "packages": 309,
+      "identical": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_runtime,wago_profile",
+      "sha256": "adba3add5411831289294713d85e1818703a3a821604f32bf78f59514013139b",
+      "packages": 199,
+      "identical": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_runtime,wago_codegenstats",
+      "sha256": "b6cce23bccd751805eb08cc288d6a21da782e5e791b032eb8442a95bc8ef2f6b",
+      "packages": 189,
+      "identical": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_nativecompare,wago_runtime",
+      "sha256": "beb12e98ad72a20d347f9668cad0a46ee75db95007d12004ead750c3d3c4d3bf",
+      "packages": 189,
+      "identical": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "",
+      "sha256": "3502bca77044908205d83c6506d05c70969a5ddfc6a38019f730812c014af393",
+      "packages": 308,
+      "identical": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_runtime",
+      "sha256": "3ae8a8928a4e8dfb3bebc6ce21f74f57c3083ffaa60fa9ff9621bc3f7421d759",
+      "packages": 189,
+      "identical": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "sha256": "a0b907526863abf0e68bf787aa3fd8165280b0d1eed58433e4ad021c987699ee",
+      "packages": 176,
+      "identical": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_profile",
+      "sha256": "00bc9138a2f19f8a8679dee49d4a5d4c9b60c672539cb85a669fda46c716b89b",
+      "packages": 315,
+      "identical": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_codegenstats",
+      "sha256": "32ace2bf06cdd3113d0b5f7bc525612cc4c6aa1d26bcde16874aff4d825c586e",
+      "packages": 308,
+      "identical": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_runtime,wago_profile",
+      "sha256": "e8733bf9314b6105e61e72f60674f06698a1fff3446d5fc5b4f2aa556b5db835",
+      "packages": 199,
+      "identical": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_runtime,wago_codegenstats",
+      "sha256": "372a34f97370b2240045f9165c4993c871022b282fc68766600ec2e99861edfd",
+      "packages": 189,
+      "identical": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_nativecompare,wago_runtime",
+      "sha256": "3ae8a8928a4e8dfb3bebc6ce21f74f57c3083ffaa60fa9ff9621bc3f7421d759",
+      "packages": 189,
+      "identical": true
+    }
+  ],
+  "discovery": [
+    {
+      "platform": "linux/amd64",
+      "tags": "",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_runtime",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_profile",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/amd64",
+      "tags": "wago_codegenstats",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_runtime",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_profile",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "linux/arm64",
+      "tags": "wago_codegenstats",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_runtime",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_profile",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "tags": "wago_codegenstats",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_runtime",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_profile",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "tags": "wago_codegenstats",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_runtime",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_profile",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "windows/amd64",
+      "tags": "wago_codegenstats",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_runtime",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_profile",
+      "diagnostic_excluded": true
+    },
+    {
+      "platform": "windows/arm64",
+      "tags": "wago_codegenstats",
+      "diagnostic_excluded": true
+    }
+  ],
+  "binaries": [
+    {
+      "platform": "linux/amd64",
+      "flavor": "manager",
+      "tags": "",
+      "bytes": 14494816,
+      "sha256": "9e73e1e29b5811405d33dc4f7b930fd21e8bc0f59a9a365eb86f60be8932eeb1",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/amd64",
+      "flavor": "runtime",
+      "tags": "wago_runtime",
+      "bytes": 14760356,
+      "sha256": "5131bbebc2c35d5bd9b857c1bf9d8c314faf632ee02873a482f761ea6b52d1cf",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/amd64",
+      "flavor": "minimal",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "bytes": 13800349,
+      "sha256": "f99599836a7ba599106572bbe1831d575365cbec3a546ef3b9f0b02575384cc8",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/amd64",
+      "flavor": "embed",
+      "tags": "",
+      "bytes": 11701911,
+      "sha256": "9e5d343e17b118d9329637d229d0ce49fc5d4e9a9ad0d65e6c548e3b43f842eb",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/arm64",
+      "flavor": "manager",
+      "tags": "",
+      "bytes": 13397113,
+      "sha256": "e761215d2d7c8033ade8f422110be7f7f0c6042291d92140e98ca607544f4410",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/arm64",
+      "flavor": "runtime",
+      "tags": "wago_runtime",
+      "bytes": 13765995,
+      "sha256": "b60374852bb073e640305ae1010d98aadc68cdb5ab1b1384e9b8873faddb39ae",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/arm64",
+      "flavor": "minimal",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "bytes": 12971607,
+      "sha256": "5214e9118da2fe97334bc03d7b18a27d3bf92a1e1af0f684216a96c616c560de",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "linux/arm64",
+      "flavor": "embed",
+      "tags": "",
+      "bytes": 11028422,
+      "sha256": "100e3343564c7831da567cdf8921ed2cb6bf1f028eb5ded935dfedad759a44e1",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "flavor": "manager",
+      "tags": "",
+      "bytes": 14631568,
+      "sha256": "9cb5c6a745975d635366aebd65f0be6397dd324f2f910a1a6a9387c842eba02f",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "flavor": "runtime",
+      "tags": "wago_runtime",
+      "bytes": 14425664,
+      "sha256": "c67759b4a7be95f16918b07f8f3736b2591d8fdaa3306656ff0e2e087b6a5d70",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "flavor": "minimal",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "bytes": 13642432,
+      "sha256": "b4539c4352f46816c3a1f5048da1a81eea499a6784dea87ccb40af74e1024fdb",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "darwin/amd64",
+      "flavor": "embed",
+      "tags": "",
+      "bytes": 11528336,
+      "sha256": "684a4a02ea6b983fd438647960e3a036e221c349ec49c16047264a76ab3691b2",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "flavor": "manager",
+      "tags": "",
+      "bytes": 13629618,
+      "sha256": "e1b066e0a1c364a850d69e4b35e2a5a167ede74cdd445a8eb72d8550101ff728",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "flavor": "runtime",
+      "tags": "wago_runtime",
+      "bytes": 13819906,
+      "sha256": "cea0fd24143861d4ee9e29ff03f8cde0d0233096811c22dfcc62a7e3eceb5481",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "flavor": "minimal",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "bytes": 13104674,
+      "sha256": "22ea5e8e44c6b31891aa5a3ae6ce66956c6d410494ed86c2513c8f1a4478be5a",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "darwin/arm64",
+      "flavor": "embed",
+      "tags": "",
+      "bytes": 11159842,
+      "sha256": "9282603d2852acbdd515fc49bd7a47a819fa3e3e7721b6622e09613777a1b01c",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "windows/amd64",
+      "flavor": "manager",
+      "tags": "",
+      "bytes": 14819328,
+      "sha256": "1c8f1497aafc45c5f59e733878fec406ddaf3391474971bd132c674d39c229f9",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "windows/amd64",
+      "flavor": "runtime",
+      "tags": "wago_runtime",
+      "bytes": 14635520,
+      "sha256": "b2b7c2cdc0f7b2ea177a82b8efd3e47bb62dfa4b1e60bf1968d4641ce67f26c8",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "windows/amd64",
+      "flavor": "minimal",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "bytes": 13819904,
+      "sha256": "55e08439cc594fde90d77b8da4e401dc5fbcc55717bacceade427a49de6fe6a6",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "windows/amd64",
+      "flavor": "embed",
+      "tags": "",
+      "bytes": 11366400,
+      "sha256": "283f81be80a71967836cc76eeed412064151a30f9654aa2b076eaa27bf2ee408",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "windows/arm64",
+      "flavor": "manager",
+      "tags": "",
+      "bytes": 13502976,
+      "sha256": "ab1e4b3eb3401978bf718b14071397a1c5af16e5c6f476c62bbce57d6da89826",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "windows/arm64",
+      "flavor": "runtime",
+      "tags": "wago_runtime",
+      "bytes": 13548544,
+      "sha256": "ae854c3cb5a766221b56ab2c9d4e8a643f7a3c0da45fa3780a0b68745677d413",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "windows/arm64",
+      "flavor": "minimal",
+      "tags": "wago_runtime,wago_lean,wago_minimal",
+      "bytes": 12809728,
+      "sha256": "b0de1e232a68e094f393203737b9b9fddc4a22fe6666d387e97b5a5d55ae917f",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    },
+    {
+      "platform": "windows/arm64",
+      "flavor": "embed",
+      "tags": "",
+      "bytes": 10580480,
+      "sha256": "44f827a0dd19148c9ccb65d205290a15f763696de89310d9bb058f9e7586caba",
+      "identical": true,
+      "diagnostic_symbols_absent": true
+    }
+  ],
+  "baseline_commit": "209e448c392510a0325d5b282a0d86a776fb379c",
+  "completed": true,
+  "cgo_enabled": "0",
+  "candidate_code_commit": "b919acbb47f7f973c87ba8279c7de6b050679bb3",
+  "symbol_audit": "symbol-audit.json: corrected distinctive command-main symbol checks; hashes match original binaries"
+}
