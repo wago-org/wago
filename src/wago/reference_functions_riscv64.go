@@ -89,11 +89,13 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	return true
 }
 
-// rv64Core3BrOnNullDeclarationMetadata recognizes the canonical fields that
+// rv64Core3ReferenceDeclarationMetadata recognizes the canonical fields that
 // precede GC descriptors in the artifact codec. It is intentionally usable by
 // the early typed-control consistency check while decoding; complete public
-// admission additionally requires the trailing directories below.
-func rv64Core3BrOnNullDeclarationMetadata(c *Compiled) bool {
+// admission additionally requires the trailing directories below. The pinned
+// br_on_null and br_on_non_null declaration modules retain identical metadata;
+// their distinct opcode/body contracts are proven before compilation.
+func rv64Core3ReferenceDeclarationMetadata(c *Compiled) bool {
 	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || rv64HasReferenceTail(c) {
 		return false
 	}
@@ -155,13 +157,13 @@ func rv64Core3BrOnNullDeclarationMetadata(c *Compiled) bool {
 	return true
 }
 
-// rv64Core3BrOnNullDeclarations is the complete retained artifact witness for
-// the declaration-only module from pinned Release 3 core/br_on_null.wast. The
-// compiler-origin control/function flags attest the exact instruction profile;
-// the retained shape proves that its externref carrier has no callable,
-// descriptor, import, start, initializer, state or resource path.
-func rv64Core3BrOnNullDeclarations(c *Compiled) bool {
-	if !rv64Core3BrOnNullDeclarationMetadata(c) || !c.needsFuncRefContextHeader || len(c.GCTypeDescs) != 4 {
+// rv64Core3ReferenceDeclarations is the complete retained artifact witness for
+// the declaration-only modules from pinned Release 3 br_on_null.wast and
+// br_on_non_null.wast. The retained shape proves that their externref carrier
+// has no callable, descriptor, import, start, initializer, state or resource
+// path.
+func rv64Core3ReferenceDeclarations(c *Compiled) bool {
+	if !rv64Core3ReferenceDeclarationMetadata(c) || !c.needsFuncRefContextHeader || len(c.GCTypeDescs) != 4 {
 		return false
 	}
 	for i, desc := range c.GCTypeDescs {

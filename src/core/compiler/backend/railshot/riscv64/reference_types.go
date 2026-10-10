@@ -92,14 +92,22 @@ func internalReferenceBlockType(r *wasm.Reader, typed bool, types internalRefere
 	if !ok || lead != 0x63 && lead != 0x64 {
 		return r.S33()
 	}
-	_, err := internalExplicitReferenceType(r, typed, types)
+	_, err := internalExplicitBlockReferenceType(r, typed, types)
 	return -16, err
+}
+
+func internalExplicitBlockReferenceType(r *wasm.Reader, typed bool, types internalReferenceTypes) (bool, error) {
+	return internalExplicitReferenceTypeMode(r, typed, types, true)
 }
 
 // The same explicit annotation parser is used for private carrier admission and
 // persisted source requirements. Nullable indexed heaps also need the typed
 // witness; nullable abstract func retains ordinary ReferenceTypes semantics.
 func internalExplicitReferenceType(r *wasm.Reader, typed bool, types internalReferenceTypes) (bool, error) {
+	return internalExplicitReferenceTypeMode(r, typed, types, false)
+}
+
+func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types internalReferenceTypes, block bool) (bool, error) {
 	lead, err := r.Byte()
 	if err != nil {
 		return false, err
@@ -115,7 +123,8 @@ func internalExplicitReferenceType(r *wasm.Reader, typed bool, types internalRef
 	if requiresTyped && !typed {
 		return false, unsupported("reference annotation requires retained typed-reference protocol")
 	}
-	if heap != -16 && !(typed && heap >= 0 && types.function(uint32(heap))) {
+	declarationExtern := block && types.declarationExtern && lead == 0x64 && heap == -17
+	if heap != -16 && !declarationExtern && !(typed && heap >= 0 && types.function(uint32(heap))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}
 	return requiresTyped, nil
@@ -126,7 +135,7 @@ func internalExplicitReferenceType(r *wasm.Reader, typed bool, types internalRef
 // function references. Void and bare indexed block signatures stay invalid.
 func internalSelectType(r *wasm.Reader, typed bool, types internalReferenceTypes) (byte, error) {
 	if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
-		_, err := internalReferenceBlockType(r, typed, types)
+		_, err := internalExplicitReferenceType(r, typed, types)
 		return 0x70, err
 	}
 	return r.Byte()

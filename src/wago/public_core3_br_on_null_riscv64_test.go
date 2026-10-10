@@ -106,7 +106,7 @@ func TestRV64Core3BrOnNullPinnedDeclarations(t *testing.T) {
 				t.Skip("compiler-free artifact case only")
 			}
 			c := rv64NativeTailCompile(t, "core3-br-on-null-declarations", source, artifact)
-			if !rv64Core3BrOnNullDeclarations(c) || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.needsFuncRefDescs() || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Funcs) != 3 || len(c.Exports) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+			if !rv64Core3ReferenceDeclarations(c) || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.needsFuncRefDescs() || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Funcs) != 3 || len(c.Exports) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 				t.Fatal("pinned declaration-only source/artifact witnesses")
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
@@ -176,7 +176,7 @@ func TestRV64Core3BrOnNullPinnedDeclarationGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := rv64Core3DeclarationCompiledCopy(base)
 			mutate(bad)
-			if rv64Core3BrOnNullDeclarations(bad) || railshotValidateCompiled(bad) == nil {
+			if rv64Core3ReferenceDeclarations(bad) || railshotValidateCompiled(bad) == nil {
 				t.Fatal("hostile declaration-only metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)

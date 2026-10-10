@@ -237,9 +237,17 @@ non-null branching, internal `call_ref`, the nullable join followed by
 `ref.as_non_null`, unreachable-before-branch trap order, multi-value block
 arguments, dirty-upper i32 normalization, full-width private descriptors,
 owner-scope reuse and cleanup. This does not qualify that file's
-declaration-only module, active or typed-expression elements, imports,
-resources, reference-valued public signatures, general ownership, or
-full-file/corpus parity.
+active or typed-expression elements, imports, resources, reference-valued
+public signatures, general ownership, or full-file/corpus parity. The same
+pinned file's exact 75-byte `br_on_non_null.1.wasm` declaration module now
+qualifies separately. Its three private, unreachable functions cover non-null
+indexed-function, abstract-function and abstract-extern block annotations; an
+exact whole-module witness confines abstract extern to the typed `0x64` block
+form and keeps selects, locals, results and callable signatures closed. The
+canonical 106-byte debug-name form, altered bodies or metadata, and all
+imports, exports, starts, state and resources remain rejected. This validates
+decoding, lowering and source/artifact confinement only; it does not add a
+callable externref or ownership contract.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
