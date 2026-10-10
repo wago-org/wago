@@ -904,6 +904,67 @@ func TestProfileLifecycleFailedInitialization(t *testing.T) {
 	}
 }
 
+func TestProfileLifecycleDefinedInitializationPanicComplete(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+	}{{name: "value", value: "defined start panic"}}
+	if os.Getenv("WAGO_DEFINED_START_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name  string
+			value any
+		}{name: "nil", value: nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := NewCodeProfile(CodeProfileOptions{TraceLifecycle: true})
+			defer trace.Close()
+			compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(trace), hostImportStartModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			calls := 0
+			var captured *Instance
+			var callerToken Caller
+			imports := NewImports().Function("env", "f", CallerHostCallFunc(func(caller Caller, _ HostCall) {
+				calls++
+				captured = caller.in
+				callerToken = caller
+				panic(tc.value)
+			}))
+			in, err := Instantiate(compiled, imports)
+			if in != nil {
+				defer in.Close()
+			}
+			if in != nil || err == nil || calls != 1 {
+				t.Fatalf("failed defined start = (%p, %v, calls=%d)", in, err, calls)
+			}
+			spans := trace.Spans()
+			wantKinds := []string{"instantiate", "initialize-guest", "guest-activation", "host-callback", "logical-close", "physical-release"}
+			if len(spans) != len(wantKinds) {
+				t.Fatal(spans)
+			}
+			wantParents := []uint64{0, spans[0].ID, spans[1].ID, spans[2].ID, 0, 0}
+			wantOutcomes := []string{"error", "panic", "panic", "panic", "return", "return"}
+			for i, span := range spans {
+				if span.Kind != wantKinds[i] || span.ParentID != wantParents[i] || span.Outcome != wantOutcomes[i] || span.End == 0 || span.InstanceID != spans[0].InstanceID {
+					t.Fatalf("wrong defined-start span %d: %+v", i, span)
+				}
+			}
+			if captured == nil || callerToken.valid() || !captured.resourcesClosed || captured.constructionIsActive() || captured.invocationState.Load()&instanceInvocationCount != 0 || compiled.codeCache.refs != 0 {
+				t.Fatal("failed defined start retained callback or instance lifetime")
+			}
+			if state := captured.pluginState.Load(); state != nil && (state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0) {
+				t.Fatal("failed defined start retained invocation gate")
+			}
+			if report, err := profilereport.AnalyzeTimeline(spans, trace.Status()); err != nil || !report.Complete {
+				t.Fatal(report, err)
+			}
+		})
+	}
+}
+
 func TestProfileLifecycleImportedInitialization(t *testing.T) {
 	trace := NewCodeProfile(CodeProfileOptions{TraceLifecycle: true})
 	defer trace.Close()
