@@ -64,7 +64,7 @@ func gcHelperMayAllocate(helper uint32) bool {
 	}
 }
 
-func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
+func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
 	if in == nil || (in.gc == nil && helper != gcFuncRefTest) {
 		panic(gcHelperFailuref("gc struct helper %d has no live collector", helper))
 	}
@@ -83,7 +83,8 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()
-		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
+		defer func() { state.frameRoots.physicalStack = nil }()
+		frameRoots = in.gcHelperRoots(ctrl, state, safepoint, stack)
 	}
 
 	switch helper {

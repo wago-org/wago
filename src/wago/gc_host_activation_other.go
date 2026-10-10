@@ -2,6 +2,8 @@
 
 package wago
 
+import coreruntime "github.com/wago-org/wago/src/core/runtime"
+
 type gcHostSavedControl [0]uint64
 
 // Keep the token shape uniform across platforms so shared root-management code
@@ -11,7 +13,7 @@ type gcHostActivationToken struct {
 	index uint8
 }
 
-func (*Instance) pushGCHostActivation(uintptr, uint32, uintptr) gcHostActivationToken {
+func (*Instance) pushGCHostActivation(uintptr, uint32, *coreruntime.Engine) gcHostActivationToken {
 	return gcHostActivationToken{}
 }
 

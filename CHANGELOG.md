@@ -32,6 +32,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Add signed/unsigned SIMD floor-average source checks, baseline benchmarks,
+  and a bounded decoded corpus census.
 - Add mixed-scalar host-call checks across nested memory, global, and table
   changes, including nested traps and repeated resolved calls.
 - Bind corpus child completion to loaded input identity and exact invocation
