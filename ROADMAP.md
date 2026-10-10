@@ -218,7 +218,13 @@ paths, `call_ref`, traps, block arguments and dirty-upper i32 ingress. This is a
 focused delta, not file-level Core 3 accounting: the declaration-only module,
 tableless active and typed-expression passive shapes, and the broader official
 typed-reference corpus remain unqualified on RV64. No new owner graph or ABI is
-needed.
+needed. The first executable module from pinned Core 3 `ref_as_non_null.wast`
+also qualifies the exact table-free numeric-export shape through source and
+compiler-free artifacts, including unreachable-before-null trap order, full-width
+internal carriers and normalized i32 results. This does not qualify that file's
+declaration-only module, typed-expression or active elements, tables, imports,
+resource or reference-valued public/imported signatures, general ownership, or
+full-file parity.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
