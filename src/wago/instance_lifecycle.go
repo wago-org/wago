@@ -34,6 +34,7 @@ func (in *Instance) Close() (err error) {
 	if !owner {
 		if state.completed.Load() {
 			err = joinPrimary(state.result, railshotRetryClosedNativeTableRetirement(in))
+			err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
 			return joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
 		}
 		// A callback may reenter Close while the lifecycle owner is still
@@ -46,6 +47,7 @@ func (in *Instance) Close() (err error) {
 			err = joinPrimary(err, fmt.Errorf("wago: instance close: %w", ErrCallbackPanic))
 		}
 		err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
+		err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
 		err = joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
 		state.complete(err)
 		// Managed terminal work must not detach ownership before the logical
@@ -520,6 +522,9 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	for table := in.table; table != nil; table = table.next {
 		cleanup.run(table.releaseRetainedInstances)
 	}
+	// The architecture holder survives native descriptor teardown. Its sweep
+	// retries retired/Publishing rows no longer present in a live retained map.
+	cleanup.run(func() { railshotReleaseOwnedTableDescriptorDependencies(in) })
 	for _, global := range in.globalCells {
 		cleanup.run(func() { global.instanceOwnerClosed(in) })
 	}

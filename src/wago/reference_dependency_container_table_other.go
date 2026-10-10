@@ -26,3 +26,7 @@ func railshotRetryTableDescriptorDependenciesLocked(*Table, *tableDescriptorDepe
 func railshotFlushTableDescriptorDependencies(batch *tableDescriptorDependencyBatch) {
 	batch.releases.drain((*Instance).releaseResourceRoot)
 }
+
+func railshotLinkOwnedTableDescriptorHolderLocked(*Instance, *Table) {}
+func railshotReleaseOwnedTableDescriptorDependencies(*Instance)      {}
+func railshotRetryClosedTableDescriptorRetirement(*Instance) error   { return nil }

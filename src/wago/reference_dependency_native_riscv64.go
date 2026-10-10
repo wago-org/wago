@@ -66,6 +66,7 @@ type rv64FunctionDependencyOwnership struct {
 	tables                  atomic.Pointer[rv64TableDependencyRows]
 	frozenGlobals           atomic.Pointer[rv64FrozenGlobalDependencyRows]
 	ownedGlobalDescriptors  atomic.Pointer[globalOwner]
+	ownedTableDescriptors   atomic.Pointer[Table]
 	managed                 bool        // remains true after drain; a reentrant call never rescans imports
 	physicalCleanupFinished atomic.Bool // set only after the complete physical callback journal
 	cleanupCompleted        atomic.Bool // physical journal plus every authoritative receipt holder
@@ -220,6 +221,9 @@ func rv64MaybeCompleteFunctionDependencies(ownership *rv64FunctionDependencyOwne
 		return
 	}
 	if !railshotOwnedGlobalDescriptorDependenciesComplete(ownership) {
+		return
+	}
+	if !railshotOwnedTableDescriptorDependenciesComplete(ownership) {
 		return
 	}
 	ownership.cleanupCompleted.Store(true)

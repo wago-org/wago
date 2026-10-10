@@ -7,13 +7,17 @@ import (
 	"fmt"
 )
 
-// Host funcref-table descriptors are physical acquisitions distinct from their
-// counted table-storage ownership. Instance-owned tables stay on the legacy
-// path until their durable terminal holder is installed independently.
+// Funcref-table descriptors are physical acquisitions distinct from their
+// counted table-storage ownership. Instance-owned exported tables link an
+// authoritative holder before publication so rows survive descriptor teardown.
 type tableDescriptorDependencies struct {
 	// Protected by the containing Table.mu. The map-state pointer distinguishes
 	// an old acquisition from a later replacement for the same producer.
 	rows map[*retainedInstanceRoot]*rv64TableDescriptorDependency
+	// Instance-owned holders are linked under Instance.lifeMu before the Table
+	// is published. The immutable chain remains available after native teardown.
+	nextOwned *Table
+	holder    *rv64FunctionDependencyOwnership
 }
 
 type rv64TableDescriptorDependencyPhase uint8
@@ -49,7 +53,10 @@ type tableDescriptorDependencyBatch struct {
 // Caller owns the concrete bootstrap and Table.mu. Recording performs no graph
 // or lifetime operation; publication runs only after every outer native lock.
 func railshotRecordTableDescriptorDependencyLocked(table *Table, producer *Instance, mapState *retainedInstanceRoot, batch *tableDescriptorDependencyBatch) {
-	if table.owner == nil || table.owner.instance != nil || table.owner.elementType != ValFuncRef {
+	if table.owner == nil || table.owner.elementType != ValFuncRef {
+		return
+	}
+	if owner := table.owner.instance; owner != nil && (table.owner.descriptorDependencies.holder == nil || table.owner.descriptorDependencies.holder.member.owner != owner) {
 		return
 	}
 	if table.owner.descriptorDependencies.rows == nil {
@@ -63,6 +70,73 @@ func railshotRecordTableDescriptorDependencyLocked(table *Table, producer *Insta
 	if batch != nil {
 		batch.publications.add(row)
 	}
+}
+
+// Caller holds in.lifeMu and has not published table through in.table yet.
+func railshotLinkOwnedTableDescriptorHolderLocked(in *Instance, table *Table) {
+	if in == nil || table == nil || table.owner == nil || table.owner.instance != in || table.owner.elementType != ValFuncRef || table.owner.descriptorDependencies.holder != nil {
+		return
+	}
+	ownership := rv64FunctionDependencyOwnershipForLocked(in)
+	table.owner.descriptorDependencies.holder = ownership
+	table.owner.descriptorDependencies.nextOwned = ownership.ownedTableDescriptors.Load()
+	ownership.ownedTableDescriptors.Store(table)
+}
+
+func railshotOwnedTableDescriptorDependenciesComplete(ownership *rv64FunctionDependencyOwnership) bool {
+	if ownership == nil {
+		return true
+	}
+	for table := ownership.ownedTableDescriptors.Load(); table != nil; table = table.owner.descriptorDependencies.nextOwned {
+		table.mu.Lock()
+		complete := table.owner.descriptorDependencies.holder == ownership && len(table.owner.descriptorDependencies.rows) == 0
+		table.mu.Unlock()
+		if !complete {
+			return false
+		}
+	}
+	return true
+}
+
+// Traverse the immutable Table chain without retaining a Table lock across
+// graph work, physical release, or callbacks.
+func railshotReleaseOwnedTableDescriptorDependencies(in *Instance) {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil {
+		return
+	}
+	var cleanup resourceCleanup
+	for table := ownership.ownedTableDescriptors.Load(); table != nil; {
+		next := table.owner.descriptorDependencies.nextOwned
+		var batch tableDescriptorDependencyBatch
+		table.mu.Lock()
+		if table.owner.descriptorDependencies.holder == ownership {
+			railshotRetryTableDescriptorDependenciesLocked(table, &batch)
+		}
+		table.mu.Unlock()
+		cleanup.run(func() { railshotFlushTableDescriptorDependencies(&batch) })
+		table = next
+	}
+	cleanup.run(func() { rv64RetireFunctionDependencyMember(&ownership.member) })
+	cleanup.finish()
+}
+
+// Repeated Close repairs denied rows after the instance's native directories
+// have been cleared. Reentrant Close during physical callbacks remains prompt.
+func railshotRetryClosedTableDescriptorRetirement(in *Instance) error {
+	if in == nil || in.invocationState.Load() != instanceInvocationClosed {
+		return nil
+	}
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil || !ownership.physicalCleanupFinished.Load() {
+		return nil
+	}
+	var cleanup resourceCleanup
+	cleanup.run(func() { railshotReleaseOwnedTableDescriptorDependencies(in) })
+	if cleanup.panicked {
+		return fmt.Errorf("wago: RV64 closed table descriptor retirement: %w", ErrCallbackPanic)
+	}
+	return nil
 }
 
 func railshotPublishTableDescriptorDependencyLocked(table *Table, mapState *retainedInstanceRoot, batch *tableDescriptorDependencyBatch) {
@@ -216,5 +290,8 @@ func (row *rv64TableDescriptorDependency) release() {
 			panic("RV64 table descriptor dependency release did not claim its exact row")
 		}
 	})
+	if holder := table.owner.descriptorDependencies.holder; holder != nil {
+		cleanup.run(func() { rv64RetireFunctionDependencyMember(&holder.member) })
+	}
 	cleanup.finish()
 }

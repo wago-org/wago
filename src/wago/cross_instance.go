@@ -1137,6 +1137,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	}
 	owner := &tableOwner{store: store, instance: in, elementType: elementType, valueType: exact, types: in.c.Types, hasValueType: true, declaredHasMax: in.c.tableDef(tableIndex).HasMax, addr64: in.c.tableDef(tableIndex).Addr64}
 	table := &Table{desc: desc, owner: owner, next: in.table}
+	railshotLinkOwnedTableDescriptorHolderLocked(in, table)
 	in.table = table
 	in.lifeMu.Unlock()
 	in.markNativeControlShared()
