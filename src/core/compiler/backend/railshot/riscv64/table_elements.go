@@ -22,10 +22,14 @@ func (f *integerEmitter) privateElementDrop(index uint32) {
 }
 
 func (f *integerEmitter) privateTableInit(index uint32) {
+	f.privateTableInitAt(index, 0)
+}
+
+func (f *integerEmitter) privateTableInitAt(elementIndex, tableIndex uint32) {
 	// X5=count,X6=destination index,X7=source element index. Validate both
 	// complete ranges before writing or dereferencing the segment's payload.
-	f.privateTableRange(false)
-	f.privateElementAddress(index)
+	f.privateTableRangeAt(false, tableIndex)
+	f.privateElementAddress(elementIndex)
 	f.a.Lwu(enc.X29, enc.X28, 8)
 	f.a.Add(enc.X30, enc.X7, enc.X5)
 	f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X30))

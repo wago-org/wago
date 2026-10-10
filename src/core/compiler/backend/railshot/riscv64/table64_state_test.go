@@ -819,6 +819,47 @@ func TestOwnedTable64InitDropProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable64InitDropProfile() *wasm.Module {
+	m := ownedTable64InitDropProfile()
+	m.Tables = append(m.Tables, m.Tables[0])
+	m.FuncTypes = []wasm.TypeIdx{{Index: 0}, {Index: 0}, {Index: 1}}
+	m.Code = []wasm.Func{
+		{BodyBytes: []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 0, 0, 0x41, 1, 0x0b}},
+		{BodyBytes: []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 0, 1, 0x41, 1, 0x0b}},
+		{BodyBytes: []byte{0xfc, 0x0d, 0, 0x41, 1, 0x0b}},
+	}
+	m.Exports = []wasm.Export{
+		{Name: "init0", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}},
+		{Name: "init1", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}},
+		{Name: "drop", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}},
+		{Name: "table0", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}},
+		{Name: "table1", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 1}},
+	}
+	return m
+}
+
+func TestOwnedTwoTable64InitDropProfile(t *testing.T) {
+	m := ownedTwoTable64InitDropProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact indexed table64.init/drop profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"first-index":    func(m *wasm.Module) { m.Code[0].BodyBytes[9] = 1 },
+		"second-index":   func(m *wasm.Module) { m.Code[1].BodyBytes[9] = 0 },
+		"second-table32": func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = false },
+		"missing-export": func(m *wasm.Module) { m.Exports = m.Exports[:4] },
+		"extra-element":  func(m *wasm.Module) { m.Elements = append(m.Elements, m.Elements[0]) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable64InitDropProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed table64.init/drop profile admitted", err)
+			}
+		})
+	}
+}
+
 func importedTable64InitDropProfile() *wasm.Module {
 	m := ownedTable64InitDropProfile()
 	table := m.Tables[0].Type

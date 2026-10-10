@@ -1224,7 +1224,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("bulk instruction without state")
 			}
 			if imm.Kind == wasm.InstrTableInit || imm.Kind == wasm.InstrElemDrop {
-				if !privateRefs || imm.Kind == wasm.InstrTableInit && !state.ownedTable || uint64(imm.Index) >= uint64(state.elementCount) || imm.Index2 != 0 {
+				if !privateRefs || imm.Kind == wasm.InstrTableInit && !state.ownedTable || uint64(imm.Index) >= uint64(state.elementCount) || imm.Kind == wasm.InstrElemDrop && imm.Index2 != 0 {
 					return integerSummary{}, unsupported("private element index/shape")
 				}
 				if imm.Kind == wasm.InstrElemDrop {
@@ -1232,15 +1232,19 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						emit.privateElementDrop(imm.Index)
 					}
 				} else {
+					tableWide, tableOK := state.tableWidth(imm.Index2)
+					if !tableOK {
+						return integerSummary{}, unsupported("private table.init index")
+					}
 					if functionRefs {
 						operands := [3]bool{}
-						operands[0] = state.table64
+						operands[0] = tableWide
 						if err = match(operands[:], nil, false, true); err != nil {
 							return integerSummary{}, err
 						}
 					}
 					for i, reg := range []uint8{5, 7, 6} {
-						wide := i == 2 && state.table64
+						wide := i == 2 && tableWide
 						if err = popWidth(wide); err != nil {
 							return integerSummary{}, err
 						}
@@ -1249,7 +1253,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						}
 					}
 					if live && emit != nil {
-						emit.privateTableInit(imm.Index)
+						emit.privateTableInitAt(imm.Index, imm.Index2)
 					}
 				}
 				continue
