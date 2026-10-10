@@ -367,9 +367,11 @@ func (in *Instance) tryFinalize() {
 		}
 		closeState.signalQuiesced()
 		if closeState.terminalStarted.CompareAndSwap(false, true) {
-			if managed && closeState.hooks != nil && len(closeState.hooks.afterClose) != 0 {
+			asyncManagedTerminal := managed && (closeState.hooks != nil && len(closeState.hooks.afterClose) != 0 || railshotTerminalClosedDependencyCollectionEnabled(in, closeState))
+			if asyncManagedTerminal {
 				// Managed Close must return without waiting for terminal hooks.
-				// One short-lived worker owns hooks, detachment, and finalization;
+				// One short-lived worker owns hooks, component callbacks, detachment,
+				// and finalization;
 				// there is no per-instance background waiter for ownership cleanup.
 				go in.finishTerminalClose(closeState)
 			} else {
@@ -410,11 +412,34 @@ func (in *Instance) finishTerminalClose(state *instanceCloseState) {
 	railshotPublishClosedContainerAdoptionResult(in, state, adoptionErr)
 	in.lifeMu.Lock()
 	if in.finalizers != nil && in.finalizers.managed != nil {
-		state.terminalResult = errors.Join(errs...)
 		managed := in.finalizers.managed
 		in.finalizers.managed = nil
-		managed.finishTerminalClose(state)
+		detached := managed.detachTerminalClose()
 		in.lifeMu.Unlock()
+		collectionEnabled := railshotTerminalClosedDependencyCollectionEnabled(in, state)
+		terminalOwnsCollection := collectionEnabled && state.publishTerminalCollectionReady()
+		if terminalOwnsCollection {
+			if err := callShutdownSafely("collect managed terminal dependency component", func() {
+				railshotCollectTerminalClosedDependencyComponent(in, state)
+			}); err != nil {
+				errs = append(errs, err)
+			}
+			if err := callShutdownSafely("finalize managed terminal dependency owner", func() {
+				in.referenceLifetime().finalize()
+			}); err != nil {
+				errs = append(errs, err)
+			}
+			if err := callShutdownSafely("retry managed terminal dependency component", func() {
+				railshotCollectTerminalClosedDependencyComponent(in, state)
+			}); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		state.terminalResult = errors.Join(errs...)
+		managed.completeTerminalClose(detached, state)
+		if terminalOwnsCollection {
+			return
+		}
 		in.referenceLifetime().finalize()
 		return
 	}

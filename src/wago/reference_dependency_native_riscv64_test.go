@@ -4,7 +4,9 @@ package wago
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -664,6 +666,181 @@ func TestRV64TerminalFirstCollectionOwnsFinalizationRetry(t *testing.T) {
 	}
 	if callbackErrors != 1 || callbackCalls != 1 || !a.resourcesClosed || !b.resourcesClosed || g.live != 0 || aOwnership.member.active.Load() || bOwnership.member.active.Load() || aOwnership.componentRelease.Load() != nil || bOwnership.componentRelease.Load() != nil {
 		t.Fatal("terminal-first handoff did not converge with one owned callback error", callbackErrors, callbackCalls, a.resourcesClosed, b.resourcesClosed, g.live)
+	}
+}
+
+func TestRV64ManagedTerminalCollectionPreservesPromptCloseAndDrain(t *testing.T) {
+	rt := globalValueAccessRuntime(t)
+	compiled := globalValueAccessCompile(t, false, false)
+	a := globalValueAccessInstantiate(t, rt, compiled, nil)
+	b := globalValueAccessInstantiate(t, rt, compiled, nil)
+	manager := newPendingInstanceManager("managed-component", AuthorityScope{})
+	manager.activate(rt)
+	manager.live = 2
+	managedA, err := manager.adopt(a, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managedB, err := manager.adopt(b, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := newRV64FunctionDependencyGraph(2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aOwnership := rv64FunctionDependencyOwnershipFor(a)
+	bOwnership := rv64FunctionDependencyOwnershipFor(b)
+	if err := g.register(&aOwnership.member); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.register(&bOwnership.member); err != nil {
+		t.Fatal(err)
+	}
+	dependencyTestInvocationLease(&aOwnership.member, &bOwnership.member)
+	aToB := dependencyTestAcquire(t, g, &bOwnership.member)
+	bToA := dependencyTestAcquire(t, g, &aOwnership.member)
+	if typed, err := aToB.adopt(&aOwnership.member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	if typed, err := bToA.adopt(&bOwnership.member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	a.invocationState.Store(0)
+	b.invocationState.Store(0)
+	aOwnership.functions.push(functionDependencyRoot{producer: b, receipt: aToB})
+	bOwnership.functions.push(functionDependencyRoot{producer: a, receipt: bToA})
+	aOwnership.managed, bOwnership.managed = true, true
+	t.Cleanup(func() {
+		var cleanup resourceCleanup
+		cleanup.run(func() { aOwnership.functions.drain(aOwnership) })
+		cleanup.run(func() { bOwnership.functions.drain(bOwnership) })
+		cleanup.finish()
+	})
+
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseCallback) }) }
+	aWaitDone := make(chan error, 1)
+	waitDone := make(chan error, 1)
+	drainDone := make(chan error, 1)
+	aWaitStarted, aWaitJoined := false, false
+	waitStarted, waitJoined := false, false
+	drainStarted, drainJoined := false, false
+	startWorker := func(result chan<- error, fn func() error) {
+		go func() {
+			var err error
+			value, panicked := cleanupTestPanic(func() { err = fn() })
+			if panicked {
+				err = fmt.Errorf("managed terminal worker panic: %v", value)
+			}
+			result <- err
+		}()
+	}
+	joinWorker := func(name string, result <-chan error) (error, bool) {
+		t.Helper()
+		select {
+		case err := <-result:
+			return err, true
+		case <-time.After(5 * time.Second):
+			t.Errorf("timed out joining managed terminal %s worker", name)
+			return nil, false
+		}
+	}
+	t.Cleanup(func() {
+		release()
+		for _, worker := range []struct {
+			name            string
+			result          <-chan error
+			started, joined bool
+		}{
+			{name: "first WaitClosed", result: aWaitDone, started: aWaitStarted, joined: aWaitJoined},
+			{name: "WaitClosed", result: waitDone, started: waitStarted, joined: waitJoined},
+			{name: "manager drain", result: drainDone, started: drainStarted, joined: drainJoined},
+		} {
+			if !worker.started || worker.joined {
+				continue
+			}
+			select {
+			case <-worker.result:
+			case <-time.After(5 * time.Second):
+				t.Errorf("timed out joining managed terminal %s worker", worker.name)
+			}
+		}
+	})
+	callbackCalls := 0
+	a.referenceLifetime().afterPhysicalRelease(func() {
+		callbackCalls++
+		close(callbackEntered)
+		<-releaseCallback
+		panic("managed component callback")
+	})
+	if err := managedA.Close(); err != nil {
+		t.Fatal(err)
+	}
+	aWaitStarted = true
+	startWorker(aWaitDone, managedA.WaitClosed)
+	aWaitErr, joined := joinWorker("first WaitClosed", aWaitDone)
+	aWaitJoined = joined
+	if !joined {
+		t.Fatal("first managed terminal waiter remained blocked")
+	}
+	if aWaitErr != nil {
+		t.Fatal(aWaitErr)
+	}
+	// Manager drain must take one atomic snapshot in which B is still owned and
+	// no terminal bridge exists, then initiate B's prompt logical close itself.
+	drainStarted = true
+	startWorker(drainDone, manager.close)
+	select {
+	case <-callbackEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("manager drain did not close the open cycle member and reach its callback")
+	}
+	state := b.closeState.Load()
+	select {
+	case <-state.terminalDone:
+		t.Fatal("managed terminal completion preceded its component callback")
+	default:
+	}
+	manager.mu.Lock()
+	detached, draining := len(manager.instances), len(manager.draining)
+	manager.mu.Unlock()
+	if detached != 0 || draining != 1 {
+		t.Fatal("manager lost its in-flight terminal bridge", detached, draining)
+	}
+
+	awaitTerminalWait(t, drainDone)
+	waitStarted = true
+	startWorker(waitDone, managedB.WaitClosed)
+	awaitTerminalWait(t, waitDone)
+	release()
+	waitErr, waitJoinedNow := joinWorker("WaitClosed", waitDone)
+	waitJoined = waitJoinedNow
+	if !waitJoined {
+		t.Fatal("managed terminal waiter did not finish")
+	}
+	if !errors.Is(waitErr, ErrCallbackPanic) {
+		t.Fatal("managed terminal waiter lost its callback error", waitErr)
+	}
+	drainErr, drainJoinedNow := joinWorker("manager drain", drainDone)
+	drainJoined = drainJoinedNow
+	if !drainJoined {
+		t.Fatal("manager drain did not finish")
+	}
+	if !errors.Is(drainErr, ErrCallbackPanic) {
+		t.Fatal("manager drain lost the in-flight terminal error", drainErr)
+	}
+	if strings.Count(drainErr.Error(), ErrCallbackPanic.Error()) != 1 {
+		t.Fatal("manager drain joined the same terminal error more than once", drainErr)
+	}
+	manager.mu.Lock()
+	remaining, bridges, live := len(manager.instances), len(manager.draining), manager.live
+	manager.mu.Unlock()
+	if callbackCalls != 1 || remaining != 0 || bridges != 0 || live != 0 || !a.resourcesClosed || !b.resourcesClosed || g.live != 0 || aOwnership.member.active.Load() || bOwnership.member.active.Load() {
+		t.Fatal("managed terminal collection did not converge exactly once", callbackCalls, remaining, bridges, live, a.resourcesClosed, b.resourcesClosed, g.live)
 	}
 }
 
