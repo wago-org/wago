@@ -785,10 +785,6 @@ func (p supportPass) tableAddr64(index uint32) bool {
 	return ok && tt.Limits.Addr64
 }
 
-func (p supportPass) tableImported(index uint32) bool {
-	return index < uint32(p.m.ImportedTableCount())
-}
-
 func (p supportPass) memories() error {
 	if p.m.ImportedMemCount()+len(p.m.Memories) > 1 && !p.feat.MultiMemory {
 		return p.unsupported("memory", "multiple memories (multi-memory disabled)", "module")
@@ -1687,9 +1683,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 			if !p.feat.Table64 {
 				return p.unsupported("table64 instruction", "table.init (table64 disabled)", context())
 			}
-			if p.tableImported(uint32(imm.Index2)) {
-				return p.unsupported("table64 instruction", "table.init on imported table64 remains outside the staged boundary", context())
-			}
 		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.init (reference-types disabled)", context())
@@ -2024,9 +2017,6 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		if p.tableAddr64(in.Index2) {
 			if !p.feat.Table64 {
 				return p.unsupported("table64 instruction", in.Kind.String()+" (table64 disabled)", context)
-			}
-			if p.tableImported(in.Index2) {
-				return p.unsupported("table64 instruction", in.Kind.String()+" on imported table64 remains outside the staged boundary", context)
 			}
 		}
 	case wasm.InstrTableCopy:

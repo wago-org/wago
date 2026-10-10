@@ -534,3 +534,49 @@ func TestOwnedTable64InitDropProfile(t *testing.T) {
 		})
 	}
 }
+
+func importedTable64InitDropProfile() *wasm.Module {
+	m := ownedTable64InitDropProfile()
+	table := m.Tables[0].Type
+	table.Limits.Min, table.Limits.Max = 1, 4
+	m.Tables = nil
+	m.Imports = []wasm.Import{{Module: "env", Name: "table", Type: wasm.NewTableExternType(table)}}
+	return m
+}
+
+func TestImportedTable64InitDropProfile(t *testing.T) {
+	m := importedTable64InitDropProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact imported table64.init/drop profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"init-body":  func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x41, 1, 0x0b} },
+		"drop-body":  func(m *wasm.Module) { m.Code[1].BodyBytes = []byte{0x41, 1, 0x0b} },
+		"dest-param": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[0] = wasm.I32 },
+		"source-param": func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Comp.Params[1] = wasm.I64
+		},
+		"count-param": func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[2] = wasm.I64 },
+		"drop-result": func(m *wasm.Module) { m.Types[1].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"no-max": func(m *wasm.Module) {
+			t := m.Imports[0].Type.TableType()
+			t.Limits.HasMax = false
+			m.Imports[0].Type = wasm.NewTableExternType(t)
+		},
+		"locals": func(m *wasm.Module) { m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I64}} },
+		"active": func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemActive },
+		"nonnull": func(m *wasm.Module) {
+			m.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xd2, 0, 0x0b}
+		},
+		"missing-drop-export": func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+		"extra":               func(m *wasm.Module) { m.Code = append(m.Code, wasm.Func{}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := importedTable64InitDropProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid imported table64.init/drop profile admitted", err)
+			}
+		})
+	}
+}
