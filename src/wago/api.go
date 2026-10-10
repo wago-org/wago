@@ -520,6 +520,7 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	}
 	exactExternrefReadWrite := stagedTwoLocalExternrefReadWriteShape(m)
 	exactExternrefFill := stagedTwoLocalExternrefFillShape(m)
+	exactIndexedIndirect := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && stagedOwnedTwoTable64IndirectShape(m)
 	if !exactExternrefReadWrite && !exactExternrefFill {
 		for i := range m.Tables {
 			if !m.Tables[i].Type.Limits.HasMax {
@@ -533,6 +534,9 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 		}
 		if exactExternrefFill {
 			return k == wasm.InstrTableGet || k == wasm.InstrTableFill
+		}
+		if exactIndexedIndirect && k == wasm.InstrCallIndirect {
+			return true
 		}
 		ok, _ := stagedTwoLocalTableOperation(k)
 		return ok

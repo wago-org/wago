@@ -651,6 +651,46 @@ func TestOwnedTable64IndirectProfile(t *testing.T) {
 	}
 }
 
+func ownedTwoTable64IndirectProfile() *wasm.Module {
+	m := ownedTable64IndirectProfile()
+	m.Tables = append(m.Tables, m.Tables[0])
+	m.FuncTypes = []wasm.TypeIdx{{Index: 0}, {Index: 1}, {Index: 1}}
+	m.Code = []wasm.Func{
+		{BodyBytes: []byte{0x41, 7, 0x0b}},
+		{BodyBytes: []byte{0x20, 0, 0xd2, 0, 0x26, 0, 0x20, 0, 0x11, 0, 0, 0x0b}},
+		{BodyBytes: []byte{0x20, 0, 0xd2, 0, 0x26, 1, 0x20, 0, 0x11, 0, 1, 0x0b}},
+	}
+	m.Exports = []wasm.Export{
+		{Name: "call0", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}},
+		{Name: "call1", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}},
+		{Name: "table0", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}},
+		{Name: "table1", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 1}},
+	}
+	return m
+}
+
+func TestOwnedTwoTable64IndirectProfile(t *testing.T) {
+	m := ownedTwoTable64IndirectProfile()
+	if table, err := admitTableProfile(m, true, true); err != nil || !table {
+		t.Fatal("exact indexed table64 indirect-call profile rejected", table, err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"first-index":    func(m *wasm.Module) { m.Code[1].BodyBytes[5] = 1 },
+		"second-set":     func(m *wasm.Module) { m.Code[2].BodyBytes[5] = 0 },
+		"second-call":    func(m *wasm.Module) { m.Code[2].BodyBytes[10] = 0 },
+		"second-table32": func(m *wasm.Module) { m.Tables[1].Type.Limits.Addr64 = false },
+		"missing-export": func(m *wasm.Module) { m.Exports = m.Exports[:3] },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := ownedTwoTable64IndirectProfile()
+			mutate(bad)
+			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("invalid indexed table64 indirect-call profile admitted", err)
+			}
+		})
+	}
+}
+
 func importedTable64IndirectProfile() *wasm.Module {
 	m := importedTable64SizeProfile()
 	m.Types = []wasm.RecType{

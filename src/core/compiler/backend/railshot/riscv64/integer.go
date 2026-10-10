@@ -1072,8 +1072,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if e != nil {
 				return integerSummary{}, e
 			}
-			if state == nil || !state.production || !state.ownedTable || tableIndex != 0 || uint64(typeIndex) >= uint64(len(state.types)) {
+			if state == nil || !state.production || !state.ownedTable || uint64(typeIndex) >= uint64(len(state.types)) {
 				return integerSummary{}, unsupported("private table call_indirect shape")
+			}
+			tableWide, tableOK := state.tableWidth(tableIndex)
+			if !tableOK {
+				return integerSummary{}, unsupported("private table call_indirect index")
 			}
 			sig := state.types[typeIndex]
 			if err = integerCallable(sig, floating); err != nil {
@@ -1081,6 +1085,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			tail := op == 0x13
 			if tail {
+				if tableIndex != 0 {
+					return integerSummary{}, unsupported("indexed indirect tail call")
+				}
 				// The local profile excludes imported/foreign targets; the dynamic
 				// profile authenticates those through retained native factories.
 				if !state.localTailCalls || state.dynamicTailCalls && (!state.importTailCalls || !state.foreignTableCalls) || !state.dynamicTailCalls && (state.foreignTableCalls || state.importedFunctions != 0) {
@@ -1106,14 +1113,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("indirect call count/slot budget")
 			}
 			if functionRefs {
-				if state.table64 && !tail {
+				if tableWide && !tail {
 					err = popWidth(true)
 				} else {
 					err = condition()
 				}
 			} else if tail {
 				err = popWidth(false)
-			} else if state.table64 {
+			} else if tableWide {
 				err = popWidth(true)
 			} else {
 				_, err = pop()
@@ -1147,7 +1154,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						emit.localIndirectTailCall(sig.signature, sig.key, h, indexSlot, emit.SpillOffset)
 					}
 				} else {
-					emit.indirectCall(sig, h, indexSlot, state.table64)
+					emit.indirectCall(sig, h, indexSlot, tableWide, tableIndex)
 				}
 			}
 			if tail {
