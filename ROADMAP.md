@@ -223,13 +223,23 @@ ABI or descriptor. Imports, exports, start, state/resources, altered signatures
 or bodies, tableless active and typed-expression passive shapes remain closed;
 the broader official typed-reference corpus remains unqualified on RV64. No new
 owner graph or ABI is needed. The first executable module from pinned Core 3
-`ref_as_non_null.wast`
-also qualifies the exact table-free numeric-export shape through source and
-compiler-free artifacts, including unreachable-before-null trap order, full-width
-internal carriers and normalized i32 results. This does not qualify that file's
-declaration-only module, typed-expression or active elements, tables, imports,
-resource or reference-valued public/imported signatures, general ownership, or
-full-file parity.
+`ref_as_non_null.wast` also qualifies the exact table-free numeric-export shape
+through source and compiler-free artifacts, including unreachable-before-null
+trap order, full-width internal carriers and normalized i32 results. This does
+not qualify that file's declaration-only module, typed-expression or active
+elements, tables, imports, resource or reference-valued public/imported
+signatures, general ownership, or full-file parity.
+The first and third executable modules from pinned Core 3
+`br_on_non_null.wast` now qualify separately through source and compiler-free
+artifacts. Exact WABT 1.0.41 bytes from revision
+`9d36019973201a19f9c9ebb0f10828b2fe2374aa` cover null fallthrough and
+non-null branching, internal `call_ref`, the nullable join followed by
+`ref.as_non_null`, unreachable-before-branch trap order, multi-value block
+arguments, dirty-upper i32 normalization, full-width private descriptors,
+owner-scope reuse and cleanup. This does not qualify that file's
+declaration-only module, active or typed-expression elements, imports,
+resources, reference-valued public signatures, general ownership, or
+full-file/corpus parity.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
