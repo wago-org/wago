@@ -207,9 +207,16 @@ func (g *dependencyGraph) closedComponentMemberLocked(member *dependencyMember) 
 		return false
 	}
 	owner := member.owner
+	return !member.collecting.Load() && dependencyClosedConsumerLeaseLocked(owner) && member.external == 0
+}
+
+func dependencyClosedConsumerLeaseLocked(owner *Instance) bool {
+	if owner == nil {
+		return false
+	}
 	state := owner.closeState.Load()
-	return !member.collecting.Load() && owner.closed && !owner.finalizing && !owner.resourcesClosed && !owner.constructionActive && owner.invocationState.Load() == instanceInvocationClosed &&
-		state != nil && state.prepared.Load() && state.completed.Load() && state.terminalComplete.Load() && member.external == 0
+	return owner.closed && !owner.finalizing && !owner.resourcesClosed && !owner.constructionActive && owner.invocationState.Load() == instanceInvocationClosed &&
+		state != nil && state.prepared.Load() && state.completed.Load() && state.terminalComplete.Load()
 }
 
 // discoverClosedComponent passively finds the strongly connected component
@@ -781,16 +788,24 @@ func (locks dependencyEndpointLocks) unlock() {
 // rollback/terminal outgoing drain owner. Observing somebody else's active
 // lease does not authorize publication; this primitive installs no Close hook.
 func (r dependencyReceipt) adopt(consumer *dependencyMember, kind dependencyKind) (bool, error) {
-	return r.commit(consumer, kind, false)
+	return r.commit(consumer, kind, false, false)
+}
+
+// adoptClosed publishes an exact receipt onto a fully quiesced, terminally
+// closed consumer. It is reserved for stable instance-owned container rows:
+// ordinary construction/invocation adoption must continue to prove its live
+// caller lease, while this path proves the complete closed lifecycle instead.
+func (r dependencyReceipt) adoptClosed(consumer *dependencyMember, kind dependencyKind) (bool, error) {
+	return r.commit(consumer, kind, false, true)
 }
 
 // transfer requires the same caller-owned receipt and destination lease/drain
 // preconditions as adopt. It moves ownership; it does not create an alias root.
 func (r dependencyReceipt) transfer(consumer *dependencyMember, kind dependencyKind) (bool, error) {
-	return r.commit(consumer, kind, true)
+	return r.commit(consumer, kind, true, false)
 }
 
-func (r dependencyReceipt) commit(consumer *dependencyMember, kind dependencyKind, transfer bool) (bool, error) {
+func (r dependencyReceipt) commit(consumer *dependencyMember, kind dependencyKind, transfer, closed bool) (bool, error) {
 	if r.graph == nil || consumer == nil || consumer.owner == nil || consumer.graph.Load() == nil {
 		return false, errDependencyMember
 	}
@@ -811,6 +826,9 @@ func (r dependencyReceipt) commit(consumer *dependencyMember, kind dependencyKin
 	if transfer && !sameGraph {
 		return false, errDependencyGraph
 	}
+	if closed && !sameGraph {
+		return false, errDependencyGraph
+	}
 	if sameGraph && !g.authoritativeLocked(consumer) {
 		return false, errDependencyMember
 	}
@@ -819,11 +837,20 @@ func (r dependencyReceipt) commit(consumer *dependencyMember, kind dependencyKin
 	if !consumer.active.Load() || consumer.identity == 0 {
 		return false, errDependencyMember
 	}
-	if dependencyConsumerClosedLocked(consumer.owner) {
-		return false, errDependencyClosed
-	}
-	if !dependencyConsumerLeaseLocked(consumer.owner) {
-		return false, errDependencyLease
+	if closed {
+		if consumer.collecting.Load() {
+			return false, errDependencyCollecting
+		}
+		if !dependencyClosedConsumerLeaseLocked(consumer.owner) {
+			return false, errDependencyLease
+		}
+	} else {
+		if dependencyConsumerClosedLocked(consumer.owner) {
+			return false, errDependencyClosed
+		}
+		if !dependencyConsumerLeaseLocked(consumer.owner) {
+			return false, errDependencyLease
+		}
 	}
 	if record.consumer != consumer && consumer.outgoing.Load() == ^uint32(0) {
 		return false, errDependencyCapacity

@@ -52,6 +52,78 @@ func dependencyTestAcquireForFinalization(t *testing.T, g *dependencyGraph, memb
 	return receipt
 }
 
+func TestDependencyClosedReceiptAdoptionRequiresTerminalLease(t *testing.T) {
+	g := dependencyTestGraph(t, 2, 1)
+	target := dependencyTestMember(t, g, false)
+	consumer := dependencyTestMember(t, g, false)
+	receipt := dependencyTestAcquire(t, g, target)
+	dependencyTestClosedForDiscovery(t, consumer)
+	state := consumer.owner.closeState.Load()
+	state.completed.Store(false)
+	if typed, err := receipt.adoptClosed(consumer, dependencyContainerDescriptor); typed || !errors.Is(err, errDependencyLease) {
+		t.Fatal("incomplete close admitted container receipt", typed, err)
+	}
+	state.completed.Store(true)
+	if typed, err := receipt.adopt(consumer, dependencyContainerDescriptor); typed || !errors.Is(err, errDependencyClosed) {
+		t.Fatal("ordinary lease path admitted a closed consumer", typed, err)
+	}
+	if typed, err := receipt.adoptClosed(consumer, dependencyContainerDescriptor); !typed || err != nil {
+		t.Fatal("terminal lease did not adopt exact container receipt", typed, err)
+	}
+	g.mu.Lock()
+	record, _ := g.recordLocked(receipt.identity)
+	valid := record != nil && record.state == dependencyTyped && record.consumer == consumer && record.kind == dependencyContainerDescriptor && target.external == 0 && target.incoming == 1
+	g.mu.Unlock()
+	if !valid || consumer.outgoing.Load() != 1 {
+		t.Fatal("closed adoption did not publish exact typed topology")
+	}
+}
+
+func TestDependencyClosedReceiptAdoptionRejectsClaimedConsumer(t *testing.T) {
+	g := dependencyTestGraph(t, 2, 2)
+	consumer := dependencyTestMember(t, g, false)
+	target := dependencyTestMember(t, g, false)
+	dependencyTestInvocationLease(consumer)
+	cycle := dependencyTestAcquire(t, g, consumer)
+	if typed, err := cycle.adopt(consumer, dependencyFunction); !typed || err != nil {
+		t.Fatal("self-component setup", typed, err)
+	}
+	pending := dependencyTestAcquire(t, g, target)
+	dependencyTestClosedForDiscovery(t, consumer)
+	claim, ok := g.claimClosedComponent(g.discoverClosedComponent(consumer, 2, 2))
+	if !ok || claim == nil {
+		t.Fatal("failed to claim closed self-component")
+	}
+	t.Cleanup(func() {
+		if claim.active.Load() {
+			claim.release()
+		}
+	})
+	if typed, err := pending.adoptClosed(consumer, dependencyContainerDescriptor); typed || !errors.Is(err, errDependencyCollecting) {
+		t.Fatal("claimed consumer admitted outgoing receipt", typed, err)
+	}
+	g.mu.Lock()
+	record, _ := g.recordLocked(pending.identity)
+	unchanged := record != nil && record.state == dependencyPending && record.consumer == nil && target.external == 1 && target.incoming == 0 && consumer.outgoing.Load() == 1
+	g.mu.Unlock()
+	if !unchanged || dependencyTestRefs(target.owner) != 1 || dependencyTestRefs(consumer.owner) != 2 {
+		t.Fatal("rejected adoption changed topology or physical roots")
+	}
+	if !claim.release() || claim.active.Load() || consumer.collecting.Load() {
+		t.Fatal("component claim did not roll back")
+	}
+	if typed, err := pending.adoptClosed(consumer, dependencyContainerDescriptor); !typed || err != nil {
+		t.Fatal("rolled-back consumer did not adopt receipt", typed, err)
+	}
+	g.mu.Lock()
+	record, _ = g.recordLocked(pending.identity)
+	typed := record != nil && record.state == dependencyTyped && record.consumer == consumer && record.kind == dependencyContainerDescriptor && target.external == 0 && target.incoming == 1
+	g.mu.Unlock()
+	if !typed || consumer.outgoing.Load() != 2 || dependencyTestRefs(target.owner) != 1 || dependencyTestRefs(consumer.owner) != 1 {
+		t.Fatal("post-rollback adoption changed the wrong topology or roots")
+	}
+}
+
 func TestDependencyClosedComponentDiscovery(t *testing.T) {
 	g := dependencyTestGraph(t, 4, 4)
 	a := dependencyTestMember(t, g, false)

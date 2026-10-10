@@ -26,6 +26,8 @@ const (
 	rv64TableDescriptorBootstrap rv64TableDescriptorDependencyPhase = iota
 	rv64TableDescriptorPublishing
 	rv64TableDescriptorPending
+	rv64TableDescriptorAdopting
+	rv64TableDescriptorTyped
 	rv64TableDescriptorAnonymous
 	rv64TableDescriptorFailed
 	rv64TableDescriptorReleasing
@@ -118,6 +120,28 @@ func railshotReleaseOwnedTableDescriptorDependencies(in *Instance) {
 		table = next
 	}
 	cleanup.run(func() { rv64RetireFunctionDependencyMember(&ownership.member) })
+	cleanup.finish()
+}
+
+func railshotAdoptClosedTableDescriptorDependencies(in *Instance) {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil {
+		return
+	}
+	var cleanup resourceCleanup
+	for table := ownership.ownedTableDescriptors.Load(); table != nil; table = table.owner.descriptorDependencies.nextOwned {
+		var rows importDedup[*rv64TableDescriptorDependency]
+		table.mu.Lock()
+		if table.owner.descriptorDependencies.holder == ownership {
+			for _, row := range table.owner.descriptorDependencies.rows {
+				if row.phase == rv64TableDescriptorPending {
+					rows.add(row)
+				}
+			}
+		}
+		table.mu.Unlock()
+		cleanup.run(func() { rows.drain((*rv64TableDescriptorDependency).adoptClosed) })
+	}
 	cleanup.finish()
 }
 
@@ -227,19 +251,55 @@ func (row *rv64TableDescriptorDependency) publish() {
 	cleanup.finish()
 }
 
+func (row *rv64TableDescriptorDependency) adoptClosed() {
+	table := row.table
+	table.mu.Lock()
+	if row.phase != rv64TableDescriptorPending || table.owner.descriptorDependencies.rows[row.mapState] != row || table.owner.descriptorDependencies.holder == nil {
+		table.mu.Unlock()
+		return
+	}
+	row.phase = rv64TableDescriptorAdopting
+	receipt := row.receipt
+	holder := table.owner.descriptorDependencies.holder
+	table.mu.Unlock()
+
+	typed := false
+	if receipt.graph != nil && receipt.graph.registerRetained(&holder.member) == nil {
+		typed, _ = receipt.adoptClosed(&holder.member, dependencyContainerDescriptor)
+	}
+	table.mu.Lock()
+	if row.phase != rv64TableDescriptorAdopting || table.owner.descriptorDependencies.rows[row.mapState] != row {
+		table.mu.Unlock()
+		if typed {
+			receipt.release()
+		}
+		panic("RV64 table descriptor closed adoption lost its stable row")
+	}
+	if typed {
+		row.phase = rv64TableDescriptorTyped
+	} else {
+		row.phase = rv64TableDescriptorPending
+	}
+	retire := row.retireRequested
+	table.mu.Unlock()
+	if retire {
+		row.release()
+	}
+}
+
 func (row *rv64TableDescriptorDependency) release() {
 	table := row.table
 	table.mu.Lock()
 	row.retireRequested = true
 	previous := row.phase
 	switch previous {
-	case rv64TableDescriptorPublishing:
+	case rv64TableDescriptorPublishing, rv64TableDescriptorAdopting:
 		table.mu.Unlock()
 		return
 	case rv64TableDescriptorReleasing, rv64TableDescriptorReleased:
 		table.mu.Unlock()
 		return
-	case rv64TableDescriptorBootstrap, rv64TableDescriptorPending, rv64TableDescriptorAnonymous, rv64TableDescriptorFailed:
+	case rv64TableDescriptorBootstrap, rv64TableDescriptorPending, rv64TableDescriptorTyped, rv64TableDescriptorAnonymous, rv64TableDescriptorFailed:
 		row.phase = rv64TableDescriptorReleasing
 	default:
 		table.mu.Unlock()

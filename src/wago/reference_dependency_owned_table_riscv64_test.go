@@ -336,3 +336,93 @@ func TestRV64OwnedTableDescriptorsContinueAfterFirstCallbackPanic(t *testing.T) 
 		})
 	}
 }
+
+func TestRV64OwnedTableDescriptorClosedAdoptionFormsCollectibleCycle(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			code := rv64TableStageCompile(t, "owned-table-descriptor-cycle", rv64ForeignTableCallModule([]wasm.ValType{wasm.I32}, 7, false, false), artifact)
+			a, err := Instantiate(code)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := Instantiate(code)
+			if err != nil {
+				a.Close()
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _, _ = cleanupTestPanic(func() { _ = a.Close() }) })
+			t.Cleanup(func() { _, _ = cleanupTestPanic(func() { _ = b.Close() }) })
+			aTable, err := a.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			bTable, err := b.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			rv64InstallForeignTableTargetAt(t, a, b, 1)
+			rv64InstallForeignTableTargetAt(t, b, a, 1)
+			row := func(table *Table, producer *Instance) *rv64TableDescriptorDependency {
+				table.mu.Lock()
+				state := table.retained[producer]
+				result := table.owner.descriptorDependencies.rows[state]
+				table.mu.Unlock()
+				if result == nil || result.phase != rv64TableDescriptorPending {
+					t.Fatal("owned Table cycle lacks Pending row")
+				}
+				return result
+			}
+			aRow := row(aTable, b)
+			bRow := row(bTable, a)
+			t.Cleanup(func() {
+				_, _ = cleanupTestPanic(func() {
+					var aBatch, bBatch tableDescriptorDependencyBatch
+					aTable.mu.Lock()
+					if aTable.retained[b] == aRow.mapState {
+						delete(aTable.retained, b)
+						railshotRetireTableDescriptorDependencyLocked(aTable, b, aRow.mapState, &aBatch)
+					}
+					aTable.mu.Unlock()
+					bTable.mu.Lock()
+					if bTable.retained[a] == bRow.mapState {
+						delete(bTable.retained, a)
+						railshotRetireTableDescriptorDependencyLocked(bTable, a, bRow.mapState, &bBatch)
+					}
+					bTable.mu.Unlock()
+					var cleanup resourceCleanup
+					cleanup.run(func() { railshotFlushTableDescriptorDependencies(&aBatch) })
+					cleanup.run(func() { railshotFlushTableDescriptorDependencies(&bBatch) })
+					cleanup.finish()
+				})
+			})
+			if err := a.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.Close(); err != nil {
+				t.Fatal(err)
+			}
+			railshotAdoptClosedContainerDependencies(a)
+			railshotAdoptClosedContainerDependencies(b)
+			aOwnership := rv64ExistingFunctionDependencyOwnership(a)
+			bOwnership := rv64ExistingFunctionDependencyOwnership(b)
+			if a.resourcesClosed || b.resourcesClosed || aRow.phase != rv64TableDescriptorTyped || bRow.phase != rv64TableDescriptorTyped || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {
+				t.Fatal("terminal Table adoption did not preserve one typed cycle root", a.resourcesClosed, b.resourcesClosed, aRow.phase, bRow.phase, dependencyTestRefs(a), dependencyTestRefs(b))
+			}
+			graph := aRow.receipt.graph
+			graph.mu.Lock()
+			aRecord, _ := graph.recordLocked(aRow.receiptIdentity)
+			bRecord, _ := graph.recordLocked(bRow.receiptIdentity)
+			typed := aRecord != nil && aRecord.state == dependencyTyped && aRecord.consumer == &aOwnership.member && aRecord.target == &bOwnership.member && bRecord != nil && bRecord.state == dependencyTyped && bRecord.consumer == &bOwnership.member && bRecord.target == &aOwnership.member
+			graph.mu.Unlock()
+			if !typed {
+				t.Fatal("terminal Table adoption published the wrong exact topology")
+			}
+			if !rv64CollectClosedDependencyComponent(&aOwnership.member, graph.nodeCap, graph.receiptCap) {
+				t.Fatal("genuine owned Table cycle did not reach the internal driver")
+			}
+			if !a.resourcesClosed || !b.resourcesClosed || aRow.phase != rv64TableDescriptorReleased || bRow.phase != rv64TableDescriptorReleased || dependencyTestRefs(a) != 0 || dependencyTestRefs(b) != 0 || !aOwnership.cleanupCompleted.Load() || !bOwnership.cleanupCompleted.Load() || aOwnership.member.active.Load() || bOwnership.member.active.Load() {
+				t.Fatal("genuine owned Table cycle did not converge")
+			}
+		})
+	}
+}

@@ -352,6 +352,13 @@ func rv64FunctionDependencyHoldersComplete(ownership *rv64FunctionDependencyOwne
 	return railshotOwnedGlobalDescriptorDependenciesComplete(ownership) && railshotOwnedTableDescriptorDependenciesComplete(ownership)
 }
 
+func railshotAdoptClosedContainerDependencies(in *Instance) {
+	var cleanup resourceCleanup
+	cleanup.run(func() { railshotAdoptClosedTableDescriptorDependencies(in) })
+	cleanup.run(func() { railshotAdoptClosedGlobalDescriptorDependencies(in) })
+	cleanup.finish()
+}
+
 func rv64MaybeCompleteFunctionDependencies(ownership *rv64FunctionDependencyOwnership) {
 	if ownership == nil || ownership.cleanupCompleted.Load() || !ownership.physicalCleanupFinished.Load() {
 		return

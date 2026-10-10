@@ -8,8 +8,9 @@ import (
 )
 
 // Mutable funcref-container descriptors are physical acquisitions distinct
-// from their counted global-cell storage. Rows stay Pending/external in this
-// checkpoint: a writer's invocation does not authorize adoption onto an owner.
+// from their counted global-cell storage. A writer's invocation does not
+// authorize adoption onto an owner; only the owner's fully quiesced terminal
+// close may turn its stable Pending row into a typed component edge.
 type globalDescriptorDependencies struct {
 	// Protected by the containing globalOwner.mu. The map-state pointer, rather
 	// than the producer alone, distinguishes an old acquisition from a later
@@ -27,6 +28,8 @@ const (
 	rv64GlobalDescriptorBootstrap rv64GlobalDescriptorDependencyPhase = iota
 	rv64GlobalDescriptorPublishing
 	rv64GlobalDescriptorPending
+	rv64GlobalDescriptorAdopting
+	rv64GlobalDescriptorTyped
 	rv64GlobalDescriptorAnonymous
 	rv64GlobalDescriptorFailed
 	rv64GlobalDescriptorReleasing
@@ -158,6 +161,28 @@ func railshotReleaseOwnedGlobalDescriptorDependencies(in *Instance) {
 	cleanup.finish()
 }
 
+func railshotAdoptClosedGlobalDescriptorDependencies(in *Instance) {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil {
+		return
+	}
+	var cleanup resourceCleanup
+	for owner := ownership.ownedGlobalDescriptors.Load(); owner != nil; owner = owner.descriptorDependencies.nextOwned {
+		var rows importDedup[*rv64GlobalDescriptorDependency]
+		owner.mu.Lock()
+		if owner.descriptorDependencies.holder == ownership {
+			for _, row := range owner.descriptorDependencies.rows {
+				if row.phase == rv64GlobalDescriptorPending {
+					rows.add(row)
+				}
+			}
+		}
+		owner.mu.Unlock()
+		cleanup.run(func() { rows.drain((*rv64GlobalDescriptorDependency).adoptClosed) })
+	}
+	cleanup.finish()
+}
+
 // Repeated Close is the repair route after physical teardown has cleared the
 // instance's native directories and globalCells. Reentrant Close during the
 // physical callback journal must remain prompt and cannot drain this metadata.
@@ -241,19 +266,64 @@ func (row *rv64GlobalDescriptorDependency) publish() {
 	cleanup.finish()
 }
 
+func (row *rv64GlobalDescriptorDependency) adoptClosed() {
+	row.adoptClosedWithTypedHook(nil)
+}
+
+// The hook is a deterministic test seam after the exact receipt becomes typed
+// but before a concurrent retirement request can consume it.
+func (row *rv64GlobalDescriptorDependency) adoptClosedWithTypedHook(afterTyped func()) {
+	owner := row.owner
+	owner.mu.Lock()
+	if row.phase != rv64GlobalDescriptorPending || owner.descriptorDependencies.rows[row.mapState] != row || owner.descriptorDependencies.holder == nil {
+		owner.mu.Unlock()
+		return
+	}
+	row.phase = rv64GlobalDescriptorAdopting
+	receipt := row.receipt
+	holder := owner.descriptorDependencies.holder
+	owner.mu.Unlock()
+
+	typed := false
+	if receipt.graph != nil && receipt.graph.registerRetained(&holder.member) == nil {
+		typed, _ = receipt.adoptClosed(&holder.member, dependencyContainerDescriptor)
+	}
+	owner.mu.Lock()
+	if row.phase != rv64GlobalDescriptorAdopting || owner.descriptorDependencies.rows[row.mapState] != row {
+		owner.mu.Unlock()
+		if typed {
+			receipt.release()
+		}
+		panic("RV64 global descriptor closed adoption lost its stable row")
+	}
+	if typed {
+		row.phase = rv64GlobalDescriptorTyped
+	} else {
+		row.phase = rv64GlobalDescriptorPending
+	}
+	retire := row.retireRequested
+	owner.mu.Unlock()
+	if typed && afterTyped != nil {
+		afterTyped()
+	}
+	if retire {
+		row.release()
+	}
+}
+
 func (row *rv64GlobalDescriptorDependency) release() {
 	owner := row.owner
 	owner.mu.Lock()
 	row.retireRequested = true
 	previous := row.phase
 	switch previous {
-	case rv64GlobalDescriptorPublishing:
+	case rv64GlobalDescriptorPublishing, rv64GlobalDescriptorAdopting:
 		owner.mu.Unlock()
-		return // the publisher observes retireRequested after installing its result
+		return // the publisher/adopter observes retireRequested after installing its result
 	case rv64GlobalDescriptorReleasing, rv64GlobalDescriptorReleased:
 		owner.mu.Unlock()
 		return
-	case rv64GlobalDescriptorBootstrap, rv64GlobalDescriptorPending, rv64GlobalDescriptorAnonymous, rv64GlobalDescriptorFailed:
+	case rv64GlobalDescriptorBootstrap, rv64GlobalDescriptorPending, rv64GlobalDescriptorTyped, rv64GlobalDescriptorAnonymous, rv64GlobalDescriptorFailed:
 		row.phase = rv64GlobalDescriptorReleasing
 	default:
 		owner.mu.Unlock()

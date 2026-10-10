@@ -5,6 +5,7 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -242,6 +243,123 @@ func TestRV64OwnedGlobalDescriptorPublishingCompletesAfterPhysicalTeardown(t *te
 	}
 }
 
+func TestRV64OwnedGlobalDescriptorClosedAdoptionRetirementOverlap(t *testing.T) {
+	owner, producer, global, row := rv64OwnedGlobalDescriptorFixture(t, false)
+	ownership := rv64ExistingFunctionDependencyOwnership(owner)
+	if !owner.retainResourceRootForFinalization() {
+		t.Fatal("failed to retain consumer through closed adoption")
+	}
+	rootHeld := true
+	if err := owner.Close(); err != nil {
+		owner.releaseResourceRoot()
+		t.Fatal(err)
+	}
+	graph := row.receipt.graph
+	graph.mu.Lock()
+	graphHeld := true
+	type adoptionResult struct {
+		value    any
+		panicked bool
+	}
+	adopted := make(chan adoptionResult, 1)
+	typedPublished := make(chan struct{})
+	proceed := make(chan struct{})
+	go func() {
+		value, panicked := cleanupTestPanic(func() {
+			row.adoptClosedWithTypedHook(func() {
+				close(typedPublished)
+				<-proceed
+			})
+		})
+		adopted <- adoptionResult{value: value, panicked: panicked}
+	}()
+	joined := false
+	var proceedOnce sync.Once
+	t.Cleanup(func() {
+		if graphHeld {
+			graph.mu.Unlock()
+			graphHeld = false
+		}
+		proceedOnce.Do(func() { close(proceed) })
+		if !joined {
+			select {
+			case <-adopted:
+			case <-time.After(5 * time.Second):
+				t.Error("timed out joining closed adopter")
+			}
+		}
+		if rootHeld {
+			owner.releaseResourceRoot()
+		}
+	})
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		global.owner.mu.Lock()
+		phase := row.phase
+		global.owner.mu.Unlock()
+		if phase == rv64GlobalDescriptorAdopting {
+			break
+		}
+		if time.Now().After(deadline) {
+			graph.mu.Unlock()
+			graphHeld = false
+			t.Fatal("closed adopter did not reach graph-blocked phase")
+		}
+	}
+	var retire globalDescriptorDependencyBatch
+	global.owner.mu.Lock()
+	exact := global.owner.retained[producer] == row.mapState
+	if exact {
+		delete(global.owner.retained, producer)
+		railshotRetireGlobalDescriptorDependencyLocked(global.owner, producer, row.mapState, &retire)
+	}
+	global.owner.mu.Unlock()
+	if !exact {
+		graph.mu.Unlock()
+		graphHeld = false
+		t.Fatal("fixture did not retain the exact descriptor acquisition")
+	}
+	railshotFlushGlobalDescriptorDependencies(&retire)
+	global.owner.mu.Lock()
+	retireRequested := row.retireRequested && row.phase == rv64GlobalDescriptorAdopting
+	global.owner.mu.Unlock()
+	graph.mu.Unlock()
+	graphHeld = false
+	select {
+	case <-typedPublished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("closed adopter did not publish the typed receipt")
+	}
+	global.owner.mu.Lock()
+	typedPhase := row.phase == rv64GlobalDescriptorTyped
+	global.owner.mu.Unlock()
+	graph.mu.Lock()
+	record, _ := graph.recordLocked(row.receiptIdentity)
+	typedTopology := record != nil && record.state == dependencyTyped && record.consumer == &ownership.member && ownership.member.outgoing.Load() == 1
+	graph.mu.Unlock()
+	if !typedPhase || !typedTopology {
+		t.Fatal("retirement overlap did not pass through the exact typed handoff", typedPhase, typedTopology)
+	}
+	proceedOnce.Do(func() { close(proceed) })
+	select {
+	case result := <-adopted:
+		joined = true
+		if result.panicked {
+			t.Fatal("closed adopter panicked after retirement overlap", result.value)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("closed adopter did not finish after graph release")
+	}
+	global.owner.mu.Lock()
+	rows := len(global.owner.descriptorDependencies.rows)
+	global.owner.mu.Unlock()
+	if !retireRequested || row.phase != rv64GlobalDescriptorReleased || rows != 0 || dependencyTestRefs(producer) != 0 || graph.live != 0 || ownership.member.outgoing.Load() != 0 {
+		t.Fatal("retirement overlap did not consume the adopted row", retireRequested, row.phase, rows, dependencyTestRefs(producer), graph.live, ownership.member.outgoing.Load())
+	}
+	owner.releaseResourceRoot()
+	rootHeld = false
+}
+
 func TestRV64OwnedNumericGlobalDoesNotLinkDescriptorHolder(t *testing.T) {
 	in := &Instance{}
 	owner := &globalOwner{instance: in, typ: ValI32}
@@ -321,5 +439,97 @@ func TestRV64OwnedGlobalDescriptorsContinueAfterFirstCallbackPanic(t *testing.T)
 		if rows != 0 {
 			t.Fatal("owned Global retained a completed row", rows)
 		}
+	}
+}
+
+func TestRV64OwnedGlobalDescriptorClosedAdoptionFormsCollectibleCycle(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			compiled := globalValueAccessCompile(t, false, artifact)
+			a, err := Instantiate(compiled)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := Instantiate(compiled)
+			if err != nil {
+				a.Close()
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _, _ = cleanupTestPanic(func() { _ = a.Close() }) })
+			t.Cleanup(func() { _, _ = cleanupTestPanic(func() { _ = b.Close() }) })
+			aGlobal := globalValueAccessOwnedCell(t, a)
+			bGlobal := globalValueAccessOwnedCell(t, b)
+			install := func(global *Global, producer *Instance) *rv64GlobalDescriptorDependency {
+				descriptor, ok := producer.localFuncrefDescriptor(0)
+				if !ok {
+					t.Fatal("mapped cycle descriptor")
+				}
+				global.owner.mu.Lock()
+				writeGlobalObject(global, ValFuncRef, descriptor)
+				global.owner.mu.Unlock()
+				if !global.retainProducerInstance(producer) {
+					t.Fatal("owned Global cycle retain")
+				}
+				global.owner.mu.Lock()
+				state := global.owner.retained[producer]
+				row := global.owner.descriptorDependencies.rows[state]
+				global.owner.mu.Unlock()
+				if row == nil || row.phase != rv64GlobalDescriptorPending {
+					t.Fatal("owned Global cycle lacks Pending row")
+				}
+				return row
+			}
+			aRow := install(aGlobal, b)
+			bRow := install(bGlobal, a)
+			t.Cleanup(func() {
+				_, _ = cleanupTestPanic(func() {
+					var aBatch, bBatch globalDescriptorDependencyBatch
+					aGlobal.owner.mu.Lock()
+					if aGlobal.owner.retained[b] == aRow.mapState {
+						delete(aGlobal.owner.retained, b)
+						railshotRetireGlobalDescriptorDependencyLocked(aGlobal.owner, b, aRow.mapState, &aBatch)
+					}
+					aGlobal.owner.mu.Unlock()
+					bGlobal.owner.mu.Lock()
+					if bGlobal.owner.retained[a] == bRow.mapState {
+						delete(bGlobal.owner.retained, a)
+						railshotRetireGlobalDescriptorDependencyLocked(bGlobal.owner, a, bRow.mapState, &bBatch)
+					}
+					bGlobal.owner.mu.Unlock()
+					var cleanup resourceCleanup
+					cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&aBatch) })
+					cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&bBatch) })
+					cleanup.finish()
+				})
+			})
+			if err := a.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.Close(); err != nil {
+				t.Fatal(err)
+			}
+			railshotAdoptClosedContainerDependencies(a)
+			railshotAdoptClosedContainerDependencies(b)
+			aOwnership := rv64ExistingFunctionDependencyOwnership(a)
+			bOwnership := rv64ExistingFunctionDependencyOwnership(b)
+			if a.resourcesClosed || b.resourcesClosed || aRow.phase != rv64GlobalDescriptorTyped || bRow.phase != rv64GlobalDescriptorTyped || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {
+				t.Fatal("terminal adoption did not preserve one typed cycle root", a.resourcesClosed, b.resourcesClosed, aRow.phase, bRow.phase, dependencyTestRefs(a), dependencyTestRefs(b))
+			}
+			graph := aRow.receipt.graph
+			graph.mu.Lock()
+			aRecord, _ := graph.recordLocked(aRow.receiptIdentity)
+			bRecord, _ := graph.recordLocked(bRow.receiptIdentity)
+			typed := aRecord != nil && aRecord.state == dependencyTyped && aRecord.consumer == &aOwnership.member && aRecord.target == &bOwnership.member && bRecord != nil && bRecord.state == dependencyTyped && bRecord.consumer == &bOwnership.member && bRecord.target == &aOwnership.member
+			graph.mu.Unlock()
+			if !typed {
+				t.Fatal("terminal adoption published the wrong exact topology")
+			}
+			if !rv64CollectClosedDependencyComponent(&aOwnership.member, graph.nodeCap, graph.receiptCap) {
+				t.Fatal("genuine owned Global cycle did not reach the internal driver")
+			}
+			if !a.resourcesClosed || !b.resourcesClosed || aRow.phase != rv64GlobalDescriptorReleased || bRow.phase != rv64GlobalDescriptorReleased || dependencyTestRefs(a) != 0 || dependencyTestRefs(b) != 0 || !aOwnership.cleanupCompleted.Load() || !bOwnership.cleanupCompleted.Load() || aOwnership.member.active.Load() || bOwnership.member.active.Load() {
+				t.Fatal("genuine owned Global cycle did not converge")
+			}
+		})
 	}
 }

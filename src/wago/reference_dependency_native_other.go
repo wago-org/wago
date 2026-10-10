@@ -63,3 +63,4 @@ func railshotHasBuilderFunctionDependencies(*functionImportAttachments) bool    
 func railshotInstallFunctionDependencies(*Instance, *functionImportAttachments) {}
 func railshotAdoptFunctionDependencies(*Instance, bool) error                   { return nil }
 func railshotFunctionDependencyCleanupCompleted(*Instance)                      {}
+func railshotAdoptClosedContainerDependencies(*Instance)                        {}
