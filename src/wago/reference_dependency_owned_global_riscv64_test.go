@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -840,6 +841,7 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionFormsCollectibleCycle(t *testing
 				})
 			})
 			invocations := false
+			delayedCallbacks := 0
 			if artifact {
 				if err := a.beginInstanceInvocation(); err != nil {
 					t.Fatal(err)
@@ -855,6 +857,10 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionFormsCollectibleCycle(t *testing
 						b.endInvocation()
 					}
 				})
+				a.referenceLifetime().afterPhysicalRelease(func() {
+					delayedCallbacks++
+					panic("delayed component callback")
+				})
 			}
 			if err := a.Close(); err != nil {
 				t.Fatal(err)
@@ -867,11 +873,13 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionFormsCollectibleCycle(t *testing
 					t.Fatal("active invocation allowed premature closed adoption", aRow.phase, bRow.phase)
 				}
 				a.endInvocation()
+				if a.resourcesClosed || b.resourcesClosed {
+					t.Fatal("first delayed terminal owner collected before its peer was eligible")
+				}
 				b.endInvocation()
 				invocations = false
-				graph := aRow.receipt.graph
-				if !rv64CollectClosedDependencyComponent(&rv64ExistingFunctionDependencyOwnership(a).member, graph.nodeCap, graph.receiptCap) {
-					t.Fatal("delayed genuine owned Global cycle did not reach the explicit internal driver")
+				if delayedCallbacks != 1 || a.WaitClosed(nil) != nil || b.WaitClosed(nil) != nil || !errors.Is(b.waitTerminalClose(), ErrCallbackPanic) {
+					t.Fatal("delayed terminal collector lost callback ownership", delayedCallbacks, a.WaitClosed(nil), b.WaitClosed(nil), b.waitTerminalClose())
 				}
 			}
 			aOwnership := rv64ExistingFunctionDependencyOwnership(a)
@@ -880,5 +888,252 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionFormsCollectibleCycle(t *testing
 				t.Fatal("genuine owned Global cycle did not automatically converge")
 			}
 		})
+	}
+}
+
+func TestRV64DelayedTerminalCollectionBlocksWaiterAndOwnsCallbackError(t *testing.T) {
+	rt := globalValueAccessRuntime(t)
+	compiled := globalValueAccessCompile(t, false, false)
+	a := globalValueAccessInstantiate(t, rt, compiled, nil)
+	b := globalValueAccessInstantiate(t, rt, compiled, nil)
+	aGlobal := globalValueAccessOwnedCell(t, a)
+	bGlobal := globalValueAccessOwnedCell(t, b)
+	install := func(global *Global, producer *Instance) *rv64GlobalDescriptorDependency {
+		descriptor, ok := producer.localFuncrefDescriptor(0)
+		if !ok {
+			t.Fatal("mapped cycle descriptor")
+		}
+		global.owner.mu.Lock()
+		writeGlobalObject(global, ValFuncRef, descriptor)
+		global.owner.mu.Unlock()
+		if !global.retainProducerInstance(producer) {
+			t.Fatal("owned Global cycle retain")
+		}
+		global.owner.mu.Lock()
+		state := global.owner.retained[producer]
+		row := global.owner.descriptorDependencies.rows[state]
+		global.owner.mu.Unlock()
+		if row == nil || row.phase != rv64GlobalDescriptorPending {
+			t.Fatal("owned Global cycle lacks Pending row")
+		}
+		return row
+	}
+	aRow := install(aGlobal, b)
+	bRow := install(bGlobal, a)
+	t.Cleanup(func() {
+		_, _ = cleanupTestPanic(func() {
+			var aBatch, bBatch globalDescriptorDependencyBatch
+			aGlobal.owner.mu.Lock()
+			if aGlobal.owner.retained[b] == aRow.mapState {
+				delete(aGlobal.owner.retained, b)
+				railshotRetireGlobalDescriptorDependencyLocked(aGlobal.owner, b, aRow.mapState, &aBatch)
+			}
+			aGlobal.owner.mu.Unlock()
+			bGlobal.owner.mu.Lock()
+			if bGlobal.owner.retained[a] == bRow.mapState {
+				delete(bGlobal.owner.retained, a)
+				railshotRetireGlobalDescriptorDependencyLocked(bGlobal.owner, a, bRow.mapState, &bBatch)
+			}
+			bGlobal.owner.mu.Unlock()
+			var cleanup resourceCleanup
+			cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&aBatch) })
+			cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&bBatch) })
+			cleanup.finish()
+		})
+	})
+
+	if err := a.beginInvocation(); err != nil {
+		t.Fatal(err)
+	}
+	aLease := true
+	if err := b.beginInvocation(); err != nil {
+		a.endInvocation()
+		t.Fatal(err)
+	}
+	bLease := true
+	t.Cleanup(func() {
+		if aLease {
+			a.endInvocation()
+		}
+		if bLease {
+			b.endInvocation()
+		}
+	})
+
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	var releaseOnce sync.Once
+	releasePhysical := func() { releaseOnce.Do(func() { close(releaseCallback) }) }
+	type invocationOutcome struct {
+		value    any
+		panicked bool
+	}
+	type terminalWaiter struct {
+		name            string
+		result          chan error
+		started, joined bool
+		err             error
+	}
+	type invocationWorker struct {
+		name            string
+		result          chan invocationOutcome
+		started, joined bool
+		outcome         invocationOutcome
+	}
+	aTerminal := &terminalWaiter{name: "a", result: make(chan error, 1)}
+	bTerminal := &terminalWaiter{name: "b", result: make(chan error, 1)}
+	aEnded := &invocationWorker{name: "a", result: make(chan invocationOutcome, 1)}
+	bEnded := &invocationWorker{name: "b", result: make(chan invocationOutcome, 1)}
+	t.Cleanup(func() {
+		releasePhysical()
+		for _, worker := range []*invocationWorker{aEnded, bEnded} {
+			if worker.started && !worker.joined {
+				select {
+				case worker.outcome = <-worker.result:
+					worker.joined = true
+				case <-time.After(5 * time.Second):
+					t.Errorf("timed out joining final invocation worker %s", worker.name)
+				}
+			}
+		}
+		for _, waiter := range []*terminalWaiter{aTerminal, bTerminal} {
+			if waiter.started && !waiter.joined {
+				select {
+				case waiter.err = <-waiter.result:
+					waiter.joined = true
+				case <-time.After(5 * time.Second):
+					t.Errorf("timed out joining terminal waiter %s", waiter.name)
+				}
+			}
+		}
+	})
+	a.referenceLifetime().afterPhysicalRelease(func() {
+		close(callbackEntered)
+		<-releaseCallback
+		panic("delayed terminal callback")
+	})
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if a.closeState.Load().terminalDone == nil || b.closeState.Load().terminalDone == nil {
+		t.Fatal("runtime-backed close lacks real terminal wait channels")
+	}
+	aTerminal.started = true
+	go func() { aTerminal.result <- a.waitTerminalClose() }()
+	bTerminal.started = true
+	go func() { bTerminal.result <- b.waitTerminalClose() }()
+	awaitTerminalWait(t, aTerminal.result)
+	awaitTerminalWait(t, bTerminal.result)
+
+	// Hold the genuine Runtime store notification after finalizing is claimed.
+	// B's last invocation then publishes terminal readiness while A remains in
+	// that transient state, forcing the durable finalizer-exit retry path.
+	rt.refStore.mu.Lock()
+	var storeOnce sync.Once
+	releaseStore := func() { storeOnce.Do(rt.refStore.mu.Unlock) }
+	t.Cleanup(releaseStore)
+	aLease = false
+	aEnded.started = true
+	go func() {
+		value, panicked := cleanupTestPanic(a.endInvocation)
+		aEnded.result <- invocationOutcome{value: value, panicked: panicked}
+	}()
+	waitFinalizing := func(in *Instance) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			in.lifeMu.Lock()
+			finalizing := in.finalizing
+			in.lifeMu.Unlock()
+			if finalizing {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("terminal owner did not enter its finalization scan")
+			}
+			runtime.Gosched()
+		}
+	}
+	waitFinalizing(a)
+	if a.resourcesClosed || b.resourcesClosed {
+		t.Fatal("first terminal owner collected before its peer became ready")
+	}
+	bLease = false
+	bEnded.started = true
+	go func() {
+		value, panicked := cleanupTestPanic(b.endInvocation)
+		bEnded.result <- invocationOutcome{value: value, panicked: panicked}
+	}()
+	waitFinalizing(b)
+	releaseStore()
+	select {
+	case <-callbackEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delayed component callback did not start")
+	}
+	earlyTerminal := 0
+	for _, waiter := range []*terminalWaiter{aTerminal, bTerminal} {
+		select {
+		case waiter.err = <-waiter.result:
+			waiter.joined = true
+			if waiter.err != nil {
+				t.Fatalf("terminal waiter %s returned an early error: %v", waiter.name, waiter.err)
+			}
+			earlyTerminal++
+		default:
+		}
+	}
+	if earlyTerminal == 2 {
+		t.Fatal("both terminal waiters returned before the owned callback completed")
+	}
+	if a.WaitClosed(nil) != nil || b.WaitClosed(nil) != nil {
+		t.Fatal("delayed callback mutated the published logical Close result", a.WaitClosed(nil), b.WaitClosed(nil))
+	}
+	releasePhysical()
+	invocationPanics := make(map[string]any)
+	for _, worker := range []*invocationWorker{aEnded, bEnded} {
+		if !worker.joined {
+			select {
+			case worker.outcome = <-worker.result:
+				worker.joined = true
+			case <-time.After(5 * time.Second):
+				t.Fatalf("final invocation %s did not finish after callback release", worker.name)
+			}
+		}
+		if worker.outcome.panicked {
+			invocationPanics[worker.name] = worker.outcome.value
+		}
+	}
+	if len(invocationPanics) != 0 {
+		t.Fatal("final invocation propagated a captured callback panic", invocationPanics)
+	}
+	terminalErrors := 0
+	terminalUnexpected := make(map[string]error)
+	for _, waiter := range []*terminalWaiter{aTerminal, bTerminal} {
+		if !waiter.joined {
+			select {
+			case waiter.err = <-waiter.result:
+				waiter.joined = true
+			case <-time.After(5 * time.Second):
+				t.Fatalf("terminal waiter %s did not finish after callback release", waiter.name)
+			}
+		}
+		if errors.Is(waiter.err, ErrCallbackPanic) {
+			terminalErrors++
+		} else if waiter.err != nil {
+			terminalUnexpected[waiter.name] = waiter.err
+		}
+	}
+	if len(terminalUnexpected) != 0 {
+		t.Fatal("terminal waiters returned unexpected errors", terminalUnexpected)
+	}
+	if terminalErrors != 1 {
+		t.Fatal("delayed callback error did not belong to exactly one terminal owner", terminalErrors)
+	}
+	if a.WaitClosed(nil) != nil || b.WaitClosed(nil) != nil || !a.resourcesClosed || !b.resourcesClosed || aRow.phase != rv64GlobalDescriptorReleased || bRow.phase != rv64GlobalDescriptorReleased {
+		t.Fatal("delayed terminal collection did not converge with immutable logical results")
 	}
 }

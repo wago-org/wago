@@ -50,13 +50,26 @@ func (in *Instance) Close() (err error) {
 		err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
 		err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
 		err = joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
-		if state.terminalComplete.Load() {
-			err = joinPrimary(err, railshotClosedContainerAdoptionResult(in, state))
+		collectionEnabled := railshotTerminalClosedDependencyCollectionEnabled(in, state)
+		var collect bool
+		err, collect = state.finishLogicalCloseCollectionHandoff(err, collectionEnabled, func() error {
+			return railshotClosedContainerAdoptionResult(in, state)
+		})
+		if collect {
+			err = joinPrimary(err, callShutdownSafely("collect closed dependency component", func() {
+				railshotCollectClosingDependencyComponent(in, state)
+			}))
+			// The terminal-first handoff leaves ordinary finalization to this
+			// result owner. Keep its scoped permit and error journal through the
+			// scan, then retry after the transient finalizing claim is clear.
+			err = joinPrimary(err, callShutdownSafely("finalize closing dependency owner", func() {
+				in.referenceLifetime().finalize()
+			}))
+			err = joinPrimary(err, callShutdownSafely("retry closing dependency component", func() {
+				railshotCollectClosingDependencyComponent(in, state)
+			}))
+			state.completeLogicalCloseCollection(err)
 		}
-		err = joinPrimary(err, callShutdownSafely("collect closed dependency component", func() {
-			railshotCollectClosingDependencyComponent(in, state)
-		}))
-		state.complete(err)
 		railshotCompleteClosingDependencyCollection(in, state)
 		// Managed terminal work must not detach ownership before the logical
 		// result is available to drain and WaitClosed. Retry after publication.
@@ -395,17 +408,110 @@ func (in *Instance) finishTerminalClose(state *instanceCloseState) {
 		railshotTerminalClosedContainerDependencyAdoption(in, state)
 	})
 	railshotPublishClosedContainerAdoptionResult(in, state, adoptionErr)
-	state.terminalResult = errors.Join(errs...)
 	in.lifeMu.Lock()
 	if in.finalizers != nil && in.finalizers.managed != nil {
+		state.terminalResult = errors.Join(errs...)
 		managed := in.finalizers.managed
 		in.finalizers.managed = nil
 		managed.finishTerminalClose(state)
-	} else {
-		state.signalTerminalDone()
+		in.lifeMu.Unlock()
+		in.referenceLifetime().finalize()
+		return
 	}
 	in.lifeMu.Unlock()
+
+	// If logical Close already published while an invocation was active, this
+	// terminal owner is the final production trigger for an ordinary closed
+	// component. Publish terminal eligibility before discovery, but keep the
+	// terminal waiter blocked until callback failures have joined its result.
+	// Synchronous Close still uses its narrower pre-publication permit later in
+	// the Close owner defer. Managed terminal ownership remains a separate phase.
+	collectionEnabled := railshotTerminalClosedDependencyCollectionEnabled(in, state)
+	terminalOwnsCollection := collectionEnabled && state.publishTerminalCollectionReady()
+	if terminalOwnsCollection {
+		if err := callShutdownSafely("collect terminal closed dependency component", func() {
+			railshotCollectTerminalClosedDependencyComponent(in, state)
+		}); err != nil {
+			errs = append(errs, err)
+		}
+		// A peer can become terminal-ready while this owner is in its ordinary
+		// finalization scan. Finalizer exit requests one durable ordinary retry;
+		// keep terminalDone unpublished until that retry and its callbacks finish.
+		if err := callShutdownSafely("finalize terminal dependency owner", func() {
+			in.referenceLifetime().finalize()
+		}); err != nil {
+			errs = append(errs, err)
+		}
+		// The finalization scan clears its transient finalizing claim before it
+		// returns. Retry only from this delayed-unmanaged terminal authority: a
+		// peer may have consumed its first attempt while that claim was visible.
+		// Keeping the retry here prevents managed and publication-side adoption
+		// schedulers from inheriting callback/error ownership.
+		if err := callShutdownSafely("retry terminal closed dependency component", func() {
+			railshotCollectTerminalClosedDependencyComponent(in, state)
+		}); err != nil {
+			errs = append(errs, err)
+		}
+		state.terminalResult = errors.Join(errs...)
+		state.signalTerminalDone()
+		return
+	}
+	state.terminalResult = errors.Join(errs...)
+	state.signalTerminalDone()
+	if collectionEnabled {
+		// Terminal readiness won the crossing. The logical Close owner now owns
+		// collection, this ordinary finalization scan, its bounded retry, and any
+		// callback error. Starting a second scan here would make its own scoped
+		// attempt observe finalizing and strand the component.
+		return
+	}
 	in.referenceLifetime().finalize()
+}
+
+// finishLogicalCloseCollectionHandoff atomically chooses which side of the
+// logical-result/terminal-readiness crossing owns the one collection attempt.
+// If terminal work is not ready, publishing completed under the same lock
+// guarantees that the terminal owner will observe it. If terminal work is
+// ready, this Close owner claims collection and delays result publication until
+// its callbacks have been accounted for.
+func (state *instanceCloseState) finishLogicalCloseCollectionHandoff(result error, enabled bool, terminalResult func() error) (error, bool) {
+	state.terminalCollectionMu.Lock()
+	defer state.terminalCollectionMu.Unlock()
+	ready := state.terminalComplete.Load()
+	if ready && terminalResult != nil {
+		result = joinPrimary(result, terminalResult())
+	}
+	required := enabled || state.terminalCollectionDeferred
+	if required && ready && !state.terminalCollectionClaimed {
+		state.terminalCollectionClaimed = true
+		state.terminalCollectionDeferred = false
+		return result, true
+	}
+	state.complete(result)
+	return result, false
+}
+
+func (state *instanceCloseState) completeLogicalCloseCollection(result error) {
+	state.terminalCollectionMu.Lock()
+	state.complete(result)
+	state.terminalCollectionMu.Unlock()
+}
+
+// publishTerminalCollectionReady is the other half of the handoff. Publishing
+// readiness and observing completed share one mutex with the Close owner, so
+// the crossing cannot leave both sides believing the other will collect.
+func (state *instanceCloseState) publishTerminalCollectionReady() bool {
+	state.terminalCollectionMu.Lock()
+	defer state.terminalCollectionMu.Unlock()
+	state.terminalComplete.Store(true)
+	if !state.completed.Load() || state.terminalCollectionClaimed {
+		if !state.completed.Load() {
+			state.terminalCollectionDeferred = true
+		}
+		return false
+	}
+	state.terminalCollectionClaimed = true
+	return true
 }
 
 func (state *instanceCloseState) signalQuiesced() {

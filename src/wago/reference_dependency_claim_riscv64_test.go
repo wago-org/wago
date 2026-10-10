@@ -17,6 +17,10 @@ func TestRV64DependencyComponentClaimBlocksAnonymousFinalizationRetain(t *testin
 		t.Fatal(typed, err)
 	}
 	dependencyTestClosedForDiscovery(t, member)
+	// This is a claim-rollback fixture, not a lifecycle-trigger fixture. Keep
+	// tryFinalize from manufacturing a second terminal owner when the synthetic
+	// guard is released.
+	in.closeState.Load().terminalStarted.Store(true)
 	candidate := g.discoverClosedComponent(member, 1, 1)
 	ledger := assertRootLedgerRV64(t, in, 1)
 	claim, ok := g.claimClosedComponent(candidate)

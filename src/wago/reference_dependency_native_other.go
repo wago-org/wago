@@ -68,8 +68,13 @@ func railshotClosedContainerAdoptionReady(*Instance) bool                       
 func railshotDependencyComponentCollectionPermitValid(*dependencyComponentCollectionPermit) bool {
 	return false
 }
-func railshotDependencyComponentCollectionPrepared(*Instance) bool             { return false }
+func railshotDependencyComponentCollectionPrepared(*Instance) bool { return false }
+func railshotTerminalClosedDependencyCollectionEnabled(*Instance, *instanceCloseState) bool {
+	return false
+}
 func railshotCollectClosingDependencyComponent(*Instance, *instanceCloseState) {}
+func railshotCollectTerminalClosedDependencyComponent(*Instance, *instanceCloseState) {
+}
 func railshotCompleteClosingDependencyCollection(*Instance, *instanceCloseState) {
 }
 func railshotRetryClosedDependencyComponent(*Instance) error     { return nil }

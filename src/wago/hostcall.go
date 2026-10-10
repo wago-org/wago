@@ -720,6 +720,11 @@ type instanceCloseState struct {
 	terminalComplete atomic.Bool
 	terminalDone     chan struct{} // publishes terminalResult, independently of quiescence
 	terminalResult   error
+	// terminalCollectionMu pairs logical-result publication with RV64 terminal
+	// eligibility. Exactly one side of that crossing owns the collection try.
+	terminalCollectionMu       sync.Mutex
+	terminalCollectionClaimed  bool
+	terminalCollectionDeferred bool
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {

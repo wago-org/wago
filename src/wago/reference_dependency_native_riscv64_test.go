@@ -531,6 +531,142 @@ func TestRV64DependencyComponentRejectsForeignMemberBeforePhysicalClaim(t *testi
 	}
 }
 
+func TestRV64TerminalFirstCollectionOwnsFinalizationRetry(t *testing.T) {
+	rt := globalValueAccessRuntime(t)
+	compiled := globalValueAccessCompile(t, false, false)
+	a := globalValueAccessInstantiate(t, rt, compiled, nil)
+	b := globalValueAccessInstantiate(t, rt, compiled, nil)
+	g, err := newRV64FunctionDependencyGraph(2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aOwnership := rv64FunctionDependencyOwnershipFor(a)
+	bOwnership := rv64FunctionDependencyOwnershipFor(b)
+	if err := g.register(&aOwnership.member); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.register(&bOwnership.member); err != nil {
+		t.Fatal(err)
+	}
+	dependencyTestInvocationLease(&aOwnership.member, &bOwnership.member)
+	aToB := dependencyTestAcquire(t, g, &bOwnership.member)
+	bToA := dependencyTestAcquire(t, g, &aOwnership.member)
+	if typed, err := aToB.adopt(&aOwnership.member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	if typed, err := bToA.adopt(&bOwnership.member, dependencyFunction); !typed || err != nil {
+		t.Fatal(typed, err)
+	}
+	a.invocationState.Store(0)
+	b.invocationState.Store(0)
+	aOwnership.functions.push(functionDependencyRoot{producer: b, receipt: aToB})
+	bOwnership.functions.push(functionDependencyRoot{producer: a, receipt: bToA})
+	aOwnership.managed, bOwnership.managed = true, true
+	t.Cleanup(func() {
+		var cleanup resourceCleanup
+		cleanup.run(func() { aOwnership.functions.drain(aOwnership) })
+		cleanup.run(func() { bOwnership.functions.drain(bOwnership) })
+		cleanup.finish()
+	})
+
+	states := make(map[*Instance]*instanceCloseState, 2)
+	for _, in := range []*Instance{a, b} {
+		state := &instanceCloseState{terminalDone: make(chan struct{})}
+		state.prepared.Store(true)
+		if !state.terminalStarted.CompareAndSwap(false, true) {
+			t.Fatal("terminal-first fixture could not claim terminal ownership")
+		}
+		in.lifeMu.Lock()
+		in.closed = true
+		in.lifeMu.Unlock()
+		in.invocationState.Store(instanceInvocationClosed)
+		in.closeState.Store(state)
+		states[in] = state
+	}
+	marker := new(int)
+	callbackCalls := 0
+	a.referenceLifetime().afterPhysicalRelease(func() {
+		callbackCalls++
+		panic(marker)
+	})
+
+	// A terminal-first loser used to start ordinary finalization itself. Hold
+	// the real Runtime store notification so that behavior would block here and
+	// overlap the scoped Close collector with finalizing=true. Both terminal
+	// workers must instead publish the owed handoff and return without scanning.
+	rt.refStore.mu.Lock()
+	var storeOnce sync.Once
+	releaseStore := func() { storeOnce.Do(rt.refStore.mu.Unlock) }
+	t.Cleanup(releaseStore)
+	type terminalOutcome struct {
+		value    any
+		panicked bool
+	}
+	for name, in := range map[string]*Instance{"a": a, "b": b} {
+		done := make(chan terminalOutcome, 1)
+		go func() {
+			value, panicked := cleanupTestPanic(func() { in.finishTerminalClose(states[in]) })
+			done <- terminalOutcome{value: value, panicked: panicked}
+		}()
+		select {
+		case outcome := <-done:
+			if outcome.panicked {
+				t.Fatalf("terminal-first worker %s panicked: %v", name, outcome.value)
+			}
+		case <-time.After(5 * time.Second):
+			releaseStore()
+			select {
+			case outcome := <-done:
+				if outcome.panicked {
+					t.Errorf("terminal-first worker %s panicked during timeout cleanup: %v", name, outcome.value)
+				}
+			case <-time.After(5 * time.Second):
+				t.Errorf("terminal-first worker %s did not finish during timeout cleanup", name)
+			}
+			t.Fatalf("terminal-first worker %s started the losing finalization scan", name)
+		}
+		state := states[in]
+		if !state.terminalComplete.Load() || !state.terminalCollectionDeferred || state.completed.Load() {
+			t.Fatalf("terminal-first worker %s did not publish its deferred handoff", name)
+		}
+	}
+	releaseStore()
+
+	runLogicalOwner := func(in *Instance) error {
+		state := states[in]
+		result, collect := state.finishLogicalCloseCollectionHandoff(nil, false, func() error {
+			return railshotClosedContainerAdoptionResult(in, state)
+		})
+		if !collect {
+			t.Fatal("logical owner did not inherit terminal-first collection authority")
+		}
+		result = joinPrimary(result, callShutdownSafely("collect closed dependency component", func() {
+			railshotCollectClosingDependencyComponent(in, state)
+		}))
+		result = joinPrimary(result, callShutdownSafely("finalize closing dependency owner", func() {
+			in.referenceLifetime().finalize()
+		}))
+		result = joinPrimary(result, callShutdownSafely("retry closing dependency component", func() {
+			railshotCollectClosingDependencyComponent(in, state)
+		}))
+		state.completeLogicalCloseCollection(result)
+		railshotCompleteClosingDependencyCollection(in, state)
+		return result
+	}
+	aErr, bErr := runLogicalOwner(a), runLogicalOwner(b)
+	callbackErrors := 0
+	for _, result := range []error{aErr, bErr} {
+		if errors.Is(result, ErrCallbackPanic) {
+			callbackErrors++
+		} else if result != nil {
+			t.Fatal("unexpected terminal-first collection result", result)
+		}
+	}
+	if callbackErrors != 1 || callbackCalls != 1 || !a.resourcesClosed || !b.resourcesClosed || g.live != 0 || aOwnership.member.active.Load() || bOwnership.member.active.Load() || aOwnership.componentRelease.Load() != nil || bOwnership.componentRelease.Load() != nil {
+		t.Fatal("terminal-first handoff did not converge with one owned callback error", callbackErrors, callbackCalls, a.resourcesClosed, b.resourcesClosed, g.live)
+	}
+}
+
 func TestRV64DependencyComponentRetryDoesNotRepeatMappedTeardown(t *testing.T) {
 	c := rv64PublicStartCompile(t, rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
 	a, err := Instantiate(c)
@@ -597,20 +733,6 @@ func TestRV64DependencyComponentRetryDoesNotRepeatMappedTeardown(t *testing.T) {
 	aOwnership.functions.push(functionDependencyRoot{producer: b, receipt: aToB})
 	bOwnership.functions.push(functionDependencyRoot{producer: a, receipt: bToA})
 	aOwnership.managed, bOwnership.managed = true, true
-	if err := a.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := b.Close(); err != nil {
-		t.Fatal(err)
-	}
-	a.endInvocation()
-	aLease = false
-	b.endInvocation()
-	bLease = false
-	if a.resourcesClosed || b.resourcesClosed || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {
-		t.Fatal("cycle did not retain mapped instances through logical close")
-	}
-
 	setDenied := func(denied bool) {
 		g.mu.Lock()
 		record, _ := g.recordLocked(aToB.identity)
@@ -625,13 +747,29 @@ func TestRV64DependencyComponentRetryDoesNotRepeatMappedTeardown(t *testing.T) {
 		}
 		g.mu.Unlock()
 	}
-	denied := false
+	denied := true
+	setDenied(true) // preserve this explicit retry test across the terminal trigger
 	defer func() {
 		if denied {
 			setDenied(false)
 		}
 		cleanupTestPanic(func() { rv64CollectClosedDependencyComponent(&aOwnership.member, 2, 2) })
 	}()
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a.endInvocation()
+	aLease = false
+	b.endInvocation()
+	bLease = false
+	if a.resourcesClosed || b.resourcesClosed || dependencyTestRefs(a) != 1 || dependencyTestRefs(b) != 1 {
+		t.Fatal("cycle did not retain mapped instances through logical close")
+	}
+	setDenied(false)
+	denied = false
 	aCallbacks, bCallbacks := 0, 0
 	reentrantCompleted := false
 	a.referenceLifetime().afterPhysicalRelease(func() {

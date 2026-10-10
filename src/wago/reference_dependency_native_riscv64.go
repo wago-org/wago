@@ -464,6 +464,14 @@ func railshotDependencyComponentCollectionPrepared(in *Instance) bool {
 	return prepared
 }
 
+func railshotTerminalClosedDependencyCollectionEnabled(in *Instance, state *instanceCloseState) bool {
+	if in == nil || state == nil || in.closeState.Load() != state {
+		return false
+	}
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	return ownership != nil && ownership.member.graph.Load() != nil
+}
+
 // railshotCollectClosingDependencyComponent gives the exact logical Close
 // owner temporary collection authority after terminal work is complete but
 // before its result becomes visible. The marker remains published until
@@ -487,14 +495,34 @@ func railshotCollectClosingDependencyComponent(in *Instance, state *instanceClos
 		ownership.closedAdoptionMu.Unlock()
 		return
 	}
-	permit := &dependencyComponentCollectionPermit{
-		owner: in, state: state, member: &ownership.member, graph: graph, memberIdentity: ownership.member.identity,
+	permit := ownership.closedCollectionPermit
+	if ownership.closedCollectionPrepared == nil {
+		permit = &dependencyComponentCollectionPermit{
+			owner: in, state: state, member: &ownership.member, graph: graph, memberIdentity: ownership.member.identity,
+		}
+		ownership.closedCollectionPrepared = state
+		ownership.closedCollectionPermit = permit
 	}
-	ownership.closedCollectionPrepared = state
-	ownership.closedCollectionPermit = permit
 	ownership.closedAdoptionMu.Unlock()
 
 	rv64CollectClosedDependencyComponentWithPermit(&ownership.member, graph.nodeCap, graph.receiptCap, permit)
+}
+
+// railshotCollectTerminalClosedDependencyComponent is the ordinary, strict
+// collector trigger for an unmanaged Close that published while an invocation
+// was still active. Unlike the synchronous Close trigger it needs no permit:
+// every candidate must have a published logical result and completed terminal
+// work before ordinary discovery and physical claim can succeed.
+func railshotCollectTerminalClosedDependencyComponent(in *Instance, state *instanceCloseState) {
+	ownership := rv64ExistingFunctionDependencyOwnership(in)
+	if ownership == nil || state == nil || in.closeState.Load() != state || !state.completed.Load() || !state.terminalComplete.Load() {
+		return
+	}
+	graph := ownership.member.graph.Load()
+	if graph == nil {
+		return
+	}
+	rv64CollectClosedDependencyComponent(&ownership.member, graph.nodeCap, graph.receiptCap)
 }
 
 func railshotCompleteClosingDependencyCollection(in *Instance, state *instanceCloseState) {

@@ -427,12 +427,11 @@ func TestRV64OwnedTableDescriptorClosedAdoptionFormsCollectibleCycle(t *testing.
 					t.Fatal("active invocation allowed premature closed adoption", aRow.phase, bRow.phase)
 				}
 				a.endInvocation()
+				if a.resourcesClosed || b.resourcesClosed {
+					t.Fatal("first delayed terminal owner collected before its peer was eligible")
+				}
 				b.endInvocation()
 				invocations = false
-				graph := aRow.receipt.graph
-				if !rv64CollectClosedDependencyComponent(&rv64ExistingFunctionDependencyOwnership(a).member, graph.nodeCap, graph.receiptCap) {
-					t.Fatal("delayed genuine owned Table cycle did not reach the explicit internal driver")
-				}
 			}
 			aOwnership := rv64ExistingFunctionDependencyOwnership(a)
 			bOwnership := rv64ExistingFunctionDependencyOwnership(b)
