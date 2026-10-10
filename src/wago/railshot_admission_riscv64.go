@@ -26,7 +26,7 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 	if len(c.Globals) == 0 || len(c.Globals) > 256 || len(c.GlobalImports) != 0 || len(c.GlobalExports) > 256 || len(c.ValueTypes) != 1 || c.tableCount() != 0 || c.memoryCount() != 0 || c.tagImportCount() != 0 || c.HasStart {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.requiredFeatures != CoreFeatureReferenceTypes || compiledStructuralRequiredFeatures(c) != CoreFeatureReferenceTypes {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 		return false
 	}
 	for _, index := range c.GlobalExports {
@@ -35,13 +35,22 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 		}
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValExternRef)
+	required := CoreFeatureReferenceTypes
 	for i, g := range c.Globals {
 		exact, err := c.globalExactType(i)
-		if err != nil || exact != plain || g.Type != ValExternRef || !g.HasValueType || g.ValueTypeIndex != 0 || g.Mutable || g.Bits != 0 || g.V128 != (V128{}) || g.HasInitGlobal || g.InitGlobal != 0 || g.HasInitFunc || g.InitFunc != 0 || len(g.InitExpr) != 0 {
+		if err != nil || exact != plain || g.Type != ValExternRef || !g.HasValueType || g.ValueTypeIndex != 0 || g.Mutable || g.Bits != 0 || g.V128 != (V128{}) || g.HasInitFunc || g.InitFunc != 0 || len(g.InitExpr) != 0 {
+			return false
+		}
+		if g.HasInitGlobal {
+			if g.InitGlobal < 0 || g.InitGlobal >= i {
+				return false
+			}
+			required |= CoreFeatureExtendedConstExpressions
+		} else if g.InitGlobal != 0 {
 			return false
 		}
 	}
-	return true
+	return c.requiredFeatures == required && compiledStructuralRequiredFeatures(c) == required
 }
 
 // Loading and hand-built metadata must enforce the same bounded public ABI as

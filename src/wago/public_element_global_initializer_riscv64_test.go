@@ -475,6 +475,13 @@ func TestRV64PublicElementGlobalMetadataAdmission(t *testing.T) {
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
+			if name == "missing-local-feature" {
+				if err != nil || loaded == nil || loaded.requiredFeatures != c.requiredFeatures || railshotValidateCompiled(loaded.executionView()) != nil {
+					t.Fatal("local initializer feature was not reconstructed", loaded, err)
+				}
+				loaded.Close()
+				return
+			}
 			if normalized != nil {
 				if loaded == nil || err != nil {
 					t.Fatal("normalized initializer artifact rejected", err)

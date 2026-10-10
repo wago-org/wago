@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func stateOnlyExternrefGlobalProfile(count int, exports ...int) *wasm.Module {
@@ -19,6 +20,18 @@ func stateOnlyExternrefGlobalProfile(count int, exports ...int) *wasm.Module {
 	}
 	for _, index := range exports {
 		m.Exports = append(m.Exports, wasm.Export{Name: fmt.Sprintf("g%d", index), Index: wasm.ExternIdx{Kind: wasm.ExternGlobal, Index: uint32(index)}})
+	}
+	return m
+}
+
+func stateOnlyExternrefGlobalChainProfile(parents ...int) *wasm.Module {
+	m := stateOnlyExternrefGlobalProfile(len(parents))
+	for i, parent := range parents {
+		if parent < 0 {
+			continue
+		}
+		m.Globals[i].Init.BodyBytes = append([]byte{0x23}, wasmtest.ULEB(uint32(parent))...)
+		m.Globals[i].Init.BodyBytes = append(m.Globals[i].Init.BodyBytes, 0x0b)
 	}
 	return m
 }
@@ -74,6 +87,55 @@ func TestStateOnlyExternrefGlobalProfile(t *testing.T) {
 			}
 			if _, err := admitStatePolicy(m, true, false, true, false); err == nil {
 				t.Fatal("unsupported state-only externref state admitted")
+			}
+		})
+	}
+}
+
+func TestStateOnlyExternrefGlobalChainProfile(t *testing.T) {
+	maximum := make([]int, 256)
+	maximum[0] = -1
+	for i := 1; i < len(maximum); i++ {
+		maximum[i] = i - 1
+	}
+	for _, parents := range [][]int{{-1, 0}, {-1, -1, 0, 0, 2}, maximum} {
+		m := stateOnlyExternrefGlobalChainProfile(parents...)
+		if !admitStateOnlyExternrefGlobals(m, true, true) {
+			t.Fatal("exact state-only externref global chain rejected", parents)
+		}
+		state, err := admitStatePolicy(m, true, false, true, false)
+		if err != nil || len(state.globals) != len(parents) {
+			t.Fatal("state-only externref chain admission", parents, len(state.globals), err)
+		}
+		if err := AdmitPublicInitializers(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"self": func(m *wasm.Module) {
+			m.Globals[1].Init.BodyBytes = []byte{0x23, 1, 0x0b}
+		},
+		"forward": func(m *wasm.Module) {
+			m.Globals[1].Init.BodyBytes = []byte{0x23, 2, 0x0b}
+		},
+		"mutable-predecessor": func(m *wasm.Module) {
+			m.Globals[0].Type.Mutable = true
+		},
+		"wrong-type-predecessor": func(m *wasm.Module) {
+			m.Globals[0].Type.Type = wasm.FuncRef
+		},
+		"trailing-expression": func(m *wasm.Module) {
+			m.Globals[1].Init.BodyBytes = []byte{0x23, 0, 0xd1, 0x0b}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := stateOnlyExternrefGlobalChainProfile(-1, 0, 1)
+			mutate(m)
+			if admitStateOnlyExternrefGlobals(m, true, true) {
+				t.Fatal("unsupported state-only externref chain admitted")
+			}
+			if _, err := admitStatePolicy(m, true, false, true, false); err == nil {
+				t.Fatal("unsupported state-only externref chain state admitted")
 			}
 		})
 	}

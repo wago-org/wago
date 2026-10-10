@@ -150,6 +150,13 @@ func TestRV64PublicReferenceCopyAdmission(t *testing.T) {
 			continue
 		}
 		loaded, err := LoadTrustedArtifact(blob)
+		if index == 0 {
+			if err != nil || loaded == nil || loaded.requiredFeatures != c.requiredFeatures || railshotValidateCompiled(loaded.executionView()) != nil {
+				t.Fatal("reference-copy feature was not reconstructed", loaded, err)
+			}
+			loaded.Close()
+			continue
+		}
 		if err == nil && index >= 6 && index <= 9 {
 			// The wire format carries a single initializer kind. Conflicting
 			// inactive fields above are rejected in memory but are not encoded.

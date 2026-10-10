@@ -14,6 +14,31 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestCompiledStructuralRequiredFeaturesGlobalGetScope(t *testing.T) {
+	importCopy := &Compiled{
+		GlobalImports: []GlobalImportDef{{Type: ValI32}},
+		Globals: []GlobalDef{
+			{Type: ValI32},
+			{Type: ValI32, HasInitGlobal: true, InitGlobal: 0},
+		},
+	}
+	if got := compiledStructuralRequiredFeatures(importCopy); got.IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatalf("imported global.get required features = %s, unexpectedly includes extended-const-expressions", got)
+	}
+
+	localCopy := &Compiled{
+		GlobalImports: []GlobalImportDef{{Type: ValI32}},
+		Globals: []GlobalDef{
+			{Type: ValI32},
+			{Type: ValI32},
+			{Type: ValI32, HasInitGlobal: true, InitGlobal: 1},
+		},
+	}
+	if got := compiledStructuralRequiredFeatures(localCopy); !got.IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatalf("local global.get required features = %s, want extended-const-expressions", got)
+	}
+}
+
 func TestValidatedAnalysisRequirementsCorpusParity(t *testing.T) {
 	var paths []string
 	err := filepath.WalkDir("../../corpus/workloads", func(path string, entry fs.DirEntry, err error) error {

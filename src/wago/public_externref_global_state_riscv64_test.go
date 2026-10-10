@@ -39,6 +39,85 @@ func rv64StateOnlyExternrefGlobalDirectorySource(count int, exports ...int) []by
 	return wasmtest.Module(sections...)
 }
 
+func rv64StateOnlyExternrefGlobalChainSource(parents []int, exports ...int) []byte {
+	globals := make([][]byte, len(parents))
+	for i, parent := range parents {
+		init := []byte{0xd0, 0x6f, 0x0b}
+		if parent >= 0 {
+			init = append([]byte{0x23}, wasmtest.ULEB(uint32(parent))...)
+			init = append(init, 0x0b)
+		}
+		globals[i] = wasmtest.GlobalEntry(wasm.ExternRef, false, init)
+	}
+	sections := [][]byte{wasmtest.Section(6, wasmtest.Vec(globals...))}
+	if len(exports) != 0 {
+		entries := make([][]byte, len(exports))
+		for i, index := range exports {
+			entries[i] = wasmtest.ExportEntry(fmt.Sprintf("g%d", index), byte(wasm.ExternGlobal), uint32(index))
+		}
+		sections = append(sections, wasmtest.Section(7, wasmtest.Vec(entries...)))
+	}
+	return wasmtest.Module(sections...)
+}
+
+func TestRV64PublicStateOnlyExternrefGlobalChain(t *testing.T) {
+	maximum := make([]int, 256)
+	maximum[0] = -1
+	for i := 1; i < len(maximum); i++ {
+		maximum[i] = i - 1
+	}
+	for _, tc := range []struct {
+		name    string
+		parents []int
+		exports []int
+	}{
+		{name: "two", parents: []int{-1, 0}, exports: []int{1}},
+		{name: "roots-and-repeats", parents: []int{-1, -1, 0, 0, 2}, exports: []int{0, 1, 4}},
+		{name: "maximum", parents: maximum, exports: []int{0, 127, 255}},
+	} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s-artifact%t", tc.name, artifact), func(t *testing.T) {
+				name := "state-only-externref-chain-" + tc.name
+				c := rv64TableStageCompile(t, name, rv64StateOnlyExternrefGlobalChainSource(tc.parents, tc.exports...), artifact)
+				wantFeatures := CoreFeatureReferenceTypes | CoreFeatureExtendedConstExpressions
+				if !rv64StateOnlyExternrefGlobals(c) || c.requiredFeatures != wantFeatures || compiledStructuralRequiredFeatures(c) != wantFeatures || len(c.Globals) != len(tc.parents) {
+					t.Fatal("externref chain metadata contract")
+				}
+				for i, parent := range tc.parents {
+					g := c.Globals[i]
+					if (parent >= 0) != g.HasInitGlobal || parent >= 0 && g.InitGlobal != parent || parent < 0 && g.InitGlobal != 0 {
+						t.Fatal("externref chain initializer", i, parent, g)
+					}
+				}
+				rv64CheckStateOnlyCode(t, c, 0)
+				in, err := Instantiate(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = in.Close() })
+				for i, cell := range in.globalCells {
+					if cell == nil || len(cell.cell) != 8 || i > 0 && cell == in.globalCells[i-1] {
+						t.Fatal("externref chain cell", i)
+					}
+				}
+				for _, index := range tc.exports {
+					got, err := in.GlobalValue(fmt.Sprintf("g%d", index))
+					if err != nil || got.Type() != ValExternRef || !got.ExternRef().IsNull() {
+						t.Fatal("externref chain value", index, got, err)
+					}
+				}
+				if err := c.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := in.Close(); err != nil {
+					t.Fatal(err)
+				}
+				rv64CheckStateOnlyCode(t, c, 0)
+			})
+		}
+	}
+}
+
 func TestRV64PublicStateOnlyExternrefGlobalDirectory(t *testing.T) {
 	all := make([]int, 256)
 	for i := range all {
@@ -142,7 +221,7 @@ func TestRV64PublicStateOnlyExternrefGlobalDirectoryArtifactGates(t *testing.T) 
 		"second-type":        func(v *Compiled) { v.Globals[1].Type = ValFuncRef },
 		"second-mutable":     func(v *Compiled) { v.Globals[1].Mutable = true },
 		"second-bits":        func(v *Compiled) { v.Globals[1].Bits = 1 },
-		"second-init-global": func(v *Compiled) { v.Globals[1].HasInitGlobal = true },
+		"second-init-global": func(v *Compiled) { v.Globals[1].HasInitGlobal = true; v.Globals[1].InitGlobal = 1 },
 		"second-init-func":   func(v *Compiled) { v.Globals[1].HasInitFunc = true },
 		"second-value-index": func(v *Compiled) { v.Globals[1].ValueTypeIndex = 1 },
 		"export-range":       func(v *Compiled) { v.GlobalExports["g1"] = 2 },
@@ -261,6 +340,25 @@ func TestRV64PublicStateOnlyExternrefGlobalSourceGates(t *testing.T) {
 		"table":           wasmtest.Module(global(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}), wasmtest.Section(4, []byte{1, 0x70, 0, 0})),
 		"function":        wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), global(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b})))),
 		"initializer-ref": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0x23, 0, 0x0b})))),
+		"chain-self": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0x23, 0, 0x0b}),
+		))),
+		"chain-forward": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0x23, 1, 0x0b}),
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}),
+		))),
+		"chain-mutable": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.ExternRef, true, []byte{0xd0, 0x6f, 0x0b}),
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0x23, 0, 0x0b}),
+		))),
+		"chain-wrong-type": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0, 0x0b}),
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0x23, 0, 0x0b}),
+		))),
+		"chain-trailing": wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}),
+			wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0x23, 0, 0xd1, 0x0b}),
+		))),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if c, err := Compile(nil, source); c != nil || err == nil {
@@ -277,6 +375,69 @@ func TestRV64PublicStateOnlyExternrefGlobalSourceGates(t *testing.T) {
 			_ = c.Close()
 		}
 		t.Fatal("disabled reference-types admitted", err)
+	}
+	cfg = NewRuntimeConfig().WithFeature(CoreFeatureExtendedConstExpressions, false)
+	if c, err := Compile(cfg, rv64StateOnlyExternrefGlobalChainSource([]int{-1, 0}, 1)); c != nil || err == nil || !strings.Contains(err.Error(), "extended-const-expressions disabled") {
+		if c != nil {
+			_ = c.Close()
+		}
+		t.Fatal("disabled extended-const chain admitted", err)
+	}
+}
+
+func TestRV64PublicStateOnlyExternrefGlobalChainArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "state-only-externref-chain-admission", rv64StateOnlyExternrefGlobalChainSource([]int{-1, 0, 1}, 2), true)
+	defer c.Close()
+	for name, mutate := range map[string]func(*Compiled){
+		"root-self":              func(v *Compiled) { v.Globals[0].HasInitGlobal = true },
+		"second-self":            func(v *Compiled) { v.Globals[1].InitGlobal = 1 },
+		"second-forward":         func(v *Compiled) { v.Globals[1].InitGlobal = 2 },
+		"predecessor-mutable":    func(v *Compiled) { v.Globals[0].Mutable = true },
+		"predecessor-type":       func(v *Compiled) { v.Globals[0].Type = ValFuncRef },
+		"conflicting-function":   func(v *Compiled) { v.Globals[1].HasInitFunc = true },
+		"conflicting-expression": func(v *Compiled) { v.Globals[1].InitExpr = []byte{0x23, 0, 0x0b} },
+		"nonnull-payload":        func(v *Compiled) { v.Globals[1].Bits = 1 },
+		"inactive-index":         func(v *Compiled) { v.Globals[1].HasInitGlobal = false; v.Globals[1].InitGlobal = 1 },
+		"missing-feature":        func(v *Compiled) { v.requiredFeatures &^= CoreFeatureExtendedConstExpressions },
+		"extra-feature":          func(v *Compiled) { v.requiredFeatures |= CoreFeatureSIMD },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Globals = append([]GlobalDef(nil), bad.Globals...)
+			bad.ValueTypes = append([]ValueTypeDescriptor(nil), bad.ValueTypes...)
+			bad.GlobalExports = maps.Clone(bad.GlobalExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("hostile externref initializer chain admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if name == "missing-feature" || name == "conflicting-function" || name == "conflicting-expression" || name == "nonnull-payload" {
+				want := CoreFeatureReferenceTypes | CoreFeatureExtendedConstExpressions
+				if err != nil || loaded == nil || loaded.requiredFeatures != want || !rv64StateOnlyExternrefGlobals(loaded) {
+					t.Fatal("externref initializer feature was not reconstructed", loaded, err)
+				}
+				_ = loaded.Close()
+				return
+			}
+			if name == "inactive-index" {
+				want := CoreFeatureReferenceTypes | CoreFeatureExtendedConstExpressions
+				if err != nil || loaded == nil || loaded.requiredFeatures != want || loaded.Globals[1].HasInitGlobal || loaded.Globals[1].InitGlobal != 0 || !rv64StateOnlyExternrefGlobals(loaded) {
+					t.Fatal("inactive externref initializer metadata was not cleared", loaded, err)
+				}
+				_ = loaded.Close()
+				return
+			}
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("hostile externref initializer artifact admitted")
+			}
+		})
 	}
 }
 

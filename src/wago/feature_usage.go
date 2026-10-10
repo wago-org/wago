@@ -764,6 +764,9 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	for _, g := range c.Globals {
 		out |= requiredFeaturesForConstExprBytes(g.InitExpr, len(c.GlobalImports))
 		out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
+		if g.HasInitGlobal && g.InitGlobal >= len(c.GlobalImports) {
+			out |= CoreFeatureExtendedConstExpressions
+		}
 	}
 	for _, index := range c.GlobalExports {
 		if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {

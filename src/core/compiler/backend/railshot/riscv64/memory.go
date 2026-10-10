@@ -104,9 +104,9 @@ func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
 
 // admitStateOnlyExternrefGlobals recognizes a bounded directory of immutable
 // null externref globals in an otherwise empty public module. This
-// declaration-only profile does not
-// enable executable externref carriers, imports, mutation, or initializer
-// chains.
+// declaration-only profile does not enable executable externref carriers,
+// imports, mutation, or non-null reference ownership. Initializers may only
+// copy null from an earlier immutable externref global.
 func admitStateOnlyExternrefGlobals(m *wasm.Module, production, public bool) bool {
 	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Globals) == 0 || len(m.Globals) > 256 || len(m.Exports) > 256 || m.Start != nil {
 		return false
@@ -119,8 +119,14 @@ func admitStateOnlyExternrefGlobals(m *wasm.Module, production, public bool) boo
 			return false
 		}
 	}
-	for _, g := range m.Globals {
-		if g.Type.Mutable || !wasm.EqualValType(g.Type.Type, wasm.ExternRef) || len(g.Init.Instrs) != 0 || !bytes.Equal(g.Init.BodyBytes, []byte{0xd0, 0x6f, 0x0b}) {
+	for i, g := range m.Globals {
+		if g.Type.Mutable || !wasm.EqualValType(g.Type.Type, wasm.ExternRef) || len(g.Init.Instrs) != 0 {
+			return false
+		}
+		if bytes.Equal(g.Init.BodyBytes, []byte{0xd0, 0x6f, 0x0b}) {
+			continue
+		}
+		if admitGlobalExpression(g.Init, m, wasm.ExternRef, i) != nil {
 			return false
 		}
 	}

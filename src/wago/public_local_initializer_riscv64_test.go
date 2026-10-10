@@ -184,6 +184,13 @@ func TestRV64PublicLocalInitializerArtifactAdmission(t *testing.T) {
 			continue
 		}
 		loaded, err := LoadTrustedArtifact(blob)
+		if index == 0 {
+			if err != nil || loaded == nil || loaded.requiredFeatures != c.requiredFeatures || railshotValidateCompiled(loaded.executionView()) != nil {
+				t.Fatal("local initializer feature was not reconstructed", index, loaded, err)
+			}
+			loaded.Close()
+			continue
+		}
 		if loaded != nil {
 			loaded.Close()
 		}
