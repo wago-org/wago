@@ -236,6 +236,14 @@ indexed, func and extern parameters; it adds no callable externref boundary,
 ownership protocol, resources or name/custom metadata. Together with the
 file's exact invalid module and executable assertions, this completes
 file-level qualification for the pinned `ref_as_non_null.wast`.
+The exact 59-byte no-debug `ref_is_null.1.wasm` declaration module is also
+qualified through separate wire, decoded, native-code and retained-artifact
+attestation. Its three private functions observe non-null indexed, func and
+extern parameters and immediately drop the numeric result; they add no
+callable reference boundary or resource ownership. The file's exact `.2` and
+`.3` invalid modules are pinned to their typed validation failures. The
+table-backed, externally callable `.0` module remains closed, so this is not
+yet file-level `ref_is_null.wast` qualification.
 The first and third executable modules from pinned Core 3
 `br_on_non_null.wast` now qualify separately through source and compiler-free
 artifacts. Exact WABT 1.0.41 bytes from revision

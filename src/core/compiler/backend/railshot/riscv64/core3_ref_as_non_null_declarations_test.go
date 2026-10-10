@@ -83,7 +83,7 @@ func TestCore3RefAsNonNullDeclarationsWireConfinement(t *testing.T) {
 		"extern-nullable":  bytes.Replace(bytes.Clone(core3RefAsNonNullDeclarationsWire), []byte{0x64, 0x6f, 0}, []byte{0x63, 0x6f, 0}, 1),
 		"extern-heap":      bytes.Replace(bytes.Clone(core3RefAsNonNullDeclarationsWire), []byte{0x64, 0x6f, 0}, []byte{0x64, 0x6e, 0}, 1),
 		"binding":          bytes.Replace(bytes.Clone(core3RefAsNonNullDeclarationsWire), []byte{3, 1, 2, 3}, []byte{3, 1, 2, 2}, 1),
-		"opcode":           bytes.Replace(bytes.Clone(core3RefAsNonNullDeclarationsWire), []byte{0xd4, 0x1a}, []byte{0xd1, 0x1a}, 1),
+		"opcode":           bytes.Replace(bytes.Clone(core3RefAsNonNullDeclarationsWire), []byte{0xd4, 0x1a}, []byte{0xd0, 0x1a}, 1),
 		"body-order":       bytes.Replace(bytes.Clone(core3RefAsNonNullDeclarationsWire), []byte{0x20, 0, 0xd4, 0x1a}, []byte{0x20, 0, 0x1a, 0xd4}, 1),
 		"drop":             bytes.Replace(bytes.Clone(core3RefAsNonNullDeclarationsWire), []byte{0xd4, 0x1a, 0x0b}, []byte{0xd4, 0x01, 0x0b}, 1),
 	}
@@ -114,7 +114,7 @@ func TestCore3RefAsNonNullDeclarationsDecodedConfinement(t *testing.T) {
 			m.Types[3].SubTypes[0].Comp.Results = []wasm.ValType{m.Types[3].SubTypes[0].Comp.Params[0]}
 		},
 		"local":  func(m *wasm.Module) { m.Code[2].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.ExternRef}} },
-		"opcode": func(m *wasm.Module) { m.Code[2].BodyBytes[2] = 0xd1 },
+		"opcode": func(m *wasm.Module) { m.Code[2].BodyBytes[2] = 0xd0 },
 		"body-order": func(m *wasm.Module) {
 			m.Code[2].BodyBytes[2], m.Code[2].BodyBytes[3] = m.Code[2].BodyBytes[3], m.Code[2].BodyBytes[2]
 		},

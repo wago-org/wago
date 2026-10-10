@@ -161,7 +161,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.referenceCalls = opts.NativeReferenceCalls
 	state.referenceFunctions = opts.referenceFunctions
 	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
-	state.declarationNonnullRefs = opts.referenceFunctions && admitCore3RefAsNonNullDeclarations(m)
+	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	importTailCount := 0
 	integerSummaries := make([]integerSummary, len(m.Code))
@@ -400,7 +400,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
 	declarationExtern := referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
-	declarationNonNullExtern := referenceFunctions && admitCore3RefAsNonNullDeclarations(m)
+	declarationNonNullExtern := referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
 	// Public modules may contain only state. Import-only modules execute through
 	// instance-owned bridges; neither shape needs placeholder instructions.
 	if len(m.Code) > MaxFunctions || len(m.Code) == 0 && (!floating || !publicStarts) {

@@ -106,7 +106,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		decoded:                  m.Types,
 		decodedSWAR:              vector,
 		declarationExtern:        !vector && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
-		declarationNonNullExtern: !vector && admitCore3RefAsNonNullDeclarations(m),
+		declarationNonNullExtern: !vector && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
 	}
 	limit := 256
 	if vector {

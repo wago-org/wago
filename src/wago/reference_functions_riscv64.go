@@ -198,11 +198,28 @@ func rv64Core3RefAsNonNullDeclarationCode(c *Compiled) bool {
 	return fmt.Sprintf("%x", sha256.Sum256(c.code)) == "4ab02e20f9f4f69df8ef671c3683db5940325b8687bd2a9d556192453508b177"
 }
 
+func rv64Core3RefIsNullDeclarationCode(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(c.code)) == "d2b9e9c8c334de03404b77c7044ee894fc4585a122c601f8c7c25180765d5478"
+}
+
 // rv64Core3RefAsNonNullDeclarationMetadata is the exact retained metadata
 // witness for pinned ref_as_non_null.2.wasm. It is deliberately separate from
 // rv64Core3ReferenceDeclarationMetadata: all three reference parameters are
 // non-null here, including abstract externref.
 func rv64Core3RefAsNonNullDeclarationMetadata(c *Compiled) bool {
+	return rv64Core3NonNullDeclarationMetadata(c, [...]int{0, 656, 1312})
+}
+
+// rv64Core3RefIsNullDeclarationMetadata differs only in the exact framed entry
+// extents emitted by ref.is_null before the numeric result is dropped.
+func rv64Core3RefIsNullDeclarationMetadata(c *Compiled) bool {
+	return rv64Core3NonNullDeclarationMetadata(c, [...]int{0, 608, 1216})
+}
+
+func rv64Core3NonNullDeclarationMetadata(c *Compiled, wantEntries [3]int) bool {
 	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || rv64HasReferenceTail(c) {
 		return false
 	}
@@ -215,7 +232,6 @@ func rv64Core3RefAsNonNullDeclarationMetadata(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 {
 		return false
 	}
-	wantEntries := [...]int{0, 656, 1312}
 	wantTypeIDs := [...]uint64{0x2e23aa23f0da9ca1, 0xc164fecadb664ff3, 0x60e6cc415c67ca8d}
 	for i := range c.Funcs {
 		sig := c.Funcs[i]
@@ -271,6 +287,24 @@ func rv64Core3RefAsNonNullDeclarationMetadata(c *Compiled) bool {
 // resource path, so its non-null externref parameter remains declaration-only.
 func rv64Core3RefAsNonNullDeclarations(c *Compiled) bool {
 	if !rv64Core3RefAsNonNullDeclarationMetadata(c) || !rv64Core3RefAsNonNullDeclarationCode(c) || !c.needsFuncRefContextHeader || len(c.GCTypeDescs) != 4 {
+		return false
+	}
+	for i, desc := range c.GCTypeDescs {
+		if desc.ID != corergc.TypeID(i) || desc.Kind != corergc.KindFunc || !desc.Final || desc.HasSuper || desc.Super != 0 || len(desc.Fields) != 0 || desc.Elem != 0 || desc.Size != 0 || desc.ElemSize != 0 || desc.Align != 0 || desc.HasRefs {
+			return false
+		}
+	}
+	if d := c.memoryDir; d != nil && (len(d.defs) != 0 || len(d.exports) != 0 || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0) {
+		return false
+	}
+	return true
+}
+
+// rv64Core3RefIsNullDeclarations completes the retained artifact witness for
+// pinned ref_is_null.1.wasm. Its externref parameter is private and non-null,
+// and the module has no callable or resource surface.
+func rv64Core3RefIsNullDeclarations(c *Compiled) bool {
+	if !rv64Core3RefIsNullDeclarationMetadata(c) || !rv64Core3RefIsNullDeclarationCode(c) || !c.needsFuncRefContextHeader || len(c.GCTypeDescs) != 4 {
 		return false
 	}
 	for i, desc := range c.GCTypeDescs {

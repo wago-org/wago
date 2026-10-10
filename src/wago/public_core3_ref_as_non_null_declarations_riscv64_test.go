@@ -93,7 +93,7 @@ func TestRV64Core3RefAsNonNullPinnedDeclarationSourceGates(t *testing.T) {
 		"extern-nullable": bytes.Replace(bytes.Clone(base), []byte{0x64, 0x6f, 0}, []byte{0x63, 0x6f, 0}, 1),
 		"extern-heap":     bytes.Replace(bytes.Clone(base), []byte{0x64, 0x6f, 0}, []byte{0x64, 0x6e, 0}, 1),
 		"binding":         bytes.Replace(bytes.Clone(base), []byte{3, 1, 2, 3}, []byte{3, 1, 2, 2}, 1),
-		"opcode":          bytes.Replace(bytes.Clone(base), []byte{0xd4, 0x1a}, []byte{0xd1, 0x1a}, 1),
+		"opcode":          bytes.Replace(bytes.Clone(base), []byte{0xd4, 0x1a}, []byte{0xd0, 0x1a}, 1),
 		"body-order":      bytes.Replace(bytes.Clone(base), []byte{0x20, 0, 0xd4, 0x1a}, []byte{0x20, 0, 0x1a, 0xd4}, 1),
 	}
 	for name, source := range mutations {
