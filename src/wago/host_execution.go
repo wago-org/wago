@@ -855,6 +855,13 @@ func (in *Instance) hasSingleDirectTypedScalarHost() bool {
 	return binding.gate == nil && (binding.scalarKind == syncHostTypedI32 || binding.scalarKind == syncHostTypedI32x2)
 }
 
+// privateBoundedTypedHost reports the exact typed shapes with dedicated
+// context adapters for the bounded private bridge. Keep this narrower than the
+// expanded typed-scalar ABI: every admitted shape needs its own correct Go ABI.
+func (b *syncHostBinding) privateBoundedTypedHost() bool {
+	return b.scalarKind == syncHostTypedI32 || b.scalarKind == syncHostTypedI32x2 || b.scalarKind == syncHostTypedI64
+}
+
 func (in *Instance) hasSingleExpandedTypedScalarHost() bool {
 	if !in.singleTypedScalarHostEligible() {
 		return false

@@ -45,6 +45,17 @@ func (a *boundedTypedHostActivation) dispatchI32x2(a0, a1 uint64) uint64 {
 	return I32(a.root.syncHosts[0].typedI32x2(AsI32(a0), AsI32(a1)))
 }
 
+func (a *boundedTypedHostActivation) dispatchI64(a0, a1 uint64) uint64 {
+	mu := a.localNativeMu()
+	if mu == nil {
+		return a.dispatchShared(a0, a1)
+	}
+	lease := parkedIndependentHostLease{mu: mu, version: a.state.nativeContextVersion.Load(), ctrl: a.ctrl}
+	mu.Unlock()
+	defer lease.resumeBoundedTyped(a)
+	return I64(a.root.syncHosts[0].typedI64(AsI64(a0)))
+}
+
 // Revoked/shared dispatch retains all general signature/domain checks.
 func (a *boundedTypedHostActivation) dispatchShared(a0, a1 uint64) uint64 {
 	full := hostLoopActivation{root: a.root, ctrl: a.ctrl, state: a.state, entryNativeMu: a.entryNativeMu, parkedNativeContextReusable: true}
@@ -119,6 +130,18 @@ func boundedTypedHostDispatchI32x2(context unsafe.Pointer, a0, a1 uint64) uint64
 	mu.Unlock()
 	defer lease.resumeBoundedTyped(a)
 	return I32(a.root.syncHosts[0].typedI32x2(AsI32(a0), AsI32(a1)))
+}
+
+func boundedTypedHostDispatchI64(context unsafe.Pointer, a0, a1 uint64) uint64 {
+	a := (*boundedTypedHostActivation)(context)
+	mu := a.localNativeMu()
+	if mu == nil {
+		return a.dispatchShared(a0, a1)
+	}
+	lease := parkedIndependentHostLease{mu: mu, version: a.state.nativeContextVersion.Load(), ctrl: a.ctrl}
+	mu.Unlock()
+	defer lease.resumeBoundedTyped(a)
+	return I64(a.root.syncHosts[0].typedI64(AsI64(a0)))
 }
 
 // Static target keeps the same lease and callback lifetime contract.
