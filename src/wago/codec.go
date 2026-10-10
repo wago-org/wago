@@ -24,8 +24,9 @@ const (
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
 	// low range; reserving the top fifteen bits avoids growing artifacts.
-	// Bits 36-48 are architecture-scoped to attest exact RV64 table64
-	// instruction profiles. Bits 36-42 overlap AMD64 CPU features in the shared word, but
+	// Bits 36-48 are architecture-scoped to attest exact RV64 table
+	// instruction profiles. The size witness also covers the exact indexed
+	// two-table32 slice. Bits 36-42 overlap AMD64 CPU features in the shared word, but
 	// the artifact architecture header disambiguates it and RV64 encoding rejects
 	// any CPU-requirement alias. Bit 50
 	// originally witnessed ref.as_non_null. Branches share its retained
@@ -434,7 +435,7 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI {
 		if compiledArchitecture != 4 {
-			return nil, sizes, fmt.Errorf("RV64 table64.size compiler witness on a foreign architecture")
+			return nil, sizes, fmt.Errorf("RV64 table.size compiler witness on a foreign architecture")
 		}
 		required |= compiledRV64Table64SizeABI
 	}

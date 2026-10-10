@@ -92,7 +92,7 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		return unsupported("table import count bound")
 	}
 	tableCount := len(m.Tables) + m.ImportedTableCount()
-	if tableCount > 1 && !admitOwnedTwoTable64Size(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
+	if tableCount > 1 && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
 	for index := 0; index < tableCount; index++ {
@@ -156,6 +156,49 @@ func admitStateOnlyTable64(m *wasm.Module, production, public bool) bool {
 	}
 	t := m.Tables[0]
 	return t.Type.Limits.Addr64 && wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef)
+}
+
+// admitOwnedTwoTable32Size is the first exact scalar table32 directory slice.
+// It observes two bounded owned nullable-funcref lengths through distinct
+// fixed indexes without reference payloads, initializers, mutation or calls.
+func admitOwnedTwoTable32Size(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	for i := range m.Tables {
+		table := m.Tables[i]
+		if table.Init != nil || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min > MaxOwnedTableEntries || table.Type.Limits.Max > MaxOwnedTableEntries || table.Type.Limits.Max < table.Type.Limits.Min || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) {
+			return false
+		}
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != 0 || len(m.Code[i].Locals.Runs) != 0 || len(m.Code[i].Body.Instrs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, []byte{0xfc, 0x10, byte(i), 0x0b}) {
+			return false
+		}
+	}
+	if len(m.Types[0].SubTypes) != 1 {
+		return false
+	}
+	sub := m.Types[0].SubTypes[0]
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) {
+		return false
+	}
+	var functions, tables [2]bool
+	for _, export := range m.Exports {
+		if export.Index.Index > 1 {
+			return false
+		}
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			functions[export.Index.Index] = true
+		case wasm.ExternTable:
+			tables[export.Index.Index] = true
+		default:
+			return false
+		}
+	}
+	return functions[0] && functions[1] && tables[0] && tables[1]
 }
 
 // admitOwnedTwoTable64Size is the first multi-table descriptor slice. It
