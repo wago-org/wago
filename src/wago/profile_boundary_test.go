@@ -11,6 +11,7 @@ import (
 
 	profilereport "github.com/wago-org/wago/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestProfileBoundaryCrossInstanceReentry(t *testing.T) {
@@ -406,6 +407,94 @@ func TestProfileBoundaryDirectHostReexportComplete(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProfileBoundaryDeferredHostEventComplete(t *testing.T) {
+	if goruntime.GOARCH == "riscv64" {
+		t.Skip("RV64 rejects deferred host events before publication")
+	}
+	cases := []struct {
+		name, outcome string
+		value         any
+	}{{"panic", "panic", "event panic"}, {"exit", "host-exit", HostExit{Code: 7}}, {"cancel", "cancelled", HostTrap{Err: context.Canceled}}}
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name, outcome string
+			value         any
+		}{"nil-panic", "panic", nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			session := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
+			defer session.Close()
+			compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(session), profileDeferredHostEventModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			fail := true
+			calls := 0
+			in, err := Instantiate(compiled, testImports("env.event", I32HostEvent(func(int32) {
+				calls++
+				if fail {
+					panic(tc.value)
+				}
+			})))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			got, callErr, panicked, recovered := invokeProfilePanic(func(*WasmFunc, *PreparedSession) ([]uint64, error) {
+				return in.Invoke("run", I32(2))
+			}, nil, nil)
+			wantPanic := tc.outcome == "panic"
+			if panicked != wantPanic || wantPanic && recovered != tc.value || wantPanic && got != nil {
+				t.Fatalf("deferred event panic = (%v, %#v, %v), want (%v, %#v)", panicked, recovered, got, wantPanic, tc.value)
+			}
+			if calls != 1 {
+				t.Fatalf("event replay continued after failure: calls=%d", calls)
+			}
+			spans := session.Spans()
+			if len(spans) != 1 || spans[0].End == 0 || spans[0].Outcome != tc.outcome {
+				t.Fatalf("unfinished/wrong deferred event span: %+v, err %v", spans, callErr)
+			}
+			state := in.ensurePluginState()
+			if activeHostInvocationContext(in).traceSession != nil || state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatalf("deferred event authority leaked: trace=%v gate=%#x identity=%d state=%#x", activeHostInvocationContext(in).traceSession != nil, state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+			}
+			fail = false
+			calls = 0
+			got, err = in.Invoke("run", I32(0))
+			if err != nil || len(got) != 0 || calls != 0 {
+				t.Fatalf("undelivered event was retried: %v, %v, calls=%d", got, err, calls)
+			}
+			got, err = in.Invoke("run", I32(2))
+			if err != nil || len(got) != 0 || calls != 2 {
+				t.Fatalf("deferred event path not reusable: %v, %v, calls=%d", got, err, calls)
+			}
+		})
+	}
+}
+
+func profileDeferredHostEventModule() []byte {
+	typeEvent := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	importEvent := append(wasmtest.Name("env"), wasmtest.Name("event")...)
+	importEvent = append(importEvent, 0, 0)
+	body := []byte{
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x00, 0x45, 0x0d, 0x01,
+		0x20, 0x00, 0x10, 0x00,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00,
+		0x0c, 0x00, 0x0b, 0x0b,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(typeEvent)),
+		wasmtest.Section(2, wasmtest.Vec(importEvent)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
 }
 
 func TestProfileBoundaryReentryNilPanicComplete(t *testing.T) {

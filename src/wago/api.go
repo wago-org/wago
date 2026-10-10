@@ -4962,8 +4962,10 @@ func (in *Instance) replayHostLog() (err error) {
 	}
 	// A replayed host call may panic HostExit or HostTrap to end execution;
 	// recover both exactly like the synchronous path.
+	completed := false
 	defer func() {
-		if r := recover(); r != nil {
+		r := recover()
+		if !completed || r != nil {
 			switch trap := r.(type) {
 			case HostTrap:
 				if trap.Err == nil {
@@ -5018,6 +5020,7 @@ func (in *Instance) replayHostLog() (err error) {
 			}
 		}
 	}
+	completed = true
 	return nil
 }
 
