@@ -68,6 +68,13 @@ type compiledCacheIndexes struct {
 	// Cold experimental initializer, protected by codeCache.mu. Existing
 	// instance mappings survive closing this descriptor.
 	memoryImage *os.File
+	// Immutable CoW admission facts belong to the frozen execution snapshot.
+	// Keep the exact memory configuration beside the image: a different reserve
+	// cannot reuse the same memfd, and a smaller initial size may be ineligible.
+	cowImageInitial, cowImageMax          int
+	cowImageEnd                           uint64
+	cowImageConfigured, cowImageAttempted bool
+	cowImageChecked, cowImageEligible     bool
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -88,7 +89,7 @@ func processPSSKB(t *testing.T) int {
 // This exercises the actual Wago instance path, including ordered overlapping
 // active segments, private writes, growth, close, and fresh instantiation.
 func TestCOWImageIntegratedInstances(t *testing.T) {
-	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "1")
+	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "force")
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), cowIntegratedModule())
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +154,7 @@ func TestCOWImageIntegratedInstances(t *testing.T) {
 }
 
 func TestCOWImageParallelInstantiation(t *testing.T) {
-	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "1")
+	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "force")
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), cowIntegratedModule())
 	if err != nil {
 		t.Fatal(err)
@@ -189,8 +190,92 @@ func TestCOWImageParallelInstantiation(t *testing.T) {
 	}
 }
 
-func TestCOWImageRealYYJSON(t *testing.T) {
+func TestCOWImageReuseAdmission(t *testing.T) {
+	// The ordinary opt-in keeps small modules and a large module's first use
+	// on the existing path. A second large instance proves actual reuse.
 	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "1")
+	small := MustCompile(cowIntegratedModule())
+	defer small.Close()
+	for i := 0; i < 2; i++ {
+		in, err := Instantiate(small)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = in.Close()
+	}
+	if indexes := small.loadCompileIndexes(); indexes != nil && indexes.memoryImage != nil {
+		t.Fatal("small module built a CoW image")
+	}
+	large := MustCompile(cowPHPDataOnlyModule(t))
+	defer large.Close()
+	first, err := Instantiate(large)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if indexes := large.loadCompileIndexes(); indexes != nil && indexes.memoryImage != nil {
+		t.Fatal("single-use large module built a CoW image")
+	}
+	second, err := Instantiate(large)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if indexes := large.loadCompileIndexes(); indexes == nil || indexes.memoryImage == nil {
+		t.Fatal("reused large module did not build an image")
+	}
+	assertCOWMapping(t, second)
+	if first.Memory().UnsafeBytes()[0] != second.Memory().UnsafeBytes()[0] {
+		t.Fatal("baseline first instance differs from CoW second instance")
+	}
+}
+
+func TestCOWImagePlanConfigurationAndQuota(t *testing.T) {
+	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "force")
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithMemoryLimitPages(1), cowIntegratedModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	snapshot := c.executionView()
+	initial, maxBytes := snapshot.memorySizeBytes()
+	if fd, ok, err := snapshot.experimentalCOWImageFD(initial-1, maxBytes); err != nil || ok {
+		if fd >= 0 {
+			_ = syscall.Close(fd)
+		}
+		t.Fatalf("undersized initial memory admitted: fd=%d eligible=%t err=%v", fd, ok, err)
+	}
+	fd, ok, err := snapshot.experimentalCOWImageFD(initial, maxBytes)
+	if err != nil || !ok {
+		t.Fatalf("valid image: fd=%d eligible=%t err=%v", fd, ok, err)
+	}
+	_ = syscall.Close(fd)
+	fd, ok, err = snapshot.experimentalCOWImageFD(initial, maxBytes+65536)
+	if err != nil || !ok {
+		t.Fatalf("larger reservation: fd=%d eligible=%t err=%v", fd, ok, err)
+	}
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(fd, &stat); err != nil {
+		t.Fatal(err)
+	}
+	_ = syscall.Close(fd)
+	if want := int64(abi.BasedataSize + maxBytes + 65536); stat.Size != want {
+		t.Fatalf("cached image size %d, want %d", stat.Size, want)
+	}
+	in, err := Instantiate(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	assertCOWMapping(t, in)
+	got, err := in.Invoke("grow")
+	if err != nil || len(got) != 1 || uint32(got[0]) != ^uint32(0) {
+		t.Fatalf("growth exceeded per-instance page quota: %v, %v", got, err)
+	}
+}
+
+func TestCOWImageRealYYJSON(t *testing.T) {
+	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "force")
 	data, err := os.ReadFile(filepath.Join("../..", "corpus/workloads/semantic/yyjson/yyjson.wasm"))
 	if err != nil {
 		t.Fatal(err)
@@ -267,12 +352,14 @@ func TestCOWImageRealPHPInitialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.Close()
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.memoryImage != nil {
+		t.Fatal("single-use PHP instance unexpectedly built an image")
+	}
 	b, err := Instantiate(c, imports)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	assertCOWMapping(t, a)
 	assertCOWMapping(t, b)
 	for i := 0; i < c.activeDataCount(); i++ {
 		d := c.activeDataAt(i)
@@ -371,7 +458,21 @@ func TestCOWImageFirstUseCost(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer in.Close()
-				t.Logf("source_bytes=%d native_code_bytes=%d compile_ms=%.3f first_instance_ms=%.3f", len(item.data), c.CodeSize(), float64(compileTime.Microseconds())/1000, float64(firstTime.Microseconds())/1000)
+				started = time.Now()
+				second, err := Instantiate(c, imports)
+				secondTime := time.Since(started)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer second.Close()
+				started = time.Now()
+				third, err := Instantiate(c, imports)
+				thirdTime := time.Since(started)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer third.Close()
+				t.Logf("source_bytes=%d native_code_bytes=%d compile_ms=%.3f first_ms=%.3f second_ms=%.3f third_ms=%.3f", len(item.data), c.CodeSize(), float64(compileTime.Microseconds())/1000, float64(firstTime.Microseconds())/1000, float64(secondTime.Microseconds())/1000, float64(thirdTime.Microseconds())/1000)
 			})
 		}
 	}
@@ -448,11 +549,13 @@ func BenchmarkCOWIntegratedInstantiate(b *testing.B) {
 			}{{"baseline", "0"}, {"cow", "1"}} {
 				b.Run(mode.name, func(b *testing.B) {
 					b.Setenv("WAGO_EXPERIMENT_COW_IMAGE", mode.flag)
-					warm, err := Instantiate(c, imports)
-					if err != nil {
-						b.Fatal(err)
+					for warmups := 0; warmups < 2; warmups++ {
+						warm, err := Instantiate(c, imports)
+						if err != nil {
+							b.Fatal(err)
+						}
+						_ = warm.Close()
 					}
-					_ = warm.Close()
 					b.ReportAllocs()
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
