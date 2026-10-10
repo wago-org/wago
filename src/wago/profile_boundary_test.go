@@ -4,8 +4,11 @@ package wago
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	goruntime "runtime"
+	"strings"
 	"sync"
 	"testing"
 
@@ -918,5 +921,116 @@ func TestProfileLifecycleImportedInitialization(t *testing.T) {
 	spans := trace.Spans()
 	if !called || len(spans) != 2 || spans[1].Kind != "initialize-host" || spans[1].Function != 0 || spans[1].ParentID != spans[0].ID || spans[1].Outcome != "return" {
 		t.Fatal(called, spans)
+	}
+}
+
+func TestProfileLifecycleImportedInitializationPanicComplete(t *testing.T) {
+	cases := []struct {
+		name, outcome string
+		value         any
+	}{{"panic", "error", "start panic"}, {"exit", "host-exit", HostExit{Code: 7}}, {"cancel", "cancelled", HostTrap{Err: context.Canceled}}}
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name, outcome string
+			value         any
+		}{"nil-panic", "error", nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := NewCodeProfile(CodeProfileOptions{TraceLifecycle: true})
+			defer trace.Close()
+			compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(trace), invocationContextImportedStartModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			fail := true
+			calls := 0
+			var captured *Instance
+			var callerToken Caller
+			imports := NewImports()
+			imports.Function("env", "outer", CallerHostCallFunc(func(caller Caller, _ HostCall) {
+				calls++
+				captured = caller.in
+				callerToken = caller
+				if fail {
+					panic(tc.value)
+				}
+			}))
+			in, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
+			if in != nil || err == nil || calls != 1 {
+				if in != nil {
+					in.Close()
+				}
+				t.Fatalf("failing imported start = (%p, %v, calls=%d)", in, err, calls)
+			}
+			switch tc.outcome {
+			case "host-exit":
+				var exit *ExitError
+				if !errors.As(err, &exit) || exit.Code != 7 {
+					t.Fatalf("host exit changed: %v", err)
+				}
+			case "cancelled":
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancellation changed: %v", err)
+				}
+			default:
+				want := fmt.Sprint(tc.value)
+				if !strings.Contains(err.Error(), "host start panicked") || !strings.Contains(err.Error(), want) {
+					t.Fatalf("start panic changed: %v", err)
+				}
+			}
+			spans := trace.Spans()
+			wantKinds := []string{"instantiate", "initialize-host", "logical-close", "physical-release"}
+			if len(spans) != len(wantKinds) {
+				t.Fatal(spans)
+			}
+			for i, span := range spans {
+				wantOutcome := tc.outcome
+				wantParent := uint64(0)
+				if i == 1 {
+					wantParent = spans[0].ID
+				}
+				if i >= 2 {
+					wantOutcome = "return"
+				}
+				if span.Kind != wantKinds[i] || span.ParentID != wantParent || span.Outcome != wantOutcome || span.End == 0 || span.InstanceID != spans[0].InstanceID {
+					t.Fatalf("wrong imported-start span %d: %+v", i, span)
+				}
+			}
+			if compiled.codeCache.refs != 0 {
+				t.Fatalf("failed imported start retained code: refs=%d", compiled.codeCache.refs)
+			}
+			if captured == nil {
+				t.Fatal("imported start did not expose its constructing instance")
+			}
+			if callerToken.valid() || !captured.resourcesClosed || captured.constructionIsActive() || captured.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatalf("failed imported start retained lifetime: caller=%t resources=%t construction=%t invocations=%d", callerToken.valid(), captured.resourcesClosed, captured.constructionIsActive(), captured.invocationState.Load()&instanceInvocationCount)
+			}
+			if state := captured.pluginState.Load(); state != nil && (state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0) {
+				t.Fatalf("failed imported start retained gate: state=%#x id=%d", state.invokeMu.state.Load(), state.invocationID)
+			}
+			fail = false
+			calls = 0
+			in, err = Instantiate(compiled, InstantiateOptions{Imports: imports})
+			retry := in
+			if retry != nil {
+				t.Cleanup(func() {
+					if retry != nil {
+						_ = retry.Close()
+					}
+				})
+			}
+			if err != nil || in == nil || calls != 1 {
+				t.Fatalf("reuse after imported-start failure = (%v, %v, calls=%d)", in, err, calls)
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal(err)
+			}
+			retry = nil
+			if report, err := profilereport.AnalyzeTimeline(trace.Spans(), trace.Status()); err != nil || !report.Complete {
+				t.Fatal(report, err)
+			}
+		})
 	}
 }

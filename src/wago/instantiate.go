@@ -2115,8 +2115,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 
 func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error) {
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	completed := false
 	defer func() {
-		if recovered := recover(); recovered != nil {
+		recovered := recover()
+		if !completed || recovered != nil {
 			switch value := recovered.(type) {
 			case HostTrap:
 				err = value.Err
@@ -2145,6 +2147,7 @@ func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error
 		}
 	}()
 	fn.call(caller, nil, nil)
+	completed = true
 	return nil
 }
 
