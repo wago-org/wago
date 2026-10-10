@@ -29,7 +29,6 @@ func TestRV64PublicReferenceFunctionResourceAdmission(t *testing.T) {
 		for name, mutate := range map[string]func(*Compiled){
 			"memory-index":          func(v *Compiled) { v.memoryDir.exports["bad"] = 2 },
 			"global-index":          func(v *Compiled) { v.GlobalExports["bad"] = 3 },
-			"function-escape":       func(v *Compiled) { v.Exports["bad"] = 2 },
 			"global-escape":         func(v *Compiled) { v.Globals[2].Type = ValFuncRef },
 			"function-global-name":  func(v *Compiled) { v.GlobalExports["run"] = 1 },
 			"function-memory-name":  func(v *Compiled) { v.memoryDir.exports["run"] = 0 },
@@ -55,6 +54,20 @@ func TestRV64PublicReferenceFunctionResourceAdmission(t *testing.T) {
 				}
 			})
 		}
+		public := rv64ReferenceResourceCopy(c)
+		public.Exports["reference"] = 2
+		if err := public.validate(); err != nil {
+			t.Fatal("ephemeral resource-profile reference export", err)
+		}
+		blob, err := marshalCompiled(public)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := LoadTrustedArtifact(blob)
+		if err != nil {
+			t.Fatal("ephemeral resource-profile reference artifact", err)
+		}
+		loaded.Close()
 		copy := rv64ReferenceResourceCopy(c)
 		copy.memoryDir.exports[""] = 1
 		if err := copy.validate(); err != nil {

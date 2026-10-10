@@ -176,9 +176,21 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 			}
 		}
 	}
+	referenceExports := false
 	for _, index := range c.Exports {
-		if index < 0 || index >= c.NumImports+len(c.Funcs) || railshotNonCallableFunction(c, index) {
-			return reject("numeric exports only")
+		if index < 0 || index >= c.NumImports+len(c.Funcs) {
+			return reject("function export index")
+		}
+		referenceExports = referenceExports || railshotNonCallableFunction(c, index)
+	}
+	if referenceExports {
+		if c.tableCount() != 0 || c.nativeReferenceCallABI || rv64HasReferenceTail(c) {
+			return reject("public reference wrapper requires ephemeral owner-scoped transport")
+		}
+		for _, global := range c.Globals {
+			if global.Type == ValFuncRef {
+				return reject("public reference wrapper requires reference-global-free transport")
+			}
 		}
 	}
 	if c.tableCount() != 0 {

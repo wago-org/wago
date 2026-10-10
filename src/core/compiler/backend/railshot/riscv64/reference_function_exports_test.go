@@ -38,9 +38,6 @@ func TestReferenceFunctionResourceExports(t *testing.T) {
 						func(v *wasm.Module) {
 							v.Exports[len(v.Exports)-1].Index = wasm.ExternIdx{Kind: wasm.ExternGlobal, Index: 3}
 						},
-						func(v *wasm.Module) {
-							v.Exports[len(v.Exports)-1].Index = wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}
-						},
 						func(v *wasm.Module) { v.Globals[2].Type.Type = wasm.FuncRef },
 					} {
 						m := referenceResourceDecode(t, vector, tails, wide)

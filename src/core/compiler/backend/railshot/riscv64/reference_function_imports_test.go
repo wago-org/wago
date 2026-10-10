@@ -65,7 +65,7 @@ func TestReferenceFunctionImportsRejectEscapes(t *testing.T) {
 			}},
 			{"too-many-imports", func(m *wasm.Module, _ *CompileOptions) { m.Imports = make([]wasm.Import, MaxHostFunctionImports+1) }},
 			{"reference-import", func(m *wasm.Module, _ *CompileOptions) { m.Imports[0].Type = wasm.NewFuncExternType(m.FuncTypes[2]) }},
-			{"reference-export", func(m *wasm.Module, _ *CompileOptions) { m.Exports[0].Index.Index = 5 }},
+			{"bad-export", func(m *wasm.Module, _ *CompileOptions) { m.Exports[0].Index.Index = 99 }},
 			{"reference-declaration", func(m *wasm.Module, _ *CompileOptions) { m.Elements[0].Kind.Funcs[0] = 6 }},
 			{"reference-descriptor", func(m *wasm.Module, _ *CompileOptions) { m.Code[1].BodyBytes = []byte{0, 0xd2, 5, 0x1a, 0x0b} }},
 			{"imported-tail", func(m *wasm.Module, _ *CompileOptions) { m.Code[1].BodyBytes = []byte{0, 0x12, 0, 0x0b} }},

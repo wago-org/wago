@@ -5,7 +5,9 @@ package riscv64
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // This private decoded-module prerequisite proves that reference-bearing
-// functions cannot escape through an export, descriptor, import or resource.
+// functions cannot escape through a descriptor, import or resource. A direct
+// function export is allowed only through the public wrapper boundary, which
+// authenticates opaque tokens and never makes that function a ref.func target.
 // It does not authorize production staging or general reference ownership.
 // Every bound precedes frontend validation and derived carrier allocation.
 func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
@@ -168,12 +170,14 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			return unsupported("closed reference start requires a void signature")
 		}
 	}
+	referenceExports := false
 	for _, ex := range m.Exports {
 		switch ex.Index.Kind {
 		case wasm.ExternFunc:
-			if !numericTarget(ex.Index.Index) {
-				return unsupported("closed reference module numeric function exports only")
+			if uint64(ex.Index.Index) >= uint64(imported+len(m.Code)) {
+				return unsupported("closed reference module function export index")
 			}
+			referenceExports = referenceExports || references[ex.Index.Index]
 		case wasm.ExternMem:
 			if uint64(ex.Index.Index) >= uint64(counts.memories+len(m.Memories)) {
 				return unsupported("closed reference module owned memory export index")
@@ -185,6 +189,16 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			}
 		default:
 			return unsupported("closed reference module numeric exports only")
+		}
+	}
+	if referenceExports {
+		if len(m.Tables) != 0 {
+			return unsupported("public reference wrapper requires table-free ephemeral transport")
+		}
+		for _, global := range m.Globals {
+			if global.Type.Type.Kind() == wasm.ValRef {
+				return unsupported("public reference wrapper requires reference-global-free ephemeral transport")
+			}
 		}
 	}
 	if err := admitClosedReferenceElements(m, &remaining, numericTarget); err != nil {
@@ -246,6 +260,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			}
 			if op == 0xd2 && !numericTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
+			}
+			if referenceExports && (op == 0x14 || op == 0x15) {
+				return unsupported("public reference wrapper dynamic reference call requires owner scoping")
 			}
 			if (op == 0x11 || op == 0x13) && (len(m.Tables) != 1 || imm.Index2 != 0) {
 				return unsupported("closed reference indirect call requires own table zero")

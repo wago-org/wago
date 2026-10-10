@@ -50,7 +50,6 @@ func TestRV64PublicReferenceFunctionImportsRetainedAdmission(t *testing.T) {
 			"missing-imported-key": func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[1:] },
 			"late-imported-key":    func(v *Compiled) { v.FuncTypeID[2] = 999 },
 			"shifted-defined-key":  func(v *Compiled) { v.FuncTypeID[7] = v.FuncTypeID[3] },
-			"internal-export":      func(v *Compiled) { v.Exports["hidden"] = 5 },
 			"last-export-over":     func(v *Compiled) { v.Exports["hidden"] = v.NumImports + len(v.Funcs) },
 			"bad-name-separator":   func(v *Compiled) { v.Imports[2] = "env/owned" },
 			"bad-name-end":         func(v *Compiled) { v.validateMemo = &validateMemo{importModuleEnds: []uint64{4, 4, 99}} },
@@ -65,7 +64,7 @@ func TestRV64PublicReferenceFunctionImportsRetainedAdmission(t *testing.T) {
 				}
 			})
 		}
-		for _, name := range []string{"missing-dispatch", "dynamic-escape", "late-invalid-type", "late-wrong-type", "late-reference-type", "late-wrong-carrier", "missing-imported-key", "late-imported-key", "shifted-defined-key", "internal-export", "last-export-over"} {
+		for _, name := range []string{"missing-dispatch", "dynamic-escape", "late-invalid-type", "late-wrong-type", "late-reference-type", "late-wrong-carrier", "missing-imported-key", "late-imported-key", "shifted-defined-key", "last-export-over"} {
 			t.Run(fmt.Sprintf("vector%t-codec-%s", vector, name), func(t *testing.T) {
 				v := rv64ReferenceImportCopy(c)
 				mutations[name](v)
@@ -82,6 +81,20 @@ func TestRV64PublicReferenceFunctionImportsRetainedAdmission(t *testing.T) {
 				}
 			})
 		}
+		public := rv64ReferenceImportCopy(c)
+		public.Exports["reference"] = 5
+		if err := public.validate(); err != nil {
+			t.Fatal("ephemeral imported-profile reference export", err)
+		}
+		blob, err := marshalCompiled(public)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := LoadTrustedArtifact(blob)
+		if err != nil {
+			t.Fatal("ephemeral imported-profile reference artifact", err)
+		}
+		loaded.Close()
 		// Charge all imported names, declared carriers and owned state together.
 		v := rv64ReferenceImportCopy(c)
 		name := "env." + strings.Repeat("n", railshot.MaxModuleBytes)

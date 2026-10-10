@@ -190,7 +190,6 @@ func TestReferenceFunctionModuleClosedEscapeAndShape(t *testing.T) {
 		name   string
 		change func(*wasm.Module)
 	}{
-		{"reference-export", func(m *wasm.Module) { m.Exports[0].Index.Index = 2 }},
 		{"bad-export", func(m *wasm.Module) { m.Exports[0].Index.Index = 5 }},
 		{"wrong-export-kind", func(m *wasm.Module) { m.Exports[0].Index.Kind = wasm.ExternGlobal }},
 		{"reference-declaration", func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 2 }},

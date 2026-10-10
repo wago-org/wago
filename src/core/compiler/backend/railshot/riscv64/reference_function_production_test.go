@@ -180,7 +180,7 @@ func TestReferenceFunctionProductionAdmissionBeforeStaging(t *testing.T) {
 			{"profile", func(m *wasm.Module, o *CompileOptions) { o.Profile = true }},
 			{"source-map", func(m *wasm.Module, o *CompileOptions) { o.SourceMaps = true }},
 			{"unwind", func(m *wasm.Module, o *CompileOptions) { o.UnwindMaps = true }},
-			{"reference-export", func(m *wasm.Module, o *CompileOptions) { m.Exports[0].Index.Index = 2 }},
+			{"bad-export", func(m *wasm.Module, o *CompileOptions) { m.Exports[0].Index.Index = 99 }},
 			{"reference-descriptor", func(m *wasm.Module, o *CompileOptions) { m.Elements[0].Kind.Funcs[0] = 2 }},
 			{"reference-escape", func(m *wasm.Module, o *CompileOptions) { m.Code[1].BodyBytes = []byte{0x00, 0xd2, 2, 0x1a, 0x0b} }},
 			{"reference-call", func(m *wasm.Module, o *CompileOptions) { m.Code[1].BodyBytes = []byte{0x00, 0x14, 0, 0x0b} }},
@@ -239,7 +239,7 @@ func TestReferenceFunctionProductionStagingRechecksProofAndModes(t *testing.T) {
 			{"tail-mode", func(c *Compiled, m *wasm.Module, o *CompileOptions) { c.functions[4].mode.localTailCalls = true }},
 			{"typed-mode", func(c *Compiled, m *wasm.Module, o *CompileOptions) { c.functions[4].mode.referenceCalls = false }},
 			{"spurious-control", func(c *Compiled, m *wasm.Module, o *CompileOptions) { o.referenceControlInstructions = true }},
-			{"changed-export", func(c *Compiled, m *wasm.Module, o *CompileOptions) { m.Exports[0].Index.Index = 2 }},
+			{"changed-export", func(c *Compiled, m *wasm.Module, o *CompileOptions) { m.Exports[0].Index.Index = 99 }},
 			{"changed-body", func(c *Compiled, m *wasm.Module, o *CompileOptions) {
 				m.Code[4].BodyBytes = []byte{0, 0xd2, 2, 0x1a, 0x0b}
 			}},
