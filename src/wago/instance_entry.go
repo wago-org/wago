@@ -336,12 +336,20 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 	if err != nil {
 		return err
 	}
-	defer func() {
-		gcLease.unlock()
-		if in.importsFuncrefStorage() || in.table != nil {
-			in.reconcileFuncrefRoots()
-		}
-	}()
+	var resultErr error
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		resultErr = in.invokeVoidEntryAdmitted(ctx, entry, reservation)
+	})
+	cleanup.run(gcLease.unlock)
+	if in.importsFuncrefStorage() || in.table != nil {
+		cleanup.run(in.reconcileFuncrefRoots)
+	}
+	cleanup.finish()
+	return resultErr
+}
+
+func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, reservation *pluginOperationReservation) error {
 	if reservation != nil {
 		previous := in.swapInvocationReservation(reservation)
 		defer in.swapInvocationReservation(previous)

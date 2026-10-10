@@ -4268,18 +4268,28 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		return nil, err
 	}
 	admittedHere := false
-	defer func() {
-		if admittedHere {
-			in.endInvocation()
-		}
-		state.unlockInvocation()
-	}()
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		result, resultErr = in.invokeEntryLocked(export, args, contexts, alreadyAdmitted, state, &admittedHere)
+	})
+	if admittedHere {
+		cleanup.run(in.endInvocation)
+	}
+	cleanup.run(state.unlockInvocation)
+	cleanup.finish()
+	return result, resultErr
+}
+
+// invokeEntryLocked runs with the ordinary invocation gate and identity held.
+// The caller journals this body with lifetime and gate release so a body or
+// finalization panic cannot replace an earlier panic or strand the gate.
+func (in *Instance) invokeEntryLocked(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool, state *instancePluginState, admittedHere *bool) (result []uint64, resultErr error) {
 	if codeProfileEnabled && in.boundaryProfile() != nil {
 		if !alreadyAdmitted {
 			if err := in.beginInvocation(); err != nil {
 				return nil, fmt.Errorf("invoke %q: %w", export, err)
 			}
-			admittedHere = true
+			*admittedHere = true
 			alreadyAdmitted = true
 		}
 		span, restore := in.beginProfileInvocation(export)
@@ -4294,7 +4304,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		if err := in.beginInvocation(); err != nil {
 			return nil, fmt.Errorf("invoke %q: %w", export, err)
 		}
-		admittedHere = true
+		*admittedHere = true
 		alreadyAdmitted = true
 		ic := in.findInvokeCache(export)
 		if ic == nil {
@@ -4323,10 +4333,16 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			(in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
 			in.table == nil && !in.importsFuncrefStorage() && len(in.hostLog) == 0
 		if privateScalar || hostScalar {
-			out, err := in.invokeCachedNumericEntry(export, ic, args, false, hostScalar)
+			var out []uint64
+			var err error
+			var cleanup resourceCleanup
+			cleanup.run(func() {
+				out, err = in.invokeCachedNumericEntry(export, ic, args, false, hostScalar)
+			})
 			if hostScalar && in.table != nil {
-				in.reconcileFuncrefRoots()
+				cleanup.run(in.reconcileFuncrefRoots)
 			}
+			cleanup.finish()
 			return out, err
 		}
 	}
@@ -4460,55 +4476,88 @@ func nilInstanceInvokeError() error {
 	return errors.New("instance is nil")
 }
 
-func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
-	ctx := contexts.admissionContext()
-	reentry := !gateHeld && isNativeActive(in, id) && railshotCanReenter(in, id)
-	if !reentry && !gateHeld {
-		// Acquire the target instance gate before the shared collector lease. A
-		// parked same-domain callback must be able to reacquire the collector and
-		// finish releasing this gate while a second callback waits to enter.
-		state, err := in.lockInvocationContext(ctx, id)
-		if err != nil {
-			return nil, err
+func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) (result []uint64, resultErr error) {
+	var state *instancePluginState
+	gateOwned := false
+	admittedHere := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		ctx := contexts.admissionContext()
+		reentry := !gateHeld && isNativeActive(in, id) && railshotCanReenter(in, id)
+		if !reentry && !gateHeld {
+			// Acquire the target instance gate before the shared collector lease. A
+			// parked same-domain callback must be able to reacquire the collector and
+			// finish releasing this gate while a second callback waits to enter.
+			var err error
+			state, err = in.lockInvocationContext(ctx, id)
+			if err != nil {
+				resultErr = err
+				return
+			}
+			gateOwned = true
 		}
-		defer state.unlockInvocation()
-	}
-	// Cancellation may arrive while this call waits for the instance gate.
-	if ctx != nil {
-		if err := ctx.Err(); err != nil {
-			return nil, err
+		// Cancellation may arrive while this call waits for the instance gate.
+		if ctx != nil {
+			if err := ctx.Err(); err != nil {
+				resultErr = err
+				return
+			}
 		}
-	}
-	if !alreadyAdmitted {
-		if err := in.beginInvocation(); err != nil {
-			return nil, fmt.Errorf("invoke %q: %w", export, err)
+		if !alreadyAdmitted {
+			if err := in.beginInvocation(); err != nil {
+				resultErr = fmt.Errorf("invoke %q: %w", export, err)
+				return
+			}
+			admittedHere = true
 		}
-		defer in.endInvocation()
-	}
-	var gcLease gcInvocationLease
-	if ctx == nil {
-		gcLease = in.lockGCInvocation(id)
-	} else {
-		var err error
-		gcLease, err = in.lockGCInvocationContext(ctx, id)
-		if err != nil {
-			return nil, err
+		var gcLease gcInvocationLease
+		if ctx == nil {
+			gcLease = in.lockGCInvocation(id)
+		} else {
+			var err error
+			gcLease, err = in.lockGCInvocationContext(ctx, id)
+			if err != nil {
+				resultErr = err
+				return
+			}
 		}
+		result, resultErr = in.invokeWithTokenLeased(export, args, contexts, id, gateHeld, reservation, reentry, gcLease)
+	})
+	if admittedHere {
+		cleanup.run(in.endInvocation)
 	}
+	if gateOwned {
+		cleanup.run(state.unlockInvocation)
+	}
+	cleanup.finish()
+	return result, resultErr
+}
+
+// invokeWithTokenLeased owns the collector lease through every body defer and
+// reference reconciliation. Each consumed unit remains independently releasable
+// after an earlier body or cleanup panic.
+func (in *Instance) invokeWithTokenLeased(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld bool, reservation *pluginOperationReservation, reentry bool, gcLease gcInvocationLease) (result []uint64, resultErr error) {
 	var reconcileAttached *Instance
 	var restoreNativeImports func()
-	defer func() {
-		if restoreNativeImports != nil {
-			restoreNativeImports()
-		}
-		gcLease.unlock()
-		if in.importsFuncrefStorage() || in.table != nil {
-			in.reconcileFuncrefRoots()
-		}
-		if reconcileAttached != nil && (reconcileAttached.importsFuncrefStorage() || reconcileAttached.table != nil) {
-			reconcileAttached.reconcileFuncrefRoots()
-		}
-	}()
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		result, resultErr = in.invokeWithTokenAdmitted(export, args, contexts, id, gateHeld, reservation, reentry, &restoreNativeImports, &reconcileAttached)
+	})
+	if restoreNativeImports != nil {
+		cleanup.run(restoreNativeImports)
+	}
+	cleanup.run(gcLease.unlock)
+	if in.importsFuncrefStorage() || in.table != nil {
+		cleanup.run(in.reconcileFuncrefRoots)
+	}
+	if reconcileAttached != nil && (reconcileAttached.importsFuncrefStorage() || reconcileAttached.table != nil) {
+		cleanup.run(reconcileAttached.reconcileFuncrefRoots)
+	}
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (in *Instance) invokeWithTokenAdmitted(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld bool, reservation *pluginOperationReservation, reentry bool, restoreNativeImports *func(), reconcileAttached **Instance) ([]uint64, error) {
 	if reentry {
 		restore, err := in.prepareHostReentryState()
 		if err != nil {
@@ -4522,7 +4571,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		if restore, err := in.prepareNativeImportReentries(id); err != nil {
 			return nil, err
 		} else {
-			restoreNativeImports = restore
+			*restoreNativeImports = restore
 		}
 	}
 	// Ordinary Invoke and hook-free Call entries carry no reservation and start
@@ -4549,7 +4598,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
 		}
 		if ex, ok := in.imports[in.c.functionImportBindingKey(importIdx)].(*InstanceExport); ok && ex != nil && ex.inst != nil {
-			reconcileAttached = ex.inst
+			*reconcileAttached = ex.inst
 			if out, handled, err := railshotInvokeNativeReexport(in, export, importIdx, args, contexts); handled {
 				return out, err
 			}
@@ -4682,22 +4731,32 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	return in.invokeLocalContext(li, args, invocationContextSet{}, in.trap)
 }
 
-func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte) ([]uint64, error) {
+func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte) (result []uint64, resultErr error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
-	defer in.endInvocation()
-	gcLease, err := in.lockGCInvocationContext(contexts.admissionContext(), in.currentInvocationID())
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		gcLease.unlock()
-		if in.importsFuncrefStorage() || in.table != nil {
-			in.reconcileFuncrefRoots()
+	var gcLease gcInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		var err error
+		gcLease, err = in.lockGCInvocationContext(contexts.admissionContext(), in.currentInvocationID())
+		if err != nil {
+			resultErr = err
+			return
 		}
-	}()
-	return in.invokeAttachedLocalContext(li, args, contexts, activeTrap, false)
+		leaseOwned = true
+		result, resultErr = in.invokeAttachedLocalContext(li, args, contexts, activeTrap, false)
+	})
+	if leaseOwned {
+		cleanup.run(gcLease.unlock)
+		if in.importsFuncrefStorage() || in.table != nil {
+			cleanup.run(in.reconcileFuncrefRoots)
+		}
+	}
+	cleanup.run(in.endInvocation)
+	cleanup.finish()
+	return result, resultErr
 }
 
 // invokeAttachedLocalContext enters a producer retained by the caller's function
