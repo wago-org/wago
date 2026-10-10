@@ -164,3 +164,6 @@ builds are byte-identical; no production optimization or runtime overhead is int
 [independent review](../../../evidence/coverage/independent-review.md) qualify these
 claims. Historical trial results remain in evidence/integration, including the
 initial comparator slowdown and the non-reproduced tiny compile signal.
+
+[Fresh production-isolation qualification](../../../evidence/isolation/README.md)
+records explicit opt-in gating and matched current-main build evidence.

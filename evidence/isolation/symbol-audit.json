@@ -1,0 +1,597 @@
+[
+  {
+    "source": "go-primary.json",
+    "platform": "linux/amd64",
+    "flavor": "manager",
+    "cgo_enabled": "0",
+    "sha256": "9e73e1e29b5811405d33dc4f7b930fd21e8bc0f59a9a365eb86f60be8932eeb1",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "linux/amd64",
+    "flavor": "runtime",
+    "cgo_enabled": "0",
+    "sha256": "5131bbebc2c35d5bd9b857c1bf9d8c314faf632ee02873a482f761ea6b52d1cf",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "linux/amd64",
+    "flavor": "minimal",
+    "cgo_enabled": "0",
+    "sha256": "f99599836a7ba599106572bbe1831d575365cbec3a546ef3b9f0b02575384cc8",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "linux/amd64",
+    "flavor": "embed",
+    "cgo_enabled": "0",
+    "sha256": "9e5d343e17b118d9329637d229d0ce49fc5d4e9a9ad0d65e6c548e3b43f842eb",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "linux/arm64",
+    "flavor": "manager",
+    "cgo_enabled": "0",
+    "sha256": "e761215d2d7c8033ade8f422110be7f7f0c6042291d92140e98ca607544f4410",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "linux/arm64",
+    "flavor": "runtime",
+    "cgo_enabled": "0",
+    "sha256": "b60374852bb073e640305ae1010d98aadc68cdb5ab1b1384e9b8873faddb39ae",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "linux/arm64",
+    "flavor": "minimal",
+    "cgo_enabled": "0",
+    "sha256": "5214e9118da2fe97334bc03d7b18a27d3bf92a1e1af0f684216a96c616c560de",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "linux/arm64",
+    "flavor": "embed",
+    "cgo_enabled": "0",
+    "sha256": "100e3343564c7831da567cdf8921ed2cb6bf1f028eb5ded935dfedad759a44e1",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "darwin/amd64",
+    "flavor": "manager",
+    "cgo_enabled": "0",
+    "sha256": "9cb5c6a745975d635366aebd65f0be6397dd324f2f910a1a6a9387c842eba02f",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "darwin/amd64",
+    "flavor": "runtime",
+    "cgo_enabled": "0",
+    "sha256": "c67759b4a7be95f16918b07f8f3736b2591d8fdaa3306656ff0e2e087b6a5d70",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "darwin/amd64",
+    "flavor": "minimal",
+    "cgo_enabled": "0",
+    "sha256": "b4539c4352f46816c3a1f5048da1a81eea499a6784dea87ccb40af74e1024fdb",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "darwin/amd64",
+    "flavor": "embed",
+    "cgo_enabled": "0",
+    "sha256": "684a4a02ea6b983fd438647960e3a036e221c349ec49c16047264a76ab3691b2",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "darwin/arm64",
+    "flavor": "manager",
+    "cgo_enabled": "0",
+    "sha256": "e1b066e0a1c364a850d69e4b35e2a5a167ede74cdd445a8eb72d8550101ff728",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "darwin/arm64",
+    "flavor": "runtime",
+    "cgo_enabled": "0",
+    "sha256": "cea0fd24143861d4ee9e29ff03f8cde0d0233096811c22dfcc62a7e3eceb5481",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "darwin/arm64",
+    "flavor": "minimal",
+    "cgo_enabled": "0",
+    "sha256": "22ea5e8e44c6b31891aa5a3ae6ce66956c6d410494ed86c2513c8f1a4478be5a",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "darwin/arm64",
+    "flavor": "embed",
+    "cgo_enabled": "0",
+    "sha256": "9282603d2852acbdd515fc49bd7a47a819fa3e3e7721b6622e09613777a1b01c",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "windows/amd64",
+    "flavor": "manager",
+    "cgo_enabled": "0",
+    "sha256": "1c8f1497aafc45c5f59e733878fec406ddaf3391474971bd132c674d39c229f9",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "windows/amd64",
+    "flavor": "runtime",
+    "cgo_enabled": "0",
+    "sha256": "b2b7c2cdc0f7b2ea177a82b8efd3e47bb62dfa4b1e60bf1968d4641ce67f26c8",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "windows/amd64",
+    "flavor": "minimal",
+    "cgo_enabled": "0",
+    "sha256": "55e08439cc594fde90d77b8da4e401dc5fbcc55717bacceade427a49de6fe6a6",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "windows/amd64",
+    "flavor": "embed",
+    "cgo_enabled": "0",
+    "sha256": "283f81be80a71967836cc76eeed412064151a30f9654aa2b076eaa27bf2ee408",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "windows/arm64",
+    "flavor": "manager",
+    "cgo_enabled": "0",
+    "sha256": "ab1e4b3eb3401978bf718b14071397a1c5af16e5c6f476c62bbce57d6da89826",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "windows/arm64",
+    "flavor": "runtime",
+    "cgo_enabled": "0",
+    "sha256": "ae854c3cb5a766221b56ab2c9d4e8a643f7a3c0da45fa3780a0b68745677d413",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "windows/arm64",
+    "flavor": "minimal",
+    "cgo_enabled": "0",
+    "sha256": "b0de1e232a68e094f393203737b9b9fddc4a22fe6666d387e97b5a5d55ae917f",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-primary.json",
+    "platform": "windows/arm64",
+    "flavor": "embed",
+    "cgo_enabled": "0",
+    "sha256": "44f827a0dd19148c9ccb65d205290a15f763696de89310d9bb058f9e7586caba",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-release-minimal.json",
+    "platform": "linux/amd64",
+    "flavor": "release-minimal",
+    "cgo_enabled": "0",
+    "sha256": "87a863bbae89108504fa3e6731b9f0f78b174704666bc50e9ce5114c61c5244b",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-release-minimal.json",
+    "platform": "linux/arm64",
+    "flavor": "release-minimal",
+    "cgo_enabled": "0",
+    "sha256": "57db598aad46707340f1ede25800a7b854b5b36ac927073b999c65be95798395",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-release-minimal.json",
+    "platform": "darwin/amd64",
+    "flavor": "release-minimal",
+    "cgo_enabled": "0",
+    "sha256": "60db173def334d1ec593df9d54712ddd0dc331196f40470f099bdd7b98c1410b",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-release-minimal.json",
+    "platform": "darwin/arm64",
+    "flavor": "release-minimal",
+    "cgo_enabled": "0",
+    "sha256": "7c37bf7bd13f511ac56f38bc4423827397fbcebc37e1df5de88969dcad12f827",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-release-minimal.json",
+    "platform": "windows/amd64",
+    "flavor": "release-minimal",
+    "cgo_enabled": "0",
+    "sha256": "43d41157eb9c0ebb721019e06d3488d3547d896a28a4115fae313136899f25d7",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-release-minimal.json",
+    "platform": "windows/arm64",
+    "flavor": "release-minimal",
+    "cgo_enabled": "0",
+    "sha256": "74b00358813339c3e38a374c49a69c864d1b6e1d913773b4ecde57854834ca6c",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-native-cgo.json",
+    "platform": "linux/amd64",
+    "flavor": "manager",
+    "cgo_enabled": "1",
+    "sha256": "b085f62d6fb0a5363f8622c369092f88ff62626771e2b52f882778af37a34da8",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-native-cgo.json",
+    "platform": "linux/amd64",
+    "flavor": "runtime",
+    "cgo_enabled": "1",
+    "sha256": "8caa4445bc47376cc9d1c91b53296607eabe2d747bd741b3c1cbfe83520c3484",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-native-cgo.json",
+    "platform": "linux/amd64",
+    "flavor": "minimal",
+    "cgo_enabled": "1",
+    "sha256": "6015988e895acd68493517329e0b127e86f7f167e1e23869c28a81ef18a8f122",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-native-cgo.json",
+    "platform": "linux/amd64",
+    "flavor": "release-minimal",
+    "cgo_enabled": "1",
+    "sha256": "347da415045ccd0e3e25a57696ff2b39e080d3a9ec91e880adb33dc095ab9eed",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  },
+  {
+    "source": "go-native-cgo.json",
+    "platform": "linux/amd64",
+    "flavor": "embed",
+    "cgo_enabled": "1",
+    "sha256": "21c552d2d9115751ec1e0246ef84dbb67baed46611dbee275eeeb74c8b092c54",
+    "matched_prior_hash": true,
+    "markers_absent": [
+      "tests/tools/native-compare",
+      " main.Compare",
+      " main.captureBytes",
+      " main.inlineRoots",
+      " main.populateRaw",
+      " main.populateRegions",
+      " main.sourceOwnerFunction"
+    ]
+  }
+]
