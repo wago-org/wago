@@ -121,6 +121,12 @@ func loadCorpus(tb testing.TB) []corpusModule {
 
 // readCatalog loads, validates, selects, and resolves benchmark artifacts.
 func readCatalog(tb testing.TB) []corpusModule {
+	return readCatalogForSelector(tb, *corpusSelector)
+}
+
+// readCatalogForSelector lets focused tests load their exact workload without
+// changing the shared benchmark selector or its sync.Once cache.
+func readCatalogForSelector(tb testing.TB, selector string) []corpusModule {
 	tb.Helper()
 	file := filepath.Join(corpusDir, "catalog.json")
 	raw, err := os.ReadFile(file)
@@ -143,7 +149,7 @@ func readCatalog(tb testing.TB) []corpusModule {
 	if err := validateCatalogLinks(c, checks.Modules); err != nil {
 		tb.Fatal(err)
 	}
-	selected := selectedIDs(tb, c, *corpusSelector)
+	selected := selectedIDs(tb, c, selector)
 	seen := make(map[string]bool, len(c.Benchmarks))
 	var modules []corpusModule
 	for i := range c.Benchmarks {
@@ -155,7 +161,7 @@ func readCatalog(tb testing.TB) []corpusModule {
 			tb.Fatalf("duplicate corpus benchmark id %q", mod.ID)
 		}
 		seen[mod.ID] = true
-		if !selected[mod.ID] && !selectedByTag(*corpusSelector, mod.Tags) {
+		if !selected[mod.ID] && !selectedByTag(selector, mod.Tags) {
 			continue
 		}
 		path := filepath.Join(corpusDir, filepath.FromSlash(mod.Artifact))
@@ -175,7 +181,7 @@ func readCatalog(tb testing.TB) []corpusModule {
 		}
 	}
 	if len(modules) == 0 {
-		tb.Fatalf("corpus selector %q selected no benchmarks", *corpusSelector)
+		tb.Fatalf("corpus selector %q selected no benchmarks", selector)
 	}
 	return modules
 }

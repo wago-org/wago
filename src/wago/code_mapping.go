@@ -3,6 +3,7 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"os"
 	goruntime "runtime"
 	"strings"
 	"sync"
@@ -64,6 +65,16 @@ type compiledCacheIndexes struct {
 	valueTypeIndex     map[ValueTypeDescriptor]uint32
 	gcTypeMapping      *gcTypeMappingCacheEntry
 	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
+	// Cold experimental initializer, protected by codeCache.mu. Existing
+	// instance mappings survive closing this descriptor.
+	memoryImage *os.File
+	// Immutable CoW admission facts belong to the frozen execution snapshot.
+	// Keep the exact memory configuration beside the image: a different reserve
+	// cannot reuse the same memfd, and a smaller initial size may be ineligible.
+	cowImageInitial, cowImageMax          int
+	cowImageEnd                           uint64
+	cowImageConfigured, cowImageAttempted bool
+	cowImageChecked, cowImageEligible     bool
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -783,12 +794,20 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 		mem := cc.mem
 		cc.mem = nil
 		cc.base = 0
+		var image *os.File
+		if indexes := c.loadCompileIndexes(); indexes != nil {
+			image = indexes.memoryImage
+			indexes.memoryImage = nil
+		}
 		hostThunks := c.takeHostThunksLocked()
 		cc.closed = true
 		c.code = nil
 		cc.mu.Unlock()
 		goruntime.SetFinalizer(c, nil)
 		var releaseErr error
+		if image != nil {
+			releaseErr = errors.Join(releaseErr, image.Close())
+		}
 		if mem != nil {
 			releaseErr = errors.Join(releaseErr, c.unmapProfileCode(mem))
 		}
@@ -823,10 +842,15 @@ func (c *Compiled) Close() error {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	cc.closed = true
+	var imageErr error
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.memoryImage != nil {
+		imageErr = indexes.memoryImage.Close()
+		indexes.memoryImage = nil
+	}
 	c.code = nil
 	goruntime.SetFinalizer(c, nil)
 	if cc.refs != 0 {
-		return nil
+		return imageErr
 	}
 	c.clearCodeViewsLocked()
 	if c.validateMemo != nil {
@@ -835,7 +859,7 @@ func (c *Compiled) Close() error {
 	if cc.mem == nil {
 		// Preserve compiler-produced metadata so a later Instantiate reaches the
 		// authoritative closed check instead of failing earlier as malformed.
-		return nil
+		return imageErr
 	}
 	mem := cc.mem
 	cc.mem = nil
@@ -847,5 +871,5 @@ func (c *Compiled) Close() error {
 			err = errors.Join(err, c.unmapProfileCode(hostThunks[i].mem))
 		}
 	}
-	return err
+	return errors.Join(imageErr, err)
 }

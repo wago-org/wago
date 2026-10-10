@@ -52,6 +52,9 @@ type JobMemory struct {
 	mem    []byte
 	linOff int
 	linLen int // byte length of the RW-usable region (initial size, or the reservation for growable memory)
+	// A private file image restores initialized bytes on MADV_DONTNEED, so it
+	// must never enter the anonymous zero-on-reuse cache.
+	imageBacked bool
 	// Guard-page mode (NewJobMemoryGuarded): the full PROT_NONE reservation that
 	// must be unmapped on Close and that the SIGSEGV handler range-checks. Zero in
 	// the classic exactly-sized RW layout.
@@ -520,6 +523,9 @@ func (j *JobMemory) Close() error {
 func ReleaseJobMemory(j *JobMemory) error {
 	if j == nil {
 		return nil
+	}
+	if j.imageBacked {
+		return j.Close()
 	}
 	if j.reserveBase != 0 {
 		if guardReleaseHook != nil && guardReleaseHook(j) {
