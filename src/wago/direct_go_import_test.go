@@ -4,6 +4,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"runtime"
 	"testing"
@@ -112,6 +113,63 @@ func TestDirectGoImportBindingAndArtifactFallback(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				codeName := "fresh"
+				if code == decoded {
+					codeName = "artifact"
+				}
+				t.Run("owned-numeric-"+codeName, func(t *testing.T) {
+					rt := NewRuntime()
+					defer rt.Close()
+					calls := 0
+					sig := FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}
+					owner, err := rt.NewHostFuncRef(func(v int32) int32 {
+						calls++
+						return v + 7
+					}, sig)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer owner.Close()
+					mod, err := rt.Module(code)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer mod.Close()
+					in, err := rt.Instantiate(context.Background(), mod, WithImports(testImports("env.step", owner)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					dispatch := in.jm.CaptureInstanceContext().ImportDispatch
+					entry := unsafe.Slice((*byte)(offHeapPtr(dispatch)), wruntime.ImportDispatchEntryBytes)
+					word := binary.LittleEndian.Uint64(entry[wruntime.ImportDispatchCallerContextOffset:])
+					wantTag := code == fresh && wantCapability
+					if tagged := word&wruntime.ImportDispatchCallerGoHostTag != 0; tagged != wantTag {
+						t.Fatalf("owned numeric fresh=%t: Go tag=%t, want %t", code == fresh, tagged, wantTag)
+					}
+					if err := owner.Close(); err == nil {
+						t.Fatal("owner closed with a live importer")
+					}
+					for _, input := range []uint64{0, 41, 0xfffffffe} {
+						got, err := in.Invoke("run", input)
+						want := uint64(uint32(input) + 7)
+						if err != nil || len(got) != 1 || got[0] != want {
+							t.Fatalf("owned numeric fresh=%t input=%x: %v, %v; want %x", code == fresh, input, got, err, want)
+						}
+					}
+					if calls != 3 {
+						t.Fatalf("owned numeric callbacks=%d; want 3", calls)
+					}
+					if err := in.Close(); err != nil {
+						t.Fatal(err)
+					}
+					if err := owner.Close(); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := bindSyncHostImport(owner, sig); err == nil {
+						t.Fatal("closed owner accepted a new binding")
+					}
+				})
 			}
 		})
 	}

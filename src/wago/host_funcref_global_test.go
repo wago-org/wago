@@ -218,8 +218,9 @@ func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.
 	if got := unsafe.Sizeof(Compiled{}); got != 784 {
 		t.Fatalf("Compiled size = %d, want 784", got)
 	}
-	if got := unsafe.Sizeof(HostFuncRef{}); got != 128 {
-		t.Fatalf("HostFuncRef size = %d, want 128", got)
+	// Numeric direct imports retain one eight-byte validated-binding pointer.
+	if got := unsafe.Sizeof(HostFuncRef{}); got != 136 {
+		t.Fatalf("HostFuncRef size = %d, want 136", got)
 	}
 	if got := unsafe.Sizeof(referenceStore{}); got != 120 {
 		t.Fatalf("referenceStore size = %d, want 120 with shared GC domain", got)

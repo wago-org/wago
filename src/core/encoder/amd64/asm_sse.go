@@ -746,6 +746,11 @@ func (a *Asm) VPblendw(dst, s1, s2 Reg, imm byte) {
 	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0E, dst, s1, s2, imm)
 }
 
+// VPAlignr shifts the concatenated left:right bytes right by imm bytes.
+func (a *Asm) VPAlignr(dst, left, right Reg, imm byte) {
+	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0F, dst, left, right, imm)
+}
+
 // Round emits ROUNDSS/ROUNDSD (SSE4.1): dst = round(src) using rounding-mode
 // imm8 (bits 0-1 select nearest/floor/ceil/trunc; bit 3 suppresses precision).
 func (a *Asm) Round(dst, src Reg, f64 bool, mode byte) {

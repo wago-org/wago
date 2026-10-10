@@ -8,6 +8,14 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Speed up AMD64 constant division/remainder pairs, scalar selects, predicate
+  shifts, and contiguous SIMD byte shuffles. Reuse validated numeric bindings
+  for direct imports of owned typed host functions.
+- Use two SIMD lanes for admitted pure integer reduction loops on Linux AMD64
+  with SSE4.1, with scalar execution below 16 iterations and for rejected loops.
+- Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
+  keep them disabled by default because unpredictable conditions can regress.
+
 - Reduce ordinary and prepared numeric host-to-Wasm call overhead by combining
   instance lifetime and invocation-gate admission, preserving close, revocation,
   and waiter handoff behavior.

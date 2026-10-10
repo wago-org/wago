@@ -11,3 +11,8 @@ the following terms:
 
     Copyright (c) Bavarian Motor Works Corporation
     Apache License, Version 2.0 (https://opensource.org/licenses/Apache-2.0)
+
+* wasm.fyi benchmark fixtures
+
+    Copyright (c) 2026 wasm.fyi contributors
+    MIT License (tests/fixtures/wasmfyi/LICENSE)

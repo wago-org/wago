@@ -400,8 +400,9 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(externrefSlot{}); got != 24 {
 		t.Fatalf("externrefSlot size = %d, want 24 bytes", got)
 	}
-	if got := unsafe.Sizeof(HostFuncRef{}); got != 128 {
-		t.Fatalf("HostFuncRef size = %d, want 128 bytes", got)
+	// Numeric direct imports retain one eight-byte validated-binding pointer.
+	if got := unsafe.Sizeof(HostFuncRef{}); got != 136 {
+		t.Fatalf("HostFuncRef size = %d, want 136 bytes", got)
 	}
 }
 

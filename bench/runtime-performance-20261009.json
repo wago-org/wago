@@ -1,0 +1,1973 @@
+{
+  "schema": 1,
+  "date": "2026-10-09",
+  "base_commit": "2286d676facdfa1cabe2d1c61072e505438ca7f2",
+  "runtime_source_commit": "3789810b09728edac733c84134a145eab8c8c165",
+  "host": {
+    "cpu": "AMD Ryzen 7 8845HS",
+    "os": "Linux amd64",
+    "go": "go1.27.1",
+    "cpu_affinity": [6],
+    "gomaxprocs": 1
+  },
+  "method": "Unchanged Wasm artifacts. Steady public WasmFunc.Invoke windows; one child at a time; alternate runtime order each launch; same operations per fixture in both runtimes; every result copied to preallocated storage inside timer and checked outside it; startup, compilation, setup and checksum validation excluded. Medians of launch medians; each launch median uses five batch averages after three warmups. No original function is admitted by shared scalar lowering. Explicit default bounds.",
+  "limits": ["Shared development host: unrelated builds overlapped parts of the first runs; retained rather than discarded. Follow-up runs are also retained. Deltas below 3% do not establish a gain or regression.", "Pure select is opt-in. Report optional-repeat against branch default separately from main.", "Code diagnostics do not measure execution time. The 41 ordinary timing-executable images also match the diagnostic images.", "Initial broad host filter was stopped; a later overlapping host run was excluded. Only final focused runs are used.", "Sequential raw/Caller controls initially varied by up to +9.82%; alternating six-launch checks range from -0.01% to +2.47%. No raw or Caller performance gain is claimed."],
+  "fixture_contracts": [
+    {
+      "id": "applications/ml-inference",
+      "sha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+      "export": "benchmark",
+      "args": ["16"],
+      "work_unit": "multiply_accumulates",
+      "units_per_invocation": 32768,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["2121291528"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/stats-linear-regression",
+      "sha256": "f75b7e038eb5bf4efe2bf0cad87c8bbcdd69d82a65c6ddc844d4daf9d573d5b4",
+      "export": "benchmark",
+      "args": ["4096"],
+      "work_unit": "observations",
+      "units_per_invocation": 4096,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["4156416353"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/search-aho-corasick",
+      "sha256": "eb6b614066da259e9a74148b3fc93cf7b26d655d311ec27243a6abddc31f1123",
+      "export": "benchmark",
+      "args": ["16384"],
+      "work_unit": "characters",
+      "units_per_invocation": 16384,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["1555535051"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/vision-fast-corners",
+      "sha256": "2f56aa82dccb82860dd3748251127f60e149c32a54acab7bc5222f83745c4916",
+      "export": "benchmark",
+      "args": ["96"],
+      "work_unit": "interior_pixels",
+      "units_per_invocation": 8100,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["1331967096"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/particle-physics",
+      "sha256": "03198bba53dc326b7fa69c4632d206291f04dfc63b72fe019250eba6704a2ad9",
+      "export": "benchmark",
+      "args": ["4096"],
+      "work_unit": "particle_steps",
+      "units_per_invocation": 262144,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["1090096643"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/compiler-register-allocation",
+      "sha256": "9ed8041d42b0aea5ee7568ef9b7516f02d166da3d40860eaa394e2e048d6c436",
+      "export": "benchmark",
+      "args": ["2048"],
+      "work_unit": "live_intervals",
+      "units_per_invocation": 2048,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["1790173339"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/hardware-prime-implicants",
+      "sha256": "bd0689a8fab78b877a4831c8bbc8c30204b2a895153ceb1140fa98d10c96b067",
+      "export": "benchmark",
+      "args": ["128"],
+      "work_unit": "truth_tables",
+      "units_per_invocation": 128,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["175048590"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/audio-fir",
+      "sha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+      "export": "benchmark",
+      "args": ["4096"],
+      "work_unit": "samples",
+      "units_per_invocation": 4096,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["1949460860"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/ml-convolution",
+      "sha256": "999a09eee593de504e5189c6d106629e71855c263703741aac5a49aacf5b4a4b",
+      "export": "benchmark",
+      "args": ["128"],
+      "work_unit": "output_pixels",
+      "units_per_invocation": 15876,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["2319580307"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/mesh-skinning",
+      "sha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+      "export": "benchmark",
+      "args": ["4096"],
+      "work_unit": "vertices",
+      "units_per_invocation": 4096,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["3549135095"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/search-bk-tree",
+      "sha256": "a21b9a1aa866958795a050ef06a34f7d7c0760104bfd3bad1e64c294a6405b7b",
+      "export": "benchmark",
+      "args": ["512"],
+      "work_unit": "queries",
+      "units_per_invocation": 512,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["1037118446"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "applications/numeric-euclidean-gcd",
+      "sha256": "78be8f26a99dd92f9f593751fa12e2fb2d482c1ffe307572ac246a76e9cbbdfe",
+      "export": "benchmark",
+      "args": ["8192"],
+      "work_unit": "pairs",
+      "units_per_invocation": 8192,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["3087244663"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "features/core-mem/load-store-sequential/performance-4096x64",
+      "sha256": "168544484b9d5540b9ade9c870073a136670281214d3d6cfe6777ed06bfbc7f9",
+      "export": "performance",
+      "args": ["4096"],
+      "work_unit": "kernel_iteration",
+      "units_per_invocation": 262144,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["536739840"]
+      },
+      "source": "core-mem-load-store-sequential.wat",
+      "generator": "local-audit-fixture-for-exact-artifact"
+    },
+    {
+      "id": "features/core-mem/load-store-unaligned/performance-4096x64",
+      "sha256": "9bdd6e8bdd150f1c174236fb08ad69256eefcfc6453ca7801cf959c8acbae716",
+      "export": "performance",
+      "args": ["4096"],
+      "work_unit": "kernel_iteration",
+      "units_per_invocation": 262144,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["536739840"]
+      },
+      "source": "core-mem-load-store-unaligned.wat",
+      "generator": "local-audit-fixture-for-exact-artifact"
+    },
+    {
+      "id": "features/core-mem/narrow-load-sign-extension/performance-4096x64",
+      "sha256": "2e34ad7706faa27d86cf04fc36144ca7eb1652e7ccd16132f805b33ae5a99ab4",
+      "export": "performance",
+      "args": ["4096"],
+      "work_unit": "kernel_iteration",
+      "units_per_invocation": 262144,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["16646144"]
+      },
+      "source": "core-mem-narrow-load-sign-extension.wat",
+      "generator": "local-audit-fixture-for-exact-artifact"
+    },
+    {
+      "id": "features/core-num/integer-div-rem/performance-4096x64",
+      "sha256": "bca7073cd736412411d37597569095dc62e94c3d90a1a0a781ecf698bd7c173b",
+      "export": "performance",
+      "args": ["4096"],
+      "work_unit": "kernel_iteration",
+      "units_per_invocation": 262144,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["77351040"]
+      },
+      "source": "corpora/features/generator.mjs",
+      "generator": "original published artifact"
+    },
+    {
+      "id": "applications/search-rabin-karp",
+      "sha256": "ff963351505b990c8f11114fee687e2a4beb54eb9c20bfa51f92e186106c0d7a",
+      "export": "benchmark",
+      "args": ["32768"],
+      "work_unit": "characters",
+      "units_per_invocation": 32768,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["2780936362"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    },
+    {
+      "id": "controls/polybench-gemm",
+      "sha256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79",
+      "export": "polybench_run",
+      "args": [],
+      "work_unit": "invocation",
+      "units_per_invocation": 1,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["122535361"]
+      },
+      "source": "original corpus/catalog.json",
+      "generator": "original artifact control"
+    },
+    {
+      "id": "controls/xxhash/xxh64-boundaries",
+      "sha256": "3c3b114bc7cf36c3888d0a7053e4349598408e8579b64f6e5dd9314dfdd011aa",
+      "export": "xxhash_run",
+      "args": [],
+      "work_unit": "invocation",
+      "units_per_invocation": 1,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["13789562132009586585"]
+      },
+      "source": "original corpus/catalog.json",
+      "generator": "original artifact control"
+    },
+    {
+      "id": "diagnostics/select-table-one-mul",
+      "sha256": "6aecdfb85dba90250c7d1c8e2c18c829c642af6cbc25f2f930a2fefb16a235d9",
+      "export": "benchmark",
+      "args": ["1048576"],
+      "work_unit": "iterations",
+      "units_per_invocation": 1048576,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["1601735431"]
+      }
+    },
+    {
+      "id": "diagnostics/select-table-two-mul",
+      "sha256": "14a609356aa29bfbbde378f585c6ff8581312715ace60f27a91fccc07cb18674",
+      "export": "benchmark",
+      "args": ["1048576"],
+      "work_unit": "iterations",
+      "units_per_invocation": 1048576,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["2207717703"]
+      }
+    },
+    {
+      "id": "applications/numeric-simpson",
+      "sha256": "dd688b98faece10fd2805482b576f1af758626d7d70f46227e3ee8d9c254f988",
+      "export": "benchmark",
+      "args": ["1024"],
+      "work_unit": "function_evaluations",
+      "units_per_invocation": 1025,
+      "reset": "stateless",
+      "oracle": {
+        "kind": "exact_u64",
+        "expected": ["1058565808"]
+      },
+      "source": "sources/kernels.c",
+      "generator": "wasm-fyi-application-kernels-v2"
+    }
+  ],
+  "timing_sets": {
+    "default-original": {
+      "policy": {
+        "launches": 6,
+        "samples": 5,
+        "warmup": 3,
+        "target_batch_ms": 25.0,
+        "single_child_at_a_time": true,
+        "gomaxprocs": "1",
+        "phase": "steady",
+        "one_instance_per_child": true,
+        "stateless_repeated_invocations": true,
+        "timing": "adapter native API windows; process startup excluded",
+        "rss": "kernel child-process lifetime peak; setup included"
+      },
+      "driver_sha256": "cb7b326ea36c53119e241cba4fc1d258f4d2780acdbce2208fb02bc5f3e4ce9b",
+      "host": {
+        "platform": "Linux-6.12.111+deb13-amd64-x86_64-with-glibc2.41",
+        "cpu_affinity": [6]
+      },
+      "cells": [
+        {
+          "runtime": "main",
+          "workload": "applications/ml-inference",
+          "launch_median_ns_per_invocation": [30299.104190260474, 28770.697621744053, 28544.8912797282, 27766.81993204983, 27716.520951302376, 27318.491506228766],
+          "median_ns_per_invocation": 28155.855605889017,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/ml-inference",
+          "launch_median_ns_per_invocation": [34051.08267270668, 28230.246885617213, 28518.39750849377, 27420.97281993205, 27904.302378255947, 27523.75764439411],
+          "median_ns_per_invocation": 28067.27463193658,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/stats-linear-regression",
+          "launch_median_ns_per_invocation": [10100.370418172432, 6371.171399070728, 6219.200826019618, 6183.232318017553, 6271.195663397006, 6197.17191533299],
+          "median_ns_per_invocation": 6245.198244708312,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/stats-linear-regression",
+          "launch_median_ns_per_invocation": [3958.328084667011, 3479.8871966959214, 3296.6783686112544, 3366.9940629839957, 3382.4540526587507, 3331.1646876613318],
+          "median_ns_per_invocation": 3374.724057821373,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/search-aho-corasick",
+          "launch_median_ns_per_invocation": [247946.8829787234, 232359.97872340426, 232688.25531914894, 233716.3510638298, 236338.18085106384, 232039.05319148937],
+          "median_ns_per_invocation": 233202.30319148937,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/search-aho-corasick",
+          "launch_median_ns_per_invocation": [238420.5, 234172.0, 236131.3085106383, 233489.6489361702, 234450.28723404257, 231976.27659574468],
+          "median_ns_per_invocation": 234311.14361702127,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/vision-fast-corners",
+          "launch_median_ns_per_invocation": [1874895.1333333333, 1616932.9333333333, 1603419.0, 1636722.8666666667, 1590713.1333333333, 1589960.4666666666],
+          "median_ns_per_invocation": 1610175.9666666668,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/vision-fast-corners",
+          "launch_median_ns_per_invocation": [1648497.4666666666, 1593767.5333333334, 1594499.6, 1628733.8666666667, 1587513.8666666667, 1625451.8],
+          "median_ns_per_invocation": 1609975.7000000002,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/particle-physics",
+          "launch_median_ns_per_invocation": [1029301.2, 1014715.0, 1014371.6, 1028560.68, 1020603.72, 1013499.2],
+          "median_ns_per_invocation": 1017659.36,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/particle-physics",
+          "launch_median_ns_per_invocation": [978344.8, 972079.8, 965944.24, 986619.12, 978897.04, 970208.8],
+          "median_ns_per_invocation": 975212.3,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/compiler-register-allocation",
+          "launch_median_ns_per_invocation": [23853.05508870215, 24379.449112978524, 24595.681605975722, 24754.373482726423, 23692.548085901028, 24089.932773109245],
+          "median_ns_per_invocation": 24234.690943043883,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/compiler-register-allocation",
+          "launch_median_ns_per_invocation": [24404.649859943976, 24056.228758169935, 25194.714285714286, 23878.266106442577, 24017.789915966387, 23437.493930905697],
+          "median_ns_per_invocation": 24037.00933706816,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/hardware-prime-implicants",
+          "launch_median_ns_per_invocation": [235662.38862559243, 85706.03791469194, 89057.54976303318, 84012.00947867299, 93202.62085308057, 85143.27488151658],
+          "median_ns_per_invocation": 87381.79383886256,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/hardware-prime-implicants",
+          "launch_median_ns_per_invocation": [231442.0, 85832.34123222748, 89935.77725118483, 86648.8009478673, 89008.78199052133, 85975.41232227487],
+          "median_ns_per_invocation": 87828.79146919432,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/audio-fir",
+          "launch_median_ns_per_invocation": [61239.58495145631, 59862.946601941745, 62353.95873786408, 62023.19174757282, 62476.27427184466, 61849.64077669903],
+          "median_ns_per_invocation": 61936.41626213593,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/audio-fir",
+          "launch_median_ns_per_invocation": [63223.6213592233, 62346.8567961165, 62777.25485436893, 62260.288834951454, 64048.837378640776, 62577.703883495145],
+          "median_ns_per_invocation": 62677.479368932036,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/ml-convolution",
+          "launch_median_ns_per_invocation": [64983.469879518074, 57215.97590361446, 55371.715662650604, 56912.513253012046, 56220.17831325301, 56456.115662650605],
+          "median_ns_per_invocation": 56684.31445783132,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/ml-convolution",
+          "launch_median_ns_per_invocation": [76792.88674698795, 57466.0843373494, 57000.89638554217, 57708.82891566265, 57692.681927710844, 57062.84578313253],
+          "median_ns_per_invocation": 57579.38313253012,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/mesh-skinning",
+          "launch_median_ns_per_invocation": [55266.614953271026, 45212.996261682245, 45323.2785046729, 46389.46728971963, 45632.77570093458, 45158.33457943925],
+          "median_ns_per_invocation": 45478.02710280374,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/mesh-skinning",
+          "launch_median_ns_per_invocation": [46765.05046728972, 47217.714018691586, 45727.88971962617, 46887.82242990654, 46278.7738317757, 46980.14579439252],
+          "median_ns_per_invocation": 46826.436448598135,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/search-bk-tree",
+          "launch_median_ns_per_invocation": [219862.60169491524, 208021.65254237287, 203316.9745762712, 217903.25423728814, 209915.45762711865, 212899.38135593222],
+          "median_ns_per_invocation": 211407.41949152545,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/search-bk-tree",
+          "launch_median_ns_per_invocation": [214751.74576271186, 218929.66949152542, 207928.24576271186, 214718.2033898305, 212099.89830508476, 210418.34745762713],
+          "median_ns_per_invocation": 213409.05084745763,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/numeric-euclidean-gcd",
+          "launch_median_ns_per_invocation": [106719.83982683983, 98255.12121212122, 164301.90476190476, 98151.41991341992, 99305.27272727272, 97141.2987012987],
+          "median_ns_per_invocation": 98780.19696969696,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/numeric-euclidean-gcd",
+          "launch_median_ns_per_invocation": [106620.03896103895, 97751.35930735931, 96738.59307359307, 98024.07792207792, 98273.82251082252, 97234.90476190476],
+          "median_ns_per_invocation": 97887.71861471861,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "features/core-mem/load-store-sequential/performance-4096x64",
+          "launch_median_ns_per_invocation": [407378.53225806454, 404521.06451612903, 412736.0, 407003.8064516129, 405029.6129032258, 404357.70967741933],
+          "median_ns_per_invocation": 406016.7096774194,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "features/core-mem/load-store-sequential/performance-4096x64",
+          "launch_median_ns_per_invocation": [407616.4032258064, 406959.1935483871, 401075.2580645161, 408674.8387096774, 406877.7580645161, 401728.77419354836],
+          "median_ns_per_invocation": 406918.47580645164,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+          "launch_median_ns_per_invocation": [438185.71186440677, 415288.8474576271, 414765.30508474575, 417692.83050847455, 417439.1525423729, 413578.5084745763],
+          "median_ns_per_invocation": 416364.0,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+          "launch_median_ns_per_invocation": [420356.9830508475, 417687.3728813559, 417749.72881355934, 429606.22033898305, 418814.27118644066, 413483.57627118647],
+          "median_ns_per_invocation": 418282.0,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "features/core-mem/narrow-load-sign-extension/performance-4096x64",
+          "launch_median_ns_per_invocation": [504857.96774193546, 408677.7419354839, 417462.6129032258, 413137.9032258064, 416093.77419354836, 447735.5806451613],
+          "median_ns_per_invocation": 416778.1935483871,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "features/core-mem/narrow-load-sign-extension/performance-4096x64",
+          "launch_median_ns_per_invocation": [501419.22580645164, 407235.01612903224, 413726.0967741936, 420822.0, 416352.1612903226, 407410.0483870968],
+          "median_ns_per_invocation": 415039.12903225806,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "features/core-num/integer-div-rem/performance-4096x64",
+          "launch_median_ns_per_invocation": [335110.2978723404, 332704.91489361704, 338986.93617021275, 338397.2978723404, 338006.3617021277, 331823.6808510638],
+          "median_ns_per_invocation": 336558.3297872341,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "features/core-num/integer-div-rem/performance-4096x64",
+          "launch_median_ns_per_invocation": [228172.93617021278, 224586.44680851063, 226699.17021276595, 228722.085106383, 228291.89361702127, 223862.085106383],
+          "median_ns_per_invocation": 227436.05319148937,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/search-rabin-karp",
+          "launch_median_ns_per_invocation": [328988.0675675676, 335839.1621621622, 324921.0945945946, 326448.85135135136, 327125.24324324325, 323104.3243243243],
+          "median_ns_per_invocation": 326787.0472972973,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/search-rabin-karp",
+          "launch_median_ns_per_invocation": [360041.75675675675, 327576.8918918919, 327795.5540540541, 327282.5675675676, 325284.5, 324496.52702702704],
+          "median_ns_per_invocation": 327429.7297297297,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "controls/polybench-gemm",
+          "launch_median_ns_per_invocation": [129725.6, 126249.625, 126534.16, 125885.795, 125971.86, 125436.105],
+          "median_ns_per_invocation": 126110.7425,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "controls/polybench-gemm",
+          "launch_median_ns_per_invocation": [207930.14, 126584.3, 126430.765, 126302.225, 130862.735, 123147.605],
+          "median_ns_per_invocation": 126507.5325,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "controls/xxhash/xxh64-boundaries",
+          "launch_median_ns_per_invocation": [123395.42995169082, 118085.60869565218, 118474.79710144928, 119247.1690821256, 118573.68115942029, 117895.64251207729],
+          "median_ns_per_invocation": 118524.23913043478,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "controls/xxhash/xxh64-boundaries",
+          "launch_median_ns_per_invocation": [121552.64734299517, 118085.42028985507, 118722.077294686, 118575.85507246378, 118408.05314009661, 119897.85507246378],
+          "median_ns_per_invocation": 118648.96618357488,
+          "all_results_verified": true
+        }
+      ]
+    },
+    "default-repeat": {
+      "policy": {
+        "launches": 6,
+        "samples": 5,
+        "warmup": 3,
+        "target_batch_ms": 35.0,
+        "single_child_at_a_time": true,
+        "gomaxprocs": "1",
+        "phase": "steady",
+        "one_instance_per_child": true,
+        "stateless_repeated_invocations": true,
+        "timing": "adapter native API windows; process startup excluded",
+        "rss": "kernel child-process lifetime peak; setup included"
+      },
+      "driver_sha256": "cb7b326ea36c53119e241cba4fc1d258f4d2780acdbce2208fb02bc5f3e4ce9b",
+      "host": {
+        "platform": "Linux-6.12.111+deb13-amd64-x86_64-with-glibc2.41",
+        "cpu_affinity": [6]
+      },
+      "cells": [
+        {
+          "runtime": "main",
+          "workload": "applications/ml-inference",
+          "launch_median_ns_per_invocation": [28200.23120452708, 27872.099434114793, 28138.37105901374, 28126.14955537591, 28553.417138237673, 27739.220695230397],
+          "median_ns_per_invocation": 28132.260307194825,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/ml-inference",
+          "launch_median_ns_per_invocation": [28327.830234438155, 27285.92966855295, 28283.842360549716, 27212.64672594988, 28813.468876313662, 28612.76879547292],
+          "median_ns_per_invocation": 28305.836297493937,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/stats-linear-regression",
+          "launch_median_ns_per_invocation": [6229.21729747676, 6085.396580345286, 6211.138778220452, 6197.273572377158, 6367.483565737052, 6307.57171314741],
+          "median_ns_per_invocation": 6220.1780378486055,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/stats-linear-regression",
+          "launch_median_ns_per_invocation": [3225.766600265604, 3296.0562749003984, 3337.5287184594954, 3305.5184262948205, 3385.164674634794, 3356.495683930943],
+          "median_ns_per_invocation": 3321.523572377158,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/search-aho-corasick",
+          "launch_median_ns_per_invocation": [226909.83660130718, 226086.86274509804, 234170.26143790848, 235267.08496732026, 237740.61437908496, 232189.83006535948],
+          "median_ns_per_invocation": 233180.045751634,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/search-aho-corasick",
+          "launch_median_ns_per_invocation": [226297.26143790848, 226934.71895424835, 235174.045751634, 233179.11764705883, 236951.64705882352, 233016.54901960783],
+          "median_ns_per_invocation": 233097.8333333333,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/vision-fast-corners",
+          "launch_median_ns_per_invocation": [1551244.7826086956, 1601979.1739130435, 1608488.7391304348, 1588261.7391304348, 1603845.2608695652, 1586069.347826087],
+          "median_ns_per_invocation": 1595120.4565217393,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/vision-fast-corners",
+          "launch_median_ns_per_invocation": [1559512.956521739, 1567430.7391304348, 1573749.5652173914, 1633324.0869565217, 1620939.956521739, 1595528.0],
+          "median_ns_per_invocation": 1584638.7826086958,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/particle-physics",
+          "launch_median_ns_per_invocation": [1021283.6, 1032304.5142857142, 1013356.3428571429, 1014145.8857142857, 1025096.0857142857, 1014940.1714285715],
+          "median_ns_per_invocation": 1018111.8857142858,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/particle-physics",
+          "launch_median_ns_per_invocation": [985794.9428571429, 987466.0285714286, 952223.5714285715, 983187.2, 985131.7142857143, 970826.8],
+          "median_ns_per_invocation": 984159.4571428571,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/compiler-register-allocation",
+          "launch_median_ns_per_invocation": [24649.341855368883, 24465.924032140247, 24013.144631117604, 24787.959824689555, 25683.686632578523, 24384.45726807889],
+          "median_ns_per_invocation": 24557.632943754565,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/compiler-register-allocation",
+          "launch_median_ns_per_invocation": [24619.051862673485, 24401.19138056976, 23160.82761139518, 23807.99634769905, 24012.10518626735, 23831.01241782323],
+          "median_ns_per_invocation": 23921.55880204529,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/hardware-prime-implicants",
+          "launch_median_ns_per_invocation": [85450.3014354067, 83215.06937799042, 85425.22727272728, 91915.93062200958, 86772.37559808613, 86510.11244019138],
+          "median_ns_per_invocation": 85980.20693779904,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/hardware-prime-implicants",
+          "launch_median_ns_per_invocation": [85256.50956937799, 87149.43779904307, 86357.71770334928, 85950.3971291866, 85769.6028708134, 84570.63636363637],
+          "median_ns_per_invocation": 85860.0,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/audio-fir",
+          "launch_median_ns_per_invocation": [60505.44601769911, 61440.53274336283, 61730.486725663715, 64770.23008849558, 62398.39646017699, 60527.91504424779],
+          "median_ns_per_invocation": 61585.509734513274,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/audio-fir",
+          "launch_median_ns_per_invocation": [64159.509734513274, 61904.07610619469, 63496.88672566372, 64742.78407079646, 63009.17168141593, 62424.0796460177],
+          "median_ns_per_invocation": 63253.02920353982,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/ml-convolution",
+          "launch_median_ns_per_invocation": [56503.63607594937, 55612.634493670885, 57891.704113924054, 55495.4003164557, 56495.20569620253, 57259.06170886076],
+          "median_ns_per_invocation": 56499.42088607595,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/ml-convolution",
+          "launch_median_ns_per_invocation": [56554.17405063291, 56238.73892405063, 57019.8164556962, 57901.262658227846, 58980.35917721519, 56861.25632911392],
+          "median_ns_per_invocation": 56940.53639240506,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/mesh-skinning",
+          "launch_median_ns_per_invocation": [45215.898305084746, 45205.114732724905, 46170.951760104304, 46060.95827900913, 47777.31942633638, 46247.800521512385],
+          "median_ns_per_invocation": 46115.95501955671,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/mesh-skinning",
+          "launch_median_ns_per_invocation": [45645.24771838331, 45339.036505867014, 46956.36766623207, 46466.60625814863, 46930.44980443286, 46521.27249022164],
+          "median_ns_per_invocation": 46493.93937418514,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/search-bk-tree",
+          "launch_median_ns_per_invocation": [211472.38787878788, 208230.3212121212, 210193.33333333334, 216435.3515151515, 214147.6, 206928.54545454544],
+          "median_ns_per_invocation": 210832.8606060606,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/search-bk-tree",
+          "launch_median_ns_per_invocation": [217326.10303030303, 210810.97575757577, 218591.9515151515, 214459.26666666666, 212463.65454545454, 208169.5878787879],
+          "median_ns_per_invocation": 213461.4606060606,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/numeric-euclidean-gcd",
+          "launch_median_ns_per_invocation": [98925.20512820513, 98933.39031339031, 95360.59544159545, 99194.53561253562, 125164.51851851853, 96474.396011396],
+          "median_ns_per_invocation": 98929.29772079771,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/numeric-euclidean-gcd",
+          "launch_median_ns_per_invocation": [98875.33618233618, 99217.05698005698, 96361.52706552707, 99323.47578347578, 108815.13675213675, 96419.9886039886],
+          "median_ns_per_invocation": 99046.19658119658,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "features/core-mem/load-store-sequential/performance-4096x64",
+          "launch_median_ns_per_invocation": [410921.3023255814, 411753.5465116279, 395265.1511627907, 410683.75581395347, 458699.76744186046, 404763.9767441861],
+          "median_ns_per_invocation": 410802.52906976745,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "features/core-mem/load-store-sequential/performance-4096x64",
+          "launch_median_ns_per_invocation": [401274.23255813954, 409918.5, 395495.9651162791, 411417.0348837209, 416196.56976744183, 399177.29069767444],
+          "median_ns_per_invocation": 405596.3662790698,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+          "launch_median_ns_per_invocation": [404272.3647058823, 420426.90588235296, 407433.3647058823, 418539.8470588235, 439611.56470588234, 420513.4588235294],
+          "median_ns_per_invocation": 419483.37647058826,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+          "launch_median_ns_per_invocation": [409715.1529411765, 422886.1176470588, 408780.8, 418709.6, 426290.02352941176, 419005.91764705884],
+          "median_ns_per_invocation": 418857.7588235294,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "features/core-mem/narrow-load-sign-extension/performance-4096x64",
+          "launch_median_ns_per_invocation": [406211.8068181818, 412885.70454545453, 402004.4659090909, 406255.625, 423003.86363636365, 407995.23863636365],
+          "median_ns_per_invocation": 407125.4318181818,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "features/core-mem/narrow-load-sign-extension/performance-4096x64",
+          "launch_median_ns_per_invocation": [397980.20454545453, 412128.82954545453, 403143.4090909091, 404728.0, 427515.5568181818, 411331.0681818182],
+          "median_ns_per_invocation": 408029.53409090906,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "features/core-num/integer-div-rem/performance-4096x64",
+          "launch_median_ns_per_invocation": [331918.3523809524, 330013.3523809524, 326332.06666666665, 340702.17142857146, 334204.95238095237, 330234.9238095238],
+          "median_ns_per_invocation": 331076.63809523813,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "features/core-num/integer-div-rem/performance-4096x64",
+          "launch_median_ns_per_invocation": [226997.48571428572, 220799.93333333332, 220126.9619047619, 224147.37142857144, 225659.82857142857, 225701.14285714287],
+          "median_ns_per_invocation": 224903.6,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/search-rabin-karp",
+          "launch_median_ns_per_invocation": [325066.0925925926, 320414.02777777775, 317943.3796296296, 327131.25925925927, 325878.06481481483, 320464.6574074074],
+          "median_ns_per_invocation": 322765.375,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/search-rabin-karp",
+          "launch_median_ns_per_invocation": [326690.712962963, 317575.26851851854, 323113.35185185185, 329685.8796296296, 329690.69444444444, 320471.3703703704],
+          "median_ns_per_invocation": 324902.0324074074,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "controls/polybench-gemm",
+          "launch_median_ns_per_invocation": [125235.60142348755, 123026.86120996441, 125048.53380782918, 128962.09964412812, 127415.39857651245, 125264.62277580072],
+          "median_ns_per_invocation": 125250.11209964413,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "controls/polybench-gemm",
+          "launch_median_ns_per_invocation": [126028.80427046263, 123593.01423487545, 124395.76512455515, 126122.8256227758, 126552.81494661921, 124922.85053380782],
+          "median_ns_per_invocation": 125475.82740213523,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "controls/xxhash/xxh64-boundaries",
+          "launch_median_ns_per_invocation": [119055.62962962964, 118225.34006734006, 118313.86195286195, 119753.57239057239, 120616.10437710438, 118278.85858585859],
+          "median_ns_per_invocation": 118684.74579124579,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "controls/xxhash/xxh64-boundaries",
+          "launch_median_ns_per_invocation": [115656.15151515152, 116443.71717171717, 117104.11447811448, 120627.83838383839, 120867.07407407407, 116525.42760942761],
+          "median_ns_per_invocation": 116814.77104377105,
+          "all_results_verified": true
+        }
+      ]
+    },
+    "control-repeat": {
+      "policy": {
+        "launches": 8,
+        "samples": 5,
+        "warmup": 3,
+        "target_batch_ms": 50.0,
+        "single_child_at_a_time": true,
+        "gomaxprocs": "1",
+        "phase": "steady",
+        "one_instance_per_child": true,
+        "stateless_repeated_invocations": true,
+        "timing": "adapter native API windows; process startup excluded",
+        "rss": "kernel child-process lifetime peak; setup included"
+      },
+      "driver_sha256": "cb7b326ea36c53119e241cba4fc1d258f4d2780acdbce2208fb02bc5f3e4ce9b",
+      "host": {
+        "platform": "Linux-6.12.111+deb13-amd64-x86_64-with-glibc2.41",
+        "cpu_affinity": [6]
+      },
+      "cells": [
+        {
+          "runtime": "main",
+          "workload": "applications/audio-fir",
+          "launch_median_ns_per_invocation": [61654.903892944036, 60843.69708029197, 60169.57177615572, 61185.09367396594, 62292.31630170316, 60304.49635036496, 60291.05352798053, 61241.254257907545],
+          "median_ns_per_invocation": 61014.39537712895,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/audio-fir",
+          "launch_median_ns_per_invocation": [61285.097323600974, 60390.04622871046, 61610.52676399027, 61933.57664233576, 63463.11557177616, 62465.0, 61130.99878345499, 60437.93430656935],
+          "median_ns_per_invocation": 61447.812043795624,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/ml-convolution",
+          "launch_median_ns_per_invocation": [55538.679824561405, 56707.81469298246, 56742.50657894737, 56173.28070175439, 56792.88815789474, 55657.33552631579, 61020.95723684211, 56709.98903508772],
+          "median_ns_per_invocation": 56708.901864035084,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/ml-convolution",
+          "launch_median_ns_per_invocation": [55441.67653508772, 56127.63486842105, 55829.91776315789, 56210.23574561404, 56167.304824561405, 55612.38157894737, 56615.59100877193, 56520.599780701756],
+          "median_ns_per_invocation": 56147.46984649123,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "main",
+          "workload": "applications/mesh-skinning",
+          "launch_median_ns_per_invocation": [45099.16424294269, 45519.89221556886, 44825.20872540633, 45514.23524379812, 45706.52181351583, 44615.13943541489, 44497.186484174505, 44142.76475620188],
+          "median_ns_per_invocation": 44962.18648417451,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/mesh-skinning",
+          "launch_median_ns_per_invocation": [44291.28143712575, 44908.25662959795, 46001.668947818645, 45098.32249786142, 45735.19846022241, 45146.370402053035, 44736.377245508986, 45626.88537211292],
+          "median_ns_per_invocation": 45122.34644995723,
+          "all_results_verified": true
+        }
+      ]
+    },
+    "aho-optional": {
+      "policy": {
+        "launches": 6,
+        "samples": 5,
+        "warmup": 3,
+        "target_batch_ms": 35.0,
+        "single_child_at_a_time": true,
+        "gomaxprocs": "1",
+        "phase": "steady",
+        "one_instance_per_child": true,
+        "stateless_repeated_invocations": true,
+        "timing": "adapter native API windows; process startup excluded",
+        "rss": "kernel child-process lifetime peak; setup included"
+      },
+      "driver_sha256": "cb7b326ea36c53119e241cba4fc1d258f4d2780acdbce2208fb02bc5f3e4ce9b",
+      "host": {
+        "platform": "Linux-6.12.111+deb13-amd64-x86_64-with-glibc2.41",
+        "cpu_affinity": [6]
+      },
+      "cells": [
+        {
+          "runtime": "default",
+          "workload": "applications/search-aho-corasick",
+          "launch_median_ns_per_invocation": [268284.704, 324345.792, 278152.848, 303917.352, 294836.08, 285611.072],
+          "median_ns_per_invocation": 290223.576,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "pure",
+          "workload": "applications/search-aho-corasick",
+          "launch_median_ns_per_invocation": [105105.776, 79280.264, 117809.784, 100973.136, 92048.696, 106960.624],
+          "median_ns_per_invocation": 103039.456,
+          "all_results_verified": true
+        }
+      ]
+    },
+    "optional-repeat": {
+      "policy": {
+        "launches": 8,
+        "samples": 5,
+        "warmup": 3,
+        "target_batch_ms": 35.0,
+        "single_child_at_a_time": true,
+        "gomaxprocs": "1",
+        "phase": "steady",
+        "one_instance_per_child": true,
+        "stateless_repeated_invocations": true,
+        "timing": "adapter native API windows; process startup excluded",
+        "rss": "kernel child-process lifetime peak; setup included"
+      },
+      "driver_sha256": "cb7b326ea36c53119e241cba4fc1d258f4d2780acdbce2208fb02bc5f3e4ce9b",
+      "host": {
+        "platform": "Linux-6.12.111+deb13-amd64-x86_64-with-glibc2.41",
+        "cpu_affinity": [6]
+      },
+      "cells": [
+        {
+          "runtime": "default",
+          "workload": "applications/search-aho-corasick",
+          "launch_median_ns_per_invocation": [237323.52083333334, 236215.05555555556, 232563.0, 236031.09722222222, 233434.36111111112, 223062.16666666666, 231931.75, 229728.30555555556],
+          "median_ns_per_invocation": 232998.68055555556,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "pure",
+          "workload": "applications/search-aho-corasick",
+          "launch_median_ns_per_invocation": [54966.53472222222, 56694.131944444445, 58702.42361111111, 59434.36111111111, 58475.34722222222, 55470.256944444445, 56174.36111111111, 58599.45138888889],
+          "median_ns_per_invocation": 57584.73958333333,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "default",
+          "workload": "diagnostics/select-table-one-mul",
+          "launch_median_ns_per_invocation": [1338687.3333333333, 1343691.0, 1317975.0, 1296667.888888889, 1316482.6296296297, 1295014.5185185184, 1320018.9259259258, 1304896.5185185184],
+          "median_ns_per_invocation": 1317228.8148148148,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "pure",
+          "workload": "diagnostics/select-table-one-mul",
+          "launch_median_ns_per_invocation": [1739844.0740740742, 1709287.8148148148, 1912825.4814814816, 2031312.6666666667, 1858408.148148148, 1492325.037037037, 1748649.5185185184, 1683002.9259259258],
+          "median_ns_per_invocation": 1744246.7962962962,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "default",
+          "workload": "diagnostics/select-table-two-mul",
+          "launch_median_ns_per_invocation": [1758637.0, 1742387.95, 1774344.95, 1768072.85, 1734371.4, 1765078.7, 1760334.7, 1709506.35],
+          "median_ns_per_invocation": 1759485.85,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "pure",
+          "workload": "diagnostics/select-table-two-mul",
+          "launch_median_ns_per_invocation": [1618560.7, 1635933.6, 1953289.4, 1551694.65, 2133317.9, 1749639.15, 2128101.6, 2084135.2],
+          "median_ns_per_invocation": 1851464.275,
+          "all_results_verified": true
+        }
+      ]
+    },
+    "simpson": {
+      "policy": {
+        "launches": 6,
+        "samples": 5,
+        "warmup": 3,
+        "target_batch_ms": 35.0,
+        "single_child_at_a_time": true,
+        "gomaxprocs": "1",
+        "phase": "steady",
+        "one_instance_per_child": true,
+        "stateless_repeated_invocations": true,
+        "timing": "adapter native API windows; process startup excluded",
+        "rss": "kernel child-process lifetime peak; setup included"
+      },
+      "driver_sha256": "cb7b326ea36c53119e241cba4fc1d258f4d2780acdbce2208fb02bc5f3e4ce9b",
+      "host": {
+        "platform": "Linux-6.12.111+deb13-amd64-x86_64-with-glibc2.41",
+        "cpu_affinity": [6]
+      },
+      "cells": [
+        {
+          "runtime": "main",
+          "workload": "applications/numeric-simpson",
+          "launch_median_ns_per_invocation": [759.06614017769, 761.9025225263069, 750.9100628006133, 741.3470416500388, 757.7050681565185, 760.2424439730314],
+          "median_ns_per_invocation": 758.3856041671042,
+          "all_results_verified": true
+        },
+        {
+          "runtime": "branch",
+          "workload": "applications/numeric-simpson",
+          "launch_median_ns_per_invocation": [678.5440339417362, 680.6837075465754, 675.7501627775094, 675.2152653798491, 673.1534099262775, 676.8452248429985],
+          "median_ns_per_invocation": 676.297693810254,
+          "all_results_verified": true
+        }
+      ]
+    }
+  },
+  "native_code": [
+    {
+      "workload": "applications/ml-inference",
+      "main_code_bytes": 788,
+      "branch_code_bytes": 788,
+      "main_max_frame_bytes": 56,
+      "branch_max_frame_bytes": 56,
+      "same_native_code": true,
+      "main_native_sha256": "4a1f2bb0d6508eb2762bf8d5f97247dd7ba15cd68cb6cd65ab7b03d3308e6915",
+      "branch_native_sha256": "4a1f2bb0d6508eb2762bf8d5f97247dd7ba15cd68cb6cd65ab7b03d3308e6915"
+    },
+    {
+      "workload": "applications/stats-linear-regression",
+      "main_code_bytes": 572,
+      "branch_code_bytes": 1167,
+      "main_max_frame_bytes": 88,
+      "branch_max_frame_bytes": 168,
+      "same_native_code": false,
+      "main_native_sha256": "654605f71e98d29638a7334b8b2c2047c77fb29277b982dad100612e2903bacd",
+      "branch_native_sha256": "8b5af17e55834451bce39845bbcd9963dc67b8a4863b049da86f1b0b4bdf8aca"
+    },
+    {
+      "workload": "applications/search-aho-corasick",
+      "main_code_bytes": 6922,
+      "branch_code_bytes": 6906,
+      "main_max_frame_bytes": 56,
+      "branch_max_frame_bytes": 56,
+      "same_native_code": false,
+      "main_native_sha256": "a66567d514719c0e18f91451dbf45eface14348447ab3d720e8c865d9776ec8d",
+      "branch_native_sha256": "0a6669cb59699dd78e0bf628ee8a789c280bb1e444aff32a5af4293bbf39a9c8"
+    },
+    {
+      "workload": "applications/vision-fast-corners",
+      "main_code_bytes": 1985,
+      "branch_code_bytes": 1983,
+      "main_max_frame_bytes": 120,
+      "branch_max_frame_bytes": 120,
+      "same_native_code": false,
+      "main_native_sha256": "edcb388ebf87aefda20ddd4d7b55328398fee402ffbf2767d1167c9fff3e4acf",
+      "branch_native_sha256": "8d87fcbf73641eceb633d83c101b4e17bc98876912cb40e81e6fd787b7ec00a5"
+    },
+    {
+      "workload": "applications/particle-physics",
+      "main_code_bytes": 649,
+      "branch_code_bytes": 641,
+      "main_max_frame_bytes": 56,
+      "branch_max_frame_bytes": 56,
+      "same_native_code": false,
+      "main_native_sha256": "c66d63fd4695a646c824fd1251f70c94cab25ac9c8d72562de2a04d4b562eb6e",
+      "branch_native_sha256": "2bb75faf8e20715e2e5c1ee54a561cb4ccf1dd8bd74a46a69f5b9364882d34eb"
+    },
+    {
+      "workload": "applications/compiler-register-allocation",
+      "main_code_bytes": 2633,
+      "branch_code_bytes": 2633,
+      "main_max_frame_bytes": 88,
+      "branch_max_frame_bytes": 88,
+      "same_native_code": false,
+      "main_native_sha256": "8ac88166de56fa083879aacdede6739dd581cda83df2959f0e43a870e6327b48",
+      "branch_native_sha256": "66f5f91a0007cc362ddfd251356418a221a07495c7fcb06da48fbceda835cbc5"
+    },
+    {
+      "workload": "applications/hardware-prime-implicants",
+      "main_code_bytes": 1478,
+      "branch_code_bytes": 1478,
+      "main_max_frame_bytes": 72,
+      "branch_max_frame_bytes": 72,
+      "same_native_code": false,
+      "main_native_sha256": "fdae1fa9c8eb8fbef12c124fe18641f5369c4ea3416edc63a6793b73f0ba2d6a",
+      "branch_native_sha256": "3ccc1a59248b8e0be38d99bd969008cda6cb852faafd8c891a5d2afc769f8231"
+    },
+    {
+      "workload": "applications/audio-fir",
+      "main_code_bytes": 4189,
+      "branch_code_bytes": 4189,
+      "main_max_frame_bytes": 376,
+      "branch_max_frame_bytes": 376,
+      "same_native_code": true,
+      "main_native_sha256": "a80cd4f4f1bf7dde186e840d7b104874e3b2233519c79856e7c39f194f6e2bc2",
+      "branch_native_sha256": "a80cd4f4f1bf7dde186e840d7b104874e3b2233519c79856e7c39f194f6e2bc2"
+    },
+    {
+      "workload": "applications/ml-convolution",
+      "main_code_bytes": 843,
+      "branch_code_bytes": 843,
+      "main_max_frame_bytes": 72,
+      "branch_max_frame_bytes": 72,
+      "same_native_code": true,
+      "main_native_sha256": "dbae8c22a77a49e4d8fcb1a6f30a041b1c12bcfd1407c17291e05945d460da4b",
+      "branch_native_sha256": "dbae8c22a77a49e4d8fcb1a6f30a041b1c12bcfd1407c17291e05945d460da4b"
+    },
+    {
+      "workload": "applications/mesh-skinning",
+      "main_code_bytes": 769,
+      "branch_code_bytes": 769,
+      "main_max_frame_bytes": 56,
+      "branch_max_frame_bytes": 56,
+      "same_native_code": true,
+      "main_native_sha256": "c86f9ab850ae00ee9d03463b625c53262cb4d0f311bc08ff854df590d4c251fb",
+      "branch_native_sha256": "c86f9ab850ae00ee9d03463b625c53262cb4d0f311bc08ff854df590d4c251fb"
+    },
+    {
+      "workload": "applications/search-bk-tree",
+      "main_code_bytes": 1546,
+      "branch_code_bytes": 1546,
+      "main_max_frame_bytes": 72,
+      "branch_max_frame_bytes": 72,
+      "same_native_code": true,
+      "main_native_sha256": "fb8bf13415dca0509bf369046e25ea6f18ff67236311090aa0592e0f2dbad04d",
+      "branch_native_sha256": "fb8bf13415dca0509bf369046e25ea6f18ff67236311090aa0592e0f2dbad04d"
+    },
+    {
+      "workload": "applications/numeric-euclidean-gcd",
+      "main_code_bytes": 330,
+      "branch_code_bytes": 330,
+      "main_max_frame_bytes": 40,
+      "branch_max_frame_bytes": 40,
+      "same_native_code": true,
+      "main_native_sha256": "53e95a8aeb653ae4f4be1e304e4d4e6b393c3dba44f203167a818336e0b36c75",
+      "branch_native_sha256": "53e95a8aeb653ae4f4be1e304e4d4e6b393c3dba44f203167a818336e0b36c75"
+    },
+    {
+      "workload": "features/core-mem/load-store-sequential/performance-4096x64",
+      "main_code_bytes": 415,
+      "branch_code_bytes": 415,
+      "main_max_frame_bytes": 40,
+      "branch_max_frame_bytes": 40,
+      "same_native_code": true,
+      "main_native_sha256": "0e76c46dbf47257b0ebadb079b83aad3387a0ab3630856aab10f5c8df38554e5",
+      "branch_native_sha256": "0e76c46dbf47257b0ebadb079b83aad3387a0ab3630856aab10f5c8df38554e5"
+    },
+    {
+      "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+      "main_code_bytes": 431,
+      "branch_code_bytes": 431,
+      "main_max_frame_bytes": 40,
+      "branch_max_frame_bytes": 40,
+      "same_native_code": true,
+      "main_native_sha256": "b4b303bd7559e2cb250c1a93b079559a0c20da8ac21d8b94a416ef5acfea49df",
+      "branch_native_sha256": "b4b303bd7559e2cb250c1a93b079559a0c20da8ac21d8b94a416ef5acfea49df"
+    },
+    {
+      "workload": "features/core-mem/narrow-load-sign-extension/performance-4096x64",
+      "main_code_bytes": 415,
+      "branch_code_bytes": 415,
+      "main_max_frame_bytes": 40,
+      "branch_max_frame_bytes": 40,
+      "same_native_code": true,
+      "main_native_sha256": "586df396ebcd467b69c808ac9a11d67319100b3a171f8b51dcd3979d8b9be359",
+      "branch_native_sha256": "586df396ebcd467b69c808ac9a11d67319100b3a171f8b51dcd3979d8b9be359"
+    },
+    {
+      "workload": "features/core-num/integer-div-rem/performance-4096x64",
+      "main_code_bytes": 351,
+      "branch_code_bytes": 319,
+      "main_max_frame_bytes": 40,
+      "branch_max_frame_bytes": 40,
+      "same_native_code": false,
+      "main_native_sha256": "279f7624b4a49043e71ab7b345108dd6c71cf71e1b9c37387a5300bab3c1a51b",
+      "branch_native_sha256": "ebdcb156c4cbc9e89930c0f168c7da6e1cb00800200d4723521e663ce9dc796c"
+    },
+    {
+      "workload": "applications/search-rabin-karp",
+      "main_code_bytes": 4045,
+      "branch_code_bytes": 4045,
+      "main_max_frame_bytes": 184,
+      "branch_max_frame_bytes": 184,
+      "same_native_code": true,
+      "main_native_sha256": "8a1d6695cdd5fa530283a98ccbbd4a11ab6042c04bd7541791dbb91d1745b068",
+      "branch_native_sha256": "8a1d6695cdd5fa530283a98ccbbd4a11ab6042c04bd7541791dbb91d1745b068"
+    },
+    {
+      "workload": "controls/polybench-gemm",
+      "main_code_bytes": 5571,
+      "branch_code_bytes": 5571,
+      "main_max_frame_bytes": 328,
+      "branch_max_frame_bytes": 328,
+      "same_native_code": true,
+      "main_native_sha256": "a8918057ab6d02f542ed8ca9bab7c1b202da8417a51021263714b2784c240394",
+      "branch_native_sha256": "a8918057ab6d02f542ed8ca9bab7c1b202da8417a51021263714b2784c240394"
+    },
+    {
+      "workload": "controls/xxhash/xxh64-boundaries",
+      "main_code_bytes": 3301,
+      "branch_code_bytes": 3301,
+      "main_max_frame_bytes": 136,
+      "branch_max_frame_bytes": 136,
+      "same_native_code": true,
+      "main_native_sha256": "b17a3b492960ab52c14ab6ef66e15be8ee8586059883fae07ff3017a29e59187",
+      "branch_native_sha256": "b17a3b492960ab52c14ab6ef66e15be8ee8586059883fae07ff3017a29e59187"
+    }
+  ],
+  "native_identity": [
+    {
+      "runtime": "main",
+      "workload": "applications/ml-inference",
+      "normal_and_diagnostic_code_sha256": "4a1f2bb0d6508eb2762bf8d5f97247dd7ba15cd68cb6cd65ab7b03d3308e6915",
+      "code_bytes": 788
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/stats-linear-regression",
+      "normal_and_diagnostic_code_sha256": "654605f71e98d29638a7334b8b2c2047c77fb29277b982dad100612e2903bacd",
+      "code_bytes": 572
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/search-aho-corasick",
+      "normal_and_diagnostic_code_sha256": "a66567d514719c0e18f91451dbf45eface14348447ab3d720e8c865d9776ec8d",
+      "code_bytes": 6922
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/vision-fast-corners",
+      "normal_and_diagnostic_code_sha256": "edcb388ebf87aefda20ddd4d7b55328398fee402ffbf2767d1167c9fff3e4acf",
+      "code_bytes": 1985
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/particle-physics",
+      "normal_and_diagnostic_code_sha256": "c66d63fd4695a646c824fd1251f70c94cab25ac9c8d72562de2a04d4b562eb6e",
+      "code_bytes": 649
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/compiler-register-allocation",
+      "normal_and_diagnostic_code_sha256": "8ac88166de56fa083879aacdede6739dd581cda83df2959f0e43a870e6327b48",
+      "code_bytes": 2633
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/hardware-prime-implicants",
+      "normal_and_diagnostic_code_sha256": "fdae1fa9c8eb8fbef12c124fe18641f5369c4ea3416edc63a6793b73f0ba2d6a",
+      "code_bytes": 1478
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/audio-fir",
+      "normal_and_diagnostic_code_sha256": "a80cd4f4f1bf7dde186e840d7b104874e3b2233519c79856e7c39f194f6e2bc2",
+      "code_bytes": 4189
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/ml-convolution",
+      "normal_and_diagnostic_code_sha256": "dbae8c22a77a49e4d8fcb1a6f30a041b1c12bcfd1407c17291e05945d460da4b",
+      "code_bytes": 843
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/mesh-skinning",
+      "normal_and_diagnostic_code_sha256": "c86f9ab850ae00ee9d03463b625c53262cb4d0f311bc08ff854df590d4c251fb",
+      "code_bytes": 769
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/search-bk-tree",
+      "normal_and_diagnostic_code_sha256": "fb8bf13415dca0509bf369046e25ea6f18ff67236311090aa0592e0f2dbad04d",
+      "code_bytes": 1546
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/numeric-euclidean-gcd",
+      "normal_and_diagnostic_code_sha256": "53e95a8aeb653ae4f4be1e304e4d4e6b393c3dba44f203167a818336e0b36c75",
+      "code_bytes": 330
+    },
+    {
+      "runtime": "main",
+      "workload": "features/core-mem/load-store-sequential/performance-4096x64",
+      "normal_and_diagnostic_code_sha256": "0e76c46dbf47257b0ebadb079b83aad3387a0ab3630856aab10f5c8df38554e5",
+      "code_bytes": 415
+    },
+    {
+      "runtime": "main",
+      "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+      "normal_and_diagnostic_code_sha256": "b4b303bd7559e2cb250c1a93b079559a0c20da8ac21d8b94a416ef5acfea49df",
+      "code_bytes": 431
+    },
+    {
+      "runtime": "main",
+      "workload": "features/core-mem/narrow-load-sign-extension/performance-4096x64",
+      "normal_and_diagnostic_code_sha256": "586df396ebcd467b69c808ac9a11d67319100b3a171f8b51dcd3979d8b9be359",
+      "code_bytes": 415
+    },
+    {
+      "runtime": "main",
+      "workload": "features/core-num/integer-div-rem/performance-4096x64",
+      "normal_and_diagnostic_code_sha256": "279f7624b4a49043e71ab7b345108dd6c71cf71e1b9c37387a5300bab3c1a51b",
+      "code_bytes": 351
+    },
+    {
+      "runtime": "main",
+      "workload": "applications/search-rabin-karp",
+      "normal_and_diagnostic_code_sha256": "8a1d6695cdd5fa530283a98ccbbd4a11ab6042c04bd7541791dbb91d1745b068",
+      "code_bytes": 4045
+    },
+    {
+      "runtime": "main",
+      "workload": "controls/polybench-gemm",
+      "normal_and_diagnostic_code_sha256": "a8918057ab6d02f542ed8ca9bab7c1b202da8417a51021263714b2784c240394",
+      "code_bytes": 5571
+    },
+    {
+      "runtime": "main",
+      "workload": "controls/xxhash/xxh64-boundaries",
+      "normal_and_diagnostic_code_sha256": "b17a3b492960ab52c14ab6ef66e15be8ee8586059883fae07ff3017a29e59187",
+      "code_bytes": 3301
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/ml-inference",
+      "normal_and_diagnostic_code_sha256": "4a1f2bb0d6508eb2762bf8d5f97247dd7ba15cd68cb6cd65ab7b03d3308e6915",
+      "code_bytes": 788
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/stats-linear-regression",
+      "normal_and_diagnostic_code_sha256": "8b5af17e55834451bce39845bbcd9963dc67b8a4863b049da86f1b0b4bdf8aca",
+      "code_bytes": 1167
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/search-aho-corasick",
+      "normal_and_diagnostic_code_sha256": "0a6669cb59699dd78e0bf628ee8a789c280bb1e444aff32a5af4293bbf39a9c8",
+      "code_bytes": 6906
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/vision-fast-corners",
+      "normal_and_diagnostic_code_sha256": "8d87fcbf73641eceb633d83c101b4e17bc98876912cb40e81e6fd787b7ec00a5",
+      "code_bytes": 1983
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/particle-physics",
+      "normal_and_diagnostic_code_sha256": "2bb75faf8e20715e2e5c1ee54a561cb4ccf1dd8bd74a46a69f5b9364882d34eb",
+      "code_bytes": 641
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/compiler-register-allocation",
+      "normal_and_diagnostic_code_sha256": "66f5f91a0007cc362ddfd251356418a221a07495c7fcb06da48fbceda835cbc5",
+      "code_bytes": 2633
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/hardware-prime-implicants",
+      "normal_and_diagnostic_code_sha256": "3ccc1a59248b8e0be38d99bd969008cda6cb852faafd8c891a5d2afc769f8231",
+      "code_bytes": 1478
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/audio-fir",
+      "normal_and_diagnostic_code_sha256": "a80cd4f4f1bf7dde186e840d7b104874e3b2233519c79856e7c39f194f6e2bc2",
+      "code_bytes": 4189
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/ml-convolution",
+      "normal_and_diagnostic_code_sha256": "dbae8c22a77a49e4d8fcb1a6f30a041b1c12bcfd1407c17291e05945d460da4b",
+      "code_bytes": 843
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/mesh-skinning",
+      "normal_and_diagnostic_code_sha256": "c86f9ab850ae00ee9d03463b625c53262cb4d0f311bc08ff854df590d4c251fb",
+      "code_bytes": 769
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/search-bk-tree",
+      "normal_and_diagnostic_code_sha256": "fb8bf13415dca0509bf369046e25ea6f18ff67236311090aa0592e0f2dbad04d",
+      "code_bytes": 1546
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/numeric-euclidean-gcd",
+      "normal_and_diagnostic_code_sha256": "53e95a8aeb653ae4f4be1e304e4d4e6b393c3dba44f203167a818336e0b36c75",
+      "code_bytes": 330
+    },
+    {
+      "runtime": "branch",
+      "workload": "features/core-mem/load-store-sequential/performance-4096x64",
+      "normal_and_diagnostic_code_sha256": "0e76c46dbf47257b0ebadb079b83aad3387a0ab3630856aab10f5c8df38554e5",
+      "code_bytes": 415
+    },
+    {
+      "runtime": "branch",
+      "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+      "normal_and_diagnostic_code_sha256": "b4b303bd7559e2cb250c1a93b079559a0c20da8ac21d8b94a416ef5acfea49df",
+      "code_bytes": 431
+    },
+    {
+      "runtime": "branch",
+      "workload": "features/core-mem/narrow-load-sign-extension/performance-4096x64",
+      "normal_and_diagnostic_code_sha256": "586df396ebcd467b69c808ac9a11d67319100b3a171f8b51dcd3979d8b9be359",
+      "code_bytes": 415
+    },
+    {
+      "runtime": "branch",
+      "workload": "features/core-num/integer-div-rem/performance-4096x64",
+      "normal_and_diagnostic_code_sha256": "ebdcb156c4cbc9e89930c0f168c7da6e1cb00800200d4723521e663ce9dc796c",
+      "code_bytes": 319
+    },
+    {
+      "runtime": "branch",
+      "workload": "applications/search-rabin-karp",
+      "normal_and_diagnostic_code_sha256": "8a1d6695cdd5fa530283a98ccbbd4a11ab6042c04bd7541791dbb91d1745b068",
+      "code_bytes": 4045
+    },
+    {
+      "runtime": "branch",
+      "workload": "controls/polybench-gemm",
+      "normal_and_diagnostic_code_sha256": "a8918057ab6d02f542ed8ca9bab7c1b202da8417a51021263714b2784c240394",
+      "code_bytes": 5571
+    },
+    {
+      "runtime": "branch",
+      "workload": "controls/xxhash/xxh64-boundaries",
+      "normal_and_diagnostic_code_sha256": "b17a3b492960ab52c14ab6ef66e15be8ee8586059883fae07ff3017a29e59187",
+      "code_bytes": 3301
+    },
+    {
+      "runtime": "pure",
+      "workload": "applications/search-aho-corasick",
+      "normal_and_diagnostic_code_sha256": "dff1fed32dc8eb92410159448b7f4f4f976efb3cea81b815a6639bb05a7d7486",
+      "code_bytes": 6946
+    },
+    {
+      "runtime": "pure",
+      "workload": "diagnostics/select-table-one-mul",
+      "normal_and_diagnostic_code_sha256": "b0568b77177738ea06928f3c7b4e86e19cb3e28b2da3d9609737bbb9e80a3f1e",
+      "code_bytes": 187
+    },
+    {
+      "runtime": "pure",
+      "workload": "diagnostics/select-table-two-mul",
+      "normal_and_diagnostic_code_sha256": "3ac7fb8e2f1c0aec7518e628cb09c707ec515f1c3bafca362ab91314cf4a505f",
+      "code_bytes": 187
+    }
+  ],
+  "verification": {
+    "standard_full_tests": "passed",
+    "regalloc_full_tests": "passed",
+    "bench_regalloc_full_tests": "passed",
+    "host_race_tests": "passed",
+    "focused_guarded_regalloc_codegenstats_pass_entries": 394,
+    "focused_skips": 0,
+    "docs_check_markdown_files": 81,
+    "reviews": "Eight agents and a read-only Claude review; vector old-value-copy defect fixed and tested. Current-main host dispatch reviewed with fresh/artifact and lifetime tests."
+  },
+  "checked_execution_launches": 576,
+  "checked_warmup_and_measured_batches": 4608,
+  "source_manifest_sha256": {
+    "baseline": "34d7aaa5226217bbcc8709542135019a55ac41a7a018bd65c94c96f09636eaf1",
+    "candidate": "5b38654e57a1aac8897e1c93ecc15c06bf93efa307e75a66206d63480c18aaed"
+  },
+  "microbenchmarks": {
+    "numeric": {
+      "policy": {
+        "samples_per_config": 5,
+        "benchtime_ms": 50,
+        "gomaxprocs": 1,
+        "cpu_affinity": [6],
+        "alternating_config_order": false
+      },
+      "cases": [
+        {
+          "name": "BenchmarkInvokeOwnedHostFuncrefEgress",
+          "main": {
+            "ns_per_op": [332.0, 328.3, 328.9, 328.8, 328.5],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [317.5, 318.7, 318.3, 317.4, 318.2],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": -3.2238442822384528
+        },
+        {
+          "name": "BenchmarkInvokeOwnedHostFuncrefIndirect",
+          "main": {
+            "ns_per_op": [880.3, 886.4, 890.4, 939.8, 892.4],
+            "bytes_per_op": [704, 704, 704, 704, 704],
+            "allocs_per_op": [3, 3, 3, 3, 3]
+          },
+          "branch": {
+            "ns_per_op": [865.3, 874.4, 880.4, 888.2, 880.4],
+            "bytes_per_op": [704, 704, 704, 704, 704],
+            "allocs_per_op": [3, 3, 3, 3, 3]
+          },
+          "execution_time_delta_percent": -1.123090745732258
+        },
+        {
+          "name": "BenchmarkInvokeHostFuncDirect",
+          "main": {
+            "ns_per_op": [132.7, 131.4, 131.8, 132.2, 130.6],
+            "bytes_per_op": [64, 64, 64, 64, 64],
+            "allocs_per_op": [1, 1, 1, 1, 1]
+          },
+          "branch": {
+            "ns_per_op": [131.8, 130.5, 129.2, 129.3, 129.3],
+            "bytes_per_op": [64, 64, 64, 64, 64],
+            "allocs_per_op": [1, 1, 1, 1, 1]
+          },
+          "execution_time_delta_percent": -1.896813353566007
+        },
+        {
+          "name": "BenchmarkHostFuncRefNumericImport",
+          "main": {
+            "ns_per_op": [572.8, 562.8, 564.4, 572.3, 565.7],
+            "bytes_per_op": [640, 640, 640, 640, 640],
+            "allocs_per_op": [2, 2, 2, 2, 2]
+          },
+          "branch": {
+            "ns_per_op": [131.4, 132.0, 131.5, 131.7, 132.2],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": -76.71910906841082
+        }
+      ]
+    },
+    "roundtrip": {
+      "policy": {
+        "samples_per_config": 5,
+        "benchtime_ms": 50,
+        "gomaxprocs": 1,
+        "cpu_affinity": [6],
+        "alternating_config_order": false
+      },
+      "cases": [
+        {
+          "name": "BenchmarkHostRoundtripLoop/mem1/parallelfalse/host1/n64",
+          "main": {
+            "ns_per_op": [10693.0, 11521.0, 11442.0, 11479.0, 11460.0],
+            "bytes_per_op": [4096, 4096, 4096, 4096, 4096],
+            "allocs_per_op": [64, 64, 64, 64, 64]
+          },
+          "branch": {
+            "ns_per_op": [10819.0, 11639.0, 11990.0, 11796.0, 11891.0],
+            "bytes_per_op": [4096, 4096, 4096, 4096, 4096],
+            "allocs_per_op": [64, 64, 64, 64, 64]
+          },
+          "execution_time_delta_percent": 2.9319371727748678
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoop/mem1/parallelfalse/host1/n1024",
+          "main": {
+            "ns_per_op": [174169.0, 173712.0, 176696.0, 178345.0, 174598.0],
+            "bytes_per_op": [65536, 65536, 65536, 65536, 65536],
+            "allocs_per_op": [1024, 1024, 1024, 1024, 1024]
+          },
+          "branch": {
+            "ns_per_op": [179551.0, 179259.0, 176170.0, 190350.0, 183259.0],
+            "bytes_per_op": [65536, 65536, 65536, 65536, 65536],
+            "allocs_per_op": [1024, 1024, 1024, 1024, 1024]
+          },
+          "execution_time_delta_percent": 2.8368022543213467
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoop/mem1/paralleltrue/host1/n64",
+          "main": {
+            "ns_per_op": [11723.0, 11838.0, 11498.0, 11656.0, 11681.0],
+            "bytes_per_op": [4096, 4096, 4096, 4096, 4096],
+            "allocs_per_op": [64, 64, 64, 64, 64]
+          },
+          "branch": {
+            "ns_per_op": [12010.0, 12267.0, 12259.0, 12698.0, 13005.0],
+            "bytes_per_op": [4096, 4096, 4096, 4096, 4096],
+            "allocs_per_op": [64, 64, 64, 64, 64]
+          },
+          "execution_time_delta_percent": 5.016693776217784
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoop/mem1/paralleltrue/host1/n1024",
+          "main": {
+            "ns_per_op": [177997.0, 176959.0, 176965.0, 177018.0, 178325.0],
+            "bytes_per_op": [65536, 65536, 65537, 65536, 65537],
+            "allocs_per_op": [1024, 1024, 1024, 1024, 1024]
+          },
+          "branch": {
+            "ns_per_op": [218970.0, 188808.0, 194404.0, 186883.0, 197299.0],
+            "bytes_per_op": [65537, 65537, 65537, 65537, 65554],
+            "allocs_per_op": [1024, 1024, 1024, 1024, 1024]
+          },
+          "execution_time_delta_percent": 9.821600063270397
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopCaller/mem1/parallelfalse/host1/n64",
+          "main": {
+            "ns_per_op": [8892.0, 9405.0, 8992.0, 8874.0, 8890.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [9284.0, 9606.0, 9372.0, 9648.0, 9323.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 5.3981106612685625
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopCaller/mem1/parallelfalse/host1/n1024",
+          "main": {
+            "ns_per_op": [136814.0, 136807.0, 135936.0, 136328.0, 135786.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [148535.0, 142943.0, 152676.0, 148975.0, 140970.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 8.954140015257316
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopCaller/mem1/paralleltrue/host1/n64",
+          "main": {
+            "ns_per_op": [9026.0, 9045.0, 8943.0, 9089.0, 8965.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [9204.0, 9574.0, 9195.0, 9625.0, 9899.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 6.071349434965656
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopCaller/mem1/paralleltrue/host1/n1024",
+          "main": {
+            "ns_per_op": [137697.0, 139445.0, 140194.0, 138066.0, 138123.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [146290.0, 144478.0, 143469.0, 145166.0, 144683.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 4.749390036416812
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopTyped/mem1/parallelfalse/host1/n64",
+          "main": {
+            "ns_per_op": [4016.0, 4059.0, 4007.0, 4033.0, 4086.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [4185.0, 4171.0, 4243.0, 4312.0, 4274.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 5.2070419042896
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopTyped/mem1/parallelfalse/host1/n1024",
+          "main": {
+            "ns_per_op": [62957.0, 62751.0, 62600.0, 62811.0, 64305.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [64808.0, 64400.0, 63025.0, 61862.0, 62692.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 0.34070465364346436
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopTyped/mem1/paralleltrue/host1/n64",
+          "main": {
+            "ns_per_op": [4040.0, 4063.0, 4050.0, 4049.0, 4059.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [4074.0, 4016.0, 4194.0, 4251.0, 4070.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 0.592592592592589
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopTyped/mem1/paralleltrue/host1/n1024",
+          "main": {
+            "ns_per_op": [62387.0, 62074.0, 62688.0, 62583.0, 62514.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [61863.0, 62961.0, 62855.0, 62088.0, 62407.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": -0.1711616597882104
+        }
+      ]
+    },
+    "simd": {
+      "policy": {
+        "samples_per_config": 5,
+        "benchtime_ms": 100,
+        "gomaxprocs": 1,
+        "cpu_affinity": [6],
+        "alternating_config_order": false
+      },
+      "cases": [
+        {
+          "name": "BenchmarkSIMDByteAlignLoop",
+          "main": {
+            "ns_per_op": [2590.0, 2563.0, 2770.0, 2587.0, 2543.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [1730.0, 1674.0, 1707.0, 1670.0, 1792.0],
+            "bytes_per_op": [0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": -34.016235021260144
+        }
+      ]
+    },
+    "call_controls_alternating": {
+      "policy": {
+        "samples_per_config": 6,
+        "benchtime_ms": 100,
+        "gomaxprocs": 1,
+        "cpu_affinity": [6],
+        "alternating_config_order": true
+      },
+      "cases": [
+        {
+          "name": "BenchmarkHostRoundtripLoop/mem1/parallelfalse/host1/n64",
+          "main": {
+            "ns_per_op": [21082.0, 12105.0, 11694.0, 11908.0, 11513.0, 11323.0],
+            "bytes_per_op": [4096, 4096, 4096, 4096, 4096, 4096],
+            "allocs_per_op": [64, 64, 64, 64, 64, 64]
+          },
+          "branch": {
+            "ns_per_op": [12297.0, 12001.0, 12036.0, 11924.0, 11819.0, 12298.0],
+            "bytes_per_op": [4096, 4096, 4096, 4096, 4096, 4096],
+            "allocs_per_op": [64, 64, 64, 64, 64, 64]
+          },
+          "execution_time_delta_percent": 1.843064147106177
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoop/mem1/parallelfalse/host1/n1024",
+          "main": {
+            "ns_per_op": [344269.0, 184481.0, 187833.0, 193469.0, 182064.0, 186301.0],
+            "bytes_per_op": [65536, 65536, 65536, 65536, 65536, 65536],
+            "allocs_per_op": [1024, 1024, 1024, 1024, 1024, 1024]
+          },
+          "branch": {
+            "ns_per_op": [193306.0, 195034.0, 191731.0, 189554.0, 189137.0, 190197.0],
+            "bytes_per_op": [65536, 65545, 65536, 65536, 65536, 65536],
+            "allocs_per_op": [1024, 1024, 1024, 1024, 1024, 1024]
+          },
+          "execution_time_delta_percent": 2.083210828205928
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoop/mem1/paralleltrue/host1/n64",
+          "main": {
+            "ns_per_op": [21397.0, 12206.0, 12115.0, 12303.0, 12080.0, 12347.0],
+            "bytes_per_op": [4096, 4096, 4096, 4096, 4096, 4096],
+            "allocs_per_op": [64, 64, 64, 64, 64, 64]
+          },
+          "branch": {
+            "ns_per_op": [12574.0, 12867.0, 12590.0, 12504.0, 12493.0, 12410.0],
+            "bytes_per_op": [4096, 4096, 4096, 4096, 4096, 4096],
+            "allocs_per_op": [64, 64, 64, 64, 64, 64]
+          },
+          "execution_time_delta_percent": 2.321596148353655
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoop/mem1/paralleltrue/host1/n1024",
+          "main": {
+            "ns_per_op": [306714.0, 186573.0, 192793.0, 189717.0, 190389.0, 185885.0],
+            "bytes_per_op": [65536, 65536, 65536, 65536, 65536, 65545],
+            "allocs_per_op": [1024, 1024, 1024, 1024, 1024, 1024]
+          },
+          "branch": {
+            "ns_per_op": [195497.0, 192816.0, 194150.0, 200645.0, 191335.0, 195345.0],
+            "bytes_per_op": [65536, 65536, 65545, 65536, 65536, 65536],
+            "allocs_per_op": [1024, 1024, 1024, 1024, 1024, 1024]
+          },
+          "execution_time_delta_percent": 2.4701004456651576
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopCaller/mem1/parallelfalse/host1/n64",
+          "main": {
+            "ns_per_op": [9854.0, 9360.0, 9343.0, 9446.0, 9256.0, 9129.0],
+            "bytes_per_op": [0, 0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [9481.0, 9402.0, 9677.0, 9415.0, 9620.0, 9231.0],
+            "bytes_per_op": [0, 0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 1.031920012832166
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopCaller/mem1/parallelfalse/host1/n1024",
+          "main": {
+            "ns_per_op": [151692.0, 142563.0, 142717.0, 141866.0, 141337.0, 140058.0],
+            "bytes_per_op": [0, 0, 6, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [144142.0, 146141.0, 144112.0, 143005.0, 143175.0, 144053.0],
+            "bytes_per_op": [0, 0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 1.3135088194241806
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopCaller/mem1/paralleltrue/host1/n64",
+          "main": {
+            "ns_per_op": [9455.0, 9495.0, 9407.0, 9454.0, 9422.0, 9229.0],
+            "bytes_per_op": [0, 0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [9573.0, 9471.0, 9443.0, 9431.0, 9403.0, 9283.0],
+            "bytes_per_op": [0, 0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": -0.010595465140916804
+        },
+        {
+          "name": "BenchmarkHostRoundtripLoopCaller/mem1/paralleltrue/host1/n1024",
+          "main": {
+            "ns_per_op": [142532.0, 148249.0, 143806.0, 147249.0, 143417.0, 141744.0],
+            "bytes_per_op": [0, 0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0, 0]
+          },
+          "branch": {
+            "ns_per_op": [145652.0, 143823.0, 146962.0, 144879.0, 141993.0, 142236.0],
+            "bytes_per_op": [0, 0, 0, 0, 0, 0],
+            "allocs_per_op": [0, 0, 0, 0, 0, 0]
+          },
+          "execution_time_delta_percent": 0.5149309073437802
+        }
+      ]
+    }
+  }
+}
