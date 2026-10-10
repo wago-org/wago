@@ -100,6 +100,32 @@ func rv64ImportedTable64GetSet(c *Compiled) bool {
 	return true
 }
 
+func rv64ImportedTable64Grow(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64ImportedGrowABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 1 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) == 0 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	def, imported := c.tableImportAt(0)
+	if !imported || def.Key == "" || !def.Addr64 || !def.HasMax || def.Min > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < def.Min {
+		return false
+	}
+	sig := c.Funcs[0]
+	if len(sig.Params) != 1 || sig.Params[0] != ValI64 || len(sig.Results) != 1 || sig.Results[0] != ValI64 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+		return false
+	}
+	for _, index := range c.Exports {
+		if index != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func rv64OwnedTable64Grow(c *Compiled) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64GrowABI || !c.TableAddr64 || !c.TableHasMax || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) == 0 {
 		return false
@@ -246,7 +272,7 @@ func rv64OwnedTable64InitDrop(c *Compiled) bool {
 }
 
 func rv64QualifiedTable64(c *Compiled) bool {
-	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTable64InitDrop(c) || rv64ImportedTable64Size(c) || rv64ImportedTable64GetSet(c)
+	return rv64StateOnlyTable64(c) || rv64OwnedTable64Size(c) || rv64OwnedTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTable64InitDrop(c) || rv64ImportedTable64Size(c) || rv64ImportedTable64GetSet(c) || rv64ImportedTable64Grow(c)
 }
 
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
