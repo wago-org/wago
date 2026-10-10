@@ -159,9 +159,10 @@ func admitStateOnlyTable64(m *wasm.Module, production, public bool) bool {
 }
 
 // admitOwnedTable64ActiveElement qualifies one bounded active expression
-// segment with an i64 offset. The sole private empty function exists only as
-// the segment's canonical ref.func target; no callable export or table
-// instruction is admitted by this profile.
+// segment with an i64 offset. The sole private function is either the original
+// empty target or the exact () -> i32 constant target used to compose the
+// initialized row with the separately qualified imported call_indirect
+// profile. No callable export or table instruction is admitted here.
 func admitOwnedTable64ActiveElement(m *wasm.Module, production, public bool) bool {
 	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Tables[0].Init != nil || m.Start != nil || len(m.Exports) != 1 {
 		return false
@@ -177,11 +178,18 @@ func admitOwnedTable64ActiveElement(m *wasm.Module, production, public bool) boo
 		return false
 	}
 	sub := m.Types[0].SubTypes[0]
-	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 || len(sub.Comp.Results) != 0 {
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 {
 		return false
 	}
 	fn := m.Code[0]
-	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 || !bytes.Equal(fn.BodyBytes, []byte{0x0b}) {
+	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 {
+		return false
+	}
+	if len(sub.Comp.Results) == 0 {
+		if !bytes.Equal(fn.BodyBytes, []byte{0x0b}) {
+			return false
+		}
+	} else if len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) || !bytes.Equal(fn.BodyBytes, []byte{0x41, 0x07, 0x0b}) {
 		return false
 	}
 	export := m.Exports[0]

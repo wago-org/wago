@@ -48,11 +48,19 @@ func rv64OwnedTable64ActiveElement(c *Compiled) bool {
 		return false
 	}
 	fn := c.Funcs[0]
-	// Bind the only private target's exact framed RV64G image. The table export
-	// can later be imported by another instance, so retained metadata alone must
-	// not relabel arbitrary callable code as this narrow initializer profile.
-	wantCode := [32]byte{0x1d, 0xf4, 0x1d, 0xb6, 0xda, 0x6c, 0xf7, 0x49, 0x1e, 0x95, 0x1a, 0x23, 0xe0, 0x52, 0x51, 0xba, 0xc1, 0x48, 0x0b, 0xe5, 0xaa, 0x36, 0xe1, 0x01, 0x5d, 0x3c, 0xd9, 0x75, 0x4c, 0x4d, 0x65, 0x03}
-	if len(fn.Params) != 0 || len(fn.Results) != 0 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 1 || c.FuncTypeID[0] != voidFuncTypeKey() || len(c.Entry) != 1 || c.Entry[0] != 0 || len(c.InternalEntry) != 1 || c.InternalEntry[0] != 0 || len(c.code) != 576 || sha256.Sum256(c.code) != wantCode {
+	if len(fn.Params) != 0 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 1 || len(c.Entry) != 1 || c.Entry[0] != 0 || len(c.InternalEntry) != 1 || c.InternalEntry[0] != 0 {
+		return false
+	}
+	// Bind both exact private targets' framed RV64G images. The exported table
+	// can be imported by another instance, so retained metadata alone must not
+	// relabel arbitrary callable code as this narrow initializer profile.
+	codeHash := sha256.Sum256(c.code)
+	voidCode := [32]byte{0x1d, 0xf4, 0x1d, 0xb6, 0xda, 0x6c, 0xf7, 0x49, 0x1e, 0x95, 0x1a, 0x23, 0xe0, 0x52, 0x51, 0xba, 0xc1, 0x48, 0x0b, 0xe5, 0xaa, 0x36, 0xe1, 0x01, 0x5d, 0x3c, 0xd9, 0x75, 0x4c, 0x4d, 0x65, 0x03}
+	i32Code := [32]byte{0x82, 0x47, 0x89, 0xf5, 0x32, 0x7a, 0x36, 0x99, 0x57, 0x50, 0x78, 0x68, 0x12, 0x0e, 0x89, 0x9e, 0x52, 0xdd, 0xb0, 0x66, 0x39, 0xc9, 0x01, 0xfc, 0xae, 0xbb, 0xc3, 0x16, 0x0a, 0x0b, 0x3f, 0x6a}
+	voidTarget := len(fn.Results) == 0 && c.FuncTypeID[0] == voidFuncTypeKey() && len(c.code) == 576 && codeHash == voidCode
+	i32Key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}})
+	i32Target := len(fn.Results) == 1 && fn.Results[0] == ValI32 && c.FuncTypeID[0] == i32Key && len(c.code) == 584 && codeHash == i32Code
+	if !voidTarget && !i32Target {
 		return false
 	}
 	if c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTable64 || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {

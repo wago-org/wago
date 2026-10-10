@@ -1555,7 +1555,8 @@ func stagedStateOnlyOwnedTable64DeclarationShape(m *wasm.Module) bool {
 }
 
 // stagedOwnedTable64ActiveElementShape is the source-side witness for one
-// observable active ref.func row at a full-width table64 offset. Keep it byte
+// observable active ref.func row at a full-width table64 offset. It admits the
+// original empty target and one exact callable constant target. Keep both byte
 // exact so nearby table sizes, offsets, payloads, code and exports remain
 // closed until separately qualified.
 func stagedOwnedTable64ActiveElementShape(m *wasm.Module) bool {
@@ -1573,10 +1574,18 @@ func stagedOwnedTable64ActiveElementShape(m *wasm.Module) bool {
 		return false
 	}
 	sub := m.Types[0].SubTypes[0]
-	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 || len(sub.Comp.Results) != 0 {
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 {
 		return false
 	}
-	if len(m.Code[0].Locals.Runs) != 0 || len(m.Code[0].Body.Instrs) != 0 || !bytes.Equal(m.Code[0].BodyBytes, []byte{0x0b}) {
+	fn := m.Code[0]
+	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 {
+		return false
+	}
+	if len(sub.Comp.Results) == 0 {
+		if !bytes.Equal(fn.BodyBytes, []byte{0x0b}) {
+			return false
+		}
+	} else if len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) || !bytes.Equal(fn.BodyBytes, []byte{0x41, 0x07, 0x0b}) {
 		return false
 	}
 	export := m.Exports[0]
