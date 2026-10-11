@@ -172,10 +172,6 @@ func siftFieldOrder(order []uint16, fields []FieldDesc, root int) {
 	order[root] = value
 }
 
-func validateSuperRelations(descs []TypeDesc) error {
-	return validateSuperRelationsFrom(descs, 0)
-}
-
 func validateSuperRelationsFrom(descs []TypeDesc, start int) error {
 	// All descriptors have passed structural validation, including forward supers.
 	// Checking every direct edge is transitive and independent of table order.
