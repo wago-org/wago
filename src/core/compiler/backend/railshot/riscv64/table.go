@@ -1722,6 +1722,10 @@ func admitOwnedTwoTable64Indirect(m *wasm.Module, production, public bool) bool 
 }
 
 func admitMixedTable64Indirect(m *wasm.Module, production, public bool) bool {
+	return admitMixedTable64MutationIndirect(m, production, public) || admitMixedTable64ActiveIndirect(m, production, public)
+}
+
+func admitMixedTable64MutationIndirect(m *wasm.Module, production, public bool) bool {
 	if !production || !public || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
@@ -1776,6 +1780,78 @@ func admitMixedTable64Indirect(m *wasm.Module, production, public bool) bool {
 				return false
 			}
 			functions[export.Index.Index-1] = true
+		case wasm.ExternTable:
+			if export.Index.Index > 1 {
+				return false
+			}
+			tables[export.Index.Index] = true
+		default:
+			return false
+		}
+	}
+	return functions[0] && functions[1] && tables[0] && tables[1]
+}
+
+func admitMixedTable64ActiveIndirect(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 2 || len(m.FuncTypes) != 4 || len(m.Code) != 4 || len(m.Elements) != 2 || m.Start != nil || len(m.Exports) != 4 {
+		return false
+	}
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+		return false
+	}
+	for i := 0; i < 2; i++ {
+		table, ok := m.TableType(uint32(i))
+		if !ok || !table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min != 4 || table.Limits.Max != 4 || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+			return false
+		}
+	}
+	for i := range m.Types {
+		if len(m.Types[i].SubTypes) != 1 {
+			return false
+		}
+		sub := m.Types[i].SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) {
+			return false
+		}
+		if i == 0 && len(sub.Comp.Params) != 0 || i == 1 && (len(sub.Comp.Params) != 1 || !wasm.EqualValType(sub.Comp.Params[0], wasm.I64)) {
+			return false
+		}
+	}
+	for i := range m.FuncTypes {
+		want := uint32(0)
+		if i >= 2 {
+			want = 1
+		}
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != want || len(m.Code[i].Locals.Runs) != 0 || len(m.Code[i].Body.Instrs) != 0 {
+			return false
+		}
+	}
+	for i, body := range [][]byte{{0x41, 7, 0x0b}, {0x41, 8, 0x0b}, {0x20, 0, 0x11, 0, 0, 0x0b}, {0x20, 0, 0x11, 0, 1, 0x0b}} {
+		if !bytes.Equal(m.Code[i].BodyBytes, body) {
+			return false
+		}
+	}
+	for i, e := range m.Elements {
+		if e.Mode.Kind != wasm.ElemActive || int(e.Mode.Table) != i || len(e.Mode.Offset.Instrs) != 0 || !bytes.Equal(e.Mode.Offset.BodyBytes, []byte{0x42, 1, 0x0b}) || len(e.Kind.Funcs) != 0 || len(e.Kind.Exprs) != 2 {
+			return false
+		}
+		if i == 0 && e.Kind.Kind != wasm.ElemFuncExprs || i == 1 && (e.Kind.Kind != wasm.ElemTypedExprs || !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef)) {
+			return false
+		}
+		for target, expr := range e.Kind.Exprs {
+			if len(expr.Instrs) != 0 || !bytes.Equal(expr.BodyBytes, []byte{0xd2, byte(target), 0x0b}) {
+				return false
+			}
+		}
+	}
+	var functions, tables [2]bool
+	for _, export := range m.Exports {
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			if export.Index.Index < 2 || export.Index.Index > 3 {
+				return false
+			}
+			functions[export.Index.Index-2] = true
 		case wasm.ExternTable:
 			if export.Index.Index > 1 {
 				return false
@@ -2213,7 +2289,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 		if !hasTable && e.Mode.Kind != wasm.ElemDeclarative && e.Mode.Kind != wasm.ElemPassive {
 			return false, unsupported("table-free elements must be passive or declarative")
 		}
-		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 && !admitMixedTable64DualActiveElements(m, production, importedTables) && !admitMixedTable64DualActiveVectors(m, production, importedTables) {
+		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 && !admitMixedTable64DualActiveElements(m, production, importedTables) && !admitMixedTable64DualActiveVectors(m, production, importedTables) && !admitMixedTable64ActiveIndirect(m, production, importedTables) {
 			return false, unsupported("element mode/table")
 		}
 		switch e.Kind.Kind {
