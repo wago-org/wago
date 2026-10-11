@@ -84,6 +84,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCArrayFixedLocal := rv64GCArrayFixedLocal(c)
 	exactGCArrayFixedOfficial := rv64GCArrayFixedOfficial(c)
 	exactGCArrayDefaultOfficial := rv64GCArrayDefaultOfficial(c)
+	exactGCArrayPackedData := rv64GCArrayPackedData(c)
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")
 	}
@@ -104,6 +105,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCArrayDefaultOfficialExecutionCode(c) && !exactGCArrayDefaultOfficial {
 		return reject("allocating official gc/array default image requires its exact retained metadata")
+	}
+	if rv64GCArrayPackedDataExecutionCode(c) && !exactGCArrayPackedData {
+		return reject("allocating gc/array packed data image requires its exact retained metadata")
 	}
 	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
 		return reject("i31 execution image requires its exact retained metadata")
@@ -214,7 +218,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -225,11 +229,14 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial {
+	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData {
 		qualifiedFeatures |= CoreFeatureGC
 	}
-	if exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial {
+	if exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	if exactGCArrayPackedData {
+		qualifiedFeatures |= CoreFeatureBulkMemoryOperations
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
 		return reject("table.size compiler witness requires its exact owned or indexed two-table profile")
@@ -320,13 +327,13 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && (!(exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial) || typ != ValAnyRef) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && (!(exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData) || typ != ValAnyRef) {
 					return reject("unsupported signature")
 				}
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}

@@ -31,6 +31,9 @@ type internalReferenceTypes struct {
 	// gcArrayFixedOfficial admits only the two indexed f32 array heaps and the
 	// abstract array supertype in the pinned official fixed-array product.
 	gcArrayFixedOfficial bool
+	// gcArrayPackedData has the same two indexed-array and abstract-array
+	// carrier boundary, independently admitted for the packed data product.
+	gcArrayPackedData bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -94,7 +97,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {
 		return true
 	}
-	if types.gcArrayFixedOfficial {
+	if types.gcArrayFixedOfficial || types.gcArrayPackedData {
 		if heap == wasm.AbsHeap(wasm.HeapArray) {
 			return true
 		}

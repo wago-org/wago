@@ -69,6 +69,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.publicReferenceCarriers = state.publicReferenceCarriers
 		referenceTypes.i31 = state.i31Core
 		referenceTypes.gcArrayFixedOfficial = state.gcArrayFixedOfficial
+		referenceTypes.gcArrayPackedData = state.gcArrayPackedData
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -1600,8 +1601,29 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
 				}
-			case wasm.InstrArrayGet:
-				if (!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1) {
+			case wasm.InstrArrayNewData:
+				if !state.gcArrayPackedData || imm.Index > 1 || imm.Index2 != 0 {
+					return integerSummary{}, unsupported("array.new_data outside exact packed data profile")
+				}
+				if _, err = popClass(false); err != nil { // length
+					return integerSummary{}, err
+				}
+				if _, err = popClass(false); err != nil { // source byte offset
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcDataArrayAllocation(h, imm.Index, imm.Index2)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU:
+				packedGet := state.gcArrayPackedData && (imm.Kind == wasm.InstrArrayGetS || imm.Kind == wasm.InstrArrayGetU) && imm.Index <= 1
+				if !packedGet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || imm.Kind != wasm.InstrArrayGet || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1)) {
 					return integerSummary{}, unsupported("array.get outside exact gc array local profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -1615,13 +1637,19 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcArrayGetI32(h, imm.Index)
+					helper := uint32(gcArrayGet)
+					if imm.Kind == wasm.InstrArrayGetS {
+						helper = gcArrayGetS
+					} else if imm.Kind == wasm.InstrArrayGetU {
+						helper = gcArrayGetU
+					}
+					emit.gcArrayGetI32(h, imm.Index, helper)
 				}
 				if err = push(false); err != nil {
 					return integerSummary{}, err
 				}
 			case wasm.InstrArraySet:
-				if (!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index != 1) {
+				if (!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData) || (state.gcArrayPackedData && imm.Index != 1) || (!state.gcArrayFixedOfficial && !state.gcArrayPackedData && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index != 1) {
 					return integerSummary{}, unsupported("array.set outside exact gc array local profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -1641,7 +1669,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcArraySetI32(h, imm.Index)
 				}
 			case wasm.InstrArrayLen:
-				if !state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial {
+				if !state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData {
 					return integerSummary{}, unsupported("array.len outside exact gc array local profile")
 				}
 				if _, err = popClass(true); err != nil {
@@ -2075,6 +2103,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.publicReferenceCarriers = state.publicReferenceCarriers
 		referenceTypes.i31 = state.i31Core
 		referenceTypes.gcArrayFixedOfficial = state.gcArrayFixedOfficial
+		referenceTypes.gcArrayPackedData = state.gcArrayPackedData
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

@@ -1150,6 +1150,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	exactGCArrayFixedLocalSource := railshotGCArrayFixedLocalSource(wasmBytes)
 	exactGCArrayFixedOfficialSource := railshotGCArrayFixedOfficialSource(wasmBytes)
 	exactGCArrayDefaultOfficialSource := railshotGCArrayDefaultOfficialSource(wasmBytes)
+	exactGCArrayPackedDataSource := railshotGCArrayPackedDataSource(wasmBytes)
 	requiredByModule := requirements.features
 	narrowFrontendFeatures(&features, requiredByModule)
 	if requiredByModule.IsEnabled(CoreFeatureThreads) {
@@ -1225,7 +1226,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCArrayOpcodeProduct(m)
 		}
 		if ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCArrayProductNumericLocal && exactGCArrayLocalSource) && !(product == stagedGCArrayProductNumericUniform && exactGCArrayUniformSource) && !(product == stagedGCArrayProductNumericFixedLocal && exactGCArrayFixedLocalSource) && !(product == stagedGCArrayProductNumericFixed && exactGCArrayFixedOfficialSource) && !(product == stagedGCArrayProductNumericDefault && exactGCArrayDefaultOfficialSource) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCArrayProductNumericLocal && exactGCArrayLocalSource) && !(product == stagedGCArrayProductNumericUniform && exactGCArrayUniformSource) && !(product == stagedGCArrayProductNumericFixedLocal && exactGCArrayFixedLocalSource) && !(product == stagedGCArrayProductNumericFixed && exactGCArrayFixedOfficialSource) && !(product == stagedGCArrayProductNumericDefault && exactGCArrayDefaultOfficialSource) && !(product == stagedGCArrayProductPackedData && exactGCArrayPackedDataSource) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcArrayProduct = product
@@ -1255,7 +1256,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// provisioning the bounded anyref/externref identity bridge.
 		gcStructProduct = stagedGCStructExtern
 	}
-	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 && !exactGCArrayLocalSource && !exactGCArrayUniformSource && !exactGCArrayFixedLocalSource && !exactGCArrayFixedOfficialSource && !exactGCArrayDefaultOfficialSource {
+	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 && !exactGCArrayLocalSource && !exactGCArrayUniformSource && !exactGCArrayFixedLocalSource && !exactGCArrayFixedOfficialSource && !exactGCArrayDefaultOfficialSource && !exactGCArrayPackedDataSource {
 		// Generic GC lowering is the complete Core 3 fallback for modules that do
 		// not match a narrower collector-free or specialized product. Product
 		// recognizers select optimizations, not semantic admission boundaries.
@@ -1385,6 +1386,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	railshotConfigureGCArrayFixedLocal(exactGCArrayFixedLocalSource, &compileOptions)
 	railshotConfigureGCArrayFixedOfficial(exactGCArrayFixedOfficialSource, &compileOptions)
 	railshotConfigureGCArrayDefaultOfficial(exactGCArrayDefaultOfficialSource, &compileOptions)
+	railshotConfigureGCArrayPackedData(exactGCArrayPackedDataSource, &compileOptions)
 	railshotConfigureNativeTail(requiredByModule, cfg, &compileOptions)
 	var cm *railshotCompiledModule
 	if codegen.SourceChecks {
@@ -3766,6 +3768,7 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	decoded.memoryDir.exactExports = true
 	railshotRestoreGCArrayFixedOfficialArtifact(decoded)
 	railshotRestoreGCArrayDefaultOfficialArtifact(decoded)
+	railshotRestoreGCArrayPackedDataArtifact(decoded)
 	if inferred := compiledStructuralRequiredFeatures(decoded); inferred&^decoded.requiredFeatures != 0 {
 		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^decoded.requiredFeatures)
 	}

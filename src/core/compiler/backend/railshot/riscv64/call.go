@@ -24,10 +24,13 @@ const (
 	gcStructGet          uint32 = 2
 	gcArrayAllocDefault  uint32 = 16
 	gcArrayGet           uint32 = 17
+	gcArrayGetS          uint32 = 18
+	gcArrayGetU          uint32 = 19
 	gcArraySet           uint32 = 20
 	gcArrayLen           uint32 = 21
 	gcArrayAllocFixed    uint32 = 22
 	gcArrayAllocUniform  uint32 = 23
+	gcArrayAllocData     uint32 = 24
 )
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
@@ -179,7 +182,27 @@ func (f *integerEmitter) gcFixedArrayAllocation3ViaUniform(base int, typeIndex u
 	}
 }
 
-func (f *integerEmitter) gcArrayGetI32(base int, typeIndex uint32) {
+func (f *integerEmitter) gcDataArrayAllocation(base int, typeIndex, dataIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), false)
+	f.a.Sd(enc.X5, enc.X10, 0) // source byte offset
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // element count
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.a.Constant32(enc.X5, dataIndex)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocData})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
+}
+
+func (f *integerEmitter) gcArrayGetI32(base int, typeIndex, helper uint32) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
@@ -187,7 +210,7 @@ func (f *integerEmitter) gcArrayGetI32(base int, typeIndex uint32) {
 	f.a.Sd(enc.X5, enc.X10, 8)
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 16)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayGet})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
