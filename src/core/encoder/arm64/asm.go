@@ -100,6 +100,8 @@ type Asm struct {
 	ReuseIndexedBase              bool // reuse an adjacent proven X16=base+index address
 	DisableLogicalMoveImmediate   bool
 	DisableCompactMoveImmediate32 bool
+	AllowSingleNegativeMove32     bool // allow one W-MOVN independently of the full compact-i32 policy
+	SingleNegativeMoves32         int
 	LogicalMoveImmediates         int
 	CompactMoveImmediates32       int
 	IndexedBaseReuses             int
@@ -149,6 +151,10 @@ func (a *Asm) Subs64(rd, rn, rm Reg) { a.addSubReg(0xEB000000, rd, rn, rm) }
 // CmpReg64 is SUBS XZR, Rn, Rm — sets NZCV, discards the result.
 func (a *Asm) CmpReg64(rn, rm Reg) { a.addSubReg(0xEB000000, XZR, rn, rm) }
 func (a *Asm) CmpReg32(rn, rm Reg) { a.addSubReg(0x6B000000, XZR, rn, rm) }
+
+// CMN sets NZCV from wrapping addition and discards its result.
+func (a *Asm) CmnReg64(rn, rm Reg) { a.addSubReg(0xAB000000, XZR, rn, rm) }
+func (a *Asm) CmnReg32(rn, rm Reg) { a.addSubReg(0x2B000000, XZR, rn, rm) }
 
 // --- Add/sub (immediate, 0..4095, optional LSL #12) ---
 

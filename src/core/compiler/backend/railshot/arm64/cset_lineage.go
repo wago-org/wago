@@ -16,15 +16,15 @@ func csetLineagePair(cmp, sel uint32) bool {
 // Scalar unsigned-offset loads/stores do not touch NZCV or their base register.
 // All other admitted words use the established pure integer decoder. Unknown,
 // SIMD, signed-load, writeback and control encodings deliberately decline.
-func csetLineageWord(w uint32) (lineageIntegerEffects, bool) {
+func csetLineageWord(w uint32) (guardedIntegerEffects, bool) {
 	if w&0x3b000000 == 0x39000000 && w&(1<<26) == 0 && w>>30 >= 2 && w>>22&3 <= 1 {
-		x := lineageIntegerEffects{}
+		x := guardedIntegerEffects{}
 		if w&(1<<22) != 0 {
 			x.writes = (uint32(1) << (w & 31)) & 0x7fffffff
 		}
 		return x, true
 	}
-	return lineageIntegerWord(w)
+	return guardedIntegerWord(w)
 }
 
 // The replaced CMP has a different NZCV value from the producer. Require an
@@ -128,75 +128,4 @@ func (f *fn) foldCsetLineage(b []byte, n, firstSet int, targets []uint64, entrie
 			}
 		}
 	}
-}
-
-type lineageIntegerEffects struct {
-	writes                  uint32
-	flags, readsFlags, copy bool
-}
-
-// Deliberately narrow, architecturally pure integer encodings. Register31 is
-// zero here; SP forms, extended arithmetic, division and unknown words decline.
-func lineageIntegerWord(w uint32) (x lineageIntegerEffects, ok bool) {
-	wide := w&0x80000000 != 0
-	reg := func(r uint32) uint32 { return (uint32(1) << r) & 0x7fffffff }
-	rd, rn := w&31, w>>5&31
-	x.writes = reg(rd)
-	switch {
-	case w == nopWord:
-		x.writes = 0
-	case w&0x1f800000 == 0x12800000:
-		op := w >> 29 & 3
-		if op == 1 || !wide && w>>21&3 > 1 {
-			return x, false
-		}
-	case w&0x1f000000 == 0x0a000000:
-		if !wide && w>>10&63 >= 32 {
-			return x, false
-		}
-		x.flags = w>>29&3 == 3
-		x.copy = w&0x7fe0ffe0 == 0x2a0003e0 // ORR Rd,ZR,Rm,LSL0 (MOV)
-	case w&0x1f800000 == 0x12000000:
-		if rd == 31 && w>>29&3 != 3 { // Nonflag logical-immediate Rd31 is SP.
-			return x, false
-		}
-		if !wide && w&(1<<22) != 0 {
-			return x, false
-		}
-		encoded := (w>>22&1)<<6 | (^w >> 10 & 63)
-		level := uint32(0)
-		for encoded > 1 {
-			encoded >>= 1
-			level++
-		}
-		if level < 1 || w>>10&((1<<level)-1) == (1<<level)-1 {
-			return x, false
-		}
-		x.flags = w>>29&3 == 3
-	case w&0x1f800000 == 0x11000000:
-		if rn == 31 || rd == 31 && w&(1<<29) == 0 {
-			return x, false
-		}
-		x.flags = w&(1<<29) != 0
-	case w&0x1f200000 == 0x0b000000:
-		if w>>22&3 == 3 || !wide && w>>10&63 >= 32 {
-			return x, false
-		}
-		x.flags = w&(1<<29) != 0
-	case w&0x7fe00000 == 0x1b000000:
-	case w&0x1f800000 == 0x13000000:
-		if w>>29&3 == 3 || (w>>22&1 != w>>31) || !wide && (w>>16&63 >= 32 || w>>10&63 >= 32) {
-			return x, false
-		}
-	case w&0x7fff0fe0 == 0x1a9f07e0: // CSET has no GPR inputs.
-		x.readsFlags = true
-	case w&0x1fe00000 == 0x1a800000: // Other integer conditional selects.
-		if w&(1<<29) != 0 || w&(1<<11) != 0 {
-			return x, false
-		}
-		x.readsFlags = true
-	default:
-		return x, false
-	}
-	return x, true
 }

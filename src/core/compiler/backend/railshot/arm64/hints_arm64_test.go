@@ -102,7 +102,7 @@ func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	h.localEvents = &tape
 	elig := newGlobalEligibilityTracker(0)
 	var globals shared.GlobalHintAccumulator
-	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true)
+	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestCallPlacementHintsDistinguishColdDirectCallsArm64(t *testing.T) {
 	imported := newFuncHints(0, 0)
 	elig := newGlobalEligibilityTracker(0)
 	var globals shared.GlobalHintAccumulator
-	imported, err = scanBodyBytesIntoModule([]byte{0x10, 0x00, 0x0b}, 0, 0, 0, 1, nil, imported, &elig, nil, nil, nil, nil, 1, &globals, true)
+	imported, err = scanBodyBytesIntoModule([]byte{0x10, 0x00, 0x0b}, 0, 0, 0, 1, nil, imported, &elig, nil, nil, nil, nil, 1, &globals, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

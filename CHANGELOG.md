@@ -8,9 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
-- Reduce ARM64 execution work with guarded pure integer select groups and
-  bounded reuse of comparison flags through materialized booleans.
-
+- Improve ARM64 execution with guarded scalar and vector loop lowering, bounded
+  register reuse, borrowed operands, indexed address reuse, exact integer
+  arithmetic and branch/condition simplification. Each optional lowering has
+  strict admission checks and a per-compilation rollback option.
 - Admit exact typed i64 synchronous host callbacks to the private prepared
   integer route when the bounded-work and detached-context proofs hold. Other
   callback shapes retain their existing route; each synchronous host binding

@@ -3,10 +3,9 @@
 package arm64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"math/bits"
 	"os"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 var selectGroupEnabled = os.Getenv("WAGO_ARM64_NO_SELECT_GROUP") != "1"

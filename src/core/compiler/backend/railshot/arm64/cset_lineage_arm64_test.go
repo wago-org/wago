@@ -287,7 +287,7 @@ func TestCsetLineageDirectCallKeepsBooleanAndCallerLocals(t *testing.T) {
 						want ^= seed ^ (uint64(i+1) * 0x01020304050607)
 					}
 					var stats ModuleStats
-					opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"inline": false, "cset-lineage": on}}
+					opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"inline": false, "integer-select-local-read": true, "cset-lineage": on}}
 					if diagnosticsEnabled && pair == [2]uint64{0, 1} {
 						opts.Stats = &stats
 					}
