@@ -380,6 +380,11 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// destination, value, and length operands.
 		params = max(params, 5)
 	}
+	if rv64GCArrayCopy(c) {
+		// The copy bridge carries both arrays, both offsets, length, and both
+		// exact type indexes.
+		params = max(params, 7)
+	}
 	if c.tableCount() != 0 || c.nativeReferenceCallABI {
 		// The exact allocating gc/ref_eq checkpoint has an eqref table but no
 		// indirect calls. The exact array.init_elem checkpoint pins its sole

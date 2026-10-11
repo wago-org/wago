@@ -46,6 +46,9 @@ type internalReferenceTypes struct {
 	// gcArrayFill admits the two indexed packed-array heaps in the pinned
 	// official bulk-fill product.
 	gcArrayFill bool
+	// gcArrayCopy admits the two indexed packed-array heaps in the pinned
+	// official bulk-copy product.
+	gcArrayCopy bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -109,7 +112,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {
 		return true
 	}
-	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference || types.gcArrayInitElem || types.gcArrayInitData || types.gcArrayFill {
+	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference || types.gcArrayInitElem || types.gcArrayInitData || types.gcArrayFill || types.gcArrayCopy {
 		if heap == wasm.AbsHeap(wasm.HeapArray) {
 			return true
 		}

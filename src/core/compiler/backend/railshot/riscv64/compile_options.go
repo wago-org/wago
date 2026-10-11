@@ -105,6 +105,9 @@ type CompileOptions struct {
 	// GCArrayFillSource is the exact-wire witness for the official packed-i8
 	// array.fill checkpoint.
 	GCArrayFillSource bool
+	// GCArrayCopySource is the exact-wire witness for the official packed-i8
+	// array.copy checkpoint.
+	GCArrayCopySource bool
 	production        bool
 	publicStarts      bool
 	hostImports       bool
@@ -137,6 +140,7 @@ type CompileOptions struct {
 	gcArrayInitElem      bool
 	gcArrayInitData      bool
 	gcArrayFill          bool
+	gcArrayCopy          bool
 	tailPlans            *[]tailImportPlan
 	tailSiteBase         uint32
 }

@@ -34,6 +34,7 @@ const (
 	gcArrayAllocElem     uint32 = 25
 	gcArrayDropElem      uint32 = 26
 	gcArrayFill          uint32 = 27
+	gcArrayCopy          uint32 = 28
 	gcArrayInitData      uint32 = 29
 	gcArrayInitElem      uint32 = 30
 )
@@ -284,6 +285,26 @@ func (f *integerEmitter) gcArrayFillI32(base int, typeIndex uint32) {
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 32)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayFill})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcArrayCopyI32(base int, dstType, srcType uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0) // destination array reference
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // destination element offset
+	f.Load(5, f.SpillOffset(base+2), true)
+	f.a.Sd(enc.X5, enc.X10, 16) // source array reference
+	f.Load(5, f.SpillOffset(base+3), false)
+	f.a.Sd(enc.X5, enc.X10, 24) // source element offset
+	f.Load(5, f.SpillOffset(base+4), false)
+	f.a.Sd(enc.X5, enc.X10, 32) // element count
+	f.a.Constant32(enc.X5, dstType)
+	f.a.Sd(enc.X5, enc.X10, 40)
+	f.a.Constant32(enc.X5, srcType)
+	f.a.Sd(enc.X5, enc.X10, 48)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayCopy})
 	f.restoreCallTransport()
 }
 

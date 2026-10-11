@@ -517,7 +517,7 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	if c.stagedGCStructProduct() == stagedGCStructGeneric || rv64OfficialGCRefEq(c) || rv64GCStructGet(c) {
 		required |= compiledGCExecutionGenericStruct
 	}
-	if c.stagedGCArrayProduct() == stagedGCArrayProductGeneric || rv64OfficialGCRefEq(c) || rv64GCArrayLocal(c) || rv64GCArrayUniform(c) || rv64GCArrayFixedLocal(c) || rv64GCArrayFixedOfficial(c) || rv64GCArrayDefaultOfficial(c) || rv64GCArrayPackedData(c) || rv64GCArrayReference(c) || rv64GCArrayInitElem(c) || rv64GCArrayInitData(c) || rv64GCArrayFill(c) {
+	if c.stagedGCArrayProduct() == stagedGCArrayProductGeneric || rv64OfficialGCRefEq(c) || rv64GCArrayLocal(c) || rv64GCArrayUniform(c) || rv64GCArrayFixedLocal(c) || rv64GCArrayFixedOfficial(c) || rv64GCArrayDefaultOfficial(c) || rv64GCArrayPackedData(c) || rv64GCArrayReference(c) || rv64GCArrayInitElem(c) || rv64GCArrayInitData(c) || rv64GCArrayFill(c) || rv64GCArrayCopy(c) {
 		required |= compiledGCExecutionGenericArray
 	}
 	if c.usesDynamicFuncRefTest() {
