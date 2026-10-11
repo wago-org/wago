@@ -163,9 +163,9 @@ func changedPathsAt(root, name string, e event, ref string) ([]string, string, e
 			return nil, "", fmt.Errorf("detect pushed changes: %w", err)
 		}
 		return paths, e.After, nil
-	case "workflow_dispatch":
-		// Manual qualification is always full. It is also the release path for
-		// documentation or version-only commits, so it cannot be path-gated.
+	case "workflow_dispatch", "merge_group":
+		// Manual and merge-queue qualification always run the full matrix on
+		// the exact checked-out commit, without path gating.
 		return nil, os.Getenv("GITHUB_SHA"), nil
 	default:
 		return nil, "", fmt.Errorf("unsupported CI event %q", name)
@@ -195,7 +195,7 @@ func gitDiffNamesAt(root, revision string) ([]string, error) {
 }
 
 func makePlan(name string, e event, paths []string, sourceSHA string) (plan, error) {
-	if name == "workflow_dispatch" {
+	if name == "workflow_dispatch" || name == "merge_group" {
 		return planFor("full", true, true, true, sourceSHA), nil
 	}
 	if len(paths) == 0 && name == "push" {
