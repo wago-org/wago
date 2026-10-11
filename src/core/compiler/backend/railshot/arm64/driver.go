@@ -801,6 +801,8 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		}
 		f.erase(b)
 		f.erase(a)
+	} else if f.opt(optSelectLocalRead) {
+		f.emitIntegerSelectLocalRead(a, b, cond, dest, f.localType[x].is64())
 	} else {
 		condVal := f.popValue()
 		condReg := f.materialize(condVal)

@@ -1,0 +1,19 @@
+--- FAIL: TestCompileWorkersDeterministicArm64 (0.03s)
+    --- FAIL: TestCompileWorkersDeterministicArm64/synthetic/tiny.wasm (0.00s)
+        parallel_compile_arm64_test.go:78: open ../../../../../../corpus/workloads/synthetic/tiny.wasm: no such file or directory
+    --- FAIL: TestCompileWorkersDeterministicArm64/synthetic/fib_rec.wasm (0.00s)
+        parallel_compile_arm64_test.go:78: open ../../../../../../corpus/workloads/synthetic/fib_rec.wasm: no such file or directory
+    --- FAIL: TestCompileWorkersDeterministicArm64/synthetic/dispatch.wasm (0.00s)
+        parallel_compile_arm64_test.go:78: open ../../../../../../corpus/workloads/synthetic/dispatch.wasm: no such file or directory
+    --- FAIL: TestCompileWorkersDeterministicArm64/synthetic/many_funcs.wasm (0.00s)
+        parallel_compile_arm64_test.go:78: open ../../../../../../corpus/workloads/synthetic/many_funcs.wasm: no such file or directory
+    --- FAIL: TestCompileWorkersDeterministicArm64/synthetic/memory_tree.wasm (0.00s)
+        parallel_compile_arm64_test.go:78: open ../../../../../../corpus/workloads/synthetic/memory_tree.wasm: no such file or directory
+--- FAIL: TestCompileWorkersSizeSharedAdaptersDeterministicArm64 (0.01s)
+    --- FAIL: TestCompileWorkersSizeSharedAdaptersDeterministicArm64/synthetic/many_funcs.wasm (0.00s)
+        parallel_compile_arm64_test.go:98: open ../../../../../../corpus/workloads/synthetic/many_funcs.wasm: no such file or directory
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	1.542s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.517s
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.389s
+FAIL

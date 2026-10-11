@@ -1,0 +1,4 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"render","phase":"compile","round":0,"on":false,"iterations":364,"us":253.84352197802198}
+{"workload":"render","phase":"compile","round":0,"on":true,"iterations":364,"us":241.65499175824175}

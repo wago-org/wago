@@ -1,0 +1,48 @@
+{"workload": "stats-quickselect", "phase": "compile", "round": 0, "on": false, "iterations": 4011, "us": 36.501236350037395}
+{"workload": "stats-quickselect", "phase": "compile", "round": 0, "on": true, "iterations": 4011, "us": 35.54178110196958}
+{"workload": "stats-quickselect", "phase": "compile", "round": 1, "on": true, "iterations": 4011, "us": 36.376682872101725}
+{"workload": "stats-quickselect", "phase": "compile", "round": 1, "on": false, "iterations": 4011, "us": 35.705102717526806}
+{"workload": "stats-quickselect", "phase": "compile", "round": 2, "on": false, "iterations": 4011, "us": 35.35829593617552}
+{"workload": "stats-quickselect", "phase": "compile", "round": 2, "on": true, "iterations": 4011, "us": 36.12121864871603}
+{"workload": "stats-quickselect", "phase": "compile", "round": 3, "on": true, "iterations": 4011, "us": 37.3919947643979}
+{"workload": "stats-quickselect", "phase": "compile", "round": 3, "on": false, "iterations": 4011, "us": 37.110581401146845}
+{"workload": "stats-quickselect", "phase": "compile", "round": 4, "on": false, "iterations": 4011, "us": 36.49935602094241}
+{"workload": "stats-quickselect", "phase": "compile", "round": 4, "on": true, "iterations": 4011, "us": 36.82953128895537}
+{"workload": "stats-quickselect", "phase": "compile", "round": 5, "on": true, "iterations": 4011, "us": 37.397895287958114}
+{"workload": "stats-quickselect", "phase": "compile", "round": 5, "on": false, "iterations": 4011, "us": 37.16188805784094}
+{"workload": "stats-quickselect", "phase": "compile", "round": 6, "on": false, "iterations": 4011, "us": 36.85089952630267}
+{"workload": "stats-quickselect", "phase": "compile", "round": 6, "on": true, "iterations": 4011, "us": 36.467360508601345}
+{"workload": "stats-quickselect", "phase": "compile", "round": 7, "on": true, "iterations": 4011, "us": 36.32857566691598}
+{"workload": "stats-quickselect", "phase": "compile", "round": 7, "on": false, "iterations": 4011, "us": 37.157878334579905}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 0, "on": false, "iterations": 135, "us": 1067.8296296296296}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 0, "on": true, "iterations": 135, "us": 1078.9774666666665}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 1, "on": true, "iterations": 135, "us": 1077.3768518518518}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 1, "on": false, "iterations": 135, "us": 1039.0685185185184}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 2, "on": false, "iterations": 135, "us": 1048.5700666666667}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 2, "on": true, "iterations": 135, "us": 1016.758637037037}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 3, "on": true, "iterations": 135, "us": 1020.1191407407407}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 3, "on": false, "iterations": 135, "us": 1008.8188296296296}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 4, "on": false, "iterations": 135, "us": 1013.5592592592592}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 4, "on": true, "iterations": 135, "us": 1009.226237037037}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 5, "on": true, "iterations": 135, "us": 1002.6672814814815}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 5, "on": false, "iterations": 135, "us": 1012.5821037037038}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 6, "on": false, "iterations": 135, "us": 1063.2722222222224}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 6, "on": true, "iterations": 135, "us": 1052.762651851852}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 7, "on": true, "iterations": 135, "us": 1057.7166666666667}
+{"workload": "complex-roundtrip", "phase": "compile", "round": 7, "on": false, "iterations": 135, "us": 1032.0617333333332}
+{"workload": "coremark", "phase": "compile", "round": 0, "on": false, "us": 434.948}
+{"workload": "coremark", "phase": "compile", "round": 0, "on": true, "us": 434.338}
+{"workload": "coremark", "phase": "compile", "round": 1, "on": true, "us": 432.472}
+{"workload": "coremark", "phase": "compile", "round": 1, "on": false, "us": 428.017}
+{"workload": "coremark", "phase": "compile", "round": 2, "on": false, "us": 422.364}
+{"workload": "coremark", "phase": "compile", "round": 2, "on": true, "us": 426.815}
+{"workload": "coremark", "phase": "compile", "round": 3, "on": true, "us": 421.101}
+{"workload": "coremark", "phase": "compile", "round": 3, "on": false, "us": 421.766}
+{"workload": "coremark", "phase": "compile", "round": 4, "on": false, "us": 428.32}
+{"workload": "coremark", "phase": "compile", "round": 4, "on": true, "us": 421.888}
+{"workload": "coremark", "phase": "compile", "round": 5, "on": true, "us": 421.712}
+{"workload": "coremark", "phase": "compile", "round": 5, "on": false, "us": 426.301}
+{"workload": "coremark", "phase": "compile", "round": 6, "on": false, "us": 428.867}
+{"workload": "coremark", "phase": "compile", "round": 6, "on": true, "us": 426.078}
+{"workload": "coremark", "phase": "compile", "round": 7, "on": true, "us": 421.938}
+{"workload": "coremark", "phase": "compile", "round": 7, "on": false, "us": 421.77}

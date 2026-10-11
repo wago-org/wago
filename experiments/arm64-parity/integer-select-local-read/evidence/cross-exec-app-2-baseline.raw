@@ -1,0 +1,12 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"document-layout","phase":"exec","round":0,"on":false,"iterations":859,"us":99.40943888242143}
+{"workload":"document-layout","phase":"exec","round":0,"on":true,"iterations":859,"us":101.54336437718278}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":false,"iterations":3379,"us":30.60668836934004}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":true,"iterations":3379,"us":29.818659366676535}
+{"workload":"geo-polygon-clipping","phase":"exec","round":0,"on":false,"iterations":3184,"us":31.005404836683418}
+{"workload":"geo-polygon-clipping","phase":"exec","round":0,"on":true,"iterations":3184,"us":31.835597361809047}
+{"workload":"ml-kmeans","phase":"exec","round":0,"on":false,"iterations":4071,"us":25.11728297715549}
+{"workload":"ml-kmeans","phase":"exec","round":0,"on":true,"iterations":4071,"us":25.746110783591256}
+{"workload":"video-dct","phase":"exec","round":0,"on":false,"iterations":2536,"us":41.81251616719243}
+{"workload":"video-dct","phase":"exec","round":0,"on":true,"iterations":2536,"us":41.09657570977918}

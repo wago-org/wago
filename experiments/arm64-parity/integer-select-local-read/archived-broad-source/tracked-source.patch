@@ -1,0 +1,55 @@
+diff --git a/src/core/compiler/backend/railshot/arm64/driver.go b/src/core/compiler/backend/railshot/arm64/driver.go
+index 2d244315..865f6ba6 100644
+--- a/src/core/compiler/backend/railshot/arm64/driver.go
++++ b/src/core/compiler/backend/railshot/arm64/driver.go
+@@ -801,6 +801,8 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
+ 		}
+ 		f.erase(b)
+ 		f.erase(a)
++	} else if f.opt(optIntegerSelectRead) {
++		f.emitIntegerSelectLocalRead(a, b, cond, dest, w)
+ 	} else {
+ 		condVal := f.popValue()
+ 		condReg := f.materialize(condVal)
+@@ -1045,6 +1047,9 @@ func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
+ // stack holds a, then b, then cond on top. Lowered to compare + CSEL (if cond == 0,
+ // move b into a). Materialized eagerly (select is a sink for its operands).
+ func (f *fn) emitSelect() {
++	if top := f.s.back(); f.opt(optIntegerSelectRead) && integerSelectReadOrdinaryEnabled && f.tryIntegerSelectRead(top, isFusableCondition(top) && !top.st.typ.isFloat()) {
++		return
++	}
+ 	// Flags-select: when the condition is a deferred relational/eqz compare and both
+ 	// branches are integers, emit the compare's CMP and a CSEL on its flags directly
+ 	// — skipping the Cset + TEST that materializing the boolean costs. The compare is
+diff --git a/src/core/compiler/backend/railshot/arm64/knobs.go b/src/core/compiler/backend/railshot/arm64/knobs.go
+index 2daca4e8..1b16bbd9 100644
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -63,6 +63,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
+ 	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+ 	optimization.Bind("single-negative-move32", &singleNegativeMove32Enabled),
+ 	optimization.Bind("select-source-read", &selectSourceReadEnabled),
++	optimization.Bind("integer-select-read", &integerSelectReadEnabled),
+ 	optimization.Bind("select-sink-pure-guard", &selectSinkPureGuardEnabled),
+ 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
+ 	optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
+@@ -148,6 +149,7 @@ var (
+ 	optStreamReduce         = optimizationBindings.Option("streaming-i32-reduction")
+ 	optSingleNegativeMove32 = optimizationBindings.Option("single-negative-move32")
+ 	optSelectSourceRead     = optimizationBindings.Option("select-source-read")
++	optIntegerSelectRead    = optimizationBindings.Option("integer-select-read")
+ 	optSelectSinkPureGuard  = optimizationBindings.Option("select-sink-pure-guard")
+ 	optInvertedLogical      = optimizationBindings.Option("inverted-logical")
+ 	optShiftedRegisterALU   = optimizationBindings.Option("shifted-register-alu")
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index b68ff15c..4396a90b 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -467,6 +467,7 @@ var catalog = []Definition{
+ 	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "ordinary-shifted-immediate", Label: "Shifted integer displacements", Description: "use exact shifted immediates for read-only ordinary displacement arithmetic", Default: true, Architectures: []string{"arm64"}},
++	{Name: "integer-select-read", Label: "Read-only integer select operands", Description: "protect borrowed integer select operands and allocate only their result", Default: false, Architectures: []string{"arm64"}},
+ 	arm64("indexed-base-reuse", "Adjacent indexed base reuse", "reuse an unchanged base-plus-index address across adjacent memory accesses"),
+ 	arm64("convert-read", "Direct conversion reads", "read pinned integer conversion inputs without a temporary copy"),
+ 	arm64("cold-call-local-pins", "Cold-call local pins", "pin hot locals when every direct local call is outside loops"),

@@ -1,0 +1,16 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":false,"iterations":5057,"us":30.58106743128337}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":true,"iterations":5057,"us":29.795629820051413}
+{"workload":"compiler-register-allocation","phase":"exec","round":0,"on":false,"iterations":8646,"us":17.98873282442748}
+{"workload":"compiler-register-allocation","phase":"exec","round":0,"on":true,"iterations":8646,"us":17.986867684478373}
+{"workload":"files-glob-match","phase":"exec","round":0,"on":false,"iterations":1158,"us":154.63413989637306}
+{"workload":"files-glob-match","phase":"exec","round":0,"on":true,"iterations":1158,"us":146.50791623488772}
+{"workload":"geo-point-in-polygon","phase":"exec","round":0,"on":false,"iterations":1905,"us":141.53530183727034}
+{"workload":"geo-point-in-polygon","phase":"exec","round":0,"on":true,"iterations":1905,"us":163.41467611548558}
+{"workload":"geo-polygon-clipping","phase":"exec","round":0,"on":false,"iterations":4834,"us":123.10176168804303}
+{"workload":"geo-polygon-clipping","phase":"exec","round":0,"on":true,"iterations":4834,"us":31.248948489863466}
+{"workload":"hardware-boolean-anf","phase":"exec","round":0,"on":false,"iterations":1273,"us":75.13920581304006}
+{"workload":"hardware-boolean-anf","phase":"exec","round":0,"on":true,"iterations":1273,"us":73.87640769835035}
+{"workload":"ml-kmeans","phase":"exec","round":0,"on":false,"iterations":5452,"us":24.99401595744681}
+{"workload":"ml-kmeans","phase":"exec","round":0,"on":true,"iterations":5452,"us":25.677618305209098}

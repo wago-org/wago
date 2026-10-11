@@ -1,0 +1,3 @@
+hardware-boolean-anf: OFF image matches76e52be8; ON matches qualified combined default.
+ml-kmeans: OFF image matches76e52be8; ON matches qualified combined default.
+geo-polygon-clipping: OFF image matches76e52be8; ON matches qualified combined default.

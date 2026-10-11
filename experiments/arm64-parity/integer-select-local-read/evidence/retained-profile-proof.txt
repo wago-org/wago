@@ -1,0 +1,1 @@
+Final defaultON noexperimentalhook: exact1342930999 passes; 2744B timed/qualified native image unchanged.

@@ -2,9 +2,9 @@
 
 Read from the local wasm.fyi database on 2026-10-09T04:48:08+00:00.
 
-Current optimization priority: [32 fresh focused workloads on this device](experiments/arm64-parity/next-20261011-remaining-subset.md). That report uses qualified current Wago captures against the historical w2c2 column below; the complete recorded ranking remains available here.
+Current optimization priority: [54 qualified focused workloads on this device](experiments/arm64-parity/next-20261011-retained-subset.md). That report combines retained-image Wago captures against the historical w2c2 column below; capture protocols and ranges are included, and the complete recorded ranking remains available here.
 
-The subsequent [retained ARM64 changes](experiments/arm64-parity/next-20261011-results.md) improve point-in-polygon by about 4% and Boolean ANF by about 11% against that source baseline, with exact validation and compile costs recorded separately.
+The [retained ARM64 changes](experiments/arm64-parity/next-20261011-results.md) improve point-in-polygon, Boolean ANF, KMeans and polygon clipping, with exact validation and compile costs recorded separately.
 
 Source: `../../Web/wasm.fyi`, served at `http://localhost:8080/api/benchmarks?platform=<id>&phase=steady`. Measurement semantics: [API.md](../../Web/wasm.fyi/API.md). All paginated results were read. No benchmarks were rerun.
 
