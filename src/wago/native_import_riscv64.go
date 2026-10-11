@@ -367,7 +367,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		}
 		params, results = max(params, p), max(results, r)
 	}
-	if rv64GCArrayInitElem(c) {
+	if rv64GCArrayInitElem(c) || rv64GCArrayInitData(c) {
 		// The generated helper bridge stages array, destination, source, length,
 		// type, and element indexes in the ordinary wrapper argument arena. This
 		// internal six-slot call can exceed every exported function signature;

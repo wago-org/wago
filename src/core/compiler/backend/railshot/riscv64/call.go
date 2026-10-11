@@ -33,6 +33,7 @@ const (
 	gcArrayAllocData     uint32 = 24
 	gcArrayAllocElem     uint32 = 25
 	gcArrayDropElem      uint32 = 26
+	gcArrayInitData      uint32 = 29
 	gcArrayInitElem      uint32 = 30
 )
 
@@ -248,6 +249,24 @@ func (f *integerEmitter) gcArrayInitializeElements(base int, typeIndex, elemInde
 	f.a.Constant32(enc.X5, elemIndex)
 	f.a.Sd(enc.X5, enc.X10, 40)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayInitElem})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcArrayInitializeData(base int, typeIndex, dataIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0) // destination array reference
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // destination element offset
+	f.Load(5, f.SpillOffset(base+2), false)
+	f.a.Sd(enc.X5, enc.X10, 16) // source byte offset
+	f.Load(5, f.SpillOffset(base+3), false)
+	f.a.Sd(enc.X5, enc.X10, 24) // element count
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 32)
+	f.a.Constant32(enc.X5, dataIndex)
+	f.a.Sd(enc.X5, enc.X10, 40)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayInitData})
 	f.restoreCallTransport()
 }
 

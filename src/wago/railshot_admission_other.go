@@ -30,6 +30,8 @@ func railshotGCArrayReferenceSource([]byte) bool                                
 func railshotConfigureGCArrayReference(bool, *railshotCompileOptions)                   {}
 func railshotGCArrayInitElemSource([]byte) bool                                         { return false }
 func railshotConfigureGCArrayInitElem(bool, *railshotCompileOptions)                    {}
+func railshotGCArrayInitDataSource([]byte) bool                                         { return false }
+func railshotConfigureGCArrayInitData(bool, *railshotCompileOptions)                    {}
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
 func railshotValidateResolvedImports(*Compiled, resolvedImports, *referenceStore) error { return nil }
 func railshotNeedsImportContextHeader(int) bool                                         { return false }

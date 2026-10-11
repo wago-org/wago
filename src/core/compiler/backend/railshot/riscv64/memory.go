@@ -54,6 +54,7 @@ type moduleState struct {
 	gcArrayPackedData    bool
 	gcArrayReference     bool
 	gcArrayInitElem      bool
+	gcArrayInitData      bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -204,7 +205,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcArrayPackedData := admitRV64GCArrayPackedData(m)
 	gcArrayReference := admitRV64GCArrayReference(m)
 	gcArrayInitElem := admitRV64GCArrayInitElem(m)
-	i31Core := admitRV64I31Core(m) || gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem
+	gcArrayInitData := admitRV64GCArrayInitData(m)
+	i31Core := admitRV64I31Core(m) || gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData
 	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
@@ -304,7 +306,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	importedGlobals := len(s.globals)
 	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
 	for _, g := range m.Globals {
-		if (gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem) && g.Type.Type.Kind() == wasm.ValRef {
+		if (gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData) && g.Type.Type.Kind() == wasm.ValRef {
 			s.globals = append(s.globals, globalSpec{wide: true, mutable: g.Type.Mutable, typ: g.Type.Type})
 			continue
 		}
@@ -399,7 +401,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem) && ft.Kind != wasm.CompFunc) {
+		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData) && ft.Kind != wasm.CompFunc) {
 			var ok bool
 			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
 			if !ok {
@@ -407,10 +409,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			}
 		}
 		for k, t := range ft.Params {
-			fn.params[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem) && t.Kind() == wasm.ValRef)
+			fn.params[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData) && t.Kind() == wasm.ValRef)
 		}
 		for k, t := range ft.Results {
-			fn.results[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem) && t.Kind() == wasm.ValRef)
+			fn.results[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData) && t.Kind() == wasm.ValRef)
 		}
 		s.types = append(s.types, fn)
 	}
