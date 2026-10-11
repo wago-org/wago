@@ -99,8 +99,8 @@ type CompileOptions struct {
 	// GCArrayInitElemSource is the exact-wire witness for the official
 	// funcref array.init_elem/elem.drop checkpoint.
 	GCArrayInitElemSource bool
-	// GCArrayInitDataSource is the exact-wire witness for the official packed
-	// i8/i16 array.init_data/data.drop checkpoint.
+	// GCArrayInitDataSource is the exact-wire witness for the bounded official
+	// packed-i8/i16 and wide-i32/i64 array.init_data checkpoints.
 	GCArrayInitDataSource bool
 	production            bool
 	publicStarts          bool

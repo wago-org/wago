@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 const rv64PublicGCArrayInitDataWideHex = "0061736d01000000018a80808000035e7f015e7e01600000038d808080000c02020202020202020202020207bd808080000c0266300000026631000102663200020266330003026634000402663900050267300006026731000702673400080267370009026738000a026739000b0c8180808000070a89828080000c9180808000004101fb0700410041004101fb1200000b9180808000004101fb0700410041004101fb1200010b9180808000004101fb0700410041004101fb1200020b9180808000004101fb0700410041004101fb1200030b9180808000004101fb0700410041004101fb1200040b9180808000004101fb0700410041064101fb1200060b9180808000004101fb0701410041004101fb1201000b9180808000004101fb0701410041004101fb1201010b9180808000004101fb0701410041004101fb1201040b9180808000004101fb0701410041004101fb1201050b9180808000004101fb0701410041004101fb1201060b9180808000004101fb0701410041024101fb1201060b0ba9808080000701000101310102313201033132330104313233340107313233343536370109313233343536373839"
@@ -78,6 +79,18 @@ func rv64PublicGCArrayInitDataWideCompile(t *testing.T, artifact bool) *Compiled
 	return loaded
 }
 
+func rv64AssertGCArrayInitDataWideTrap(t *testing.T, in *Instance, name string) {
+	t.Helper()
+	got, err := in.Invoke(name)
+	if got != nil || err == nil {
+		t.Fatalf("trapping %s=%v,%v", name, got, err)
+	}
+	var trap *coreruntime.TrapError
+	if !errors.As(err, &trap) || trap.Code != coreruntime.TrapLinMemOutOfBounds {
+		t.Fatalf("trapping %s returned %v, want source-range trap", name, err)
+	}
+}
+
 func TestRV64PublicGCArrayInitDataWideExecutionAndArtifact(t *testing.T) {
 	data := rv64PublicGCArrayInitDataWideBytes(t)
 	wantSource := [sha256.Size]byte{0x05, 0x82, 0x7a, 0x01, 0xce, 0xc2, 0xe9, 0xf3, 0x62, 0x3e, 0x9d, 0x00, 0xb5, 0x4a, 0xff, 0x25, 0x8b, 0xbc, 0x7b, 0x49, 0x7f, 0x47, 0xb7, 0x6f, 0xfd, 0x31, 0x45, 0x2b, 0xbc, 0xb9, 0xb3, 0x1f}
@@ -124,9 +137,7 @@ func TestRV64PublicGCArrayInitDataWideExecutionAndArtifact(t *testing.T) {
 						}
 					}
 					for _, name := range []string{"f0", "f1", "f2", "f3", "f9", "g0", "g1", "g4", "g7", "g9"} {
-						if _, err = in.Invoke(name); err == nil {
-							t.Fatalf("trapping %s returned normally", name)
-						}
+						rv64AssertGCArrayInitDataWideTrap(t, in, name)
 					}
 					for _, name := range []string{"f4", "g8"} {
 						if got, err := in.Invoke(name); err != nil || len(got) != 0 {
