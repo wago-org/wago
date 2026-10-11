@@ -292,9 +292,10 @@ general mutable reference imports/exports, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
 qualification. The
 experimental build tag and unsupported-feature admission remain in place.
-- [x] Wide Arithmetic Phase 4: automatic baseline AMD64 and ARM64 lowering
-  for i64 low/high pairs, including validation and native artifact reload.
-  Experimental RV64 integration remains pending.
+- [x] Wide Arithmetic Phase 4: automatic baseline AMD64, ARM64, and experimental
+  Linux/RV64 lowering for i64 low/high pairs, including validation and native
+  artifact reload. RV64G QEMU establishes functional correctness; native RV64
+  cache and performance qualification remain pending.
 
 AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
 compile-time optimization tiers and are recorded in native artifact requirements

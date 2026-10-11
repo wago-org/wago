@@ -368,13 +368,14 @@ passes in full: 57 of 57 applicable files and 0 failing assertions. See
 
 ### Wide Arithmetic (Phase 4)
 
-AMD64 and ARM64 support `i64.add128`, `i64.sub128`, `i64.mul_wide_s`, and
-`i64.mul_wide_u` on all supported operating systems, using baseline integer
-instructions. Operands and results use ordinary i64 low/high pairs, with the
-low half first. Support is automatic, with no additional feature switch or
-new value type. This proposal is separate from the Core 3 release group.
-Native artifacts preserve the compiled instructions without additional state.
-RV64 integration remains pending on its experimental backend branch.
+AMD64, ARM64, and experimental Linux/RV64 support `i64.add128`, `i64.sub128`,
+`i64.mul_wide_s`, and `i64.mul_wide_u` using baseline integer instructions.
+RV64 support requires the existing `wago_rv64_experimental` build tag and uses
+only RV64G instructions. Operands and results use ordinary i64 low/high pairs,
+with the low half first. Support is automatic, with no additional feature
+switch or new value type. This proposal is separate from the Core 3 release
+group. Native artifacts preserve the compiled instructions without additional
+state.
 
 ### Beyond WebAssembly 1.0
 

@@ -1310,6 +1310,34 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return integerSummary{}, err
 			}
+			wideOperands := 0
+			switch imm.Kind {
+			case wasm.InstrI64Add128, wasm.InstrI64Sub128:
+				wideOperands = 4
+			case wasm.InstrI64MulWideS, wasm.InstrI64MulWideU:
+				wideOperands = 2
+			}
+			if wideOperands != 0 {
+				for range wideOperands {
+					if err = popWidth(true); err != nil {
+						return integerSummary{}, err
+					}
+				}
+				if live && emit != nil {
+					if wideOperands == 4 {
+						emit.wideAddSub(h, imm.Kind == wasm.InstrI64Sub128)
+					} else {
+						emit.wideMultiply(h, imm.Kind == wasm.InstrI64MulWideS)
+					}
+				}
+				if err = push(true); err != nil {
+					return integerSummary{}, err
+				}
+				if err = push(true); err != nil {
+					return integerSummary{}, err
+				}
+				continue
+			}
 			if sub, ok := saturatingFloatKind(imm.Kind); ok && floating {
 				if _, err = pop(); err != nil {
 					return integerSummary{}, err

@@ -65,6 +65,8 @@ func TestGPWritesEveryTypedEmitter(t *testing.T) {
 		{"Add", func(a *Asm, d Reg) { a.Add(d, X10, X11) }},
 		{"Sub", func(a *Asm, d Reg) { a.Sub(d, X10, X11) }},
 		{"Mul", func(a *Asm, d Reg) { a.Mul(d, X10, X11) }},
+		{"Mulh", func(a *Asm, d Reg) { a.Mulh(d, X10, X11) }},
+		{"Mulhu", func(a *Asm, d Reg) { a.Mulhu(d, X10, X11) }},
 		{"Div", func(a *Asm, d Reg) { a.Div(d, X10, X11) }},
 		{"Divu", func(a *Asm, d Reg) { a.Divu(d, X10, X11) }},
 		{"Rem", func(a *Asm, d Reg) { a.Rem(d, X10, X11) }},

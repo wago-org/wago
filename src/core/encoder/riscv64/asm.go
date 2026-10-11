@@ -155,6 +155,10 @@ func (a *Asm) u(op uint32, dst Reg, imm20 uint32) {
 func (a *Asm) Add(dst, left, right Reg)  { a.r(0x33, 0, 0, dst, left, right) }
 func (a *Asm) Sub(dst, left, right Reg)  { a.r(0x33, 0, 0x20, dst, left, right) }
 func (a *Asm) Mul(dst, left, right Reg)  { a.r(0x33, 0, 1, dst, left, right) }
+func (a *Asm) Mulh(dst, left, right Reg) { a.r(0x33, 1, 1, dst, left, right) }
+func (a *Asm) Mulhu(dst, left, right Reg) {
+	a.r(0x33, 3, 1, dst, left, right)
+}
 func (a *Asm) Div(dst, left, right Reg)  { a.r(0x33, 4, 1, dst, left, right) }
 func (a *Asm) Divu(dst, left, right Reg) { a.r(0x33, 5, 1, dst, left, right) }
 func (a *Asm) Rem(dst, left, right Reg)  { a.r(0x33, 6, 1, dst, left, right) }

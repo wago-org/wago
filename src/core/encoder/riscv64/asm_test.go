@@ -20,6 +20,8 @@ var encodingCases = []struct {
 	{"add", func(a *Asm) { a.Add(X5, X6, X7) }, 0x007302b3},
 	{"sub", func(a *Asm) { a.Sub(X5, X6, X7) }, 0x407302b3},
 	{"mul", func(a *Asm) { a.Mul(X5, X6, X7) }, 0x027302b3},
+	{"mulh", func(a *Asm) { a.Mulh(X5, X6, X7) }, 0x027312b3},
+	{"mulhu", func(a *Asm) { a.Mulhu(X5, X6, X7) }, 0x027332b3},
 	{"and", func(a *Asm) { a.And(X5, X6, X7) }, 0x007372b3},
 	{"or", func(a *Asm) { a.Or(X5, X6, X7) }, 0x007362b3},
 	{"xor", func(a *Asm) { a.Xor(X5, X6, X7) }, 0x007342b3},

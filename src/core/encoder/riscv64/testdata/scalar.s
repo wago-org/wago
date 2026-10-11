@@ -5,6 +5,8 @@
 add x5,x6,x7
 sub x5,x6,x7
 mul x5,x6,x7
+mulh x5,x6,x7
+mulhu x5,x6,x7
 and x5,x6,x7
 or x5,x6,x7
 xor x5,x6,x7

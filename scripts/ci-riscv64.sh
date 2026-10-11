@@ -71,7 +71,7 @@ case "$mode" in
         tags+=,wago_regalloccheck
       fi
       go test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^Test(RetainedResourceCleanup|ReferenceEntryCleanup|PhysicalFinalizerChain|ResourceCleanup|ImportDedup|FunctionImportDrain|BuilderRollbackContinues|Dependency|RV64.*(Reference|Global|I31|NativeImport|Invocation|Start|Table|Rollback))'
+        -run '^Test(RetainedResourceCleanup|ReferenceEntryCleanup|PhysicalFinalizerChain|ResourceCleanup|ImportDedup|FunctionImportDrain|BuilderRollbackContinues|Dependency|WideArithmetic|RV64.*(Reference|Global|I31|NativeImport|Invocation|Start|Table|Rollback))'
       WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=prepare \
         WAGO_RV64_I31_ARTIFACT_DIR="$artifact_dir/$check/i31" \
