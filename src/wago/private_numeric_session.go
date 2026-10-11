@@ -40,6 +40,8 @@ func newPrivateNumericSession(fn *WasmFunc, p *wruntime.PreparedScalarHost, stat
 		}
 	case syncHostTypedI32x2:
 		h.scalar = detachedNumericDispatchI32x2
+	case syncHostTypedI64:
+		h.scalar = detachedNumericDispatchI64
 	default:
 		h.view = detachedNumericDispatchHostCall
 		if _, ok := binding.fn.(CallerHostCallFunc); ok {

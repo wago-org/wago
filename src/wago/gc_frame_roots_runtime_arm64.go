@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -18,7 +19,7 @@ func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoot
 // host-call stub saves SP without pushing a return address; SP is therefore the
 // function's stable post-prologue frame base. Exact direct callsites use the
 // saved LR above each callee frame record to continue through recursive callers.
-func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32) gc.RootSet {
+func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32, stack *coreruntime.Engine) gc.RootSet {
 	plan := in.c.genericGCFrameRoots()
 	if plan == nil || ctrl == 0 {
 		return gc.EmptyRoots{}
@@ -37,6 +38,9 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	if base == 0 {
 		panic(gcHelperFailuref("generic GC frame-root control has invalid saved SP %#x", base))
 	}
+	if !gcNativeFrameFitsStack(base, frameBytes, stack) {
+		panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
+	}
 	for _, off := range offsets {
 		if off%8 != 0 || off > frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
 			panic(gcHelperFailuref("generic GC frame-root offset %d is outside frame size %d", off, frameBytes))
@@ -49,6 +53,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 		}
 	}
 	state.frameRoots.owner = in
+	state.frameRoots.physicalStack = stack
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes

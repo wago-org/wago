@@ -53,18 +53,22 @@ func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
 }
 
 func (in *Instance) dispatchGCHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
+	in.dispatchGCHelperParkedOnStack(ctrl, helper, safepoint, args, results, nil)
+}
+
+func (in *Instance) dispatchGCHelperParkedOnStack(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
 	if helper < gcArrayAllocDefault {
-		in.dispatchGCStructHelperParked(ctrl, helper, safepoint, args, results)
+		in.dispatchGCStructHelperParked(ctrl, helper, safepoint, args, results, stack)
 		return
 	}
-	in.dispatchGCArrayHelperParked(ctrl, helper, safepoint, args, results)
+	in.dispatchGCArrayHelperParked(ctrl, helper, safepoint, args, results, stack)
 }
 
 func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64) {
-	in.dispatchGCArrayHelperParked(0, helper, 0, args, results)
+	in.dispatchGCArrayHelperParked(0, helper, 0, args, results, nil)
 }
 
-func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
+func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
 	if in == nil || in.gc == nil {
 		panic(gcHelperFailuref("gc array helper %d has no live collector", helper))
 	}
@@ -77,7 +81,8 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()
-		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
+		defer func() { state.frameRoots.physicalStack = nil }()
+		frameRoots = in.gcHelperRoots(ctrl, state, safepoint, stack)
 	}
 
 	switch helper {

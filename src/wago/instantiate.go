@@ -1634,7 +1634,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}()
 	}
 	if !codeProfileEnabled && in.syncMode && c.boundedHostSegments() && len(syncHosts) == 1 &&
-		(syncHosts[0].scalarKind == syncHostScalar || syncHosts[0].scalarKind == syncHostTypedI32 || syncHosts[0].scalarKind == syncHostTypedI32x2) &&
+		(syncHosts[0].scalarKind == syncHostScalar || syncHosts[0].privateBoundedTypedHost()) &&
 		in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0 {
 		binding := &syncHosts[0]
 		slots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16

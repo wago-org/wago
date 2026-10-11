@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/binary"
 	"sync"
-	"sync/atomic"
 )
 
 // invocationGate has a zero-value, allocation-free uncontended path. Contended
 // callers queue for wake-one notification; cancellation removes its waiter in
 // constant time and never changes the active owner's lifetime.
 type invocationGate struct {
-	state atomic.Uint32
+	state invocationGateState
 	mu    sync.Mutex
 	slow  *invocationGateSlowState
 }

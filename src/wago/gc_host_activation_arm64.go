@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -16,13 +17,17 @@ type gcHostActivationToken struct {
 	index uint8
 }
 
-func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintptr) gcHostActivationToken {
+func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine) gcHostActivationToken {
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}
 	plan := in.c.genericGCFrameRoots()
 	if plan == nil {
 		return gcHostActivationToken{}
+	}
+	stackTop, stackBytes := stack.StackTop(), uintptr(stack.StackBytes())
+	if stackBytes == 0 || stackTop < stackBytes {
+		panic(gcHelperFailuref("generic GC host activation stack is unavailable"))
 	}
 	_, gcBridge := in.pluginGCHostSignature(dispatch)
 	if dispatch&hostFuncRefDispatchBit != 0 {
@@ -75,6 +80,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintpt
 	index := state.hostActivationCount
 	activation := &state.hostActivations[index]
 	activation.ctrl = ctrl
+	activation.stack = stack
 	if callsite < 0 {
 		activation.noFrame = true
 	} else {

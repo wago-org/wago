@@ -42,7 +42,8 @@ func TestInvokeCacheKeepsAlternatingExports(t *testing.T) {
 	defer in.Close()
 
 	for i := int32(0); i < 8; i++ {
-		f, err := in.Invoke("f", I32(i))
+		// Equal names with distinct backing storage must hit the same cache slot.
+		f, err := in.Invoke(strings.Clone("f"), I32(i))
 		if err != nil {
 			t.Fatalf("Invoke f: %v", err)
 		}

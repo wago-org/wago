@@ -14,7 +14,7 @@ import (
 )
 
 // Symbol includes source, compilation, mapping generation and full function
-// identity. Names are display text only. ASCII escaping prevents format injection.
+// identity. Text fields are display text only. ASCII escaping prevents format injection.
 func Symbol(im jitprofile.Image, r jitprofile.Region) string {
 	clean := func(s string) string {
 		return strings.Map(func(c rune) rune {
@@ -24,7 +24,7 @@ func Symbol(im jitprofile.Image, r jitprofile.Region) string {
 			return c
 		}, s)
 	}
-	return fmt.Sprintf("wago:%s:%s:g%d:f%d:r%x:%s:%s", im.ModuleID, im.ArtifactID, im.ID, r.Function, r.Offset, r.Kind, clean(r.Name))
+	return fmt.Sprintf("wago:%s:%s:g%d:f%d:r%x:%s:%s", clean(im.ModuleID), clean(im.ArtifactID), im.ID, r.Function, r.Offset, clean(r.Kind), clean(r.Name))
 }
 
 func executable(r jitprofile.Region) bool { return r.Kind != "padding" && r.Kind != "literal-data" }

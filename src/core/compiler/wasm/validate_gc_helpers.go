@@ -740,6 +740,11 @@ func (v *moduleValidator) typeIdxEquivalentWithState(a, b TypeIdx, state map[mod
 		if !xok || !yok || xs.Final != ys.Final || len(xs.Supers) != len(ys.Supers) || xs.Comp.Kind != ys.Comp.Kind {
 			return false
 		}
+		// The first member pair is a marker for a scan of this whole group pair.
+		// Read it before recording p, which may itself be that first member.
+		// A non-first entry can start one redundant scan through the first
+		// member; all later members then reuse the first member's active state.
+		scanGroup := len(v.m.Types[xGroupLoc].SubTypes) > 1 && state[moduleTypePair{xBase, yBase}] == 0
 		introduced = append(introduced, p)
 		state[p] = 1
 		ok := true
@@ -747,7 +752,7 @@ func (v *moduleValidator) typeIdxEquivalentWithState(a, b TypeIdx, state map[mod
 		// the graph reachable from one projection. A projected type from a
 		// two-member group is therefore not equivalent to an identical
 		// singleton implicit function type.
-		if ok {
+		if scanGroup {
 			for i := range v.m.Types[xGroupLoc].SubTypes {
 				if !eqType(xBase+i, yBase+i) {
 					ok = false

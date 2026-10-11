@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -21,7 +22,7 @@ func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoot
 // return address, so the function's stable frame base is savedRSP+8. The root
 // slots point directly at the off-heap frame, allowing collector rewrites even
 // though the current compact handle representation is stable.
-func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32) gc.RootSet {
+func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32, stack *coreruntime.Engine) gc.RootSet {
 	plan := in.c.genericGCFrameRoots()
 	if plan == nil || ctrl == 0 {
 		return gc.EmptyRoots{}
@@ -41,6 +42,9 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 		panic(gcHelperFailuref("generic GC frame-root control has invalid saved RSP %#x", savedRSP))
 	}
 	base := savedRSP + abi.AMD64CallReturnAddressBytes
+	if !gcNativeFrameFitsStack(base, frameBytes, stack) {
+		panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
+	}
 	for _, off := range offsets {
 		if off%8 != 0 || off > frameBytes-8 || base > ^uintptr(0)-uintptr(off) {
 			panic(gcHelperFailuref("generic GC frame-root offset %d is outside frame size %d", off, frameBytes))
@@ -53,6 +57,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 		}
 	}
 	state.frameRoots.owner = in
+	state.frameRoots.physicalStack = stack
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes

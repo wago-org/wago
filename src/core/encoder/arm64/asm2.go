@@ -1068,8 +1068,8 @@ func (a *Asm) StoreImmIdx(base, index Reg, disp, val int32, size int) {
 	}
 	a.AddShifted(X16, base, index, 0, false)
 	if foldIdxDispEnabled && a.DenseIdxDisp && canStoreDisp(disp, size) {
-		// storeDisp folds disp into a scaled immediate (no X17 use), so the value
-		// may be parked in X17 first.
+		// Check the scaled offset before materializing the value. A rejected
+		// store would leave a dead X17 load before the fallback address math.
 		if a.storeDisp(immSrc(), X16, disp, size) {
 			return
 		}

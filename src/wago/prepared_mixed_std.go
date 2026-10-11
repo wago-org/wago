@@ -11,6 +11,11 @@ import (
 
 func (fn *WasmFunc) invokeDirectMixed(args []uint64) ([]uint64, error) {
 	in := fn.in
+	if fn.directIsolated && fn.tryBeginFastInvocation() {
+		out, err := fn.invokeDirectMixedSession(args)
+		in.endFastInvocation(in.pluginState.Load())
+		return out, err
+	}
 	if err := in.beginDirectInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}

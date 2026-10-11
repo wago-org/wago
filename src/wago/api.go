@@ -3802,7 +3802,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		// driver does not need an additional routing frame. AMD64 uses the fresh
 		// private integer certificate; mutable ownership is checked in the driver.
 		if (goruntime.GOARCH == "arm64" || goruntime.GOARCH == "amd64" && privateNumericLiveRouteEnabled && detachedNumericHostEnabled && integerNumericHostEnabled && in.c.integerHostContextAllowed()) && !codeProfileEnabled && in.boundedHostSegments() && len(in.syncHosts) == 1 &&
-			(in.syncHosts[0].scalarKind == syncHostScalar || in.syncHosts[0].scalarKind == syncHostTypedI32 || in.syncHosts[0].scalarKind == syncHostTypedI32x2) {
+			(in.syncHosts[0].scalarKind == syncHostScalar || in.syncHosts[0].privateBoundedTypedHost()) {
 			if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && in.syncHosts[0].scalarKind == syncHostTypedI32 && smallTypedEntryEnabled {
 				if out, err, ok := in.tryInvokePrivateTypedI32(export, args); ok {
 					return out, err
@@ -3826,35 +3826,33 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if in != nil && (!in.syncMode || in.executionFlags.Load()&executionFlagNativeScalarLeaf != 0 && in.c.boundedNativeScalarLeaf()) {
 		if in.rt == nil {
 			state := in.pluginState.Load()
-			if state != nil && in.invocationState.CompareAndSwap(0, 1) {
-				if state.invokeMu.state.CompareAndSwap(0, invocationGateHeld|invocationGateFast) {
-					ic := in.findInvokeCache(export)
-					privateRefStore := in.refStore == nil || in.refStore.private
-					isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
-					if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) && len(args) == int(ic.paramSlots) && privateRefStore && !in.guestStorageBorrowed() && in.preparedFastStateValid() {
-						var out []uint64
-						var err error
-						if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
-							entry := ic.directEntry
-							if ic.directIntFast && len(args) == 1 && ic.resultSlots <= 1 {
-								if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && ic.directIntBounded && ic.scalarWideMask == 0 && ic.resultSlots == 1 && !ic.scalarResultWide {
-									out, err = in.invokeCachedDirectI32ToI32(ic, args[0])
-								} else {
-									out, err = in.invokeCachedDirectInt1(ic, entry, args[0])
-								}
-							} else {
-								out, err = in.invokeCachedDirectNumeric(ic, entry, args)
-							}
-						} else {
-							out, err = in.invokeCachedNumericEntry(export, ic, args, true, false)
-						}
-						state.invokeMu.Unlock()
-						in.endDirectInvocation()
-						return out, err
-					}
-					state.invokeMu.Unlock()
+			if state != nil && state.invokeMu.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
+				// The common single-export hit avoids the cache-search call.
+				ic := &in.ic[0]
+				if !ic.valid || !sameExportName(ic.export, export) {
+					ic = in.findInvokeCache(export)
 				}
-				in.endDirectInvocation()
+				privateRefStore := in.refStore == nil || in.refStore.private
+				isolatedWrapper := ic != nil && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled && ic.entryMode == preparedEntryIsolated
+				if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast || isolatedWrapper) && len(args) == int(ic.paramSlots) && privateRefStore && state.guestStorageBorrow.Load() == 0 && in.preparedFastStateValid() {
+					var out []uint64
+					var err error
+					if ic.directI32Fast && len(args) == 1 {
+						out, err = in.invokeCachedDirectI32ToI32(ic, args[0])
+					} else if ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast {
+						entry := ic.directEntry
+						if ic.directIntFast && len(args) == 1 && ic.resultSlots <= 1 {
+							out, err = in.invokeCachedDirectInt1(ic, entry, args[0])
+						} else {
+							out, err = in.invokeCachedDirectNumeric(ic, entry, args)
+						}
+					} else {
+						out, err = in.invokeCachedNumericEntry(export, ic, args, true, false)
+					}
+					in.endFastInvocation(state)
+					return out, err
+				}
+				in.endFastInvocation(state)
 			}
 		}
 	}
@@ -3926,8 +3924,8 @@ func (in *Instance) tryInvokeCachedBoundedNumeric(export string, args []uint64) 
 		// Binding metadata is immutable for the lifetime of the instance. Mutable
 		// ownership is still checked under the gates in either selected driver.
 		if !codeProfileEnabled && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && len(in.syncHosts) == 1 {
-			kind := in.syncHosts[0].scalarKind
-			if kind == syncHostScalar || kind == syncHostTypedI32 || kind == syncHostTypedI32x2 {
+			binding := &in.syncHosts[0]
+			if binding.scalarKind == syncHostScalar || binding.privateBoundedTypedHost() {
 				return in.tryInvokeCachedBoundedNumericLive(export, args)
 			}
 		}
@@ -3975,7 +3973,7 @@ func (in *Instance) tryInvokeCachedBoundedNumeric(export string, args []uint64) 
 		return out, nil, true
 	}
 	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && !codeProfileEnabled &&
-		(in.syncHosts[0].scalarKind == syncHostTypedI32 || in.syncHosts[0].scalarKind == syncHostTypedI32x2) {
+		in.syncHosts[0].privateBoundedTypedHost() {
 		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots], ic.paramWidthClass)
 		entry := in.base + uintptr(in.c.Entry[ic.li])
 		if err := in.callCachedBoundedTypedHost(entry); err != nil {
@@ -3985,8 +3983,7 @@ func (in *Instance) tryInvokeCachedBoundedNumeric(export string, args []uint64) 
 		copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), ic.slotWide[ic.paramSlots:], ic.resultWidthClass)
 		return out, nil, true
 	}
-	hostScalar := goruntime.GOARCH == "arm64" &&
-		(in.syncHosts[0].scalarKind == syncHostTypedI32 || in.syncHosts[0].scalarKind == syncHostTypedI32x2)
+	hostScalar := goruntime.GOARCH == "arm64" && in.syncHosts[0].privateBoundedTypedHost()
 	out, err := in.invokeCachedNumericEntry(export, ic, args, false, hostScalar)
 	return out, err, true
 
@@ -4056,18 +4053,26 @@ func (in *Instance) tryInvokeCachedBoundedNumericLive(export string, args []uint
 	}
 	binding := &in.syncHosts[0]
 	rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
-	if binding.scalarKind == syncHostTypedI32 || binding.scalarKind == syncHostTypedI32x2 {
+	if binding.privateBoundedTypedHost() {
 		fixed := wruntime.FixedScalarHostContextCall(boundedTypedHostDispatchI32)
 		fallback := wruntime.FixedScalarHostCall(activation.dispatchI32)
-		if binding.scalarKind == syncHostTypedI32x2 {
+		switch binding.scalarKind {
+		case syncHostTypedI32x2:
 			fixed = boundedTypedHostDispatchI32x2
 			fallback = activation.dispatchI32x2
+		case syncHostTypedI64:
+			fixed = boundedTypedHostDispatchI64
+			fallback = activation.dispatchI64
 		}
 		if prepared := in.eng.PreparedScalarHost(); prepared != nil {
 			if locked.privateContext() {
-				fixed = detachedNumericDispatchI32
-				if binding.scalarKind == syncHostTypedI32x2 {
+				switch binding.scalarKind {
+				case syncHostTypedI32:
+					fixed = detachedNumericDispatchI32
+				case syncHostTypedI32x2:
 					fixed = detachedNumericDispatchI32x2
+				case syncHostTypedI64:
+					fixed = detachedNumericDispatchI64
 				}
 			}
 			if prepared.IntegerGuestContext() {
@@ -4156,7 +4161,7 @@ func (in *Instance) tryInvokeCachedBoundedNumericGeneral(export string, args []u
 		return out, nil, true
 	}
 	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && !codeProfileEnabled &&
-		(in.syncHosts[0].scalarKind == syncHostTypedI32 || in.syncHosts[0].scalarKind == syncHostTypedI32x2) {
+		in.syncHosts[0].privateBoundedTypedHost() {
 		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots], ic.paramWidthClass)
 		entry := in.base + uintptr(in.c.Entry[ic.li])
 		if err := in.callCachedBoundedTypedHost(entry); err != nil {
@@ -4166,8 +4171,7 @@ func (in *Instance) tryInvokeCachedBoundedNumericGeneral(export string, args []u
 		copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), ic.slotWide[ic.paramSlots:], ic.resultWidthClass)
 		return out, nil, true
 	}
-	hostScalar := goruntime.GOARCH == "arm64" &&
-		(in.syncHosts[0].scalarKind == syncHostTypedI32 || in.syncHosts[0].scalarKind == syncHostTypedI32x2)
+	hostScalar := goruntime.GOARCH == "arm64" && in.syncHosts[0].privateBoundedTypedHost()
 	out, err := in.invokeCachedNumericEntry(export, ic, args, false, hostScalar)
 	return out, err, true
 }
@@ -5092,6 +5096,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		export:            export,
 		valid:             true,
 		directIntFast:     directIntFast,
+		directI32Fast:     directIntFast && in.c.directPreparedBoundedAt(li) && paramSlots == 1 && resultSlots == 1 && scalarWideMask == 0 && !widths[paramSlots],
 		directFloatFast:   directFloatFast || directMixedFast,
 		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
 		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),

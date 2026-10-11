@@ -5,6 +5,7 @@ package amd64
 import (
 	"encoding/binary"
 	"os"
+	"slices"
 )
 
 // branchFoldEnabled gates the post-assembly double-branch peephole. On by
@@ -43,6 +44,9 @@ func (f *fn) finalizeBranchFolds() {
 		return
 	}
 	b := f.a.B
+	// Fold sites are recorded in code order. Reuse their slice to retain only
+	// successful folds, without allocating another site inventory.
+	folded := f.sc.brFoldSites[:0]
 	for _, over := range f.sc.brFoldSites {
 		// Idiom: 0F 8x <rel32=5> | E9 <rel32> | over:
 		//   Jcc opcode at over-2..over-1, rel32 at over..over+3 (ends at over+4);
@@ -60,10 +64,23 @@ func (f *fn) finalizeBranchFolds() {
 		b[over-1] ^= 1 // invert the condition (flip the tttn low bit)
 		binary.LittleEndian.PutUint32(b[over:], uint32(int32(jmpTarget-(over+4))))
 		copy(b[over+4:over+9], []byte{0x0F, 0x1F, 0x44, 0x00, 0x00}) // 5-byte NOP
-		f.a.ForgetRel32(over + 5)
+		folded = append(folded, over)
 		f.stats.peep("br-pair-fold")
 		if diagnosticsEnabled && f.stats != nil {
 			f.stats.NativeSize.BranchFoldHoleBytes += 5
 		}
+	}
+	f.sc.brFoldSites = folded
+	// Rel32 records can be out of code order because forward branches are
+	// patched later. A binary search in the ordered fold sites lets one stable
+	// pass remove their JMP fields while retaining every other record's order.
+	if len(folded) != 0 {
+		kept := f.a.Rel32Sites[:0]
+		for _, site := range f.a.Rel32Sites {
+			if _, found := slices.BinarySearch(folded, site.At()-5); !found {
+				kept = append(kept, site)
+			}
+		}
+		f.a.Rel32Sites = kept
 	}
 }

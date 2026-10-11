@@ -1,12 +1,27 @@
 package config
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	if os.Getenv("WAGO_COMPLETION_TEST_HELPER") == "1" {
+		if len(os.Args) != 4 || os.Args[1] != "__complete" || os.Args[2] != "version" || os.Args[3] != "" {
+			fmt.Fprintln(os.Stderr, "unexpected completion helper arguments:", os.Args[1:])
+			os.Exit(2)
+		}
+		fmt.Fprintln(os.Stdout, "install")
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
 
 func TestCompletionSupportsCommonShells(t *testing.T) {
 	for _, shell := range []string{"zsh", "bash", "fish"} {
@@ -83,10 +98,10 @@ func TestBashCompletionPassesNestedCommandWords(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := exec.Command(bash, "--noprofile", "--norc", "-c", `. "$1"; COMP_WORDS=(wago version ""); COMP_CWORD=2; _wago_complete; printf '%s\n' "${COMPREPLY[@]}"`, "_", path)
-	command.Env = append(os.Environ(), "PATH="+root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	command.Env = append(os.Environ(), "PATH="+root+string(os.PathListSeparator)+os.Getenv("PATH"), "WAGO_COMPLETION_TEST_HELPER=1")
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("bash nested completion: %v\n%s", err, output)
+		t.Fatalf("bash nested completion (%s): %v\n%s", bash, err, output)
 	}
 	if got := strings.TrimSpace(string(output)); got != "install" {
 		t.Fatalf("bash nested completion = %q, want install", got)
@@ -109,7 +124,7 @@ func TestZshCompletionPassesNestedCommandWords(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := exec.Command(zsh, "-f", "-c", `. "$1"; compadd() { shift; print -l -- "$@"; }; _files() {}; invoke() { local -a words=(wago version ""); _wago; }; invoke`, "_", path)
-	command.Env = append(os.Environ(), "PATH="+root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	command.Env = append(os.Environ(), "PATH="+root+string(os.PathListSeparator)+os.Getenv("PATH"), "WAGO_COMPLETION_TEST_HELPER=1")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("zsh nested completion: %v\n%s", err, output)
@@ -121,11 +136,29 @@ func TestZshCompletionPassesNestedCommandWords(t *testing.T) {
 
 func writeCompletionTestCommand(t *testing.T, root string) {
 	t.Helper()
-	path := filepath.Join(root, "wago")
-	script := "#!/bin/sh\n" +
-		"[ \"$#\" -eq 3 ] && [ \"$1\" = __complete ] && [ \"$2\" = version ] && [ -z \"$3\" ] || exit 1\n" +
-		"printf 'install\\n'\n"
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+	name := "wago"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	path := filepath.Join(root, name)
+	source, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := os.Open(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	output, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(output, input); err != nil {
+		output.Close()
+		t.Fatal(err)
+	}
+	if err := output.Close(); err != nil {
 		t.Fatal(err)
 	}
 }

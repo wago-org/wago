@@ -56,6 +56,15 @@ func TestDocumentationAndReleasePathProfiles(t *testing.T) {
 	if err != nil || dispatch.Profile != "full" || !dispatch.CorpusSources {
 		t.Fatalf("manual release plan = %+v, %v", dispatch, err)
 	}
+	t.Setenv("GITHUB_SHA", "merge-group-sha")
+	paths, sourceSHA, err := changedPathsAt(".", "merge_group", event{}, "refs/heads/gh-readonly-queue/main/pr-1")
+	if err != nil || len(paths) != 0 || sourceSHA != "merge-group-sha" {
+		t.Fatalf("merge group changes = %v, %q, %v", paths, sourceSHA, err)
+	}
+	mergeGroup, err := makePlan("merge_group", event{}, paths, sourceSHA)
+	if err != nil || mergeGroup.Profile != "full" || !mergeGroup.CorpusSources || mergeGroup.SourceSHA != "merge-group-sha" || !slicesContain(mergeGroup.ExpectedJobs, "app-corpus-verify") {
+		t.Fatalf("merge group plan = %+v, %v", mergeGroup, err)
+	}
 	regen, err := makePlan("pull_request", pr, []string{"tests/corpus/catalog.json"}, "head-sha")
 	if err != nil || !regen.CorpusSources || !slicesContain(regen.ExpectedJobs, "regression-rebuild") {
 		t.Fatalf("corpus source plan = %+v, %v", regen, err)

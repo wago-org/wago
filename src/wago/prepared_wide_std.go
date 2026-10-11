@@ -13,6 +13,11 @@ const preparedDirectWideSupported = true
 
 func (fn *WasmFunc) invokeDirectIntWide(args []uint64) ([]uint64, error) {
 	in := fn.in
+	if fn.directIsolated && fn.tryBeginFastInvocation() {
+		out, err := fn.invokeDirectIntWideSession(args)
+		in.endFastInvocation(in.pluginState.Load())
+		return out, err
+	}
 	if err := in.beginDirectInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}

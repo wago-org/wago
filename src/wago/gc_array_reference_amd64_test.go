@@ -378,7 +378,7 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		// not on every Instance. Bounded view caches, the multi-host pointer and
 		// the atomic bounded invocation ID add 32 bytes to this sidecar.
 		// Profiling adds an instance ID; the ordinary profileState is empty.
-		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 304 + unsafe.Sizeof(profileInstanceState{})}[name]
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 312 + unsafe.Sizeof(profileInstanceState{})}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

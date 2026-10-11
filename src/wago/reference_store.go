@@ -680,6 +680,7 @@ const (
 
 type gcNativeFrameRoots struct {
 	owner                *Instance
+	physicalStack        *coreruntime.Engine
 	base                 uintptr
 	offsets              []uint32
 	frameBytes           uint32
@@ -695,6 +696,7 @@ type gcNativeFrameRoots struct {
 type gcHostActivation struct {
 	base         uintptr
 	ctrl         uintptr
+	stack        *coreruntime.Engine
 	callsite     uint32
 	noFrame      bool
 	savedControl gcHostSavedControl
@@ -731,7 +733,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 		return true
 	}
 	r.syncGlobalsBeforeCollection()
-	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}, r.physicalStack) {
 		return false
 	}
 	state := r.suspended
@@ -757,7 +759,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
 				callsites:            state.hostRootPlan.callsites,
 			}
-			if !chain.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+			if !chain.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}, activation.stack) {
 				return false
 			}
 		}
@@ -782,7 +784,7 @@ func (s classifiedRootSink) VisitRootRef(r gc.Ref) bool {
 
 func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	r.syncGlobalsBeforeCollection()
-	if !r.rangeChain(fn, sink) {
+	if !r.rangeChain(fn, sink, r.physicalStack) {
 		return false
 	}
 	state := r.suspended
@@ -808,7 +810,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
 				callsites:            state.hostRootPlan.callsites,
 			}
-			if !chain.rangeChain(fn, sink) {
+			if !chain.rangeChain(fn, sink, activation.stack) {
 				return false
 			}
 		}
@@ -916,14 +918,39 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	return true
 }
 
-func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
+func gcNativeFrameFitsStack(base uintptr, frameBytes uint32, stack *coreruntime.Engine) bool {
+	if stack == nil {
+		return true
+	}
+	top := stack.StackTop()
+	bytes := uintptr(stack.StackBytes())
+	return bytes != 0 && top >= bytes && base >= top-bytes && base < top && uintptr(frameBytes) <= top-base
+}
+
+func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
 	owner := r.owner
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
 	codeBase, codeBytes := r.codeBase, r.codeBytes
 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
-	for depth := 0; ; depth++ {
-		if depth > 4096 {
-			panic(gcHelperFailuref("generic GC native frame chain exceeds 4096 frames"))
+	// Parked host activations carry their physical stack bounds because reentry
+	// may replace owner.eng while their native frames remain on the old stack.
+	// Other chains use the owner mapping only when their first frame lies in it.
+	var stackTop uintptr
+	if stack != nil {
+		stackTop = stack.StackTop()
+		if !gcNativeFrameFitsStack(base, frameBytes, stack) {
+			panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
+		}
+	} else if owner != nil && owner.eng != nil {
+		top := owner.eng.StackTop()
+		ownerStackBytes := uintptr(owner.eng.StackBytes())
+		if ownerStackBytes != 0 && top >= ownerStackBytes && base >= top-ownerStackBytes && base < top {
+			stackTop = top
+		}
+	}
+	for {
+		if stackTop != 0 && (base >= stackTop || uintptr(frameBytes) > stackTop-base) {
+			panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
 		}
 		for _, off := range offsets {
 			// gc.Ref is the low 32 bits of the validated little-endian native qword.
@@ -949,7 +976,11 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		if base > ^uintptr(0)-uintptr(frameBytes)-returnPCBias {
 			panic(gcHelperFailuref("generic GC native frame address overflows"))
 		}
-		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes)+returnPCBias)), 8)
+		retAddr := base + uintptr(frameBytes) + returnPCBias
+		if stackTop != 0 && (retAddr > stackTop || stackTop-retAddr < 8) {
+			panic(gcHelperFailuref("generic GC native return address exceeds stack bounds"))
+		}
+		retWord := unsafe.Slice((*byte)(offHeapPtr(retAddr)), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
 		if retPC < codeBase || retPC-codeBase >= codeBytes {
 			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
