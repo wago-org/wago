@@ -1154,6 +1154,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	exactGCArrayReferenceSource := railshotGCArrayReferenceSource(wasmBytes)
 	exactGCArrayInitElemSource := railshotGCArrayInitElemSource(wasmBytes)
 	exactGCArrayInitDataSource := railshotGCArrayInitDataSource(wasmBytes)
+	exactGCArrayFillSource := railshotGCArrayFillSource(wasmBytes)
 	requiredByModule := requirements.features
 	narrowFrontendFeatures(&features, requiredByModule)
 	if requiredByModule.IsEnabled(CoreFeatureThreads) {
@@ -1229,7 +1230,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCArrayOpcodeProduct(m)
 		}
 		if ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCArrayProductNumericLocal && exactGCArrayLocalSource) && !(product == stagedGCArrayProductNumericUniform && exactGCArrayUniformSource) && !(product == stagedGCArrayProductNumericFixedLocal && exactGCArrayFixedLocalSource) && !(product == stagedGCArrayProductNumericFixed && exactGCArrayFixedOfficialSource) && !(product == stagedGCArrayProductNumericDefault && exactGCArrayDefaultOfficialSource) && !(product == stagedGCArrayProductPackedData && exactGCArrayPackedDataSource) && !(product == stagedGCArrayProductReferenceElements && exactGCArrayReferenceSource) && !(product == stagedGCArrayProductInitElem && exactGCArrayInitElemSource) && !(product == stagedGCArrayProductInitData && exactGCArrayInitDataSource) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCArrayProductNumericLocal && exactGCArrayLocalSource) && !(product == stagedGCArrayProductNumericUniform && exactGCArrayUniformSource) && !(product == stagedGCArrayProductNumericFixedLocal && exactGCArrayFixedLocalSource) && !(product == stagedGCArrayProductNumericFixed && exactGCArrayFixedOfficialSource) && !(product == stagedGCArrayProductNumericDefault && exactGCArrayDefaultOfficialSource) && !(product == stagedGCArrayProductPackedData && exactGCArrayPackedDataSource) && !(product == stagedGCArrayProductReferenceElements && exactGCArrayReferenceSource) && !(product == stagedGCArrayProductInitElem && exactGCArrayInitElemSource) && !(product == stagedGCArrayProductInitData && exactGCArrayInitDataSource) && !(product == stagedGCArrayProductBulkFill && exactGCArrayFillSource) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcArrayProduct = product
@@ -1259,7 +1260,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// provisioning the bounded anyref/externref identity bridge.
 		gcStructProduct = stagedGCStructExtern
 	}
-	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 && !exactGCArrayLocalSource && !exactGCArrayUniformSource && !exactGCArrayFixedLocalSource && !exactGCArrayFixedOfficialSource && !exactGCArrayDefaultOfficialSource && !exactGCArrayPackedDataSource && !exactGCArrayReferenceSource && !exactGCArrayInitElemSource && !exactGCArrayInitDataSource {
+	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 && !exactGCArrayLocalSource && !exactGCArrayUniformSource && !exactGCArrayFixedLocalSource && !exactGCArrayFixedOfficialSource && !exactGCArrayDefaultOfficialSource && !exactGCArrayPackedDataSource && !exactGCArrayReferenceSource && !exactGCArrayInitElemSource && !exactGCArrayInitDataSource && !exactGCArrayFillSource {
 		// Generic GC lowering is the complete Core 3 fallback for modules that do
 		// not match a narrower collector-free or specialized product. Product
 		// recognizers select optimizations, not semantic admission boundaries.
@@ -1393,6 +1394,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	railshotConfigureGCArrayReference(exactGCArrayReferenceSource, &compileOptions)
 	railshotConfigureGCArrayInitElem(exactGCArrayInitElemSource, &compileOptions)
 	railshotConfigureGCArrayInitData(exactGCArrayInitDataSource, &compileOptions)
+	railshotConfigureGCArrayFill(exactGCArrayFillSource, &compileOptions)
 	railshotConfigureNativeTail(requiredByModule, cfg, &compileOptions)
 	var cm *railshotCompiledModule
 	if codegen.SourceChecks {
@@ -3778,6 +3780,7 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	railshotRestoreGCArrayReferenceArtifact(decoded)
 	railshotRestoreGCArrayInitElemArtifact(decoded)
 	railshotRestoreGCArrayInitDataArtifact(decoded)
+	railshotRestoreGCArrayFillArtifact(decoded)
 	if inferred := compiledStructuralRequiredFeatures(decoded); inferred&^decoded.requiredFeatures != 0 {
 		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^decoded.requiredFeatures)
 	}

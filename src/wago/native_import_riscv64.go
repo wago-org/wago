@@ -375,6 +375,11 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// buffers so helper staging cannot cross an arena boundary.
 		params = max(params, 6)
 	}
+	if rv64GCArrayFill(c) {
+		// The packed fill bridge adds the exact type index after the array,
+		// destination, value, and length operands.
+		params = max(params, 5)
+	}
 	if c.tableCount() != 0 || c.nativeReferenceCallABI {
 		// The exact allocating gc/ref_eq checkpoint has an eqref table but no
 		// indirect calls. The exact array.init_elem checkpoint pins its sole

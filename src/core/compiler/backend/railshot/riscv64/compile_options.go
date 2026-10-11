@@ -102,9 +102,12 @@ type CompileOptions struct {
 	// GCArrayInitDataSource is the exact-wire witness for the bounded official
 	// packed-i8/i16 and wide-i32/i64 array.init_data checkpoints.
 	GCArrayInitDataSource bool
-	production            bool
-	publicStarts          bool
-	hostImports           bool
+	// GCArrayFillSource is the exact-wire witness for the official packed-i8
+	// array.fill checkpoint.
+	GCArrayFillSource bool
+	production        bool
+	publicStarts      bool
+	hostImports       bool
 	// Selected by bounded closed-module admission, or private decoded tests.
 	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool
@@ -133,6 +136,7 @@ type CompileOptions struct {
 	gcArrayReference     bool
 	gcArrayInitElem      bool
 	gcArrayInitData      bool
+	gcArrayFill          bool
 	tailPlans            *[]tailImportPlan
 	tailSiteBase         uint32
 }
