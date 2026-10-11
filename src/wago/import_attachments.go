@@ -243,10 +243,6 @@ func retainProducerRootsInImportedGlobals(in *Instance) bool {
 	return retainProducerRootsInImportedGlobalsMode(in, false)
 }
 
-func retainProducerRootsInImportedGlobalsForFinalization(in *Instance) bool {
-	return retainProducerRootsInImportedGlobalsMode(in, true)
-}
-
 func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) bool {
 	if in == nil || in.c == nil {
 		return false
@@ -376,10 +372,6 @@ func retainProducerRootsInImportedTables(in *Instance) bool {
 	return retainProducerRootsInImportedTablesMode(in, false)
 }
 
-func retainProducerRootsInImportedTablesForFinalization(in *Instance) bool {
-	return retainProducerRootsInImportedTablesMode(in, true)
-}
-
 func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bool {
 	if in == nil || in.c == nil {
 		return false
@@ -432,6 +424,39 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		}
 	}
 	return retained
+}
+
+// Discover descriptor owners in every imported funcref container before any
+// destination transfers an import attachment. A root first resolved in a later
+// table or global may be the only producer for an earlier unresolved descriptor.
+// The retention passes then reuse one complete source-root snapshot.
+func retainProducerRootsInImportedContainersForFinalization(in *Instance) bool {
+	if in == nil || in.c == nil {
+		return false
+	}
+	// One imported container has no other destination to propagate back to.
+	if in.c.tableImportCount()+len(in.c.GlobalImports) > 1 {
+		var tables importDedup[*Table]
+		for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+			table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
+			if ok && table != nil && tables.add(table) {
+				table.retainDescriptorOwnersForFinalization(in.refStore, in)
+			}
+		}
+		var globals importDedup[*Global]
+		for i, imp := range in.c.GlobalImports {
+			if imp.Type != ValFuncRef {
+				continue
+			}
+			provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
+			if ok && provided.Global != nil && globals.add(provided.Global) {
+				provided.Global.retainDescriptorOwnerForFinalization(in.refStore, in)
+			}
+		}
+	}
+	retainedTables := retainProducerRootsInImportedTablesMode(in, true)
+	retainedGlobals := retainProducerRootsInImportedGlobalsMode(in, true)
+	return retainedTables || retainedGlobals
 }
 
 // transferImportedAttachmentsFromOwner breaks a closed consumer/owner cycle
