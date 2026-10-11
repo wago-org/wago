@@ -67,8 +67,8 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if c == nil || !c.state.referenceFunctions || c.state.importedFunctions != m.ImportedFuncCount() || len(c.functions) != len(m.Code) || len(c.code) == 0 || len(c.code) > MaxCodeBytes {
 		return nil, unsupported("closed reference staged function extent")
 	}
-	wantPublicReferenceArguments := !vector && admitPublicReferenceCallBoundary(m) && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp)
-	if c.state.publicReferenceArguments != wantPublicReferenceArguments {
+	wantPublicReferenceCarriers := !vector && admitPublicReferenceCallBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+	if c.state.publicReferenceCarriers != wantPublicReferenceCarriers {
 		return nil, unsupported("closed reference staged public argument protocol")
 	}
 	for _, f := range c.functions {

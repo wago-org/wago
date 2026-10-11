@@ -60,7 +60,7 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 	}
 	f.restoreCallTransport()
 	for j, typ := range sig.Results {
-		wide := scalarWide(typ)
+		wide := scalarWide(typ) || f.mode.referenceFunctions && typ.Kind() == wasm.ValRef
 		if wide {
 			f.a.Ld(enc.X5, enc.X13, int32(j*8))
 		} else {

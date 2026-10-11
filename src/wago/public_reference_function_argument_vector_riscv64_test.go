@@ -55,7 +55,7 @@ func TestRV64PublicReferenceFunctionArgumentVectorSourceArtifact(t *testing.T) {
 				t.Skip("precompiled artifact path only")
 			}
 			c := rv64NativeTailCompile(t, "reference-function-argument-vector", rv64PublicReferenceArgumentVectorModule(), artifact)
-			if !rv64PublicReferenceCallBoundary(c) || !rv64PublicReferenceArgumentTarget(c, 0) || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || rv64NativeTailModule(c) != nil {
+			if !rv64PublicReferenceCallBoundary(c) || !rv64PublicReferenceCarrierTarget(c, 0) || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || rv64NativeTailModule(c) != nil {
 				t.Fatal("public reference argument-vector metadata")
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))

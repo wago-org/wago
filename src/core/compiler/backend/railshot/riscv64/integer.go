@@ -66,7 +66,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.declarationExtern = state.declarationExternRefs
 		referenceTypes.executionExtern = state.core3RefIsNullExecution
 		referenceTypes.declarationNonNullExtern = state.declarationNonnullRefs
-		referenceTypes.publicReferenceArguments = state.publicReferenceArguments
+		referenceTypes.publicReferenceCarriers = state.publicReferenceCarriers
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -988,16 +988,25 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			sig := state.types[typeIndex]
 			callParams := sig.params
+			callResults := sig.results
 			callParamRefs := []bool(nil)
+			callResultRefs := []bool(nil)
+			referenceCarriers := false
 			if err = integerCallable(sig, floating); err != nil {
-				if !state.publicReferenceArguments || typeIndex != 0 || sig.signature == nil || !publicReferenceArgumentTarget(sig.signature) {
+				if !state.publicReferenceCarriers || typeIndex != 0 || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature) {
 					return integerSummary{}, err
 				}
-				callParams = inlineResults[1][:]
-				callParamRefs = inlineReference[:]
+				callParams, callResults, callParamRefs, callResultRefs, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
+				if err != nil {
+					return integerSummary{}, err
+				}
+				referenceCarriers = true
 			}
 			callCount++
-			budget += len(sig.params) + len(sig.results) + 1
+			if !referenceCarriers {
+				budget += len(sig.params) + len(sig.results)
+			}
+			budget++ // callable reference
 			tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("call_ref count/slot budget")
@@ -1026,8 +1035,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if live && emit != nil {
 				emit.referenceCall(sig.signature, sig.key, h, referenceSlot, emit.SpillOffset, 8)
 			}
-			for _, wide := range sig.results {
-				if err = push(wide); err != nil {
+			for i, wide := range callResults {
+				if len(callResultRefs) != 0 && callResultRefs[i] {
+					err = pushReference()
+				} else {
+					err = push(wide)
+				}
+				if err != nil {
 					return integerSummary{}, err
 				}
 			}
@@ -1783,7 +1797,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.declarationExtern = state.declarationExternRefs
 		referenceTypes.executionExtern = state.core3RefIsNullExecution
 		referenceTypes.declarationNonNullExtern = state.declarationNonnullRefs
-		referenceTypes.publicReferenceArguments = state.publicReferenceArguments
+		referenceTypes.publicReferenceCarriers = state.publicReferenceCarriers
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

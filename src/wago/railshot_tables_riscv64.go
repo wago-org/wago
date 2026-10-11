@@ -2323,14 +2323,16 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 		if railshotNonCallableFunction(c, i) {
 			continue // Source-attested internal signature has no callable row.
 		}
-		if i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceArgumentSignature(c.Funcs[0]) {
-			param := wasm.FuncRef
-			if c.Funcs[0].Params[0] == ValExternRef {
-				param = wasm.ExternRef
+		if i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) {
+			for j, t := range c.Funcs[0].Params {
+				params[j] = rv64ReferenceWasmType(t)
 			}
-			key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{param}, Results: []wasm.ValType{wasm.I32}})
+			for j, t := range c.Funcs[0].Results {
+				results[j] = rv64ReferenceWasmType(t)
+			}
+			key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: params[:len(c.Funcs[0].Params)], Results: results[:len(c.Funcs[0].Results)]})
 			if c.FuncTypeID[i] != key {
-				return fmt.Errorf("public reference-argument target signature key differs from its exact type")
+				return fmt.Errorf("public reference-carrier target signature key differs from its exact type")
 			}
 			continue
 		}
@@ -2366,5 +2368,16 @@ func rv64NumericWasmType(t ValType) wasm.ValType {
 		return wasm.V128
 	default:
 		return wasm.I32
+	}
+}
+
+func rv64ReferenceWasmType(t ValType) wasm.ValType {
+	switch t {
+	case ValFuncRef:
+		return wasm.FuncRef
+	case ValExternRef:
+		return wasm.ExternRef
+	default:
+		return rv64NumericWasmType(t)
 	}
 }

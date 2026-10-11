@@ -197,6 +197,40 @@ func publicReferenceArgumentCallBoundaryDecode(t *testing.T) *wasm.Module {
 	return publicReferenceArgumentCallBoundaryDecodeType(t, wasm.FuncRef)
 }
 
+func publicReferenceCarrierCallBoundarySource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(
+				[]wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64},
+				[]wasm.ValType{wasm.ExternRef, wasm.FuncRef, wasm.I32, wasm.I64},
+			),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+			[]byte{0x60, 5, 0x7f, 0x70, 0x6f, 0x7e, 0x63, 0, 4, 0x6f, 0x70, 0x7f, 0x7e},
+		)),
+		wasmtest.Section(3, []byte{3, 0, 1, 2}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target", 0, 0),
+			wasmtest.ExportEntry("get", 0, 1),
+			wasmtest.ExportEntry("call", 0, 2),
+		)),
+		wasmtest.Section(9, []byte{1, 3, 0, 1, 0}),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 2, 0x20, 1, 0x20, 0, 0x20, 3, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
+func publicReferenceCarrierCallBoundaryDecode(t *testing.T) *wasm.Module {
+	t.Helper()
+	m, err := wasm.DecodeModule(publicReferenceCarrierCallBoundarySource())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func TestPublicReferenceCallBoundaryExactAdmission(t *testing.T) {
 	for _, referenceResult := range []bool{false, true} {
 		base := publicReferenceCallBoundaryDecodeResult(t, referenceResult)
@@ -347,8 +381,8 @@ func TestPublicReferenceCallBoundaryReferenceArgumentAdmission(t *testing.T) {
 			if err := AdmitProductionSource(source); err != nil {
 				t.Fatal("public call_ref reference-argument wire", err)
 			}
-			if wasm.EqualValType(tc.argument, wasm.ExternRef) && !admitPublicReferenceExternrefArgumentBoundaryWire(source) {
-				t.Fatal("public externref call_ref wire was not recognized")
+			if !admitPublicReferenceCallBoundaryWire(source) {
+				t.Fatal("public call_ref reference-argument wire was not recognized")
 			}
 			m := publicReferenceArgumentCallBoundaryDecodeType(t, tc.argument)
 			if !admitPublicReferenceCallBoundary(m) {
@@ -368,7 +402,7 @@ func TestPublicReferenceCallBoundaryReferenceArgumentAdmission(t *testing.T) {
 	}
 	externWireMutation := bytes.Clone(publicReferenceArgumentCallBoundarySource(wasm.ExternRef))
 	externWireMutation[len(externWireMutation)-2] = 1
-	if admitPublicReferenceExternrefArgumentBoundaryWire(externWireMutation) || AdmitProductionSource(externWireMutation) == nil {
+	if admitPublicReferenceCallBoundaryWire(externWireMutation) || AdmitProductionSource(externWireMutation) == nil {
 		t.Fatal("nearby public externref call_ref wire inherited admission")
 	}
 
@@ -379,9 +413,9 @@ func TestPublicReferenceCallBoundaryReferenceArgumentAdmission(t *testing.T) {
 		{"argument-mismatch", func(m *wasm.Module) {
 			m.Types[2].SubTypes[0].Comp.Params[0] = wasm.ExternRef
 		}},
-		{"reference-result", func(m *wasm.Module) {
-			m.Types[0].SubTypes[0].Comp.Results[0] = wasm.FuncRef
-			m.Types[2].SubTypes[0].Comp.Results[0] = wasm.FuncRef
+		{"unsupported-reference-result", func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Comp.Results[0] = wasm.AnyRef
+			m.Types[2].SubTypes[0].Comp.Results[0] = wasm.AnyRef
 		}},
 		{"tail", func(m *wasm.Module) { m.Code[2].BodyBytes[4] = 0x15 }},
 		{"argument-order", func(m *wasm.Module) { m.Code[2].BodyBytes[1], m.Code[2].BodyBytes[3] = 1, 0 }},
@@ -393,6 +427,77 @@ func TestPublicReferenceCallBoundaryReferenceArgumentAdmission(t *testing.T) {
 				t.Fatal("nearby public reference-argument shape inherited the boundary")
 			}
 		})
+	}
+}
+
+func TestPublicReferenceCallBoundaryReferenceCarrierAdmission(t *testing.T) {
+	source := publicReferenceCarrierCallBoundarySource()
+	if !admitPublicReferenceCallBoundaryWire(source) {
+		t.Fatal("public call_ref mixed reference carrier wire was not recognized")
+	}
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal("public call_ref mixed reference carrier wire", err)
+	}
+	m := publicReferenceCarrierCallBoundaryDecode(t)
+	if !admitPublicReferenceCallBoundary(m) || !publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) {
+		t.Fatal("public call_ref mixed reference carrier boundary was not recognized")
+	}
+	if err := admitClosedReferenceFunctionModule(m, false); err != nil {
+		t.Fatal("public call_ref mixed reference carrier boundary was not admitted", err)
+	}
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+		t.Fatal("public call_ref mixed reference carrier frontend", err)
+	}
+	image, err := CompileModuleWith(m, closedReferenceProductionOptions(false, true))
+	if err != nil || len(image.Entry) != 3 || len(image.Code) == 0 || !image.NativeReferenceCalls || image.NativeTail != nil {
+		t.Fatal("public call_ref mixed reference carrier lowering", err)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*wasm.Module)
+	}{
+		{"caller-result-mismatch", func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Results[1] = wasm.ExternRef }},
+		{"unsupported-target-result", func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.AnyRef }},
+		{"caller-body-order", func(m *wasm.Module) { m.Code[2].BodyBytes[1], m.Code[2].BodyBytes[3] = 1, 0 }},
+		{"tail", func(m *wasm.Module) { m.Code[2].BodyBytes[10] = 0x15 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := publicReferenceCarrierCallBoundaryDecode(t)
+			tc.mutate(candidate)
+			if admitPublicReferenceCallBoundary(candidate) {
+				t.Fatal("nearby mixed reference carrier shape inherited the boundary")
+			}
+			if err := admitClosedReferenceFunctionModule(candidate, false); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("nearby mixed reference carrier shape was admitted", err)
+			}
+		})
+	}
+
+	wireMutation := bytes.Clone(source)
+	wireMutation[len(wireMutation)-2] = 1
+	if admitPublicReferenceCallBoundaryWire(wireMutation) || AdmitProductionSource(wireMutation) == nil {
+		t.Fatal("nearby mixed reference carrier wire inherited admission")
+	}
+
+	// The candidate filter retains canonical wire provenance before invoking
+	// the bounded semantic decoder. A non-minimal section length and a hostile
+	// type count must both fail without reaching allocation-heavy decoding.
+	noncanonical := append([]byte(nil), source[:10]...)
+	noncanonical[9] |= 0x80
+	noncanonical = append(noncanonical, 0)
+	noncanonical = append(noncanonical, source[10:]...)
+	if admitPublicReferenceCallBoundaryWire(noncanonical) || AdmitProductionSource(noncanonical) == nil {
+		t.Fatal("noncanonical public reference carrier wire inherited admission")
+	}
+	hostileCount := bytes.Clone(source)
+	hostileCount[10] = 0xff
+	if allocations := testing.AllocsPerRun(100, func() {
+		if publicReferenceCallBoundaryWireShape(hostileCount) {
+			t.Fatal("hostile public reference carrier type count inherited admission")
+		}
+	}); allocations != 0 {
+		t.Fatal("hostile public reference carrier candidate allocated", allocations)
 	}
 }
 

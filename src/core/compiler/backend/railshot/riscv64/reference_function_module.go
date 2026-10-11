@@ -9,22 +9,179 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-var publicReferenceExternrefArgumentBoundaryWire = []byte{
-	0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-	0x01, 0x11, 0x03, 0x60, 0x01, 0x6f, 0x01, 0x7f,
-	0x60, 0x00, 0x01, 0x70, 0x60, 0x02, 0x6f, 0x63,
-	0x00, 0x01, 0x7f, 0x03, 0x04, 0x03, 0x00, 0x01,
-	0x02, 0x07, 0x17, 0x03, 0x06, 0x74, 0x61, 0x72,
-	0x67, 0x65, 0x74, 0x00, 0x00, 0x03, 0x67, 0x65,
-	0x74, 0x00, 0x01, 0x04, 0x63, 0x61, 0x6c, 0x6c,
-	0x00, 0x02, 0x09, 0x05, 0x01, 0x03, 0x00, 0x01,
-	0x00, 0x0a, 0x15, 0x03, 0x05, 0x00, 0x20, 0x00,
-	0xd1, 0x0b, 0x04, 0x00, 0xd2, 0x00, 0x0b, 0x08,
-	0x00, 0x20, 0x00, 0x20, 0x01, 0x14, 0x00, 0x0b,
+func admitPublicReferenceCallBoundaryWire(data []byte) bool {
+	if !publicReferenceCallBoundaryWireShape(data) {
+		return false
+	}
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	return err == nil && admitPublicReferenceCallBoundary(decoded.Module)
 }
 
-func admitPublicReferenceExternrefArgumentBoundaryWire(data []byte) bool {
-	return bytes.Equal(data, publicReferenceExternrefArgumentBoundaryWire)
+func publicReferenceCallBoundaryWireU32(data []byte, offset *int) (uint32, bool) {
+	start := *offset
+	var value uint32
+	for shift := uint(0); shift < 35 && *offset < len(data); shift += 7 {
+		b := data[*offset]
+		(*offset)++
+		if shift == 28 && b > 0x0f {
+			return 0, false
+		}
+		value |= uint32(b&0x7f) << shift
+		if b&0x80 == 0 {
+			canonicalBytes := 1
+			for rest := value; rest >= 0x80; rest >>= 7 {
+				canonicalBytes++
+			}
+			return value, *offset-start == canonicalBytes
+		}
+	}
+	return 0, false
+}
+
+func publicReferenceCallBoundaryWireType(data []byte, offset *int) (params, results []byte, ok bool) {
+	if *offset >= len(data) || data[*offset] != 0x60 {
+		return nil, nil, false
+	}
+	(*offset)++
+	readTypes := func() ([]byte, bool) {
+		n, valid := publicReferenceCallBoundaryWireU32(data, offset)
+		if !valid || n > 256 || uint64(*offset)+uint64(n) > uint64(len(data)) {
+			return nil, false
+		}
+		out := data[*offset : *offset+int(n)]
+		for _, typ := range out {
+			switch typ {
+			case 0x7f, 0x7e, 0x7d, 0x7c, 0x70, 0x6f:
+			default:
+				return nil, false
+			}
+		}
+		*offset += int(n)
+		return out, true
+	}
+	params, ok = readTypes()
+	if !ok {
+		return nil, nil, false
+	}
+	results, ok = readTypes()
+	return
+}
+
+// The semantic decoder intentionally runs only after this bounded canonical
+// candidate filter. Besides avoiding a second decode of ordinary
+// production modules, it retains wire provenance that the decoded Module
+// cannot represent: compact function types, canonical section/count/body
+// lengths, exact fixed directories, and the canonical public wrapper.
+func publicReferenceCallBoundaryWireShape(data []byte) bool {
+	if len(data) < 8 || !bytes.Equal(data[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) {
+		return false
+	}
+	offset := 8
+	var sections [5][]byte
+	for i, id := range []byte{1, 3, 7, 9, 10} {
+		if offset >= len(data) || data[offset] != id {
+			return false
+		}
+		offset++
+		n, ok := publicReferenceCallBoundaryWireU32(data, &offset)
+		if !ok || uint64(offset)+uint64(n) > uint64(len(data)) {
+			return false
+		}
+		sections[i] = data[offset : offset+int(n)]
+		offset += int(n)
+	}
+	if offset != len(data) || !bytes.Equal(sections[1], []byte{3, 0, 1, 2}) || !bytes.Equal(sections[2], []byte{3, 6, 't', 'a', 'r', 'g', 'e', 't', 0, 0, 3, 'g', 'e', 't', 0, 1, 4, 'c', 'a', 'l', 'l', 0, 2}) || !bytes.Equal(sections[3], []byte{1, 3, 0, 1, 0}) {
+		return false
+	}
+
+	typeOffset := 0
+	count, ok := publicReferenceCallBoundaryWireU32(sections[0], &typeOffset)
+	if !ok || count != 3 {
+		return false
+	}
+	targetParams, targetResults, ok := publicReferenceCallBoundaryWireType(sections[0], &typeOffset)
+	if !ok {
+		return false
+	}
+	producerParams, producerResults, ok := publicReferenceCallBoundaryWireType(sections[0], &typeOffset)
+	if !ok || len(producerParams) != 0 || !bytes.Equal(producerResults, []byte{0x70}) {
+		return false
+	}
+	if typeOffset >= len(sections[0]) || sections[0][typeOffset] != 0x60 {
+		return false
+	}
+	typeOffset++
+	callerParamCount, ok := publicReferenceCallBoundaryWireU32(sections[0], &typeOffset)
+	if !ok || callerParamCount != uint32(len(targetParams)+1) || typeOffset+len(targetParams)+2 > len(sections[0]) || !bytes.Equal(sections[0][typeOffset:typeOffset+len(targetParams)], targetParams) {
+		return false
+	}
+	typeOffset += len(targetParams)
+	if !bytes.Equal(sections[0][typeOffset:typeOffset+2], []byte{0x63, 0}) {
+		return false
+	}
+	typeOffset += 2
+	callerResultCount, ok := publicReferenceCallBoundaryWireU32(sections[0], &typeOffset)
+	if !ok || uint64(typeOffset)+uint64(callerResultCount) > uint64(len(sections[0])) {
+		return false
+	}
+	callerResults := sections[0][typeOffset : typeOffset+int(callerResultCount)]
+	typeOffset += int(callerResultCount)
+	sameResults := bytes.Equal(callerResults, targetResults)
+	referenceResult := bytes.Equal(callerResults, []byte{0x70})
+	referenceCarriers := false
+	for _, types := range [][]byte{targetParams, targetResults} {
+		for _, typ := range types {
+			referenceCarriers = referenceCarriers || typ == 0x70 || typ == 0x6f
+		}
+	}
+	if typeOffset != len(sections[0]) || !sameResults && !referenceResult || referenceCarriers && !sameResults {
+		return false
+	}
+
+	codeOffset := 0
+	codeCount, ok := publicReferenceCallBoundaryWireU32(sections[4], &codeOffset)
+	if !ok || codeCount != 3 {
+		return false
+	}
+	var bodies [3][]byte
+	for i := range bodies {
+		n, valid := publicReferenceCallBoundaryWireU32(sections[4], &codeOffset)
+		if !valid || n == 0 || uint64(codeOffset)+uint64(n) > uint64(len(sections[4])) {
+			return false
+		}
+		bodies[i] = sections[4][codeOffset : codeOffset+int(n)]
+		codeOffset += int(n)
+		if bodies[i][0] != 0 { // canonical zero local-declaration vector
+			return false
+		}
+	}
+	if codeOffset != len(sections[4]) || !bytes.Equal(bodies[1], []byte{0, 0xd2, 0, 0x0b}) {
+		return false
+	}
+	wrapper := []byte{0}
+	for i := range targetParams {
+		wrapper = append(wrapper, 0x20)
+		wrapper = appendPublicReferenceBoundaryU32(wrapper, uint32(i))
+	}
+	wrapper = append(wrapper, 0x20)
+	wrapper = appendPublicReferenceBoundaryU32(wrapper, uint32(len(targetParams)))
+	wrapper = append(wrapper, 0x14, 0)
+	if referenceResult && !sameResults {
+		for range targetResults {
+			wrapper = append(wrapper, 0x1a)
+		}
+		wrapper = append(wrapper, 0x20)
+		wrapper = appendPublicReferenceBoundaryU32(wrapper, uint32(len(targetParams)))
+	}
+	wrapper = append(wrapper, 0x0b)
+	if bytes.Equal(bodies[2], wrapper) {
+		return true
+	}
+	if referenceCarriers || !sameResults || len(wrapper) < 3 {
+		return false
+	}
+	wrapper[len(wrapper)-3] = 0x15 // canonical return_call_ref alternate
+	return bytes.Equal(bodies[2], wrapper)
 }
 
 // admitPublicReferenceCallBoundary is the first public owner-scoped call_ref
@@ -54,8 +211,8 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	producer := m.Types[1].SubTypes[0].Comp
 	caller := m.Types[2].SubTypes[0].Comp
 	indexedTarget := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
-	referenceArgument := publicReferenceArgumentTarget(&target)
-	if integerNumericSignature(&target, true) != nil && !referenceArgument || len(producer.Params) != 0 || len(producer.Results) != 1 || !wasm.EqualValType(producer.Results[0], wasm.FuncRef) || len(caller.Params) != len(target.Params)+1 || !wasm.EqualValType(caller.Params[len(target.Params)], indexedTarget) {
+	referenceCarriers := publicReferenceCarrierTarget(&target)
+	if integerNumericSignature(&target, true) != nil && !referenceCarriers || len(producer.Params) != 0 || len(producer.Results) != 1 || !wasm.EqualValType(producer.Results[0], wasm.FuncRef) || len(caller.Params) != len(target.Params)+1 || !wasm.EqualValType(caller.Params[len(target.Params)], indexedTarget) {
 		return false
 	}
 	for i := range target.Params {
@@ -68,7 +225,7 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 		numericResult = wasm.EqualValType(caller.Results[i], target.Results[i])
 	}
 	referenceResult := len(caller.Results) == 1 && wasm.EqualValType(caller.Results[0], wasm.FuncRef)
-	if !numericResult && !referenceResult || referenceArgument && !numericResult {
+	if !numericResult && !referenceResult || referenceCarriers && !numericResult {
 		return false
 	}
 	for i := range m.FuncTypes {
@@ -101,7 +258,7 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	if !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, callerBody) && (!numericResult || !bytes.Equal(m.Code[2].BodyBytes, tailBody)) {
 		return false
 	}
-	if referenceArgument && bytes.Equal(m.Code[2].BodyBytes, tailBody) {
+	if referenceCarriers && bytes.Equal(m.Code[2].BodyBytes, tailBody) {
 		return false
 	}
 	for i, name := range []string{"target", "get", "call"} {
@@ -113,11 +270,23 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	return true
 }
 
-func publicReferenceArgumentTarget(target *wasm.CompType) bool {
-	if target == nil || target.Kind != wasm.CompFunc || len(target.Params) != 1 || len(target.Results) != 1 || !wasm.EqualValType(target.Results[0], wasm.I32) {
+func publicReferenceCarrierTarget(target *wasm.CompType) bool {
+	if target == nil || target.Kind != wasm.CompFunc || len(target.Params) > 256 || len(target.Results) > 256 {
 		return false
 	}
-	return wasm.EqualValType(target.Params[0], wasm.FuncRef) || wasm.EqualValType(target.Params[0], wasm.ExternRef)
+	reference := false
+	for _, values := range [][]wasm.ValType{target.Params, target.Results} {
+		for _, typ := range values {
+			if scalarType(typ, true) {
+				continue
+			}
+			if !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef) {
+				return false
+			}
+			reference = true
+		}
+	}
+	return reference
 }
 
 func appendPublicReferenceBoundaryU32(dst []byte, value uint32) []byte {
@@ -172,7 +341,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		decodedSWAR:              vector,
 		declarationExtern:        !vector && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
 		declarationNonNullExtern: !vector && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
-		publicReferenceArguments: publicReferenceCallBoundary && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp),
+		publicReferenceCarriers:  publicReferenceCallBoundary && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp),
 	}
 	limit := 256
 	if vector {
@@ -270,7 +439,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
 	descriptorTarget := numericTarget
-	if publicReferenceCallBoundary && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp) {
+	if publicReferenceCallBoundary && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) {
 		descriptorTarget = func(index uint32) bool { return index == 0 || numericTarget(index) }
 	}
 	if len(m.Tables) != 0 && m.Tables[0].Init != nil {
@@ -435,7 +604,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 						return err
 					}
 				} else if err := integerNumericSignature(sig, true); err != nil {
-					if !publicReferenceCallBoundary || op != 0x14 || imm.Index != 0 || !publicReferenceArgumentTarget(sig) {
+					if !publicReferenceCallBoundary || op != 0x14 || imm.Index != 0 || !publicReferenceCarrierTarget(sig) {
 						return err
 					}
 				}

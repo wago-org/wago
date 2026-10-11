@@ -32,7 +32,7 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 	if c == nil || !c.nativeReferenceFunctionABI {
 		return false
 	}
-	if function == 0 && len(c.Funcs) != 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceArgumentSignature(c.Funcs[0]) {
+	if function == 0 && len(c.Funcs) != 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) {
 		return false
 	}
 	local := function - c.NumImports
@@ -76,11 +76,11 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 		}
 	}
 	target, producer, caller := c.Funcs[0], c.Funcs[1], c.Funcs[2]
-	referenceArgument := rv64PublicReferenceArgumentSignature(target)
-	if c.dynamicFuncrefEscape != referenceArgument {
+	referenceCarriers := rv64PublicReferenceCarrierSignature(target)
+	if c.dynamicFuncrefEscape != referenceCarriers {
 		return false
 	}
-	if !rv64PublicReferenceScalarSignature(target) && !referenceArgument || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != len(target.Params)+1 || caller.Params[len(target.Params)] != ValFuncRef {
+	if !rv64PublicReferenceScalarSignature(target) && !referenceCarriers || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != len(target.Params)+1 || caller.Params[len(target.Params)] != ValFuncRef {
 		return false
 	}
 	for i := range target.Params {
@@ -90,7 +90,7 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	}
 	numericResult := rv64PublicReferenceSameTypes(caller.Results, target.Results)
 	referenceResult := len(caller.Results) == 1 && caller.Results[0] == ValFuncRef
-	if !numericResult && !referenceResult || tail && !numericResult || referenceArgument && (!numericResult || tail) {
+	if !numericResult && !referenceResult || tail && !numericResult || referenceCarriers && (!numericResult || tail) {
 		return false
 	}
 	targetType, producerType, callerType := c.Types[0], c.Types[1], c.Types[2]
@@ -110,16 +110,6 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	}
 	if !rv64PublicReferenceScalarDescriptors(callerType.Params[:len(target.Params)], target.Params) {
 		return false
-	}
-	if referenceArgument {
-		argument := targetType.Params[0]
-		abstract := AbstractHeapFunc
-		if target.Params[0] == ValExternRef {
-			abstract = AbstractHeapExtern
-		}
-		if argument.Kind != ValueTypeReference || !argument.Ref.Nullable || argument.Ref.Exact || argument.Ref.Heap.Defined || argument.Ref.Heap.Abstract != abstract || callerType.Params[0] != argument {
-			return false
-		}
 	}
 	if numericResult {
 		if !rv64PublicReferenceScalarDescriptors(callerType.Results, target.Results) {
@@ -169,24 +159,31 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	return true
 }
 
-func rv64PublicReferenceArgumentSignature(sig FuncSig) bool {
-	return len(sig.Params) == 1 && (sig.Params[0] == ValFuncRef || sig.Params[0] == ValExternRef) && len(sig.Results) == 1 && sig.Results[0] == ValI32
+func rv64PublicReferenceCarrierSignature(sig FuncSig) bool {
+	if len(sig.Params) > 256 || len(sig.Results) > 256 {
+		return false
+	}
+	reference := false
+	for _, values := range [][]ValType{sig.Params, sig.Results} {
+		for _, typ := range values {
+			switch typ {
+			case ValI32, ValI64, ValF32, ValF64:
+			case ValFuncRef, ValExternRef:
+				reference = true
+			default:
+				return false
+			}
+		}
+	}
+	return reference
 }
 
-func rv64PublicReferenceArgumentTarget(c *Compiled, function int) bool {
-	if c == nil || function != 0 || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || len(c.Funcs) != 3 || len(c.Types) != 3 || !rv64PublicReferenceArgumentSignature(c.Funcs[0]) || !c.Funcs[0].HasTypeIndex || c.Funcs[0].TypeIndex != 0 {
+func rv64PublicReferenceCarrierTarget(c *Compiled, function int) bool {
+	if c == nil || function != 0 || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || len(c.Funcs) != 3 || len(c.Types) != 3 || !rv64PublicReferenceCarrierSignature(c.Funcs[0]) || !c.Funcs[0].HasTypeIndex || c.Funcs[0].TypeIndex != 0 {
 		return false
 	}
 	typ := c.Types[0]
-	if typ.Kind != CompositeTypeFunction || len(typ.Params) != 1 || len(typ.Results) != 1 || typ.Results[0].Kind != ValueTypeI32 {
-		return false
-	}
-	param := typ.Params[0]
-	abstract := AbstractHeapFunc
-	if c.Funcs[0].Params[0] == ValExternRef {
-		abstract = AbstractHeapExtern
-	}
-	return param.Kind == ValueTypeReference && param.Ref.Nullable && !param.Ref.Exact && !param.Ref.Heap.Defined && param.Ref.Heap.Abstract == abstract
+	return typ.Kind == CompositeTypeFunction && rv64PublicReferenceScalarDescriptors(typ.Params, c.Funcs[0].Params) && rv64PublicReferenceScalarDescriptors(typ.Results, c.Funcs[0].Results)
 }
 
 func rv64PublicReferenceU32Bytes(value uint32) uint32 {

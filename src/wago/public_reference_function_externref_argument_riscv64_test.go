@@ -22,7 +22,7 @@ func TestRV64PublicReferenceFunctionExternrefArgumentSourceArtifact(t *testing.T
 				t.Skip("precompiled artifact path only")
 			}
 			c := rv64NativeTailCompile(t, "reference-function-externref-argument", rv64PublicReferenceArgumentVectorModuleType(wasm.ExternRef), artifact)
-			if !rv64PublicReferenceCallBoundary(c) || !rv64PublicReferenceArgumentTarget(c, 0) || c.Funcs[0].Params[0] != ValExternRef || rv64NativeTailModule(c) != nil {
+			if !rv64PublicReferenceCallBoundary(c) || !rv64PublicReferenceCarrierTarget(c, 0) || c.Funcs[0].Params[0] != ValExternRef || rv64NativeTailModule(c) != nil {
 				t.Fatal("public externref call argument metadata")
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
