@@ -17,6 +17,7 @@ import (
 
 const rv64I31RefEqPilotHex = "0061736d01000000018a808080000260000060027f7f017f038380808000020001048480808000016d0005078d808080000204696e6974000002657100010abc8080800002a680808000004100d06d26004101d06c260041024107fb1c260041034107fb1c260041044108fb1c26000b8b80808000002000250020012500d30b"
 const rv64OfficialObjectRefEqHex = "0061736d0100000001af808080000950005f0050005f017f005e78005001005f005001005f005001015f017f005001015f017f0060000060027f7f017f038380808000020708048480808000016d0014078d808080000204696e6974000002657100010adc8080800002c680808000004100d06d26004101d06c260041024107fb1c260041034107fb1c260041044108fb1c26004105fb010026004106fb0100260041074100fb0702260041084100fb070226000b8b80808000002000250020012500d30b"
+const rv64GCStructGetHex = "0061736d01000000018980808000025f017f016000017f0382808080000101078780808000010367657400000a8f8080800001898080800000fb0100fb0200000b"
 
 func rv64I31RefEqPilotBytes(t testing.TB) []byte {
 	t.Helper()
@@ -202,5 +203,66 @@ func TestRV64OfficialGCRefEqAllocationHelperImage(t *testing.T) {
 	}
 	if image == nil || len(image.Code) == 0 || len(image.Entry) != 2 || image.Entry[0] != 0 || image.Entry[1] <= image.Entry[0] {
 		t.Fatal("allocating ref.eq helper image metadata", image)
+	}
+}
+
+func TestRV64GCStructGetHelperImage(t *testing.T) {
+	source, err := hex.DecodeString(rv64GCStructGetHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCStructGetWire(source) || !AdmitGCStructGetSource(source) || !admitRV64GCStructGet(m) {
+		t.Fatal("gc struct.get identity rejected")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 3, GCStructGetSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	}
+	withoutWire := opts
+	withoutWire.GCStructGetSource = false
+	if image, err := CompileModuleWith(m, withoutWire); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("gc struct.get escaped exact wire provenance", err)
+	}
+	for name, mutate := range map[string]func(*CompileOptions){
+		"missing-descriptors": func(candidate *CompileOptions) { candidate.Codegen.Module.GCTypeDescs = nil },
+		"wrong-descriptor": func(candidate *CompileOptions) {
+			candidate.Codegen.Module.GCTypeDescs[0].Size++
+		},
+		"missing-layouts": func(candidate *CompileOptions) { candidate.Codegen.Module.GCTypeLayouts = nil },
+		"wrong-layout": func(candidate *CompileOptions) {
+			candidate.Codegen.Module.GCTypeLayouts[0].PointerFree = !candidate.Codegen.Module.GCTypeLayouts[0].PointerFree
+		},
+		"frame-roots": func(candidate *CompileOptions) {
+			candidate.GCFrameRoots = shared.NewGCModuleFrameRootPlan(len(m.Code))
+		},
+		"array-helper":  func(candidate *CompileOptions) { candidate.GCArrayHelpers = true },
+		"slot-capacity": func(candidate *CompileOptions) { candidate.SyncHostSlots = 2 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := opts
+			candidate.Codegen.Module.GCTypeDescs = slices.Clone(opts.Codegen.Module.GCTypeDescs)
+			candidate.Codegen.Module.GCTypeLayouts = slices.Clone(opts.Codegen.Module.GCTypeLayouts)
+			mutate(&candidate)
+			if image, err := CompileModuleWith(m, candidate); image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("gc struct.get escaped exact helper/collector metadata", err)
+			}
+		})
+	}
+	image, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCode := [sha256.Size]byte{0x54, 0xa4, 0xd5, 0x21, 0x52, 0xa3, 0x42, 0x28, 0xf5, 0x08, 0x8d, 0xc4, 0x62, 0xea, 0x05, 0x47, 0x60, 0xfc, 0x3b, 0xd5, 0x92, 0x4c, 0x0a, 0xda, 0x6c, 0x43, 0xb7, 0x62, 0xc0, 0xd5, 0x11, 0x6d}
+	if image == nil || len(image.Code) != 1244 || sha256.Sum256(image.Code) != wantCode || len(image.Entry) != 1 || image.Entry[0] != 0 || !slices.Equal(image.Entry, image.InternalEntry) {
+		t.Fatal("gc struct.get helper image metadata", image)
 	}
 }

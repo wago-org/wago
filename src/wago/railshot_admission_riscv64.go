@@ -78,8 +78,12 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
 	exactGCRefEq := rv64OfficialGCRefEq(c)
+	exactGCStructGet := rv64GCStructGet(c)
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")
+	}
+	if rv64GCStructGetExecutionCode(c) && !exactGCStructGet {
+		return reject("allocating gc/struct.get image requires its exact retained metadata")
 	}
 	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
 		return reject("i31 execution image requires its exact retained metadata")
@@ -190,7 +194,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCRefEq && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCRefEq && !exactGCStructGet && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -201,7 +205,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCRefEq {
+	if exactGCRefEq || exactGCStructGet {
 		qualifiedFeatures |= CoreFeatureGC
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
@@ -299,7 +303,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 && !exactGCRefEq {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}

@@ -20,6 +20,7 @@ type directCall struct {
 const (
 	gcStructDispatchBit  uint32 = 1 << 30
 	gcStructAllocDefault uint32 = 1
+	gcStructGet          uint32 = 2
 	gcArrayAllocDefault  uint32 = 16
 )
 
@@ -95,6 +96,25 @@ func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool
 	}
 	f.a.Ld(enc.X5, result, 0)
 	f.Store(f.SpillOffset(base), 5, true)
+}
+
+// gcStructGetField0 calls the exact numeric field getter used by the bounded
+// struct.new_default/struct.get checkpoint.
+func (f *integerEmitter) gcStructGetField0(base int) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0) // object reference
+	f.a.Constant32(enc.X5, 0)
+	f.a.Sd(enc.X5, enc.X10, 8)  // type index
+	f.a.Sd(enc.X5, enc.X10, 16) // field index
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructGet})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Lwu(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, false)
 }
 
 // Resolve the current activation's dynamic host target before any call-arena

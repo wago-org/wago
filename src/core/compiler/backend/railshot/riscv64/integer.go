@@ -1502,8 +1502,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			switch imm.Kind {
 			case wasm.InstrStructNewDefault:
-				if !state.gcRefEq || imm.Index != 0 {
-					return integerSummary{}, unsupported("struct.new_default outside exact gc ref.eq profile")
+				if (!state.gcRefEq && !state.gcStructGet) || imm.Index != 0 {
+					return integerSummary{}, unsupported("struct.new_default outside exact GC profile")
 				}
 				callCount++
 				if callCount > maxDirectCalls {
@@ -1513,6 +1513,23 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcDefaultAllocation(gcStructAllocDefault, h, false)
 				}
 				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			case wasm.InstrStructGet:
+				if !state.gcStructGet || imm.Index != 0 || imm.Index2 != 0 {
+					return integerSummary{}, unsupported("struct.get outside exact gc struct.get profile")
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcStructGetField0(h)
+				}
+				if err = push(false); err != nil {
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewDefault:

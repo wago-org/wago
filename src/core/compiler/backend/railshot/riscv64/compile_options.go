@@ -72,9 +72,12 @@ type CompileOptions struct {
 	// gc/ref_eq checkpoint. It is useful only when the decoded module, helper
 	// options and collector metadata independently match that product.
 	GCRefEqSource bool
-	production    bool
-	publicStarts  bool
-	hostImports   bool
+	// GCStructGetSource is the exact-wire witness for the bounded allocating
+	// struct.new_default/struct.get checkpoint.
+	GCStructGetSource bool
+	production        bool
+	publicStarts      bool
+	hostImports       bool
 	// Selected by bounded closed-module admission, or private decoded tests.
 	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool
@@ -94,6 +97,7 @@ type CompileOptions struct {
 	// qualified non-allocating i31 module.
 	i31Core      bool
 	gcRefEq      bool
+	gcStructGet  bool
 	tailPlans    *[]tailImportPlan
 	tailSiteBase uint32
 }
