@@ -91,6 +91,10 @@ func railshotGCRefTestTableSource(data []byte) bool {
 	return railshot.AdmitGCRefTestTableSource(data)
 }
 
+func railshotGCRefTestConcreteSource(data []byte) bool {
+	return railshot.AdmitGCRefTestConcreteSource(data)
+}
+
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
 
 func railshotGCStructMutationSource(data []byte) bool {
@@ -157,6 +161,10 @@ func railshotConfigureGCRefEq(exactSource bool, opts *railshotCompileOptions) {
 
 func railshotConfigureGCRefTestTable(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCRefTestTableSource = exactSource
+}
+
+func railshotConfigureGCRefTestConcrete(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCRefTestConcreteSource = exactSource
 }
 
 func railshotConfigureGCStructGet(exactSource bool, opts *railshotCompileOptions) {

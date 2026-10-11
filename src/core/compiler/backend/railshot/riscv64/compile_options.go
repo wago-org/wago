@@ -75,6 +75,9 @@ type CompileOptions struct {
 	// GCRefTestTableSource is the exact-wire witness for the bounded rooted
 	// object-table allocation and indexed ref.test checkpoint.
 	GCRefTestTableSource bool
+	// GCRefTestConcreteSource is the exact-wire witness for the official
+	// concrete struct-subtyping ref.test checkpoint.
+	GCRefTestConcreteSource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -149,6 +152,7 @@ type CompileOptions struct {
 	i31Core              bool
 	gcRefEq              bool
 	gcRefTestTable       bool
+	gcRefTestConcrete    bool
 	gcStructGet          bool
 	gcStructMutation     bool
 	gcStructNull         bool

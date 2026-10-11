@@ -58,8 +58,11 @@ type internalReferenceTypes struct {
 	// gcRefTestTable admits only the three indexed struct heaps in the pinned
 	// rooted object-table ref.test product.
 	gcRefTestTable bool
-	gcStructPacked bool
-	gcStructBasic  bool
+	// gcRefTestConcrete admits the eight indexed struct heaps in the official
+	// concrete subtyping ref.test product.
+	gcRefTestConcrete bool
+	gcStructPacked    bool
+	gcStructBasic     bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -133,6 +136,9 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return true
 	}
 	if types.gcRefTestTable && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index <= 2 {
+		return true
+	}
+	if types.gcRefTestConcrete && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index < 8) {
 		return true
 	}
 	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference || types.gcArrayInitElem || types.gcArrayInitData || types.gcArrayFill || types.gcArrayCopy {

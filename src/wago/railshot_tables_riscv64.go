@@ -2202,7 +2202,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	}
 	qualifiedTable64 := rv64QualifiedTable64(c)
 	qualifiedMultiTable := rv64MixedTable64ActiveElement(c) || rv64MixedTable64DualActiveElements(c) || rv64MixedTable64DualActiveVectors(c) || rv64StateOnlyTwoTable32(c) || rv64OwnedTwoTable32Size(c) || rv64OwnedTwoTable32GetSet(c) || rv64OwnedTwoTable32Grow(c) || rv64OwnedTwoTable32Fill(c) || rv64OwnedTwoTable32Copy(c) || rv64OwnedTwoTable32InitDrop(c) || rv64OwnedTwoTable32Indirect(c) || rv64OwnedTwoTable64Size(c) || rv64MixedTable64Size(c) || rv64MixedTable64GetSet(c) || rv64MixedTable64Grow(c) || rv64MixedTable64Fill(c) || rv64MixedTable64Copy(c) || rv64MixedTable64CrossCopy(c) || rv64MixedTable64InitDrop(c) || rv64MixedTable64Indirect(c) || rv64MixedTable64ActiveIndirect(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTwoTable64InitDrop(c) || rv64OwnedTwoTable64Indirect(c)
-	qualifiedGCRefTable := rv64GCRefTestTable(c)
+	qualifiedGCRefTable := rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c)
 	if c.tableCount() != 1 && !qualifiedMultiTable || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 && !qualifiedTable64 || (c.TableType != 0 && c.TableType != ValFuncRef && !qualifiedGCRefTable) {
 		return fmt.Errorf("one framed nullable funcref table32 or exact qualified table64/multi-table profile required")
 	}
