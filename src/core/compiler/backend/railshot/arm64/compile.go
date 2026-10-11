@@ -458,7 +458,7 @@ type fn struct {
 }
 
 func (f *fn) opt(option optimization.Option) bool {
-	return f.policy.EnabledResolvedOption(option)
+	return f.policy.Selection.EnabledResolvedOption(option)
 }
 
 // transient is the per-function workspace handed back to module scratch after
@@ -1749,7 +1749,14 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	for i := range m.Code {
 		totalBody += len(m.Code[i].BodyBytes)
 	}
-	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 32, 28, 768<<10)
+	// Large images amortize adapters and expand less per body byte. Keep the
+	// conservative estimate for smaller modules; CodeBuffer still grows if an
+	// unusually dense large body exceeds this reservation.
+	largeExpansion := 28
+	if totalBody >= 8<<20 {
+		largeExpansion = 24
+	}
+	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 32, largeExpansion, 768<<10)
 	moduleTypes := buildModuleTypeCache(m, totalBody)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	// A one-worker join pays for a second arena and copy. It wins for large bodies,
@@ -3099,7 +3106,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.storeForwardOK = policy.EnabledOption(optStoreForward) && len(c.BodyBytes) <= 256 && nLocals <= 8
 	f.syncHostCalls = syncHostCalls
-	f.dynamicHostFast = f.opt(optDirectGoHostImport) && syncHostCalls && !f.moduleEH && shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
+	// This proof is consumed only by direct imported calls. A leaf or a body
+	// touching memory cannot use it; reject those from the existing hints before
+	// allocating a CFG for every small function in a large module.
+	f.dynamicHostFast = f.opt(optDirectGoHostImport) && syncHostCalls && !f.moduleEH && hints.flags.has(hintHasCall) && !hints.flags.has(hintTouchesMemory) && m.ImportedFuncCount() != 0 && shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
 	for _, typ := range ft.Params {
 		if typ.Kind() != wasm.ValNum || mtOf(typ) == mtV128 {
 			f.dynamicHostFast = false
@@ -3159,9 +3169,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// bounded scan proves that its body never reads, writes, or grows memory.
 	// A native-host candidate has a register entry, but its runtime admission
 	// still requires the module-wide work proof and a proven native import.
-	nativeHostDirect := policy.EnabledOption(optNativeLeafHost) && policy.EnabledOption(optPreparedBoundedEntry) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
-	directPrepared := policy.EnabledOption(optPreparedDirectEntry) && policy.EnabledOption(optRegABI) && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && !touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) &&
-		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
+	directPrepared := policy.EnabledOption(optPreparedDirectEntry) && policy.EnabledOption(optRegABI) && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && !touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) && len(c.BodyBytes) <= 96 && nLocals <= 8 &&
+		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) ||
+			policy.EnabledOption(optNativeLeafHost) && policy.EnabledOption(optPreparedBoundedEntry) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1))
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
 	// runs its linear-memory ops in THIS caller's frame, so fold it into
