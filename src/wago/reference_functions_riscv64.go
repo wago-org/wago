@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -53,16 +54,20 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	return rv64PublicReferenceCallBoundaryWithPlan(c, true)
 }
 
+func rv64PublicHostReferenceBoundary(c *Compiled) bool {
+	return rv64PublicHostReferenceBoundaryWithPlan(c, true)
+}
+
 // rv64PublicHostReferenceBoundary recognizes the retained form of the exact
 // one-import/one-wrapper host reference bridge admitted by the RV64 frontend.
 // Source bodies are not retained in artifacts, so every remaining structural,
 // type, feature, resource and binding field is rechecked here before code can
 // become executable.
-func rv64PublicHostReferenceBoundary(c *Compiled) bool {
+func rv64PublicHostReferenceBoundaryWithPlan(c *Compiled, requirePlan bool) bool {
 	if c == nil || !c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI {
 		return false
 	}
-	if c.NumImports != 1 || !c.dynamicImports || len(c.Imports) != 1 || c.Imports[0] != "env.target" || len(c.importFuncSigs) != 1 || len(c.Funcs) != 1 || len(c.Types) != 1 || len(c.ValueTypes) != 0 || len(c.Exports) != 1 || c.Exports["call"] != 1 || c.tableCount() != 0 || len(c.extraTables) != 0 || len(c.tableExports) != 0 || !c.hasTableExportMetadata || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.Names != nil || len(c.customInstructions) != 0 {
+	if c.NumImports != 1 || !c.dynamicImports || len(c.Imports) != 1 || c.Imports[0] != "env.target" || len(c.importFuncSigs) != 1 || len(c.Funcs) != 1 || len(c.Types) != 1 || len(c.ValueTypes) != 0 || len(c.Exports) != 1 || c.Exports["call"] != 1 || c.tableCount() != 0 || len(c.extraTables) != 0 || len(c.tableExports) != 0 || requirePlan && !c.hasTableExportMetadata || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.Names != nil || len(c.customInstructions) != 0 {
 		return false
 	}
 	if c.HasTable || c.TableValueTypeIndex != 0 || c.TableHasValueType || c.TableSize != 0 || c.TableMax != 0 || c.HasTableInitFunc || c.TableHasMax || c.TableAddr64 || c.TableInitFunc != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
@@ -71,32 +76,57 @@ func rv64PublicHostReferenceBoundary(c *Compiled) bool {
 	if c.HasMemory || c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || requirePlan && !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
 		return false
 	}
+	tail := c.requiredFeatures.IsEnabled(CoreFeatureTailCall)
 	imported, wrapper := c.importFuncSigs[0], c.Funcs[0]
-	if len(imported.Params) > coreruntime.MaxHostArity || len(imported.Results) > coreruntime.MaxHostArity || !rv64PublicReferenceCarrierSignature(imported) || !rv64PublicReferenceSameTypes(imported.Params, wrapper.Params) || !rv64PublicReferenceSameTypes(imported.Results, wrapper.Results) || !imported.HasTypeIndex || imported.TypeIndex != 0 || !wrapper.HasTypeIndex || wrapper.TypeIndex != 0 || imported.unsafeCrossTail || wrapper.unsafeCrossTail {
+	if len(imported.Params) > coreruntime.MaxHostArity || len(imported.Results) > coreruntime.MaxHostArity || !rv64PublicReferenceCarrierSignature(imported) || !rv64PublicReferenceSameTypes(imported.Params, wrapper.Params) || !rv64PublicReferenceSameTypes(imported.Results, wrapper.Results) || !imported.HasTypeIndex || imported.TypeIndex != 0 || !wrapper.HasTypeIndex || wrapper.TypeIndex != 0 || imported.unsafeCrossTail && !tail || wrapper.unsafeCrossTail {
 		return false
 	}
 	typ := c.Types[0]
 	if typ.RecGroup != 0 || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.Describes != 0 || typ.HasDescriptor || typ.Descriptor != 0 || typ.Kind != CompositeTypeFunction || len(typ.Fields) != 0 || typ.Array != (FieldTypeDescriptor{}) || !rv64PublicReferenceScalarDescriptors(typ.Params, imported.Params) || !rv64PublicReferenceScalarDescriptors(typ.Results, imported.Results) {
 		return false
 	}
-	if len(c.GCTypeDescs) != 1 {
-		return false
-	}
-	desc := c.GCTypeDescs[0]
-	if desc.ID != 0 || desc.Kind != corergc.KindFunc || len(desc.Fields) != 0 || desc.Elem != 0 || desc.Size != 0 || desc.ElemSize != 0 || desc.Align != 0 || desc.HasRefs || !desc.Final || desc.Super != 0 || desc.HasSuper {
-		return false
+	if requirePlan {
+		if len(c.GCTypeDescs) != 1 {
+			return false
+		}
+		desc := c.GCTypeDescs[0]
+		if desc.ID != 0 || desc.Kind != corergc.KindFunc || len(desc.Fields) != 0 || desc.Elem != 0 || desc.Size != 0 || desc.ElemSize != 0 || desc.Align != 0 || desc.HasRefs || !desc.Final || desc.Super != 0 || desc.HasSuper {
+			return false
+		}
 	}
 	wantFeatures := CoreFeatureReferenceTypes
 	if len(imported.Results) > 1 {
 		wantFeatures |= CoreFeatureMultiValue
 	}
-	if c.requiredFeatures != wantFeatures || c.requiredAMD64Features != 0 || c.dynamicFuncrefEscape || c.needsFuncRefDescs() || !c.needsFuncRefContextHeader || len(c.FuncTypeID) != 2 || c.FuncTypeID[0] == 0 || c.FuncTypeID[0] != c.FuncTypeID[1] || len(c.Entry) != 1 || len(c.InternalEntry) != 1 || c.Entry[0] != c.InternalEntry[0] || c.Entry[0] < 0 || c.Entry[0]&15 != 0 || len(c.code) == 0 {
+	if tail {
+		wantFeatures |= CoreFeatureTailCall
+	}
+	if c.requiredFeatures != wantFeatures || c.requiredAMD64Features != 0 || c.dynamicFuncrefEscape || c.needsFuncRefDescs() || requirePlan && !c.needsFuncRefContextHeader || len(c.FuncTypeID) != 2 || c.FuncTypeID[0] == 0 || c.FuncTypeID[0] != c.FuncTypeID[1] || len(c.Entry) != 1 || len(c.InternalEntry) != 1 || c.Entry[0] != c.InternalEntry[0] || c.Entry[0] < 0 || c.Entry[0]&15 != 0 || len(c.code) == 0 {
 		return false
 	}
-	return true
+	m := rv64NativeTailModule(c)
+	if tail {
+		if !requirePlan {
+			return true
+		}
+		return m != nil && len(m.Plans) == 1 && rv64PublicHostReferenceTailPlan(c, m.Plans[0])
+	}
+	return m == nil
+}
+
+func rv64PublicHostReferenceTailPlan(c *Compiled, p encoder.NativeTailPlan) bool {
+	if p.Kind != encoder.NativeTailDirectImport || p.TypeIndex != 0 || p.FunctionIndex != 1 || p.ImportIndex != 0 || p.ReferenceBase != 0 || !rv64PublicHostReferenceBoundaryWithPlan(c, false) || !c.requiredFeatures.IsEnabled(CoreFeatureTailCall) {
+		return false
+	}
+	wantPC := uint32(1)
+	for i := range c.Funcs[0].Params {
+		wantPC += 1 + rv64PublicReferenceU32Bytes(uint32(i))
+	}
+	n := len(c.Funcs[0].Params)
+	return p.SourcePC == wantPC && p.FrameBytes == 48+16*n && p.SourceBase == 48+8*n && p.SourceStride == 8
 }
 
 // Artifact decoding validates declared reference carriers before it reaches

@@ -7,16 +7,21 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func publicHostReferenceBoundarySource(types []wasm.ValType) []byte {
+func publicHostReferenceBoundarySource(types []wasm.ValType, tail ...bool) []byte {
 	body := make([]byte, 0, 2*len(types)+3)
 	for i := range types {
 		body = append(body, 0x20)
 		body = appendPublicReferenceBoundaryU32(body, uint32(i))
 	}
-	body = append(body, 0x10, 0, 0x0b)
+	opcode := byte(0x10)
+	if len(tail) != 0 && tail[0] {
+		opcode = 0x12
+	}
+	body = append(body, opcode, 0, 0x0b)
 	im := append(append(wasmtest.Name("env"), wasmtest.Name("target")...), 0, 0)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
@@ -28,7 +33,8 @@ func publicHostReferenceBoundarySource(types []wasm.ValType) []byte {
 }
 
 func TestPublicHostReferenceBoundaryAdmission(t *testing.T) {
-	source := publicHostReferenceBoundarySource([]wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64})
+	types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}
+	source := publicHostReferenceBoundarySource(types)
 	if !admitPublicHostReferenceBoundaryWire(source) || AdmitProductionSource(source) != nil {
 		t.Fatal("canonical host reference source was not admitted")
 	}
@@ -50,6 +56,63 @@ func TestPublicHostReferenceBoundaryAdmission(t *testing.T) {
 	}
 	if image == nil || !image.NativeReferenceFunctions || image.NativeReferenceCalls || image.NativeReferenceControl || len(image.Code) == 0 || len(image.Entry) != 1 {
 		t.Fatal("host reference compiler witnesses", image)
+	}
+	tailSource := publicHostReferenceBoundarySource(types, true)
+	if !admitPublicHostReferenceBoundaryWire(tailSource) {
+		t.Fatal("canonical host reference tail source was not admitted")
+	}
+	tailModule, err := wasm.DecodeModule(tailSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tailOpts := closedReferenceProductionOptions(true, false)
+	tailOpts.ImportBindings = hostImportBindings(1)
+	tailImage, err := CompileModuleWith(tailModule, tailOpts)
+	if err != nil {
+		t.Fatal("host reference tail lowering", err)
+	}
+	if tailImage == nil || tailImage.NativeTail == nil || len(tailImage.NativeTail.Plans) != 1 {
+		t.Fatal("host reference tail compiler plan", tailImage)
+	}
+	p := tailImage.NativeTail.Plans[0]
+	if p.Kind != enc.NativeTailDirectImport || p.TypeIndex != 0 || p.FunctionIndex != 1 || p.ImportIndex != 0 || p.SourcePC != 13 || p.FrameBytes != 144 || p.SourceBase != 96 || p.SourceStride != 8 || p.ReferenceBase != 0 {
+		t.Fatal("host reference tail compiler plan fields", p)
+	}
+}
+
+func TestPublicHostReferenceTailPlanLayouts(t *testing.T) {
+	wide := make([]wasm.ValType, 64)
+	wide[0] = wasm.FuncRef
+	for i := 1; i < len(wide); i++ {
+		wide[i] = wasm.I32
+	}
+	for _, tc := range []struct {
+		name                  string
+		types                 []wasm.ValType
+		pc, frame, sourceBase int
+	}{
+		{"one", []wasm.ValType{wasm.ExternRef}, 3, 64, 56},
+		{"max-host-arity", wide, 129, 1072, 560},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(publicHostReferenceBoundarySource(tc.types, true))
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts := closedReferenceProductionOptions(true, false)
+			opts.ImportBindings = hostImportBindings(1)
+			image, err := CompileModuleWith(m, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if image == nil || image.NativeTail == nil || len(image.NativeTail.Plans) != 1 {
+				t.Fatal("host reference tail plan", image)
+			}
+			p := image.NativeTail.Plans[0]
+			if p.Kind != enc.NativeTailDirectImport || p.TypeIndex != 0 || p.FunctionIndex != 1 || p.ImportIndex != 0 || p.SourcePC != uint32(tc.pc) || p.FrameBytes != tc.frame || p.SourceBase != tc.sourceBase || p.SourceStride != 8 || p.ReferenceBase != 0 {
+				t.Fatal("host reference tail layout", p)
+			}
+		})
 	}
 }
 

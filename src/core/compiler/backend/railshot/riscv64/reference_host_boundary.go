@@ -78,8 +78,9 @@ func publicHostReferenceBoundaryWireShape(data []byte) bool {
 		want = append(want, 0x20)
 		want = appendPublicReferenceBoundaryU32(want, uint32(i))
 	}
-	want = append(want, 0x10, 0, 0x0b)
-	return bytes.Equal(body, want)
+	ordinary := append(slices.Clone(want), 0x10, 0, 0x0b)
+	tail := append(want, 0x12, 0, 0x0b)
+	return bytes.Equal(body, ordinary) || bytes.Equal(body, tail)
 }
 
 // admitPublicHostReferenceBoundary is deliberately a single import and a
@@ -112,8 +113,9 @@ func admitPublicHostReferenceBoundary(m *wasm.Module) bool {
 		want = append(want, 0x20)
 		want = appendPublicReferenceBoundaryU32(want, uint32(i))
 	}
-	want = append(want, 0x10, 0, 0x0b)
-	if !slices.Equal(fn.BodyBytes, want) {
+	ordinary := append(slices.Clone(want), 0x10, 0, 0x0b)
+	tail := append(want, 0x12, 0, 0x0b)
+	if !slices.Equal(fn.BodyBytes, ordinary) && !slices.Equal(fn.BodyBytes, tail) {
 		return false
 	}
 	ex := m.Exports[0]

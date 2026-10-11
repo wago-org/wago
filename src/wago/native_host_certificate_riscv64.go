@@ -95,7 +95,7 @@ func rv64HostTailAttached(in *Instance, index int) (a rv64HostTailAttachment, er
 		return a, rv64TailGenerationError("host attachment extent/transport")
 	}
 	sig := in.c.importFuncSigs[index]
-	if err := rv64ScalarHostSignature(sig); err != nil {
+	if err := rv64ScalarHostSignature(sig); err != nil && !rv64PublicHostReferenceBoundary(in.c) {
 		return a, err
 	}
 	entry := in.importReferenceEntries()[index]

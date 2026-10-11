@@ -48,12 +48,16 @@ func rv64PublicReferenceCarrierModule(tail bool) []byte {
 	)
 }
 
-func rv64AssertPublicReferenceCarrierStateClear(t *testing.T, in *Instance) {
+func rv64AssertPublicReferenceCarrierStateClear(t *testing.T, in *Instance, retainedCapability ...uint64) {
 	t.Helper()
 	rv64AssertPublicReferenceArgumentScopesClear(t, in)
 	state := &in.pluginState.Load().railshotInvocation
-	if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != 0 {
-		t.Fatal("public reference carrier call retained invocation state", state.tailGenerationBudget.count, state.definedTailOwner, rv64EntryCapability(in))
+	wantCapability := uint64(0)
+	if len(retainedCapability) != 0 {
+		wantCapability = retainedCapability[0]
+	}
+	if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != wantCapability {
+		t.Fatal("public reference carrier call retained invocation state", state.tailGenerationBudget.count, state.definedTailOwner, rv64EntryCapability(in), wantCapability)
 	}
 }
 

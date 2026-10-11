@@ -26,7 +26,7 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		for i := 0; i < c.NumImports; i++ {
 			target, native := imports[c.functionImportBindingKey(i)].(*InstanceExport)
 			if !native {
-				if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
+				if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil && !rv64PublicHostReferenceBoundary(c) {
 					return err
 				}
 				// Ordinary admission authenticates the callback or owned handle
@@ -63,7 +63,7 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		}
 		target, ok := imports[c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
 		if !ok {
-			if err := rv64ScalarHostSignature(c.importFuncSigs[p.ImportIndex]); err != nil {
+			if err := rv64ScalarHostSignature(c.importFuncSigs[p.ImportIndex]); err != nil && !rv64PublicHostReferenceBoundary(c) {
 				return err
 			}
 			// The ordinary import admission below authenticates callback/owned
