@@ -36,6 +36,11 @@ have genuine framed RV64 lowering, exact source/artifact admission, collector
 lifecycle coverage without table state, and compiler-free reload. Native
 cache/performance qualification and broader non-official branch-cast shapes
 remain pending.
+The first official `gc/type-subtyping` module now has exact source and
+compiler-free artifact admission for its seven declaration-only array types.
+Retained type/descriptor metadata is validated exactly, while instantiation
+allocates neither executable memory nor a collector. Recursive execution and
+cross-instance subtype boundaries remain closed for later checkpoints.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

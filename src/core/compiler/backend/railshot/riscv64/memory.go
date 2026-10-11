@@ -208,6 +208,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 }
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
+	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m)
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
 	gcBrOnCastNullability := admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m)
@@ -432,7 +433,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+		if (s.ownedTable || s.importReferences) && !((gcTypeSubtypingDeclarations || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
 			var ok bool
 			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
 			if !ok {

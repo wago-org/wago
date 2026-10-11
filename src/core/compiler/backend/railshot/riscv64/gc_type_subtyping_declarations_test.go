@@ -1,0 +1,62 @@
+//go:build linux && !tinygo
+
+package riscv64
+
+import (
+	"bytes"
+	"errors"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/codegen"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+func TestRV64GCTypeSubtypingDeclarationsAdmissionIsExact(t *testing.T) {
+	data := bytes.Clone(rv64GCTypeSubtypingDeclarationsWire)
+	if len(data) != 54 || !AdmitGCTypeSubtypingDeclarationsSource(data) {
+		t.Fatal("pinned declaration-only type-subtyping source was not admitted")
+	}
+	m, err := wasm.DecodeModule(data)
+	if err != nil || !admitRV64GCTypeSubtypingDeclarations(m) {
+		t.Fatal("pinned declaration-only type-subtyping module was not recognized", err)
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := CompileOptions{
+		DeferCodeMapping:                  true,
+		Interruptible:                     true,
+		InvocationContext:                 true,
+		ForeignTableCalls:                 true,
+		GCTypeSubtypingDeclarationsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{
+			GCTypeDescs:   metadata.Descs,
+			GCTypeLayouts: metadata.Layouts,
+		}},
+	}
+	compiled, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) != 0 || len(compiled.Entry) != 0 || len(compiled.InternalEntry) != 0 || compiled.CodeImage != nil {
+		t.Fatalf("declaration-only product emitted executable state: code=%d entries=%v/%v image=%v", len(compiled.Code), compiled.Entry, compiled.InternalEntry, compiled.CodeImage)
+	}
+	withoutWire := opts
+	withoutWire.GCTypeSubtypingDeclarationsSource = false
+	if _, err = CompileModuleWith(m, withoutWire); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("decoded product compiled without exact wire provenance", err)
+	}
+	for i := range data {
+		mutated := bytes.Clone(data)
+		mutated[i] ^= 1
+		if AdmitGCTypeSubtypingDeclarationsSource(mutated) {
+			t.Fatalf("wire mutation %d remained admitted", i)
+		}
+	}
+	m.Types[0].SubTypes[0].Final = !m.Types[0].SubTypes[0].Final
+	if admitRV64GCTypeSubtypingDeclarations(m) {
+		t.Fatal("decoded type mutation remained admitted")
+	}
+}

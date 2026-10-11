@@ -60,6 +60,12 @@ artifact contracts. All six functions receive genuine framed RV64 lowering for
 non-null/nullable `anyref`, indexed empty-struct targets, typed block results,
 and depth-one branch transfer. They instantiate with a collector but no table
 state; retained metadata and helper-slot capacity remain fail-closed.
+The first official `gc/type-subtyping` module is admitted as an exact
+declaration-only product. Its seven immutable/mutable array declarations,
+indexed supertypes, nullable `anyref`, and nullable/non-null indexed element
+types survive source and compiler-free artifact validation without executable
+code, mappings, or collector allocation. Other `gc/type-subtyping` module shapes
+remain fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,
 including cold traps, with explicit wrapper/helper gaps. Unwind maps and detailed
