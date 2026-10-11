@@ -276,8 +276,15 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	var guards [12]int
 	ng := 0
 	guard := func(cc Cond) { guards[ng] = f.a.Bcond(cc); ng++ }
-	f.a.MovImm64(X16, uint64(p.limit-24))
-	f.cmpRR(counter, X16, false)
+	compare := func(limit uint32) {
+		if f.fitsAddSubImmediate(int64(limit)) {
+			f.cmpImmS(counter, int64(limit), false)
+		} else {
+			f.a.MovImm64(X16, uint64(limit))
+			f.cmpRR(counter, X16, false)
+		}
+	}
+	compare(p.limit - 24)
 	guard(condA)
 	f.a.TstImm32(counter, 7)
 	guard(condNE)
@@ -318,26 +325,44 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	vec := func() Reg { x := f.allocFReg(0); f.fpinned = f.fpinned.add(x); return x }
 	vd, vs, vp := vec(), vec(), vec()
 	loop := f.a.Len()
-	f.a.MovImm64(X16, uint64(p.limit-24))
-	f.cmpRR(counter, X16, false)
+	var scalar [2]int
+	nScalar := 0
+	emitVector := func(bytes uint32) {
+		// Any byte overlap with the pivot needs sequential stores and reloads.
+		f.a.Sub64(X16, pivot, d)
+		f.a.AddImm64(X16, X16, 3)
+		f.cmpImm(X16, bytes+3, true)
+		scalar[nScalar] = f.a.Bcond(condB)
+		nScalar++
+		f.a.Load32(X16, pivot, 0)
+		f.a.NeonDupGprS(vp, X16)
+		for off := int32(0); off < int32(bytes); off += 16 {
+			f.a.LdrQ(vd, d, off)
+			f.a.LdrQ(vs, s, off)
+			f.a.NeonAddS(vs, vs, vp)
+			f.a.NeonSminS(vd, vd, vs)
+			f.a.StrQ(d, off, vd)
+		}
+		f.a.AddImm64(d, d, bytes)
+		f.a.AddImm64(s, s, bytes)
+		f.a.AddImm32(counter, counter, bytes)
+		f.patchBranch26(f.a.Branch(), loop)
+	}
+	if p.limit >= 40 {
+		// Amortize loop and alias checks over two SIMD blocks without adding
+		// registers. Keep one original packet for the observable scalar tail.
+		compare(p.limit - 40)
+		tail := f.a.Bcond(condA)
+		emitVector(32)
+		f.stats.peep("minplus-loop-unroll")
+		f.patchBranch19(tail, f.a.Len())
+	}
+	compare(p.limit - 24)
 	done := f.a.Bcond(condA)
-	// Any byte overlap with the pivot needs sequential stores and pivot reloads.
-	f.a.Sub64(X16, pivot, d)
-	f.a.AddImm64(X16, X16, 3)
-	f.cmpImm(X16, 19, true)
-	scalar := f.a.Bcond(condB)
-	f.a.Load32(X16, pivot, 0)
-	f.a.NeonDupGprS(vp, X16)
-	f.a.LdrQ(vd, d, 0)
-	f.a.LdrQ(vs, s, 0)
-	f.a.NeonAddS(vs, vs, vp)
-	f.a.NeonSminS(vd, vd, vs)
-	f.a.StrQ(d, 0, vd)
-	f.a.AddImm64(d, d, 16)
-	f.a.AddImm64(s, s, 16)
-	f.a.AddImm32(counter, counter, 16)
-	f.patchBranch26(f.a.Branch(), loop)
-	f.patchBranch19(scalar, f.a.Len())
+	emitVector(16)
+	for i := 0; i < nScalar; i++ {
+		f.patchBranch19(scalar[i], f.a.Len())
+	}
 	for off := uint32(0); off < 8; off += 4 {
 		f.a.Load32(X16, s, off)
 		f.a.Load32(X17, pivot, 0)

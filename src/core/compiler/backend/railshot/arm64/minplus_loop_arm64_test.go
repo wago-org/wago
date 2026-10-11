@@ -54,11 +54,11 @@ func minPlusModule(t testing.TB, dst, src, pivot, start, limit uint32) *wasm.Mod
 
 func TestMinPlusLoopIndependentExecution(t *testing.T) {
 	for _, dst := range []uint32{0, 1, 64, 65500, 0xfffffff0} {
-		for _, src := range []uint32{0, 1, 4, 64, 256} {
-			for _, pivot := range []uint32{0, 1, 4, 7, 12, 16, 28, 40, 256, 65534} {
-				for _, start := range []uint32{0, 8} {
-					t.Run(fmt.Sprintf("%x/%x/%x/%d", dst, src, pivot, start), func(t *testing.T) {
-						const limit = 64
+		for _, src := range []uint32{0, 1, 4, 64, 256, 8192} {
+			for _, pivot := range []uint32{0, 1, 4, 7, 12, 16, 28, 31, 32, 35, 40, 256, 65534} {
+				for _, trip := range [][2]uint32{{0, 24}, {8, 24}, {0, 32}, {8, 32}, {0, 40}, {8, 40}, {0, 48}, {8, 48}, {0, 64}, {8, 64}, {0, 72}, {8, 72}, {0, 128}, {8, 128}, {0, 4104}, {8, 4104}} {
+					start, limit := trip[0], trip[1]
+					t.Run(fmt.Sprintf("%x/%x/%x/%d/%d", dst, src, pivot, start, limit), func(t *testing.T) {
 						mem := make([]byte, 65536)
 						for i := 0; i < len(mem)/4; i++ {
 							binary.LittleEndian.PutUint32(mem[i*4:], uint32(i)*0x9e3779b9+0x80000001)
@@ -83,7 +83,7 @@ func TestMinPlusLoopIndependentExecution(t *testing.T) {
 								binary.LittleEndian.PutUint32(mem[d:], v)
 							}
 						}
-						want := uint32(limit) ^ lastAddr ^ lastOld ^ lastSum ^ 123
+						want := limit ^ lastAddr ^ lastOld ^ lastSum ^ 123
 						if !trap {
 							for i := start; i < limit; i += 4 {
 								want = (want + binary.LittleEndian.Uint32(mem[dst+i:])) * 0x9e3779b9
@@ -106,17 +106,23 @@ func TestMinPlusLoopIndependentExecution(t *testing.T) {
 
 func TestMinPlusLoopAdmissionAndRollback(t *testing.T) {
 	requireCompilerDiagnostics(t)
-	m := minPlusModule(t, 0, 256, 4, 0, 64)
-	for _, enabled := range []bool{true, false} {
-		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"dot-loop-vector": enabled}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		cm.CodeImage.Close()
-		got := stats.Funcs[0].Peephole["minplus-loop-vector"]
-		if (got == 1) != enabled {
-			t.Fatalf("enabled %t: admitted %d", enabled, got)
+	for _, limit := range []uint32{24, 32, 40, 64, 4104} {
+		m := minPlusModule(t, 0, 8192, 4, 0, limit)
+		for _, enabled := range []bool{true, false} {
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"dot-loop-vector": enabled}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cm.CodeImage.Close()
+			got := stats.Funcs[0].Peephole["minplus-loop-vector"]
+			if (got == 1) != enabled {
+				t.Fatalf("limit %d enabled %t: admitted %d", limit, enabled, got)
+			}
+			got = stats.Funcs[0].Peephole["minplus-loop-unroll"]
+			if (got == 1) != (enabled && limit >= 40) {
+				t.Fatalf("limit %d enabled %t: unrolled %d", limit, enabled, got)
+			}
 		}
 	}
 }
