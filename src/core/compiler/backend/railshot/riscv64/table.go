@@ -2493,10 +2493,10 @@ func admitOwnedTwoTable32InitDrop(m *wasm.Module, production, public bool) bool 
 // Imported storage uses the retained canonical target ABI, never the private
 // same-instance pilot. Count and capacity limits precede validation/copies.
 func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, error) {
-	// The exact i31-table product uses compact immediate carriers rather than
-	// callable funcref descriptors. Its classifier pins the sole table, both
-	// element segments, and every table instruction before this exception.
-	if production && importedTables && admitRV64I31OfficialTable(m) {
+	// Exact i31-table products use compact immediate carriers rather than
+	// callable funcref descriptors. Their classifiers pin the sole table and
+	// either every table instruction/segment or the imported initializer.
+	if production && importedTables && admitRV64I31TableProduct(m) {
 		return true, nil
 	}
 	if err := ownedTableBounds(m, production && importedTables); err != nil {

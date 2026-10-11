@@ -25,6 +25,8 @@ func admitRV64I31CoreWire(data []byte) bool {
 		return true
 	}
 	switch len(data) {
+	case 96:
+		return sha256.Sum256(data) == [sha256.Size]byte{0x0a, 0x26, 0xe5, 0x0d, 0x6e, 0xc8, 0xcc, 0xba, 0xf1, 0xcc, 0x3a, 0x59, 0xfc, 0x2e, 0x1b, 0xe6, 0xdc, 0xa2, 0xc2, 0x22, 0x19, 0xba, 0x70, 0xca, 0x80, 0xa0, 0x14, 0x51, 0x88, 0x2b, 0xf0, 0xe4}
 	case 252:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x4b, 0xdd, 0x4d, 0x0f, 0x18, 0x6a, 0x2f, 0xd6, 0x17, 0xb4, 0x1a, 0xd4, 0x94, 0x0e, 0x17, 0xf2, 0xc0, 0x41, 0x55, 0x14, 0xeb, 0xc6, 0x36, 0xa5, 0x6e, 0x41, 0x49, 0x6e, 0x8c, 0x39, 0x2a, 0xea}
 	case 259:
@@ -46,7 +48,11 @@ func AdmitI31CoreSource(data []byte) bool {
 // lowering. This is intentionally narrower than the general collector-free
 // i31 implementation on complete backends.
 func admitRV64I31Core(m *wasm.Module) bool {
-	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m)
+	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m)
+}
+
+func admitRV64I31TableProduct(m *wasm.Module) bool {
+	return admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m)
 }
 
 func admitRV64I31MinimalCore(m *wasm.Module) bool {
@@ -226,6 +232,39 @@ func admitRV64I31OfficialTable(m *wasm.Module) bool {
 		}
 	}
 	return true
+}
+
+// admitRV64I31OfficialTableGlobalInitializer pins the third official spec-v3
+// gc/i31 module. The immutable imported i32 is wrapped into compact i31 table
+// rows during instantiation; no other imported initializer inherits this path.
+func admitRV64I31OfficialTableGlobalInitializer(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Tables) != 1 || len(m.Exports) != 1 ||
+		len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	im := m.Imports[0]
+	if im.Module != "env" || im.Name != "g" || im.Type.Kind != wasm.ExternGlobal {
+		return false
+	}
+	global := im.Type.GlobalType()
+	if global.Mutable || !wasm.EqualValType(global.Type, wasm.I32) {
+		return false
+	}
+	if !i31CoreFunctionType(&m.Types[0], []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}) || m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 0 {
+		return false
+	}
+	fn := &m.Code[0]
+	if len(fn.Locals.Runs) != 0 || fn.LocalDeclBytes != 1 || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || !bytes.Equal(fn.BodyBytes, []byte{0x20, 0, 0x25, 0, 0xfb, 0x1e, 0x0b}) {
+		return false
+	}
+	table := m.Tables[0]
+	if table.Init == nil || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min != 3 || table.Type.Limits.Max != 3 || !isI31CoreRef(wasm.RefVal(table.Type.Ref)) ||
+		len(table.Init.Instrs) != 0 || !bytes.Equal(table.Init.BodyBytes, []byte{0x23, 0, 0xfb, 0x1c, 0x0b}) {
+		return false
+	}
+	ex := m.Exports[0]
+	return ex.Name == "get" && ex.Index.Kind == wasm.ExternFunc && ex.Index.Index == 0
 }
 
 func i31CoreGlobalValue(expr wasm.Expr) (uint64, error) {

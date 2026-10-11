@@ -98,7 +98,13 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	}
 	for _, table := range m.Tables {
 		if table.Init != nil {
-			global, err := admitTableInitializer(*table.Init, m)
+			global := false
+			var err error
+			if admitRV64I31OfficialTableGlobalInitializer(m) {
+				global = true
+			} else {
+				global, err = admitTableInitializer(*table.Init, m)
+			}
 			if err != nil {
 				return err
 			}

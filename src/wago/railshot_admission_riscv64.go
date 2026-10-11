@@ -83,7 +83,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c != nil && c.stagedGCI31Product() != 0 && !rv64I31Core(c) {
 		return reject("i31 execution product requires its exact retained image")
 	}
-	officialI31 := rv64I31OfficialCore(c)
+	typedI31 := rv64I31OfficialCore(c) || rv64I31OfficialTableGlobalInitializer(c)
 	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
 	if rv64Core3RefIsNullExecutionCode(c) && !exactCore3RefIsNull {
 		return reject("Core 3 ref.is_null image requires its exact retained metadata")
@@ -192,7 +192,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
 	if rv64I31Core(c) {
 		qualifiedFeatures |= CoreFeatureGC
-		if officialI31 {
+		if typedI31 {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
@@ -285,13 +285,13 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!officialI31 || typ != ValI31Ref) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) {
 					return reject("unsupported signature")
 				}
 			}
 		}
 	}
-	if !declarativeTyped && !officialI31 {
+	if !declarativeTyped && !typedI31 {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
@@ -306,7 +306,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	hasReferenceGlobal := false
 	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
 	for i, global := range c.Globals {
-		if officialI31 && global.Type == ValI31Ref {
+		if typedI31 && global.Type == ValI31Ref {
 			continue // The exact product witness pins both globals and their initial values.
 		}
 		if global.Type == ValExternRef {
