@@ -81,9 +81,12 @@ type CompileOptions struct {
 	// GCArrayUniformSource is the exact-wire witness for the bounded numeric
 	// array.new/get/set/len checkpoint.
 	GCArrayUniformSource bool
-	production           bool
-	publicStarts         bool
-	hostImports          bool
+	// GCArrayFixedLocalSource is the exact-wire witness for the bounded numeric
+	// array.new_fixed/get/set/len checkpoint.
+	GCArrayFixedLocalSource bool
+	production              bool
+	publicStarts            bool
+	hostImports             bool
 	// Selected by bounded closed-module admission, or private decoded tests.
 	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool
@@ -101,13 +104,14 @@ type CompileOptions struct {
 	referenceControlInstructions bool
 	// Selected only when the exact source and decoded witnesses agree for a
 	// qualified non-allocating i31 module.
-	i31Core        bool
-	gcRefEq        bool
-	gcStructGet    bool
-	gcArrayLocal   bool
-	gcArrayUniform bool
-	tailPlans      *[]tailImportPlan
-	tailSiteBase   uint32
+	i31Core           bool
+	gcRefEq           bool
+	gcStructGet       bool
+	gcArrayLocal      bool
+	gcArrayUniform    bool
+	gcArrayFixedLocal bool
+	tailPlans         *[]tailImportPlan
+	tailSiteBase      uint32
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.

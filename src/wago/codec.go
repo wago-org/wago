@@ -517,7 +517,7 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	if c.stagedGCStructProduct() == stagedGCStructGeneric || rv64OfficialGCRefEq(c) || rv64GCStructGet(c) {
 		required |= compiledGCExecutionGenericStruct
 	}
-	if c.stagedGCArrayProduct() == stagedGCArrayProductGeneric || rv64OfficialGCRefEq(c) || rv64GCArrayLocal(c) || rv64GCArrayUniform(c) {
+	if c.stagedGCArrayProduct() == stagedGCArrayProductGeneric || rv64OfficialGCRefEq(c) || rv64GCArrayLocal(c) || rv64GCArrayUniform(c) || rv64GCArrayFixedLocal(c) {
 		required |= compiledGCExecutionGenericArray
 	}
 	if c.usesDynamicFuncRefTest() {

@@ -25,7 +25,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) {
+	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -93,6 +93,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, unsupported("gc array uniform source provenance")
 	}
 	opts.gcArrayUniform = decodedGCArrayUniform
+	decodedGCArrayFixedLocal := admitRV64GCArrayFixedLocal(m)
+	if opts.GCArrayFixedLocalSource != decodedGCArrayFixedLocal {
+		return nil, unsupported("gc array fixed local source provenance")
+	}
+	opts.gcArrayFixedLocal = decodedGCArrayFixedLocal
 	if err := AdmitPublicInitializers(m); err != nil {
 		return nil, err
 	}
@@ -141,7 +146,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		}
 	}
 	var referenceTails, indirectTails, referenceCalls, referenceControl bool
-	if !opts.i31Core && !opts.gcRefEq && !opts.gcStructGet && !opts.gcArrayLocal && !opts.gcArrayUniform {
+	if !opts.i31Core && !opts.gcRefEq && !opts.gcStructGet && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal {
 		referenceTails, indirectTails, referenceCalls, referenceControl, err = admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions)
 		if err != nil {
 			return nil, err
@@ -187,7 +192,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if err := admitProductionOptions(m, &opts, false); err != nil {
 		return nil, err
 	}
-	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{CompactImports: true, ExtendedConstGlobals: true, MultiMemory: true, GCConstExpr: opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{CompactImports: true, ExtendedConstGlobals: true, MultiMemory: true, GCConstExpr: opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
 		return nil, err
 	}
 	opts.production = true
@@ -223,7 +228,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if err := admitHostBindings(m, opts); err != nil {
 		return err
 	}
-	if opts.ElideBoundsChecks || opts.GCTypeSubtypingRefTest || (!opts.gcRefEq && !opts.gcStructGet && !opts.gcArrayLocal && !opts.gcArrayUniform && (opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.Codegen.Module.GCTypeLayouts) != 0)) || len(opts.CustomInstructions) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC && !opts.i31Core && !opts.gcRefEq && !opts.gcStructGet && !opts.gcArrayLocal && !opts.gcArrayUniform || !allowSWAR && opts.Codegen.Module.Features.V128 {
+	if opts.ElideBoundsChecks || opts.GCTypeSubtypingRefTest || (!opts.gcRefEq && !opts.gcStructGet && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && (opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.Codegen.Module.GCTypeLayouts) != 0)) || len(opts.CustomInstructions) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC && !opts.i31Core && !opts.gcRefEq && !opts.gcStructGet && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal || !allowSWAR && opts.Codegen.Module.Features.V128 {
 		return unsupported("production host/guard/GC/custom lowering is pending")
 	}
 	if opts.gcRefEq && (!opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 2) {
@@ -238,7 +243,10 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if opts.gcArrayUniform && (opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 4) {
 		return unsupported(fmt.Sprintf("gc array uniform helper contract struct=%t array=%t slots=%d", opts.GCStructHelpers, opts.GCArrayHelpers, opts.SyncHostSlots))
 	}
-	if opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform {
+	if opts.gcArrayFixedLocal && (opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 5) {
+		return unsupported(fmt.Sprintf("gc array fixed local helper contract struct=%t array=%t slots=%d", opts.GCStructHelpers, opts.GCArrayHelpers, opts.SyncHostSlots))
+	}
+	if opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal {
 		expected, err := frontend.BuildGCTypeMetadata(m)
 		if err != nil {
 			return err
@@ -250,7 +258,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	// The public frontend emits inert function sentinels for numeric types.
 	// They do not require heap lowering, but nonfunction descriptors do.
 	for _, desc := range opts.Codegen.Module.GCTypeDescs {
-		if !opts.gcRefEq && !opts.gcStructGet && !opts.gcArrayLocal && !opts.gcArrayUniform && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !opts.gcRefEq && !opts.gcStructGet && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return unsupported("production GC descriptor lowering is pending")
 		}
 	}

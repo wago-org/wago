@@ -42,13 +42,14 @@ type moduleState struct {
 	publicReferenceCarriers            bool
 	publicDynamicHostReferenceCarriers bool
 	// Exact GC/i31 qualification profiles.
-	i31Core        bool
-	i31RefTest     bool
-	i31RefEq       bool
-	gcRefEq        bool
-	gcStructGet    bool
-	gcArrayLocal   bool
-	gcArrayUniform bool
+	i31Core           bool
+	i31RefTest        bool
+	i31RefEq          bool
+	gcRefEq           bool
+	gcStructGet       bool
+	gcArrayLocal      bool
+	gcArrayUniform    bool
+	gcArrayFixedLocal bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -194,7 +195,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcStructGet := admitRV64GCStructGet(m)
 	gcArrayLocal := admitRV64GCArrayLocal(m)
 	gcArrayUniform := admitRV64GCArrayUniform(m)
-	i31Core := admitRV64I31Core(m) || gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform
+	gcArrayFixedLocal := admitRV64GCArrayFixedLocal(m)
+	i31Core := admitRV64I31Core(m) || gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal
 	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
@@ -385,7 +387,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform) && ft.Kind != wasm.CompFunc) {
+		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal) && ft.Kind != wasm.CompFunc) {
 			var ok bool
 			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
 			if !ok {

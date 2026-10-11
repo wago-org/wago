@@ -20,6 +20,7 @@ const rv64OfficialObjectRefEqHex = "0061736d0100000001af808080000950005f0050005f
 const rv64GCStructGetHex = "0061736d01000000018980808000025f017f016000017f0382808080000101078780808000010367657400000a8f8080800001898080800000fb0100fb0200000b"
 const rv64GCArrayLocalHex = "0061736d01000000019680808000045e7f0160027f7f017f60037f7f7f017f60017f017f0384808080000301020307978080800003036765740000077365745f6765740001036c656e00020ac180808000038c80808000002000fb07002001fb0b000b9c80808000010163002000fb07002103200320012002fb0e0020032001fb0b000b8980808000002000fb0700fb0f0b"
 const rv64GCArrayUniformHex = "0061736d010000000119045e7f0160037f7f7f017f60047f7f7f7f017f60027f7f017f030403010203071703036765740000077365745f6765740001036c656e00020a3b030e0020002001fb06002002fb0b000b1e0101630020002001fb06002104200420022003fb0e0020042002fb0b000b0b0020002001fb0600fb0f0b"
+const rv64GCArrayFixedLocalHex = "0061736d01000000011c045e7f0160047f7f7f7f017f60057f7f7f7f7f017f60037f7f7f017f030403010203071703036765740000077365745f6765740001036c656e00020a44031100200020012002fb0800032003fb0b000b2101016300200020012002fb0800032105200520032004fb0e0020052003fb0b000b0e00200020012002fb080003fb0f0b"
 
 func rv64I31RefEqPilotBytes(t testing.TB) []byte {
 	t.Helper()
@@ -453,5 +454,96 @@ func TestRV64GCArrayUniformHelperImage(t *testing.T) {
 	wantEntry := []int{0, 800, 1728}
 	if image == nil || len(image.Code) != 3548 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
 		t.Fatal("gc array uniform helper image metadata", image)
+	}
+}
+
+func TestRV64GCArrayFixedLocalHelperImage(t *testing.T) {
+	source, err := hex.DecodeString(rv64GCArrayFixedLocalHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCArrayFixedLocalWire(source) || !AdmitGCArrayFixedLocalSource(source) || !admitRV64GCArrayFixedLocal(m) {
+		t.Fatal("gc array fixed local identity rejected")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCArrayHelpers: true, SyncHostSlots: 5, GCArrayFixedLocalSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	}
+	withoutWire := opts
+	withoutWire.GCArrayFixedLocalSource = false
+	if image, err := CompileModuleWith(m, withoutWire); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("gc array fixed local escaped exact wire provenance", err)
+	}
+	nearWire := slices.Concat(source[:44], []byte{5, 1, 0}, source[44:])
+	nearModule, err := wasm.DecodeModule(nearWire)
+	if err != nil {
+		t.Fatal("decode inert-section near miss", err)
+	}
+	if !admitRV64GCArrayFixedLocal(nearModule) || admitRV64GCArrayFixedLocalWire(nearWire) || AdmitGCArrayFixedLocalSource(nearWire) {
+		t.Fatal("inert-section near miss lost decoded/wire distinction")
+	}
+	if image, err := CompileModuleWith(nearModule, withoutWire); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("inert-section near miss escaped provenance", err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"count":  func(v *wasm.Module) { v.Code[0].BodyBytes[9] = 2 },
+		"export": func(v *wasm.Module) { v.Exports[2].Name = "size" },
+		"array-type": func(v *wasm.Module) {
+			v.Types[0].SubTypes[0].Comp.Array = wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Const)
+		},
+		"local-type": func(v *wasm.Module) { v.Code[1].Locals.Runs[0].Type = wasm.I64 },
+	} {
+		t.Run("decoded-"+name, func(t *testing.T) {
+			candidate, err := wasm.DecodeModule(slices.Clone(source))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(candidate)
+			if admitRV64GCArrayFixedLocal(candidate) {
+				t.Fatal("decoded near miss admitted")
+			}
+			if image, err := CompileModuleWith(candidate, opts); image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("decoded near miss escaped provenance", err)
+			}
+		})
+	}
+	for name, mutate := range map[string]func(*CompileOptions){
+		"struct-helper":       func(candidate *CompileOptions) { candidate.GCStructHelpers = true },
+		"missing-descriptors": func(candidate *CompileOptions) { candidate.Codegen.Module.GCTypeDescs = nil },
+		"wrong-descriptor":    func(candidate *CompileOptions) { candidate.Codegen.Module.GCTypeDescs[0].ElemSize++ },
+		"missing-layouts":     func(candidate *CompileOptions) { candidate.Codegen.Module.GCTypeLayouts = nil },
+		"wrong-layout": func(candidate *CompileOptions) {
+			candidate.Codegen.Module.GCTypeLayouts[0].PointerFree = !candidate.Codegen.Module.GCTypeLayouts[0].PointerFree
+		},
+		"frame-roots":   func(candidate *CompileOptions) { candidate.GCFrameRoots = shared.NewGCModuleFrameRootPlan(len(m.Code)) },
+		"slot-capacity": func(candidate *CompileOptions) { candidate.SyncHostSlots = 4 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := opts
+			candidate.Codegen.Module.GCTypeDescs = slices.Clone(opts.Codegen.Module.GCTypeDescs)
+			candidate.Codegen.Module.GCTypeLayouts = slices.Clone(opts.Codegen.Module.GCTypeLayouts)
+			mutate(&candidate)
+			if image, err := CompileModuleWith(m, candidate); image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("gc array fixed local escaped exact collector metadata", err)
+			}
+		})
+	}
+	image, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDigest := [sha256.Size]byte{0x06, 0xb2, 0xd6, 0xb1, 0xb5, 0x2b, 0xfd, 0xec, 0xc4, 0xef, 0xa2, 0x58, 0x51, 0xd0, 0xd2, 0x20, 0x5d, 0xe3, 0x07, 0xd2, 0x64, 0xf0, 0x4d, 0xc1, 0x00, 0xb5, 0xce, 0xd1, 0x28, 0x6a, 0x4d, 0x6e}
+	wantEntry := []int{0, 832, 1792}
+	if image == nil || len(image.Code) != 3676 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
+		t.Fatal("gc array fixed local helper image metadata", image)
 	}
 }

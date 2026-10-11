@@ -25,6 +25,7 @@ const (
 	gcArrayGet           uint32 = 17
 	gcArraySet           uint32 = 20
 	gcArrayLen           uint32 = 21
+	gcArrayAllocFixed    uint32 = 22
 	gcArrayAllocUniform  uint32 = 23
 )
 
@@ -113,6 +114,26 @@ func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32) {
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 16) // type index
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocUniform})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
+}
+
+func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint32) {
+	f.restoreCallTransport()
+	for i := uint32(0); i < count; i++ {
+		f.Load(5, f.SpillOffset(base+int(i)), false)
+		f.a.Sd(enc.X5, enc.X10, int32(i*8))
+	}
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, int32(count*8))
+	f.a.Constant32(enc.X5, count)
+	f.a.Sd(enc.X5, enc.X10, int32((count+1)*8))
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocFixed})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {

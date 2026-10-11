@@ -81,6 +81,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCStructGet := rv64GCStructGet(c)
 	exactGCArrayLocal := rv64GCArrayLocal(c)
 	exactGCArrayUniform := rv64GCArrayUniform(c)
+	exactGCArrayFixedLocal := rv64GCArrayFixedLocal(c)
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")
 	}
@@ -92,6 +93,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCArrayUniformExecutionCode(c) && !exactGCArrayUniform {
 		return reject("allocating gc/array uniform image requires its exact retained metadata")
+	}
+	if rv64GCArrayFixedLocalExecutionCode(c) && !exactGCArrayFixedLocal {
+		return reject("allocating gc/array fixed local image requires its exact retained metadata")
 	}
 	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
 		return reject("i31 execution image requires its exact retained metadata")
@@ -202,7 +206,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -213,10 +217,10 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform {
+	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal {
 		qualifiedFeatures |= CoreFeatureGC
 	}
-	if exactGCArrayLocal || exactGCArrayUniform {
+	if exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
@@ -314,7 +318,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
