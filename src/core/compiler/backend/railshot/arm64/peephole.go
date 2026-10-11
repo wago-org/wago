@@ -70,7 +70,14 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		}
 	}
 	if f.opt(optDominatedIndexedBase) && !f.moduleEH && len(f.customInstructions) == 0 {
-		for hits := f.a.FoldDominatedIndexedBases(entryOffsets...); hits > 0; hits-- {
+		hits := 0
+		if f.opt(optDominatedIndexedKey) {
+			hits = f.a.FoldDominatedIndexedBasesByKey(entryOffsets...)
+			f.stats.peepN("dominated-indexed-key", hits)
+		} else {
+			hits = f.a.FoldDominatedIndexedBases(entryOffsets...)
+		}
+		for ; hits > 0; hits-- {
 			f.stats.peep("dominated-indexed-base")
 		}
 	}

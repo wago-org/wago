@@ -1,0 +1,423 @@
+[
+  {
+    "thread_id": 0,
+    "sequence": 1,
+    "timestamp_ns": 1791677536376425000,
+    "kind": "load",
+    "image_id": 1,
+    "image": {
+      "compiler_sites": [
+        {
+          "offset": 144,
+          "size": 4,
+          "kind": "memory-bounds-branch"
+        },
+        {
+          "offset": 184,
+          "size": 4,
+          "kind": "memory-bounds-branch"
+        },
+        {
+          "offset": 224,
+          "size": 4,
+          "kind": "memory-bounds-branch"
+        },
+        {
+          "offset": 264,
+          "size": 4,
+          "kind": "memory-bounds-branch"
+        }
+      ],
+      "compiler_site_coverage": "explicit-operand-spills-reloads-and-memory-bounds-branches",
+      "sources": [
+        {
+          "offset": 88,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 6
+        },
+        {
+          "offset": 92,
+          "size": 20,
+          "function": 0,
+          "wasm_offset": 8
+        },
+        {
+          "offset": 112,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 21
+        },
+        {
+          "offset": 116,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 18
+        },
+        {
+          "offset": 128,
+          "size": 24,
+          "function": 0,
+          "wasm_offset": 21
+        },
+        {
+          "offset": 152,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 35
+        },
+        {
+          "offset": 156,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 32
+        },
+        {
+          "offset": 168,
+          "size": 24,
+          "function": 0,
+          "wasm_offset": 35
+        },
+        {
+          "offset": 192,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 49
+        },
+        {
+          "offset": 196,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 46
+        },
+        {
+          "offset": 208,
+          "size": 24,
+          "function": 0,
+          "wasm_offset": 49
+        },
+        {
+          "offset": 232,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 63
+        },
+        {
+          "offset": 236,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 60
+        },
+        {
+          "offset": 248,
+          "size": 24,
+          "function": 0,
+          "wasm_offset": 63
+        },
+        {
+          "offset": 272,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 70
+        },
+        {
+          "offset": 276,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 73
+        },
+        {
+          "offset": 284,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 83
+        },
+        {
+          "offset": 292,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 87
+        },
+        {
+          "offset": 296,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 91
+        },
+        {
+          "offset": 300,
+          "size": 36,
+          "function": 0,
+          "wasm_offset": 93
+        },
+        {
+          "offset": 336,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 103
+        },
+        {
+          "offset": 348,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 111
+        },
+        {
+          "offset": 352,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 118
+        },
+        {
+          "offset": 364,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 138
+        },
+        {
+          "offset": 372,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 126
+        },
+        {
+          "offset": 376,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 129
+        },
+        {
+          "offset": 380,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 139
+        },
+        {
+          "offset": 384,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 144
+        },
+        {
+          "offset": 392,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 149
+        },
+        {
+          "offset": 404,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 158
+        },
+        {
+          "offset": 408,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 159
+        },
+        {
+          "offset": 420,
+          "size": 16,
+          "function": 0,
+          "wasm_offset": 166
+        },
+        {
+          "offset": 436,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 186
+        },
+        {
+          "offset": 444,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 191
+        },
+        {
+          "offset": 448,
+          "size": 32,
+          "function": 0,
+          "wasm_offset": 193
+        },
+        {
+          "offset": 480,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 203
+        },
+        {
+          "offset": 492,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 204
+        },
+        {
+          "offset": 496,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 215
+        },
+        {
+          "offset": 508,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 216
+        },
+        {
+          "offset": 512,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 227
+        },
+        {
+          "offset": 524,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 228
+        },
+        {
+          "offset": 528,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 239
+        },
+        {
+          "offset": 540,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 240
+        },
+        {
+          "offset": 544,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 245
+        },
+        {
+          "offset": 548,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 251
+        },
+        {
+          "offset": 560,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 252
+        },
+        {
+          "offset": 568,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 258
+        },
+        {
+          "offset": 580,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 259
+        },
+        {
+          "offset": 588,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 265
+        },
+        {
+          "offset": 600,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 266
+        },
+        {
+          "offset": 608,
+          "size": 12,
+          "function": 0,
+          "wasm_offset": 272
+        },
+        {
+          "offset": 620,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 279
+        },
+        {
+          "offset": 624,
+          "size": 8,
+          "function": 0,
+          "wasm_offset": 282
+        },
+        {
+          "offset": 632,
+          "size": 4,
+          "function": 0,
+          "wasm_offset": 287
+        }
+      ],
+      "source_coverage": "opcode-lowering-and-deferred-origins",
+      "id": 1,
+      "module_id": "fff4894661e750a00a1e4114334e757d897aea75bff5dbfa7e10a1e1d54b541f",
+      "artifact_id": "6a32291de2ac2f7a03806d4acb7a10fe3d5af38eba8a76b583065b1600827440",
+      "base": 4421042176,
+      "size": 720,
+      "target": "darwin/arm64",
+      "regions": [
+        {
+          "offset": 0,
+          "size": 28,
+          "kind": "entry-adapter",
+          "function": 0,
+          "name": "benchmark"
+        },
+        {
+          "offset": 28,
+          "size": 4,
+          "kind": "padding",
+          "function": -1
+        },
+        {
+          "offset": 32,
+          "size": 688,
+          "kind": "guest-body",
+          "function": 0,
+          "name": "benchmark"
+        }
+      ],
+      "functions": [
+        {
+          "index": 0,
+          "name": "benchmark",
+          "native_bytes": 720,
+          "frame_bytes": 48,
+          "emitted_spills": 0,
+          "emitted_reloads": 0,
+          "emitted_bounds_checks": 4,
+          "compiler_decisions": {
+            "callfree-loop": 3,
+            "callfree-loop-entry-store-elide": 12,
+            "cmp-branch-fuse": 1,
+            "entry-init-elide": 1,
+            "equality-countdown": 1,
+            "frame-header-elide": 1,
+            "local-3op-sink": 3,
+            "loop-int-const": 4,
+            "memory-address-zext-elim": 10,
+            "shifted-register-alu": 3,
+            "single-negative-move32": 2,
+            "small-frame-adjust": 1,
+            "store-load-fwd": 1
+          }
+        }
+      ],
+      "code": "+gMBqv4Pv6kAAED5BQAAlP4PwahgAAD5wANf1h8gA9X/wwDRHyAD1R8gA9X2AwCqFQCA0hQAgNIZAYLSOQCg8hgAgtI4AKDyFwOC0jcAoPIbAoLSOwCg8vP/gRIfIAPVHyAD1R8gA9UfIAPVHyAD1QkAgNIQA4LSMACg8moCEAtLIQCRTIME0YwBQPl/AQzrCBAAVElrKvgJAIDSEAKC0jAAoPJqAhALSyEAkUyDBNGMAUD5fwEM68gOAFRJayr4CQCA0hABgtIwAKDyagIQC0shAJFMgwTRjAFA+X8BDOuIDQBUSWsq+AkAgNIQAILSMACg8moCEAtLIQCRTIME0YwBQPl/AQzrSAwAVElrKvhzggARfwIAccH6/1TfFgBxowQAVNUGgNKTAIDS1gITSx8gA9UfIAPVHyAD1R8gA9UfIAPVHyAD1R8gA9UfIAPVKTeP0unGs/J0AgkLlEJUSmlNmdJpvbDylH4JG4l/gNIpCRUKlTZUSrUGABK1Agkq9AMVqpR2HlNQAxSLEEJAkQkCQLkpBQARUAMUixBCQJEJAgC5cwYAEdYGAFE2/f819gMTKrW4k9KVI7Dy8/+BEh8gA9UfIAPVHyAD1R8gA9UfIAPVHyAD1R8gA9UfIAPVkAGC0jAAoPJpAhALSWtpuBABgtIwAKDyagIQC0prariQAILSMACg8msCEAtLa2u4EACC0jAAoPJsAhALT2tsuO8BFUpsMoDSDCCg8u99DBvuAwuqzgEPSmsygNILIKDyzn0LG+0DCqqtAQ5KajKA0gogoPKtfQob9QMJqrUCDUppMoDSCSCg8rV+CRtzQgARfwIAcWH7/1T1EwD54AMVqv/DAJEfIAPVHyAD1cADX9bx/5/S8f+/8kmDWfgwAIDSMBEAuTEVALlwAIDSMAEAuVCDXvheA174HwIAkcADX9YfIAPVHyAD1R8gA9UfIAPV"
+    }
+  },
+  {
+    "thread_id": 0,
+    "sequence": 2,
+    "timestamp_ns": 1791677539376764000,
+    "kind": "retire",
+    "image_id": 1
+  }
+]

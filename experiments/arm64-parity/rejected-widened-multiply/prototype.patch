@@ -1,0 +1,585 @@
+diff --git a/src/core/compiler/backend/railshot/arm64/compile.go b/src/core/compiler/backend/railshot/arm64/compile.go
+index d2de5a8c..88b1613e 100644
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -236,6 +236,7 @@ type fn struct {
+ 	// localFactsEnabled admits assignment-version facts only in straight-line
+ 	// bodies. Facts reuse an otherwise-unused byte in each localDef.
+ 	localFactsEnabled bool
++	signed32LocalMask [2]uint64
+ 	// loadDefinedLocals marks the first 64 locals updated by loading through their
+ 	// own prior value. Their explicit W-register address rename is a useful
+ 	// dependency break on Apple ARM cores and is retained by memory lowering.
+@@ -3178,6 +3179,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 		planningHints.flags |= calleeHints[callee.globalIdx-m.ImportedFuncCount()].flags & hintUsesBulkMem
+ 	}
+ 	hints = &planningHints
++	if f.opt(optWidenedMultiply) {
++		f.signed32LocalMask = f.proveSigned32Locals(c.BodyBytes)
++	}
+ 	f.streamingReduction = f.opt(optStreamReduce) && hints.hasStreamingReduction()
+ 	// Inlining direct Wasm calls cannot remove GC/table/atomic runtime helpers.
+ 	if policy.EnabledOption(optInlineCallFree) && hasCall && !hints.flags.has(hintHasNonDirectCall) && allCallsWillInline(c, inlineTargets, policy) {
+diff --git a/src/core/compiler/backend/railshot/arm64/emit.go b/src/core/compiler/backend/railshot/arm64/emit.go
+index f984bf85..7b8a21e8 100644
+--- a/src/core/compiler/backend/railshot/arm64/emit.go
++++ b/src/core/compiler/backend/railshot/arm64/emit.go
+@@ -142,6 +142,11 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
+ // place (const→imm, memory→register load, reg→reg). AArch64 is three-operand, so
+ // the in-place accumulate is `op Rd,Rn,Rm` with Rd==Rn==dest.
+ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
++	if node.st.typ == mtI64 && f.opt(optWidenedMultiply) {
++		if r := f.tryWidenedMultiply(node, dest); r != regNone {
++			return r
++		}
++	}
+ 	w := node.st.typ.is64()
+ 	left := f.s.arg0(node)
+ 	right := f.s.arg1(node)
+diff --git a/src/core/compiler/backend/railshot/arm64/facts.go b/src/core/compiler/backend/railshot/arm64/facts.go
+index 02a2db14..f71bf241 100644
+--- a/src/core/compiler/backend/railshot/arm64/facts.go
++++ b/src/core/compiler/backend/railshot/arm64/facts.go
+@@ -13,7 +13,8 @@ const (
+ 	factBoolean
+ 	storageGCRoot
+ 	storageEHRoot
+-	valueFactMask = factUpper32Zero | factBoolean
++	factSigned32  valueFacts = 1 << 4
++	valueFactMask            = factUpper32Zero | factBoolean | factSigned32
+ )
+ 
+ func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
+@@ -54,6 +55,9 @@ func (f *fn) factsForLocal(x int) valueFacts {
+ 		return 0
+ 	}
+ 	facts := valueFacts(0)
++	if x < 128 && f.signed32LocalMask[x>>6]&(uint64(1)<<uint(x&63)) != 0 {
++		facts |= factSigned32
++	}
+ 	if f.canonicalI32Local(x) {
+ 		facts |= factUpper32Zero
+ 	}
+@@ -114,6 +118,9 @@ func deferredResultFacts(op wOp, typ machineType) valueFacts {
+ 	if isCompare(op) || op == opEqz {
+ 		return factUpper32Zero | factBoolean
+ 	}
++	if op == opSExt32 {
++		return factSigned32
++	}
+ 	if op == opWrap || op == opZExt32 {
+ 		return factUpper32Zero
+ 	}
+diff --git a/src/core/compiler/backend/railshot/arm64/knobs.go b/src/core/compiler/backend/railshot/arm64/knobs.go
+index 9040b137..7c1b2573 100644
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -54,6 +54,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
+ 	optimization.Bind("select-group-guard", &selectGroupEnabled),
+ 	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
+ 	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
++	optimization.Bind("widened-multiply", &widenedMultiplyEnabled),
+ 	optimization.Bind("guarded-test-ccmp", &guardedTestCCMPEnabled),
+ 	optimization.Bind("crowded-products", &crowdedProductsEnabled),
+ 	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+@@ -135,6 +136,7 @@ var (
+ 	optSelectGroupGuard     = optimizationBindings.Option("select-group-guard")
+ 	optDotLoopVector        = optimizationBindings.Option("dot-loop-vector")
+ 	optPureReduceVector     = optimizationBindings.Option("pure-reduce-vector")
++	optWidenedMultiply      = optimizationBindings.Option("widened-multiply")
+ 	optGuardedTestCCMP      = optimizationBindings.Option("guarded-test-ccmp")
+ 	optCrowdedProducts      = optimizationBindings.Option("crowded-products")
+ 	optStreamReduce         = optimizationBindings.Option("streaming-i32-reduction")
+diff --git a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+index 6ada49b5..8900a2bf 100644
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -85,7 +85,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "regional-memory-read",
++		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "regional-memory-read", "widened-multiply",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+diff --git a/src/core/compiler/backend/railshot/arm64/stack.go b/src/core/compiler/backend/railshot/arm64/stack.go
+index 339b7204..06c746ce 100644
+--- a/src/core/compiler/backend/railshot/arm64/stack.go
++++ b/src/core/compiler/backend/railshot/arm64/stack.go
+@@ -107,7 +107,11 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow, alia
+ 	if aliasLocal >= 0 {
+ 		sidx |= (aliasLocal + 1) << 10
+ 	}
+-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(sidx), cval: int64(borrow + 1)}
++	st := storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(sidx), cval: int64(borrow + 1)}
++	if wide && size <= 4 && (signed || size < 4) {
++		st.setValueFacts(factSigned32)
++	}
++	return st
+ }
+ 
+ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow, aliasLocal int) storage {
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index c871fc14..29784a5c 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -458,6 +458,7 @@ var catalog = []Definition{
+ 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
+ 	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: []string{"arm64"}},
++	{Name: "widened-multiply", Label: "Widened integer multiply", Description: "fold proven narrow operands into widening integer multiply instructions", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
+diff --git a/src/core/encoder/arm64/asm2.go b/src/core/encoder/arm64/asm2.go
+index 14e1c2af..b28e9a49 100644
+--- a/src/core/encoder/arm64/asm2.go
++++ b/src/core/encoder/arm64/asm2.go
+@@ -2336,3 +2336,29 @@ func (a *Asm) MovImm32(rd Reg, val int32) {
+ 		}
+ 	}
+ }
++
++// Widening multiply-accumulate: 32-bit multiplicands, 64-bit accumulator/result.
++func (a *Asm) Smaddl(rd, rn, rm, ra Reg) {
++	a.word(0x9B200000 | r(rm)<<16 | r(ra)<<10 | r(rn)<<5 | r(rd))
++	if regallocCheckEnabled {
++		a.regallocGPWrites(regallocGPMask(rd, false))
++	}
++}
++func (a *Asm) Smsubl(rd, rn, rm, ra Reg) {
++	a.word(0x9B208000 | r(rm)<<16 | r(ra)<<10 | r(rn)<<5 | r(rd))
++	if regallocCheckEnabled {
++		a.regallocGPWrites(regallocGPMask(rd, false))
++	}
++}
++func (a *Asm) Umaddl(rd, rn, rm, ra Reg) {
++	a.word(0x9BA00000 | r(rm)<<16 | r(ra)<<10 | r(rn)<<5 | r(rd))
++	if regallocCheckEnabled {
++		a.regallocGPWrites(regallocGPMask(rd, false))
++	}
++}
++func (a *Asm) Umsubl(rd, rn, rm, ra Reg) {
++	a.word(0x9BA08000 | r(rm)<<16 | r(ra)<<10 | r(rn)<<5 | r(rd))
++	if regallocCheckEnabled {
++		a.regallocGPWrites(regallocGPMask(rd, false))
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/arm64/widened_multiply.go b/src/core/compiler/backend/railshot/arm64/widened_multiply.go
+new file mode 100644
+index 00000000..1a1231dd
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/widened_multiply.go
+@@ -0,0 +1,218 @@
++//go:build arm64
++
++package arm64
++
++import (
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"os"
++)
++
++var widenedMultiplyEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_WIDENED_MULTIPLY") == "1"
++
++// A declared i64 local starts at zero. If every assignment is immediately
++// produced by a signed narrow load/extension or an in-range constant, the local
++// remains a signed i32 in every control path. Parameters and ambiguous writes
++// decline. This source-level proof does not rely on assignment order or joins.
++func (f *fn) proveSigned32Locals(body []byte) [2]uint64 {
++	var mask [2]uint64
++	if len(body) == 0 || len(body) > 16<<10 || f.nLocals > 128 || len(f.localType) > 128 || len(f.customInstructions) != 0 {
++		return mask
++	}
++	for x, typ := range f.localType {
++		if typ == mtI64 && x >= f.nParams {
++			mask[x>>6] |= uint64(1) << uint(x&63)
++		}
++	}
++	if mask[0]|mask[1] == 0 {
++		return mask
++	}
++	r := wasm.ReaderFrom(body)
++	var imm wasm.InstructionImmediate
++	signed := false
++	for r.HasNext() {
++		op, err := r.Byte()
++		if err != nil {
++			return [2]uint64{}
++		}
++		if op == 0x42 {
++			v, err := r.I64()
++			if err != nil {
++				return [2]uint64{}
++			}
++			signed = v == int64(int32(v))
++			continue
++		}
++		if op == 0x21 || op == 0x22 {
++			x, err := r.U32()
++			if err != nil || int(x) >= len(f.localType) {
++				return [2]uint64{}
++			}
++			if !signed {
++				mask[x>>6] &^= uint64(1) << uint(x&63)
++			}
++			signed = signed && op == 0x22 && f.localType[x] == mtI64
++			continue
++		}
++		if err = f.classifier.ClassifyInto(&r, op, &imm); err != nil {
++			return [2]uint64{}
++		}
++		signed = op == 0xac || op == 0xc2 || op == 0xc3 || op == 0xc4 || op >= 0x30 && op <= 0x34
++	}
++	return mask
++}
++
++// Return the low-word source of a proven signed/unsigned widening operand.
++// Narrow conversions are discarded only when their input is already a concrete
++// scalar value; bounded arithmetic is left to ordinary lowering.
++func (f *fn) widenedMultiplyOperand(e *elem, signed bool) *elem {
++	if e == nil || e.st.typ != mtI64 {
++		return nil
++	}
++	if e.isDeferred() {
++		want := opZExt32
++		if signed {
++			want = opSExt32
++		}
++		if e.deferredOp() != want {
++			return nil
++		}
++		child := f.s.arg0(e)
++		if child != nil && child.elemKind() == ekValue && (child.st.typ == mtI32 || child.st.typ == mtI64) {
++			return child
++		}
++		return nil
++	}
++	if e.elemKind() != ekValue {
++		return nil
++	}
++	if e.st.kind == stConst {
++		if signed && e.st.cval == int64(int32(e.st.cval)) || !signed && uint64(e.st.cval) <= 0xffffffff {
++			return e
++		}
++		return nil
++	}
++	want := factUpper32Zero
++	if signed {
++		want = factSigned32
++	}
++	if e.st.valueFacts().has(want) {
++		return e
++	}
++	return nil
++}
++
++// A bounded arithmetic accumulator is safe to realize before multiplicands only
++// when every leaf is a nontrapping private read. Memory/global reads and divisions
++// retain their established realization order and ordinary lowering.
++func pureWidenedAccumulator(s *stack, e *elem, budget int) bool {
++	if e == nil || budget <= 0 {
++		return false
++	}
++	if e.elemKind() == ekValue {
++		return (e.st.typ == mtI32 || e.st.typ == mtI64) && e.st.kind != stMemRef && e.st.kind != stGlobalRef && e.st.kind != stFuncRef
++	}
++	if !e.isDeferred() {
++		return false
++	}
++	switch e.deferredOp() {
++	case opSExt32, opZExt32:
++		return pureWidenedAccumulator(s, s.arg0(e), budget-1)
++	case opAdd, opSub, opMul:
++		return pureWidenedAccumulator(s, s.arg0(e), budget-1) && pureWidenedAccumulator(s, s.arg1(e), budget-1)
++	}
++	return false
++}
++
++func (f *fn) tryWidenedMultiply(node *elem, dest Reg) Reg {
++	if node.st.typ != mtI64 || !f.opt(optWidenedMultiply) {
++		return regNone
++	}
++	root := node
++	var acc *elem
++	subtract := false
++	if node.deferredOp() == opAdd || node.deferredOp() == opSub {
++		a, b := f.s.arg0(node), f.s.arg1(node)
++		if b.isDeferred() && b.deferredOp() == opMul {
++			root, acc = b, a
++		} else if node.deferredOp() == opAdd && a.isDeferred() && a.deferredOp() == opMul {
++			root, acc = a, b
++		} else {
++			return regNone
++		}
++		// Loads may trap and mutable global reads may observe effects. New fused
++		// covers only reorder nontrapping local/constant/register accumulator reads.
++		if acc.st.typ != mtI64 || !pureWidenedAccumulator(f.s, acc, 4) {
++			return regNone
++		}
++		subtract = node.deferredOp() == opSub
++	} else if node.deferredOp() != opMul {
++		return regNone
++	}
++	a, b := f.s.arg0(root), f.s.arg1(root)
++	if acc == nil {
++		// Preserve the existing one-instruction multiply strength reductions.
++		for _, operand := range [2]*elem{a, b} {
++			if operand.elemKind() == ekValue && operand.st.kind == stConst && (operand.st.cval == 3 || operand.st.cval == 5 || operand.st.cval == 9) {
++				return regNone
++			}
++		}
++	}
++	signed := true
++	n, m := f.widenedMultiplyOperand(a, true), f.widenedMultiplyOperand(b, true)
++	if n == nil || m == nil {
++		signed = false
++		n, m = f.widenedMultiplyOperand(a, false), f.widenedMultiplyOperand(b, false)
++		if n == nil || m == nil {
++			return regNone
++		}
++	}
++	saved := f.pinned
++	// Match ordinary right-before-left realization for multiply; the fused
++	// accumulator is a concrete nontrapping read and can be captured first.
++	ra, ownA := regNone, false
++	if acc != nil {
++		ra, ownA = f.materializeRead(acc)
++		f.pinned = f.pinned.add(ra)
++	}
++	rm, ownM := f.materializeRead(m)
++	f.pinned = f.pinned.add(rm)
++	rn, ownN := f.materializeRead(n)
++	f.pinned = f.pinned.add(rn)
++	d := dest
++	if d == regNone {
++		d = f.allocReg(0)
++	}
++	if acc == nil {
++		if signed {
++			f.a.Smull(d, rn, rm)
++		} else {
++			f.a.Umull(d, rn, rm)
++		}
++	} else if signed {
++		if subtract {
++			f.a.Smsubl(d, rn, rm, ra)
++		} else {
++			f.a.Smaddl(d, rn, rm, ra)
++		}
++	} else {
++		if subtract {
++			f.a.Umsubl(d, rn, rm, ra)
++		} else {
++			f.a.Umaddl(d, rn, rm, ra)
++		}
++	}
++	f.pinned = saved
++	if ownN {
++		f.release(rn)
++	}
++	if ownM && rm != rn {
++		f.release(rm)
++	}
++	if ownA && ra != rn && ra != rm {
++		f.release(ra)
++	}
++	f.consumeBlockBelow(node)
++	f.occupy(node, d)
++	f.stats.peep("widened-multiply")
++	return d
++}
+diff --git a/src/core/compiler/backend/railshot/arm64/widened_multiply_arm64_test.go b/src/core/compiler/backend/railshot/arm64/widened_multiply_arm64_test.go
+new file mode 100644
+index 00000000..334c8179
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/widened_multiply_arm64_test.go
+@@ -0,0 +1,156 @@
++//go:build arm64
++
++package arm64
++
++import (
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"testing"
++)
++
++func TestWidenedMultiplyNative(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	for _, signed := range []bool{true, false} {
++		ext := byte(0xad)
++		if signed {
++			ext = 0xac
++		}
++		for _, operation := range []byte{0, 0x7c, 0x7d} {
++			// Put the accumulator before the multiplication for the subtract shape.
++			body := []byte{0}
++			if operation != 0 {
++				body = append(body, 0x20, 2)
++			}
++			body = append(body, 0x20, 0, ext, 0x20, 1, ext, 0x7e)
++			if operation != 0 {
++				body = append(body, operation)
++			}
++			body = append(body, 0x0b)
++			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}, body)
++			for _, on := range []bool{false, true} {
++				for _, guard := range []bool{false, true} {
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, DeferCodeMapping: true, Stats: &stats, Optimizations: map[string]bool{"widened-multiply": on}})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						cm.CodeImage.Close()
++					}
++					hits := stats.Funcs[0].Peephole["widened-multiply"]
++					if on && hits != 1 || !on && hits != 0 {
++						t.Fatalf("signed=%v op=%x on=%v hits=%d", signed, operation, on, hits)
++					}
++					for _, v := range [][3]uint64{{0, 0, 0}, {1, 2, 7}, {0xffffffff, 0x80000000, 0xfffffffffffffff1}, {0x7fffffff, 0x7fffffff, 0x7fffffffffffffff}, {0xdeadbeef80000001, 0x76543210ffffffff, 0x8000000000000000}} {
++						product := uint64(uint32(v[0])) * uint64(uint32(v[1]))
++						if signed {
++							product = uint64(int64(int32(v[0])) * int64(int32(v[1])))
++						}
++						want := product
++						if operation == 0x7c {
++							want = v[2] + product
++						}
++						if operation == 0x7d {
++							want = v[2] - product
++						}
++						got, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, CompactNative: false, Optimizations: map[string]bool{"widened-multiply": on}}, v[:]...)
++						if err != nil || got != want {
++							t.Fatalf("signed=%v op=%x on=%v guard=%v args=%x got=%x want=%x err=%v", signed, operation, on, guard, v, got, want, err)
++						}
++					}
++				}
++			}
++		}
++	}
++}
++
++func TestWidenedMultiplyLocalControlProof(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	for _, ambiguous := range []bool{false, true} {
++		// Params a,b,unknown64,condition. Both declared i64 locals begin at zero.
++		body := []byte{1, 2, 0x7e, 0x20, 0, 0xac, 0x21, 4, 0x20, 1, 0xac, 0x21, 5, 0x20, 3, 0x04, 0x40}
++		if ambiguous {
++			body = append(body, 0x20, 2)
++		} else {
++			body = append(body, 0x20, 0, 0xac)
++		}
++		body = append(body, 0x21, 4, 0x0b, 0x20, 4, 0x20, 5, 0x7e, 0x0b)
++		m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I64}, body)
++		for _, on := range []bool{false, true} {
++			var stats ModuleStats
++			cm, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Stats: &stats, Optimizations: map[string]bool{"widened-multiply": on}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				cm.CodeImage.Close()
++			}
++			hits := stats.Funcs[0].Peephole["widened-multiply"]
++			if on && !ambiguous && hits != 1 || (!on || ambiguous) && hits != 0 {
++				t.Fatalf("ambiguous=%v on=%v hits=%d", ambiguous, on, hits)
++			}
++			for _, cond := range []uint64{0, 1} {
++				a, b, c := uint64(0xfffffff1), uint64(0x80000001), uint64(1<<45)+1
++				product := uint64(int64(int32(a)) * int64(int32(b)))
++				if ambiguous && cond != 0 {
++					product = c * uint64(int64(int32(b)))
++				}
++				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"widened-multiply": on}}, a, b, c, cond)
++				if err != nil || got != product {
++					t.Fatalf("ambiguous=%v on=%v cond=%d got=%x want=%x err=%v", ambiguous, on, cond, got, product, err)
++				}
++			}
++		}
++	}
++}
++
++func TestWidenedMultiplyLocalAlias(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	body := []byte{1, 2, 0x7e, 0x20, 0, 0xac, 0x21, 2, 0x20, 1, 0xac, 0x21, 3, 0x20, 2, 0x20, 2, 0x20, 3, 0x7e, 0x22, 2, 0x7c, 0x0b}
++	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, body)
++	for _, on := range []bool{false, true} {
++		for _, guard := range []bool{false, true} {
++			for _, v := range [][2]uint64{{3, 5}, {0xffffffff, 0x80000000}, {0x7fffffff, 0x7fffffff}} {
++				want := uint64(int64(int32(v[0])) + int64(int32(v[0]))*int64(int32(v[1])))
++				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"widened-multiply": on}}, v[:]...)
++				if err != nil || got != want {
++					t.Fatalf("on=%v guard=%v got=%x want=%x err=%v", on, guard, got, want, err)
++				}
++			}
++		}
++	}
++}
++
++func TestWidenedMultiplyLoadsAndConstants(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	for _, coefficient := range []int64{-2147483648, -3, 3, 5, 9, 13, 2147483647, 2147483648, 1 << 40} {
++		body := []byte{0, 0x41, 16, 0x20, 0, 0x36, 2, 0, 0x41, 16, 0x34, 2, 0, 0x42}
++		body = append(body, wasmtest.SLEB64(coefficient)...)
++		body = append(body, 0x7e, 0x0b)
++		m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, body)
++		for _, on := range []bool{false, true} {
++			for _, guard := range []bool{false, true} {
++				var stats ModuleStats
++				cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, DeferCodeMapping: true, Stats: &stats, Optimizations: map[string]bool{"widened-multiply": on}})
++				if err != nil {
++					t.Fatal(err)
++				}
++				if cm.CodeImage != nil {
++					cm.CodeImage.Close()
++				}
++				hits := stats.Funcs[0].Peephole["widened-multiply"]
++				wantHit := on && coefficient == int64(int32(coefficient)) && coefficient != 3 && coefficient != 5 && coefficient != 9
++				if wantHit && hits != 1 || !wantHit && hits != 0 {
++					t.Fatalf("coefficient=%d on=%v hits=%d", coefficient, on, hits)
++				}
++				for _, a := range []uint64{1, 0xffffffff, 0x80000001, 0xdeadbeef7fffffff} {
++					want := uint64(int64(int32(a)) * coefficient)
++					got, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"widened-multiply": on}}, a)
++					if err != nil || got != want {
++						t.Fatalf("coefficient=%d on=%v guard=%v a=%x got=%x want=%x err=%v", coefficient, on, guard, a, got, want, err)
++					}
++				}
++			}
++		}
++	}
++}
+diff --git a/src/core/encoder/arm64/widened_multiply_test.go b/src/core/encoder/arm64/widened_multiply_test.go
+new file mode 100644
+index 00000000..ab67a8f0
+--- /dev/null
++++ b/src/core/encoder/arm64/widened_multiply_test.go
+@@ -0,0 +1,25 @@
++package arm64
++
++import (
++	"encoding/binary"
++	"testing"
++)
++
++func TestWidenedMultiplyAccumulateEncoding(t *testing.T) {
++	for _, tc := range []struct {
++		name string
++		emit func(*Asm)
++		want uint32
++	}{
++		{"smaddl", func(a *Asm) { a.Smaddl(X0, X1, X2, X3) }, 0x9b220c20},
++		{"smsubl", func(a *Asm) { a.Smsubl(X0, X1, X2, X3) }, 0x9b228c20},
++		{"umaddl", func(a *Asm) { a.Umaddl(X0, X1, X2, X3) }, 0x9ba20c20},
++		{"umsubl", func(a *Asm) { a.Umsubl(X0, X1, X2, X3) }, 0x9ba28c20},
++	} {
++		var a Asm
++		tc.emit(&a)
++		if len(a.B) != 4 || binary.LittleEndian.Uint32(a.B) != tc.want {
++			t.Fatalf("%s got=%x want=%08x", tc.name, a.B, tc.want)
++		}
++	}
++}

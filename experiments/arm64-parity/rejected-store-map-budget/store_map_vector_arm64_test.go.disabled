@@ -1,0 +1,167 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"encoding/json"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	"os"
+	"testing"
+)
+
+type storeMapEmulationCase struct {
+	Code        []byte
+	Input, Want []uint32
+	Paired      bool
+}
+
+func TestStoreMapVectorMachineCases(t *testing.T) {
+	var cases []storeMapEmulationCase
+	for _, reserved := range []int{0, 8, 16} {
+		for _, signed := range []bool{false, true} {
+			for _, base := range []uint32{0, 17, 0x7ffffffd, 0xfffffffd} {
+				f := fn{nLocals: 4, localType: []machineType{mtI32, mtI32, mtI32, mtI32}}
+				for _, reg := range fpAllocRegs[:reserved] {
+					f.fpinned = f.fpinned.add(reg)
+				}
+				r := wasm.ReaderFrom(storeMapFixture(1, 8, true, false))
+				p, ok := f.inspectStoreMap(&r)
+				if !ok {
+					t.Fatal("fixture declined")
+				}
+				seen := false
+				for i := p.locals; i < p.n; i++ {
+					if p.nodes[i].op == 0x41 && p.nodes[i].v == 37 {
+						if seen {
+							p.nodes[i].v = 38
+						}
+						seen = true
+					}
+					if signed && p.nodes[i].op == 0x76 {
+						p.nodes[i].op = 0x75
+					}
+				}
+				v, ok := f.planStoreMapVectors(&p)
+				if !ok {
+					if reserved != 0 {
+						continue
+					}
+					t.Fatal("vector pressure declined small map")
+				}
+				var a a64.Asm
+				f.a = &a
+				a.NeonEor16b(v.zero, v.zero, v.zero)
+				input := make([]uint32, 16)
+				for lane := 0; lane < 4; lane++ {
+					input[lane] = base + uint32(lane)
+				}
+				for i := 0; i < p.n; i++ {
+					if !v.reachable[i] {
+						continue
+					}
+					n := p.nodes[i]
+					if n.op == 0x20 {
+						a.LdrQ(v.regs[i], X0, int32(n.a*16))
+					}
+					if n.op == 0x41 {
+						a.MovImm32(X16, int32(n.v))
+						a.NeonDupGprS(v.regs[i], X16)
+					}
+				}
+				f.emitStoreMapVectorDAG(&p, &v)
+				for i := 0; i < p.nWrites; i++ {
+					a.StrQ(X0, int32(64+i*16), v.regs[p.writes[i].value])
+				}
+				f.emitStoreMapInterleaved(&v, v.regs[p.writes[0].value], v.regs[p.writes[1].value], X1)
+				want := make([]uint32, 8)
+				for stream := 0; stream < 2; stream++ {
+					for lane := 0; lane < 4; lane++ {
+						x := input[lane] * uint32(37+stream)
+						if signed {
+							x = uint32(int32(x) >> 3)
+						} else {
+							x >>= 3
+						}
+						if x&7 == 0 {
+							want[stream*4+lane] = 1
+						}
+					}
+				}
+				cases = append(cases, storeMapEmulationCase{Code: a.B, Input: input, Want: want, Paired: true})
+			}
+		}
+	}
+	if path := os.Getenv("WAGO_STORE_MAP_EMULATION_FILE"); path != "" {
+		data, err := json.Marshal(cases)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestStoreMapVectorPressureDoesNotMutateCompiler(t *testing.T) {
+	f := fn{nLocals: 4, localType: []machineType{mtI32, mtI32, mtI32, mtI32}}
+	r := wasm.ReaderFrom(storeMapFixture(1, 8, true, false))
+	p, ok := f.inspectStoreMap(&r)
+	if !ok {
+		t.Fatal("fixture declined")
+	}
+	for _, reg := range fpAllocRegs {
+		f.fpinned = f.fpinned.add(reg)
+	}
+	before := f.fpinned
+	if _, ok := f.planStoreMapVectors(&p); ok {
+		t.Fatal("overcommitted vector registers")
+	}
+	if f.fpinned != before {
+		t.Fatal("preflight changed pins")
+	}
+	for _, user := range f.fregUser {
+		if user != nil {
+			t.Fatal("preflight changed register ownership")
+		}
+	}
+}
+
+func TestStoreMapSourceMaskExcludesUnusedLocals(t *testing.T) {
+	f := fn{nLocals: 4, localType: []machineType{mtI32, mtI32, mtI32, mtI32}}
+	r := wasm.ReaderFrom(storeMapFixture(1, 8, true, false))
+	p, ok := f.inspectStoreMap(&r)
+	if !ok {
+		t.Fatal("fixture declined")
+	}
+	v, ok := f.planStoreMapVectors(&p)
+	if !ok {
+		t.Fatal("layout declined")
+	}
+	if got := storeMapSourceMask(&p, &v); got != 7 {
+		t.Fatalf("snapshot mask=%x want=7 (counter, address, limit)", got)
+	}
+}
+
+func TestStoreMapStackAddressMachineCases(t *testing.T) {
+	type stackCase struct {
+		Code   []byte
+		Offset int32
+	}
+	var cases []stackCase
+	for _, offset := range []int32{0, 0xfff, 0x1000, 1 << 20, 1 << 24, -8} {
+		var a a64.Asm
+		f := fn{a: &a}
+		f.storeMapStackAddress(X9, offset)
+		cases = append(cases, stackCase{a.B, offset})
+	}
+	if path := os.Getenv("WAGO_STORE_MAP_STACK_CASES"); path != "" {
+		data, err := json.Marshal(cases)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

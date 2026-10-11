@@ -30,8 +30,11 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("loop-memory-base", &loopMemoryBaseEnabled),
 	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
 	optimization.Bind("dominated-indexed-base", &dominatedIndexedBaseEnabled),
+	optimization.Bind("dominated-indexed-key", &dominatedIndexedKeyEnabled),
+	optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
 	optimization.Bind("common-exit-compare", &commonExitCompareEnabled),
 	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
+	optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
 	optimization.Bind("br-table-branch-vector", &brTableBranchVectorEnabled),
 	optimization.Bind("convert-read", &convertReadEnabled),
 	optimization.Bind("cold-call-local-pins", &coldCallLocalPinsEnabled),
@@ -54,6 +57,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("select-group-guard", &selectGroupEnabled),
 	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
 	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
+	optimization.Bind("wide-reuse-pins", &wideReusePinsEnabled),
 	optimization.Bind("guarded-test-ccmp", &guardedTestCCMPEnabled),
 	optimization.Bind("crowded-products", &crowdedProductsEnabled),
 	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
@@ -113,8 +117,11 @@ var (
 	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
 	optBorrowedDivRem       = optimizationBindings.Option("borrowed-div-rem")
+	optBoundedQuotient      = optimizationBindings.Option("bounded-signed-quotient")
 	optBrTableBranchVector  = optimizationBindings.Option("br-table-branch-vector")
 	optDominatedIndexedBase = optimizationBindings.Option("dominated-indexed-base")
+	optDominatedIndexedKey  = optimizationBindings.Option("dominated-indexed-key")
+	optOrdinaryShiftedImm   = optimizationBindings.Option("ordinary-shifted-immediate")
 	optIndexedBaseReuse     = optimizationBindings.Option("indexed-base-reuse")
 	optConvertRead          = optimizationBindings.Option("convert-read")
 	optColdCallLocalPins    = optimizationBindings.Option("cold-call-local-pins")
@@ -135,6 +142,7 @@ var (
 	optSelectGroupGuard     = optimizationBindings.Option("select-group-guard")
 	optDotLoopVector        = optimizationBindings.Option("dot-loop-vector")
 	optPureReduceVector     = optimizationBindings.Option("pure-reduce-vector")
+	optWideReusePins        = optimizationBindings.Option("wide-reuse-pins")
 	optGuardedTestCCMP      = optimizationBindings.Option("guarded-test-ccmp")
 	optCrowdedProducts      = optimizationBindings.Option("crowded-products")
 	optStreamReduce         = optimizationBindings.Option("streaming-i32-reduction")

@@ -1,0 +1,132 @@
+diff --git a/src/core/compiler/backend/railshot/arm64/compile.go b/src/core/compiler/backend/railshot/arm64/compile.go
+index d2de5a8c..bb333b22 100644
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -173,6 +173,7 @@ const (
+ type fn struct {
+ 	dotLoop       *dotLoopState
+ 	pureReduce    *pureReduceJoin
++	storeMap      *pureReduceJoin
+ 	scalarSummary shared.ScalarSummary
+ 	// Physical frame access emitted by the shared lowerer, not logical state.
+ 	scalarFrameUsed bool
+@@ -457,7 +458,7 @@ type fn struct {
+ }
+ 
+ func (f *fn) opt(option optimization.Option) bool {
+-	return f.policy.EnabledResolvedOption(option)
++	return f.policy.Selection.EnabledResolvedOptionRef(option)
+ }
+ 
+ // transient is the per-function workspace handed back to module scratch after
+diff --git a/src/core/compiler/backend/railshot/arm64/control.go b/src/core/compiler/backend/railshot/arm64/control.go
+index c293caf5..8e2f965f 100644
+--- a/src/core/compiler/backend/railshot/arm64/control.go
++++ b/src/core/compiler/backend/railshot/arm64/control.go
+@@ -1719,8 +1719,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
+ 		f.flush()
+ 		if kind == cfLoop {
+ 			if pN == 0 && rN == 0 {
+-				f.emitPureReduce(r)
+-				f.emitDotLoop(r)
++				if f.opt(optStoreMap) && f.nLocals <= 32 {
++					f.emitStoreMapLoop(r)
++				}
++				// A proven store loop cannot belong to either read-only reduction
++				// grammar. Avoid decoding its pure expression prefixes twice more.
++				if f.storeMap == nil {
++					f.emitPureReduce(r)
++					f.emitDotLoop(r)
++				}
+ 			}
+ 			f.preloadScopedLoopConsts(&fr)
+ 			f.alignLoopHeader()
+@@ -2722,6 +2729,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
+ 	}
+ 	f.finishDotLoop(last + 1)
+ 	f.finishPureReduce(last + 1)
++	f.finishStoreMap(last + 1)
+ 	f.releaseCtrlMerge(&fr)
+ 	f.freeEndsBuf(ends)
+ 	f.releaseFrameBaseTypes(&fr)
+diff --git a/src/core/compiler/backend/railshot/arm64/knobs.go b/src/core/compiler/backend/railshot/arm64/knobs.go
+index 9040b137..6c975635 100644
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -54,6 +54,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
+ 	optimization.Bind("select-group-guard", &selectGroupEnabled),
+ 	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
+ 	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
++	optimization.Bind("store-map-vector", &storeMapEnabled),
+ 	optimization.Bind("guarded-test-ccmp", &guardedTestCCMPEnabled),
+ 	optimization.Bind("crowded-products", &crowdedProductsEnabled),
+ 	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+@@ -135,6 +136,7 @@ var (
+ 	optSelectGroupGuard     = optimizationBindings.Option("select-group-guard")
+ 	optDotLoopVector        = optimizationBindings.Option("dot-loop-vector")
+ 	optPureReduceVector     = optimizationBindings.Option("pure-reduce-vector")
++	optStoreMap             = optimizationBindings.Option("store-map-vector")
+ 	optGuardedTestCCMP      = optimizationBindings.Option("guarded-test-ccmp")
+ 	optCrowdedProducts      = optimizationBindings.Option("crowded-products")
+ 	optStreamReduce         = optimizationBindings.Option("streaming-i32-reduction")
+diff --git a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+index 6ada49b5..581500d9 100644
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -85,7 +85,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "regional-memory-read",
++		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "regional-memory-read", "store-map-vector",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index c871fc14..edc697a0 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -103,6 +103,13 @@ func (s Selection) EnabledResolvedOption(option Option) bool {
+ 	return s.bits[option.word]&option.mask != 0
+ }
+ 
++// EnabledResolvedOptionRef performs the same resolved bit query without copying
++// the selection. Compilation backends keep an immutable, addressable selection
++// and query it repeatedly during instruction lowering.
++func (s *Selection) EnabledResolvedOptionRef(option Option) bool {
++	return s.bits[option.word]&option.mask != 0
++}
++
+ // Valid reports whether the selection was resolved by a Bindings owner.
+ func (s Selection) Valid() bool { return s.bindings != nil }
+ 
+@@ -458,6 +465,7 @@ var catalog = []Definition{
+ 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
+ 	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: []string{"arm64"}},
++	{Name: "store-map-vector", Label: "General store map vectorization", Description: "vectorize proven pure i32 store loops", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
+diff --git a/src/core/compiler/optimization/catalog_test.go b/src/core/compiler/optimization/catalog_test.go
+index 03347da1..2a160bfc 100644
+--- a/src/core/compiler/optimization/catalog_test.go
++++ b/src/core/compiler/optimization/catalog_test.go
+@@ -289,7 +289,7 @@ func TestSelectionAcrossWordBoundary(t *testing.T) {
+ 	}
+ 	for _, name := range []string{low, high} {
+ 		option := bindings.Option(name)
+-		if !selection.Enabled(name) || !selection.EnabledOption(option) || !selection.EnabledResolvedOption(option) {
++		if !selection.Enabled(name) || !selection.EnabledOption(option) || !selection.EnabledResolvedOption(option) || !selection.EnabledResolvedOptionRef(option) {
+ 			t.Fatalf("enabled option %q lost at the word boundary", name)
+ 		}
+ 	}
+@@ -297,7 +297,7 @@ func TestSelectionAcrossWordBoundary(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if !changed.Enabled(low) || changed.Enabled(high) || changed.EnabledOption(bindings.Option(high)) || !selection.Enabled(high) {
++	if !changed.Enabled(low) || changed.Enabled(high) || changed.EnabledOption(bindings.Option(high)) || changed.EnabledResolvedOptionRef(bindings.Option(high)) || !selection.Enabled(high) {
+ 		t.Fatal("clearing the upper word changed the lower word or the immutable selection")
+ 	}
+ 	for _, definition := range definitions[:63] {

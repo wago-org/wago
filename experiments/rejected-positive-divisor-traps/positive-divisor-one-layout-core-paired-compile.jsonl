@@ -1,0 +1,25 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+{"workload":"modular-arithmetic","phase":"compile","round":0,"on":false,"iterations":88,"us":2175.265625}
+{"workload":"modular-arithmetic","phase":"compile","round":0,"on":true,"iterations":88,"us":2177.955022727273}
+{"workload":"modular-arithmetic","phase":"compile","round":1,"on":true,"iterations":88,"us":2175.146784090909}
+{"workload":"modular-arithmetic","phase":"compile","round":1,"on":false,"iterations":88,"us":2186.6614545454545}
+{"workload":"modular-arithmetic","phase":"compile","round":2,"on":false,"iterations":88,"us":2178.9990568181815}
+{"workload":"modular-arithmetic","phase":"compile","round":2,"on":true,"iterations":88,"us":2186.866}
+{"workload":"modular-arithmetic","phase":"compile","round":3,"on":true,"iterations":88,"us":2189.162409090909}
+{"workload":"modular-arithmetic","phase":"compile","round":3,"on":false,"iterations":88,"us":2167.444602272727}
+{"workload":"modular-arithmetic","phase":"compile","round":4,"on":false,"iterations":88,"us":2168.1571931818185}
+{"workload":"modular-arithmetic","phase":"compile","round":4,"on":true,"iterations":88,"us":2163.90625}
+{"workload":"modular-arithmetic","phase":"compile","round":5,"on":true,"iterations":88,"us":2205.620738636364}
+{"workload":"modular-arithmetic","phase":"compile","round":5,"on":false,"iterations":88,"us":2174.8693181818185}
+{"workload":"decimal-parse","phase":"compile","round":0,"on":false,"iterations":155,"us":1328.7185483870967}
+{"workload":"decimal-parse","phase":"compile","round":0,"on":true,"iterations":155,"us":1339.225535483871}
+{"workload":"decimal-parse","phase":"compile","round":1,"on":true,"iterations":155,"us":1292.816664516129}
+{"workload":"decimal-parse","phase":"compile","round":1,"on":false,"iterations":155,"us":1343.8376322580646}
+{"workload":"decimal-parse","phase":"compile","round":2,"on":false,"iterations":155,"us":1331.0846774193549}
+{"workload":"decimal-parse","phase":"compile","round":2,"on":true,"iterations":155,"us":1318.6021548387096}
+{"workload":"decimal-parse","phase":"compile","round":3,"on":true,"iterations":155,"us":1308.7881741935482}
+{"workload":"decimal-parse","phase":"compile","round":3,"on":false,"iterations":155,"us":1288.9336}
+{"workload":"decimal-parse","phase":"compile","round":4,"on":false,"iterations":155,"us":1301.8129032258066}
+{"workload":"decimal-parse","phase":"compile","round":4,"on":true,"iterations":155,"us":1305.6973096774193}
+{"workload":"decimal-parse","phase":"compile","round":5,"on":true,"iterations":155,"us":1302.742206451613}
+{"workload":"decimal-parse","phase":"compile","round":5,"on":false,"iterations":155,"us":1242.1306451612904}

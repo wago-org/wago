@@ -1,0 +1,11 @@
+--- FAIL: TestBoundedSignedQuotientNative (0.00s)
+    bounded_signed_quotient_arm64_test.go:65: arm64 compile: compiler diagnostics require -tags=wago_codegenstats or wago_profile
+--- FAIL: TestBoundedSignedQuotientDeclinesDifferentFinalLocal (0.00s)
+    bounded_signed_quotient_arm64_test.go:116: arm64 compile: compiler diagnostics require -tags=wago_codegenstats or wago_profile
+--- FAIL: TestBoundedSignedQuotientPressureAndCompaction (0.00s)
+    bounded_signed_quotient_arm64_test.go:176: arm64 compile: compiler diagnostics require -tags=wago_codegenstats or wago_profile
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	1.123s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.183s
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.580s
+FAIL

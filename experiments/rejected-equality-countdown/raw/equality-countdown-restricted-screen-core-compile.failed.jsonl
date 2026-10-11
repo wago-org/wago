@@ -1,0 +1,8 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+panic: json: cannot unmarshal array into Go value of type struct { Workloads []struct { ID string; Artifact string; ABI string; Export string; Reset string; Initialize string; HostProfile string "json:\"host_profile\""; Input jsontext.Value; Args []jsontext.Value; Oracle struct { Kind string; Expected []jsontext.Value; Memory []jsontext.Value } } }
+
+goroutine 1 [running]:
+main.must(...)
+	/private/tmp/wago-counted-loop-20261010/experiments/arm64-parity/paired/main.go:249
+main.main()
+	/private/tmp/wago-counted-loop-20261010/experiments/arm64-parity/paired/main.go:75 +0x16ec

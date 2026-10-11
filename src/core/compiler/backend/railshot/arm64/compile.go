@@ -218,6 +218,7 @@ type fn struct {
 	intervalCalls      bool
 	intervalControl    bool
 	intervalNext       bool
+	wideReuseScore     []uint32
 	streamingReduction bool
 	selectGroupEnd     int
 	selectGroupSite    int
@@ -482,6 +483,7 @@ type transient struct {
 	edgeScratch       []byte
 	tmpIntervalEvents []intervalLocalEvent
 	tmpIntervalIndex  []uint32
+	tmpWideTraffic    []uint32
 	floatPool         []floatPoolConst
 	floatPoolSites    []floatPoolSite
 }
@@ -3330,8 +3332,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	// Wide local tables begin canonical so their many borrowed values cannot consume
 	// the target-derived transient floor. There is no failed-attempt retry.
-	if !pinLocals || nLocals > 64 {
+	if !pinLocals {
 		gpPool = nil
+	} else if nLocals > 64 {
+		if !hasCall && hints.flags.has(hintIntervalRegionStorage) && len(hints.localScore) == nLocals && f.opt(optWideReusePins) {
+			if len(gpPool) > 4 {
+				gpPool = gpPool[:4]
+			}
+		} else {
+			gpPool = nil
+		}
 	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
 	// in the register (WARP's model). In call-free functions any loop-accessed global
@@ -3729,14 +3739,26 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	}
 	gp := gpStorage[:0]
 	if len(gpPool) != 0 {
-		for i := 0; i < f.nLocals; i++ {
-			if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
-				gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
+		if f.nLocals > 64 {
+			for i := 0; i < f.nLocals && i < 256; i++ {
+				if (f.localType[i] == mtI32 || f.localType[i] == mtI64) && i < len(f.wideReuseScore) && f.wideReuseScore[i] != 0 {
+					gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: f.wideReuseScore[i]}, len(gpPool))
+				}
+			}
+		} else {
+			for i := 0; i < f.nLocals; i++ {
+				if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
+					gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
+				}
 			}
 		}
 	}
 	loopMin := uint32(loopWeight(1))
+	// Wide-table reservations are limited to the analyzed locals.
 	for _, gh := range globalHints {
+		if f.nLocals > 64 {
+			continue
+		}
 		g := int(gh.Index)
 		if gh.Score < loopMin || f.isModuleGlobal(g) || hasCall && !gh.Eligible {
 			continue
@@ -3755,7 +3777,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		// are actually used (score > 0): pinning a cold local there costs prologue
 		// and call-spill traffic for nothing. Zero-score candidates still fill the
 		// base slots so byte-backed decoded bodies keep the first-N fallback.
-		if k >= len(pinnedLocalRegs) && c.score == 0 {
+		if (k >= len(pinnedLocalRegs) || f.nLocals > 64) && c.score == 0 {
 			break
 		}
 		// X27 is the last, opportunistic call-making pin. Spending it adds one
@@ -3776,6 +3798,12 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		} else {
 			f.locals[idx].reg = gpPool[k]
 			f.stats.addPinnedLocal()
+			if f.nLocals > 64 {
+				f.stats.peep("wide-reuse-local-pin")
+				if diagnosticsEnabled && f.stats != nil {
+					f.stats.peep(fmt.Sprintf("wide-reuse-local-%d", idx))
+				}
+			}
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}

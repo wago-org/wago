@@ -1,0 +1,14 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: regional-memory-read,dominated-indexed-key,bounded-signed-quotient,wide-reuse-pins,ordinary-shifted-immediate
+{"workload":"hash","phase":"exec","round":0,"on":false,"iterations":6792,"us":15.955603504122497}
+{"workload":"hash","phase":"exec","round":0,"on":true,"iterations":6792,"us":15.66599808598351}
+{"workload":"hash","phase":"exec","round":1,"on":true,"iterations":6792,"us":15.966934187279152}
+{"workload":"hash","phase":"exec","round":1,"on":false,"iterations":6792,"us":15.848191401648998}
+{"workload":"hash","phase":"exec","round":2,"on":false,"iterations":6792,"us":15.854215694935217}
+{"workload":"hash","phase":"exec","round":2,"on":true,"iterations":6792,"us":15.935641195524145}
+{"workload":"hash","phase":"exec","round":3,"on":true,"iterations":6792,"us":15.823198763250883}
+{"workload":"hash","phase":"exec","round":3,"on":false,"iterations":6792,"us":15.714498674911662}
+{"workload":"hash","phase":"exec","round":4,"on":false,"iterations":6792,"us":15.802248969375736}
+{"workload":"hash","phase":"exec","round":4,"on":true,"iterations":6792,"us":15.812996908127209}
+{"workload":"hash","phase":"exec","round":5,"on":true,"iterations":6792,"us":15.806868374558304}
+{"workload":"hash","phase":"exec","round":5,"on":false,"iterations":6792,"us":15.747349823321555}

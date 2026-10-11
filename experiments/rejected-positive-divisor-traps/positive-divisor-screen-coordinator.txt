@@ -1,0 +1,1 @@
+Device occupied; polling ~/LOCK.md and waiting for release.

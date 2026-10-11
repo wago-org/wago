@@ -1,0 +1,99 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"encoding/json"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"os"
+	"testing"
+)
+
+type storeMapGuardCase struct {
+	Code    []byte
+	Initial []uint32
+	Memory  uint64
+	Safe    bool
+	Trips   uint32
+}
+
+func TestStoreMapGuardMachineCases(t *testing.T) {
+	var cases []storeMapGuardCase
+	for _, counterStep := range []int32{1, 2, 3} {
+		for _, bias := range []uint32{0, 4096, 327680, 0xfffffff0} {
+			for _, addressOp := range []byte{0, 0x6c, 0x74} {
+				for _, stride := range []int32{8, 12} {
+					for _, offset := range []uint64{0, 4, 64} {
+						inspect := fn{nLocals: 4, localType: []machineType{mtI32, mtI32, mtI32, mtI32}}
+						body := storeMapFixture(counterStep, stride, true, false)
+						if addressOp != 0 || bias != 0 {
+							body = nil
+							for store := 0; store < 2; store++ {
+								body = append(body, 0x20, 1)
+								if addressOp != 0 {
+									body = append(body, 0x41, 2, addressOp)
+								}
+								if bias != 0 {
+									body = append(body, 0x41)
+									body = append(body, wasmtest.SLEB32(int32(bias))...)
+									body = append(body, 0x6a)
+								}
+								if store != 0 {
+									body = append(body, 0x41, 4, 0x6a)
+								}
+								body = append(body, 0x20, 0, 0x36, 2, 0)
+							}
+							body = append(body, 0x20, 1, 0x41, byte(stride), 0x6a, 0x21, 1, 0x20, 0, 0x41, byte(counterStep), 0x6a, 0x22, 0, 0x20, 2, 0x47, 0x0d, 0, 0x0b)
+						}
+						reader := wasm.ReaderFrom(body)
+						p, ok := inspect.inspectStoreMap(&reader)
+						if !ok {
+							t.Fatal("fixture declined")
+						}
+						p.writes[1].offset = offset
+						var a a64.Asm
+						f := fn{a: &a}
+						branches := f.emitStoreMapGuard(&p, storeMapGuardRegs{initial: X0, work: X1, memory: X2, count: X3, lo: X4, hi: X5, tmp: X6})
+						a.MovImm64(X7, 1)
+						done := a.Branch()
+						f.patchStoreMapGuard(&branches, a.Len())
+						a.MovImm64(X7, 0)
+						f.patchBranch26(done, a.Len())
+						if f.representationLimit != functionRepresentationOK {
+							t.Fatal("guard branch overflow")
+						}
+						for _, address := range []uint32{0, 1, 4096, 0xfffffff0} {
+							for _, limit := range []uint32{0, 1, 6, 8, 14, 16} {
+								for _, memory := range []uint64{0, 63, 128, 1 << 33} {
+									initial := []uint32{0, address, limit, 0}
+									trips, _, safe := p.storeMapRanges(initial, memory)
+									cases = append(cases, storeMapGuardCase{Code: a.B, Initial: initial, Memory: memory, Safe: safe && trips >= 4, Trips: trips})
+								}
+							}
+						}
+						if bias == 0 && addressOp == 0 && stride == 8 && offset == 4 {
+							for _, counter := range []uint32{1, 0xffffff00, 0xfffffff0} {
+								for _, limit := range []uint32{16, 0xfffffff8} {
+									initial := []uint32{counter, 0, limit, 0}
+									trips, _, safe := p.storeMapRanges(initial, 1<<33)
+									cases = append(cases, storeMapGuardCase{Code: a.B, Initial: initial, Memory: 1 << 33, Safe: safe && trips >= 4, Trips: trips})
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if path := os.Getenv("WAGO_STORE_MAP_GUARD_CASES"); path != "" {
+		data, err := json.Marshal(cases)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

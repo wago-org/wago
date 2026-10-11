@@ -1,0 +1,21 @@
+{
+  "app": {
+    "cases": 102,
+    "changed": [
+      {
+        "name": "graphics-reed-solomon.bin",
+        "before_bytes": 4460,
+        "after_bytes": 4420
+      },
+      {
+        "name": "video-dct.bin",
+        "before_bytes": 4052,
+        "after_bytes": 4036
+      }
+    ]
+  },
+  "core": {
+    "cases": 46,
+    "changed": []
+  }
+}

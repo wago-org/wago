@@ -851,7 +851,7 @@ func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
 		f.a.LeaSP(dst, disp)
 		return
 	}
-	if f.shiftedAddSubImmediate(int64(disp)) {
+	if f.shiftedAddSubImmediate(int64(disp)) || shiftedAddSubImmediateEnabled && f.opt(optOrdinaryShiftedImm) && fitsShiftedAddSubImmediate(int64(disp)) {
 		magnitude := int64(disp)
 		if magnitude < 0 {
 			magnitude = -magnitude

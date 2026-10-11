@@ -1,0 +1,330 @@
+diff --git a/src/core/compiler/backend/railshot/arm64/compile.go b/src/core/compiler/backend/railshot/arm64/compile.go
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -218,6 +218,7 @@
+ 	intervalCalls      bool
+ 	intervalControl    bool
+ 	intervalNext       bool
++	wideInvariantMask  [4]uint64
+ 	streamingReduction bool
+ 	selectGroupEnd     int
+ 	selectGroupSite    int
+@@ -482,6 +483,7 @@
+ 	edgeScratch       []byte
+ 	tmpIntervalEvents []intervalLocalEvent
+ 	tmpIntervalIndex  []uint32
++	tmpWideDepth      []uint8
+ 	floatPool         []floatPoolConst
+ 	floatPoolSites    []floatPoolSite
+ }
+@@ -3330,8 +3332,16 @@
+ 	}
+ 	// Wide local tables begin canonical so their many borrowed values cannot consume
+ 	// the target-derived transient floor. There is no failed-attempt retry.
+-	if !pinLocals || nLocals > 64 {
++	if !pinLocals {
+ 		gpPool = nil
++	} else if nLocals > 64 {
++		if f.opt(optWideInvariantPins) && !hasCall && hints.flags.has(hintIntervalRegionStorage) && len(hints.localScore) == nLocals {
++			if len(gpPool) > 4 {
++				gpPool = gpPool[:4]
++			}
++		} else {
++			gpPool = nil
++		}
+ 	}
+ 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
+ 	// in the register (WARP's model). In call-free functions any loop-accessed global
+@@ -3731,12 +3741,19 @@
+ 	if len(gpPool) != 0 {
+ 		for i := 0; i < f.nLocals; i++ {
+ 			if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
++				if f.nLocals > 64 && (i >= 256 || f.wideInvariantMask[i>>6]&(uint64(1)<<uint(i&63)) == 0) {
++					continue
++				}
+ 				gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
+ 			}
+ 		}
+ 	}
+ 	loopMin := uint32(loopWeight(1))
++	// Wide-table reservations are limited to the analyzed locals.
+ 	for _, gh := range globalHints {
++		if f.nLocals > 64 {
++			continue
++		}
+ 		g := int(gh.Index)
+ 		if gh.Score < loopMin || f.isModuleGlobal(g) || hasCall && !gh.Eligible {
+ 			continue
+@@ -3755,7 +3772,7 @@
+ 		// are actually used (score > 0): pinning a cold local there costs prologue
+ 		// and call-spill traffic for nothing. Zero-score candidates still fill the
+ 		// base slots so byte-backed decoded bodies keep the first-N fallback.
+-		if k >= len(pinnedLocalRegs) && c.score == 0 {
++		if (k >= len(pinnedLocalRegs) || f.nLocals > 64) && c.score == 0 {
+ 			break
+ 		}
+ 		// X27 is the last, opportunistic call-making pin. Spending it adds one
+@@ -3776,6 +3793,9 @@
+ 		} else {
+ 			f.locals[idx].reg = gpPool[k]
+ 			f.stats.addPinnedLocal()
++			if f.nLocals > 64 {
++				f.stats.peep("wide-invariant-local-pin")
++			}
+ 		}
+ 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
+ 	}
+diff --git a/src/core/compiler/backend/railshot/arm64/interval_region.go b/src/core/compiler/backend/railshot/arm64/interval_region.go
+--- a/src/core/compiler/backend/railshot/arm64/interval_region.go
++++ b/src/core/compiler/backend/railshot/arm64/interval_region.go
+@@ -7,6 +7,8 @@
+ 
+ 	"github.com/wago-org/wago/src/core/compiler/wasm"
+ )
++
++var wideInvariantPinsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_WIDE_INVARIANT_PINS") == "1"
+ 
+ var intervalCallRegionsEnabled = os.Getenv("WAGO_ARM64_NO_INTERVAL_CALL_REGIONS") != "1" && os.Getenv("WAGO_ARM64_EXPERIMENT_INTERVAL_CALL_REGIONS") != "0"
+ 
+@@ -127,6 +129,7 @@
+ // eligible local. Victim selection advances a monotonic cursor instead of
+ // repeatedly decoding the rest of the function.
+ func (f *fn) prepareIntervalEvents(body []byte, reserve int, callBoundaries bool) {
++	f.wideInvariantMask = [4]uint64{}
+ 	if len(body) > maxIntervalRegionBody {
+ 		f.intervalEvents, f.intervalHead = nil, nil
+ 		return
+@@ -147,13 +150,60 @@
+ 		}
+ 		tail[x] = i
+ 	}
++	// A permanent wide-table pin is useful for a value defined outside the
++	// deeper loop that reads it repeatedly. Reuse this existing decode instead
++	// of adding another pass or retained module-sidecar allocation.
++	invariantPins := f.nLocals > 64 && !f.intervalCalls && f.opt(optWideInvariantPins)
++	var readDepth, writeDepth, loopAtDepth []uint8
++	if invariantPins {
++		const maxControlDepth = 256
++		n := 2*f.nLocals + maxControlDepth
++		if cap(f.tmpWideDepth) < n {
++			f.tmpWideDepth = make([]uint8, n)
++		} else {
++			f.tmpWideDepth = f.tmpWideDepth[:n]
++			clear(f.tmpWideDepth)
++		}
++		readDepth = f.tmpWideDepth[:f.nLocals]
++		writeDepth = f.tmpWideDepth[f.nLocals : 2*f.nLocals]
++		loopAtDepth = f.tmpWideDepth[2*f.nLocals:]
++	}
++	controlDepth, loopDepth := 0, 0
+ 	r := wasm.ReaderFrom(body)
+ scan:
+ 	for r.HasNext() {
+ 		pos := uint32(r.Offset())
+ 		op, err := r.Byte()
+ 		if err != nil {
++			invariantPins = false
+ 			break
++		}
++		if invariantPins {
++			switch op {
++			case 0x02, 0x03, 0x04, 0x1f:
++				if controlDepth == len(loopAtDepth) {
++					invariantPins = false
++				} else {
++					loopAtDepth[controlDepth] = 0
++					if op == 0x03 {
++						loopAtDepth[controlDepth] = 1
++					}
++					controlDepth++
++					if op == 0x03 {
++						loopDepth++
++						if loopDepth > 255 {
++							invariantPins = false
++						}
++					}
++				}
++			case 0x0b:
++				if controlDepth > 0 {
++					controlDepth--
++					if loopAtDepth[controlDepth] != 0 {
++						loopDepth--
++					}
++				}
++			}
+ 		}
+ 		if f.intervalControl {
+ 			if intervalRegionBoundary(op, callBoundaries) {
+@@ -189,6 +239,7 @@
+ 			}
+ 			if err != nil {
+ 				events = events[:0]
++				invariantPins = false
+ 				break scan
+ 			}
+ 			continue
+@@ -196,9 +247,20 @@
+ 		idx, err := r.U32()
+ 		if err != nil || uint64(idx) >= uint64(f.nLocals) {
+ 			events = events[:0]
++			invariantPins = false
+ 			break
+ 		}
+ 		x := int(idx)
++		if invariantPins {
++			depth := uint8(loopDepth)
++			if kill {
++				if depth > writeDepth[x] {
++					writeDepth[x] = depth
++				}
++			} else if depth > readDepth[x] {
++				readDepth[x] = depth
++			}
++		}
+ 		if !f.intervalEligible(x) {
+ 			continue
+ 		}
+@@ -206,6 +268,13 @@
+ 			pos |= intervalEventKill
+ 		}
+ 		appendEvent(x, pos)
++	}
++	if invariantPins {
++		for x := 0; x < f.nLocals; x++ {
++			if readDepth[x] > writeDepth[x] {
++				f.wideInvariantMask[x>>6] |= uint64(1) << uint(x&63)
++			}
++		}
+ 	}
+ 	f.tmpIntervalEvents, f.tmpIntervalIndex = events, index
+ 	if len(events) != 0 {
+diff --git a/src/core/compiler/backend/railshot/arm64/knobs.go b/src/core/compiler/backend/railshot/arm64/knobs.go
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -54,6 +54,7 @@
+ 	optimization.Bind("select-group-guard", &selectGroupEnabled),
+ 	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
+ 	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
++	optimization.Bind("wide-invariant-pins", &wideInvariantPinsEnabled),
+ 	optimization.Bind("guarded-test-ccmp", &guardedTestCCMPEnabled),
+ 	optimization.Bind("crowded-products", &crowdedProductsEnabled),
+ 	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+@@ -135,6 +136,7 @@
+ 	optSelectGroupGuard     = optimizationBindings.Option("select-group-guard")
+ 	optDotLoopVector        = optimizationBindings.Option("dot-loop-vector")
+ 	optPureReduceVector     = optimizationBindings.Option("pure-reduce-vector")
++	optWideInvariantPins    = optimizationBindings.Option("wide-invariant-pins")
+ 	optGuardedTestCCMP      = optimizationBindings.Option("guarded-test-ccmp")
+ 	optCrowdedProducts      = optimizationBindings.Option("crowded-products")
+ 	optStreamReduce         = optimizationBindings.Option("streaming-i32-reduction")
+diff --git a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -85,7 +85,7 @@
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "regional-memory-read",
++		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "regional-memory-read", "wide-invariant-pins",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -458,6 +458,7 @@
+ 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
+ 	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: []string{"arm64"}},
++	{Name: "wide-invariant-pins", Label: "Wide invariant local pins", Description: "retain bounded integer locals read in deeper loops than their definitions", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
+diff --git a/src/core/compiler/backend/railshot/arm64/wide_invariant_arm64_test.go b/src/core/compiler/backend/railshot/arm64/wide_invariant_arm64_test.go
+new file mode 100644
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/wide_invariant_arm64_test.go
+@@ -0,0 +1,83 @@
++//go:build arm64
++
++package arm64
++
++import (
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"testing"
++)
++
++func TestWideInvariantDepthAdmission(t *testing.T) {
++	saved := wideInvariantPinsEnabled
++	wideInvariantPinsEnabled = true
++	defer func() { wideInvariantPinsEnabled = saved }()
++	f := fn{nLocals: 80, intervalControl: true, policy: currentCodegenPolicy(), classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
++	f.localType = make([]machineType, 80)
++	f.intervalLast = make([]uint32, 80)
++	f.intervalScore = make([]uint32, 80)
++	for i := range f.localType {
++		f.localType[i] = mtI32
++		f.intervalLast[i] = 1
++		f.intervalScore[i] = 100
++	}
++	// Outer-loop definition/read inside the nested loop qualifies. An inner-loop
++	// mutation and a later definition at the read's nesting depth both decline.
++	body := []byte{0x03, 0x40, 0x41, 7, 0x21, 70, 0x03, 0x40, 0x20, 70, 0x1a, 0x20, 71, 0x1a, 0x41, 1, 0x21, 71, 0x20, 72, 0x1a, 0x0b, 0x03, 0x40, 0x41, 2, 0x21, 72, 0x0b, 0x0b, 0x0b}
++	f.prepareIntervalEvents(body, 40, false)
++	has := func(x int) bool { return f.wideInvariantMask[x>>6]&(uint64(1)<<uint(x&63)) != 0 }
++	if !has(70) || has(71) || has(72) {
++		t.Fatalf("mask=%x", f.wideInvariantMask)
++	}
++}
++
++func TestWideInvariantPinsNative(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	// Eight outer-defined locals compete for four pins. The inner counter and
++	// loop-carried accumulator must retain their ordinary regional treatment.
++	body := []byte{1, 80, 0x7f, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x3f, 0, 0x1a, 0x02, 0x40, 0x20, 0, 0x45, 0x0d, 0, 0x03, 0x40}
++	for x := byte(70); x <= 77; x++ {
++		body = append(body, 0x41)
++		body = append(body, wasmtest.SLEB32(int32(x-67))...)
++		body = append(body, 0x21, x)
++	}
++	body = append(body, 0x20, 1, 0x04, 0x40, 0x41, 11, 0x21, 70, 0x05, 0x41, 3, 0x21, 70, 0x0b, 0x41, 3, 0x21, 3, 0x03, 0x40)
++	body = append(body, 0x20, 78, 0x41, 1, 0x6a, 0x22, 78, 0x20, 2, 0x6a)
++	for x := byte(70); x <= 77; x++ {
++		body = append(body, 0x20, x, 0x6a)
++	}
++	body = append(body, 0x21, 2, 0x20, 3, 0x41, 1, 0x6b, 0x22, 3, 0x0d, 0, 0x0b, 0x20, 0, 0x41, 1, 0x6b, 0x22, 0, 0x0d, 0, 0x0b, 0x0b, 0x20, 2, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++	for _, on := range []bool{false, true} {
++		for _, guard := range []bool{false, true} {
++			var stats ModuleStats
++			opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"wide-invariant-pins": on}, Stats: &stats}
++			cm, err := CompileModuleWith(m, opts)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				cm.CodeImage.Close()
++			}
++			count := stats.Funcs[0].Peephole["wide-invariant-local-pin"]
++			if on && count != 4 || !on && count != 0 {
++				t.Fatalf("on=%v guard=%v count=%d stats=%v", on, guard, count, stats.Funcs[0].Peephole)
++			}
++			opts.Stats = nil
++			for _, n := range []uint64{0, 1, 2, 7, 31} {
++				for _, condition := range []uint64{0, 1, 0x80000000} {
++					k := 3 * n
++					sum := uint64(52)
++					if condition != 0 {
++						sum += 8
++					}
++					want := k*sum + k*(k+1)/2
++					got, err := runArm64WrapperWithOptions(t, m, opts, n, condition)
++					if err != nil || got != want {
++						t.Fatalf("on=%v guard=%v n=%d cond=%x got=%d want=%d err=%v", on, guard, n, condition, got, want, err)
++					}
++				}
++			}
++		}
++	}
++}

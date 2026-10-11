@@ -1,0 +1,50 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"bytes"
+	"sync"
+	"testing"
+)
+
+func TestStoreMapPerCompilationPolicy(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	old := storeMapEnabled
+	defer func() { storeMapEnabled = old }()
+	// An explicit false must override the process-level experimental default.
+	storeMapEnabled = true
+	m := storeMapLoopModule(t, true)
+	compile := func(on bool) ([]byte, int, error) {
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, DeferCodeMapping: true, Stats: &stats, Optimizations: map[string]bool{"store-map-vector": on}})
+		if err != nil {
+			return nil, 0, err
+		}
+		return append([]byte(nil), cm.Code...), stats.Funcs[0].Peephole["store-map-vector"], nil
+	}
+	off, hits, err := compile(false)
+	if err != nil || hits != 0 {
+		t.Fatalf("off hits=%d err=%v", hits, err)
+	}
+	on, hits, err := compile(true)
+	if err != nil || hits != 1 || bytes.Equal(off, on) {
+		t.Fatalf("on hits=%d unchanged=%v err=%v", hits, bytes.Equal(off, on), err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(onState bool) {
+			defer wg.Done()
+			code, hits, err := compile(onState)
+			want, wantHits := off, 0
+			if onState {
+				want, wantHits = on, 1
+			}
+			if err != nil || hits != wantHits || !bytes.Equal(code, want) {
+				t.Errorf("policy cross-talk on=%v hits=%d err=%v", onState, hits, err)
+			}
+		}(i%2 == 0)
+	}
+	wg.Wait()
+}

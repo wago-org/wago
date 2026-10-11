@@ -1,0 +1,14 @@
+=== RUN   TestBoundedSignedQuotientNative
+--- PASS: TestBoundedSignedQuotientNative (0.20s)
+=== RUN   TestBoundedSignedQuotientDeclinesDifferentFinalLocal
+--- PASS: TestBoundedSignedQuotientDeclinesDifferentFinalLocal (0.00s)
+=== RUN   TestBoundedSignedQuotientKeepsEarlierTrap
+--- PASS: TestBoundedSignedQuotientKeepsEarlierTrap (0.00s)
+=== RUN   TestBoundedSignedQuotientPressureAndCompaction
+--- PASS: TestBoundedSignedQuotientPressureAndCompaction (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.632s
+=== RUN   TestCatalogRegistrationIsUniqueAndArchitectureScoped
+--- PASS: TestCatalogRegistrationIsUniqueAndArchitectureScoped (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.558s

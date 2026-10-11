@@ -1,0 +1,175 @@
+--- a/src/core/compiler/backend/railshot/arm64/emit.go
++++ b/src/core/compiler/backend/railshot/arm64/emit.go
+@@ -1247,6 +1247,10 @@
+ 		f.patchBranch19(noOvf, f.a.Len())
+ 		f.sdiv(result, dividend, divisor, w)
+ 	case signed: // rem_s: x % -1 == 0, computed directly to avoid the INT_MIN/-1 fault
++		if f.opt(optBranchlessSignedRem) {
++			f.emitBranchlessSignedRem(result, dividend, divisor, w)
++			break
++		}
+ 		f.cmpImmS(divisor, -1, w) // cmp divisor, -1
+ 		notM1 := f.a.Bcond(condNE)
+ 		f.a.MovImm64(result, 0) // remainder is 0
+--- a/src/core/compiler/backend/railshot/arm64/borrowed_div_rem.go
++++ b/src/core/compiler/backend/railshot/arm64/borrowed_div_rem.go
+@@ -51,6 +51,10 @@
+ 		f.patchBranch19(noOvf, f.a.Len())
+ 		f.sdiv(result, dividend, divisor, w)
+ 	case signed: // rem_s: x % -1 == 0, computed directly to avoid the INT_MIN/-1 fault
++		if f.opt(optBranchlessSignedRem) {
++			f.emitBranchlessSignedRem(result, dividend, divisor, w)
++			break
++		}
+ 		f.cmpImmS(divisor, -1, w) // cmp divisor, -1
+ 		notM1 := f.a.Bcond(condNE)
+ 		f.a.MovImm64(result, 0) // remainder is 0
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -15,6 +15,7 @@
+ 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
+ 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
+ 	optimization.Bind("regional-memory-read", &regionalMemoryReadEnabled),
++	optimization.Bind("branchless-signed-rem", &branchlessSignedRemEnabled),
+ 	optimization.Bind("interval-call-regions", &intervalCallRegionsEnabled),
+ 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
+ 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
+@@ -98,6 +99,7 @@
+ 	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")
+ 	optIntervalNextUse      = optimizationBindings.Option("interval-next-use")
+ 	optRegionalMemoryRead   = optimizationBindings.Option("regional-memory-read")
++	optBranchlessSignedRem = optimizationBindings.Option("branchless-signed-rem")
+ 	optIntervalCallRegions  = optimizationBindings.Option("interval-call-regions")
+ 	optLinearSumLoop        = optimizationBindings.Option("linear-sum-loop")
+ 	optMultiBoundsCert      = optimizationBindings.Option("multi-bounds-cert")
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -85,7 +85,7 @@
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "regional-memory-read",
++		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "common-exit-compare", "borrowed-div-rem", "br-table-branch-vector", "regional-memory-read", "branchless-signed-rem",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -459,6 +459,7 @@
+ 	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: false, Experimental: true, Architectures: []string{"arm64"}},
++	{Name: "branchless-signed-rem", Label: "Branchless signed remainder", Description: "use SDIV and MSUB for every nonzero dynamic signed divisor", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},
+--- a/src/core/compiler/backend/railshot/arm64/branchless_signed_rem.go
++++ b/src/core/compiler/backend/railshot/arm64/branchless_signed_rem.go
+@@ -0,0 +1,17 @@
++//go:build arm64
++
++package arm64
++
++import "os"
++
++var branchlessSignedRemEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_BRANCHLESS_SIGNED_REM") == "1"
++
++// The caller has already emitted the zero-divisor trap. AArch64 SDIV truncates
++// signed overflow to INT_MIN, so MSUB also yields zero for INT_MIN % -1.
++func (f *fn) emitBranchlessSignedRem(result, dividend, divisor Reg, wide bool) {
++ q := f.allocReg(maskOf(divisor, dividend, result))
++ f.sdiv(q, dividend, divisor, wide)
++ f.msub(result, q, divisor, dividend, wide)
++ f.release(q)
++ f.stats.peep("branchless-signed-rem")
++}
+--- a/src/core/compiler/backend/railshot/arm64/branchless_signed_rem_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/branchless_signed_rem_arm64_test.go
+@@ -0,0 +1,87 @@
++//go:build (linux || darwin) && arm64
++
++package arm64
++
++import (
++	"errors"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	rt "github.com/wago-org/wago/src/core/runtime"
++	"testing"
++)
++
++func TestBranchlessSignedRemSourcesAliasesAndTraps(t *testing.T) {
++	for _, borrowed := range []bool{false, true} {
++	for _, wide := range []bool{false, true} {
++		typ, xor := wasm.I32, byte(0x73)
++		min, minusOne := uint64(0x80000000), uint64(0xffffffff)
++		if wide {
++			typ, xor = wasm.I64, 0x85
++			min, minusOne = 1<<63, ^uint64(0)
++		}
++		for _, op := range divOps(wide) {
++			for _, same := range []bool{false, true} {
++				divisorLocal := byte(1)
++				if same {
++					divisorLocal = 0
++				}
++				body := []byte{0, 0x20, 0, 0x20, divisorLocal, op.opcode}
++				params := make([]wasm.ValType, 16)
++				for i := range params {
++					params[i] = typ
++					body = append(body, 0x20, byte(i), xor)
++				}
++				body = append(body, 0x0b)
++				m := mod1(t, params, []wasm.ValType{typ}, body)
++				for _, enabled := range []bool{false, true} {
++					for _, guard := range []bool{false, true} {
++						for _, pair := range [][2]uint64{{17, 5}, {0, 3}, {1, 1}, {min, minusOne}, {minusOne, 2}, {min, 3}, {minusOne, minusOne}, {7, 0}, {min, min}} {
++							args := make([]uint64, 16)
++							for i := range args {
++								args[i] = uint64(i*13 + 7)
++							}
++							args[0], args[1] = pair[0], pair[1]
++							n, d := args[0], args[divisorLocal]
++							if !wide {
++								n, d = uint64(uint32(n)), uint64(uint32(d))
++							}
++							opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"borrowed-div-rem": borrowed, "branchless-signed-rem": enabled}}
++							var stats ModuleStats
++							admission := diagnosticsEnabled && !same && pair == [2]uint64{17, 5} && op.signed && op.rem
++							if admission {
++								opts.Stats = &stats
++							}
++							got, err := runArm64WrapperWithOptions(t, m, opts, args...)
++							if admission && (stats.Funcs[0].Peephole["branchless-signed-rem"] != 0) != enabled {
++								t.Fatalf("missing admission %s enabled=%v stats=%v", op.name, enabled, stats.Funcs[0].Peephole)
++							}
++							trap := rt.TrapCode(0)
++							if d == 0 {
++								trap = rt.TrapDivZero
++							} else if op.signed && !op.rem && n == min && d == minusOne {
++								trap = rt.TrapDivOverflow
++							}
++							if trap != 0 {
++								var te *rt.TrapError
++								if !errors.As(err, &te) || te.Code != trap {
++									t.Fatalf("%s n=%x d=%x trap=%v want=%v", op.name, n, d, err, trap)
++								}
++								continue
++							}
++							want := refDivRem(op, wide, n, d)
++							for _, x := range args {
++								want ^= x
++							}
++							if !wide {
++								want, got = uint64(uint32(want)), uint64(uint32(got))
++							}
++							if err != nil || got != want {
++								t.Fatalf("%s same=%v enabled=%v guard=%v n=%x d=%x got=%x want=%x err=%v", op.name, same, enabled, guard, n, d, got, want, err)
++							}
++						}
++					}
++				}
++			}
++		}
++	}
++}
++}

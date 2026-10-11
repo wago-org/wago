@@ -1,0 +1,14 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"audio-adpcm","phase":"compile","round":0,"on":false,"iterations":3861,"us":23.819822066822066}
+{"workload":"audio-adpcm","phase":"compile","round":0,"on":true,"iterations":3861,"us":24.08101320901321}
+{"workload":"compiler-register-allocation","phase":"compile","round":0,"on":false,"iterations":1456,"us":67.13450068681318}
+{"workload":"compiler-register-allocation","phase":"compile","round":0,"on":true,"iterations":1456,"us":67.8515054945055}
+{"workload":"files-glob-match","phase":"compile","round":0,"on":false,"iterations":3937,"us":26.484061468122935}
+{"workload":"files-glob-match","phase":"compile","round":0,"on":true,"iterations":3937,"us":26.613993141986285}
+{"workload":"geo-point-in-polygon","phase":"compile","round":0,"on":false,"iterations":2850,"us":33.66649122807018}
+{"workload":"geo-point-in-polygon","phase":"compile","round":0,"on":true,"iterations":2850,"us":33.28732456140351}
+{"workload":"graphics-reed-solomon","phase":"compile","round":0,"on":false,"iterations":967,"us":100.7085056876939}
+{"workload":"graphics-reed-solomon","phase":"compile","round":0,"on":true,"iterations":967,"us":101.13908996897622}
+{"workload":"video-dct","phase":"compile","round":0,"on":false,"iterations":679,"us":143.60536377025036}
+{"workload":"video-dct","phase":"compile","round":0,"on":true,"iterations":679,"us":147.48705154639174}

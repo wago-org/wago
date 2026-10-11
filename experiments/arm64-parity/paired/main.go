@@ -15,11 +15,12 @@ import (
 )
 
 type workload struct {
-	ID       string   `json:"id"`
-	Artifact string   `json:"artifact"`
-	Export   string   `json:"export"`
-	Args     []uint64 `json:"args"`
-	Reset    string   `json:"reset"`
+	Vectors  *vectorContract `json:"vectors"`
+	ID       string          `json:"id"`
+	Artifact string          `json:"artifact"`
+	Export   string          `json:"export"`
+	Args     []uint64        `json:"args"`
+	Reset    string          `json:"reset"`
 	Oracle   struct {
 		Expected []string `json:"expected"`
 	} `json:"oracle"`
@@ -27,10 +28,11 @@ type workload struct {
 
 func main() {
 	coreExec := flag.Bool("core-exec", false, "paired simple cached-core execution with fresh instances per sample")
+	vectorLength := flag.String("vector-length", "", "declared vector input length for core exact-vector contracts")
 	coreCompile := flag.Bool("core-compile", false, "compile-only cached-core manifest; execution oracles must be qualified separately")
 	root := flag.String("corpus", "/Users/work/Code/Web/wasm.fyi/corpora/applications", "application manifest directory")
 	names := flag.String("workloads", "", "comma-separated workload basenames (required)")
-	option := flag.String("option", "loop-memory-base", "optimization to compare")
+	option := flag.String("option", "loop-memory-base", "comma-separated optimizations to compare together")
 	phase := flag.String("phase", "exec", "exec or compile")
 	rounds := flag.Int("rounds", 8, "paired rounds")
 	budget := flag.Duration("budget", 100*time.Millisecond, "target time per state per round")
@@ -41,6 +43,12 @@ func main() {
 	}
 	if *phase != "exec" && *phase != "compile" {
 		panic("phase must be exec or compile")
+	}
+	options := strings.Split(*option, ",")
+	for _, name := range options {
+		if name == "" || strings.TrimSpace(name) != name {
+			panic("supply nonempty optimization names without whitespace")
+		}
 	}
 	selected := map[string]bool{}
 	for _, name := range strings.Split(*names, ",") {
@@ -53,6 +61,7 @@ func main() {
 		panic(fmt.Sprintf("QoS request failed: %d", rc))
 	}
 	fmt.Printf("# locked OS thread; requested user-interactive QoS; returned class=%d\n", qos)
+	fmt.Printf("# paired options: %s\n", *option)
 	data, err := os.ReadFile(filepath.Join(*root, "manifest.json"))
 	must(err)
 	var all []workload
@@ -63,7 +72,8 @@ func main() {
 		var manifest struct {
 			Workloads []struct {
 				ID, Artifact, ABI, Export, Reset, Initialize string
-				HostProfile                                  string `json:"host_profile"`
+				HostProfile                                  string          `json:"host_profile"`
+				Vectors                                      *vectorContract `json:"vectors"`
 				Input                                        json.RawMessage
 				Args                                         []json.RawMessage
 				Oracle                                       struct {
@@ -82,10 +92,16 @@ func main() {
 				if !selected[filepath.Base(w.ID)] {
 					continue
 				}
-				if w.Oracle.Kind != "exact_u64" || len(w.Oracle.Memory) != 0 || w.HostProfile != "" || w.Initialize != "" || len(w.Input) != 0 && string(w.Input) != "null" || w.Reset != "fresh_instance_per_sample" && w.Reset != "stateless" {
+				if (w.Oracle.Kind != "exact_u64" && (w.Oracle.Kind != "exact_vectors" || w.Vectors == nil)) || len(w.Oracle.Memory) != 0 || w.HostProfile != "" || w.Initialize != "" || len(w.Input) != 0 && string(w.Input) != "null" || w.Reset != "fresh_instance_per_sample" && w.Reset != "stateless" {
 					panic("core execution requires a simple exact-result contract")
 				}
 				normalized.Export = w.Export
+				if w.Oracle.Kind == "exact_vectors" {
+					if *vectorLength == "" {
+						panic("select a declared vector-length")
+					}
+					normalized.Vectors = w.Vectors
+				}
 				for _, value := range w.Args {
 					normalized.Args = append(normalized.Args, parseCoreUint(value))
 				}
@@ -117,9 +133,13 @@ func main() {
 		}
 		runs := make([]func(), 2)
 		var renewSample [2]func()
+		var checkSample [2]func()
 		cleanups := make([]func(), 0, 2)
 		for state := 0; state < 2; state++ {
-			cfg := wago.NewRuntimeConfig().WithOptimization(*option, state == 1)
+			cfg := wago.NewRuntimeConfig()
+			for _, name := range options {
+				cfg = cfg.WithOptimization(name, state == 1)
+			}
 			if *coreCompile {
 				// Execution correctness is checked by the cached-contract harness;
 				// these samples isolate compilation with immutable policy options.
@@ -151,9 +171,18 @@ func main() {
 					must(err)
 					fn, err := in.WasmFunc(w.Export)
 					must(err)
-					runs[index] = func() {
-						out, err := fn.Invoke(w.Args...)
+					args := w.Args
+					if w.Vectors != nil {
+						length, err := strconv.ParseUint(*vectorLength, 10, 64)
 						must(err)
+						args, checkSample[index] = setupVector(in, w.Vectors, length)
+					}
+					runs[index] = func() {
+						out, err := fn.Invoke(args...)
+						must(err)
+						if w.Vectors != nil {
+							return
+						}
 						if len(out) != len(want) {
 							panic("core oracle arity")
 						}
@@ -166,6 +195,9 @@ func main() {
 					closeSample = func() { must(in.Close()) }
 					for i := 0; i < 5; i++ {
 						runs[index]()
+					}
+					if checkSample[index] != nil {
+						checkSample[index]()
 					}
 				}
 				renewSample[index]()
@@ -226,6 +258,9 @@ func main() {
 					runs[state]()
 				}
 				elapsed := time.Since(start)
+				if checkSample[state] != nil {
+					checkSample[state]()
+				}
 				must(encoder.Encode(struct {
 					Workload     string  `json:"workload"`
 					Phase        string  `json:"phase"`

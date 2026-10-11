@@ -1,0 +1,25 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+{"workload":"audio-adpcm","phase":"compile","round":0,"on":false,"iterations":14807,"us":27.503947997568716}
+{"workload":"audio-adpcm","phase":"compile","round":0,"on":true,"iterations":14807,"us":30.28778341325049}
+{"workload":"audio-adpcm","phase":"compile","round":1,"on":true,"iterations":14807,"us":29.56342162490714}
+{"workload":"audio-adpcm","phase":"compile","round":1,"on":false,"iterations":14807,"us":27.604964408725603}
+{"workload":"audio-adpcm","phase":"compile","round":2,"on":false,"iterations":14807,"us":34.865606942662254}
+{"workload":"audio-adpcm","phase":"compile","round":2,"on":true,"iterations":14807,"us":26.077429594110892}
+{"workload":"audio-adpcm","phase":"compile","round":3,"on":true,"iterations":14807,"us":24.5489633281556}
+{"workload":"audio-adpcm","phase":"compile","round":3,"on":false,"iterations":14807,"us":24.15934463429459}
+{"workload":"audio-adpcm","phase":"compile","round":4,"on":false,"iterations":14807,"us":24.275652259066657}
+{"workload":"audio-adpcm","phase":"compile","round":4,"on":true,"iterations":14807,"us":24.160684135881677}
+{"workload":"audio-adpcm","phase":"compile","round":5,"on":true,"iterations":14807,"us":24.081900992773686}
+{"workload":"audio-adpcm","phase":"compile","round":5,"on":false,"iterations":14807,"us":24.43582710879989}
+{"workload":"audio-adpcm","phase":"compile","round":6,"on":false,"iterations":14807,"us":24.778840548389276}
+{"workload":"audio-adpcm","phase":"compile","round":6,"on":true,"iterations":14807,"us":24.01359721753225}
+{"workload":"audio-adpcm","phase":"compile","round":7,"on":true,"iterations":14807,"us":23.99203923819815}
+{"workload":"audio-adpcm","phase":"compile","round":7,"on":false,"iterations":14807,"us":23.829354359424595}
+{"workload":"audio-adpcm","phase":"compile","round":8,"on":false,"iterations":14807,"us":23.997731951104207}
+{"workload":"audio-adpcm","phase":"compile","round":8,"on":true,"iterations":14807,"us":24.11930168163706}
+{"workload":"audio-adpcm","phase":"compile","round":9,"on":true,"iterations":14807,"us":24.071205105693256}
+{"workload":"audio-adpcm","phase":"compile","round":9,"on":false,"iterations":14807,"us":24.280717430944822}
+{"workload":"audio-adpcm","phase":"compile","round":10,"on":false,"iterations":14807,"us":24.33364570811103}
+{"workload":"audio-adpcm","phase":"compile","round":10,"on":true,"iterations":14807,"us":24.233619774431013}
+{"workload":"audio-adpcm","phase":"compile","round":11,"on":true,"iterations":14807,"us":24.205820422773012}
+{"workload":"audio-adpcm","phase":"compile","round":11,"on":false,"iterations":14807,"us":24.159879381373674}

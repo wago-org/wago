@@ -1,0 +1,4 @@
+=== RUN   TestRawSignedRemainderNative
+--- PASS: TestRawSignedRemainderNative (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.487s

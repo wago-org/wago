@@ -308,6 +308,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x6c:
 		f.pushBinOp(opMul, mtI32)
 	case 0x6d:
+		if f.opt(optBoundedQuotient) && f.tryBoundedSignedQuotient(r) {
+			break
+		}
 		f.pushBinOp(opDivS, mtI32)
 	case 0x6e:
 		f.pushBinOp(opDivU, mtI32)

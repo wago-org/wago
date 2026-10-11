@@ -1,0 +1,9 @@
+Device occupied; polling ~/LOCK.md and waiting for release.
+wago/pcre2/compile-match: completed
+wago/lz4/compress: completed
+wago/drwav/pcm-decode-seek: completed
+wago/utf8proc/normalize-casefold: completed
+wago/sha256/hashN: completed
+wago/nanosvg/parse-structure: completed
+wago/zlib/inflate: completed
+wago/monocypher/aead-blake2b: completed

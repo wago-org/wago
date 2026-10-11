@@ -1,0 +1,242 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+var equalityCountdownEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_EQUALITY_COUNTDOWN") == "1"
+
+// Equality is invariant under modular subtraction: (counter+step != bound)
+// iff (bound-counter-step != 0). Borrow a permanent local home for the
+// remaining distance, when the body cannot observe the counter, then restore
+// its precise Wasm value on loop fall-through.
+// No trip-count/range premise is needed, including wrapping/nonterminating loops.
+type equalityCountdownPlan struct {
+	latch                uint32
+	depth                uint16
+	counter, bound, step uint16
+}
+
+type equalityCountdownInstr struct {
+	pc    uint32
+	op    byte
+	index uint32
+	value int32
+}
+
+func (f *fn) inspectEqualityCountdown(r *wasm.Reader) (plan equalityCountdownPlan, ok bool) {
+	if f.nLocals > 64 || f.localBase != 0 {
+		return
+	}
+	scan := *r
+	start := scan.Offset()
+	// Reject cheaply before the semantic scan. Only canonical zero-label suffixes
+	// are attempted; a byte match never establishes eligibility by itself.
+	probe := scan
+	rest, err := probe.Bytes(min(probe.BytesLeft(), 1024))
+	candidate := bytes.Index(rest, []byte{0x47, 0x0d, 0x00, 0x0b})
+	if err != nil || candidate < 0 {
+		return plan, false
+	}
+	if candidate >= 9 && rest[candidate-3] == 0x6a && rest[candidate-2] == 0x22 && rest[candidate-1] < 64 {
+		constantBytes := 0
+		if rest[candidate-5] == 0x41 && rest[candidate-7] == 0x20 && rest[candidate-9] == 0x20 {
+			constantBytes = 1
+		}
+		if candidate >= 10 && rest[candidate-6] == 0x41 && rest[candidate-8] == 0x20 && rest[candidate-10] == 0x20 {
+			constantBytes = 2
+		}
+		if constantBytes != 0 {
+			counter, bound := int(rest[candidate-5-constantBytes]), int(rest[candidate-7-constantBytes])
+			if counter == int(rest[candidate-1]) && counter < f.nLocals && bound < f.nLocals {
+				_, cf, cp := f.pinReg(counter)
+				_, bf, bp := f.pinReg(bound)
+				if !cp || !bp || cf || bf {
+					return plan, false
+				}
+			}
+		}
+	}
+	if candidate >= 3 && rest[candidate-3] == 0x6a && rest[candidate-2] == 0x22 && rest[candidate-1] < 64 {
+		// A second canonical read rules out the dead-counter variant cheaply.
+		// Immediate bytes can only produce an extra conservative rejection;
+		// every admitted plan still receives the complete decoded proof below.
+		if bytes.Count(rest[:candidate], []byte{0x20, rest[candidate-1]}) > 1 {
+			return plan, false
+		}
+	}
+	var readOnce, readTwice, writtenOnce, writtenTwice uint64
+	var ring [6]equalityCountdownInstr
+	n, depth, cursor := 0, 0, 0
+	var imm wasm.InstructionImmediate
+	for fuel := 0; fuel < 256 && scan.Offset()-start < 1024; fuel++ {
+		pc := scan.Offset()
+		op, err := scan.Byte()
+		if err != nil {
+			return plan, false
+		}
+		var value int32
+		if op == 0x41 {
+			imm = wasm.InstructionImmediate{}
+			value, err = scan.I32()
+		} else {
+			err = f.classifier.ClassifyInto(&scan, op, &imm)
+		}
+		if err != nil {
+			return plan, false
+		}
+		if op == 0x0d && depth == 0 && imm.Index == 0 {
+			var tail [6]equalityCountdownInstr
+			for i := range tail {
+				tail[i] = ring[(cursor+i)%len(ring)]
+			}
+			if n < 6 || tail[0].op != 0x20 || tail[1].op != 0x20 || tail[2].op != 0x41 ||
+				tail[3].op != 0x6a || tail[4].op != 0x22 || tail[5].op != 0x47 {
+				return plan, false
+			}
+			bound, counter, step := tail[0].index, tail[1].index, tail[2].value
+			boundBit, counterBit := uint64(1)<<(bound&63), uint64(1)<<(counter&63)
+			if bound == counter || bound >= uint32(f.nLocals) || counter >= uint32(f.nLocals) ||
+				tail[4].index != counter || step <= 0 || step > 4095 || writtenOnce&boundBit != 0 || writtenOnce&counterBit == 0 || writtenTwice&counterBit != 0 ||
+				f.localType[bound] != mtI32 || f.localType[counter] != mtI32 {
+				return plan, false
+			}
+			if readOnce&counterBit == 0 || readTwice&counterBit != 0 {
+				return plan, false // the counter home must be unobserved by the body
+			}
+			// This sole backedge must be immediately followed by the loop end.
+			end, err := scan.Byte()
+			if err != nil || end != 0x0b {
+				return plan, false
+			}
+			return equalityCountdownPlan{latch: tail[0].pc, counter: uint16(counter), bound: uint16(bound), step: uint16(step)}, true
+		}
+		switch {
+		case op == 0x02 || op == 0x04:
+			depth++
+		case op == 0x05:
+		case op == 0x0b:
+			if depth == 0 {
+				return plan, false
+			}
+			depth--
+		case op == 0x0c || op == 0x0d:
+			if imm.Index >= uint32(depth) {
+				return plan, false
+			} // escapes or bypasses the latch
+		case op >= 0x20 && op <= 0x22:
+			if imm.Index >= uint32(f.nLocals) {
+				return plan, false
+			}
+			// The decoded local range is already proven <64. Make that bound
+			// explicit for Go's variable-shift lowering rather than testing it twice.
+			bit := uint64(1) << (imm.Index & 63)
+			if op == 0x20 {
+				readTwice |= readOnce & bit
+				readOnce |= bit
+			} else {
+				writtenTwice |= writtenOnce & bit
+				writtenOnce |= bit
+			}
+		case op == 0x01 || op >= 0x1a && op <= 0x1c || op == 0x23 || op == 0x24 || op >= 0x28 && op <= 0x3e || op >= 0x41 && op <= 0xc4:
+		default:
+			return plan, false // nested loops, calls, early returns, EH, helper/opaque effects
+		}
+		ring[cursor] = equalityCountdownInstr{pc: uint32(pc), op: op, index: imm.Index, value: value}
+		cursor++
+		if cursor == len(ring) {
+			cursor = 0
+		}
+		n++
+	}
+	return plan, false
+}
+
+func (f *fn) beginEqualityCountdown(r *wasm.Reader) (headerReady bool) {
+	if f.interruptible || f.usesCalls || f.moduleEH || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() ||
+		f.depth() != 0 || len(f.ctrl) >= 1<<16-1 || f.equalityCountdown.depth != 0 || f.intervalControl || f.pureReduce != nil || f.dotLoop != nil {
+		return
+	}
+	p, ok := f.inspectEqualityCountdown(r)
+	if !ok {
+		return
+	}
+	counter, cf, cp := f.pinReg(int(p.counter))
+	bound, bf, bp := f.pinReg(int(p.bound))
+	if !cp || !bp || cf || bf {
+		return
+	}
+	f.recoverLocal(int(p.counter))
+	f.recoverLocal(int(p.bound))
+	f.markLocalDirty(int(p.counter))
+	f.invalidateBoundsCertFor(1, uint32(p.counter))
+	f.setFactsForLocal(int(p.counter), 0)
+	p.depth = uint16(len(f.ctrl) + 1)
+	f.equalityCountdown = p
+	if f.nLocals <= pollFreeLoopPhaseMaxLocals {
+		// Use the four-NOP poll-free phase pad for the entry conversion, keeping
+		// the original hot loop header and all following code at their old offsets.
+		f.emitPhasePadding()
+		loopAlign := f.policy.LoopAlignLog2
+		if loopAlign == 0 {
+			loopAlign = 4
+		}
+		f.alignCode(loopAlign)
+		if loopAlign >= 4 {
+			f.a.Sub32(counter, bound, counter)
+			f.a.Nop()
+			f.a.Nop()
+			f.a.Nop()
+			return true
+		}
+	}
+	f.a.Sub32(counter, bound, counter)
+	return false
+}
+
+func (f *fn) tryEqualityCountdownLatch(r *wasm.Reader) (bool, error) {
+	p := f.equalityCountdown
+	if p.depth == 0 || int(p.depth) != len(f.ctrl) || p.latch != uint32(r.Offset()-1) || f.depth() != 0 {
+		return false, nil
+	}
+	loop := &f.ctrl[len(f.ctrl)-1]
+	if loop.kind != cfLoop || f.intervalControl && f.intervalActive != 0 {
+		return false, fmt.Errorf("arm64: equality countdown lost loop home")
+	}
+	// Re-decode the already-proven suffix to advance the original reader exactly.
+	peek := *r
+	var imm wasm.InstructionImmediate
+	if err := f.classifier.ClassifyInto(&peek, 0x20, &imm); err != nil {
+		return false, err
+	}
+	for range 6 {
+		op, err := peek.Byte()
+		if err != nil {
+			return false, err
+		}
+		if err := f.classifier.ClassifyInto(&peek, op, &imm); err != nil {
+			return false, err
+		}
+	}
+	f.convergeBranchLocals(loop)
+	counter, _, _ := f.pinReg(int(p.counter))
+	bound, _, _ := f.pinReg(int(p.bound))
+	f.a.SubImm32(counter, counter, uint32(p.step))
+	f.markLocalDirty(int(p.counter))
+	f.invalidateBoundsCertFor(1, uint32(p.counter))
+	f.setFactsForLocal(int(p.counter), 0)
+	site := f.a.Cbnz32(counter)
+	if !f.a.PatchBranch19(site, loop.controlSite) {
+		return false, fmt.Errorf("arm64: equality countdown branch out of range")
+	}
+	f.a.MovReg32(counter, bound)
+	f.stats.peep("equality-countdown")
+	f.equalityCountdown = equalityCountdownPlan{}
+	return true, r.JumpTo(peek.Offset())
+}

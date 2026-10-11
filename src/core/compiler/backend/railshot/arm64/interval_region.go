@@ -8,6 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+var wideReusePinsEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_REUSE_PINS") != "1" && os.Getenv("WAGO_ARM64_EXPERIMENT_WIDE_REUSE_PINS") != "0"
+
 var intervalCallRegionsEnabled = os.Getenv("WAGO_ARM64_NO_INTERVAL_CALL_REGIONS") != "1" && os.Getenv("WAGO_ARM64_EXPERIMENT_INTERVAL_CALL_REGIONS") != "0"
 
 var intervalControlsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_CONTROLS") != "0"
@@ -89,9 +91,9 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	f.intervalLast, f.intervalScore = hints.localLastGet, hints.localScore
 	f.intervalCalls = f.opt(optIntervalCallRegions) && hints.flags.has(hintHasCall)
 	f.intervalControl = hints.flags.has(hintHasControlFlow) || f.intervalCalls
-	// Wide local tables have no whole-function GP pins: regional residency is
-	// their primary cache. Keep the cheaper score policy where permanent pins
-	// already retain the hottest locals.
+	// Wide local tables primarily use regional residency, even with up to four
+	// wide-reuse pins. Keep the cheaper score policy for narrow functions whose
+	// permanent pins already retain the hottest locals.
 	f.intervalNext = f.opt(optIntervalNextUse) && !hints.flags.has(hintModuleSIMD) && (!f.intervalControl || f.nLocals > 64 || f.intervalCalls)
 	if f.intervalNext {
 		f.prepareIntervalEvents(body, hints.localEventCount(), f.intervalCalls)
@@ -127,6 +129,7 @@ func (f *fn) intervalEligible(x int) bool {
 // eligible local. Victim selection advances a monotonic cursor instead of
 // repeatedly decoding the rest of the function.
 func (f *fn) prepareIntervalEvents(body []byte, reserve int, callBoundaries bool) {
+	f.wideReuseScore = nil
 	if len(body) > maxIntervalRegionBody {
 		f.intervalEvents, f.intervalHead = nil, nil
 		return
@@ -147,13 +150,67 @@ func (f *fn) prepareIntervalEvents(body []byte, reserve int, callBoundaries bool
 		}
 		tail[x] = i
 	}
+	// Charge a permanent pin for its definitions and credit loop-weighted
+	// reads. Repeated-use inner values can repay the occupied register;
+	// one-use temporaries receive no credit. Reuse the existing event decode
+	// and worker scratch instead of another pass or a retained module sidecar.
+	reusePins := f.nLocals > 64 && !f.intervalCalls && f.opt(optWideReusePins)
+	var reads, writes, loopAtDepth []uint32
+	if reusePins {
+		const maxControlDepth = 256
+		n := 2*f.nLocals + maxControlDepth
+		if cap(f.tmpWideTraffic) < n {
+			f.tmpWideTraffic = make([]uint32, n)
+		} else {
+			f.tmpWideTraffic = f.tmpWideTraffic[:n]
+			clear(f.tmpWideTraffic)
+		}
+		reads = f.tmpWideTraffic[:f.nLocals]
+		writes = f.tmpWideTraffic[f.nLocals : 2*f.nLocals]
+		loopAtDepth = f.tmpWideTraffic[2*f.nLocals:]
+	}
+	controlDepth, loopDepth, traffic := 0, 0, uint32(1)
 	r := wasm.ReaderFrom(body)
 scan:
 	for r.HasNext() {
 		pos := uint32(r.Offset())
 		op, err := r.Byte()
 		if err != nil {
+			reusePins = false
 			break
+		}
+		if reusePins {
+			switch op {
+			case 0x02, 0x03, 0x04, 0x1f:
+				if controlDepth == len(loopAtDepth) {
+					reusePins = false
+				} else {
+					loopAtDepth[controlDepth] = 0
+					if op == 0x03 {
+						loopAtDepth[controlDepth] = 1
+					}
+					controlDepth++
+					if op == 0x03 {
+						loopDepth++
+						if loopDepth <= maxLoopWeightDepth {
+							traffic *= loopWeightFactor
+						}
+						if loopDepth > 255 {
+							reusePins = false
+						}
+					}
+				}
+			case 0x0b:
+				if controlDepth > 0 {
+					controlDepth--
+					if loopAtDepth[controlDepth] != 0 {
+						if loopDepth <= maxLoopWeightDepth {
+							traffic /= loopWeightFactor
+						}
+						loopDepth--
+					}
+				}
+			}
 		}
 		if f.intervalControl {
 			if intervalRegionBoundary(op, callBoundaries) {
@@ -189,6 +246,7 @@ scan:
 			}
 			if err != nil {
 				events = events[:0]
+				reusePins = false
 				break scan
 			}
 			continue
@@ -196,9 +254,17 @@ scan:
 		idx, err := r.U32()
 		if err != nil || uint64(idx) >= uint64(f.nLocals) {
 			events = events[:0]
+			reusePins = false
 			break
 		}
 		x := int(idx)
+		if reusePins {
+			if kill {
+				writes[x] = saturatingWideTraffic(writes[x], traffic)
+			} else if loopDepth != 0 {
+				reads[x] = saturatingWideTraffic(reads[x], traffic)
+			}
+		}
 		if !f.intervalEligible(x) {
 			continue
 		}
@@ -206,6 +272,16 @@ scan:
 			pos |= intervalEventKill
 		}
 		appendEvent(x, pos)
+	}
+	if reusePins {
+		for x := 0; x < f.nLocals; x++ {
+			if reads[x] > writes[x] {
+				reads[x] -= writes[x]
+			} else {
+				reads[x] = 0
+			}
+		}
+		f.wideReuseScore = reads
 	}
 	f.tmpIntervalEvents, f.tmpIntervalIndex = events, index
 	if len(events) != 0 {
@@ -504,4 +580,11 @@ func (f *fn) currentIntervalRegLimit() int {
 		floor = 7
 	}
 	return intervalRegionRegLimitWithFloor(f.reserved.union(f.pinnedLocalMask), floor)
+}
+
+func saturatingWideTraffic(current, addition uint32) uint32 {
+	if current > ^uint32(0)-addition {
+		return ^uint32(0)
+	}
+	return current + addition
 }
