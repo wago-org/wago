@@ -78,6 +78,62 @@ func rv64OwnedTable64ActiveElement(c *Compiled) bool {
 	return !v.Null && v.FuncIndex == 0 && v.GlobalIndex == 0 && !v.HasGlobal && !v.I31Wrap && !v.RepeatPrevious && len(v.Expr) == 0
 }
 
+func rv64MixedTable64ActiveElement(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64NoABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 1 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) != 0 || len(c.tableExports) != 2 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 1 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	imported, ok := c.tableImportAt(0)
+	if !ok || imported.Key == "" || !imported.Addr64 || !imported.HasMax || imported.Min != 3 || imported.Max != 3 {
+		return false
+	}
+	local := c.tableDef(1)
+	for index := 0; index < 2; index++ {
+		exact, err := c.tableExactType(index)
+		if err != nil || exact != plain {
+			return false
+		}
+	}
+	if local.ImportKey != "" || local.ImportHasMax || local.HasInitFunc || local.InitFunc != 0 || !local.Addr64 || !local.HasMax || local.Size != 1 || local.Max != 1 || c.tableRuntimeCapacity(1) != 1 {
+		return false
+	}
+	var tables [2]bool
+	for _, index := range c.tableExports {
+		if index < 0 || index > 1 {
+			return false
+		}
+		tables[index] = true
+	}
+	if !tables[0] || !tables[1] {
+		return false
+	}
+	fn := c.Funcs[0]
+	if len(fn.Params) != 0 || len(fn.Results) != 1 || fn.Results[0] != ValI32 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 1 || len(c.Entry) != 1 || c.Entry[0] != 0 || len(c.InternalEntry) != 1 || c.InternalEntry[0] != 0 {
+		return false
+	}
+	i32Key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}})
+	i32Code := [32]byte{0x82, 0x47, 0x89, 0xf5, 0x32, 0x7a, 0x36, 0x99, 0x57, 0x50, 0x78, 0x68, 0x12, 0x0e, 0x89, 0x9e, 0x52, 0xdd, 0xb0, 0x66, 0x39, 0xc9, 0x01, 0xfc, 0xae, 0xbb, 0xc3, 0x16, 0x0a, 0x0b, 0x3f, 0x6a}
+	if c.FuncTypeID[0] != i32Key || len(c.code) != 584 || sha256.Sum256(c.code) != i32Code || c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTable64 || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {
+		return false
+	}
+	e := c.Elems[0]
+	if e.Mode != ElemModeActive || e.TableIndex != 0 || e.RefType != ValFuncRef || !e.HasValueType || e.Offset.Base != 0 || e.Offset.HasGlobal || !bytes.Equal(e.Offset.Expr, []byte{0x42, 0x01, 0x0b}) || len(e.Values) != 1 {
+		return false
+	}
+	elemExact, err := c.elemExactType(e)
+	if err != nil || elemExact != plain {
+		return false
+	}
+	v := e.Values[0]
+	return !v.Null && v.FuncIndex == 0 && v.GlobalIndex == 0 && !v.HasGlobal && !v.I31Wrap && !v.RepeatPrevious && len(v.Expr) == 0
+}
+
 // rv64StateOnlyTable32ScalarGlobals is the persisted-artifact witness for one
 // bounded nullable-funcref table32 composed with four immutable literal scalar
 // globals. It admits retained descriptors and cells only; no table/reference
@@ -1476,7 +1532,7 @@ func rv64OwnedTwoTable64InitDrop(c *Compiled) bool {
 }
 
 func rv64QualifiedTable64(c *Compiled) bool {
-	return rv64StateOnlyTable64(c) || rv64OwnedTable64ActiveElement(c) || rv64OwnedTable64Size(c) || rv64OwnedTwoTable64Size(c) || rv64MixedTable64Size(c) || rv64MixedTable64GetSet(c) || rv64MixedTable64Grow(c) || rv64MixedTable64Fill(c) || rv64MixedTable64Copy(c) || rv64MixedTable64InitDrop(c) || rv64MixedTable64Indirect(c) || rv64OwnedTable64Grow(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTwoTable64Indirect(c) || rv64ImportedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTable64InitDrop(c) || rv64OwnedTwoTable64InitDrop(c) || rv64ImportedTable64Size(c) || rv64ImportedTable64GetSet(c) || rv64ImportedTable64Grow(c) || rv64ImportedTable64Fill(c) || rv64ImportedTable64Copy(c) || rv64ImportedTable64InitDrop(c)
+	return rv64StateOnlyTable64(c) || rv64OwnedTable64ActiveElement(c) || rv64MixedTable64ActiveElement(c) || rv64OwnedTable64Size(c) || rv64OwnedTwoTable64Size(c) || rv64MixedTable64Size(c) || rv64MixedTable64GetSet(c) || rv64MixedTable64Grow(c) || rv64MixedTable64Fill(c) || rv64MixedTable64Copy(c) || rv64MixedTable64InitDrop(c) || rv64MixedTable64Indirect(c) || rv64OwnedTable64Grow(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTwoTable64Indirect(c) || rv64ImportedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTable64InitDrop(c) || rv64OwnedTwoTable64InitDrop(c) || rv64ImportedTable64Size(c) || rv64ImportedTable64GetSet(c) || rv64ImportedTable64Grow(c) || rv64ImportedTable64Fill(c) || rv64ImportedTable64Copy(c) || rv64ImportedTable64InitDrop(c)
 }
 
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
@@ -1539,7 +1595,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		return fmt.Errorf("table/scalar globals require the exact state-only literal profile")
 	}
 	qualifiedTable64 := rv64QualifiedTable64(c)
-	qualifiedMultiTable := rv64StateOnlyTwoTable32(c) || rv64OwnedTwoTable32Size(c) || rv64OwnedTwoTable32GetSet(c) || rv64OwnedTwoTable32Grow(c) || rv64OwnedTwoTable32Fill(c) || rv64OwnedTwoTable32Copy(c) || rv64OwnedTwoTable32InitDrop(c) || rv64OwnedTwoTable32Indirect(c) || rv64OwnedTwoTable64Size(c) || rv64MixedTable64Size(c) || rv64MixedTable64GetSet(c) || rv64MixedTable64Grow(c) || rv64MixedTable64Fill(c) || rv64MixedTable64Copy(c) || rv64MixedTable64InitDrop(c) || rv64MixedTable64Indirect(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTwoTable64InitDrop(c) || rv64OwnedTwoTable64Indirect(c)
+	qualifiedMultiTable := rv64MixedTable64ActiveElement(c) || rv64StateOnlyTwoTable32(c) || rv64OwnedTwoTable32Size(c) || rv64OwnedTwoTable32GetSet(c) || rv64OwnedTwoTable32Grow(c) || rv64OwnedTwoTable32Fill(c) || rv64OwnedTwoTable32Copy(c) || rv64OwnedTwoTable32InitDrop(c) || rv64OwnedTwoTable32Indirect(c) || rv64OwnedTwoTable64Size(c) || rv64MixedTable64Size(c) || rv64MixedTable64GetSet(c) || rv64MixedTable64Grow(c) || rv64MixedTable64Fill(c) || rv64MixedTable64Copy(c) || rv64MixedTable64InitDrop(c) || rv64MixedTable64Indirect(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTwoTable64InitDrop(c) || rv64OwnedTwoTable64Indirect(c)
 	if c.tableCount() != 1 && !qualifiedMultiTable || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxFunctions || !c.registerABIDisabled || c.TableAddr64 && !qualifiedTable64 || (c.TableType != 0 && c.TableType != ValFuncRef) {
 		return fmt.Errorf("one framed nullable funcref table32 or exact qualified table64/multi-table profile required")
 	}
@@ -1578,7 +1634,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	}
 	remaining := railshot.MaxOwnedTableEntries
 	activeOffsetType := ValI32
-	if rv64OwnedTable64ActiveElement(c) {
+	if rv64OwnedTable64ActiveElement(c) || rv64MixedTable64ActiveElement(c) {
 		activeOffsetType = ValI64
 	}
 
