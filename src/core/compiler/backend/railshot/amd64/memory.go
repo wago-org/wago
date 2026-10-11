@@ -820,8 +820,8 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	f.a.Load64(base, RBX, -offMemoryDirPtr)
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	mb := f.allocReg(maskOf(ea).add(base))
-	f.a.Load64(mb, base, entry+abi.MemoryDirCurrentBytesOffset)
 	f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
+	f.a.Load64(mb, base, -bdCurBytes)
 	t := f.allocReg(maskOf(ea).add(base).add(mb))
 	if addr64 {
 		f.a.MovReg64(t, ea)
@@ -1242,7 +1242,8 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	}
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	f.a.Load64(R8, RBX, -offMemoryDirPtr)
-	f.a.Load64(R8, R8, entry+abi.MemoryDirCurrentBytesOffset)
+	f.a.Load64(R8, R8, entry+abi.MemoryDirBaseOffset)
+	f.a.Load64(R8, R8, -bdCurBytes)
 	f.trapUnlessLE(RDX, R8)
 	f.a.Load64(R8, RBX, -offMemoryDirPtr)
 	f.a.Load64(R8, R8, entry+abi.MemoryDirBaseOffset)
@@ -1639,7 +1640,8 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 	} else {
 		dir := f.allocReg(maskOf(out))
 		f.a.Load64(dir, RBX, -offMemoryDirPtr)
-		f.a.Load32(out, dir, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentPagesOffset)
+		f.a.Load64(dir, dir, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		f.a.Load32(out, dir, -bdCurPages)
 		f.release(dir)
 	}
 	if f.memoryAddr64(memoryIndex) {
@@ -1733,6 +1735,10 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 		// The successful path already has the new byte size in mx. Forward it to
 		// the regional bounds cache instead of reloading the value just stored.
 		f.a.MovReg64(f.memSizeReg, mx)
+	} else if f.memSizeReg != regNone {
+		// A nonzero import can alias memory zero. Reload its authoritative bound;
+		// forwarding mx would use the wrong size when the memories are distinct.
+		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	done := f.a.JmpPlaceholder()
 	if failDelta >= 0 {
@@ -1833,7 +1839,8 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -offMemoryDirPtr)
-		f.a.Load64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
+		f.a.Load64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		f.a.Load64(mb, mb, -bdCurBytes)
 		f.a.Cmp64(t, mb)
 		f.release(mb)
 	}

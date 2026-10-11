@@ -3,11 +3,13 @@
 package arm64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"path/filepath"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	enc "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
 func TestIntervalNextUseCoordinatesArm64(t *testing.T) {
@@ -164,6 +166,19 @@ func TestIntervalRegionCachesMemSizeInLeafScratchArm64(t *testing.T) {
 	on := compileWithStats(t, m, false).Funcs[0]
 	if got := on.Peephole["interval-region-scratch-memsize"]; got != 1 {
 		t.Fatalf("scratch memsize = %d, want 1 (all: %v)", got, on.Peephole)
+	}
+	cm, err := CompileModuleWith(m, CompileOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	var restore enc.Asm
+	restore.SubImm64(X27, linMemReg, uint32(bdCurBytes))
+	restore.Load64(X27, X27, 0)
+	if !bytes.Contains(cm.Code[cm.InternalEntry[0]:], restore.B) {
+		t.Fatal("regional leaf did not restore the module memory bound for its caller")
 	}
 	got, err := runArm64WrapperMem(t, m, 0, func(mem []byte) {
 		binary.LittleEndian.PutUint32(mem[496:], 0xa5)

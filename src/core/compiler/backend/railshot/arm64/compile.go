@@ -4547,6 +4547,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	// singleRegResult: every exit already produced the result in X0/V0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before
 	// entry, and a trap never returns through here (handler-jump).
+	if f.memSizeReg == X17 {
+		// Regional leaves can reuse X27. Restore the module bound for direct
+		// callers, including when this leaf grew an alias of primary memory.
+		f.ld64(X27, linMemReg, -bdCurBytes)
+	}
 	f.addRspAt = a.Len()
 	a.Movz64(X16, 0, 0) // undo the frame; imm patched after body
 	a.Movk64(X16, 0, 1)
