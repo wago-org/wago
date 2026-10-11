@@ -33,6 +33,7 @@ const (
 	gcArrayAllocData     uint32 = 24
 	gcArrayAllocElem     uint32 = 25
 	gcArrayDropElem      uint32 = 26
+	gcArrayInitElem      uint32 = 30
 )
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
@@ -229,6 +230,24 @@ func (f *integerEmitter) gcElementDrop(elemIndex uint32) {
 	f.a.Constant32(enc.X5, elemIndex)
 	f.a.Sd(enc.X5, enc.X10, 0)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayDropElem})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcArrayInitializeElements(base int, typeIndex, elemIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0) // destination array reference
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // destination element offset
+	f.Load(5, f.SpillOffset(base+2), false)
+	f.a.Sd(enc.X5, enc.X10, 16) // source element offset
+	f.Load(5, f.SpillOffset(base+3), false)
+	f.a.Sd(enc.X5, enc.X10, 24) // element count
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 32)
+	f.a.Constant32(enc.X5, elemIndex)
+	f.a.Sd(enc.X5, enc.X10, 40)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayInitElem})
 	f.restoreCallTransport()
 }
 

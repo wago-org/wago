@@ -96,9 +96,12 @@ type CompileOptions struct {
 	// GCArrayReferenceSource is the exact-wire witness for the official
 	// array.new_elem/get/set/len/elem.drop checkpoint.
 	GCArrayReferenceSource bool
-	production             bool
-	publicStarts           bool
-	hostImports            bool
+	// GCArrayInitElemSource is the exact-wire witness for the official
+	// funcref array.init_elem/elem.drop checkpoint.
+	GCArrayInitElemSource bool
+	production            bool
+	publicStarts          bool
+	hostImports           bool
 	// Selected by bounded closed-module admission, or private decoded tests.
 	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool
@@ -125,6 +128,7 @@ type CompileOptions struct {
 	gcArrayFixedOfficial bool
 	gcArrayPackedData    bool
 	gcArrayReference     bool
+	gcArrayInitElem      bool
 	tailPlans            *[]tailImportPlan
 	tailSiteBase         uint32
 }

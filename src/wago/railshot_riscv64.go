@@ -113,6 +113,10 @@ func railshotGCArrayReferenceSource(data []byte) bool {
 	return railshot.AdmitGCArrayReferenceSource(data)
 }
 
+func railshotGCArrayInitElemSource(data []byte) bool {
+	return railshot.AdmitGCArrayInitElemSource(data)
+}
+
 func railshotConfigureI31Core(exactSource bool, opts *railshotCompileOptions) {
 	opts.I31CoreSource = exactSource
 }
@@ -151,4 +155,8 @@ func railshotConfigureGCArrayPackedData(exactSource bool, opts *railshotCompileO
 
 func railshotConfigureGCArrayReference(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCArrayReferenceSource = exactSource
+}
+
+func railshotConfigureGCArrayInitElem(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayInitElemSource = exactSource
 }

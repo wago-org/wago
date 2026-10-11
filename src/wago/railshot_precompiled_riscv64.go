@@ -36,6 +36,8 @@ func railshotGCArrayPackedDataSource([]byte) bool                           { re
 func railshotConfigureGCArrayPackedData(bool, *railshotCompileOptions)      {}
 func railshotGCArrayReferenceSource([]byte) bool                            { return false }
 func railshotConfigureGCArrayReference(bool, *railshotCompileOptions)       {}
+func railshotGCArrayInitElemSource([]byte) bool                             { return false }
+func railshotConfigureGCArrayInitElem(bool, *railshotCompileOptions)        {}
 
 func railshotCompileModuleWith(*wasm.Module, railshotCompileOptions) (*railshotCompiledModule, error) {
 	return nil, fmt.Errorf("source compilation is unavailable in a precompiled runtime")

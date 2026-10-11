@@ -367,12 +367,22 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		}
 		params, results = max(params, p), max(results, r)
 	}
+	if rv64GCArrayInitElem(c) {
+		// The generated helper bridge stages array, destination, source, length,
+		// type, and element indexes in the ordinary wrapper argument arena. This
+		// internal six-slot call can exceed every exported function signature;
+		// retain its complete capacity before allocating adjacent result/trap
+		// buffers so helper staging cannot cross an arena boundary.
+		params = max(params, 6)
+	}
 	if c.tableCount() != 0 || c.nativeReferenceCallABI {
 		// The exact allocating gc/ref_eq checkpoint has an eqref table but no
-		// indirect calls. Its complete retained classifier pins the non-function
-		// type graph; only the two local function signatures contribute to call
-		// transport capacity.
-		if rv64OfficialGCRefEq(c) {
+		// indirect calls. The exact array.init_elem checkpoint pins its sole
+		// indirect signature to type 0, which has no parameters or results. Their
+		// complete retained classifiers pin the non-function type graph; only the
+		// local function signatures already counted above contribute to transport
+		// capacity.
+		if rv64OfficialGCRefEq(c) || rv64GCArrayInitElem(c) {
 			return params, results, nil
 		}
 		if len(c.Types) > railshot.MaxFunctions {

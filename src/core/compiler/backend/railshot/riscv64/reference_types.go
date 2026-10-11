@@ -37,6 +37,9 @@ type internalReferenceTypes struct {
 	// gcArrayReference admits the five indexed reference-array heaps and the
 	// abstract array carrier in the pinned official element-segment product.
 	gcArrayReference bool
+	// gcArrayInitElem admits the two indexed array heaps used by the pinned
+	// official funcref element-initialization product.
+	gcArrayInitElem bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -100,13 +103,16 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {
 		return true
 	}
-	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference {
+	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference || types.gcArrayInitElem {
 		if heap == wasm.AbsHeap(wasm.HeapArray) {
 			return true
 		}
 		limit := uint32(2)
 		if types.gcArrayReference {
 			limit = 5
+		}
+		if types.gcArrayInitElem {
+			limit = 3
 		}
 		if heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index < limit {
 			return true

@@ -86,6 +86,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCArrayDefaultOfficial := rv64GCArrayDefaultOfficial(c)
 	exactGCArrayPackedData := rv64GCArrayPackedData(c)
 	exactGCArrayReference := rv64GCArrayReference(c)
+	exactGCArrayInitElem := rv64GCArrayInitElem(c)
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")
 	}
@@ -112,6 +113,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCArrayReferenceExecutionCode(c) && !exactGCArrayReference {
 		return reject("allocating gc/array reference image requires its exact retained metadata")
+	}
+	if rv64GCArrayInitElemExecutionCode(c) && !exactGCArrayInitElem {
+		return reject("allocating gc/array init elem image requires its exact retained metadata")
 	}
 	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
 		return reject("i31 execution image requires its exact retained metadata")
@@ -222,7 +226,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -233,13 +237,13 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference {
+	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem {
 		qualifiedFeatures |= CoreFeatureGC
 	}
-	if exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference {
+	if exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
-	if exactGCArrayPackedData || exactGCArrayReference {
+	if exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem {
 		qualifiedFeatures |= CoreFeatureBulkMemoryOperations
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
@@ -331,13 +335,13 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && (!(exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference) || typ != ValAnyRef) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && (!(exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem) || typ != ValAnyRef) {
 					return reject("unsupported signature")
 				}
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
@@ -352,7 +356,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	hasReferenceGlobal := false
 	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
 	for i, global := range c.Globals {
-		if exactGCArrayFixedOfficial && i == 0 || exactGCArrayDefaultOfficial && i < 2 {
+		if exactGCArrayFixedOfficial && i == 0 || exactGCArrayDefaultOfficial && i < 2 || exactGCArrayInitElem && i < 2 {
 			continue // The exact product pins this rooted non-null array initializer.
 		}
 		if typedI31 && (global.Type == ValI31Ref || exactAnyI31 && global.Type == ValAnyRef) {
@@ -457,7 +461,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("memory export index bound")
 		}
 	}
-	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
+	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayInitElem || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
 		return reject("GC/EH initializer lowering is pending")
 	}
 	return nil
