@@ -738,6 +738,18 @@ nested entries and guarded host access invalidate it. Shared or unknown state
 uses full restoration. Native and collector leases, parked roots, and scheduler
 entry/resume protocols are still required.
 
+On Windows/amd64 with standard Go 1.22–1.27, an admitted private integer
+`(i64)->i64` host call with explicit bounds checks can use the live Go owner
+frame. Native guest code
+still runs on the foreign stack; the bridge restores the Go stack pointer,
+frame pointer, and `g` before calling Go, then updates its landing record if
+the callback grows the Go stack. The call keeps the callback context rooted and
+retains the same trap and cancellation checks. Other signatures, generic
+bounded and multi-import entry, Windows/arm64, and TinyGo keep the parked
+fallback. Signals-based bounds checks also retain the parked path. Guest faults must
+return through Wago's trap protocol; the live bridge does not unwind Windows
+exceptions across the foreign stack.
+
 `func(Caller, HostCall)` is the callback ABI for memory, reference operations,
 invocation context, and authorized synchronous re-entry. `Caller` wraps a
 private immutable token and expires when the callback returns. All host

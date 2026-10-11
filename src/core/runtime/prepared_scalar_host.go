@@ -20,21 +20,35 @@ type PreparedScalarHost struct {
 	staged, bridge            uintptr
 	mode                      uint8
 	detached                  []byte
+	windowsI64               bool
 }
 
 // PrepareScalarHost validates immutable buffers before publishing a live bridge.
 // An unavailable live Go ABI returns nil so the owner retains its ordinary path.
 func (e *Engine) PrepareScalarHost(access runtimebridge.HostScalarCallAccess, args, trap, results, ctrl []byte, slots uint32) (*PreparedScalarHost, error) {
-	return e.prepareScalarHost(access, args, trap, results, ctrl, slots, false)
+	return e.prepareScalarHost(access, args, trap, results, ctrl, slots, false, false)
 }
 
 // PrepareScalarHostView prepares borrowed numeric argument and result views.
 func (e *Engine) PrepareScalarHostView(access runtimebridge.HostScalarCallAccess, args, trap, results, ctrl []byte, slots uint32) (*PreparedScalarHost, error) {
-	return e.prepareScalarHost(access, args, trap, results, ctrl, slots, true)
+	return e.prepareScalarHost(access, args, trap, results, ctrl, slots, true, false)
 }
 
-func (e *Engine) prepareScalarHost(access runtimebridge.HostScalarCallAccess, args, trap, results, ctrl []byte, slots uint32, view bool) (*PreparedScalarHost, error) {
-	if !preparedScalarHostAvailable() {
+// PrepareWindowsTypedI64Host admits only a private integer (i64)->i64 owner.
+// The caller must prove the integer-only guest and detach its numeric context
+// before calling; other Windows host signatures retain the parked path.
+func (e *Engine) PrepareWindowsTypedI64Host(access runtimebridge.HostScalarCallAccess, args, trap, results, ctrl []byte, slots uint32) (*PreparedScalarHost, error) {
+	if !windowsTypedI64HostAvailable() {
+		return nil, nil
+	}
+	if slots != 0x10001 {
+		return nil, fmt.Errorf("jit: Windows typed i64 host call requires one parameter and one result")
+	}
+	return e.prepareScalarHost(access, args, trap, results, ctrl, slots, false, true)
+}
+
+func (e *Engine) prepareScalarHost(access runtimebridge.HostScalarCallAccess, args, trap, results, ctrl []byte, slots uint32, view, windowsI64 bool) (*PreparedScalarHost, error) {
+	if !windowsI64 && !preparedScalarHostAvailable() {
 		return nil, nil
 	}
 	limit := uint32(2)
@@ -65,7 +79,7 @@ func (e *Engine) prepareScalarHost(access runtimebridge.HostScalarCallAccess, ar
 	if view {
 		mode = 1
 	}
-	p := &PreparedScalarHost{engine: e, args: args, trap: trap, results: results, ctrl: ctrl, slots: slots, staged: staged, bridge: bridge, mode: mode}
+	p := &PreparedScalarHost{engine: e, args: args, trap: trap, results: results, ctrl: ctrl, slots: slots, staged: staged, bridge: bridge, mode: mode, windowsI64: windowsI64}
 	e.preparedScalarHost = p
 	return p, nil
 }
