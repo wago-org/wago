@@ -4600,7 +4600,15 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		defer stopCancel()
 	}
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback); err != nil {
+		var err error
+		if contexts.interrupt != nil && in.contextBoundedTypedI64Eligible(ic) {
+			// Admission, ownership, and the cancellation watcher above are shared
+			// with the general path. Only the final native driver changes.
+			err = in.callCachedBoundedTypedHostContext(entry, contexts.callback)
+		} else {
+			err = in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback)
+		}
+		if err != nil {
 			return nil, err
 		}
 	} else {
@@ -4652,6 +4660,19 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 	}
 	return out, nil
+}
+
+// contextBoundedTypedI64Eligible keeps cancelable entry on the ordinary gate
+// and watcher while using the proven private integer host bridge. Atomic wait
+// helpers retain the general driver's separate parent-context publication.
+func (in *Instance) contextBoundedTypedI64Eligible(ic *invokeCache) bool {
+	if ic == nil || ic.li < 0 || !ic.boundedNumericHost || in.c.usesAtomicWaitHelpers() || !in.preparedFastStateValid() ||
+		!in.preparedBoundedNumericEligible() || !in.syncMode || len(in.syncHosts) != 1 ||
+		in.syncHosts[0].scalarKind != syncHostTypedI64 || !in.syncHosts[0].privateBoundedTypedHost() {
+		return false
+	}
+	prepared := in.eng.PreparedScalarHost()
+	return prepared != nil && prepared.DetachedNumericContext() && prepared.IntegerGuestContext()
 }
 
 // invokeLocal calls this instance's local function `li` directly (bypassing the
