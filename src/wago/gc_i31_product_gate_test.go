@@ -8,10 +8,20 @@ import (
 )
 
 const stagedGCI31CoreHex = "0061736d010000000199808080000560017f01646c60017f017f6000017f6000027f7f60017f00038880808000070001010202030406918080800002646c004102fb1c0b646c014103fb1c0b07cc8080800007036e65770000056765745f750001056765745f7300020a6765745f752d6e756c6c00030a6765745f732d6e756c6c00040b6765745f676c6f62616c7300050a7365745f676c6f62616c00060ad880808000078680808000002000fb1c0b8880808000002000fb1cfb1e0b8880808000002000fb1cfb1d0b868080800000d06cfb1e0b868080800000d06cfb1d0b8a80808000002300fb1e2301fb1e0b8880808000002000fb1c24010b"
+const stagedGCI31TableHex = "0061736d01000000019680808000046000017f60017f017f60027f7f017f60037f7f7f0003878080800006000102030303048580808000016c01030a07aa80808000060473697a6500000367657400010467726f7700020466696c6c000304636f7079000404696e6974000509af8080800002060041000b6c0341e707fb1c0b41f806fb1c0b418906fb1c0b056c0341fb00fb1c0b41c803fb1c0b419506fb1c0b0adc8080800006858080800000fc10000b88808080000020002500fb1e0b8b80808000002001fb1c2000fc0f000b8d808080000020002001fb1c2002fc11000b8c8080800000200020012002fc0e00000b8c8080800000200020012002fc0c01000b"
 
 func stagedGCI31CoreBytes(t testing.TB) []byte {
 	t.Helper()
 	data, err := hex.DecodeString(stagedGCI31CoreHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func stagedGCI31TableBytes(t testing.TB) []byte {
+	t.Helper()
+	data, err := hex.DecodeString(stagedGCI31TableHex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +71,48 @@ func TestStagedGCI31ProductPlatformBoundsAndIdentityGate(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatalf("generic i31 product compile = %v", err)
+	}
+	_ = widened.Close()
+}
+
+func TestStagedGCI31TableProductPlatformBoundsAndIdentityGate(t *testing.T) {
+	data := stagedGCI31TableBytes(t)
+	cfg := compatibilityDefaultConfig()
+	features := cfg.frontendFeatures()
+	features.TypedFunctionReferences = true
+	features.GCI31Products = true
+	c, err := compileWithFrontendFeatures(cfg, data, features)
+	stagedRV64 := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64"
+	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !stagedRV64 {
+		if err == nil || !strings.Contains(err.Error(), "unsupported i31 product staged execution on") {
+			t.Fatalf("platform compile = %v, want explicit i31-table rejection", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("supported i31-table compile: %v", err)
+	}
+	_ = c.Close()
+
+	unknown := append([]byte(nil), data...)
+	for i := 0; i+4 <= len(unknown); i++ {
+		if string(unknown[i:i+4]) == "init" {
+			unknown[i+3] = 'x'
+			break
+		}
+	}
+	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
+	if stagedRV64 {
+		if widened != nil {
+			_ = widened.Close()
+		}
+		if err == nil {
+			t.Fatal("non-pinned i31-table source escaped the staged RV64 identity gate")
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("generic i31-table product compile = %v", err)
 	}
 	_ = widened.Close()
 }

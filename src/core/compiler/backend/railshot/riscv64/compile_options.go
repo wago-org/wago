@@ -64,8 +64,9 @@ type CompileOptions struct {
 	CustomInstructions  map[uint32]railcore.CustomInstruction
 	ForceFallback       bool
 	// I31CoreSource is an exact-wire provenance witness supplied by the public
-	// source frontend. It never grants lowering by itself: CompileModuleWith
-	// independently rechecks the decoded module before selecting the pilot.
+	// source frontend for a bounded i31 product. It never grants lowering by
+	// itself: CompileModuleWith independently rechecks the decoded module before
+	// selecting the pilot.
 	I31CoreSource bool
 	production    bool
 	publicStarts  bool

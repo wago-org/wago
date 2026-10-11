@@ -1315,7 +1315,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						}
 					}
 					if live && emit != nil {
-						emit.privateTableInitAt(imm.Index, imm.Index2)
+						compactReference, compactOK := state.tableCompactReference(imm.Index2)
+						if !compactOK {
+							return integerSummary{}, unsupported("private table.init reference layout")
+						}
+						emit.privateTableInitAt(imm.Index, imm.Index2, compactReference)
 					}
 				}
 				continue
@@ -1323,6 +1327,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
 				tableIndex, tableWide := uint32(0), state.table64
 				sourceTableIndex := uint32(0)
+				compactReference := false
 				if imm.Kind == wasm.InstrTableGrow || imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy {
 					tableIndex = imm.Index
 					var tableOK bool
@@ -1330,10 +1335,16 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if !tableOK || imm.Kind == wasm.InstrTableGrow && !state.ownedTableGrowth {
 						return integerSummary{}, unsupported("bounded private table mutation shape")
 					}
+					var compactOK bool
+					compactReference, compactOK = state.tableCompactReference(tableIndex)
+					if !compactOK {
+						return integerSummary{}, unsupported("private table mutation reference layout")
+					}
 					if imm.Kind == wasm.InstrTableCopy {
 						sourceTableIndex = imm.Index2
 						sourceWide, sourceOK := state.tableWidth(sourceTableIndex)
-						if !sourceOK || sourceWide != tableWide {
+						sourceCompact, sourceCompactOK := state.tableCompactReference(sourceTableIndex)
+						if !sourceOK || sourceWide != tableWide || !sourceCompactOK || sourceCompact != compactReference {
 							return integerSummary{}, unsupported("cross-table private copy width")
 						}
 					}
@@ -1387,11 +1398,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if live && emit != nil {
 					switch imm.Kind {
 					case wasm.InstrTableCopy:
-						emit.privateTableCopyBetween(tableIndex, sourceTableIndex)
+						emit.privateTableCopyBetween(tableIndex, sourceTableIndex, compactReference)
 					case wasm.InstrTableFill:
-						emit.privateTableFillAt(tableIndex)
+						emit.privateTableFillAt(tableIndex, compactReference)
 					case wasm.InstrTableGrow:
-						emit.privateTableGrow(deltaSlot, tableWide, tableIndex)
+						emit.privateTableGrow(deltaSlot, tableWide, tableIndex, compactReference)
 						emit.Store(emit.SpillOffset(h), 5, tableWide)
 					}
 				}

@@ -184,7 +184,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 }
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
-	i31Core := admitRV64I31OfficialCore(m)
+	i31Core := admitRV64I31Core(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -203,7 +203,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		for index := range s.tableAddr64 {
 			t, _ := m.TableType(uint32(index))
 			s.tableAddr64[index] = t.Limits.Addr64
-			s.tableCompactRef[index] = wasm.EqualValType(wasm.RefVal(t.Ref), wasm.ExternRef)
+			elem := wasm.RefVal(t.Ref)
+			s.tableCompactRef[index] = wasm.EqualValType(elem, wasm.ExternRef) || i31Core && (wasm.EqualValType(elem, wasm.I31Ref) || isI31CoreRef(elem))
 			if index == 0 {
 				// The frontend reserves max(1024,2*min) for observable no-max growth.
 				s.table64 = t.Limits.Addr64

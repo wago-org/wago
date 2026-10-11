@@ -1133,7 +1133,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 					case 15:
 						emit.Load(7, spill(base), true)
 						emit.Load(5, spill(base+1), false)
-						emit.privateTableGrowAt(spill(base+1), false, 0)
+						emit.privateTableGrowAt(spill(base+1), false, 0, false)
 					case 16:
 						emit.a.Ld(enc.X6, enc.X25, -80)
 						emit.trap(trapTableBounds, emit.a.BranchLong(enc.EQ, enc.X6, enc.Zero))

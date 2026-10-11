@@ -24,11 +24,18 @@ func admitRV64I31CoreWire(data []byte) bool {
 	if len(data) == len(rv64I31CoreWire) && string(data) == rv64I31CoreWire {
 		return true
 	}
-	return len(data) == 252 && sha256.Sum256(data) == [sha256.Size]byte{0x4b, 0xdd, 0x4d, 0x0f, 0x18, 0x6a, 0x2f, 0xd6, 0x17, 0xb4, 0x1a, 0xd4, 0x94, 0x0e, 0x17, 0xf2, 0xc0, 0x41, 0x55, 0x14, 0xeb, 0xc6, 0x36, 0xa5, 0x6e, 0x41, 0x49, 0x6e, 0x8c, 0x39, 0x2a, 0xea}
+	switch len(data) {
+	case 252:
+		return sha256.Sum256(data) == [sha256.Size]byte{0x4b, 0xdd, 0x4d, 0x0f, 0x18, 0x6a, 0x2f, 0xd6, 0x17, 0xb4, 0x1a, 0xd4, 0x94, 0x0e, 0x17, 0xf2, 0xc0, 0x41, 0x55, 0x14, 0xeb, 0xc6, 0x36, 0xa5, 0x6e, 0x41, 0x49, 0x6e, 0x8c, 0x39, 0x2a, 0xea}
+	case 259:
+		return sha256.Sum256(data) == [sha256.Size]byte{0xc2, 0xa2, 0x06, 0x20, 0x22, 0xd3, 0xb9, 0x9a, 0x27, 0xaa, 0xda, 0x76, 0xd1, 0xfe, 0x14, 0xcd, 0xac, 0xf3, 0x38, 0x7e, 0x74, 0x97, 0x94, 0x3d, 0x17, 0xd3, 0x68, 0x1f, 0x65, 0xed, 0x73, 0x29}
+	default:
+		return false
+	}
 }
 
-// AdmitI31CoreSource returns the exact-wire provenance witness for the first
-// non-allocating RV64 i31 checkpoint. Callers must pass this witness back in
+// AdmitI31CoreSource returns the exact-wire provenance witness for the bounded
+// non-allocating RV64 i31 products. Callers must pass this witness back in
 // CompileOptions; decoded shape alone is deliberately insufficient because the
 // decoder discards semantically inert wire sections.
 func AdmitI31CoreSource(data []byte) bool {
@@ -39,7 +46,7 @@ func AdmitI31CoreSource(data []byte) bool {
 // lowering. This is intentionally narrower than the general collector-free
 // i31 implementation on complete backends.
 func admitRV64I31Core(m *wasm.Module) bool {
-	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m)
+	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m)
 }
 
 func admitRV64I31MinimalCore(m *wasm.Module) bool {
@@ -146,6 +153,76 @@ func admitRV64I31OfficialCore(m *wasm.Module) bool {
 	for i, ex := range m.Exports {
 		if ex.Name != wantExports[i] || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
 			return false
+		}
+	}
+	return true
+}
+
+// admitRV64I31OfficialTable pins the second official spec-v3 gc/i31 module.
+// Its compact eight-byte table rows exercise the complete table lifecycle, so
+// no other i31 table shape inherits this collector-free lowering.
+func admitRV64I31OfficialTable(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 4 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Tables) != 1 || len(m.Elements) != 2 || len(m.Exports) != 6 ||
+		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	table := m.Tables[0]
+	if table.Init != nil || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min != 3 || table.Type.Limits.Max != 10 || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.I31Ref) {
+		return false
+	}
+	types := []struct{ params, results []wasm.ValType }{
+		{nil, []wasm.ValType{wasm.I32}},
+		{[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}},
+		{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}},
+		{[]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil},
+	}
+	for i := range types {
+		if !i31CoreFunctionType(&m.Types[i], types[i].params, types[i].results) {
+			return false
+		}
+	}
+	wantBindings := []uint32{0, 1, 2, 3, 3, 3}
+	wantBodies := [][]byte{
+		{0xfc, 0x10, 0, 0x0b},
+		{0x20, 0, 0x25, 0, 0xfb, 0x1e, 0x0b},
+		{0x20, 1, 0xfb, 0x1c, 0x20, 0, 0xfc, 0x0f, 0, 0x0b},
+		{0x20, 0, 0x20, 1, 0xfb, 0x1c, 0x20, 2, 0xfc, 0x11, 0, 0x0b},
+		{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 0, 0, 0x0b},
+		{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 1, 0, 0x0b},
+	}
+	for i, binding := range m.FuncTypes {
+		if binding.Rec || binding.Index != wantBindings[i] {
+			return false
+		}
+		fn := &m.Code[i]
+		if len(fn.Locals.Runs) != 0 || fn.LocalDeclBytes != 1 || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || !bytes.Equal(fn.BodyBytes, wantBodies[i]) {
+			return false
+		}
+	}
+	wantExports := []string{"size", "get", "grow", "fill", "copy", "init"}
+	for i, ex := range m.Exports {
+		if ex.Name != wantExports[i] || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
+			return false
+		}
+	}
+	wantElements := []struct {
+		mode   wasm.ElemModeKind
+		offset []byte
+		values [][]byte
+	}{
+		{wasm.ElemActive, []byte{0x41, 0, 0x0b}, [][]byte{{0x41, 0xe7, 0x07, 0xfb, 0x1c, 0x0b}, {0x41, 0xf8, 0x06, 0xfb, 0x1c, 0x0b}, {0x41, 0x89, 0x06, 0xfb, 0x1c, 0x0b}}},
+		{wasm.ElemPassive, nil, [][]byte{{0x41, 0xfb, 0, 0xfb, 0x1c, 0x0b}, {0x41, 0xc8, 0x03, 0xfb, 0x1c, 0x0b}, {0x41, 0x95, 0x06, 0xfb, 0x1c, 0x0b}}},
+	}
+	for i, elem := range m.Elements {
+		want := wantElements[i]
+		if elem.Mode.Kind != want.mode || elem.Mode.Table != 0 || len(elem.Mode.Offset.Instrs) != 0 || !bytes.Equal(elem.Mode.Offset.BodyBytes, want.offset) || elem.Kind.Kind != wasm.ElemTypedExprs || len(elem.Kind.Funcs) != 0 || !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.I31Ref) || len(elem.Kind.Exprs) != len(want.values) {
+			return false
+		}
+		for j, expr := range elem.Kind.Exprs {
+			if len(expr.Instrs) != 0 || !bytes.Equal(expr.BodyBytes, want.values[j]) {
+				return false
+			}
 		}
 	}
 	return true

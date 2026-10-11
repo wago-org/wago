@@ -403,7 +403,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	i31Core := referenceFunctions && admitRV64I31OfficialCore(m)
+	i31Core := referenceFunctions && admitRV64I31Core(m)
 	declarationExtern := referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	executionExtern := referenceFunctions && isCore3RefIsNullExecution(m)
 	declarationNonNullExtern := referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
