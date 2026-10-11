@@ -923,6 +923,10 @@ func rv64MixedTable64CopyProfile(c *Compiled) bool {
 }
 
 func rv64MixedTable64InitDrop(c *Compiled) bool {
+	return rv64MixedTable64NullInitDrop(c) || rv64MixedTable64PassiveVector(c)
+}
+
+func rv64MixedTable64NullInitDrop(c *Compiled) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64ImportedInitDropABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 1 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 3 || len(c.Exports) != 3 || len(c.tableExports) != 2 {
 		return false
 	}
@@ -982,6 +986,97 @@ func rv64MixedTable64InitDrop(c *Compiled) bool {
 		tables[index] = true
 	}
 	return functions[0] && functions[1] && functions[2] && tables[0] && tables[1]
+}
+
+func rv64MixedTable64PassiveVector(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64ImportedInitDropABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 1 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 7 || len(c.Exports) != 5 || len(c.tableExports) != 2 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
+		return false
+	}
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	imported, ok := c.tableImportAt(0)
+	if !ok || imported.Key == "" || !imported.Addr64 || !imported.HasMax || imported.Min != 4 || imported.Max != 4 {
+		return false
+	}
+	local := c.tableDef(1)
+	for index := 0; index < 2; index++ {
+		exact, err := c.tableExactType(index)
+		if err != nil || exact != plain {
+			return false
+		}
+	}
+	if local.ImportKey != "" || local.ImportHasMax || local.HasInitFunc || local.InitFunc != 0 || !local.Addr64 || !local.HasMax || local.Size != 4 || local.Max != 4 || c.tableRuntimeCapacity(1) != 4 {
+		return false
+	}
+	initKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}})
+	targetKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}})
+	callKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}})
+	entries := [...]int{0, 592, 1184, 2400, 3744, 4432, 7280}
+	if len(c.Types) != 3 || len(c.GCTypeDescs) != 3 || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 7 || len(c.Entry) != len(entries) || len(c.InternalEntry) != len(entries) {
+		return false
+	}
+	for i, entry := range entries {
+		if c.Entry[i] != entry || c.InternalEntry[i] != entry {
+			return false
+		}
+	}
+	wants := [...]uint64{targetKey, targetKey, initKey, initKey, targetKey, callKey, callKey}
+	for i, fn := range c.Funcs {
+		if c.FuncTypeID[i] != wants[i] || len(fn.Results) != 1 || fn.Results[0] != ValI32 {
+			return false
+		}
+		switch i {
+		case 0, 1, 4:
+			if len(fn.Params) != 0 {
+				return false
+			}
+		case 2, 3:
+			if len(fn.Params) != 3 || fn.Params[0] != ValI64 || fn.Params[1] != ValI32 || fn.Params[2] != ValI32 {
+				return false
+			}
+		case 5, 6:
+			if len(fn.Params) != 1 || fn.Params[0] != ValI64 {
+				return false
+			}
+		}
+	}
+	wantCode := [32]byte{0x5e, 0x04, 0x58, 0x25, 0xdd, 0x44, 0x3e, 0x7d, 0xb9, 0x7f, 0xa8, 0xfb, 0xd2, 0x16, 0x53, 0x3f, 0xdf, 0x6e, 0xff, 0x87, 0x9a, 0x04, 0xe1, 0xdd, 0x54, 0x2a, 0xa7, 0x2b, 0x34, 0x57, 0x68, 0x0e}
+	if len(c.code) != 10192 || sha256.Sum256(c.code) != wantCode || c.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {
+		return false
+	}
+	e := c.passiveElems[0]
+	if e.Mode != ElemModePassive || e.TableIndex != 0 || e.RefType != ValFuncRef || !e.HasValueType || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) != 2 {
+		return false
+	}
+	elementType, err := c.elemExactType(e)
+	if err != nil || elementType != plain {
+		return false
+	}
+	for target, v := range e.Values {
+		if v.Null || v.FuncIndex != uint32(target) || v.GlobalIndex != 0 || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 {
+			return false
+		}
+	}
+	var functions [5]bool
+	var tables [2]bool
+	for _, index := range c.Exports {
+		if index < 2 || index > 6 {
+			return false
+		}
+		functions[index-2] = true
+	}
+	for _, index := range c.tableExports {
+		if index < 0 || index > 1 {
+			return false
+		}
+		tables[index] = true
+	}
+	return functions[0] && functions[1] && functions[2] && functions[3] && functions[4] && tables[0] && tables[1]
 }
 
 func rv64OwnedTwoTable64GetSet(c *Compiled) bool {
