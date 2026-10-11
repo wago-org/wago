@@ -14,7 +14,8 @@ func (f *fn) foldCommonExitCompares(b []byte, n int, targets []uint64, entryOffs
 	if !f.opt(optCommonExitCompare) || f.opaqueFragments || f.moduleEH || len(f.customInstructions) != 0 {
 		return
 	}
-	for pc := 0; pc+16 <= n; pc += 4 {
+	b = b[:n:n]
+	for pc := 0; pc <= len(b)-16; pc += 4 {
 		first := rdWord(b, pc)
 		if !pureCompareWord(first) {
 			continue

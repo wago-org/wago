@@ -49,7 +49,8 @@ func (f *fn) foldGuardedTests(b []byte, n int, targets []uint64) {
 	if f.opaqueFragments {
 		return
 	}
-	for pc := 0; pc+16 <= n; pc += 4 {
+	b = b[:n:n]
+	for pc := 0; pc <= len(b)-16; pc += 4 {
 		first := rdWord(b, pc)
 		if first&0x7FE0FC1F != 0x6A00001F {
 			continue

@@ -383,12 +383,13 @@ func (f *fn) convergeEdgeTo(target *packedLocStates) {
 }
 
 func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regMask) {
+	locals := f.locals[:f.nLocals]
 	// Dirty registers and lazy zeros always materialize to the slot: every
 	// target guarantees at least "slot is current". Non-lazy functions can never
 	// contain lsConstZero and skip that complete local-array scan.
 	if f.lazyZero {
-		for x := 0; x < f.nLocals; x++ {
-			if f.locals[x].state == lsConstZero {
+		for x := range locals {
+			if locals[x].state == lsConstZero {
 				f.materializeZeroLocal(x, true)
 			}
 		}
@@ -401,31 +402,33 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 	if f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0 {
 		return
 	}
-	for x := 0; x < f.nLocals; x++ {
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
+	for x := range locals {
+		local := &locals[x]
+		reg, isFloat := local.reg, local.isFloat
+		if reg == regNone {
 			continue
 		}
-		if f.locals[x].state == lsReg {
+		if locals[x].state == lsReg {
 			f.storeLocalReg(x, reg, isFloat)
-			f.locals[x].state = lsStackReg
+			locals[x].state = lsStackReg
 		}
 	}
 	if target.empty() { // first edge fixes the frame's merge state
 		var t packedLocStates
-		for x := 0; x < f.nLocals; x++ {
-			t.set(x, f.locals[x].state)
+		for x := range locals {
+			t.set(x, locals[x].state)
 		}
 		*target = t
 		return
 	}
 	t := *target
-	for x := 0; x < f.nLocals; x++ {
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
+	for x := range locals {
+		local := &locals[x]
+		reg, isFloat := local.reg, local.isFloat
+		if reg == regNone {
 			continue
 		}
-		if t.get(x) == lsStackReg && f.locals[x].state == lsMem {
+		if t.get(x) == lsStackReg && locals[x].state == lsMem {
 			dead := deadGP.has(reg)
 			if isFloat {
 				dead = deadFP.has(reg)
@@ -436,7 +439,7 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 				continue
 			}
 			f.loadLocalReg(x, reg, isFloat)
-			f.locals[x].state = lsStackReg
+			locals[x].state = lsStackReg
 		}
 	}
 }

@@ -385,7 +385,8 @@ type fn struct {
 	branchHints         []wasm.BranchHint
 	branchHintLocalDecl uint32
 	branchHintUnlikely  bool
-	unreachable         bool // in dead code after an unconditional branch/trap
+	innermostLoop       uint32 // control depth of the nearest loop; zero outside loops
+	unreachable         bool   // in dead code after an unconditional branch/trap
 
 	// Call state (Phase 4).
 	relocs []callReloc // direct-call (BL) sites to patch at module layout
@@ -1749,14 +1750,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	for i := range m.Code {
 		totalBody += len(m.Code[i].BodyBytes)
 	}
-	// Large images amortize adapters and expand less per body byte. Keep the
-	// conservative estimate for smaller modules; CodeBuffer still grows if an
-	// unusually dense large body exceeds this reservation.
-	largeExpansion := 28
-	if totalBody >= 8<<20 {
-		largeExpansion = 24
-	}
-	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 32, largeExpansion, 768<<10)
+	// Retain enough headroom for dense large images: a 3x estimate forced
+	// another allocation and copy of esbuild's entire code buffer.
+	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 32, 28, 768<<10)
 	moduleTypes := buildModuleTypeCache(m, totalBody)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	// A one-worker join pays for a second arena and copy. It wins for large bodies,
@@ -3595,6 +3591,7 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the current epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
+	f.innermostLoop = 0
 	if f.scalarSummary.Eligible {
 		f.ctrl = f.sc.ctrl[:0]
 		return f.scalarBody(c)

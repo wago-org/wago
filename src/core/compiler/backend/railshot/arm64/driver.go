@@ -48,7 +48,9 @@ func (f *fn) representationError() error {
 // and returns control to the caller's body.
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	for len(f.ctrl) > minCtrl {
-		f.finishSelectGroup(r.Offset())
+		if f.selectGroupEnd != 0 {
+			f.finishSelectGroup(r.Offset())
+		}
 		if f.streamingReduction && f.s.head.prev == sentinelNodeID {
 			if done, err := f.tryStreamReduction(r); done || err != nil {
 				if err != nil {
@@ -123,7 +125,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
-		if op == 0x1b || op == 0x22 {
+		if !f.usesCalls && (op == 0x1b || op == 0x22) {
 			f.beginSelectGroup(r)
 		}
 	}

@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"os"
 )
 
@@ -63,7 +64,8 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	lineageEligible := f.opt(optCsetLineage) && n <= 4096 && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
 	lineageCandidate := false
 	firstLineageSet := -1
-	for pc := 0; pc < n; pc += 4 {
+	b = b[:n:n]
+	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := rdWord(b, pc)
 		if lineageEligible {
 			// No boolean lineage can precede its first CSET. Stop all
@@ -231,7 +233,8 @@ func (f *fn) foldSingleBitBranches(b []byte, n int, targets []uint64) {
 // target first and only folding pairs whose middle word is not among them.
 
 func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
-	for pc := 0; pc+8 <= n; pc += 4 {
+	b = b[:n:n]
+	for pc := 0; pc <= len(b)-8; pc += 4 {
 		w := rdWord(b, pc)
 		cc, ok := bcondSkipOne(w) // B.cond whose displacement is exactly +2 words
 		if !ok {
@@ -276,7 +279,8 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 // entrant that skipped the store must genuinely load from memory.
 
 func (f *fn) forwardStoreLoads(b []byte, n int, targets []uint64) {
-	for pc := 0; pc+8 <= n; pc += 4 {
+	b = b[:n:n]
+	for pc := 0; pc <= len(b)-8; pc += 4 {
 		if f.forwardStoreLoadAt(b, n, pc, targets, true) {
 			pc += 4 // step past the word we just rewrote
 		}
@@ -388,14 +392,11 @@ func spLoadImm(w uint32) (rt Reg, off int, w64, ok bool) {
 
 // rdWord/wrWord read and write a little-endian 32-bit instruction word.
 func rdWord(b []byte, pc int) uint32 {
-	return uint32(b[pc]) | uint32(b[pc+1])<<8 | uint32(b[pc+2])<<16 | uint32(b[pc+3])<<24
+	return binary.LittleEndian.Uint32(b[pc:])
 }
 
 func wrWord(b []byte, pc int, w uint32) {
-	b[pc] = byte(w)
-	b[pc+1] = byte(w >> 8)
-	b[pc+2] = byte(w >> 16)
-	b[pc+3] = byte(w >> 24)
+	binary.LittleEndian.PutUint32(b[pc:], w)
 }
 
 // bcondSkipOne reports whether w is a `B.cond` whose displacement is exactly +2

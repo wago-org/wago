@@ -1166,7 +1166,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.immediateFreeOps |= streamingReductionHintMask
 		}
 		curIndex := ^uint32(0)
-		s.notePhysicalEvent(op, depth)
+		if s.h.localEvents != nil {
+			s.notePhysicalEvent(op, depth)
+		}
 		switch op {
 		case 0x00: // unreachable
 			s.h.flags.set(hintHasControlFlow)

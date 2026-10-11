@@ -217,25 +217,28 @@ func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[
 		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 128", b.arch, len(b.entries))
 	}
 	var bits [2]uint64
+	matched := 0
 	for index, entry := range b.entries {
 		on := *entry.value
 		if entry.inverted {
 			on = !on
 		}
+		if override, ok := overrides[entry.definition.Name]; ok {
+			on = override
+			matched++
+		}
 		if on {
 			bits[index/64] |= uint64(1) << uint(index%64)
 		}
 	}
-	for name, on := range overrides {
-		index, ok := b.indexOf(name)
-		if !ok {
-			return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
-		}
-		mask := uint64(1) << uint(index%64)
-		if on {
-			bits[index/64] |= mask
-		} else {
-			bits[index/64] &^= mask
+	// Full RuntimeConfig maps are common. Resolve them in catalog order rather
+	// than linearly searching the catalog once per override. Only invalid maps
+	// need the name search to report the unknown entry.
+	if matched != len(overrides) {
+		for name := range overrides {
+			if _, ok := b.indexOf(name); !ok {
+				return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
+			}
 		}
 	}
 	return Selection{bindings: b, bits: bits}, nil

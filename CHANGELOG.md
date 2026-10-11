@@ -9,13 +9,13 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 ### Changed
 
 - Improve ARM64 execution with guarded scalar and vector loop lowering, bounded
-  register reuse, borrowed operands, indexed address reuse, exact integer
-  dot and absolute-difference reductions, min-plus updates and independent
-  floating-point maps, vector
-  loop unrolling, scoped floating-point constants, static table-address bounds, arithmetic and
-  branch/condition simplification. Each optional lowering has strict admission checks and a per-compilation rollback option. Defer ineligible
-  bounded-host analyses and reduce oversized native-image reservations to lower
-  compilation allocation traffic and peak memory.
+  register reuse, borrowed operands, indexed address reuse, exact integer dot
+  and absolute-difference reductions, min-plus updates, independent floating-point
+  maps, vector unrolling, scoped constants, static table-address bounds and
+  arithmetic/branch simplification. Each optional lowering has strict admission
+  checks and a per-compilation rollback option. Reduce compilation overhead with
+  linear option resolution, cheaper loop/local-state scans and sufficient native
+  image capacity to avoid reallocating dense large modules.
 - Admit exact typed i64 synchronous host callbacks to the private prepared
   integer route when the bounded-work and detached-context proofs hold. Other
   callback shapes retain their existing route; each synchronous host binding
