@@ -131,7 +131,7 @@ func rv64NativeTailPlanSignature(c *Compiled, p encoder.NativeTailPlan) (rv64Tai
 	if p.Kind != encoder.NativeTailIndirect && p.Kind != encoder.NativeTailReference || p.ImportIndex != 0 || uint64(p.TypeIndex) >= uint64(len(c.Types)) || !c.needsFuncRefDescs() {
 		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail declared type/kind/descriptor contract")
 	}
-	if p.Kind == encoder.NativeTailIndirect && (c.tableCount() != 1 || c.TableAddr64) && !rv64OwnedTwoTable64IndirectTail(c) && !rv64MixedTable64ActiveIndirectTailPlanShape(c) && !rv64ImportedTable64IndirectTailPlanShape(c) {
+	if p.Kind == encoder.NativeTailIndirect && (c.tableCount() != 1 || c.TableAddr64) && !rv64OwnedTable64IndirectTailPlanShape(c) && !rv64OwnedTwoTable64IndirectTail(c) && !rv64MixedTable64ActiveIndirectTailPlanShape(c) && !rv64ImportedTable64IndirectTailPlanShape(c) {
 		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail table shape")
 	}
 	d := &c.Types[p.TypeIndex]

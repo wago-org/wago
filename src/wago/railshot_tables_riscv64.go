@@ -1444,6 +1444,103 @@ func rv64OwnedTable64GetSet(c *Compiled) bool {
 }
 
 func rv64OwnedTable64Indirect(c *Compiled) bool {
+	return rv64OwnedTable64IndirectCall(c) || rv64OwnedTable64IndirectTail(c)
+}
+
+func rv64OwnedTable64IndirectCall(c *Compiled) bool {
+	if rv64NativeTailModule(c) != nil {
+		return false
+	}
+	return rv64OwnedTable64IndirectCommon(c)
+}
+
+func rv64OwnedTable64IndirectTail(c *Compiled) bool {
+	return rv64OwnedTable64IndirectTailProduct(c, false)
+}
+
+func rv64OwnedTable64IndirectTailPlanShape(c *Compiled) bool {
+	return rv64OwnedTable64IndirectTailProduct(c, true)
+}
+
+func rv64OwnedTable64IndirectTailProduct(c *Compiled, beforeGCDescriptors bool) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 3 || len(c.Exports) != 2 || len(c.tableExports) != 1 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	i32, _ := valueTypeDescriptorFromValType(ValI32)
+	i64, _ := valueTypeDescriptorFromValType(ValI64)
+	def := c.tableDef(0)
+	exact, err := c.tableExactType(0)
+	if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || !def.Addr64 || !def.HasMax || def.Size != 2 || def.Max != 2 || c.tableRuntimeCapacity(0) != 2 {
+		return false
+	}
+	targetKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}})
+	callerKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}})
+	if len(c.Types) != 2 || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 3 || c.FuncTypeID[0] != targetKey || c.FuncTypeID[1] != callerKey || c.FuncTypeID[2] != callerKey || len(c.Entry) != 3 || len(c.InternalEntry) != 3 {
+		return false
+	}
+	entries := [...]int{0, 592, 1840}
+	for i, entry := range entries {
+		if c.Entry[i] != entry || c.InternalEntry[i] != entry {
+			return false
+		}
+	}
+	if (!beforeGCDescriptors && len(c.GCTypeDescs) != 2) || (beforeGCDescriptors && len(c.GCTypeDescs) != 0 && len(c.GCTypeDescs) != 2) {
+		return false
+	}
+	for _, desc := range c.GCTypeDescs {
+		if desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper {
+			return false
+		}
+	}
+	for i, d := range c.Types {
+		if d.RecGroup != uint32(i) || !d.Final || len(d.Supers) != 0 || d.HasDescribes || d.HasDescriptor || d.Kind != CompositeTypeFunction || len(d.Fields) != 0 || d.Array != (FieldTypeDescriptor{}) || len(d.Results) != 1 || d.Results[0] != i32 || i == 0 && len(d.Params) != 0 || i == 1 && (len(d.Params) != 1 || d.Params[0] != i64) {
+			return false
+		}
+	}
+	for i, fn := range c.Funcs {
+		if i == 0 {
+			if len(fn.Params) != 0 || len(fn.Results) != 1 || fn.Results[0] != ValI32 {
+				return false
+			}
+		} else if len(fn.Params) != 1 || fn.Params[0] != ValI64 || len(fn.Results) != 1 || fn.Results[0] != ValI32 {
+			return false
+		}
+	}
+	if c.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations|CoreFeatureTailCall || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {
+		return false
+	}
+	wantCode := [32]byte{0xda, 0xb3, 0x7b, 0x02, 0x59, 0x47, 0xed, 0x23, 0x0e, 0xb6, 0x05, 0x41, 0xdb, 0xea, 0xbc, 0xec, 0x4c, 0xd0, 0x67, 0x4a, 0xf3, 0xb2, 0xc3, 0xf3, 0xb0, 0x6b, 0x91, 0xa0, 0xba, 0x30, 0xb4, 0xef}
+	if len(c.code) != 3276 || sha256.Sum256(c.code) != wantCode {
+		return false
+	}
+	m := rv64NativeTailModule(c)
+	if m == nil || len(m.Plans) != 1 {
+		return false
+	}
+	p := m.Plans[0]
+	if p.Kind != encoder.NativeTailIndirect || p.TypeIndex != 0 || p.FunctionIndex != 2 || p.ImportIndex != 0 || p.ReferenceBase != 56 || p.SourcePC != 3 || p.FrameBytes != 64 || p.SourceBase != 56 || p.SourceStride != 8 {
+		return false
+	}
+	var functions [2]bool
+	for _, index := range c.Exports {
+		if index < 1 || index > 2 {
+			return false
+		}
+		functions[index-1] = true
+	}
+	for _, index := range c.tableExports {
+		if index != 0 {
+			return false
+		}
+	}
+	return functions[0] && functions[1]
+}
+
+func rv64OwnedTable64IndirectCommon(c *Compiled) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || !c.TableHasMax || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) == 0 {
 		return false
 	}

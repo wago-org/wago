@@ -1696,6 +1696,10 @@ func admitOwnedTable64GetSet(m *wasm.Module, production, public bool) bool {
 // before instantiation and cannot initialize table storage. The caller installs
 // that target at its i64 operand and immediately calls it through table 0.
 func admitOwnedTable64Indirect(m *wasm.Module, production, public bool) bool {
+	return admitOwnedTable64IndirectCall(m, production, public) || admitOwnedTable64IndirectTail(m, production, public)
+}
+
+func admitOwnedTable64IndirectCall(m *wasm.Module, production, public bool) bool {
 	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
@@ -1742,6 +1746,60 @@ func admitOwnedTable64Indirect(m *wasm.Module, production, public bool) bool {
 		}
 	}
 	return hasFunctionExport
+}
+
+func admitOwnedTable64IndirectTail(m *wasm.Module, production, public bool) bool {
+	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 {
+		return false
+	}
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	table := m.Tables[0]
+	if table.Init != nil || !table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min != 2 || table.Type.Limits.Max != 2 || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) {
+		return false
+	}
+	for i := range m.Types {
+		if len(m.Types[i].SubTypes) != 1 {
+			return false
+		}
+		sub := m.Types[i].SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) || i == 0 && len(sub.Comp.Params) != 0 || i == 1 && (len(sub.Comp.Params) != 1 || !wasm.EqualValType(sub.Comp.Params[0], wasm.I64)) {
+			return false
+		}
+	}
+	wants := [...]uint32{0, 1, 1}
+	for i := range m.FuncTypes {
+		if m.FuncTypes[i].Rec || m.FuncTypes[i].Index != wants[i] || len(m.Code[i].Locals.Runs) != 0 || len(m.Code[i].Body.Instrs) != 0 {
+			return false
+		}
+	}
+	e := m.Elements[0]
+	if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) != 1 || e.Kind.Funcs[0] != 0 || len(e.Kind.Exprs) != 0 {
+		return false
+	}
+	if !bytes.Equal(m.Code[0].BodyBytes, []byte{0x41, 7, 0x0b}) || !bytes.Equal(m.Code[1].BodyBytes, []byte{0x20, 0, 0xd2, 0, 0x26, 0, 0x41, 1, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, []byte{0x20, 0, 0x13, 0, 0, 0x0b}) {
+		return false
+	}
+	var functions [2]bool
+	hasTable := false
+	for _, export := range m.Exports {
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+			if export.Index.Index < 1 || export.Index.Index > 2 {
+				return false
+			}
+			functions[export.Index.Index-1] = true
+		case wasm.ExternTable:
+			if export.Index.Index != 0 {
+				return false
+			}
+			hasTable = true
+		default:
+			return false
+		}
+	}
+	return functions[0] && functions[1] && hasTable
 }
 
 func admitOwnedTwoTable64Indirect(m *wasm.Module, production, public bool) bool {
