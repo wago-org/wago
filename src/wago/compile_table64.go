@@ -146,14 +146,14 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 //
 //go:noinline
 func validateCompileTable64(m *wasm.Module) error {
-	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64ActiveElementShape(m) || stagedMixedTable64ActiveElementShape(m) || stagedOwnedTwoTable32SizeShape(m) || stagedOwnedTwoTable32GetSetShape(m) || stagedOwnedTwoTable32GrowShape(m) || stagedOwnedTwoTable32FillShape(m) || stagedOwnedTwoTable32CopyShape(m) || stagedOwnedTwoTable32CrossCopyShape(m) || stagedOwnedTwoTable32InitDropShape(m) || stagedOwnedTwoTable32IndirectShape(m) || stagedOwnedTwoTable64SizeShape(m) || stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedOwnedTwoTable64GetSetShape(m) || stagedOwnedTwoTable64GrowShape(m) || stagedOwnedTwoTable64FillShape(m) || stagedOwnedTwoTable64CopyShape(m) || stagedOwnedTwoTable64CrossCopyShape(m) || stagedOwnedTwoTable64InitDropShape(m) || stagedOwnedTwoTable64IndirectShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedImportedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m) || stagedOwnedTable64InitDropShape(m) || stagedImportedTable64SizeShape(m) || stagedImportedTable64GetSetShape(m) || stagedImportedTable64GrowShape(m) || stagedImportedTable64FillShape(m) || stagedImportedTable64CopyShape(m) || stagedImportedTable64InitDropShape(m))
+	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64ActiveElementShape(m) || stagedMixedTable64ActiveElementShape(m) || stagedMixedTable64DualActiveElementsShape(m) || stagedOwnedTwoTable32SizeShape(m) || stagedOwnedTwoTable32GetSetShape(m) || stagedOwnedTwoTable32GrowShape(m) || stagedOwnedTwoTable32FillShape(m) || stagedOwnedTwoTable32CopyShape(m) || stagedOwnedTwoTable32CrossCopyShape(m) || stagedOwnedTwoTable32InitDropShape(m) || stagedOwnedTwoTable32IndirectShape(m) || stagedOwnedTwoTable64SizeShape(m) || stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedOwnedTwoTable64GetSetShape(m) || stagedOwnedTwoTable64GrowShape(m) || stagedOwnedTwoTable64FillShape(m) || stagedOwnedTwoTable64CopyShape(m) || stagedOwnedTwoTable64CrossCopyShape(m) || stagedOwnedTwoTable64InitDropShape(m) || stagedOwnedTwoTable64IndirectShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedImportedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m) || stagedOwnedTable64InitDropShape(m) || stagedImportedTable64SizeShape(m) || stagedImportedTable64GetSetShape(m) || stagedImportedTable64GrowShape(m) || stagedImportedTable64FillShape(m) || stagedImportedTable64CopyShape(m) || stagedImportedTable64InitDropShape(m))
 	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !rv64Qualified {
 		return fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
 	twoLocalDeclaration := stagedTwoLocalNoMaxTable64DeclarationShape(m)
 	importedLocalDeclaration := stagedImportedLocalNoMaxTable64DeclarationShape(m)
-	mixedTable := stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedMixedTable64ActiveElementShape(m)
+	mixedTable := stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedMixedTable64ActiveElementShape(m) || stagedMixedTable64DualActiveElementsShape(m)
 	threeLocalTableInit64 := m.TableCount() == 3 && m.ImportedTableCount() == 0 && len(m.Tables) == 3
 	soleExternrefGrow := m.TableCount() == 1 && stagedSoleExternrefGrowShape(m)
 	fourLocalExternrefSizeGrow := m.TableCount() == 4 && stagedFourLocalExternrefSizeGrowShape(m)
@@ -211,7 +211,7 @@ func validateCompileTable64(m *wasm.Module) error {
 		if e.Mode.Kind == wasm.ElemActive && (int(e.Mode.Table) < 0 || int(e.Mode.Table) >= m.TableCount()) {
 			return fmt.Errorf("compile: staged table64 active element segment targets unavailable table %d", e.Mode.Table)
 		}
-		if !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
+		if !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && !stagedMixedTable64DualActiveElementsShape(m) && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
 			return fmt.Errorf("compile: staged table64 active element segment targets table %d, want the sole table 0", e.Mode.Table)
 		}
 		if !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive && !(rv64Qualified && (stagedImportedTable64InitDropShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m))) {
@@ -2013,4 +2013,51 @@ func stagedMixedTable64ActiveElementShape(m *wasm.Module) bool {
 	e := m.Elements[0]
 	return e.Mode.Kind == wasm.ElemActive && e.Mode.Table == 0 && len(e.Mode.Offset.Instrs) == 0 && bytes.Equal(e.Mode.Offset.BodyBytes, []byte{0x42, 0x01, 0x0b}) &&
 		e.Kind.Kind == wasm.ElemFuncExprs && len(e.Kind.Funcs) == 0 && len(e.Kind.Exprs) == 1 && len(e.Kind.Exprs[0].Instrs) == 0 && bytes.Equal(e.Kind.Exprs[0].BodyBytes, []byte{0xd2, 0x00, 0x0b})
+}
+
+// stagedMixedTable64DualActiveElementsShape initializes the same local target
+// into both sides of an exact imported/owned table64 directory.
+func stagedMixedTable64DualActiveElementsShape(m *wasm.Module) bool {
+	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 2 || m.Start != nil || len(m.Exports) != 2 {
+		return false
+	}
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+		return false
+	}
+	for i := 0; i < 2; i++ {
+		table, ok := m.TableType(uint32(i))
+		if !ok || !table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min != 3 || table.Limits.Max != 3 || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+			return false
+		}
+	}
+	if m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 0 || len(m.Types[0].SubTypes) != 1 {
+		return false
+	}
+	sub := m.Types[0].SubTypes[0]
+	if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Params) != 0 || len(sub.Comp.Results) != 1 || !wasm.EqualValType(sub.Comp.Results[0], wasm.I32) {
+		return false
+	}
+	fn := m.Code[0]
+	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 || !bytes.Equal(fn.BodyBytes, []byte{0x41, 0x07, 0x0b}) {
+		return false
+	}
+	var tables [2]bool
+	for _, export := range m.Exports {
+		if export.Index.Kind != wasm.ExternTable || export.Index.Index > 1 {
+			return false
+		}
+		tables[export.Index.Index] = true
+	}
+	if !tables[0] || !tables[1] {
+		return false
+	}
+	for i, e := range m.Elements {
+		if e.Mode.Kind != wasm.ElemActive || int(e.Mode.Table) != i || len(e.Mode.Offset.Instrs) != 0 || !bytes.Equal(e.Mode.Offset.BodyBytes, []byte{0x42, 0x01, 0x0b}) || len(e.Kind.Funcs) != 0 || len(e.Kind.Exprs) != 1 || len(e.Kind.Exprs[0].Instrs) != 0 || !bytes.Equal(e.Kind.Exprs[0].BodyBytes, []byte{0xd2, 0x00, 0x0b}) {
+			return false
+		}
+		if i == 0 && e.Kind.Kind != wasm.ElemFuncExprs || i == 1 && (e.Kind.Kind != wasm.ElemTypedExprs || !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef)) {
+			return false
+		}
+	}
+	return true
 }
