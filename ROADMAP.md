@@ -50,7 +50,16 @@ executable publication. Instantiation is collector-free, and close tests cover
 the mapped-code lease. Because neither module exports a function, this is not
 evidence for a public recursive-call result. Functional qualification is under
 baseline QEMU RV64G; native cache and performance qualification remain open.
-Cross-instance subtype boundaries remain closed for later checkpoints.
+The next exact collector-free checkpoint covers official modules `.8`, `.9`,
+and `.11` through `.14` (`.10` is invalid): one or two genuinely framed local
+RV64 functions back one, two, four, or eight immutable indexed `ref.func`
+globals. Exact source and decoded shapes plus code and serialized retained-
+metadata digests bind recursive type graphs, function/type keys, global target
+indices, value types, features, and ABI flags. Source/artifact instantiation,
+actual compiler-free reload and source rejection, W^X publication, executable
+leases, and final unmapping are qualified under baseline QEMU RV64G. The six
+modules have no exports, and native cache/performance qualification remains
+open. Cross-instance subtype boundaries remain closed for later checkpoints.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

@@ -74,7 +74,16 @@ instantiation publishes and releases executable code without allocating a
 collector. They export no functions, so this checkpoint establishes lowering,
 publication, and lifetime correctness rather than a public call result. QEMU
 establishes functional correctness only; native cache and performance
-qualification remain pending. Other `gc/type-subtyping` module shapes remain
+qualification remain pending. Six further official modules (`.8`, `.9`, and
+`.11` through `.14`; `.10` is invalid) now admit only their exact local-function
+and immutable indexed `ref.func`-global shapes. Their one- and two-function
+images use genuine framed RV64 lowering; instantiation creates canonical
+full-width function descriptors for every private global without allocating a
+collector. Source, retained-artifact, actual compiler-free, W^X publication,
+live-instance lease, and final-unmap paths are covered, with exact code and
+serialized metadata digests rejecting hostile substitutions. These modules
+also export nothing, so this is descriptor-initialization and lifetime evidence,
+not a callable public result. Other `gc/type-subtyping` module shapes remain
 fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,

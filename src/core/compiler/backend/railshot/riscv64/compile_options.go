@@ -108,6 +108,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingRecursiveFunctionsSource identifies one of the two exact
 	// recursive-function gc/type-subtyping products.
 	GCTypeSubtypingRecursiveFunctionsSource uint8
+	// GCTypeSubtypingRefFuncGlobalsSource identifies one of the six exact
+	// immutable ref.func-global gc/type-subtyping products.
+	GCTypeSubtypingRefFuncGlobalsSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -187,6 +190,7 @@ type CompileOptions struct {
 	gcBrOnCastNullability             bool
 	gcTypeSubtypingDeclarations       bool
 	gcTypeSubtypingRecursiveFunctions bool
+	gcTypeSubtypingRefFuncGlobals     bool
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

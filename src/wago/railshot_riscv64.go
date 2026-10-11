@@ -33,7 +33,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	}
 	maxImportArity := coreruntime.MaxHostArity
 	vectorProfile := false
-	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 {
+	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 {
 		var err error
 		vectorProfile, err = railshot.UsesSWAR(m)
 		if err != nil {
@@ -143,6 +143,10 @@ func railshotGCTypeSubtypingDeclarationsSource(data []byte) uint8 {
 
 func railshotGCTypeSubtypingRecursiveFunctionsSource(data []byte) uint8 {
 	return railshot.GCTypeSubtypingRecursiveFunctionsSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingRefFuncGlobalsSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingRefFuncGlobalsSourceVariant(data)
 }
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
@@ -265,6 +269,14 @@ func railshotConfigureGCTypeSubtypingRecursiveFunctions(sourceVariant uint8, opt
 	opts.GCTypeSubtypingRecursiveFunctionsSource = sourceVariant
 	if sourceVariant != 0 {
 		opts.NativeReferenceCalls = true
+	}
+}
+
+func railshotConfigureGCTypeSubtypingRefFuncGlobals(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRefFuncGlobalsSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
 	}
 }
 

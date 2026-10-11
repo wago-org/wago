@@ -38,6 +38,9 @@ func rv64GCTypeSubtypingRecursiveFunctionsExecutionCode(*Compiled) bool {
 	return false
 }
 func railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(*Compiled) {}
+func rv64GCTypeSubtypingRefFuncGlobals(*Compiled) bool                   { return false }
+func rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(*Compiled) bool      { return false }
+func railshotRestoreGCTypeSubtypingRefFuncGlobalsArtifact(*Compiled)     {}
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled)                 {}
 func rv64GCRefCastConcrete(*Compiled) bool                               { return false }
 func rv64GCRefCastConcreteExecutionCode(*Compiled) bool                  { return false }

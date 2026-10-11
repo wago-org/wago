@@ -829,7 +829,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if err := c.validateImportModuleEnds(); err != nil {
 		return err
 	}
-	if !rv64GCTypeSubtypingRecursiveFunctions(c) {
+	if !rv64GCTypeSubtypingRecursiveFunctions(c) && !rv64GCTypeSubtypingRefFuncGlobals(c) {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return err
 		}

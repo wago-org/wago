@@ -84,10 +84,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 		referenceTypes.gcTypeSubtypingRecursiveFunctions = state.gcTypeSubtypingRecursiveFunctions
+		referenceTypes.gcTypeSubtypingRefFuncGlobals = state.gcTypeSubtypingRefFuncGlobals
 	}
 	var locals [256]bool
 	var localRefs [256]bool
-	privateRefs := floating && (state.ownedTable || state.importReferences || state.i31Core)
+	privateRefs := floating && (state.ownedTable || state.importReferences || state.i31Core || state.gcTypeSubtypingRefFuncGlobals)
 	functionRefs := state != nil && state.referenceFunctions
 	i31Refs := state != nil && state.i31Core
 	if functionRefs {
@@ -103,11 +104,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			}
-			if _, _, err := admitDeclaredControlSignature(sig.signature, referenceTypes, true, state.referenceCalls, false); err != nil {
+			if _, _, err := admitDeclaredControlSignature(sig.signature, referenceTypes, true, state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals, false); err != nil {
 				return integerSummary{}, err
 			}
 		}
-		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, state.referenceCalls, false); err != nil {
+		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals, false); err != nil {
 			return integerSummary{}, err
 		}
 	} else if i31Refs {
@@ -2572,6 +2573,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 		referenceTypes.gcTypeSubtypingRecursiveFunctions = state.gcTypeSubtypingRecursiveFunctions
+		referenceTypes.gcTypeSubtypingRefFuncGlobals = state.gcTypeSubtypingRefFuncGlobals
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {
