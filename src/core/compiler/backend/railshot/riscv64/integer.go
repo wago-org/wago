@@ -1584,7 +1584,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewDefault:
-				if (!state.gcRefEq && !state.gcArrayLocal) || (state.gcRefEq && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) {
+				if (!state.gcRefEq && !state.gcArrayLocal && !state.gcArrayFixedOfficial) || (state.gcRefEq && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1) {
 					return integerSummary{}, unsupported("array.new_default outside exact GC profile")
 				}
 				if _, err = popClass(false); err != nil {

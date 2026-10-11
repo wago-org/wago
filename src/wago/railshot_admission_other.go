@@ -22,6 +22,8 @@ func railshotGCArrayFixedLocalSource([]byte) bool                               
 func railshotConfigureGCArrayFixedLocal(bool, *railshotCompileOptions)                  {}
 func railshotGCArrayFixedOfficialSource([]byte) bool                                    { return false }
 func railshotConfigureGCArrayFixedOfficial(bool, *railshotCompileOptions)               {}
+func railshotGCArrayDefaultOfficialSource([]byte) bool                                  { return false }
+func railshotConfigureGCArrayDefaultOfficial(bool, *railshotCompileOptions)             {}
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
 func railshotValidateResolvedImports(*Compiled, resolvedImports, *referenceStore) error { return nil }
 func railshotNeedsImportContextHeader(int) bool                                         { return false }

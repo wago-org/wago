@@ -46,7 +46,8 @@ case "$mode" in
       WAGO_RV64_GC_ARRAY_LOCAL_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_LOCAL_ARTIFACT_MODE \
       WAGO_RV64_GC_ARRAY_UNIFORM_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_UNIFORM_ARTIFACT_MODE \
       WAGO_RV64_GC_ARRAY_FIXED_LOCAL_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_FIXED_LOCAL_ARTIFACT_MODE \
-      WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_MODE
+      WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_MODE \
+      WAGO_RV64_GC_ARRAY_DEFAULT_OFFICIAL_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_DEFAULT_OFFICIAL_ARTIFACT_MODE
     for check in ordinary checked; do
       tags=wago_rv64_experimental
       if [[ "$check" == checked ]]; then
@@ -86,8 +87,10 @@ case "$mode" in
         WAGO_RV64_GC_ARRAY_FIXED_LOCAL_ARTIFACT_MODE=prepare \
         WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_DIR="$artifact_dir/$check/gc-array-fixed-official" \
         WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_MODE=prepare \
+        WAGO_RV64_GC_ARRAY_DEFAULT_OFFICIAL_ARTIFACT_DIR="$artifact_dir/$check/gc-array-default-official" \
+        WAGO_RV64_GC_ARRAY_DEFAULT_OFFICIAL_ARTIFACT_MODE=prepare \
         go test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^TestRV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact)|OfficialGCRefEqExecutionAndArtifact|GCStructGetExecutionAndArtifact|GCArray(Local|Uniform|FixedLocal|FixedOfficial)ExecutionAndArtifact|LocalMutableReference)'
+        -run '^TestRV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact)|OfficialGCRefEqExecutionAndArtifact|GCStructGetExecutionAndArtifact|GCArray(Local|Uniform|FixedLocal|FixedOfficial|DefaultOfficial)ExecutionAndArtifact|LocalMutableReference)'
       WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=load \
         WAGO_RV64_I31_ARTIFACT_DIR="$artifact_dir/$check/i31" \
@@ -120,8 +123,10 @@ case "$mode" in
         WAGO_RV64_GC_ARRAY_FIXED_LOCAL_ARTIFACT_MODE=load \
         WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_DIR="$artifact_dir/$check/gc-array-fixed-official" \
         WAGO_RV64_GC_ARRAY_FIXED_OFFICIAL_ARTIFACT_MODE=load \
+        WAGO_RV64_GC_ARRAY_DEFAULT_OFFICIAL_ARTIFACT_DIR="$artifact_dir/$check/gc-array-default-official" \
+        WAGO_RV64_GC_ARRAY_DEFAULT_OFFICIAL_ARTIFACT_MODE=load \
         go test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^Test(RV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact|OfficialCompilerFreeRejectsSource|OfficialTableCompilerFreeRejectsSource|OfficialTableGlobalInitializerCompilerFreeRejectsSource|OfficialGlobalInitializerCompilerFreeRejectsSource|OfficialAnyGlobalCompilerFreeRejectsSource|OfficialAnyTableCompilerFreeRejectsSource|OfficialRefTestCompilerFreeRejectsSource|RefEqPilotCompilerFreeRejectsSource)|OfficialGCRefEq(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCStructGet(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCArray(Local|Uniform|FixedLocal|FixedOfficial)(ExecutionAndArtifact|CompilerFreeRejectsSource)|LocalMutableReference)|RV64ActualImportedTablePrecompiledCompilerGate)'
+        -run '^Test(RV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact|OfficialCompilerFreeRejectsSource|OfficialTableCompilerFreeRejectsSource|OfficialTableGlobalInitializerCompilerFreeRejectsSource|OfficialGlobalInitializerCompilerFreeRejectsSource|OfficialAnyGlobalCompilerFreeRejectsSource|OfficialAnyTableCompilerFreeRejectsSource|OfficialRefTestCompilerFreeRejectsSource|RefEqPilotCompilerFreeRejectsSource)|OfficialGCRefEq(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCStructGet(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCArray(Local|Uniform|FixedLocal|FixedOfficial|DefaultOfficial)(ExecutionAndArtifact|CompilerFreeRejectsSource)|LocalMutableReference)|RV64ActualImportedTablePrecompiledCompilerGate)'
     done
     ;;
   *)

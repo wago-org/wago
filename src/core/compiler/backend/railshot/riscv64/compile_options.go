@@ -87,9 +87,12 @@ type CompileOptions struct {
 	// GCArrayFixedOfficialSource is the exact-wire witness for the official
 	// numeric array.new_fixed/get/set/len checkpoint.
 	GCArrayFixedOfficialSource bool
-	production                 bool
-	publicStarts               bool
-	hostImports                bool
+	// GCArrayDefaultOfficialSource is the exact-wire witness for the official
+	// numeric array.new_default/get/set/len checkpoint.
+	GCArrayDefaultOfficialSource bool
+	production                   bool
+	publicStarts                 bool
+	hostImports                  bool
 	// Selected by bounded closed-module admission, or private decoded tests.
 	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool

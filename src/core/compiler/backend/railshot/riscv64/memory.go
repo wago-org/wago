@@ -197,7 +197,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcArrayLocal := admitRV64GCArrayLocal(m)
 	gcArrayUniform := admitRV64GCArrayUniform(m)
 	gcArrayFixedLocal := admitRV64GCArrayFixedLocal(m)
-	gcArrayFixedOfficial := admitRV64GCArrayFixedOfficial(m)
+	gcArrayFixedOfficial := admitRV64GCArrayOfficial(m)
 	i31Core := admitRV64I31Core(m) || gcRefEq || gcStructGet || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial
 	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.importReferences = production && importedTables

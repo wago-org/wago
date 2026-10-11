@@ -25,7 +25,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) {
+	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -102,7 +102,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if opts.GCArrayFixedOfficialSource != decodedGCArrayFixedOfficial {
 		return nil, unsupported("gc array fixed official source provenance")
 	}
-	opts.gcArrayFixedOfficial = decodedGCArrayFixedOfficial
+	decodedGCArrayDefaultOfficial := admitRV64GCArrayDefaultOfficial(m)
+	if opts.GCArrayDefaultOfficialSource != decodedGCArrayDefaultOfficial {
+		return nil, unsupported("gc array default official source provenance")
+	}
+	opts.gcArrayFixedOfficial = decodedGCArrayFixedOfficial || decodedGCArrayDefaultOfficial
 	if err := AdmitPublicInitializers(m); err != nil {
 		return nil, err
 	}

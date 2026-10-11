@@ -467,7 +467,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCStructGet(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayFixedOfficial(m)) {
+	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCStructGet(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m)) {
 		return nil
 	}
 	i31Core := referenceFunctions && admitRV64I31Core(m)
