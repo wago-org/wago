@@ -35,6 +35,8 @@ func admitRV64I31CoreWire(data []byte) bool {
 		return sha256.Sum256(data) == [sha256.Size]byte{0x57, 0x23, 0x87, 0xa2, 0xc9, 0xd7, 0xea, 0x91, 0x12, 0xf3, 0x94, 0x00, 0x25, 0xb7, 0xc5, 0x70, 0x41, 0xcd, 0x94, 0x78, 0x18, 0x5e, 0xd7, 0xe3, 0x2b, 0xb9, 0x3a, 0x01, 0xfb, 0xfa, 0x5a, 0x69}
 	case 255:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x15, 0xae, 0x51, 0xeb, 0x55, 0x7d, 0xb9, 0x16, 0x94, 0xfc, 0x8c, 0xb2, 0xe2, 0xca, 0x14, 0x87, 0x92, 0xee, 0xc4, 0xae, 0x2b, 0x52, 0x4c, 0x61, 0x0e, 0xdf, 0x80, 0x05, 0xa0, 0x48, 0x37, 0xec}
+	case 128:
+		return sha256.Sum256(data) == [sha256.Size]byte{0xd4, 0x1b, 0x88, 0xea, 0xab, 0x33, 0x8e, 0x5b, 0x01, 0xe6, 0x7e, 0xbf, 0x43, 0x52, 0xce, 0x12, 0x6d, 0xfd, 0xa5, 0x0d, 0x26, 0xaa, 0xb2, 0x3c, 0x76, 0x1f, 0xd5, 0x6c, 0x3a, 0x29, 0xd5, 0xaf}
 	case 96:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x0a, 0x26, 0xe5, 0x0d, 0x6e, 0xc8, 0xcc, 0xba, 0xf1, 0xcc, 0x3a, 0x59, 0xfc, 0x2e, 0x1b, 0xe6, 0xdc, 0xa2, 0xc2, 0x22, 0x19, 0xba, 0x70, 0xca, 0x80, 0xa0, 0x14, 0x51, 0x88, 0x2b, 0xf0, 0xe4}
 	case 252:
@@ -58,11 +60,45 @@ func AdmitI31CoreSource(data []byte) bool {
 // lowering. This is intentionally narrower than the general collector-free
 // i31 implementation on complete backends.
 func admitRV64I31Core(m *wasm.Module) bool {
-	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m) || admitRV64I31OfficialAnyTable(m) || admitRV64I31OfficialRefTest(m)
+	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m) || admitRV64I31OfficialAnyTable(m) || admitRV64I31OfficialRefTest(m) || admitRV64I31RefEqPilot(m)
 }
 
 func admitRV64I31TableProduct(m *wasm.Module) bool {
-	return admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialAnyTable(m)
+	return admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialAnyTable(m) || admitRV64I31RefEqPilot(m)
+}
+
+// admitRV64I31RefEqPilot pins a reduced, collector-free subset of the official
+// gc/ref_eq fixture. Its sole eqref table is initialized only with null and
+// compact i31 carriers, so full-word identity needs neither heap allocation nor
+// collector participation. The object-bearing official module remains rejected.
+func admitRV64I31RefEqPilot(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 1 || len(m.Exports) != 2 ||
+		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	table := m.Tables[0]
+	if table.Init != nil || table.Type.Limits.Addr64 || table.Type.Limits.HasMax || table.Type.Limits.Min != 5 || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.EqRef) {
+		return false
+	}
+	if !i31CoreFunctionType(&m.Types[0], nil, nil) || !i31CoreFunctionType(&m.Types[1], []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}) {
+		return false
+	}
+	wantBodies := [][]byte{
+		{0x41, 0, 0xd0, 0x6d, 0x26, 0, 0x41, 1, 0xd0, 0x6c, 0x26, 0, 0x41, 2, 0x41, 7, 0xfb, 0x1c, 0x26, 0, 0x41, 3, 0x41, 7, 0xfb, 0x1c, 0x26, 0, 0x41, 4, 0x41, 8, 0xfb, 0x1c, 0x26, 0, 0x0b},
+		{0x20, 0, 0x25, 0, 0x20, 1, 0x25, 0, 0xd3, 0x0b},
+	}
+	for i, binding := range m.FuncTypes {
+		if binding.Rec || binding.Index != uint32(i) {
+			return false
+		}
+		fn := &m.Code[i]
+		if len(fn.Locals.Runs) != 0 || fn.LocalDeclBytes != 1 || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || !bytes.Equal(fn.BodyBytes, wantBodies[i]) {
+			return false
+		}
+	}
+	return m.Exports[0].Name == "init" && m.Exports[0].Index.Kind == wasm.ExternFunc && m.Exports[0].Index.Index == 0 &&
+		m.Exports[1].Name == "eq" && m.Exports[1].Index.Kind == wasm.ExternFunc && m.Exports[1].Index.Index == 1
 }
 
 func admitRV64I31MinimalCore(m *wasm.Module) bool {

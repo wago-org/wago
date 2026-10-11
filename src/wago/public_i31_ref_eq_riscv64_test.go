@@ -1,0 +1,180 @@
+//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+
+package wago
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+)
+
+const rv64OfficialObjectRefEqHex = "0061736d0100000001af808080000950005f0050005f017f005e78005001005f005001005f005001015f017f005001015f017f0060000060027f7f017f038380808000020708048480808000016d0014078d808080000204696e6974000002657100010adc8080800002c680808000004100d06d26004101d06c260041024107fb1c260041034107fb1c260041044108fb1c26004105fb010026004106fb0100260041074100fb0702260041084100fb070226000b8b80808000002000250020012500d30b"
+
+func rv64I31RefEqPilotCompile(t *testing.T, artifact bool) *Compiled {
+	t.Helper()
+	dir, mode := os.Getenv("WAGO_RV64_I31_REF_EQ_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_I31_REF_EQ_ARTIFACT_MODE")
+	path := filepath.Join(dir, "i31-ref-eq-pilot.wago")
+	if mode == "load" {
+		if !artifact {
+			t.Skip("compiler-free runner selected artifact case")
+		}
+		blob, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := LoadTrustedArtifact(blob)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = loaded.Close() })
+		return loaded
+	}
+	original, err := rv64I31Config().Compile(stagedGCI31RefEqPilotBytes(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = original.Close() })
+	c := original
+	if artifact || mode == "prepare" {
+		blob, err := original.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mode == "prepare" {
+			if err = os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(path, blob, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if artifact {
+			loaded, err := LoadTrustedArtifact(blob)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = loaded.Close() })
+			c = loaded
+		}
+	}
+	return c
+}
+
+func TestRV64PublicI31RefEqPilotExecutionAndArtifact(t *testing.T) {
+	data := stagedGCI31RefEqPilotBytes(t)
+	wantSource := [sha256.Size]byte{0xd4, 0x1b, 0x88, 0xea, 0xab, 0x33, 0x8e, 0x5b, 0x01, 0xe6, 0x7e, 0xbf, 0x43, 0x52, 0xce, 0x12, 0x6d, 0xfd, 0xa5, 0x0d, 0x26, 0xaa, 0xb2, 0x3c, 0x76, 0x1f, 0xd5, 0x6c, 0x3a, 0x29, 0xd5, 0xaf}
+	if len(data) != 128 || sha256.Sum256(data) != wantSource {
+		t.Fatal("i31 ref.eq pilot source identity changed")
+	}
+	for _, artifact := range []bool{false, true} {
+		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
+			c := rv64I31RefEqPilotCompile(t, artifact)
+			view := c.executionView()
+			wantProduct, wantStaged := stagedGCI31ProductRefEqPilot, CoreFeatureTypedFunctionReferences|CoreFeatureGC
+			if artifact {
+				wantProduct, wantStaged = stagedGCI31ProductCore, CoreFeatureGC
+			}
+			if !rv64I31RefEqPilot(view) || !rv64I31Core(view) || railshotValidateCompiled(view) != nil || c.stagedGCI31Product() != wantProduct || c.stagedFeatures() != wantStaged {
+				t.Fatalf("missing exact retained i31 ref.eq witness: product=%v staged=%v required=%v code=%d/%x entries=%v/%v table=%v/%v/%d/%d/%v", c.stagedGCI31Product(), c.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.TableType, view.TableHasValueType, view.TableSize, view.TableMax, view.TableHasMax)
+			}
+			rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+			defer rt.Close()
+			in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+			defer in.Close()
+			if in.gc != nil {
+				t.Fatal("collector-free i31 ref.eq pilot provisioned a collector")
+			}
+			invoke := func(name string, want []uint64, args ...uint64) {
+				t.Helper()
+				got, err := in.Invoke(name, args...)
+				if err != nil || !slices.Equal(got, want) {
+					t.Fatalf("%s%v=%v err=%v want=%v", name, args, got, err, want)
+				}
+			}
+			invoke("init", nil)
+			invoke("eq", []uint64{1}, 0xdeadbeef00000000, 0xcafebabe00000001)
+			invoke("eq", []uint64{1}, 0x1111111100000002, 0x2222222200000003)
+			invoke("eq", []uint64{0}, 0x3333333300000002, 0x4444444400000004)
+			invoke("eq", []uint64{0}, 0x5555555500000000, 0x6666666600000002)
+			_ = c.Close()
+			invoke("eq", []uint64{1}, 2, 3)
+			if _, err := in.Invoke("eq", I32(5), I32(0)); err == nil || !strings.Contains(err.Error(), "table") {
+				t.Fatalf("out-of-bounds ref.eq table read did not trap: %v", err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicI31RefEqPilotCompilerFreeRejectsSource(t *testing.T) {
+	if os.Getenv("WAGO_RV64_I31_REF_EQ_ARTIFACT_MODE") != "load" {
+		t.Skip("actual compiler-free runtime only")
+	}
+	c, err := rv64I31Config().Compile(stagedGCI31RefEqPilotBytes(t))
+	if c != nil {
+		_ = c.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
+		t.Fatal("compiler-free i31 ref.eq path used source compilation", err)
+	}
+}
+
+func TestRV64PublicI31RefEqPilotRejectsObjectBearingOfficialModule(t *testing.T) {
+	data, err := hex.DecodeString(rv64OfficialObjectRefEqHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := rv64I31Config().Compile(data)
+	if compiled != nil {
+		_ = compiled.Close()
+	}
+	if err == nil {
+		t.Fatal("object-bearing official ref_eq module compiled without collector lowering")
+	}
+}
+
+func TestRV64PublicI31RefEqPilotAdmissionIsExact(t *testing.T) {
+	if os.Getenv("WAGO_RV64_I31_REF_EQ_ARTIFACT_MODE") == "load" {
+		t.Skip("compiler-free runner selected")
+	}
+	base := rv64I31RefEqPilotCompile(t, false).executionView()
+	for name, mutate := range map[string]func(*Compiled){
+		"code":       func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"entry":      func(v *Compiled) { v.Entry[1], v.InternalEntry[1] = 1496, 1496 },
+		"function":   func(v *Compiled) { v.Funcs[1].Params[0] = ValI64 },
+		"type-key":   func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"descriptor": func(v *Compiled) { v.GCTypeDescs[1].Final = false },
+		"export": func(v *Compiled) {
+			delete(v.Exports, "eq")
+			v.Exports["ne"] = 1
+		},
+		"zero-export": func(v *Compiled) {
+			delete(v.Exports, "init")
+			v.Exports["renamed"] = 0
+		},
+		"table-size": func(v *Compiled) { v.TableSize = 4 },
+		"table-type": func(v *Compiled) { v.ValueTypes[0].Ref.Heap.Abstract = AbstractHeapAny },
+		"missing-gc": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
+		"extra-feature": func(v *Compiled) {
+			v.requiredFeatures |= CoreFeatureTypedFunctionReferences
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(base)
+			candidate.validateMemo = &validateMemo{}
+			mutate(candidate)
+			if rv64I31RefEqPilot(candidate) || rv64I31Core(candidate) {
+				t.Fatal("hostile retained mutation retained the i31 ref.eq witness")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("hostile retained i31 ref.eq mutation admitted", err)
+			}
+		})
+	}
+}

@@ -20,6 +20,7 @@ const (
 	stagedGCI31ProductAnyGlobal
 	stagedGCI31ProductAnyTable
 	stagedGCI31ProductRefTest
+	stagedGCI31ProductRefEqPilot
 )
 
 func (p stagedGCI31Product) String() string {
@@ -38,6 +39,8 @@ func (p stagedGCI31Product) String() string {
 		return "anyref-table"
 	case stagedGCI31ProductRefTest:
 		return "ref-test"
+	case stagedGCI31ProductRefEqPilot:
+		return "ref-eq-pilot"
 	default:
 		return "unknown"
 	}
@@ -46,7 +49,7 @@ func (p stagedGCI31Product) String() string {
 func stagedGCI31PinnedProduct(data []byte) (stagedGCI31Product, bool) {
 	// Reject impossible fixture sizes before hashing the whole module.
 	switch len(data) {
-	case 88, 96, 131, 252, 255, 259, 262:
+	case 88, 96, 128, 131, 252, 255, 259, 262:
 	default:
 		return 0, false
 	}
@@ -66,6 +69,8 @@ func stagedGCI31PinnedProduct(data []byte) (stagedGCI31Product, bool) {
 		return stagedGCI31ProductAnyTable, true
 	case len(data) == 255 && digest == "15ae51eb557db91694fc8cb2e2ca148792eec4ae2b524c610edf8005a04837ec":
 		return stagedGCI31ProductRefTest, true
+	case len(data) == 128 && digest == "d41b88eaab338e5b01e67ebf4352ce126dfda50d26aab23c761fd56c3a29d5af":
+		return stagedGCI31ProductRefEqPilot, true
 	default:
 		return 0, false
 	}

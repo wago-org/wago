@@ -2303,7 +2303,7 @@ func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
 	if rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return false
 	}
-	if p.feat.GCI31Products && (heap.Abs() == wasm.HeapI31 || heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapNone) {
+	if p.feat.GCI31Products && (heap.Abs() == wasm.HeapI31 || heap.Abs() == wasm.HeapEq || heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapNone) {
 		return true
 	}
 	return (p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts || p.feat.GCArrayProducts) && (heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapEq || heap.Abs() == wasm.HeapNone || heap.Abs() == wasm.HeapStruct || heap.Abs() == wasm.HeapArray)
@@ -2365,7 +2365,7 @@ func (p supportPass) supportedGCHeap(heap int64) bool {
 }
 
 func (p supportPass) supportedNullReferenceHeap(heap int64) bool {
-	if p.feat.GCI31Products && (heap == -20 || heap == -18 || heap == -15) { // i31 / any / none
+	if p.feat.GCI31Products && (heap == -20 || heap == -19 || heap == -18 || heap == -15) { // i31 / eq / any / none
 		return true
 	}
 	return p.feat.NullReferenceProducts && (heap == -18 || heap == -15 || heap == -23 || heap == -12 || heap == -13 || heap == -14) // any / none / exn / noexn / nofunc / noextern

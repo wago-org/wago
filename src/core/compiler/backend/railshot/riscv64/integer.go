@@ -746,7 +746,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					stackRefs[h-1] = localRefs[idx]
 				}
 			}
-		case 0xd0, 0xd1, 0xd2, 0xd4, 0x25, 0x26:
+		case 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0x25, 0x26:
 			if !privateRefs {
 				return integerSummary{}, unsupported("reference instruction without retained reference state")
 			}
@@ -756,7 +756,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.core3RefIsNullExecution && heap == -17) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				if heap != -16 && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -812,6 +812,28 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.Store(emit.SpillOffset(h), 5, true)
 				}
 				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			case 0xd3:
+				if !state.i31RefEq {
+					return integerSummary{}, unsupported("ref.eq outside exact compact i31 profile")
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(6, emit.SpillOffset(h), true)
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), true)
+					emit.a.Xor(enc.X5, enc.X5, enc.X6)
+					emit.a.Sltiu(enc.X5, enc.X5, 1)
+					emit.Store(emit.SpillOffset(h), 5, false)
+				}
+				if err = push(false); err != nil {
 					return integerSummary{}, err
 				}
 			case 0x25, 0x26:

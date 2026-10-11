@@ -753,3 +753,23 @@ func TestExplicitReferenceByteSupportNullability(t *testing.T) {
 		}
 	}
 }
+
+func TestI31ProductEqRefSupportIsFeatureScoped(t *testing.T) {
+	eqref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapEq), false))
+	base := supportPass{m: &wasm.Module{}, feat: Features{ReferenceTypes: true}}
+	if base.supportedValType(eqref) {
+		t.Fatal("eqref accepted outside a staged GC product")
+	}
+	pilot := supportPass{m: &wasm.Module{}, feat: Features{ReferenceTypes: true, GCI31Products: true}}
+	if !pilot.supportedValType(eqref) || pilot.valType(eqref, "eqref") != nil {
+		t.Fatal("i31 product did not admit its nullable eqref table carrier")
+	}
+	// ref.null eq; ref.null i31; ref.eq; drop; end
+	body := []byte{0xd0, 0x6d, 0xd0, 0x6c, 0xd3, 0x1a, 0x0b}
+	if err := base.exprBytes(body, "test"); err == nil {
+		t.Fatal("ref.null eq accepted without the staged i31 product")
+	}
+	if err := pilot.exprBytes(body, "test"); err != nil {
+		t.Fatal("staged i31 ref.eq sequence rejected", err)
+	}
+}

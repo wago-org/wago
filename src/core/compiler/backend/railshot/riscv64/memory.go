@@ -41,9 +41,10 @@ type moduleState struct {
 	// argument through call_ref in addition to the callable target reference.
 	publicReferenceCarriers            bool
 	publicDynamicHostReferenceCarriers bool
-	// Exact collector-free ref.i31/i31.get/ref.test qualification profiles.
+	// Exact collector-free ref.i31/i31.get/ref.test/ref.eq qualification profiles.
 	i31Core    bool
 	i31RefTest bool
+	i31RefEq   bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -186,6 +187,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	i31Core := admitRV64I31Core(m)
+	i31RefEq := i31Core && admitRV64I31RefEqPilot(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -205,7 +207,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			t, _ := m.TableType(uint32(index))
 			s.tableAddr64[index] = t.Limits.Addr64
 			elem := wasm.RefVal(t.Ref)
-			s.tableCompactRef[index] = wasm.EqualValType(elem, wasm.ExternRef) || i31Core && (wasm.EqualValType(elem, wasm.I31Ref) || isI31CoreRef(elem) || wasm.EqualValType(elem, wasm.AnyRef))
+			s.tableCompactRef[index] = wasm.EqualValType(elem, wasm.ExternRef) || i31Core && (wasm.EqualValType(elem, wasm.I31Ref) || isI31CoreRef(elem) || wasm.EqualValType(elem, wasm.AnyRef) || i31RefEq && wasm.EqualValType(elem, wasm.EqRef))
 			if index == 0 {
 				// The frontend reserves max(1024,2*min) for observable no-max growth.
 				s.table64 = t.Limits.Addr64
