@@ -3159,6 +3159,21 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.localSlot[i] = uint32(f.nLocalSlots)
 		f.nLocalSlots += mt.stackSlots()
 	}
+	// Integer pointer loops with calls keep canonical loaded addresses in their
+	// producer registers. Floating-point functions retain the load rename policy;
+	// unknown upper bits still require canonicalization.
+	if f.hasLoop && f.loadDefinedLocals != 0 && hints.flags.has(hintHasCall) {
+		integerLocals := true
+		for _, typ := range f.localType {
+			if typ != mtI32 && typ != mtI64 {
+				integerLocals = false
+				break
+			}
+		}
+		if integerLocals {
+			f.loadDefinedLocals = 0
+		}
+	}
 	f.canonicalI32Params = canonicalI32ParamMask(hints, f.localType, f.nParams, f.opt(optValueFacts))
 	hasCall := hints.flags.has(hintHasCall)
 	touchesMemory := hints.flags.has(hintTouchesMemory)
