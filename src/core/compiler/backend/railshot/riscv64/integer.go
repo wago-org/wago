@@ -70,6 +70,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.i31 = state.i31Core
 		referenceTypes.gcArrayFixedOfficial = state.gcArrayFixedOfficial
 		referenceTypes.gcArrayPackedData = state.gcArrayPackedData
+		referenceTypes.gcArrayReference = state.gcArrayReference
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -1310,6 +1311,16 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if state == nil {
 				return integerSummary{}, unsupported("bulk instruction without state")
 			}
+			if state.gcArrayReference && imm.Kind == wasm.InstrElemDrop && imm.Index == 0 && imm.Index2 == 0 {
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcElementDrop(imm.Index)
+				}
+				continue
+			}
 			if imm.Kind == wasm.InstrTableInit || imm.Kind == wasm.InstrElemDrop {
 				if !privateRefs || imm.Kind == wasm.InstrTableInit && !state.ownedTable || uint64(imm.Index) >= uint64(state.elementCount) || imm.Kind == wasm.InstrElemDrop && imm.Index2 != 0 {
 					return integerSummary{}, unsupported("private element index/shape")
@@ -1621,9 +1632,31 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
 				}
+			case wasm.InstrArrayNewElem:
+				if !state.gcArrayReference || imm.Index < 1 || imm.Index > 4 || imm.Index2 != 0 {
+					return integerSummary{}, unsupported("array.new_elem outside exact reference array profile")
+				}
+				if _, err = popClass(false); err != nil { // length
+					return integerSummary{}, err
+				}
+				if _, err = popClass(false); err != nil { // source element offset
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcElementArrayAllocation(h, imm.Index, imm.Index2)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
 			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU:
 				packedGet := state.gcArrayPackedData && (imm.Kind == wasm.InstrArrayGetS || imm.Kind == wasm.InstrArrayGetU) && imm.Index <= 1
-				if !packedGet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || imm.Kind != wasm.InstrArrayGet || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1)) {
+				referencePackedGet := state.gcArrayReference && imm.Kind == wasm.InstrArrayGetU && imm.Index == 0
+				referenceGet := state.gcArrayReference && imm.Kind == wasm.InstrArrayGet && imm.Index <= 4
+				if !packedGet && !referencePackedGet && !referenceGet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || imm.Kind != wasm.InstrArrayGet || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1)) {
 					return integerSummary{}, unsupported("array.get outside exact gc array local profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -1637,22 +1670,32 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					helper := uint32(gcArrayGet)
-					if imm.Kind == wasm.InstrArrayGetS {
-						helper = gcArrayGetS
-					} else if imm.Kind == wasm.InstrArrayGetU {
-						helper = gcArrayGetU
+					if referenceGet && imm.Index != 0 {
+						emit.gcArrayGetRef(h, imm.Index)
+					} else {
+						helper := uint32(gcArrayGet)
+						if imm.Kind == wasm.InstrArrayGetS {
+							helper = gcArrayGetS
+						} else if imm.Kind == wasm.InstrArrayGetU {
+							helper = gcArrayGetU
+						}
+						emit.gcArrayGetI32(h, imm.Index, helper)
 					}
-					emit.gcArrayGetI32(h, imm.Index, helper)
 				}
-				if err = push(false); err != nil {
+				if referenceGet && imm.Index != 0 {
+					err = pushReference()
+				} else {
+					err = push(false)
+				}
+				if err != nil {
 					return integerSummary{}, err
 				}
 			case wasm.InstrArraySet:
-				if (!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData) || (state.gcArrayPackedData && imm.Index != 1) || (!state.gcArrayFixedOfficial && !state.gcArrayPackedData && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index != 1) {
+				referenceSet := state.gcArrayReference && imm.Index == 2
+				if !referenceSet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData) || (state.gcArrayPackedData && imm.Index != 1) || (!state.gcArrayFixedOfficial && !state.gcArrayPackedData && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index != 1)) {
 					return integerSummary{}, unsupported("array.set outside exact gc array local profile")
 				}
-				if _, err = popClass(false); err != nil {
+				if _, err = popClass(referenceSet); err != nil {
 					return integerSummary{}, err
 				}
 				if _, err = popClass(false); err != nil {
@@ -1666,10 +1709,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcArraySetI32(h, imm.Index)
+					if referenceSet {
+						emit.gcArraySetRef(h, imm.Index)
+					} else {
+						emit.gcArraySetI32(h, imm.Index)
+					}
 				}
 			case wasm.InstrArrayLen:
-				if !state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData {
+				if !state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData && !state.gcArrayReference {
 					return integerSummary{}, unsupported("array.len outside exact gc array local profile")
 				}
 				if _, err = popClass(true); err != nil {
@@ -2104,6 +2151,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.i31 = state.i31Core
 		referenceTypes.gcArrayFixedOfficial = state.gcArrayFixedOfficial
 		referenceTypes.gcArrayPackedData = state.gcArrayPackedData
+		referenceTypes.gcArrayReference = state.gcArrayReference
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

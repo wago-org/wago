@@ -344,7 +344,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		source, length := uint32(args[0]), uint32(args[1])
 		typeID, elemIndex := uint32(args[2]), uint32(args[3])
-		if product := in.c.stagedGCArrayProduct(); product == stagedGCArrayProductNewElem || product == stagedGCArrayProductGeneric {
+		if product := in.c.stagedGCArrayProduct(); !rv64GCArrayReference(in.c) && (product == stagedGCArrayProductNewElem || product == stagedGCArrayProductGeneric) {
 			if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || !gcArrayElementStorage(in.c.GCTypeDescs[typeID].Elem) {
 				panic(gcHelperFailuref("gc array element type %d is unavailable", typeID))
 			}

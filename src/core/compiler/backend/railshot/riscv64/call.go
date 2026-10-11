@@ -31,6 +31,8 @@ const (
 	gcArrayAllocFixed    uint32 = 22
 	gcArrayAllocUniform  uint32 = 23
 	gcArrayAllocData     uint32 = 24
+	gcArrayAllocElem     uint32 = 25
+	gcArrayDropElem      uint32 = 26
 )
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
@@ -202,6 +204,34 @@ func (f *integerEmitter) gcDataArrayAllocation(base int, typeIndex, dataIndex ui
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
+func (f *integerEmitter) gcElementArrayAllocation(base int, typeIndex, elemIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), false)
+	f.a.Sd(enc.X5, enc.X10, 0) // source element offset
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // element count
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.a.Constant32(enc.X5, elemIndex)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocElem})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
+}
+
+func (f *integerEmitter) gcElementDrop(elemIndex uint32) {
+	f.restoreCallTransport()
+	f.a.Constant32(enc.X5, elemIndex)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayDropElem})
+	f.restoreCallTransport()
+}
+
 func (f *integerEmitter) gcArrayGetI32(base int, typeIndex, helper uint32) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
@@ -220,6 +250,24 @@ func (f *integerEmitter) gcArrayGetI32(base int, typeIndex, helper uint32) {
 	f.Store(f.SpillOffset(base), 5, false)
 }
 
+func (f *integerEmitter) gcArrayGetRef(base int, typeIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayGet})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
+}
+
 func (f *integerEmitter) gcArraySetI32(base int, typeIndex uint32) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
@@ -227,6 +275,20 @@ func (f *integerEmitter) gcArraySetI32(base int, typeIndex uint32) {
 	f.Load(5, f.SpillOffset(base+1), false)
 	f.a.Sd(enc.X5, enc.X10, 8)
 	f.Load(5, f.SpillOffset(base+2), false)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArraySet})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcArraySetRef(base int, typeIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.Load(5, f.SpillOffset(base+2), true)
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)

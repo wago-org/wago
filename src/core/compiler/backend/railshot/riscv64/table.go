@@ -95,6 +95,12 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 	if tableCount > 1 && !(public && (isCore3RefIsNullExecution(m) || admitMixedTable64ActiveElement(m, true, public) || admitMixedTable64DualActiveElements(m, true, public) || admitMixedTable64DualActiveVectors(m, true, public))) && !admitStateOnlyTwoTable32(m, true, public) && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable32Indirect(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitMixedTable64Size(m, true, public) && !admitMixedTable64GetSet(m, true, public) && !admitMixedTable64Grow(m, true, public) && !admitMixedTable64Fill(m, true, public) && !admitMixedTable64Copy(m, true, public) && !admitMixedTable64CrossCopy(m, true, public) && !admitMixedTable64InitDrop(m, true, public) && !admitMixedTable64Indirect(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
+	// The exact reference-array checkpoint owns a passive GC initializer rather
+	// than a table payload. Its classifier pins both constructor expressions;
+	// ordinary funcref element parsing must not reinterpret them.
+	if admitRV64GCArrayReference(m) {
+		return nil
+	}
 	for index := 0; index < tableCount; index++ {
 		t, _ := m.TableType(uint32(index))
 		if t.Limits.Min > MaxOwnedTableEntries || (t.Limits.HasMax && t.Limits.Max > MaxOwnedTableEntries) {
@@ -2501,6 +2507,9 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	if err := ownedTableBounds(m, production && importedTables); err != nil {
 		return false, err
+	}
+	if admitRV64GCArrayReference(m) {
+		return false, nil
 	}
 	if production && importedTables && isCore3RefIsNullExecution(m) {
 		return true, nil

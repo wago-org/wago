@@ -93,9 +93,12 @@ type CompileOptions struct {
 	// GCArrayPackedDataSource is the exact-wire witness for the packed-i8
 	// array.new_data/get_s/get_u/set/len/data.drop checkpoint.
 	GCArrayPackedDataSource bool
-	production              bool
-	publicStarts            bool
-	hostImports             bool
+	// GCArrayReferenceSource is the exact-wire witness for the official
+	// array.new_elem/get/set/len/elem.drop checkpoint.
+	GCArrayReferenceSource bool
+	production             bool
+	publicStarts           bool
+	hostImports            bool
 	// Selected by bounded closed-module admission, or private decoded tests.
 	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool
@@ -121,6 +124,7 @@ type CompileOptions struct {
 	gcArrayFixedLocal    bool
 	gcArrayFixedOfficial bool
 	gcArrayPackedData    bool
+	gcArrayReference     bool
 	tailPlans            *[]tailImportPlan
 	tailSiteBase         uint32
 }

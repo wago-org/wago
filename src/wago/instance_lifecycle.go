@@ -665,6 +665,9 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 			if table := in.existingGCRefTestTableState(); table != nil {
 				table.drop(in.gc)
 			}
+			if elements := in.takeGCArrayElementState(); elements != nil {
+				elements.drop(in.gc)
+			}
 			if in.executionFlags.Load()&executionFlagStoreOwnedGCCollector == 0 {
 				in.gc.Close()
 			}
