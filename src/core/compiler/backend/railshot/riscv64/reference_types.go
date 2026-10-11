@@ -21,7 +21,9 @@ type internalReferenceTypes struct {
 	// an exact non-null function parameter, never block/select annotations.
 	declarationNonNullExtern bool
 	// The exact public reference-argument boundary has one indexed callable
-	// type whose signature itself carries an abstract funcref parameter.
+	// type whose signature itself carries an abstract funcref or externref
+	// parameter. The whole-module classifier prevents this from widening other
+	// declarations or executable bodies.
 	publicReferenceArguments bool
 }
 
@@ -87,7 +89,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	// externref carriers. Their enclosing whole-module proofs establish which
 	// functions may execute or publish. Keep these exceptions out of every
 	// ordinary control/call directory.
-	if (types.declarationExtern || types.executionExtern) && ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
+	if (types.declarationExtern || types.executionExtern || types.publicReferenceArguments) && ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
 		return true
 	}
 	if types.declarationNonNullExtern && !ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {

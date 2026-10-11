@@ -19,11 +19,19 @@ import (
 // arguments: an abstract nullable funcref forwarded to the target and the
 // exact nullable callable target reference. The target reports nullness.
 func rv64PublicReferenceArgumentVectorModule() []byte {
+	return rv64PublicReferenceArgumentVectorModuleType(wasm.FuncRef)
+}
+
+func rv64PublicReferenceArgumentVectorModuleType(argument wasm.ValType) []byte {
+	argumentByte := byte(0x70)
+	if wasm.EqualValType(argument, wasm.ExternRef) {
+		argumentByte = 0x6f
+	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{argument}, []wasm.ValType{wasm.I32}),
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
-			[]byte{0x60, 2, 0x70, 0x63, 0, 1, 0x7f},
+			[]byte{0x60, 2, argumentByte, 0x63, 0, 1, 0x7f},
 		)),
 		wasmtest.Section(3, []byte{3, 0, 1, 2}),
 		wasmtest.Section(7, wasmtest.Vec(

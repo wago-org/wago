@@ -113,7 +113,11 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	}
 	if referenceArgument {
 		argument := targetType.Params[0]
-		if argument.Kind != ValueTypeReference || !argument.Ref.Nullable || argument.Ref.Exact || argument.Ref.Heap.Defined || argument.Ref.Heap.Abstract != AbstractHeapFunc || callerType.Params[0] != argument {
+		abstract := AbstractHeapFunc
+		if target.Params[0] == ValExternRef {
+			abstract = AbstractHeapExtern
+		}
+		if argument.Kind != ValueTypeReference || !argument.Ref.Nullable || argument.Ref.Exact || argument.Ref.Heap.Defined || argument.Ref.Heap.Abstract != abstract || callerType.Params[0] != argument {
 			return false
 		}
 	}
@@ -166,7 +170,7 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 }
 
 func rv64PublicReferenceArgumentSignature(sig FuncSig) bool {
-	return len(sig.Params) == 1 && sig.Params[0] == ValFuncRef && len(sig.Results) == 1 && sig.Results[0] == ValI32
+	return len(sig.Params) == 1 && (sig.Params[0] == ValFuncRef || sig.Params[0] == ValExternRef) && len(sig.Results) == 1 && sig.Results[0] == ValI32
 }
 
 func rv64PublicReferenceArgumentTarget(c *Compiled, function int) bool {
@@ -178,7 +182,11 @@ func rv64PublicReferenceArgumentTarget(c *Compiled, function int) bool {
 		return false
 	}
 	param := typ.Params[0]
-	return param.Kind == ValueTypeReference && param.Ref.Nullable && !param.Ref.Exact && !param.Ref.Heap.Defined && param.Ref.Heap.Abstract == AbstractHeapFunc
+	abstract := AbstractHeapFunc
+	if c.Funcs[0].Params[0] == ValExternRef {
+		abstract = AbstractHeapExtern
+	}
+	return param.Kind == ValueTypeReference && param.Ref.Nullable && !param.Ref.Exact && !param.Ref.Heap.Defined && param.Ref.Heap.Abstract == abstract
 }
 
 func rv64PublicReferenceU32Bytes(value uint32) uint32 {

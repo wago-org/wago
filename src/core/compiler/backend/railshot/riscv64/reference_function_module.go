@@ -9,16 +9,34 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+var publicReferenceExternrefArgumentBoundaryWire = []byte{
+	0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+	0x01, 0x11, 0x03, 0x60, 0x01, 0x6f, 0x01, 0x7f,
+	0x60, 0x00, 0x01, 0x70, 0x60, 0x02, 0x6f, 0x63,
+	0x00, 0x01, 0x7f, 0x03, 0x04, 0x03, 0x00, 0x01,
+	0x02, 0x07, 0x17, 0x03, 0x06, 0x74, 0x61, 0x72,
+	0x67, 0x65, 0x74, 0x00, 0x00, 0x03, 0x67, 0x65,
+	0x74, 0x00, 0x01, 0x04, 0x63, 0x61, 0x6c, 0x6c,
+	0x00, 0x02, 0x09, 0x05, 0x01, 0x03, 0x00, 0x01,
+	0x00, 0x0a, 0x15, 0x03, 0x05, 0x00, 0x20, 0x00,
+	0xd1, 0x0b, 0x04, 0x00, 0xd2, 0x00, 0x0b, 0x08,
+	0x00, 0x20, 0x00, 0x20, 0x01, 0x14, 0x00, 0x0b,
+}
+
+func admitPublicReferenceExternrefArgumentBoundaryWire(data []byte) bool {
+	return bytes.Equal(data, publicReferenceExternrefArgumentBoundaryWire)
+}
+
 // admitPublicReferenceCallBoundary is the first public owner-scoped call_ref
 // surface. It is deliberately table-free and reference-global-free: a target,
 // a token-producing wrapper, and a wrapper that forwards the target parameters
 // plus one nullable exact target reference to call_ref. The broad form carries
 // only shared scalars. One separate exact form forwards a nullable abstract
-// funcref to a (funcref)->i32 nullness observer, proving two independently
-// authenticated reference arguments without allowing a reference result or
-// proper tail. The compiler witness, public token authentication, and invocation
-// owner graph are all required; no other public dynamic-reference shape inherits
-// this exception.
+// funcref or externref to a one-reference i32 nullness observer, proving two
+// independently authenticated reference arguments without allowing a reference
+// result or proper tail. The compiler witness, public token authentication, and
+// invocation owner graph are all required; no other public dynamic-reference
+// shape inherits this exception.
 func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 3 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
 		return false
@@ -96,7 +114,10 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 }
 
 func publicReferenceArgumentTarget(target *wasm.CompType) bool {
-	return target != nil && target.Kind == wasm.CompFunc && len(target.Params) == 1 && wasm.EqualValType(target.Params[0], wasm.FuncRef) && len(target.Results) == 1 && wasm.EqualValType(target.Results[0], wasm.I32)
+	if target == nil || target.Kind != wasm.CompFunc || len(target.Params) != 1 || len(target.Results) != 1 || !wasm.EqualValType(target.Results[0], wasm.I32) {
+		return false
+	}
+	return wasm.EqualValType(target.Params[0], wasm.FuncRef) || wasm.EqualValType(target.Params[0], wasm.ExternRef)
 }
 
 func appendPublicReferenceBoundaryU32(dst []byte, value uint32) []byte {

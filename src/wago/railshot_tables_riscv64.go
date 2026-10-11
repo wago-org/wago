@@ -2324,7 +2324,11 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 			continue // Source-attested internal signature has no callable row.
 		}
 		if i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceArgumentSignature(c.Funcs[0]) {
-			key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.FuncRef}, Results: []wasm.ValType{wasm.I32}})
+			param := wasm.FuncRef
+			if c.Funcs[0].Params[0] == ValExternRef {
+				param = wasm.ExternRef
+			}
+			key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{param}, Results: []wasm.ValType{wasm.I32}})
 			if c.FuncTypeID[i] != key {
 				return fmt.Errorf("public reference-argument target signature key differs from its exact type")
 			}
