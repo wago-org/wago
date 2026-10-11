@@ -385,6 +385,11 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// parameterless so the helper cannot cross into results/trap storage.
 		params = max(params, 4)
 	}
+	if rv64GCRefCastConcrete(c) {
+		// Concrete ref.cast uses the same four arguments and returns one reference.
+		params = max(params, 4)
+		results = max(results, 1)
+	}
 	if rv64GCExtern(c) {
 		// table.set stages the zero-normalized index, full-width reference, and
 		// exact table index. Conversion helpers use one slot.
@@ -412,7 +417,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// complete retained classifiers pin the non-function type graph; only the
 		// local function signatures already counted above contribute to transport
 		// capacity.
-		if rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCArrayInitElem(c) {
+		if rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCArrayInitElem(c) {
 			return params, results, nil
 		}
 		if len(c.Types) > railshot.MaxFunctions {

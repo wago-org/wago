@@ -20,7 +20,11 @@ func rv64GCRefTestConcreteExecutionCode(c *Compiled) bool {
 // rv64GCRefTestConcrete pins the complete retained semantic directory because
 // trusted artifacts no longer carry Wasm bodies.
 func rv64GCRefTestConcrete(c *Compiled) bool {
-	if c == nil || !rv64GCRefTestConcreteExecutionCode(c) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI ||
+	return rv64GCConcreteSubtypeProduct(c, rv64GCRefTestConcreteExecutionCode, stagedGCStructRefTestConcrete, []int{0, 1648, 17232})
+}
+
+func rv64GCConcreteSubtypeProduct(c *Compiled, executionCode func(*Compiled) bool, exactProduct stagedGCStructProduct, wantEntry []int) bool {
+	if c == nil || !executionCode(c) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI ||
 		!c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata ||
 		c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
@@ -103,10 +107,13 @@ func rv64GCRefTestConcrete(c *Compiled) bool {
 		}
 	}
 	product := c.stagedGCStructProduct()
-	productWitness := product == stagedGCStructRefTestConcrete || product == stagedGCStructGeneric
-	wantEntry := []int{0, 1648, 17232}
+	productWitness := product == exactProduct || product == stagedGCStructGeneric
+	requiredFeatures := CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureGC
+	if exactProduct == stagedGCStructRefCastConcrete {
+		requiredFeatures = CoreFeatureReferenceTypes | CoreFeatureGC
+	}
 	return productWitness && c.stagedGCArrayProduct() == 0 && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC &&
-		c.usesGCStructHelpers() && !c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.requiredAMD64Features == 0 &&
+		c.usesGCStructHelpers() && !c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == requiredFeatures && c.requiredAMD64Features == 0 &&
 		slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry)
 }
 

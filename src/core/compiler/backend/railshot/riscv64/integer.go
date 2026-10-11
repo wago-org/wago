@@ -2040,6 +2040,23 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefCast:
+				if state.gcRefTestConcrete && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8 {
+					heap := int64(imm.HeapType.Type().Index)
+					if _, err = popClass(true); err != nil {
+						return integerSummary{}, err
+					}
+					callCount++
+					if callCount > maxDirectCalls {
+						return integerSummary{}, unsupported("GC helper call count/slot budget")
+					}
+					if live && emit != nil {
+						emit.gcObjectRefCast(h, heap, imm.Subopcode == 23)
+					}
+					if err = pushReference(); err != nil {
+						return integerSummary{}, err
+					}
+					break
+				}
 				if state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs {
 					heap := int64(0)
 					switch imm.HeapType.Abs() {

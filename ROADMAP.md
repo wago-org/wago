@@ -14,6 +14,11 @@ Local mutable nullable funcref globals retain only own canonical descriptors or
 null; their profile excludes tables, reference imports/signatures, and mutable
 reference exports. Parked callbacks, retirement and compiler-free artifact tests
 cover this bounded shape.
+The exact official concrete struct-subtyping `gc/ref_cast` module now has genuine
+RV64 lowering for indexed heap types 0 through 7, retained source/artifact
+classifiers, rooted-table GC stress coverage, and compiler-free reload. Baseline
+RV64G QEMU establishes functional correctness only; native cache/performance
+qualification remains pending, and other module shapes remain closed.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

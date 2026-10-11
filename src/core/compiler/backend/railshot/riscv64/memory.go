@@ -209,7 +209,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
-	gcRefTestConcrete := admitRV64GCRefTestConcrete(m)
+	gcRefTestConcrete := admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m)
 	gcExtern := admitRV64GCExtern(m)
 	gcRefCastAbstract := admitRV64GCRefCastAbstract(m)
 	gcRefTestAbstract := admitRV64GCRefTestAbstract(m) || gcExtern || gcRefCastAbstract
