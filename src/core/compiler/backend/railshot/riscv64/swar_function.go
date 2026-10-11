@@ -617,7 +617,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 			if emit != nil {
 				if tail {
 					if dynamicTailCalls && flow.live {
-						emit.dynamicIndirectTailCall(typeIndex, sig, typeKeys[typeIndex], base, h-1, spill, 16)
+						emit.dynamicIndirectTailCall(typeIndex, sig, typeKeys[typeIndex], base, h-1, false, 0, spill, 16)
 					} else if !dynamicTailCalls {
 						emit.localIndirectTailCall(sig, typeKeys[typeIndex], base, h-1, spill)
 					}

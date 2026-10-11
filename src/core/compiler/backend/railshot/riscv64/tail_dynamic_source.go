@@ -7,12 +7,13 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // Declared-type indirect source lowering. The production qualification profile
 // binds address-free indirect/reference plans through the exact entry owner
 // lease, including certified native imports. Host descriptor rows stay closed.
-func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.CompType, key uint64, base, indexSlot int, spill func(int) int32, stride int) {
+func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.CompType, key uint64, base, indexSlot int, indexWide bool, tableIndex uint32, spill func(int) int32, stride int) {
 	if !f.mode.dynamicTailCalls || !f.mode.importTailCalls || !f.mode.invocationContext || !f.mode.foreignTableCalls || f.mode.tailPlans == nil || !f.admitLocalTailFrame() || sig == nil || spill == nil || typeIndex >= MaxFunctions {
 		f.err = unsupported("private dynamic indirect source contract")
 		return
@@ -30,8 +31,14 @@ func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.Com
 	// Table storage belongs to the retained invocation context. Read only the
 	// bounded row and full-width canonical token; the factory establishes token
 	// membership before dereferencing any candidate descriptor or producer.
-	f.Load(5, spill(indexSlot), false)
-	f.a.Ld(enc.X6, enc.X25, -80)
+	f.Load(5, spill(indexSlot), indexWide)
+	if tableIndex == 0 {
+		f.a.Ld(enc.X6, enc.X25, -80)
+	} else {
+		f.a.Ld(enc.X6, enc.X25, -abi.TableDirPtrOffset)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
+		f.a.Ld(enc.X6, enc.X6, int32(tableIndex*8))
+	}
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
 	f.a.Lwu(enc.X7, enc.X6, 0)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.GEU, enc.X5, enc.X7))
@@ -44,7 +51,7 @@ func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.Com
 	f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
 	f.a.Ld(enc.X14, enc.X6, 32)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
-	// This i32 index home is eight bytes physically. Sd deliberately preserves
+	// The selected reference home is eight bytes physically. Sd preserves
 	// every reference bit; a narrow Store would truncate the selected address.
 	f.Store(int32(p.referenceBase), 14, true)
 	*f.mode.tailPlans = append(*f.mode.tailPlans, p)

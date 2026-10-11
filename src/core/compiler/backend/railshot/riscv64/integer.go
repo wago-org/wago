@@ -1100,7 +1100,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			tail := op == 0x13
 			if tail {
-				if tableIndex != 0 {
+				if !state.dynamicTailCalls && (tableIndex != 0 || tableWide) {
 					return integerSummary{}, unsupported("indexed indirect tail call")
 				}
 				// The local profile excludes imported/foreign targets; the dynamic
@@ -1128,13 +1128,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("indirect call count/slot budget")
 			}
 			if functionRefs {
-				if tableWide && !tail {
+				if tableWide {
 					err = popWidth(true)
 				} else {
 					err = condition()
 				}
 			} else if tail {
-				err = popWidth(false)
+				err = popWidth(tableWide)
 			} else if tableWide {
 				err = popWidth(true)
 			} else {
@@ -1164,7 +1164,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if live && emit != nil {
 				if tail {
 					if state.dynamicTailCalls {
-						emit.dynamicIndirectTailCall(typeIndex, sig.signature, sig.key, h, indexSlot, emit.SpillOffset, 8)
+						emit.dynamicIndirectTailCall(typeIndex, sig.signature, sig.key, h, indexSlot, tableWide, tableIndex, emit.SpillOffset, 8)
 					} else {
 						emit.localIndirectTailCall(sig.signature, sig.key, h, indexSlot, emit.SpillOffset)
 					}

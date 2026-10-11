@@ -9,6 +9,7 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
 // rv64StateOnlyTable64 is the persisted-artifact witness for the first RV64
@@ -1510,6 +1511,74 @@ func rv64OwnedTwoTable32Indirect(c *Compiled) bool {
 }
 
 func rv64OwnedTwoTable64Indirect(c *Compiled) bool {
+	return rv64OwnedTwoTable64IndirectCall(c) || rv64OwnedTwoTable64IndirectTail(c)
+}
+
+func rv64OwnedTwoTable64IndirectTail(c *Compiled) bool {
+	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 5 || len(c.Exports) != 4 || len(c.tableExports) != 2 {
+		return false
+	}
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		return false
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	for index := 0; index < 2; index++ {
+		def := c.tableDef(index)
+		exact, err := c.tableExactType(index)
+		want := index + 2
+		if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || !def.Addr64 || !def.HasMax || def.Size != want || def.Max != uint64(want) || c.tableRuntimeCapacity(index) != want {
+			return false
+		}
+	}
+	target := c.Funcs[0]
+	targetKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}})
+	callerKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}})
+	entries := [...]int{0, 592, 1840, 3216, 4656}
+	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || c.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations|CoreFeatureTailCall || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs || len(c.FuncTypeID) != 5 || c.FuncTypeID[0] != targetKey || len(c.Entry) != len(entries) || len(c.InternalEntry) != len(entries) {
+		return false
+	}
+	for i, entry := range entries {
+		if c.Entry[i] != entry || c.InternalEntry[i] != entry {
+			return false
+		}
+	}
+	for index := 1; index < 5; index++ {
+		fn := c.Funcs[index]
+		if len(fn.Params) != 1 || fn.Params[0] != ValI64 || len(fn.Results) != 1 || fn.Results[0] != ValI32 || c.FuncTypeID[index] != callerKey {
+			return false
+		}
+	}
+	wantCode := [32]byte{0x44, 0x5d, 0xdd, 0x59, 0x50, 0x60, 0x90, 0x83, 0x8a, 0x71, 0xb0, 0x7a, 0xba, 0xfe, 0xbc, 0x94, 0x19, 0x41, 0xe1, 0xfd, 0x79, 0xd9, 0xc4, 0xab, 0xa4, 0xbf, 0xcd, 0xb5, 0xd5, 0x28, 0x4d, 0x69}
+	if len(c.code) != 6156 || sha256.Sum256(c.code) != wantCode {
+		return false
+	}
+	m := rv64NativeTailModule(c)
+	if m == nil || len(m.Plans) != 2 {
+		return false
+	}
+	for i, plan := range m.Plans {
+		if plan.Kind != encoder.NativeTailIndirect || plan.TypeIndex != 0 || plan.FunctionIndex != uint32(i+3) || plan.ImportIndex != 0 || plan.ReferenceBase != 56 || plan.SourcePC != 3 || plan.FrameBytes != 64 || plan.SourceBase != 56 || plan.SourceStride != 8 {
+			return false
+		}
+	}
+	var functions [4]bool
+	var tables [2]bool
+	for _, index := range c.Exports {
+		if index < 1 || index > 4 {
+			return false
+		}
+		functions[index-1] = true
+	}
+	for _, index := range c.tableExports {
+		if index < 0 || index > 1 {
+			return false
+		}
+		tables[index] = true
+	}
+	return functions[0] && functions[1] && functions[2] && functions[3] && tables[0] && tables[1]
+}
+
+func rv64OwnedTwoTable64IndirectCall(c *Compiled) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 3 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
 		return false
 	}
@@ -1532,7 +1601,10 @@ func rv64OwnedTwoTable64Indirect(c *Compiled) bool {
 		}
 	}
 	target := c.Funcs[0]
-	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) || c.nativeReferenceFunctionABI || !c.NeedsFuncRefDescs || len(c.FuncTypeID) != 3 {
+	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || c.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs || len(c.FuncTypeID) != 3 {
+		return false
+	}
+	if rv64NativeTailModule(c) != nil {
 		return false
 	}
 	var functions [2]bool
