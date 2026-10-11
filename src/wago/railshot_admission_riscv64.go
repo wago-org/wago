@@ -82,6 +82,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCStructNull := rv64GCStructNull(c)
 	exactGCStructPacked := rv64GCStructPacked(c)
 	exactGCStructBasic := rv64GCStructBasic(c)
+	exactGCStructNumericGlobals := rv64GCStructNumericGlobals(c)
 	exactGCArrayLocal := rv64GCArrayLocal(c)
 	exactGCArrayUniform := rv64GCArrayUniform(c)
 	exactGCArrayFixedLocal := rv64GCArrayFixedLocal(c)
@@ -250,7 +251,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -261,10 +262,10 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCRefEq || exactGCStructGet || exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+	if exactGCRefEq || exactGCStructGet || exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCStructNumericGlobals || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
 		qualifiedFeatures |= CoreFeatureGC
 	}
-	if exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+	if exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCStructNumericGlobals || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	if exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData {
@@ -319,7 +320,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	declarativeTyped := false
-	if c.hasNoFunctionCode() && c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
+	if c.hasNoFunctionCode() && c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) && !exactGCStructNumericGlobals {
 		var err error
 		declarativeTyped, err = rv64ValidateDeclarativeControlTypes(c)
 		if err != nil {
@@ -365,7 +366,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
@@ -385,6 +386,9 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		if exactGCStructBasic && i < 2 {
 			continue // The exact product pins both rooted non-null struct initializers.
+		}
+		if exactGCStructNumericGlobals && i < 2 {
+			continue // The exact state-only product pins both rooted non-null struct initializers.
 		}
 		if exactGCArrayFixedOfficial && i == 0 || exactGCArrayDefaultOfficial && i < 2 || exactGCArrayInitElem && i < 2 || exactGCArrayInitData && i < 3 || exactGCArrayFill && i < 2 || exactGCArrayCopy && i < 2 {
 			continue // The exact product pins this rooted non-null array initializer.
@@ -491,7 +495,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("memory export index bound")
 		}
 	}
-	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 && !exactGCStructPacked && !exactGCStructBasic || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
+	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
 		return reject("GC/EH initializer lowering is pending")
 	}
 	return nil

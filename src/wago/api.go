@@ -1148,6 +1148,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	exactGCStructNullSource := railshotGCStructNullSource(wasmBytes)
 	exactGCStructPackedSource := railshotGCStructPackedSource(wasmBytes)
 	exactGCStructBasicSource := railshotGCStructBasicSource(wasmBytes)
+	exactGCStructNumericGlobalsSource := railshotGCStructNumericGlobalsSource(wasmBytes)
 	exactGCArrayLocalSource := railshotGCArrayLocalSource(wasmBytes)
 	exactGCArrayUniformSource := railshotGCArrayUniformSource(wasmBytes)
 	exactGCArrayFixedLocalSource := railshotGCArrayFixedLocalSource(wasmBytes)
@@ -1222,7 +1223,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCStructGeneric, true
 		}
 		if ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCStructRefEq && exactGCRefEqSource) && !(product == stagedGCStructNumericLocal && exactGCStructGetSource) && !(product == stagedGCStructNullDereference && exactGCStructNullSource) && !(product == stagedGCStructPacked && exactGCStructPackedSource) && !(product == stagedGCStructBasic && exactGCStructBasicSource) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCStructRefEq && exactGCRefEqSource) && !(product == stagedGCStructNumericLocal && exactGCStructGetSource) && !(product == stagedGCStructNullDereference && exactGCStructNullSource) && !(product == stagedGCStructPacked && exactGCStructPackedSource) && !(product == stagedGCStructBasic && exactGCStructBasicSource) && !(product == stagedGCStructNumericGlobals && exactGCStructNumericGlobalsSource) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcStructProduct = product
@@ -1233,6 +1234,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	// Its wire and decoded witnesses are independently rechecked by railshot.
 	if exactGCStructBasicSource {
 		gcStructProduct = stagedGCStructBasic
+	}
+	if exactGCStructNumericGlobalsSource {
+		gcStructProduct = stagedGCStructNumericGlobals
 	}
 	if features.GCArrayProducts && gcProductAnalysisNeeded(requiredByModule) && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
 		product, ok := stagedGCArrayExecutionProduct(wasmBytes)
@@ -1270,7 +1274,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// provisioning the bounded anyref/externref identity bridge.
 		gcStructProduct = stagedGCStructExtern
 	}
-	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 && !exactGCStructNullSource && !exactGCStructPackedSource && !exactGCStructBasicSource && !exactGCArrayLocalSource && !exactGCArrayUniformSource && !exactGCArrayFixedLocalSource && !exactGCArrayFixedOfficialSource && !exactGCArrayDefaultOfficialSource && !exactGCArrayPackedDataSource && !exactGCArrayReferenceSource && !exactGCArrayInitElemSource && !exactGCArrayInitDataSource && !exactGCArrayFillSource && !exactGCArrayCopySource {
+	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 && !exactGCStructNullSource && !exactGCStructPackedSource && !exactGCStructBasicSource && !exactGCStructNumericGlobalsSource && !exactGCArrayLocalSource && !exactGCArrayUniformSource && !exactGCArrayFixedLocalSource && !exactGCArrayFixedOfficialSource && !exactGCArrayDefaultOfficialSource && !exactGCArrayPackedDataSource && !exactGCArrayReferenceSource && !exactGCArrayInitElemSource && !exactGCArrayInitDataSource && !exactGCArrayFillSource && !exactGCArrayCopySource {
 		// Generic GC lowering is the complete Core 3 fallback for modules that do
 		// not match a narrower collector-free or specialized product. Product
 		// recognizers select optimizations, not semantic admission boundaries.
@@ -1398,6 +1402,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	railshotConfigureGCStructNull(exactGCStructNullSource, &compileOptions)
 	railshotConfigureGCStructPacked(exactGCStructPackedSource, &compileOptions)
 	railshotConfigureGCStructBasic(exactGCStructBasicSource, &compileOptions)
+	railshotConfigureGCStructNumericGlobals(exactGCStructNumericGlobalsSource, &compileOptions)
 	railshotConfigureGCArrayLocal(exactGCArrayLocalSource, &compileOptions)
 	railshotConfigureGCArrayUniform(exactGCArrayUniformSource, &compileOptions)
 	railshotConfigureGCArrayFixedLocal(exactGCArrayFixedLocalSource, &compileOptions)
@@ -3791,6 +3796,7 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	railshotRestoreGCArrayFixedOfficialArtifact(decoded)
 	railshotRestoreGCStructPackedArtifact(decoded)
 	railshotRestoreGCStructBasicArtifact(decoded)
+	railshotRestoreGCStructNumericGlobalsArtifact(decoded)
 	railshotRestoreGCArrayDefaultOfficialArtifact(decoded)
 	railshotRestoreGCArrayPackedDataArtifact(decoded)
 	railshotRestoreGCArrayReferenceArtifact(decoded)

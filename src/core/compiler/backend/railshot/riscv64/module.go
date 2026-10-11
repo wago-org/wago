@@ -147,7 +147,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 	}
 	var err error
-	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy, opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy); err != nil {
+	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy, opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
@@ -162,7 +162,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.referenceFunctions = opts.referenceFunctions
 	state.publicReferenceCarriers = opts.referenceFunctions && admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	state.publicDynamicHostReferenceCarriers = state.publicReferenceCarriers && admitPublicDynamicHostReferenceBoundary(m)
-	state.i31Core = opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy
+	state.i31Core = opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy
 	state.i31RefTest = opts.i31Core && admitRV64I31OfficialRefTest(m)
 	state.i31RefEq = (opts.i31Core && admitRV64I31RefEqPilot(m)) || opts.gcRefEq
 	state.gcRefEq = opts.gcRefEq
@@ -170,6 +170,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.gcStructNull = opts.gcStructNull
 	state.gcStructPacked = opts.gcStructPacked
 	state.gcStructBasic = opts.gcStructBasic
+	state.gcStructGlobals = opts.gcStructGlobals
 	state.gcArrayLocal = opts.gcArrayLocal
 	state.gcArrayUniform = opts.gcArrayUniform
 	state.gcArrayFixedLocal = opts.gcArrayFixedLocal
@@ -477,7 +478,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCStructGet(m) || admitRV64GCStructNull(m) || admitRV64GCStructPacked(m) || admitRV64GCStructBasic(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
+	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCStructGet(m) || admitRV64GCStructNull(m) || admitRV64GCStructPacked(m) || admitRV64GCStructBasic(m) || admitRV64GCStructNumericGlobals(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
 		return nil
 	}
 	i31Core := referenceFunctions && admitRV64I31Core(m)
