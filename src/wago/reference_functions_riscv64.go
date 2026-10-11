@@ -53,6 +53,12 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 		return false
 	}
 	wantFeatures := CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+	for _, sig := range c.Funcs {
+		if len(sig.Results) > 1 {
+			wantFeatures |= CoreFeatureMultiValue
+			break
+		}
+	}
 	if c.requiredFeatures != wantFeatures || rv64HasReferenceTail(c) {
 		return false
 	}
@@ -62,29 +68,92 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 		}
 	}
 	target, producer, caller := c.Funcs[0], c.Funcs[1], c.Funcs[2]
-	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != 1 || caller.Params[0] != ValFuncRef || len(caller.Results) != 1 || (caller.Results[0] != ValI32 && caller.Results[0] != ValFuncRef) {
+	if !rv64PublicReferenceScalarSignature(target) || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != len(target.Params)+1 || caller.Params[len(target.Params)] != ValFuncRef {
+		return false
+	}
+	for i := range target.Params {
+		if caller.Params[i] != target.Params[i] {
+			return false
+		}
+	}
+	numericResult := rv64PublicReferenceSameTypes(caller.Results, target.Results)
+	referenceResult := len(caller.Results) == 1 && caller.Results[0] == ValFuncRef
+	if !numericResult && !referenceResult {
 		return false
 	}
 	targetType, producerType, callerType := c.Types[0], c.Types[1], c.Types[2]
-	if !targetType.Final || len(targetType.Params) != 0 || len(targetType.Results) != 1 || targetType.Results[0].Kind != ValueTypeI32 || !producerType.Final || len(producerType.Params) != 0 || len(producerType.Results) != 1 || !callerType.Final || len(callerType.Params) != 1 || len(callerType.Results) != 1 {
+	for i := range c.Types {
+		typ := c.Types[i]
+		if !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor || typ.Kind != CompositeTypeFunction || len(typ.Fields) != 0 || typ.Array != (FieldTypeDescriptor{}) {
+			return false
+		}
+	}
+	if !rv64PublicReferenceScalarDescriptors(targetType.Params, target.Params) || !rv64PublicReferenceScalarDescriptors(targetType.Results, target.Results) || len(producerType.Params) != 0 || len(producerType.Results) != 1 || len(callerType.Params) != len(target.Params)+1 {
 		return false
 	}
 	produced := producerType.Results[0]
-	consumed := callerType.Params[0]
+	consumed := callerType.Params[len(target.Params)]
 	if produced.Kind != ValueTypeReference || !produced.Ref.Nullable || produced.Ref.Exact || produced.Ref.Heap.Defined || produced.Ref.Heap.Abstract != AbstractHeapFunc || consumed.Kind != ValueTypeReference || !consumed.Ref.Nullable || consumed.Ref.Exact || !consumed.Ref.Heap.Defined || consumed.Ref.Heap.TypeIndex != 0 {
 		return false
 	}
-	callerResult := callerType.Results[0]
-	if caller.Results[0] == ValI32 {
-		if callerResult.Kind != ValueTypeI32 {
+	if !rv64PublicReferenceScalarDescriptors(callerType.Params[:len(target.Params)], target.Params) {
+		return false
+	}
+	if numericResult {
+		if !rv64PublicReferenceScalarDescriptors(callerType.Results, target.Results) {
 			return false
 		}
-	} else if callerResult.Kind != ValueTypeReference || !callerResult.Ref.Nullable || callerResult.Ref.Exact || callerResult.Ref.Heap.Defined || callerResult.Ref.Heap.Abstract != AbstractHeapFunc {
-		return false
+	} else {
+		if len(callerType.Results) != 1 {
+			return false
+		}
+		callerResult := callerType.Results[0]
+		if callerResult.Kind != ValueTypeReference || !callerResult.Ref.Nullable || callerResult.Ref.Exact || callerResult.Ref.Heap.Defined || callerResult.Ref.Heap.Abstract != AbstractHeapFunc {
+			return false
+		}
 	}
 	for i, name := range []string{"target", "get", "call"} {
 		index, ok := c.Exports[name]
 		if !ok || index != i {
+			return false
+		}
+	}
+	return true
+}
+
+func rv64PublicReferenceScalarSignature(sig FuncSig) bool {
+	if len(sig.Params) > 256 || len(sig.Results) > 256 {
+		return false
+	}
+	for _, values := range [][]ValType{sig.Params, sig.Results} {
+		for _, typ := range values {
+			if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func rv64PublicReferenceSameTypes(a, b []ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func rv64PublicReferenceScalarDescriptors(exact []ValueTypeDescriptor, abi []ValType) bool {
+	if len(exact) != len(abi) {
+		return false
+	}
+	for i := range exact {
+		want, ok := valueTypeDescriptorFromValType(abi[i])
+		if !ok || exact[i] != want {
 			return false
 		}
 	}

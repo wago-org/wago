@@ -122,6 +122,41 @@ func publicReferenceCallBoundaryDecode(t *testing.T) *wasm.Module {
 	return publicReferenceCallBoundaryDecodeResult(t, false)
 }
 
+func publicReferenceScalarCallBoundaryDecode(t *testing.T, referenceResult bool) *wasm.Module {
+	t.Helper()
+	callerResult := []byte{4, 0x7f, 0x7e, 0x7d, 0x7c}
+	callerBody := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x14, 0, 0x0b}
+	if referenceResult {
+		callerResult = []byte{1, 0x70}
+		callerBody = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x14, 0, 0x1a, 0x1a, 0x1a, 0x1a, 0x20, 4, 0x0b}
+	}
+	callerType := append([]byte{0x60, 5, 0x7f, 0x7e, 0x7d, 0x7c, 0x63, 0}, callerResult...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}, []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+			callerType,
+		)),
+		wasmtest.Section(3, []byte{3, 0, 1, 2}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target", 0, 0),
+			wasmtest.ExportEntry("get", 0, 1),
+			wasmtest.ExportEntry("call", 0, 2),
+		)),
+		wasmtest.Section(9, []byte{1, 3, 0, 1, 0}),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x0b}),
+			wasmtest.Code(callerBody),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func TestPublicReferenceCallBoundaryExactAdmission(t *testing.T) {
 	for _, referenceResult := range []bool{false, true} {
 		base := publicReferenceCallBoundaryDecodeResult(t, referenceResult)
@@ -176,6 +211,52 @@ func TestPublicReferenceCallBoundaryExactAdmission(t *testing.T) {
 				t.Fatal("nearby public call_ref reference-result shape was admitted", err)
 			}
 		})
+	}
+}
+
+func TestPublicReferenceCallBoundaryScalarSignatureAdmission(t *testing.T) {
+	for _, referenceResult := range []bool{false, true} {
+		m := publicReferenceScalarCallBoundaryDecode(t, referenceResult)
+		if !admitPublicReferenceCallBoundary(m) {
+			t.Fatal("scalar public call_ref boundary was not recognized", referenceResult)
+		}
+		if err := admitClosedReferenceFunctionModule(m, false); err != nil {
+			t.Fatal("scalar public call_ref boundary was not admitted", referenceResult, err)
+		}
+		if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+			t.Fatal("scalar public call_ref frontend", referenceResult, err)
+		}
+		compiled, err := closedReferenceCompile(m, false, false)
+		if err != nil || len(compiled.functions) != 3 || len(compiled.code) == 0 {
+			t.Fatal("scalar public call_ref lowering", referenceResult, err)
+		}
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*wasm.Module)
+	}{
+		{"caller-parameter", func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Params[1] = wasm.I32 }},
+		{"caller-result", func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Results[3] = wasm.F32 }},
+		{"caller-body-order", func(m *wasm.Module) { m.Code[2].BodyBytes[1], m.Code[2].BodyBytes[3] = 1, 0 }},
+		{"caller-reference-position", func(m *wasm.Module) { m.Code[2].BodyBytes[9] = 3 }},
+		{"target-reference", func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Params[0] = wasm.FuncRef }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := publicReferenceScalarCallBoundaryDecode(t, false)
+			tc.mutate(m)
+			if admitPublicReferenceCallBoundary(m) {
+				t.Fatal("nearby scalar public call_ref shape inherited the boundary")
+			}
+			if err := admitClosedReferenceFunctionModule(m, false); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("nearby scalar public call_ref shape was admitted", err)
+			}
+		})
+	}
+	m := publicReferenceScalarCallBoundaryDecode(t, true)
+	body := m.Code[2].BodyBytes
+	m.Code[2].BodyBytes = append(append([]byte(nil), body[:12]...), body[13:]...)
+	if admitPublicReferenceCallBoundary(m) {
+		t.Fatal("reference-result wrapper with a missing drop was admitted")
 	}
 }
 
