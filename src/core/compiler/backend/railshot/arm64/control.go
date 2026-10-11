@@ -1721,6 +1721,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			if pN == 0 && rN == 0 {
 				f.emitPureReduce(r)
 				f.emitDotLoop(r)
+				f.emitMinPlusLoop(r)
 			}
 			f.preloadScopedLoopConsts(&fr)
 			f.alignLoopHeader()

@@ -408,7 +408,7 @@ var catalog = []Definition{
 	arm64("memcopy-qpairs", "Paired vector memory-copy", "copy 32-byte groups with paired 128-bit loads and stores"),
 	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
 	{Name: "select-group-guard", Label: "Select group guard", Description: "skip pure update groups when their unchanged mask has no selected bits", Default: true, Architectures: []string{"arm64"}},
-	{Name: "dot-loop-vector", Label: "Integer dot loop vectorization", Description: "vectorize bounded read-only i32 dot reductions with guarded scalar fallback", Default: true, Architectures: []string{"arm64"}},
+	{Name: "dot-loop-vector", Label: "Integer loop vectorization", Description: "vectorize bounded i32 dot reductions and signed min-plus updates with guarded scalar fallback", Default: true, Architectures: []string{"arm64"}},
 	{Name: "pure-reduce-vector", Label: "Pure integer reduction vectorization", Description: "vectorize independent i32 expressions accumulated into i64 sums with exact scalar tails", Default: true, Architectures: []string{"arm64"}},
 	{Name: "select-sink-pure-guard", Label: "Pure integer select update guard", Description: "skip bounded costly pure work when an integer select keeps its pinned local", Default: true, Architectures: []string{"arm64"}},
 	{Name: "streaming-i32-reduction", Label: "Streaming i32 product reductions", Description: "reassociate proven wrapping product sums into a concrete streaming accumulator", Default: true, Architectures: []string{"arm64"}},

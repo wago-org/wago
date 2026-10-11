@@ -10,8 +10,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Improve ARM64 execution with guarded scalar and vector loop lowering, bounded
   register reuse, borrowed operands, indexed address reuse, exact integer
-  arithmetic and branch/condition simplification. Each optional lowering has
-  strict admission checks and a per-compilation rollback option. Defer ineligible
+  dot reductions and min-plus updates, arithmetic and branch/condition
+  simplification. Each optional lowering has strict admission checks and a per-compilation rollback option. Defer ineligible
   bounded-host analyses and reduce oversized native-image reservations to lower
   compilation allocation traffic and peak memory.
 - Admit exact typed i64 synchronous host callbacks to the private prepared
