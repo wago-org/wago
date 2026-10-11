@@ -66,7 +66,7 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 	if stagedMixedTable64FillShape(m) {
 		return nativeTable64ImportedFillABI
 	}
-	if stagedMixedTable64CopyShape(m) {
+	if stagedMixedTable64CopyShape(m) || stagedMixedTable64CrossCopyShape(m) {
 		return nativeTable64ImportedCopyABI
 	}
 	if stagedMixedTable64InitDropShape(m) {
@@ -146,14 +146,14 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 //
 //go:noinline
 func validateCompileTable64(m *wasm.Module) error {
-	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64ActiveElementShape(m) || stagedMixedTable64ActiveElementShape(m) || stagedMixedTable64DualActiveElementsShape(m) || stagedOwnedTwoTable32SizeShape(m) || stagedOwnedTwoTable32GetSetShape(m) || stagedOwnedTwoTable32GrowShape(m) || stagedOwnedTwoTable32FillShape(m) || stagedOwnedTwoTable32CopyShape(m) || stagedOwnedTwoTable32CrossCopyShape(m) || stagedOwnedTwoTable32InitDropShape(m) || stagedOwnedTwoTable32IndirectShape(m) || stagedOwnedTwoTable64SizeShape(m) || stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedOwnedTwoTable64GetSetShape(m) || stagedOwnedTwoTable64GrowShape(m) || stagedOwnedTwoTable64FillShape(m) || stagedOwnedTwoTable64CopyShape(m) || stagedOwnedTwoTable64CrossCopyShape(m) || stagedOwnedTwoTable64InitDropShape(m) || stagedOwnedTwoTable64IndirectShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedImportedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m) || stagedOwnedTable64InitDropShape(m) || stagedImportedTable64SizeShape(m) || stagedImportedTable64GetSetShape(m) || stagedImportedTable64GrowShape(m) || stagedImportedTable64FillShape(m) || stagedImportedTable64CopyShape(m) || stagedImportedTable64InitDropShape(m))
+	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64ActiveElementShape(m) || stagedMixedTable64ActiveElementShape(m) || stagedMixedTable64DualActiveElementsShape(m) || stagedOwnedTwoTable32SizeShape(m) || stagedOwnedTwoTable32GetSetShape(m) || stagedOwnedTwoTable32GrowShape(m) || stagedOwnedTwoTable32FillShape(m) || stagedOwnedTwoTable32CopyShape(m) || stagedOwnedTwoTable32CrossCopyShape(m) || stagedOwnedTwoTable32InitDropShape(m) || stagedOwnedTwoTable32IndirectShape(m) || stagedOwnedTwoTable64SizeShape(m) || stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64CrossCopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedOwnedTwoTable64GetSetShape(m) || stagedOwnedTwoTable64GrowShape(m) || stagedOwnedTwoTable64FillShape(m) || stagedOwnedTwoTable64CopyShape(m) || stagedOwnedTwoTable64CrossCopyShape(m) || stagedOwnedTwoTable64InitDropShape(m) || stagedOwnedTwoTable64IndirectShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedImportedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m) || stagedOwnedTable64InitDropShape(m) || stagedImportedTable64SizeShape(m) || stagedImportedTable64GetSetShape(m) || stagedImportedTable64GrowShape(m) || stagedImportedTable64FillShape(m) || stagedImportedTable64CopyShape(m) || stagedImportedTable64InitDropShape(m))
 	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !rv64Qualified {
 		return fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
 	twoLocalDeclaration := stagedTwoLocalNoMaxTable64DeclarationShape(m)
 	importedLocalDeclaration := stagedImportedLocalNoMaxTable64DeclarationShape(m)
-	mixedTable := stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedMixedTable64ActiveElementShape(m) || stagedMixedTable64DualActiveElementsShape(m)
+	mixedTable := stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64CrossCopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedMixedTable64ActiveElementShape(m) || stagedMixedTable64DualActiveElementsShape(m)
 	threeLocalTableInit64 := m.TableCount() == 3 && m.ImportedTableCount() == 0 && len(m.Tables) == 3
 	soleExternrefGrow := m.TableCount() == 1 && stagedSoleExternrefGrowShape(m)
 	fourLocalExternrefSizeGrow := m.TableCount() == 4 && stagedFourLocalExternrefSizeGrowShape(m)
@@ -679,6 +679,16 @@ func stagedMixedTable64FillShape(m *wasm.Module) bool {
 // stagedMixedTable64CopyShape binds overlap-safe same-table copies to the
 // imported table64 descriptor at index 0 and owned descriptor at index 1.
 func stagedMixedTable64CopyShape(m *wasm.Module) bool {
+	return stagedMixedTable64CopyProductShape(m, false)
+}
+
+// stagedMixedTable64CrossCopyShape binds both directions of a copy between
+// the imported table64 descriptor at index 0 and owned descriptor at index 1.
+func stagedMixedTable64CrossCopyShape(m *wasm.Module) bool {
+	return stagedMixedTable64CopyProductShape(m, true)
+}
+
+func stagedMixedTable64CopyProductShape(m *wasm.Module, cross bool) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
@@ -687,7 +697,11 @@ func stagedMixedTable64CopyShape(m *wasm.Module) bool {
 	}
 	for i := 0; i < 2; i++ {
 		table, ok := m.TableType(uint32(i))
-		body := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, byte(i), byte(i), 0x41, 1, 0x0b}
+		source := i
+		if cross {
+			source = 1 - i
+		}
+		body := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, byte(i), byte(source), 0x41, 1, 0x0b}
 		if !ok || !table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min > frontend.StagedTable64Max() || table.Limits.Max > frontend.StagedTable64Max() || table.Limits.Max < table.Limits.Min || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
 			return false
 		}

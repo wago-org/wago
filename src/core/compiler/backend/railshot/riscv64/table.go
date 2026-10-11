@@ -92,7 +92,7 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		return unsupported("table import count bound")
 	}
 	tableCount := len(m.Tables) + m.ImportedTableCount()
-	if tableCount > 1 && !(public && (isCore3RefIsNullExecution(m) || admitMixedTable64ActiveElement(m, true, public) || admitMixedTable64DualActiveElements(m, true, public))) && !admitStateOnlyTwoTable32(m, true, public) && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable32Indirect(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitMixedTable64Size(m, true, public) && !admitMixedTable64GetSet(m, true, public) && !admitMixedTable64Grow(m, true, public) && !admitMixedTable64Fill(m, true, public) && !admitMixedTable64Copy(m, true, public) && !admitMixedTable64InitDrop(m, true, public) && !admitMixedTable64Indirect(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
+	if tableCount > 1 && !(public && (isCore3RefIsNullExecution(m) || admitMixedTable64ActiveElement(m, true, public) || admitMixedTable64DualActiveElements(m, true, public))) && !admitStateOnlyTwoTable32(m, true, public) && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable32Indirect(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitMixedTable64Size(m, true, public) && !admitMixedTable64GetSet(m, true, public) && !admitMixedTable64Grow(m, true, public) && !admitMixedTable64Fill(m, true, public) && !admitMixedTable64Copy(m, true, public) && !admitMixedTable64CrossCopy(m, true, public) && !admitMixedTable64InitDrop(m, true, public) && !admitMixedTable64Indirect(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
 	for index := 0; index < tableCount; index++ {
@@ -842,6 +842,16 @@ func admitMixedTable64Fill(m *wasm.Module, production, public bool) bool {
 // admitMixedTable64Copy qualifies overlap-safe same-table copies against one
 // borrowed descriptor and one bounded owned descriptor.
 func admitMixedTable64Copy(m *wasm.Module, production, public bool) bool {
+	return admitMixedTable64CopyShape(m, production, public, false)
+}
+
+// admitMixedTable64CrossCopy qualifies both directions of copy between the
+// borrowed descriptor and the bounded owned descriptor.
+func admitMixedTable64CrossCopy(m *wasm.Module, production, public bool) bool {
+	return admitMixedTable64CopyShape(m, production, public, true)
+}
+
+func admitMixedTable64CopyShape(m *wasm.Module, production, public, cross bool) bool {
 	if !production || !public || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
@@ -850,7 +860,11 @@ func admitMixedTable64Copy(m *wasm.Module, production, public bool) bool {
 	}
 	for i := 0; i < 2; i++ {
 		table, ok := m.TableType(uint32(i))
-		body := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, byte(i), byte(i), 0x41, 1, 0x0b}
+		source := i
+		if cross {
+			source = 1 - i
+		}
+		body := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, byte(i), byte(source), 0x41, 1, 0x0b}
 		if !ok || !table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min > MaxOwnedTableEntries || table.Limits.Max > MaxOwnedTableEntries || table.Limits.Max < table.Limits.Min || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
 			return false
 		}
@@ -2131,7 +2145,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	}
 	if hasTable {
 		t, _ := m.TableType(0)
-		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTable64ActiveElement(m, production, importedTables) && !admitMixedTable64ActiveElement(m, production, importedTables) && !admitMixedTable64DualActiveElements(m, production, importedTables) && !admitOwnedTwoTable64Size(m, production, importedTables) && !admitMixedTable64Size(m, production, importedTables) && !admitMixedTable64GetSet(m, production, importedTables) && !admitMixedTable64Grow(m, production, importedTables) && !admitMixedTable64Fill(m, production, importedTables) && !admitMixedTable64Copy(m, production, importedTables) && !admitMixedTable64InitDrop(m, production, importedTables) && !admitMixedTable64Indirect(m, production, importedTables) && !admitOwnedTwoTable64GetSet(m, production, importedTables) && !admitOwnedTwoTable64Grow(m, production, importedTables) && !admitOwnedTwoTable64Fill(m, production, importedTables) && !admitOwnedTwoTable64Copy(m, production, importedTables) && !admitOwnedTwoTable64CrossCopy(m, production, importedTables) && !admitOwnedTwoTable64InitDrop(m, production, importedTables) && !admitOwnedTwoTable64Indirect(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
+		if !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) || t.Limits.Addr64 && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTable64ActiveElement(m, production, importedTables) && !admitMixedTable64ActiveElement(m, production, importedTables) && !admitMixedTable64DualActiveElements(m, production, importedTables) && !admitOwnedTwoTable64Size(m, production, importedTables) && !admitMixedTable64Size(m, production, importedTables) && !admitMixedTable64GetSet(m, production, importedTables) && !admitMixedTable64Grow(m, production, importedTables) && !admitMixedTable64Fill(m, production, importedTables) && !admitMixedTable64Copy(m, production, importedTables) && !admitMixedTable64CrossCopy(m, production, importedTables) && !admitMixedTable64InitDrop(m, production, importedTables) && !admitMixedTable64Indirect(m, production, importedTables) && !admitOwnedTwoTable64GetSet(m, production, importedTables) && !admitOwnedTwoTable64Grow(m, production, importedTables) && !admitOwnedTwoTable64Fill(m, production, importedTables) && !admitOwnedTwoTable64Copy(m, production, importedTables) && !admitOwnedTwoTable64CrossCopy(m, production, importedTables) && !admitOwnedTwoTable64InitDrop(m, production, importedTables) && !admitOwnedTwoTable64Indirect(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
 			return false, unsupported("private nullable funcref table32 only")
 		}
 	}

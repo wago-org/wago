@@ -10,6 +10,74 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
+// A cross-descriptor copy can move a canonical row in either direction between
+// an imported table and an owned exported table. Before releasing the
+// invocation's candidate roots, transfer the exact producer acquisition to
+// both possible destinations. The existing dependency graph handles cycles
+// and owner-close adoption; the final prune also releases roots overwritten by
+// null or by another producer.
+func (s *rv64NativeTableTargets) publishCrossCopyReferenceRows() {
+	if s.count == 0 {
+		return
+	}
+	writer := s.owners[0]
+	if writer == nil || !rv64MixedTable64CrossCopy(writer.c) {
+		return
+	}
+	var cleanup resourceCleanup
+	var destinations [2]*Table
+	if imported, ok := writer.imports.table(writer.c.tableImportBindingKey(0)); ok {
+		destinations[0] = imported
+	}
+	destinations[1] = railshotEnsureOwnedFuncrefTable(writer, 1)
+	for _, destination := range destinations {
+		if destination == nil {
+			continue
+		}
+		for _, producer := range s.owners[:s.count] {
+			destination.retainProducerInstanceModeWithCleanup(producer, true, &cleanup)
+		}
+		cleanup.run(destination.pruneRetainedInstances)
+	}
+	cleanup.finish()
+}
+
+// Owned export handles are normally lazy. Cross-copy publication cannot depend
+// on API lookup order, so materialize and link the exact holder while the
+// native scope still pins every candidate descriptor owner. A later
+// ExportedTable call finds this same handle under lifeMu.
+func railshotEnsureOwnedFuncrefTable(in *Instance, index int) *Table {
+	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
+		panic("RV64 cross-copy owned table index")
+	}
+	if _, imported := in.c.tableImportAt(index); imported || in.c.tableElementType(index) != ValFuncRef {
+		panic("RV64 cross-copy owned funcref table type")
+	}
+	desc := in.tableDescriptor(index)
+	if len(desc) < 8 {
+		panic("RV64 cross-copy owned table descriptor")
+	}
+	exact, err := in.c.tableExactType(index)
+	if err != nil {
+		panic(err)
+	}
+	in.lifeMu.Lock()
+	for table := in.table; table != nil; table = table.next {
+		if len(table.desc) != 0 && &table.desc[0] == &desc[0] {
+			in.lifeMu.Unlock()
+			return table
+		}
+	}
+	def := in.c.tableDef(index)
+	owner := &tableOwner{store: in.refStore, instance: in, elementType: ValFuncRef, valueType: exact, types: in.c.Types, hasValueType: true, declaredHasMax: def.HasMax, addr64: def.Addr64}
+	table := &Table{desc: desc, owner: owner, next: in.table}
+	railshotLinkOwnedTableDescriptorHolderLocked(in, table)
+	in.table = table
+	in.lifeMu.Unlock()
+	in.markNativeControlShared()
+	return table
+}
+
 // A global can supply a descriptor outside the writer's own function arena.
 // Publish its actual owner before removing any suspended-writer promise. The
 // scope still pins every candidate; release must run outside nativeExecutionMu.
