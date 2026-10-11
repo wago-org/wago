@@ -88,7 +88,7 @@ Examples of interpretation:
   anchors and offsets and forces incomplete output, even if both byte strings match.
 
 The JSON includes full before/after facts and offsets, mapped/raw changes separately,
-and native/mapped/unmapped counts. [Saved output examples](../../../evidence/coverage/)
+and native/mapped/unmapped counts. [Saved output examples](https://github.com/wago-org/wago/tree/5084528a2cda480a8ddb3f6843e7aab7ba3e83d9/evidence/coverage)
 include self-comparison and synthetic constant, raw-range and unknown controls.
 Synthetic record edits are never compiled, mapped or executed and are not after-images.
 
@@ -159,11 +159,11 @@ costs. The figures above remain historical frozen-source measurements. RSS and
 peak/retained heap were not measured. Ordinary runtime
 builds are byte-identical; no production optimization or runtime overhead is introduced.
 
-[Acceptance checklist and remaining scope](../../../evidence/coverage/acceptance.md),
-[results and reproducible measurements](../../../evidence/coverage/results.md), and
-[independent review](../../../evidence/coverage/independent-review.md) qualify these
-claims. Historical trial results remain in evidence/integration, including the
+[Acceptance checklist and remaining scope](https://github.com/wago-org/wago/blob/5084528a2cda480a8ddb3f6843e7aab7ba3e83d9/evidence/coverage/acceptance.md),
+[results and reproducible measurements](https://github.com/wago-org/wago/blob/5084528a2cda480a8ddb3f6843e7aab7ba3e83d9/evidence/coverage/results.md), and
+[independent review](https://github.com/wago-org/wago/blob/5084528a2cda480a8ddb3f6843e7aab7ba3e83d9/evidence/coverage/independent-review.md) qualify these
+claims. Historical trial results remain in the [archived evidence](https://github.com/wago-org/wago/tree/5084528a2cda480a8ddb3f6843e7aab7ba3e83d9/evidence/integration), including the
 initial comparator slowdown and the non-reproduced tiny compile signal.
 
-[Fresh production-isolation qualification](../../../evidence/isolation/README.md)
+[Fresh production-isolation qualification](https://github.com/wago-org/wago/blob/5084528a2cda480a8ddb3f6843e7aab7ba3e83d9/evidence/isolation/README.md)
 records explicit opt-in gating and matched current-main build evidence.

@@ -1,3 +1,0 @@
-self=0
-constant-record-control=0
-unknown-record-control=3
