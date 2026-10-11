@@ -72,6 +72,9 @@ type CompileOptions struct {
 	// gc/ref_eq checkpoint. It is useful only when the decoded module, helper
 	// options and collector metadata independently match that product.
 	GCRefEqSource bool
+	// GCRefTestTableSource is the exact-wire witness for the bounded rooted
+	// object-table allocation and indexed ref.test checkpoint.
+	GCRefTestTableSource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -145,6 +148,7 @@ type CompileOptions struct {
 	// qualified non-allocating i31 module.
 	i31Core              bool
 	gcRefEq              bool
+	gcRefTestTable       bool
 	gcStructGet          bool
 	gcStructMutation     bool
 	gcStructNull         bool

@@ -25,6 +25,8 @@ const (
 	gcStructSet          uint32 = 3
 	gcStructGetS         uint32 = 4
 	gcStructGetU         uint32 = 5
+	gcStructRefTest      uint32 = 6
+	gcStructTableSet     uint32 = 7
 	gcStructAllocOne     uint32 = 11
 	gcArrayAllocDefault  uint32 = 16
 	gcArrayGet           uint32 = 17
@@ -460,6 +462,41 @@ func (f *integerEmitter) gcStructSetI32(base int, typeIndex, fieldIndex uint32) 
 	f.a.Sd(enc.X5, enc.X10, 24)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructSet})
 	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcObjectTableSet(base int, tableIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), false)
+	f.a.Sd(enc.X5, enc.X10, 0) // zero-normalized table index
+	f.Load(5, f.SpillOffset(base+1), true)
+	f.a.Sd(enc.X5, enc.X10, 8) // compact GC reference
+	f.a.Constant32(enc.X5, tableIndex)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructTableSet})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcObjectRefTest(base int, heap int64, nullable bool) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.a.Constant64(enc.X5, heap)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.a.Constant32(enc.X5, 0)
+	if nullable {
+		f.a.Constant32(enc.X5, 1)
+	}
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.a.Constant32(enc.X5, 0) // exact heap markers are not admitted here.
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructRefTest})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Lwu(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, false)
 }
 
 // Resolve the current activation's dynamic host target before any call-arena

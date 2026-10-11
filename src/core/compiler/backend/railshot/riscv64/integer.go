@@ -77,6 +77,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcArrayCopy = state.gcArrayCopy
 		referenceTypes.gcStructNull = state.gcStructNull
 		referenceTypes.gcStructMutation = state.gcStructMutation
+		referenceTypes.gcRefTestTable = state.gcRefTestTable
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 	}
@@ -890,8 +891,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
-					emit.Load(5, emit.SpillOffset(h), tableWide)
-					emit.privateTableEntry(idx, compactReference)
+					if op == 0x26 && state.gcRefTestTable {
+						emit.gcObjectTableSet(h, idx)
+					} else {
+						emit.Load(5, emit.SpillOffset(h), tableWide)
+						emit.privateTableEntry(idx, compactReference)
+					}
 					if op == 0x25 {
 						if compactReference {
 							emit.a.Ld(enc.X5, enc.X6, 0)
@@ -899,7 +904,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 							emit.a.Ld(enc.X5, enc.X6, 24)
 						}
 						emit.Store(emit.SpillOffset(h), 5, true)
-					} else {
+					} else if !state.gcRefTestTable {
 						if compactReference {
 							emit.a.Sd(enc.X28, enc.X6, 0)
 						} else {
@@ -1543,7 +1548,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructNewDefault:
-				if (!state.gcRefEq && !state.gcStructGet && !state.gcStructMutation && !state.gcStructBasic) || imm.Index != 0 {
+				refTestTableNew := state.gcRefTestTable && (imm.Index == 1 || imm.Index == 2)
+				if !refTestTableNew && ((!state.gcRefEq && !state.gcStructGet && !state.gcStructMutation && !state.gcStructBasic) || imm.Index != 0) {
 					return integerSummary{}, unsupported("struct.new_default outside exact GC profile")
 				}
 				callCount++
@@ -1551,7 +1557,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcDefaultAllocation(gcStructAllocDefault, h, false, 0)
+					emit.gcDefaultAllocation(gcStructAllocDefault, h, false, imm.Index)
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1902,6 +1908,22 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefTest:
+				if state.gcRefTestTable && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index <= 2 {
+					if _, err = popClass(true); err != nil {
+						return integerSummary{}, err
+					}
+					callCount++
+					if callCount > maxDirectCalls {
+						return integerSummary{}, unsupported("GC helper call count/slot budget")
+					}
+					if live && emit != nil {
+						emit.gcObjectRefTest(h, int64(imm.HeapType.Type().Index), imm.Subopcode == 21)
+					}
+					if err = push(false); err != nil {
+						return integerSummary{}, err
+					}
+					break
+				}
 				if !state.i31RefTest || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapAbs {
 					return integerSummary{}, unsupported("ref.test outside exact i31 profile")
 				}
@@ -2303,6 +2325,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcArrayCopy = state.gcArrayCopy
 		referenceTypes.gcStructNull = state.gcStructNull
 		referenceTypes.gcStructMutation = state.gcStructMutation
+		referenceTypes.gcRefTestTable = state.gcRefTestTable
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 	}

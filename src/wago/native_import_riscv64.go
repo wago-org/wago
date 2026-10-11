@@ -396,7 +396,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// complete retained classifiers pin the non-function type graph; only the
 		// local function signatures already counted above contribute to transport
 		// capacity.
-		if rv64OfficialGCRefEq(c) || rv64GCArrayInitElem(c) {
+		if rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCArrayInitElem(c) {
 			return params, results, nil
 		}
 		if len(c.Types) > railshot.MaxFunctions {
