@@ -109,7 +109,7 @@ func rv64GCConcreteSubtypeProduct(c *Compiled, executionCode func(*Compiled) boo
 	product := c.stagedGCStructProduct()
 	productWitness := product == exactProduct || product == stagedGCStructGeneric
 	requiredFeatures := CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if exactProduct == stagedGCStructRefCastConcrete {
+	if exactProduct == stagedGCStructRefCastConcrete || exactProduct == stagedGCStructBrOnCastConcrete || exactProduct == stagedGCStructBrOnCastFailConcrete {
 		requiredFeatures = CoreFeatureReferenceTypes | CoreFeatureGC
 	}
 	return productWitness && c.stagedGCArrayProduct() == 0 && c.stagedFeatures() == CoreFeatureTypedFunctionReferences|CoreFeatureGC &&

@@ -379,7 +379,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// struct.set stages the reference, value, exact type, and field index.
 		params = max(params, 4)
 	}
-	if rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) {
+	if rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) {
 		// ref.test stages the candidate word, signed heap type, nullability, and
 		// exactness. Preserve all four cells even when every exported function is
 		// parameterless so the helper cannot cross into results/trap storage.
@@ -400,7 +400,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		params = max(params, 4)
 		results = max(results, 1)
 	}
-	if rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) {
+	if rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) {
 		// Branch casts use the four-input ref.test bridge and one predicate result.
 		params = max(params, 4)
 		results = max(results, 1)
@@ -422,7 +422,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// complete retained classifiers pin the non-function type graph; only the
 		// local function signatures already counted above contribute to transport
 		// capacity.
-		if rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCArrayInitElem(c) {
+		if rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCArrayInitElem(c) {
 			return params, results, nil
 		}
 		if len(c.Types) > railshot.MaxFunctions {

@@ -36,6 +36,10 @@ func railshotGCBrOnCastAbstractSource([]byte) bool                          { re
 func railshotConfigureGCBrOnCastAbstract(bool, *railshotCompileOptions)     {}
 func railshotGCBrOnCastFailAbstractSource([]byte) bool                      { return false }
 func railshotConfigureGCBrOnCastFailAbstract(bool, *railshotCompileOptions) {}
+func railshotGCBrOnCastConcreteSource([]byte) bool                          { return false }
+func railshotConfigureGCBrOnCastConcrete(bool, *railshotCompileOptions)     {}
+func railshotGCBrOnCastFailConcreteSource([]byte) bool                      { return false }
+func railshotConfigureGCBrOnCastFailConcrete(bool, *railshotCompileOptions) {}
 func railshotGCStructGetSource([]byte) bool                                 { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)            {}
 func railshotGCStructMutationSource([]byte) bool                            { return false }

@@ -19,6 +19,12 @@ func rv64GCBrOnCastFailAbstract(*Compiled) bool               { return false }
 func rv64GCBrOnCastFailAbstractExecutionCode(*Compiled) bool  { return false }
 func railshotRestoreGCBrOnCastAbstractArtifact(*Compiled)     {}
 func railshotRestoreGCBrOnCastFailAbstractArtifact(*Compiled) {}
+func rv64GCBrOnCastConcrete(*Compiled) bool                   { return false }
+func rv64GCBrOnCastConcreteExecutionCode(*Compiled) bool      { return false }
+func rv64GCBrOnCastFailConcrete(*Compiled) bool               { return false }
+func rv64GCBrOnCastFailConcreteExecutionCode(*Compiled) bool  { return false }
+func railshotRestoreGCBrOnCastConcreteArtifact(*Compiled)     {}
+func railshotRestoreGCBrOnCastFailConcreteArtifact(*Compiled) {}
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled)      {}
 func rv64GCRefCastConcrete(*Compiled) bool                    { return false }
 func rv64GCRefCastConcreteExecutionCode(*Compiled) bool       { return false }

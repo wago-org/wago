@@ -94,6 +94,10 @@ type CompileOptions struct {
 	// witnesses for the two official abstract branch-cast products.
 	GCBrOnCastAbstractSource     bool
 	GCBrOnCastFailAbstractSource bool
+	// GCBrOnCastConcreteSource and GCBrOnCastFailConcreteSource are exact-wire
+	// witnesses for the two official concrete subtype branch-cast products.
+	GCBrOnCastConcreteSource     bool
+	GCBrOnCastFailConcreteSource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool

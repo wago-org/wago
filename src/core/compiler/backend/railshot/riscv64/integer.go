@@ -1561,16 +1561,17 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			switch imm.Kind {
 			case wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
-				if !state.gcRefTestAbstract || !imm.HasHeapType || !imm.HasHeapType2 || uint64(imm.Index) >= uint64(depth) {
-					return integerSummary{}, unsupported("branch cast outside exact abstract profile")
+				if (!state.gcRefTestAbstract && !state.gcRefTestConcrete) || !imm.HasHeapType || !imm.HasHeapType2 || uint64(imm.Index) >= uint64(depth) {
+					return integerSummary{}, unsupported("branch cast outside exact GC profile")
 				}
 				heap := int64(0)
 				switch imm.HeapType2.Kind() {
 				case wasm.HeapTypeIndex:
-					if imm.HeapType2.Type().Rec || imm.HeapType2.Type().Index < 1 || imm.HeapType2.Type().Index > 2 {
-						return integerSummary{}, unsupported("branch cast indexed heap outside exact abstract profile")
+					index := imm.HeapType2.Type().Index
+					if imm.HeapType2.Type().Rec || state.gcRefTestConcrete && index >= 8 || !state.gcRefTestConcrete && (index < 1 || index > 2) {
+						return integerSummary{}, unsupported("branch cast indexed heap outside exact GC profile")
 					}
-					heap = int64(imm.HeapType2.Type().Index)
+					heap = int64(index)
 				case wasm.HeapAbs:
 					switch imm.HeapType2.Abs() {
 					case wasm.HeapI31:

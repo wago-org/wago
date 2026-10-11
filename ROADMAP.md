@@ -26,6 +26,13 @@ classifiers, source/artifact stress-GC execution, dirty-upper i32 table indices,
 out-of-bounds traps, and compiler-free reload are covered. This checkpoint is
 functional QEMU qualification only; native cache/performance qualification and
 broader branch-cast shapes remain pending.
+The exact official concrete struct-subtyping `br_on_cast` and
+`br_on_cast_fail` products now lower indexed heap targets 0 through 7 through
+the rooted four-slot subtype helper, including canonical-equivalent and declared
+supertype cases. Source and compiler-free artifact execution, retained metadata,
+stress collection, and the eight rooted table objects are covered under RV64G
+QEMU. Native cache/performance qualification and nullability-only branch-cast
+products remain pending.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

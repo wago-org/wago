@@ -199,7 +199,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 // Both lower through the existing internal full-width result class.
 func internalReferenceBlockType(r *wasm.Reader, typed bool, types internalReferenceTypes) (int64, error) {
 	lead, ok := r.Peek()
-	if ok && types.gcRefTestAbstract && (lead == 0x6a || lead == 0x6b || lead == 0x6c || lead == 0x6d || lead == 0x6e) {
+	if ok && (types.gcRefTestAbstract && (lead == 0x6a || lead == 0x6b || lead == 0x6c || lead == 0x6d || lead == 0x6e) || types.gcRefTestConcrete && lead == 0x6b) {
 		if _, err := r.S33(); err != nil {
 			return 0, err
 		}
