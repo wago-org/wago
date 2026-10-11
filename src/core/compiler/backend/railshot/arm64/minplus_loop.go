@@ -348,7 +348,8 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 		f.a.AddImm32(counter, counter, bytes)
 		f.patchBranch26(f.a.Branch(), loop)
 	}
-	if p.limit >= 40 {
+	// Require four wider iterations to amortize the extra code and tail dispatch.
+	if p.limit >= 4*32+8 {
 		// Amortize loop and alias checks over two SIMD blocks without adding
 		// registers. Keep one original packet for the observable scalar tail.
 		compare(p.limit - 40)

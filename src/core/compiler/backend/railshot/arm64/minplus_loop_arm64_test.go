@@ -56,7 +56,7 @@ func TestMinPlusLoopIndependentExecution(t *testing.T) {
 	for _, dst := range []uint32{0, 1, 64, 65500, 0xfffffff0} {
 		for _, src := range []uint32{0, 1, 4, 64, 256, 8192} {
 			for _, pivot := range []uint32{0, 1, 4, 7, 12, 16, 28, 31, 32, 35, 40, 256, 65534} {
-				for _, trip := range [][2]uint32{{0, 24}, {8, 24}, {0, 32}, {8, 32}, {0, 40}, {8, 40}, {0, 48}, {8, 48}, {0, 64}, {8, 64}, {0, 72}, {8, 72}, {0, 128}, {8, 128}, {0, 4104}, {8, 4104}} {
+				for _, trip := range [][2]uint32{{0, 24}, {8, 24}, {0, 32}, {8, 32}, {0, 40}, {8, 40}, {0, 48}, {8, 48}, {0, 64}, {8, 64}, {0, 72}, {8, 72}, {0, 128}, {8, 128}, {0, 136}, {8, 136}, {0, 4144}, {8, 4144}} {
 					start, limit := trip[0], trip[1]
 					t.Run(fmt.Sprintf("%x/%x/%x/%d/%d", dst, src, pivot, start, limit), func(t *testing.T) {
 						mem := make([]byte, 65536)
@@ -106,7 +106,7 @@ func TestMinPlusLoopIndependentExecution(t *testing.T) {
 
 func TestMinPlusLoopAdmissionAndRollback(t *testing.T) {
 	requireCompilerDiagnostics(t)
-	for _, limit := range []uint32{24, 32, 40, 64, 4104} {
+	for _, limit := range []uint32{24, 32, 40, 64, 128, 136, 4144} {
 		m := minPlusModule(t, 0, 8192, 4, 0, limit)
 		for _, enabled := range []bool{true, false} {
 			var stats ModuleStats
@@ -120,7 +120,7 @@ func TestMinPlusLoopAdmissionAndRollback(t *testing.T) {
 				t.Fatalf("limit %d enabled %t: admitted %d", limit, enabled, got)
 			}
 			got = stats.Funcs[0].Peephole["minplus-loop-unroll"]
-			if (got == 1) != (enabled && limit >= 40) {
+			if (got == 1) != (enabled && limit >= 4*32+8) {
 				t.Fatalf("limit %d enabled %t: unrolled %d", limit, enabled, got)
 			}
 		}
