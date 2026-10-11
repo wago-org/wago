@@ -63,6 +63,10 @@ func (f *fn) inspectAbsReduceLoop(source *wasm.Reader) (p absReducePlan, ok bool
 	if !f.hasAbsReducePrefix(source) {
 		return
 	}
+	return f.inspectAbsReduceBody(source)
+}
+
+func (f *fn) inspectAbsReduceBody(source *wasm.Reader) (p absReducePlan, ok bool) {
 	var nodes [256]dotNode
 	var values [32]int
 	var written, initialRead [32]bool
