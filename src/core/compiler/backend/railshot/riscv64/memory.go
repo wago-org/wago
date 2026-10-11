@@ -42,11 +42,12 @@ type moduleState struct {
 	publicReferenceCarriers            bool
 	publicDynamicHostReferenceCarriers bool
 	// Exact GC/i31 qualification profiles.
-	i31Core     bool
-	i31RefTest  bool
-	i31RefEq    bool
-	gcRefEq     bool
-	gcStructGet bool
+	i31Core      bool
+	i31RefTest   bool
+	i31RefEq     bool
+	gcRefEq      bool
+	gcStructGet  bool
+	gcArrayLocal bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -190,7 +191,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	gcRefEq := admitRV64GCRefEq(m)
 	gcStructGet := admitRV64GCStructGet(m)
-	i31Core := admitRV64I31Core(m) || gcRefEq || gcStructGet
+	gcArrayLocal := admitRV64GCArrayLocal(m)
+	i31Core := admitRV64I31Core(m) || gcRefEq || gcStructGet || gcArrayLocal
 	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
@@ -381,7 +383,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcStructGet) && ft.Kind != wasm.CompFunc) {
+		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcStructGet || gcArrayLocal) && ft.Kind != wasm.CompFunc) {
 			var ok bool
 			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
 			if !ok {

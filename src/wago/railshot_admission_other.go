@@ -14,6 +14,8 @@ func railshotGCRefEqSource([]byte) bool                                         
 func railshotConfigureGCRefEq(bool, *railshotCompileOptions)                            {}
 func railshotGCStructGetSource([]byte) bool                                             { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)                        {}
+func railshotGCArrayLocalSource([]byte) bool                                            { return false }
+func railshotConfigureGCArrayLocal(bool, *railshotCompileOptions)                       {}
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
 func railshotValidateResolvedImports(*Compiled, resolvedImports, *referenceStore) error { return nil }
 func railshotNeedsImportContextHeader(int) bool                                         { return false }

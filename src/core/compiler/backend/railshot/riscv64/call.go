@@ -22,6 +22,9 @@ const (
 	gcStructAllocDefault uint32 = 1
 	gcStructGet          uint32 = 2
 	gcArrayAllocDefault  uint32 = 16
+	gcArrayGet           uint32 = 17
+	gcArraySet           uint32 = 20
+	gcArrayLen           uint32 = 21
 )
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
@@ -74,18 +77,18 @@ func (f *integerEmitter) directCall(index uint32, sig functionSpec, base, import
 	}
 }
 
-// gcDefaultAllocation calls one of the two exact allocating gc/ref_eq helpers.
+// gcDefaultAllocation calls an exact struct or array default-allocation helper.
 // The helper thunk uses the same checked parked-host protocol as a returning
 // import, but is image-local and carries the reserved GC dispatch identity.
-func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool) {
+func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool, typeIndex uint32) {
 	f.restoreCallTransport()
 	if array {
 		f.Load(5, f.SpillOffset(base), false)
 		f.a.Sd(enc.X5, enc.X10, 0) // length
-		f.a.Constant32(enc.X5, 2)
+		f.a.Constant32(enc.X5, typeIndex)
 		f.a.Sd(enc.X5, enc.X10, 8) // type index
 	} else {
-		f.a.Constant32(enc.X5, 0)
+		f.a.Constant32(enc.X5, typeIndex)
 		f.a.Sd(enc.X5, enc.X10, 0) // type index
 	}
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
@@ -96,6 +99,52 @@ func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool
 	}
 	f.a.Ld(enc.X5, result, 0)
 	f.Store(f.SpillOffset(base), 5, true)
+}
+
+func (f *integerEmitter) gcArrayGetI32(base int) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.a.Constant32(enc.X5, 0)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayGet})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Lwu(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, false)
+}
+
+func (f *integerEmitter) gcArraySetI32(base int) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.Load(5, f.SpillOffset(base+2), false)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.a.Constant32(enc.X5, 0)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArraySet})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcArrayLength(base int) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayLen})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Lwu(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, false)
 }
 
 // gcStructGetField0 calls the exact numeric field getter used by the bounded

@@ -75,9 +75,12 @@ type CompileOptions struct {
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
-	production        bool
-	publicStarts      bool
-	hostImports       bool
+	// GCArrayLocalSource is the exact-wire witness for the bounded numeric
+	// array.new_default/get/set/len checkpoint.
+	GCArrayLocalSource bool
+	production         bool
+	publicStarts       bool
+	hostImports        bool
 	// Selected by bounded closed-module admission, or private decoded tests.
 	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool
@@ -98,6 +101,7 @@ type CompileOptions struct {
 	i31Core      bool
 	gcRefEq      bool
 	gcStructGet  bool
+	gcArrayLocal bool
 	tailPlans    *[]tailImportPlan
 	tailSiteBase uint32
 }

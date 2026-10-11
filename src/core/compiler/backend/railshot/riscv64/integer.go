@@ -111,14 +111,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		locals[i] = scalarWide(t) || localRefs[i]
 	}
 	for _, run := range fn.Locals.Runs {
-		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, state.referenceCalls, referenceTypes)) {
+		arrayLocalRef := state != nil && state.gcArrayLocal && wasm.EqualValType(run.Type, wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)))
+		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, state.referenceCalls, referenceTypes)) && !arrayLocalRef {
 			return integerSummary{}, unsupported("noninteger local")
 		}
 		if int(run.Count) > 256-nlocals {
 			return integerSummary{}, unsupported("local bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
-			localRefs[nlocals] = internalFunctionReferenceWithTypes(run.Type, true, referenceTypes)
+			localRefs[nlocals] = internalFunctionReferenceWithTypes(run.Type, true, referenceTypes) || arrayLocalRef
 			locals[nlocals] = scalarWide(run.Type) || localRefs[nlocals]
 			nlocals++
 		}
@@ -1510,7 +1511,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcDefaultAllocation(gcStructAllocDefault, h, false)
+					emit.gcDefaultAllocation(gcStructAllocDefault, h, false, 0)
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1533,8 +1534,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewDefault:
-				if !state.gcRefEq || imm.Index != 2 {
-					return integerSummary{}, unsupported("array.new_default outside exact gc ref.eq profile")
+				if (!state.gcRefEq && !state.gcArrayLocal) || (state.gcRefEq && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) {
+					return integerSummary{}, unsupported("array.new_default outside exact GC profile")
 				}
 				if _, err = popClass(false); err != nil {
 					return integerSummary{}, err
@@ -1544,9 +1545,66 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcDefaultAllocation(gcArrayAllocDefault, h, true)
+					emit.gcDefaultAllocation(gcArrayAllocDefault, h, true, imm.Index)
 				}
 				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			case wasm.InstrArrayGet:
+				if !state.gcArrayLocal || imm.Index != 0 {
+					return integerSummary{}, unsupported("array.get outside exact gc array local profile")
+				}
+				if _, err = popClass(false); err != nil {
+					return integerSummary{}, err
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcArrayGetI32(h)
+				}
+				if err = push(false); err != nil {
+					return integerSummary{}, err
+				}
+			case wasm.InstrArraySet:
+				if !state.gcArrayLocal || imm.Index != 0 {
+					return integerSummary{}, unsupported("array.set outside exact gc array local profile")
+				}
+				if _, err = popClass(false); err != nil {
+					return integerSummary{}, err
+				}
+				if _, err = popClass(false); err != nil {
+					return integerSummary{}, err
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcArraySetI32(h)
+				}
+			case wasm.InstrArrayLen:
+				if !state.gcArrayLocal {
+					return integerSummary{}, unsupported("array.len outside exact gc array local profile")
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcArrayLength(h)
+				}
+				if err = push(false); err != nil {
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefI31:

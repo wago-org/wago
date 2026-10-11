@@ -291,12 +291,13 @@ func (b *instanceBuilder) prepareCollector() error {
 		return nil
 	}
 	gcConfig := b.opts.GC
-	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) && !rv64GCStructGet(b.c) {
+	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) && !rv64GCStructGet(b.c) && !rv64GCArrayLocal(b.c) {
 		// Generic products outside the validated native root-map slice still do
 		// not publish every native reference at allocating helper safepoints. Keep
 		// them stable and bounded rather than scanning an incomplete frame. The
 		// exact RV64 allocating products have no live native reference across an
-		// allocating helper safepoint; ref.eq publishes table roots separately.
+		// allocating helper safepoint; ref.eq publishes table roots separately,
+		// while the local struct/array products allocate before producing a ref.
 		gcConfig.Profile = gc.ProfileThroughput
 		gcConfig.DisableCollection = true
 	}

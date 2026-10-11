@@ -89,6 +89,8 @@ func railshotGCRefEqSource(data []byte) bool { return railshot.AdmitGCRefEqSourc
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
 
+func railshotGCArrayLocalSource(data []byte) bool { return railshot.AdmitGCArrayLocalSource(data) }
+
 func railshotConfigureI31Core(exactSource bool, opts *railshotCompileOptions) {
 	opts.I31CoreSource = exactSource
 }
@@ -99,4 +101,8 @@ func railshotConfigureGCRefEq(exactSource bool, opts *railshotCompileOptions) {
 
 func railshotConfigureGCStructGet(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCStructGetSource = exactSource
+}
+
+func railshotConfigureGCArrayLocal(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayLocalSource = exactSource
 }

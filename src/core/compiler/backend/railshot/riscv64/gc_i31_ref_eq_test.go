@@ -18,6 +18,7 @@ import (
 const rv64I31RefEqPilotHex = "0061736d01000000018a808080000260000060027f7f017f038380808000020001048480808000016d0005078d808080000204696e6974000002657100010abc8080800002a680808000004100d06d26004101d06c260041024107fb1c260041034107fb1c260041044108fb1c26000b8b80808000002000250020012500d30b"
 const rv64OfficialObjectRefEqHex = "0061736d0100000001af808080000950005f0050005f017f005e78005001005f005001005f005001015f017f005001015f017f0060000060027f7f017f038380808000020708048480808000016d0014078d808080000204696e6974000002657100010adc8080800002c680808000004100d06d26004101d06c260041024107fb1c260041034107fb1c260041044108fb1c26004105fb010026004106fb0100260041074100fb0702260041084100fb070226000b8b80808000002000250020012500d30b"
 const rv64GCStructGetHex = "0061736d01000000018980808000025f017f016000017f0382808080000101078780808000010367657400000a8f8080800001898080800000fb0100fb0200000b"
+const rv64GCArrayLocalHex = "0061736d01000000019680808000045e7f0160027f7f017f60037f7f7f017f60017f017f0384808080000301020307978080800003036765740000077365745f6765740001036c656e00020ac180808000038c80808000002000fb07002001fb0b000b9c80808000010163002000fb07002103200320012002fb0e0020032001fb0b000b8980808000002000fb0700fb0f0b"
 
 func rv64I31RefEqPilotBytes(t testing.TB) []byte {
 	t.Helper()
@@ -264,5 +265,99 @@ func TestRV64GCStructGetHelperImage(t *testing.T) {
 	wantCode := [sha256.Size]byte{0x54, 0xa4, 0xd5, 0x21, 0x52, 0xa3, 0x42, 0x28, 0xf5, 0x08, 0x8d, 0xc4, 0x62, 0xea, 0x05, 0x47, 0x60, 0xfc, 0x3b, 0xd5, 0x92, 0x4c, 0x0a, 0xda, 0x6c, 0x43, 0xb7, 0x62, 0xc0, 0xd5, 0x11, 0x6d}
 	if image == nil || len(image.Code) != 1244 || sha256.Sum256(image.Code) != wantCode || len(image.Entry) != 1 || image.Entry[0] != 0 || !slices.Equal(image.Entry, image.InternalEntry) {
 		t.Fatal("gc struct.get helper image metadata", image)
+	}
+}
+
+func TestRV64GCArrayLocalHelperImage(t *testing.T) {
+	source, err := hex.DecodeString(rv64GCArrayLocalHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCArrayLocalWire(source) || !AdmitGCArrayLocalSource(source) || !admitRV64GCArrayLocal(m) {
+		t.Fatal("gc array local identity rejected")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCArrayHelpers: true, SyncHostSlots: 4, GCArrayLocalSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	}
+	withoutWire := opts
+	withoutWire.GCArrayLocalSource = false
+	if image, err := CompileModuleWith(m, withoutWire); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("gc array local escaped exact wire provenance", err)
+	}
+	// Insert an empty memory section after the function section. Decoding drops
+	// it, but the exact source-provenance witness must not.
+	nearWire := slices.Concat(source[:46], []byte{5, 1, 0}, source[46:])
+	nearModule, err := wasm.DecodeModule(nearWire)
+	if err != nil {
+		t.Fatal("decode inert-section near miss", err)
+	}
+	if !admitRV64GCArrayLocal(nearModule) || admitRV64GCArrayLocalWire(nearWire) || AdmitGCArrayLocalSource(nearWire) {
+		t.Fatal("inert-section near miss lost decoded/wire distinction")
+	}
+	withoutWire.GCArrayLocalSource = false
+	if image, err := CompileModuleWith(nearModule, withoutWire); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("inert-section near miss escaped provenance", err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body":   func(v *wasm.Module) { v.Code[0].BodyBytes[8] = 0x0f },
+		"export": func(v *wasm.Module) { v.Exports[2].Name = "size" },
+		"array-type": func(v *wasm.Module) {
+			v.Types[0].SubTypes[0].Comp.Array = wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Const)
+		},
+		"local-type": func(v *wasm.Module) { v.Code[1].Locals.Runs[0].Type = wasm.I64 },
+	} {
+		t.Run("decoded-"+name, func(t *testing.T) {
+			candidate, err := wasm.DecodeModule(slices.Clone(source))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(candidate)
+			if admitRV64GCArrayLocal(candidate) {
+				t.Fatal("decoded near miss admitted")
+			}
+			if image, err := CompileModuleWith(candidate, opts); image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("decoded near miss escaped provenance", err)
+			}
+		})
+	}
+	for name, mutate := range map[string]func(*CompileOptions){
+		"struct-helper":       func(candidate *CompileOptions) { candidate.GCStructHelpers = true },
+		"missing-descriptors": func(candidate *CompileOptions) { candidate.Codegen.Module.GCTypeDescs = nil },
+		"wrong-descriptor":    func(candidate *CompileOptions) { candidate.Codegen.Module.GCTypeDescs[0].ElemSize++ },
+		"missing-layouts":     func(candidate *CompileOptions) { candidate.Codegen.Module.GCTypeLayouts = nil },
+		"wrong-layout": func(candidate *CompileOptions) {
+			candidate.Codegen.Module.GCTypeLayouts[0].PointerFree = !candidate.Codegen.Module.GCTypeLayouts[0].PointerFree
+		},
+		"frame-roots":   func(candidate *CompileOptions) { candidate.GCFrameRoots = shared.NewGCModuleFrameRootPlan(len(m.Code)) },
+		"slot-capacity": func(candidate *CompileOptions) { candidate.SyncHostSlots = 3 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := opts
+			candidate.Codegen.Module.GCTypeDescs = slices.Clone(opts.Codegen.Module.GCTypeDescs)
+			candidate.Codegen.Module.GCTypeLayouts = slices.Clone(opts.Codegen.Module.GCTypeLayouts)
+			mutate(&candidate)
+			if image, err := CompileModuleWith(m, candidate); image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("gc array local escaped exact collector metadata", err)
+			}
+		})
+	}
+	image, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDigest := [sha256.Size]byte{0x88, 0xe5, 0x7a, 0x7f, 0x97, 0x1e, 0x9d, 0x4a, 0xf1, 0x5e, 0x5f, 0x79, 0xd1, 0xa4, 0x6b, 0xc6, 0x44, 0x8e, 0xaa, 0xa1, 0xae, 0x2d, 0x02, 0x61, 0xd3, 0x18, 0xa6, 0xa8, 0xba, 0xe6, 0xac, 0x79}
+	wantEntry := []int{0, 784, 1680}
+	if image == nil || len(image.Code) != 3468 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
+		t.Fatal("gc array local helper image metadata", image)
 	}
 }
