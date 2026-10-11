@@ -872,13 +872,13 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	if in == nil || in.c == nil {
 		return true
 	}
-	// The exact abstract ref.test product registers compact collector slots
-	// separately. Its physical anyref descriptor can also contain bounded
-	// foreign conversion identities, which are not collector references and
-	// therefore must never be scanned as raw roots. Other qualified products
+	// The exact abstract ref.test and extern-conversion products register compact
+	// collector slots separately. Their physical anyref descriptors can also
+	// contain bounded foreign conversion identities, which are not collector
+	// references and therefore must never be scanned as raw roots. Other products
 	// retain their established descriptor walk as an additional transient root
 	// source during helper publication.
-	if !rv64GCRefTestAbstract(in.c) {
+	if !rv64GCRefTestAbstract(in.c) && !rv64GCExtern(in.c) {
 		for tableIndex := 0; tableIndex < in.c.tableCount(); tableIndex++ {
 			if !isGCRefValType(in.c.tableElementType(tableIndex)) {
 				continue

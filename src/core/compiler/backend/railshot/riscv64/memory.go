@@ -210,7 +210,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
 	gcRefTestConcrete := admitRV64GCRefTestConcrete(m)
-	gcRefTestAbstract := admitRV64GCRefTestAbstract(m)
+	gcExtern := admitRV64GCExtern(m)
+	gcRefTestAbstract := admitRV64GCRefTestAbstract(m) || gcExtern
 	gcStructGet := admitRV64GCStructGet(m)
 	gcStructMutation := admitRV64GCStructMutation(m)
 	gcStructNull := admitRV64GCStructNull(m)
@@ -327,6 +328,11 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	importedGlobals := len(s.globals)
 	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
 	for _, g := range m.Globals {
+		if gcExtern && g.Type.Type.Kind() == wasm.ValRef {
+			// The exact classifier pins both conversion initializers to null.
+			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
+			continue
+		}
 		if (gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && g.Type.Type.Kind() == wasm.ValRef {
 			s.globals = append(s.globals, globalSpec{wide: true, mutable: g.Type.Mutable, typ: g.Type.Type})
 			continue
