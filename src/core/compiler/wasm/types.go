@@ -1389,6 +1389,12 @@ const (
 	InstrI16x8RelaxedDotI8x16I7x16S
 	InstrI32x4RelaxedDotI8x16I7x16AddS
 
+	// Wide arithmetic uses low/high pairs of ordinary i64 values.
+	InstrI64Add128
+	InstrI64Sub128
+	InstrI64MulWideS
+	InstrI64MulWideU
+
 	numInstrKinds // sentinel: count of InstrKind values, for lookup-table sizing
 )
 

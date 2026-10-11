@@ -877,7 +877,7 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 }
 
 // emitFC dispatches the 0xFC-prefixed opcodes: saturating truncation and bulk
-// memory ops.
+// memory and wide arithmetic ops.
 func (f *fn) emitFC(r *wasm.Reader) error {
 	sub, err := r.U32()
 	if err != nil {
@@ -920,6 +920,10 @@ func (f *fn) emitFC(r *wasm.Reader) error {
 		return f.tableSize(r)
 	case 17: // table.fill
 		return f.tableFill(r)
+	case 19, 20:
+		f.wideAddSub(sub == 20)
+	case 21, 22:
+		f.wideMul(sub == 21)
 	default:
 		return fmt.Errorf("arm64: unsupported 0xFC opcode %d", sub)
 	}

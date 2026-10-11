@@ -366,6 +366,16 @@ passes in full: 57 of 57 applicable files and 0 failing assertions. See
 | Memory / table / global imports & exports | ✓ | ✅ done (cross-instance function / global / table / memory linking, incl. shared mutable tables + memories, and host functions used as table funcrefs) |
 | `start` function | ✓ | ✅ done (local, or an imported void host function) |
 
+### Wide Arithmetic (Phase 4)
+
+AMD64 and ARM64 support `i64.add128`, `i64.sub128`, `i64.mul_wide_s`, and
+`i64.mul_wide_u` on all supported operating systems, using baseline integer
+instructions. Operands and results use ordinary i64 low/high pairs, with the
+low half first. Support is automatic, with no additional feature switch or
+new value type. This proposal is separate from the Core 3 release group.
+Native artifacts preserve the compiled instructions without additional state.
+RV64 integration remains pending on its experimental backend branch.
+
 ### Beyond WebAssembly 1.0
 
 This table covers later WebAssembly proposals and Wago platform capabilities.

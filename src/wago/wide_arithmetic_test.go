@@ -12,6 +12,8 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+var wideArithmeticNames = [...]string{"add128", "sub128", "mul_wide_s", "mul_wide_u"}
+
 func wideArithmeticModule(sub byte, body []byte) []byte {
 	n := 2
 	if sub == 19 || sub == 20 {
@@ -61,9 +63,10 @@ func wideArithmeticExpected(sub byte, p []uint64) (lo, hi uint64) {
 
 func TestWideArithmeticExecutionAndArtifact(t *testing.T) {
 	for _, sub := range []byte{19, 20, 21, 22} {
-		t.Run(string(rune('A'+sub-19)), func(t *testing.T) {
-			// Default config: the proposal does not require a new user opt-in.
-			c, err := Compile(wideArithmeticModule(sub, nil))
+		t.Run(wideArithmeticNames[sub-19], func(t *testing.T) {
+			// Artifact round trips require explicit bounds, including guard-page builds.
+			// Composition and boundary tests also cover default-config admission.
+			c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), wideArithmeticModule(sub, nil))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +125,7 @@ func TestWideArithmeticExecutionAndArtifact(t *testing.T) {
 
 func BenchmarkWideArithmeticInvoke(b *testing.B) {
 	for _, sub := range []byte{19, 20, 21, 22} {
-		b.Run(string(rune('A'+sub-19)), func(b *testing.B) {
+		b.Run(wideArithmeticNames[sub-19], func(b *testing.B) {
 			c, err := Compile(wideArithmeticModule(sub, nil))
 			if err != nil {
 				b.Fatal(err)
@@ -145,5 +148,129 @@ func BenchmarkWideArithmeticInvoke(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func TestWideArithmeticComposition(t *testing.T) {
+	for _, sub := range []byte{19, 20, 21, 22} {
+		n := 2
+		if sub < 21 {
+			n = 4
+		}
+		for _, mode := range []string{"local-preserved", "deferred-div", "pressure", "block", "chain"} {
+			if mode == "chain" && sub >= 21 {
+				continue
+			}
+			var body []byte
+			if mode == "pressure" {
+				for i := 0; i < 20; i++ {
+					body = append(body, 0x20, 0)
+				}
+			}
+			for i := 0; i < n; i++ {
+				body = append(body, 0x20, byte(i))
+				if mode == "deferred-div" {
+					body = append(body, 0x42, 3, 0x80)
+				}
+			}
+			if mode == "block" {
+				body = append(body, 0x02, 0)
+			}
+			body = append(body, 0xfc, sub)
+			if mode == "block" {
+				body = append(body, 0x0b)
+			}
+			if mode == "local-preserved" {
+				body = append(body, 0x20, 0, 0x7c)
+			}
+			if mode == "pressure" {
+				body = append(body, 0x1a)
+				for i := 0; i < 20; i++ {
+					body = append(body, 0x7c)
+				}
+				body = append(body, 0x42, 0)
+			}
+			if mode == "chain" {
+				body = append(body, 0x20, 2, 0x20, 3, 0xfc, sub)
+			}
+			body = append(body, 0x0b)
+			c, err := Compile(wideArithmeticModule(sub, body))
+			if err != nil {
+				t.Fatalf("%d %s compile: %v", sub, mode, err)
+			}
+			defer c.Close()
+			in, err := Instantiate(c, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			rng := rand.New(rand.NewSource(654))
+			for j := 0; j < 100; j++ {
+				p := []uint64{rng.Uint64(), rng.Uint64(), rng.Uint64(), rng.Uint64()}
+				if n == 2 {
+					p = p[:2]
+				}
+				effective := append([]uint64(nil), p...)
+				if mode == "deferred-div" {
+					for i := range effective {
+						effective[i] /= 3
+					}
+				}
+				lo, hi := wideArithmeticExpected(sub, effective)
+				if mode == "local-preserved" {
+					hi += p[0]
+				}
+				if mode == "pressure" {
+					lo += 20 * p[0]
+					hi = 0
+				}
+				if mode == "chain" {
+					lo, hi = wideArithmeticExpected(sub, []uint64{lo, hi, p[2], p[3]})
+				}
+				got, err := in.Invoke("run", p...)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(got) != 2 || got[0] != lo || got[1] != hi {
+					t.Fatalf("%d %s %x: got %x want [%x %x]", sub, mode, p, got, lo, hi)
+				}
+			}
+		}
+	}
+}
+
+func TestWideArithmeticCarryBorrowBoundary(t *testing.T) {
+	max := ^uint64(0)
+	for _, tc := range []struct {
+		sub    byte
+		p      []uint64
+		lo, hi uint64
+	}{
+		{19, []uint64{max, 0, 1, 0}, 0, 1},
+		{19, []uint64{max, max, 1, 0}, 0, 0},
+		{19, []uint64{max, 9, 2, 30}, 1, 40},
+		{20, []uint64{0, 1, 1, 0}, max, 0},
+		{20, []uint64{0, 0, 1, 0}, max, max},
+		{20, []uint64{0, 0, 0, 1}, 0, max},
+		{21, []uint64{1 << 63, max}, 1 << 63, 0},
+		{21, []uint64{1 << 63, 1 << 63}, 0, 1 << 62},
+		{21, []uint64{max, 2}, max - 1, max},
+		{22, []uint64{1 << 63, 2}, 0, 1},
+		{22, []uint64{max, max}, 1, max - 1},
+	} {
+		c, err := Compile(wideArithmeticModule(tc.sub, nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		in, err := Instantiate(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer in.Close()
+		got, err := in.Invoke("run", tc.p...)
+		if err != nil || len(got) != 2 || got[0] != tc.lo || got[1] != tc.hi {
+			t.Fatalf("%s %x: got %x, %v; want [%x %x]", wideArithmeticNames[tc.sub-19], tc.p, got, err, tc.lo, tc.hi)
+		}
 	}
 }

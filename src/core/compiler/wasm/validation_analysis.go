@@ -265,7 +265,7 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	if IsCoreAtomicInstructionKind(kind) {
 		f.Flags |= ValidatedFuncUsesThreads | ValidatedFuncNeedsDetailedAdmission
 	}
-	if kind >= InstrV128Load && kind < numInstrKinds {
+	if kind >= InstrV128Load && kind <= InstrI32x4RelaxedDotI8x16I7x16AddS {
 		f.Flags |= ValidatedFuncUsesSIMD
 	}
 	if kind >= InstrStringConst && kind <= InstrStringEncodeWtf8Array {
@@ -300,7 +300,8 @@ func validatedInstructionAdmissionComplete(kind InstrKind) bool {
 		return true
 	}
 	switch kind {
-	case InstrUnreachable, InstrNop, InstrBlock, InstrLoop, InstrIf,
+	case InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU,
+		InstrUnreachable, InstrNop, InstrBlock, InstrLoop, InstrIf,
 		InstrBr, InstrBrIf, InstrBrTable, InstrReturn, InstrCall, InstrCallIndirect,
 		InstrDrop, InstrSelect, InstrLocalGet, InstrLocalSet, InstrLocalTee,
 		InstrGlobalGet, InstrGlobalSet, InstrTableGet, InstrTableSet,

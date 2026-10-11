@@ -1657,6 +1657,8 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		return err
 	}
 	switch imm.Subopcode {
+	case 19, 20, 21, 22:
+		return nil
 	case 0, 1, 2, 3, 4, 5, 6, 7:
 		if !p.feat.SaturatingTrunc {
 			return p.unsupported("instruction", "nontrapping-float-to-int-conversion disabled", context())
@@ -2168,6 +2170,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
 		wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul, wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU, wasm.InstrI32And, wasm.InstrI32Or, wasm.InstrI32Xor, wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
 		wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
+		wasm.InstrI64Add128, wasm.InstrI64Sub128, wasm.InstrI64MulWideS, wasm.InstrI64MulWideU,
 		wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul, wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU, wasm.InstrI64And, wasm.InstrI64Or, wasm.InstrI64Xor, wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr,
 		wasm.InstrF32Abs, wasm.InstrF32Neg, wasm.InstrF32Sqrt, wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div, wasm.InstrF32Min, wasm.InstrF32Max,
 		wasm.InstrF32Ceil, wasm.InstrF32Floor, wasm.InstrF32Trunc, wasm.InstrF32Nearest, wasm.InstrF32Copysign,

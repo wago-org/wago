@@ -529,7 +529,8 @@ func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int, gcStr
 		wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill,
 		wasm.InstrTableInit, wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
 		event = shared.LocalEventInvalidate
-	case wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
+	case wasm.InstrI64MulWideS, wasm.InstrI64MulWideU,
+		wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 		wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
 		wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
 		wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr:
@@ -544,7 +545,8 @@ func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int, gcStr
 		}
 	}
 	switch kind {
-	case wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
+	case wasm.InstrI64MulWideS, wasm.InstrI64MulWideU,
+		wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 		wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU:
 		h.noteFixedScratchLease()
 	}
@@ -1230,6 +1232,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if op == 0xfd {
 				s.h.flags.set(hintHasSIMD)
+			}
+			if imm.Kind == wasm.InstrI64MulWideS || imm.Kind == wasm.InstrI64MulWideU {
+				s.h.noteFixedScratchLease()
+				s.h.noteBoundaryEvent(shared.LocalEventFixedReg, depth)
 			}
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.flags.set(hintHasControlFlow)

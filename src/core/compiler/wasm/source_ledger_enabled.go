@@ -647,6 +647,10 @@ func (b *sourceLedgerBuilder) signature(in *Instruction, ft *CompType) (inputs, 
 		return 2, 0, false, true
 	}
 	switch in.Kind {
+	case InstrI64Add128, InstrI64Sub128:
+		return 4, 2, false, true
+	case InstrI64MulWideS, InstrI64MulWideU:
+		return 2, 2, false, true
 	case InstrNop:
 		return 0, 0, false, true
 	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const:

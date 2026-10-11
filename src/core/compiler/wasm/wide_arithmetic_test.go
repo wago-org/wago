@@ -71,3 +71,31 @@ func TestWideArithmeticDecodeValidateParity(t *testing.T) {
 		}
 	}
 }
+
+func TestWideArithmeticConstantExpressionsReject(t *testing.T) {
+	for _, kind := range []InstrKind{InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU} {
+		n := 2
+		if kind == InstrI64Add128 || kind == InstrI64Sub128 {
+			n = 4
+		}
+		instrs := make([]Instruction, 0, n+1)
+		for i := 0; i < n; i++ {
+			instrs = append(instrs, Instruction{Kind: InstrI64Const})
+		}
+		instrs = append(instrs, Instruction{Kind: kind})
+		m := &Module{Globals: []Global{{Type: GlobalType{Type: I64}, Init: Expr{Instrs: instrs}}}}
+		if err := ValidateModuleWithFeatures(m, ValidationFeatures{ExtendedConstGlobals: true}); err == nil {
+			t.Fatalf("%s accepted in constant expression", kind)
+		}
+	}
+}
+
+func TestWideArithmeticSummaryDoesNotRequireSIMD(t *testing.T) {
+	for _, kind := range []InstrKind{InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU} {
+		var facts ValidatedFuncFacts
+		facts.observeSlow(kind)
+		if facts.Flags != 0 {
+			t.Fatalf("%s unexpected facts %#x", kind, facts.Flags)
+		}
+	}
+}

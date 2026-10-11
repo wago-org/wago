@@ -11,7 +11,7 @@ func TestPrefixLookupTablesStayCompactAndComplete(t *testing.T) {
 		data []InstrKind
 		want int
 	}{
-		{name: "fc-no-immediate", data: fcNoImm[:], want: 8},
+		{name: "fc-no-immediate", data: fcNoImm[:], want: 12},
 		{name: "fb-no-immediate", data: fbNoImm[:], want: 6},
 		{name: "fe-memory", data: feMem[:], want: 17},
 		{name: "fd-memory", data: fdMem[:], want: 22},
@@ -40,7 +40,7 @@ func TestPrefixLookupTablesStayCompactAndComplete(t *testing.T) {
 			t.Errorf("%s out-of-range lookup = (%v, %v)", table.name, got, ok)
 		}
 	}
-	if got := unsafe.Sizeof(fcNoImm) + unsafe.Sizeof(fbNoImm) + unsafe.Sizeof(feMem) + unsafe.Sizeof(fdMem) + unsafe.Sizeof(fdLane) + unsafe.Sizeof(fdNoImm); got != 948 {
-		t.Fatalf("prefix lookup storage = %d bytes, want 948", got)
+	if got := unsafe.Sizeof(fcNoImm) + unsafe.Sizeof(fbNoImm) + unsafe.Sizeof(feMem) + unsafe.Sizeof(fdMem) + unsafe.Sizeof(fdLane) + unsafe.Sizeof(fdNoImm); got != 978 {
+		t.Fatalf("prefix lookup storage = %d bytes, want 978", got)
 	}
 }
