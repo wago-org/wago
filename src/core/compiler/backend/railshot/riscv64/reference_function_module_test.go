@@ -260,6 +260,40 @@ func TestPublicReferenceCallBoundaryScalarSignatureAdmission(t *testing.T) {
 	}
 }
 
+func TestPublicReferenceCallBoundaryScalarTailAdmission(t *testing.T) {
+	m := publicReferenceScalarCallBoundaryDecode(t, false)
+	m.Code[2].BodyBytes[10] = 0x15
+	if !admitPublicReferenceCallBoundary(m) {
+		t.Fatal("scalar public return_call_ref boundary was not recognized")
+	}
+	if err := admitClosedReferenceFunctionModule(m, false); err != nil {
+		t.Fatal("scalar public return_call_ref boundary was not admitted", err)
+	}
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+		t.Fatal("scalar public return_call_ref frontend", err)
+	}
+	image, err := CompileModuleWith(m, closedReferenceProductionOptions(true, true))
+	if err != nil || len(image.Entry) != 3 || len(image.Code) == 0 || image.NativeTail == nil || len(image.NativeTail.Plans) != 1 || !image.NativeReferenceCalls {
+		t.Fatal("scalar public return_call_ref lowering", err)
+	}
+
+	referenceResult := publicReferenceScalarCallBoundaryDecode(t, true)
+	referenceResult.Code[2].BodyBytes[10] = 0x15
+	if admitPublicReferenceCallBoundary(referenceResult) {
+		t.Fatal("return_call_ref with a funcref wrapper result was admitted")
+	}
+	if err := admitClosedReferenceFunctionModule(referenceResult, false); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("return_call_ref with a funcref wrapper result reached lowering", err)
+	}
+
+	badOrder := publicReferenceScalarCallBoundaryDecode(t, false)
+	badOrder.Code[2].BodyBytes[10] = 0x15
+	badOrder.Code[2].BodyBytes[9] = 3
+	if admitPublicReferenceCallBoundary(badOrder) {
+		t.Fatal("return_call_ref with a misplaced target inherited the boundary")
+	}
+}
+
 func TestReferenceFunctionModulePrivatePipeline(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, tails := range []bool{false, true} {

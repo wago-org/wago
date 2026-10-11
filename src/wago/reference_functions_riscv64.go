@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -53,13 +54,17 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 		return false
 	}
 	wantFeatures := CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+	tail := rv64HasReferenceTail(c)
+	if tail {
+		wantFeatures |= CoreFeatureTailCall
+	}
 	for _, sig := range c.Funcs {
 		if len(sig.Results) > 1 {
 			wantFeatures |= CoreFeatureMultiValue
 			break
 		}
 	}
-	if c.requiredFeatures != wantFeatures || rv64HasReferenceTail(c) {
+	if c.requiredFeatures != wantFeatures {
 		return false
 	}
 	for i := range c.Funcs {
@@ -78,7 +83,7 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	}
 	numericResult := rv64PublicReferenceSameTypes(caller.Results, target.Results)
 	referenceResult := len(caller.Results) == 1 && caller.Results[0] == ValFuncRef
-	if !numericResult && !referenceResult {
+	if !numericResult && !referenceResult || tail && !numericResult {
 		return false
 	}
 	targetType, producerType, callerType := c.Types[0], c.Types[1], c.Types[2]
@@ -118,7 +123,42 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 			return false
 		}
 	}
+	m := rv64NativeTailModule(c)
+	if tail {
+		if m == nil || len(m.Plans) != 1 {
+			return false
+		}
+		p := m.Plans[0]
+		wantPC := uint32(1)
+		for i := 0; i <= len(target.Params); i++ {
+			wantPC += 1 + rv64PublicReferenceU32Bytes(uint32(i))
+		}
+		// The canonical wrapper has N+1 parameters and a peak stack of N+1:
+		// its argument homes begin after the fixed header and local homes, the
+		// reference immediately follows the N scalar homes, and the complete
+		// frame is 16-byte aligned. Bind retained metadata to that layout so an
+		// otherwise in-bounds artifact cannot redirect the tail proof to a
+		// different set of frame cells.
+		n := len(target.Params)
+		wantSourceBase := 56 + 8*n
+		wantReferenceBase := 56 + 16*n
+		wantFrameBytes := 64 + 16*n
+		if p.Kind != encoder.NativeTailReference || p.TypeIndex != 0 || p.FunctionIndex != 2 || p.ImportIndex != 0 || p.SourcePC != wantPC || p.FrameBytes != wantFrameBytes || p.SourceBase != wantSourceBase || p.SourceStride != 8 || p.ReferenceBase != wantReferenceBase {
+			return false
+		}
+	} else if m != nil {
+		return false
+	}
 	return true
+}
+
+func rv64PublicReferenceU32Bytes(value uint32) uint32 {
+	n := uint32(1)
+	for value >= 0x80 {
+		n++
+		value >>= 7
+	}
+	return n
 }
 
 func rv64PublicReferenceScalarSignature(sig FuncSig) bool {
@@ -686,7 +726,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 		referenceExports = referenceExports || railshotNonCallableFunction(c, index)
 	}
 	if referenceExports {
-		if c.tableCount() != 0 || (c.nativeReferenceCallABI && !rv64PublicReferenceCallBoundary(c)) || rv64HasReferenceTail(c) {
+		if c.tableCount() != 0 || (c.nativeReferenceCallABI || rv64HasReferenceTail(c)) && !rv64PublicReferenceCallBoundary(c) {
 			return reject("public reference wrapper requires ephemeral owner-scoped transport")
 		}
 		for _, global := range c.Globals {

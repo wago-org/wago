@@ -333,6 +333,7 @@ func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.Compi
 // Instruction bytes were bounded before this pass.
 func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, bool, error) {
 	referenceTails, indirectTails, hasReferenceCall, hasReferenceControl := false, false, false, false
+	publicReferenceBoundary := referenceFunctions && !vector && admitPublicReferenceCallBoundary(m)
 	types := internalReferenceTypes{
 		decoded:                  m.Types,
 		decodedSWAR:              vector,
@@ -443,7 +444,13 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 				}
 				hasReferenceControl = true
 			}
-			referenceTails = referenceTails || op == 0x15
+			if op == 0x15 {
+				referenceTails = true
+				// Public tail arguments need the same invocation-scoped owner
+				// graph as ordinary call_ref. Private reference tails keep their
+				// existing internal-only marker.
+				hasReferenceCall = hasReferenceCall || publicReferenceBoundary
+			}
 			indirectTails = indirectTails || op == 0x13
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {

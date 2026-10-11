@@ -4,6 +4,7 @@ package riscv64
 
 import (
 	"bytes"
+	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -65,6 +66,7 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	}
 	callerBody = append(callerBody, 0x20)
 	callerBody = appendPublicReferenceBoundaryU32(callerBody, uint32(len(target.Params)))
+	callerPrefix := slices.Clone(callerBody)
 	callerBody = append(callerBody, 0x14, 0)
 	if referenceResult {
 		for range target.Results {
@@ -74,7 +76,8 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 		callerBody = appendPublicReferenceBoundaryU32(callerBody, uint32(len(target.Params)))
 	}
 	callerBody = append(callerBody, 0x0b)
-	if !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, callerBody) {
+	tailBody := append(callerPrefix, 0x15, 0, 0x0b)
+	if !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, callerBody) && (!numericResult || !bytes.Equal(m.Code[2].BodyBytes, tailBody)) {
 		return false
 	}
 	for i, name := range []string{"target", "get", "call"} {
