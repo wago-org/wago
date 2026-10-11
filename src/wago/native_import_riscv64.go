@@ -390,6 +390,11 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// exact table index. Conversion helpers use one slot.
 		params = max(params, 3)
 	}
+	if rv64GCRefCastAbstract(c) {
+		// ref.cast stages the reference, heap code, nullability, and exactness.
+		params = max(params, 4)
+		results = max(results, 1)
+	}
 	if rv64GCArrayFill(c) {
 		// The packed fill bridge adds the exact type index after the array,
 		// destination, value, and length operands.
@@ -407,7 +412,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// complete retained classifiers pin the non-function type graph; only the
 		// local function signatures already counted above contribute to transport
 		// capacity.
-		if rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCArrayInitElem(c) {
+		if rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCArrayInitElem(c) {
 			return params, results, nil
 		}
 		if len(c.Types) > railshot.MaxFunctions {

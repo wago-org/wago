@@ -101,6 +101,10 @@ func railshotGCRefTestAbstractSource(data []byte) bool {
 
 func railshotGCExternSource(data []byte) bool { return railshot.AdmitGCExternSource(data) }
 
+func railshotGCRefCastAbstractSource(data []byte) bool {
+	return railshot.AdmitGCRefCastAbstractSource(data)
+}
+
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
 
 func railshotGCStructMutationSource(data []byte) bool {
@@ -179,6 +183,10 @@ func railshotConfigureGCRefTestAbstract(exactSource bool, opts *railshotCompileO
 
 func railshotConfigureGCExtern(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCExternSource = exactSource
+}
+
+func railshotConfigureGCRefCastAbstract(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCRefCastAbstractSource = exactSource
 }
 
 func railshotConfigureGCStructGet(exactSource bool, opts *railshotCompileOptions) {

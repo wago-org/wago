@@ -25,7 +25,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
+	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCRefCastAbstractWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -96,10 +96,15 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if opts.GCExternSource != decodedGCExtern {
 		return nil, unsupported("gc extern source provenance")
 	}
-	// Both exact products use the same reviewed wide-reference helper path.
+	decodedGCRefCastAbstract := admitRV64GCRefCastAbstract(m)
+	if opts.GCRefCastAbstractSource != decodedGCRefCastAbstract {
+		return nil, unsupported("gc abstract ref.cast source provenance")
+	}
+	// These exact products use the same reviewed wide-reference helper path.
 	// Their wire provenance and retained artifact classifiers remain distinct.
-	opts.gcRefTestAbstract = decodedGCRefTestAbstract || decodedGCExtern
+	opts.gcRefTestAbstract = decodedGCRefTestAbstract || decodedGCExtern || decodedGCRefCastAbstract
 	opts.gcExtern = decodedGCExtern
+	opts.gcRefCastAbstract = decodedGCRefCastAbstract
 	decodedGCStructGet := admitRV64GCStructGet(m)
 	if opts.GCStructGetSource != decodedGCStructGet {
 		return nil, unsupported("gc struct.get source provenance")

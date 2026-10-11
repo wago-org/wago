@@ -771,7 +771,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				abstractNull := state.gcRefTestAbstract && (heap == -13 || heap == -14 || heap == -15 || heap == -16 || heap == -17 || heap == -18 || heap == -21)
+				abstractNull := state.gcRefTestAbstract && (heap == -13 || heap == -14 || heap == -15 || heap == -16 || heap == -17 || heap == -18 || heap == -21 || heap == -22)
 				if heap != -16 && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
@@ -795,7 +795,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case 0xd4:
-				if !state.referenceCalls {
+				if !state.referenceCalls && !state.gcRefTestAbstract {
 					return integerSummary{}, unsupported("ref.as_non_null requires private typed-reference profile")
 				}
 				// An unknown value at an unreachable floor is polymorphic. An
@@ -2012,6 +2012,39 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefCast:
+				if state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs {
+					heap := int64(0)
+					switch imm.HeapType.Abs() {
+					case wasm.HeapNone:
+						heap = -15
+					case wasm.HeapAny:
+						heap = -18
+					case wasm.HeapEq:
+						heap = -19
+					case wasm.HeapI31:
+						heap = -20
+					case wasm.HeapStruct:
+						heap = -21
+					case wasm.HeapArray:
+						heap = -22
+					default:
+						return integerSummary{}, unsupported("ref.cast heap outside exact abstract profile")
+					}
+					if _, err = popClass(true); err != nil {
+						return integerSummary{}, err
+					}
+					callCount++
+					if callCount > maxDirectCalls {
+						return integerSummary{}, unsupported("GC helper call count/slot budget")
+					}
+					if live && emit != nil {
+						emit.gcObjectRefCast(h, heap, imm.Subopcode == 23)
+					}
+					if err = pushReference(); err != nil {
+						return integerSummary{}, err
+					}
+					break
+				}
 				if _, err = popClass(true); err != nil {
 					return integerSummary{}, err
 				}

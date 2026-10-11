@@ -11,3 +11,6 @@ func railshotRestoreGCRefTestAbstractArtifact(*Compiled) {}
 func rv64GCExtern(*Compiled) bool                        { return false }
 func rv64GCExternExecutionCode(*Compiled) bool           { return false }
 func railshotRestoreGCExternArtifact(*Compiled)          {}
+func rv64GCRefCastAbstract(*Compiled) bool               { return false }
+func rv64GCRefCastAbstractExecutionCode(*Compiled) bool  { return false }
+func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}

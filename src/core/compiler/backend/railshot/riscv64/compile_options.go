@@ -84,6 +84,9 @@ type CompileOptions struct {
 	// GCExternSource is the exact-wire witness for the official bounded
 	// anyref/externref conversion and rooted object-table checkpoint.
 	GCExternSource bool
+	// GCRefCastAbstractSource is the exact-wire witness for the official
+	// abstract anyref ref.cast checkpoint.
+	GCRefCastAbstractSource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -161,6 +164,7 @@ type CompileOptions struct {
 	gcRefTestConcrete    bool
 	gcRefTestAbstract    bool
 	gcExtern             bool
+	gcRefCastAbstract    bool
 	gcStructGet          bool
 	gcStructMutation     bool
 	gcStructNull         bool

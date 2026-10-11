@@ -280,7 +280,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		slots  int
 	}
 	helperEntries := make(map[helperBridge]int, 12)
-	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}} {
+	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructRefCast, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}} {
 		used := false
 		for _, call := range relocations {
 			used = used || call.helper == bridge.helper && (call.helper != gcArrayAllocFixed || call.helperSlots == bridge.slots)
@@ -502,7 +502,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCStructGet(m) || admitRV64GCStructMutation(m) || admitRV64GCStructNull(m) || admitRV64GCStructPacked(m) || admitRV64GCStructBasic(m) || admitRV64GCStructNumericGlobals(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
+	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCRefCastAbstract(m) || admitRV64GCStructGet(m) || admitRV64GCStructMutation(m) || admitRV64GCStructNull(m) || admitRV64GCStructPacked(m) || admitRV64GCStructBasic(m) || admitRV64GCStructNumericGlobals(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
 		return nil
 	}
 	i31Core := referenceFunctions && admitRV64I31Core(m)

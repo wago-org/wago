@@ -29,6 +29,7 @@ const (
 	gcStructTableSet     uint32 = 7
 	gcAnyConvertExtern   uint32 = 8
 	gcExternConvertAny   uint32 = 9
+	gcStructRefCast      uint32 = 10
 	gcStructAllocOne     uint32 = 11
 	gcArrayAllocDefault  uint32 = 16
 	gcArrayGet           uint32 = 17
@@ -499,6 +500,29 @@ func (f *integerEmitter) gcObjectRefTest(base int, heap int64, nullable bool) {
 	}
 	f.a.Lwu(enc.X5, result, 0)
 	f.Store(f.SpillOffset(base), 5, false)
+}
+
+func (f *integerEmitter) gcObjectRefCast(base int, heap int64, nullable bool) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.a.Constant64(enc.X5, heap)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.a.Constant32(enc.X5, 0)
+	if nullable {
+		f.a.Constant32(enc.X5, 1)
+	}
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.a.Constant32(enc.X5, 0) // exact heap markers are not admitted here.
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructRefCast})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
 }
 
 func (f *integerEmitter) gcObjectConversion(base int, helper uint32) {

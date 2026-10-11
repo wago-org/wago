@@ -105,10 +105,12 @@ func TestClassifyInstructionImmediateReportsGCHeapType(t *testing.T) {
 	}{
 		{name: "ref.test", immediate: []byte{20, byte(HeapI31)}, kind: InstrRefTest, heap: HeapI31},
 		{name: "ref.test nullable", immediate: []byte{21, byte(HeapAny)}, kind: InstrRefTest, nullable: true, heap: HeapAny},
+		{name: "ref.cast", immediate: []byte{22, byte(HeapStruct)}, kind: InstrRefCast, heap: HeapStruct},
+		{name: "ref.cast nullable", immediate: []byte{23, byte(HeapArray)}, kind: InstrRefCast, nullable: true, heap: HeapArray},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			imm, err := ClassifyInstructionImmediate(NewReader(tc.immediate), 0xfb)
-			if err != nil || imm.Kind != tc.kind || !imm.HasHeapType || imm.HeapType.Kind() != HeapAbs || imm.HeapType.Abs() != tc.heap || (imm.Subopcode == 21) != tc.nullable {
+			if err != nil || imm.Kind != tc.kind || !imm.HasHeapType || imm.HeapType.Kind() != HeapAbs || imm.HeapType.Abs() != tc.heap || (imm.Subopcode == 21 || imm.Subopcode == 23) != tc.nullable {
 				t.Fatalf("classify=%+v err=%v", imm, err)
 			}
 		})

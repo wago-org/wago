@@ -211,7 +211,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcRefTestTable := admitRV64GCRefTestTable(m)
 	gcRefTestConcrete := admitRV64GCRefTestConcrete(m)
 	gcExtern := admitRV64GCExtern(m)
-	gcRefTestAbstract := admitRV64GCRefTestAbstract(m) || gcExtern
+	gcRefCastAbstract := admitRV64GCRefCastAbstract(m)
+	gcRefTestAbstract := admitRV64GCRefTestAbstract(m) || gcExtern || gcRefCastAbstract
 	gcStructGet := admitRV64GCStructGet(m)
 	gcStructMutation := admitRV64GCStructMutation(m)
 	gcStructNull := admitRV64GCStructNull(m)

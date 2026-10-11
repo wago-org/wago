@@ -387,7 +387,9 @@ func classifyFBBytes(r *reader, imm *InstructionImmediate) error {
 		return err
 	case 22, 23:
 		imm.Kind = InstrRefCast
-		return skipRefHeapTypeBytes(r)
+		_, imm.HeapType, err = decodeRefHeapType(r)
+		imm.HasHeapType = err == nil
+		return err
 	case 24, 25:
 		if sub == 24 {
 			imm.Kind = InstrBrOnCast
