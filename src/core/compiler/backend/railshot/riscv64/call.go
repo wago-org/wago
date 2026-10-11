@@ -25,6 +25,7 @@ const (
 	gcStructSet          uint32 = 3
 	gcStructGetS         uint32 = 4
 	gcStructGetU         uint32 = 5
+	gcStructAllocOne     uint32 = 11
 	gcArrayAllocDefault  uint32 = 16
 	gcArrayGet           uint32 = 17
 	gcArrayGetS          uint32 = 18
@@ -107,6 +108,27 @@ func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool
 		f.a.Sd(enc.X5, enc.X10, 0) // type index
 	}
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
+}
+
+// gcStructAllocation calls the exact struct.new helper with count narrow
+// scalar fields followed by the type index. References remain full-width in
+// the returned carrier.
+func (f *integerEmitter) gcStructAllocation(base int, typeIndex, count uint32) {
+	f.restoreCallTransport()
+	for i := uint32(0); i < count; i++ {
+		f.Load(5, f.SpillOffset(base+int(i)), false)
+		f.a.Sd(enc.X5, enc.X10, int32(i*8))
+	}
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, int32(count*8))
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructAllocOne, helperSlots: int(count) + 1})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {

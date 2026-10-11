@@ -2409,7 +2409,7 @@ func (s *referenceStore) issueGCRefLocked(source *Instance, state *gcPublicState
 	}
 	arrayProduct := source.c.stagedGCArrayProduct()
 	admittedArray := arrayProduct == stagedGCArrayProductNumericDefault || arrayProduct == stagedGCArrayProductNumericFixed || arrayProduct == stagedGCArrayProductPackedData || arrayProduct == stagedGCArrayProductReferenceElements || arrayProduct == stagedGCArrayProductNewData || arrayProduct == stagedGCArrayProductNewElem || rv64GCArrayFixedOfficial(source.c) || rv64GCArrayDefaultOfficial(source.c) || rv64GCArrayPackedData(source.c) || rv64GCArrayReference(source.c)
-	legacyStruct := source.c.stagedGCStructProduct() == stagedGCStructBasic
+	legacyStruct := source.c.stagedGCStructProduct() == stagedGCStructBasic || rv64GCStructBasic(source.c)
 	generic := source.c.needsExactNativeGCRoots() && source.c.genericGCFrameRoots() != nil
 	if !legacyStruct && !admittedArray && !generic {
 		return 0, fmt.Errorf("public GC result ownership is outside exact collector execution")

@@ -53,6 +53,7 @@ type internalReferenceTypes struct {
 	// null-dereference product.
 	gcStructNull   bool
 	gcStructPacked bool
+	gcStructBasic  bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -109,17 +110,20 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return false
 	}
 	ref := typ.Ref()
-	if ref.Exact() || !ref.Nullable() && !typed {
+	if ref.Exact() && !types.gcStructBasic || !ref.Nullable() && !typed {
 		return false
 	}
 	heap := ref.Heap()
+	if types.gcStructBasic && heap == wasm.AbsHeap(wasm.HeapAny) {
+		return true
+	}
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {
 		return true
 	}
 	if types.gcStructNull && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index == 0) {
 		return true
 	}
-	if types.gcStructPacked && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index == 0) {
+	if (types.gcStructPacked || types.gcStructBasic) && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index == 0) {
 		return true
 	}
 	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference || types.gcArrayInitElem || types.gcArrayInitData || types.gcArrayFill || types.gcArrayCopy {

@@ -45,6 +45,7 @@ case "$mode" in
       WAGO_RV64_GC_STRUCT_GET_ARTIFACT_DIR WAGO_RV64_GC_STRUCT_GET_ARTIFACT_MODE \
       WAGO_RV64_GC_STRUCT_NULL_ARTIFACT_DIR WAGO_RV64_GC_STRUCT_NULL_ARTIFACT_MODE \
       WAGO_RV64_GC_STRUCT_PACKED_ARTIFACT_DIR WAGO_RV64_GC_STRUCT_PACKED_ARTIFACT_MODE \
+      WAGO_RV64_GC_STRUCT_BASIC_ARTIFACT_DIR WAGO_RV64_GC_STRUCT_BASIC_ARTIFACT_MODE \
       WAGO_RV64_GC_ARRAY_LOCAL_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_LOCAL_ARTIFACT_MODE \
       WAGO_RV64_GC_ARRAY_UNIFORM_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_UNIFORM_ARTIFACT_MODE \
       WAGO_RV64_GC_ARRAY_FIXED_LOCAL_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_FIXED_LOCAL_ARTIFACT_MODE \
@@ -92,6 +93,8 @@ case "$mode" in
         WAGO_RV64_GC_STRUCT_NULL_ARTIFACT_MODE=prepare \
         WAGO_RV64_GC_STRUCT_PACKED_ARTIFACT_DIR="$artifact_dir/$check/gc-struct-packed" \
         WAGO_RV64_GC_STRUCT_PACKED_ARTIFACT_MODE=prepare \
+        WAGO_RV64_GC_STRUCT_BASIC_ARTIFACT_DIR="$artifact_dir/$check/gc-struct-basic" \
+        WAGO_RV64_GC_STRUCT_BASIC_ARTIFACT_MODE=prepare \
         WAGO_RV64_GC_ARRAY_LOCAL_ARTIFACT_DIR="$artifact_dir/$check/gc-array-local" \
         WAGO_RV64_GC_ARRAY_LOCAL_ARTIFACT_MODE=prepare \
         WAGO_RV64_GC_ARRAY_UNIFORM_ARTIFACT_DIR="$artifact_dir/$check/gc-array-uniform" \
@@ -117,7 +120,7 @@ case "$mode" in
         WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_DIR="$artifact_dir/$check/gc-array-copy" \
         WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_MODE=prepare \
         go test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^TestRV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact)|OfficialGCRefEqExecutionAndArtifact|GCStruct(Get|Null|Packed)ExecutionAndArtifact|GCArray(Local|Uniform|FixedLocal|FixedOfficial|DefaultOfficial|PackedData|Reference|InitElem|InitData(Wide)?|Fill|Copy)ExecutionAndArtifact|GCArrayReferenceCloseDropsOnlyOwnedSegmentRoots|LocalMutableReference)'
+        -run '^TestRV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact)|OfficialGCRefEqExecutionAndArtifact|GCStruct(Get|Null|Packed|Basic)ExecutionAndArtifact|GCArray(Local|Uniform|FixedLocal|FixedOfficial|DefaultOfficial|PackedData|Reference|InitElem|InitData(Wide)?|Fill|Copy)ExecutionAndArtifact|GCArrayReferenceCloseDropsOnlyOwnedSegmentRoots|LocalMutableReference)'
       WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=load \
         WAGO_RV64_I31_ARTIFACT_DIR="$artifact_dir/$check/i31" \
@@ -146,6 +149,8 @@ case "$mode" in
         WAGO_RV64_GC_STRUCT_NULL_ARTIFACT_MODE=load \
         WAGO_RV64_GC_STRUCT_PACKED_ARTIFACT_DIR="$artifact_dir/$check/gc-struct-packed" \
         WAGO_RV64_GC_STRUCT_PACKED_ARTIFACT_MODE=load \
+        WAGO_RV64_GC_STRUCT_BASIC_ARTIFACT_DIR="$artifact_dir/$check/gc-struct-basic" \
+        WAGO_RV64_GC_STRUCT_BASIC_ARTIFACT_MODE=load \
         WAGO_RV64_GC_ARRAY_LOCAL_ARTIFACT_DIR="$artifact_dir/$check/gc-array-local" \
         WAGO_RV64_GC_ARRAY_LOCAL_ARTIFACT_MODE=load \
         WAGO_RV64_GC_ARRAY_UNIFORM_ARTIFACT_DIR="$artifact_dir/$check/gc-array-uniform" \
@@ -171,7 +176,7 @@ case "$mode" in
         WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_DIR="$artifact_dir/$check/gc-array-copy" \
         WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_MODE=load \
         go test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^Test(RV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact|OfficialCompilerFreeRejectsSource|OfficialTableCompilerFreeRejectsSource|OfficialTableGlobalInitializerCompilerFreeRejectsSource|OfficialGlobalInitializerCompilerFreeRejectsSource|OfficialAnyGlobalCompilerFreeRejectsSource|OfficialAnyTableCompilerFreeRejectsSource|OfficialRefTestCompilerFreeRejectsSource|RefEqPilotCompilerFreeRejectsSource)|OfficialGCRefEq(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCStruct(Get|Null|Packed)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCArray(Local|Uniform|FixedLocal|FixedOfficial|DefaultOfficial|PackedData|Reference|InitElem|InitData(Wide)?|Fill|Copy)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCArrayReferenceCloseDropsOnlyOwnedSegmentRoots|LocalMutableReference)|RV64ActualImportedTablePrecompiledCompilerGate)'
+        -run '^Test(RV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact|OfficialCompilerFreeRejectsSource|OfficialTableCompilerFreeRejectsSource|OfficialTableGlobalInitializerCompilerFreeRejectsSource|OfficialGlobalInitializerCompilerFreeRejectsSource|OfficialAnyGlobalCompilerFreeRejectsSource|OfficialAnyTableCompilerFreeRejectsSource|OfficialRefTestCompilerFreeRejectsSource|RefEqPilotCompilerFreeRejectsSource)|OfficialGCRefEq(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCStruct(Get|Null|Packed|Basic)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCArray(Local|Uniform|FixedLocal|FixedOfficial|DefaultOfficial|PackedData|Reference|InitElem|InitData(Wide)?|Fill|Copy)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCArrayReferenceCloseDropsOnlyOwnedSegmentRoots|LocalMutableReference)|RV64ActualImportedTablePrecompiledCompilerGate)'
     done
     ;;
   *)
