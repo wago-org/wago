@@ -41,6 +41,8 @@ type moduleState struct {
 	// argument through call_ref in addition to the callable target reference.
 	publicReferenceCarriers            bool
 	publicDynamicHostReferenceCarriers bool
+	// Exact collector-free ref.i31/i31.get_s/i31.get_u qualification profile.
+	i31Core bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool

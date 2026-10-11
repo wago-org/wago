@@ -63,9 +63,13 @@ type CompileOptions struct {
 	CollectInlineReport bool
 	CustomInstructions  map[uint32]railcore.CustomInstruction
 	ForceFallback       bool
-	production          bool
-	publicStarts        bool
-	hostImports         bool
+	// I31CoreSource is an exact-wire provenance witness supplied by the public
+	// source frontend. It never grants lowering by itself: CompileModuleWith
+	// independently rechecks the decoded module before selecting the pilot.
+	I31CoreSource bool
+	production    bool
+	publicStarts  bool
+	hostImports   bool
 	// Selected by bounded closed-module admission, or private decoded tests.
 	// Legacy staging and isolated instantiation never publish this ABI.
 	referenceFunctions bool
@@ -81,8 +85,11 @@ type CompileOptions struct {
 	indirectTailInstructions     bool // actual private owned-table proper tails
 	referenceCallInstructions    bool
 	referenceControlInstructions bool
-	tailPlans                    *[]tailImportPlan
-	tailSiteBase                 uint32
+	// Selected only when the exact source and decoded witnesses agree for the
+	// non-allocating two-function i31 module.
+	i31Core      bool
+	tailPlans    *[]tailImportPlan
+	tailSiteBase uint32
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.

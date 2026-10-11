@@ -82,3 +82,9 @@ func railshotAdmitSource(data []byte, m *wasm.Module) error {
 	}
 	return railshot.AdmitPublicInitializers(m)
 }
+
+func railshotI31CoreSource(data []byte) bool { return railshot.AdmitI31CoreSource(data) }
+
+func railshotConfigureI31Core(exactSource bool, opts *railshotCompileOptions) {
+	opts.I31CoreSource = exactSource
+}

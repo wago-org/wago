@@ -77,6 +77,9 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 // source compilation before any executable image or host thunk is published.
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
+	if c != nil && c.stagedGCI31Product() != 0 && !rv64I31Core(c) {
+		return reject("i31 execution product requires its exact retained image")
+	}
 	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
 	if rv64Core3RefIsNullExecutionCode(c) && !exactCore3RefIsNull {
 		return reject("Core 3 ref.is_null image requires its exact retained metadata")
@@ -183,6 +186,9 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
+	if rv64I31Core(c) {
+		qualifiedFeatures |= CoreFeatureGC
+	}
 	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
 		return reject("table.size compiler witness requires its exact owned or indexed two-table profile")
 	}

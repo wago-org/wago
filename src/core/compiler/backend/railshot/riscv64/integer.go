@@ -1453,6 +1453,42 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if live && emit != nil {
 				emit.memoryBulkAt(imm.Kind, dataOffset, dst, src)
 			}
+		case 0xfb:
+			var imm wasm.InstructionImmediate
+			if err = profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
+				return integerSummary{}, err
+			}
+			if state == nil || !state.i31Core {
+				return integerSummary{}, unsupported("GC instruction outside exact i31 profile")
+			}
+			switch imm.Kind {
+			case wasm.InstrRefI31:
+				if _, err = popClass(false); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), false)
+					emit.i31Wrap()
+					emit.Store(emit.SpillOffset(h), 5, true)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			case wasm.InstrI31GetS, wasm.InstrI31GetU:
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), true)
+					emit.i31Get(imm.Kind == wasm.InstrI31GetS)
+					emit.Store(emit.SpillOffset(h), 5, false)
+				}
+				if err = push(false); err != nil {
+					return integerSummary{}, err
+				}
+			default:
+				return integerSummary{}, unsupported("unsupported GC instruction in exact i31 profile")
+			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x38, 0x39, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
 			if !floating && (op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39) {
 				return integerSummary{}, unsupported("FP memory outside production")

@@ -14,7 +14,10 @@ import (
 
 // Qualification only. Public feature defaults and SupportedFeatures stay
 // closed until all tail instruction/target families have been qualified.
-type railshotRuntimeConfigState struct{ tailProducts bool }
+type railshotRuntimeConfigState struct {
+	tailProducts bool
+	i31Products  bool
+}
 type railshotTailCompiledState struct {
 	sourceCodeLimit                                  uint64 // immutable compile-origin policy; never serialized
 	module                                           *encoder.NativeTailModule
@@ -39,6 +42,12 @@ func railshotRecordMappedCodeBytes(c *Compiled, n int) {
 func railshotStagedTailFeatures(c *RuntimeConfig) CoreFeatures {
 	if c != nil && c.railshotState.tailProducts {
 		return CoreFeatureTailCall | CoreFeatureTypedFunctionReferences
+	}
+	return 0
+}
+func railshotStagedGCFeatures(c *RuntimeConfig) CoreFeatures {
+	if c != nil && c.railshotState.i31Products {
+		return CoreFeatureGC
 	}
 	return 0
 }

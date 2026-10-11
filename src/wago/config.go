@@ -894,7 +894,7 @@ func (c *RuntimeConfig) Validate() error {
 	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
 		return errNativeCPUFeatures
 	}
-	supported := platformCoreFeatures() | railshotStagedTailFeatures(c)
+	supported := platformCoreFeatures() | railshotStagedTailFeatures(c) | railshotStagedGCFeatures(c)
 	if unsupported := c.features &^ supported; unsupported != 0 {
 		return &UnsupportedFeatureError{
 			Requested: unsupported,

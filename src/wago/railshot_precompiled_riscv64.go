@@ -16,6 +16,9 @@ func railshotAdmitSource([]byte, *wasm.Module) error {
 	return fmt.Errorf("source compilation is unavailable in a precompiled runtime")
 }
 
+func railshotI31CoreSource([]byte) bool                      { return false }
+func railshotConfigureI31Core(bool, *railshotCompileOptions) {}
+
 func railshotCompileModuleWith(*wasm.Module, railshotCompileOptions) (*railshotCompiledModule, error) {
 	return nil, fmt.Errorf("source compilation is unavailable in a precompiled runtime")
 }
