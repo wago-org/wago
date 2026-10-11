@@ -1,0 +1,1 @@
+Exact Boolean ANF oracle passes; embedded1904-byte image matches qualified/timed candidate.

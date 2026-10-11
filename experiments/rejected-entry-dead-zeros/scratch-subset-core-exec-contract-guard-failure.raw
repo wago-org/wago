@@ -1,0 +1,7 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: entry-dead-zeros
+panic: core execution requires a simple exact-result contract
+
+goroutine 1 [running]:
+main.main()
+	/tmp/wago-vector-next-37174169/experiments/arm64-parity/paired/main.go:96 +0x1980

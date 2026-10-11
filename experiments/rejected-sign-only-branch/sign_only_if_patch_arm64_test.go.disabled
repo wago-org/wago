@@ -1,0 +1,103 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"testing"
+
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+)
+
+func TestSignOnlyIfPatchTruthAndRangeFallback(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for _, minusOne := range []bool{false, true} {
+			for _, negative := range []bool{false, true} {
+				for _, delta := range []int{-32772, -32768, -4, 0, 4, 32764, 32768} {
+					f := fn{a: &a64.Asm{}}
+					compare := uint32(0x7100013f) // CMP W9,#0
+					cc := condGE
+					if negative {
+						cc = condL
+					}
+					if minusOne {
+						compare = 0x3100053f // CMN W9,#1
+						cc = condG
+						if negative {
+							cc = condLE
+						}
+					}
+					if wide {
+						compare |= 1 << 31
+					}
+					f.a.B = append(f.a.B, byte(compare), byte(compare>>8), byte(compare>>16), byte(compare>>24))
+					site := f.a.Bcond(cc)
+					f.patchSignOnlyIf(-site-2, site+delta)
+					if f.representationLimit != functionRepresentationOK {
+						t.Fatal("short-range fallback rejected legal B.cond")
+					}
+					word := rdWord(f.a.B, site)
+					if delta < -32768 || delta >= 32768 {
+						if rdWord(f.a.B, site-4) != compare || word&0xff000010 != 0x54000000 {
+							t.Fatalf("fallback changed compare=%x branch=%x", compare, word)
+						}
+						target, ok := branchTarget(site, word)
+						if !ok || target != site+delta {
+							t.Fatal("fallback target changed")
+						}
+						continue
+					}
+					if rdWord(f.a.B, site-4) != 0xd503201f || word&0x7e000000 != 0x36000000 || (word&(1<<24) != 0) != negative {
+						t.Fatalf("wrong bit predicate wide=%v minusOne=%v negative=%v delta=%d word=%x", wide, minusOne, negative, delta, word)
+					}
+					bit := uint8(word>>31<<5 | word>>19&31)
+					wantBit := uint8(31)
+					if wide {
+						wantBit = 63
+					}
+					if bit != wantBit || word&31 != 9 || int(int32(word<<13)>>18)*4 != delta {
+						t.Fatalf("wrong bit operand or target %x", word)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestSignOnlyIfPatchPreservesMandatoryRangeFailure(t *testing.T) {
+	f := fn{a: &a64.Asm{}}
+	f.a.CmpImm32(X9, 0)
+	site := f.a.Bcond(condL)
+	f.patchSignOnlyIf(-site-2, site+1<<20)
+	if f.representationLimit != functionRepresentationBranchRange || rdWord(f.a.B, site-4) == 0xd503201f {
+		t.Fatal("sign optimization hid mandatory range failure")
+	}
+}
+
+func TestSignOnlyIfPreservesAdjacentCompareGuards(t *testing.T) {
+	for _, before := range []bool{false, true} {
+		for _, patchedPeer := range []bool{false, true} {
+			f := fn{a: &a64.Asm{}, policy: currentCodegenPolicy()}
+			if before {
+				f.a.CmpReg32(X9, X10)
+				peer := f.a.Bcond(condG)
+				if patchedPeer && !f.a.PatchBranch19(peer, 16) {
+					t.Fatal("peer patch")
+				}
+			}
+			f.a.CmpImm32(X9, 0)
+			site := f.a.Bcond(condL)
+			if !before {
+				f.a.CmpReg32(X9, X10)
+				peer := f.a.Bcond(condG)
+				if patchedPeer && !f.a.PatchBranch19(peer, 16) {
+					t.Fatal("peer patch")
+				}
+			}
+			original := rdWord(f.a.B, site-4)
+			f.patchSignOnlyIf(-site-2, len(f.a.B))
+			if rdWord(f.a.B, site-4) != original || rdWord(f.a.B, site)&0xff000010 != 0x54000000 {
+				t.Fatalf("guard cover disrupted before=%v peer=%v", before, patchedPeer)
+			}
+		}
+	}
+}

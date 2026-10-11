@@ -1,0 +1,26 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: taken-zero-branch
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":false,"iterations":3390,"us":30.076806784660768}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":true,"iterations":3390,"us":29.583013864306785}
+{"workload":"audio-adpcm","phase":"exec","round":1,"on":true,"iterations":3390,"us":31.521460176991148}
+{"workload":"audio-adpcm","phase":"exec","round":1,"on":false,"iterations":3390,"us":30.488151327433627}
+{"workload":"audio-adpcm","phase":"exec","round":2,"on":false,"iterations":3390,"us":29.96098820058997}
+{"workload":"audio-adpcm","phase":"exec","round":2,"on":true,"iterations":3390,"us":30.56133244837758}
+{"workload":"audio-adpcm","phase":"exec","round":3,"on":true,"iterations":3390,"us":29.757682005899703}
+{"workload":"audio-adpcm","phase":"exec","round":3,"on":false,"iterations":3390,"us":30.23158790560472}
+{"workload":"compiler-register-allocation","phase":"exec","round":0,"on":false,"iterations":6006,"us":17.1139000999001}
+{"workload":"compiler-register-allocation","phase":"exec","round":0,"on":true,"iterations":6006,"us":17.27947052947053}
+{"workload":"compiler-register-allocation","phase":"exec","round":1,"on":true,"iterations":6006,"us":17.260080253080254}
+{"workload":"compiler-register-allocation","phase":"exec","round":1,"on":false,"iterations":6006,"us":16.910596403596404}
+{"workload":"compiler-register-allocation","phase":"exec","round":2,"on":false,"iterations":6006,"us":17.382638195138195}
+{"workload":"compiler-register-allocation","phase":"exec","round":2,"on":true,"iterations":6006,"us":17.011592574092575}
+{"workload":"compiler-register-allocation","phase":"exec","round":3,"on":true,"iterations":6006,"us":17.423479353979353}
+{"workload":"compiler-register-allocation","phase":"exec","round":3,"on":false,"iterations":6006,"us":17.12051148851149}
+{"workload":"files-glob-match","phase":"exec","round":0,"on":false,"iterations":777,"us":132.73192792792793}
+{"workload":"files-glob-match","phase":"exec","round":0,"on":true,"iterations":777,"us":132.10950193050192}
+{"workload":"files-glob-match","phase":"exec","round":1,"on":true,"iterations":777,"us":130.81569111969114}
+{"workload":"files-glob-match","phase":"exec","round":1,"on":false,"iterations":777,"us":131.1580321750322}
+{"workload":"files-glob-match","phase":"exec","round":2,"on":false,"iterations":777,"us":129.35344272844273}
+{"workload":"files-glob-match","phase":"exec","round":2,"on":true,"iterations":777,"us":132.92401415701417}
+{"workload":"files-glob-match","phase":"exec","round":3,"on":true,"iterations":777,"us":130.3479189189189}
+{"workload":"files-glob-match","phase":"exec","round":3,"on":false,"iterations":777,"us":131.47881724581725}

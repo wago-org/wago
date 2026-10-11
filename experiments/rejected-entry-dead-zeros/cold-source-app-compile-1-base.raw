@@ -1,0 +1,10 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"audio-adpcm","phase":"compile","round":0,"on":false,"iterations":11564,"us":24.364925631269458}
+{"workload":"audio-adpcm","phase":"compile","round":0,"on":true,"iterations":11564,"us":24.330587685921827}
+{"workload":"files-glob-match","phase":"compile","round":0,"on":false,"iterations":9979,"us":30.454617196111833}
+{"workload":"files-glob-match","phase":"compile","round":0,"on":true,"iterations":9979,"us":31.593283395129774}
+{"workload":"language-register-vm","phase":"compile","round":0,"on":false,"iterations":6506,"us":46.351278358438364}
+{"workload":"language-register-vm","phase":"compile","round":0,"on":true,"iterations":6506,"us":44.81539486627728}
+{"workload":"stats-gini","phase":"compile","round":0,"on":false,"iterations":3526,"us":76.68764180374362}
+{"workload":"stats-gini","phase":"compile","round":0,"on":true,"iterations":3526,"us":78.06545405558707}

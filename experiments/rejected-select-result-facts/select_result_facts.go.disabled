@@ -1,0 +1,17 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var selectResultFactsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SELECT_RESULT_FACTS") == "1"
+
+// W-form CSEL zeroes the upper half even when its input carriers are not
+// canonical i32 values. Record that producer guarantee on the resulting node;
+// the existing local-dependent-address provenance still controls load renames.
+func (f *fn) setSelectResultFacts(result *elem, wide bool) {
+	if !wide && f.opt(optSelectResultFacts) {
+		result.st.setValueFacts(factUpper32Zero)
+		f.stats.peep("select-result-facts")
+	}
+}

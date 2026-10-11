@@ -1,0 +1,2 @@
+core: 46 final signal images exactly match the earlier qualified candidate.
+app: 102 final signal images exactly match the earlier qualified candidate.

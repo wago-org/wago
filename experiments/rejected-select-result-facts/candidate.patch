@@ -1,0 +1,266 @@
+diff --git a/src/core/compiler/backend/railshot/arm64/driver.go b/src/core/compiler/backend/railshot/arm64/driver.go
+index 2d244315..c9d3a96a 100644
+--- a/src/core/compiler/backend/railshot/arm64/driver.go
++++ b/src/core/compiler/backend/railshot/arm64/driver.go
+@@ -821,6 +821,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
+ 	if tee {
+ 		result := f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: dest, idx: uint32(x)})
+ 		result.st.setGCRoot(f.gcFrameLocal(x))
++		f.setSelectResultFacts(result, w)
+ 		f.stats.peep("select-local-tee-sink")
+ 	}
+ 	f.stats.peep("select-local-sink")
+@@ -1112,7 +1113,9 @@ func (f *fn) emitSelect() {
+ 	f.pinned = f.pinned.remove(bReg)
+ 	f.release(condReg)
+ 	f.release(bReg)
+-	f.pushReg(aReg, mtI32OrWide(w)).st.setGCRoot(gcRoot)
++	result := f.pushReg(aReg, mtI32OrWide(w))
++	result.st.setGCRoot(gcRoot)
++	f.setSelectResultFacts(result, w)
+ }
+ 
+ func mtI32OrWide(wide bool) machineType {
+@@ -1158,7 +1161,9 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
+ 	f.release(bReg)
+ 	f.erase(bRoot)
+ 	f.erase(aRoot)
+-	f.pushReg(aReg, mtI32OrWide(w)).st.setGCRoot(gcRoot)
++	result := f.pushReg(aReg, mtI32OrWide(w))
++	result.st.setGCRoot(gcRoot)
++	f.setSelectResultFacts(result, w)
+ 	return true
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/arm64/knobs.go b/src/core/compiler/backend/railshot/arm64/knobs.go
+index 2daca4e8..3150a022 100644
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -63,6 +63,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
+ 	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+ 	optimization.Bind("single-negative-move32", &singleNegativeMove32Enabled),
+ 	optimization.Bind("select-source-read", &selectSourceReadEnabled),
++	optimization.Bind("select-result-facts", &selectResultFactsEnabled),
+ 	optimization.Bind("select-sink-pure-guard", &selectSinkPureGuardEnabled),
+ 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
+ 	optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
+@@ -148,6 +149,7 @@ var (
+ 	optStreamReduce         = optimizationBindings.Option("streaming-i32-reduction")
+ 	optSingleNegativeMove32 = optimizationBindings.Option("single-negative-move32")
+ 	optSelectSourceRead     = optimizationBindings.Option("select-source-read")
++	optSelectResultFacts    = optimizationBindings.Option("select-result-facts")
+ 	optSelectSinkPureGuard  = optimizationBindings.Option("select-sink-pure-guard")
+ 	optInvertedLogical      = optimizationBindings.Option("inverted-logical")
+ 	optShiftedRegisterALU   = optimizationBindings.Option("shifted-register-alu")
+diff --git a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+index ae78e8e3..989832d9 100644
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -87,7 +87,7 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+ 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "dominated-indexed-key", "ordinary-shifted-immediate", "common-exit-compare", "borrowed-div-rem", "bounded-signed-quotient", "br-table-branch-vector", "regional-memory-read", "wide-reuse-pins",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+-		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
++		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop", "select-result-facts",
+ 	}
+ 	overrides := make(map[string]bool, len(names))
+ 	for _, name := range names {
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index b68ff15c..92db5a54 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -414,6 +414,7 @@ var catalog = []Definition{
+ 	{Name: "streaming-i32-reduction", Label: "Streaming i32 product reductions", Description: "reassociate proven wrapping product sums into a concrete streaming accumulator", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "single-negative-move32", Label: "Single-word negative i32 constants", Description: "use one zero-extending W-MOVN for negative constants representable by its 16-bit immediate", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "select-source-read", Label: "Read-only select sink sources", Description: "borrow protected integer select sources and share large constants with their comparison", Default: true, Architectures: []string{"arm64"}},
++	{Name: "select-result-facts", Label: "Select result facts", Description: "retain the canonical i32 guarantee of W-form select results", Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "crowded-products", Label: "Crowded integer product scheduling", Description: "finish bounded pure products after pending effects to reduce live operand factors", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "guarded-test-ccmp", Label: "Guarded bit test conditional compare", Description: "combine adjacent short-circuit bit tests when both continuations overwrite flags", Default: true, Architectures: []string{"arm64"}},
+ 	arm64("inverted-logical", "Inverted logical operands", "fold integer bitwise complements into logical register operations"),
+diff --git a/src/core/compiler/backend/railshot/arm64/select_result_facts.go b/src/core/compiler/backend/railshot/arm64/select_result_facts.go
+new file mode 100644
+index 00000000..02b5e2d4
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/select_result_facts.go
+@@ -0,0 +1,17 @@
++//go:build arm64
++
++package arm64
++
++import "os"
++
++var selectResultFactsEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SELECT_RESULT_FACTS") == "1"
++
++// W-form CSEL zeroes the upper half even when its input carriers are not
++// canonical i32 values. Record that producer guarantee on the resulting node;
++// the existing local-dependent-address provenance still controls load renames.
++func (f *fn) setSelectResultFacts(result *elem, wide bool) {
++	if !wide && f.opt(optSelectResultFacts) {
++		result.st.setValueFacts(factUpper32Zero)
++		f.stats.peep("select-result-facts")
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/arm64/select_result_facts_arm64_test.go b/src/core/compiler/backend/railshot/arm64/select_result_facts_arm64_test.go
+new file mode 100644
+index 00000000..0c19bde6
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/select_result_facts_arm64_test.go
+@@ -0,0 +1,158 @@
++//go:build (linux || darwin) && arm64 && wago_guardpage
++
++package arm64
++
++import (
++	"encoding/binary"
++	"errors"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	rt "github.com/wago-org/wago/src/core/runtime"
++)
++
++func runSelectFactsFixture(t *testing.T, m *wasm.Module, opts CompileOptions, args ...uint64) (uint64, error) {
++	t.Helper()
++	cm, err := CompileModuleWith(m, opts)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if cm.CodeImage != nil {
++		defer cm.CodeImage.Close()
++	}
++	eng, err := rt.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	var jm *rt.JobMemory
++	if opts.ElideBoundsChecks {
++		if err := rt.InstallGuardTrapHandler(); err != nil {
++			t.Fatal(err)
++		}
++		jm, err = rt.NewJobMemoryGuarded(65536, 65536)
++	} else {
++		jm, err = rt.NewJobMemory(65536)
++	}
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	for i := range jm.LinearMemory() {
++		jm.LinearMemory()[i] = byte(i*37 + 11)
++	}
++	ar, err := rt.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ar.Close()
++	code, entry, err := rt.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer rt.Unmap(code)
++	serArgs, results, trap := ar.Alloc(256), ar.Alloc(256), ar.Alloc(rt.TrapBufferBytes)
++	for i, arg := range args {
++		binary.LittleEndian.PutUint64(serArgs[i*8:], arg)
++	}
++	if opts.ElideBoundsChecks {
++		err = eng.CallGuarded(entry+uintptr(cm.Entry[0]), serArgs, jm.LinMemBase(), trap, results, jm)
++	} else {
++		err = eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results)
++	}
++	return binary.LittleEndian.Uint64(results), err
++}
++
++func TestSelectResultFactsCanonicalCarriersBoundsAndAliases(t *testing.T) {
++	for _, fused := range []bool{false, true} {
++		for _, tee := range []bool{false, true} {
++			body := []byte{1, 1, 0x7f, 0x20, 0, 0x20, 1, 0x20, 2}
++			if fused {
++				body = append(body, 0x45)
++			}
++			body = append(body, 0x1b)
++			if tee {
++				body = append(body, 0x22, 3)
++			}
++			body = append(body, 0x28, 2, 0, 0x20, 0, 0x6a, 0x20, 1, 0x6a, 0x0b)
++			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++			for _, enabled := range []bool{false, true} {
++				for _, guard := range []bool{false, true} {
++					for _, pair := range [][2]uint64{{0, 3}, {3, 65532}, {65533, 0}, {0xabcde12300000003, 0xfedc12340000fffc}, {0x80000000, 0}, {0xffffffff, 65532}} {
++						for _, cond := range []uint64{0, 1, 7} {
++							chosen := pair[1]
++							selectA := cond != 0
++							if fused {
++								selectA = !selectA
++							}
++							if selectA {
++								chosen = pair[0]
++							}
++							address := uint32(chosen)
++							var stats ModuleStats
++							opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"select-result-facts": enabled}}
++							if diagnosticsEnabled {
++								opts.Stats = &stats
++							}
++							got, err := runSelectFactsFixture(t, m, opts, pair[0], pair[1], cond)
++							if diagnosticsEnabled && (stats.Funcs[0].Peephole["select-result-facts"] != 0) != enabled {
++								t.Fatalf("missing producer proof fused=%v tee=%v enabled=%v stats=%v", fused, tee, enabled, stats.Funcs[0].Peephole)
++							}
++							if address > 65532 {
++								var trap *rt.TrapError
++								if !errors.As(err, &trap) || trap.Code != rt.TrapLinMemOutOfBounds {
++									t.Fatalf("fused=%v tee=%v guard=%v enabled=%v address=%x trap=%v", fused, tee, guard, enabled, address, err)
++								}
++								continue
++							}
++							var word uint32
++							for i := uint32(0); i < 4; i++ {
++								word |= uint32(byte((address+i)*37+11)) << (i * 8)
++							}
++							want := uint64(word + uint32(pair[0]) + uint32(pair[1]))
++							if err != nil || got != want {
++								t.Fatalf("fused=%v tee=%v enabled=%v guard=%v args=%x cond=%d got=%x want=%x err=%v", fused, tee, enabled, guard, pair, cond, got, want, err)
++							}
++						}
++					}
++				}
++			}
++		}
++	}
++}
++
++func TestSelectResultFactsKeepI64AndLoadRenames(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	cases := []struct {
++		name string
++		m    *wasm.Module
++	}{
++		{"i64", mod1(t, []wasm.ValType{wasm.I64, wasm.I64, wasm.I32}, []wasm.ValType{wasm.I64}, []byte{0, 0x20, 0, 0x20, 1, 0x20, 2, 0x1b, 0x0b})},
++		// The result of this select tees a self-load-defined local. Its intentional
++		// W-register dependent-address rename remains even with the producer fact.
++		{"load-rename", modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x28, 2, 0, 0x21, 0, 0x20, 0, 0x20, 1, 0x20, 2, 0x1b, 0x22, 0, 0x28, 2, 0, 0x0b})},
++	}
++	for _, tc := range cases {
++		var off []byte
++		for _, enabled := range []bool{false, true} {
++			var stats ModuleStats
++			cm, err := CompileModuleWith(tc.m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"select-result-facts": enabled}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if enabled && string(off) != string(cm.Code) {
++				t.Fatalf("%s native changed", tc.name)
++			}
++			off = append([]byte(nil), cm.Code...)
++			if tc.name == "i64" && stats.Funcs[0].Peephole["select-result-facts"] != 0 {
++				t.Fatal("i64 select incorrectly canonicalized")
++			}
++			if tc.name == "load-rename" && enabled && stats.Funcs[0].Peephole["memory-address-load-rename"] == 0 {
++				t.Fatal("dependent load rename disappeared")
++			}
++			if cm.CodeImage != nil {
++				cm.CodeImage.Close()
++			}
++		}
++	}
++}

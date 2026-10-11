@@ -1,0 +1,201 @@
+//go:build arm64
+
+package arm64
+
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
+const (
+	maxLocalLivenessBody  = 4 << 10
+	maxLocalLivenessNodes = 1024
+	maxLocalLivenessEdges = 2048
+	noLocalLivenessEdge   = ^uint16(0)
+)
+
+// The graph exists only in worker scratch, and only after a simple borrowed
+// branch-index candidate appears. Local masks describe value liveness, not
+// register placement; a definition kills the preceding value on that path.
+type localLivenessNode struct {
+	live              uint64
+	pos, first, count uint16
+	local, access     uint8
+}
+
+type localLivenessEdge struct{ to, link uint16 }
+
+type localLivenessFrame struct {
+	kind                      byte
+	start, pending, falseEdge uint16
+}
+
+// buildStructuredLocalLiveness decodes structured control once. Forward edges are linked
+// through their target frame until its end is encountered; loop backedges use
+// the known source header. Unsupported control, malformed input, and bounded
+// storage/fixed-point exhaustion fail closed.
+func buildStructuredLocalLiveness(body []byte, classifier wasm.ModuleInstructionClassifier, nodes []localLivenessNode, edges []localLivenessEdge) ([]localLivenessNode, []localLivenessEdge, bool) {
+	nodes, edges = nodes[:0], edges[:0]
+	if len(body) == 0 || len(body) > maxLocalLivenessBody {
+		return nodes, edges, false
+	}
+	var frames [64]localLivenessFrame
+	frames[0] = localLivenessFrame{kind: 0, pending: noLocalLivenessEdge, falseEdge: noLocalLivenessEdge}
+	depth := 1
+	r := wasm.ReaderFrom(body)
+	appendEdge := func(to uint16) uint16 {
+		idx := uint16(len(edges))
+		edges = append(edges, localLivenessEdge{to: to, link: noLocalLivenessEdge})
+		return idx
+	}
+	branchEdge := func(label uint32) bool {
+		if uint64(label) >= uint64(depth) || len(edges) == maxLocalLivenessEdges {
+			return false
+		}
+		fr := &frames[depth-1-int(label)]
+		if fr.kind == 0 {
+			appendEdge(noLocalLivenessEdge)
+			return true
+		}
+		if fr.kind == 0x03 {
+			appendEdge(fr.start)
+			return true
+		}
+		e := appendEdge(noLocalLivenessEdge)
+		edges[e].link, fr.pending = fr.pending, e
+		return true
+	}
+	for r.HasNext() && depth != 0 {
+		if len(nodes) == maxLocalLivenessNodes || len(edges)+2 > maxLocalLivenessEdges {
+			return nodes, edges, false
+		}
+		pos := r.Offset()
+		op, err := r.Byte()
+		if err != nil {
+			return nodes, edges, false
+		}
+		i := uint16(len(nodes))
+		node := localLivenessNode{pos: uint16(pos), first: uint16(len(edges))}
+		canFallThrough := true
+		switch op {
+		case 0x00, 0x0f: // unreachable / return
+			canFallThrough = false
+		case 0x12, 0x13, 0x15: // tail calls never return to this caller's locals
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
+				return nodes, edges, false
+			}
+			canFallThrough = false
+		case 0x02, 0x03, 0x04: // block / loop / if
+			if depth == len(frames) {
+				return nodes, edges, false
+			}
+			if err := wasm.SkipInstructionImmediate(&r, op); err != nil {
+				return nodes, edges, false
+			}
+			fr := localLivenessFrame{kind: op, start: i + 1, pending: noLocalLivenessEdge, falseEdge: noLocalLivenessEdge}
+			if op == 0x04 {
+				fr.falseEdge = appendEdge(noLocalLivenessEdge)
+			}
+			frames[depth] = fr
+			depth++
+		case 0x05: // else: false arm starts here; true arm skips to end
+			fr := &frames[depth-1]
+			if fr.kind != 0x04 || fr.falseEdge == noLocalLivenessEdge {
+				return nodes, edges, false
+			}
+			edges[fr.falseEdge].to = i + 1
+			fr.falseEdge = noLocalLivenessEdge
+			if !branchEdge(0) {
+				return nodes, edges, false
+			}
+			canFallThrough = false
+		case 0x0b: // end
+			fr := &frames[depth-1]
+			for edge := fr.pending; edge != noLocalLivenessEdge; edge = edges[edge].link {
+				edges[edge].to = i + 1
+			}
+			if fr.falseEdge != noLocalLivenessEdge {
+				edges[fr.falseEdge].to = i + 1
+			}
+			depth--
+			if depth == 0 {
+				canFallThrough = false
+			}
+		case 0x0c, 0x0d: // br / br_if
+			label, err := r.U32()
+			if err != nil || !branchEdge(label) {
+				return nodes, edges, false
+			}
+			canFallThrough = op == 0x0d
+		case 0x0e: // br_table
+			n, err := r.U32()
+			if err != nil || uint64(n)+1 > uint64(maxLocalLivenessEdges-len(edges)) {
+				return nodes, edges, false
+			}
+			for j := uint32(0); j <= n; j++ {
+				label, err := r.U32()
+				if err != nil || !branchEdge(label) {
+					return nodes, edges, false
+				}
+			}
+			canFallThrough = false
+		case 0x20, 0x21, 0x22:
+			x, err := r.U32()
+			if err != nil || x >= 64 {
+				return nodes, edges, false
+			}
+			node.local, node.access = uint8(x), op
+		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f:
+			return nodes, edges, false // EH can transfer to an unmodeled handler
+		default:
+			if op >= 0xd0 && op != 0xfc {
+				return nodes, edges, false
+			} // extended control / GC / SIMD / atomic instructions
+			// Pure arithmetic, memory effects, and ordinary calls do not access
+			// private caller locals. Their argument local.get instructions are
+			// already explicit nodes. Traps can only terminate a path, so retaining
+			// fall-through conservatively is sufficient for this dead-value proof.
+			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+				continue
+			}
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
+				return nodes, edges, false
+			}
+			continue
+		}
+		if canFallThrough {
+			appendEdge(i + 1)
+		}
+		node.count = uint16(len(edges)) - node.first
+		nodes = append(nodes, node)
+	}
+	if depth != 0 || r.HasNext() {
+		return nodes, edges, false
+	}
+	// Backward monotone dataflow. Every bit changes from dead to live at most
+	// once; a bounded pass budget handles nested cycles conservatively.
+	for pass := 0; pass < 64; pass++ {
+		changed := false
+		for i := len(nodes) - 1; i >= 0; i-- {
+			node := &nodes[i]
+			var live uint64
+			for _, edge := range edges[node.first : node.first+node.count] {
+				if int(edge.to) < len(nodes) {
+					live |= nodes[edge.to].live
+				}
+			}
+			if node.access == 0x20 {
+				live |= uint64(1) << node.local
+			} else if node.access != 0 {
+				live &^= uint64(1) << node.local
+			}
+			if live != node.live {
+				node.live = live
+				changed = true
+			}
+		}
+		if !changed {
+			return nodes, edges, true
+		}
+	}
+	return nodes, edges, false
+}

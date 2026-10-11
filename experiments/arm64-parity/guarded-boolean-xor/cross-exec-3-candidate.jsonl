@@ -1,0 +1,12 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":false,"iterations":3367,"us":30.097069795069793}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":true,"iterations":3367,"us":29.88763498663499}
+{"workload":"compiler-register-allocation","phase":"exec","round":0,"on":false,"iterations":5680,"us":17.52789014084507}
+{"workload":"compiler-register-allocation","phase":"exec","round":0,"on":true,"iterations":5680,"us":16.662074647887323}
+{"workload":"files-glob-match","phase":"exec","round":0,"on":false,"iterations":782,"us":126.1708759590793}
+{"workload":"files-glob-match","phase":"exec","round":0,"on":true,"iterations":782,"us":130.64114450127877}
+{"workload":"geo-point-in-polygon","phase":"exec","round":0,"on":false,"iterations":4873,"us":20.400993433203368}
+{"workload":"geo-point-in-polygon","phase":"exec","round":0,"on":true,"iterations":4873,"us":20.43622183459881}
+{"workload":"video-dct","phase":"exec","round":0,"on":false,"iterations":2520,"us":40.26790674603175}
+{"workload":"video-dct","phase":"exec","round":0,"on":true,"iterations":2520,"us":40.7672123015873}

@@ -1,0 +1,9 @@
+app: compared every signal image to exact37174169 baseline, 102images.
+core: compared every signal image to exact37174169 baseline, 46images.
+files-glob-match: pristine-source and candidate images match exact inventories.
+language-register-vm: pristine-source and candidate images match exact inventories.
+audio-adpcm: pristine-source and candidate images match exact inventories.
+modular-arithmetic: pristine-source and candidate images match exact inventories.
+complex-roundtrip: pristine-source and candidate images match exact inventories.
+compile-match: pristine-source and candidate images match exact inventories.
+decimal-parse: pristine-source and candidate images match exact inventories.

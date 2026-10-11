@@ -1,0 +1,98 @@
+[
+  {
+    "kind": "app",
+    "file": "stats-gini.bin",
+    "before": 1864,
+    "after": 1816
+  },
+  {
+    "kind": "core",
+    "file": "wago__blake3__hash.bin",
+    "before": 26664,
+    "after": 26616
+  },
+  {
+    "kind": "core",
+    "file": "wago__coremark__2k-performance.bin",
+    "before": 15380,
+    "after": 15268
+  },
+  {
+    "kind": "core",
+    "file": "wago__drwav__pcm-decode-seek.bin",
+    "before": 93484,
+    "after": 93276
+  },
+  {
+    "kind": "core",
+    "file": "wago__fannkuch__run.bin",
+    "before": 4784,
+    "after": 4752
+  },
+  {
+    "kind": "core",
+    "file": "wago__libtommath__modular-arithmetic.bin",
+    "before": 93588,
+    "after": 93060
+  },
+  {
+    "kind": "core",
+    "file": "wago__monocypher__aead-blake2b.bin",
+    "before": 28196,
+    "after": 28100
+  },
+  {
+    "kind": "core",
+    "file": "wago__nanosvg__parse-structure.bin",
+    "before": 142956,
+    "after": 142860
+  },
+  {
+    "kind": "core",
+    "file": "wago__pcre2__compile-match.bin",
+    "before": 429260,
+    "after": 429052
+  },
+  {
+    "kind": "core",
+    "file": "wago__polybench-floyd-warshall__polybench_run.bin",
+    "before": 3104,
+    "after": 3072
+  },
+  {
+    "kind": "core",
+    "file": "wago__polybench-gemm__polybench_run.bin",
+    "before": 4112,
+    "after": 4096
+  },
+  {
+    "kind": "core",
+    "file": "wago__polybench-nussinov__polybench_run.bin",
+    "before": 3884,
+    "after": 3820
+  },
+  {
+    "kind": "core",
+    "file": "wago__sha256__hashN.bin",
+    "before": 3540,
+    "after": 3492
+  },
+  {
+    "kind": "core",
+    "file": "wago__utf8proc__normalize-casefold.bin",
+    "before": 27620,
+    "after": 27556
+  },
+  {
+    "kind": "core",
+    "file": "wago__yyjson__parse-edit-write.bin",
+    "before": 268956,
+    "after": 268940
+  },
+  {
+    "kind": "core",
+    "file": "wago__zstd__decompress.bin",
+    "before": 151340,
+    "after": 151084
+  }
+]

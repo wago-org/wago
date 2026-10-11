@@ -1,0 +1,1 @@
+Capture saved to /tmp/guarded-xor-final/profile-on

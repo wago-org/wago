@@ -1,0 +1,14 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: guarded-boolean-xor
+{"workload":"geo-point-in-polygon","phase":"exec","round":0,"on":false,"iterations":4750,"us":21.374491157894735}
+{"workload":"geo-point-in-polygon","phase":"exec","round":0,"on":true,"iterations":4750,"us":21.429456210526318}
+{"workload":"geo-point-in-polygon","phase":"exec","round":1,"on":true,"iterations":4750,"us":20.69721915789474}
+{"workload":"geo-point-in-polygon","phase":"exec","round":1,"on":false,"iterations":4750,"us":21.52892989473684}
+{"workload":"geo-point-in-polygon","phase":"exec","round":2,"on":false,"iterations":4750,"us":21.367833263157895}
+{"workload":"geo-point-in-polygon","phase":"exec","round":2,"on":true,"iterations":4750,"us":20.80378947368421}
+{"workload":"geo-point-in-polygon","phase":"exec","round":3,"on":true,"iterations":4750,"us":21.078622947368423}
+{"workload":"geo-point-in-polygon","phase":"exec","round":3,"on":false,"iterations":4750,"us":21.78721915789474}
+{"workload":"geo-point-in-polygon","phase":"exec","round":4,"on":false,"iterations":4750,"us":22.035175368421054}
+{"workload":"geo-point-in-polygon","phase":"exec","round":4,"on":true,"iterations":4750,"us":21.05828947368421}
+{"workload":"geo-point-in-polygon","phase":"exec","round":5,"on":true,"iterations":4750,"us":20.528666736842105}
+{"workload":"geo-point-in-polygon","phase":"exec","round":5,"on":false,"iterations":4750,"us":21.891017684210524}

@@ -1,0 +1,2 @@
+hardware-boolean-anf.bin: 1904B unchanged size; 7 direct zero branch retargets; +0x1a4: 34000135->340002b5, +0x244: 34000175->340002f5, +0x2f4: 34000175->340002f5, +0x3a4: 34000175->340002f5, +0x454: 34000175->340002f5, +0x504: 34000175->340002f5, +0x5b4: 34000175->340002f5
+148 exact SIGNAL contracts and native images inspected; all disabled images byte-identical to37174169. Explicit exact outputs also pass.

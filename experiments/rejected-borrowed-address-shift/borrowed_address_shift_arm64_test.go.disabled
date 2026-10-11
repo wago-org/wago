@@ -1,0 +1,163 @@
+//go:build (linux || darwin) && arm64
+
+package arm64
+
+import (
+	"encoding/binary"
+	"errors"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	rt "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+)
+
+func runBorrowedAddressFixture(t *testing.T, m *wasm.Module, opts CompileOptions, args ...uint64) (uint64, error) {
+	t.Helper()
+	cm, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	eng, err := rt.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	var jm *rt.JobMemory
+	if opts.ElideBoundsChecks {
+		if err := rt.InstallGuardTrapHandler(); err != nil {
+			t.Fatal(err)
+		}
+		jm, err = rt.NewJobMemoryGuarded(65536, 65536)
+	} else {
+		jm, err = rt.NewJobMemory(65536)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	ar, err := rt.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ar.Close()
+	code, entry, err := rt.MapCode(cm.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Unmap(code)
+	serArgs, results, trap := ar.Alloc(256), ar.Alloc(256), ar.Alloc(rt.TrapBufferBytes)
+	for i, arg := range args {
+		binary.LittleEndian.PutUint64(serArgs[i*8:], arg)
+	}
+	if opts.ElideBoundsChecks {
+		err = eng.CallGuarded(entry+uintptr(cm.Entry[0]), serArgs, jm.LinMemBase(), trap, results, jm)
+	} else {
+		err = eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results)
+	}
+	return binary.LittleEndian.Uint64(results), err
+}
+
+func TestBorrowedAddressShiftWrapAliasesAndBounds(t *testing.T) {
+	for _, count := range []int32{-1, 0, 1, 2, 31, 32, 63, 64} {
+		for _, overwrite := range []bool{false, true} {
+			body := []byte{0}
+			params := make([]wasm.ValType, 16)
+			// Older local reads stay live while the shifted address is owned and
+			// while an optional local overwrite realizes aliases under pressure.
+			for i := range params {
+				params[i] = wasm.I32
+				body = append(body, 0x20, byte(i))
+			}
+			address := []byte{0x20, 0, 0x41}
+			address = append(address, wasmtest.SLEB32(count)...)
+			address = append(address, 0x74)
+			body = append(body, address...)
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(0x1234)...)
+			body = append(body, 0x36, 2, 0) // store to the wrapped address
+			body = append(body, address...)
+			body = append(body, 0x28, 2, 0) // retain a deferred, owned-address load
+			if overwrite {
+				body = append(body, 0x20, 1, 0x21, 0)
+			}
+			body = append(body, 0x20, 0, 0x6a)
+			for range params {
+				body = append(body, 0x6a)
+			}
+			body = append(body, 0x0b)
+			m := modMem(t, 1, params, []wasm.ValType{wasm.I32}, body)
+			for _, enabled := range []bool{false, true} {
+				for _, guard := range []bool{false, true} {
+					for _, input := range []uint32{0, 1, 3, 16383, 16384, 65532, 65533, 0x40000000, 0x80000000, 0xffffffff} {
+						args := make([]uint64, len(params))
+						var sum uint32
+						for i := range args {
+							args[i] = uint64(i*13 + 7)
+						}
+						args[0] = uint64(input)
+						for _, arg := range args {
+							sum += uint32(arg)
+						}
+						var stats ModuleStats
+						opts := CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"borrowed-address-shift": enabled, "store-forward": false, "store-load-fwd": false}}
+						if diagnosticsEnabled {
+							opts.Stats = &stats
+						}
+						got, err := runBorrowedAddressFixture(t, m, opts, args...)
+						if diagnosticsEnabled && count == 2 && (stats.Funcs[0].Peephole["borrowed-address-shift"] != 0) != enabled {
+							t.Fatalf("missing admission enabled=%v stats=%v", enabled, stats.Funcs[0].Peephole)
+						}
+						addr := input << (uint32(count) & 31)
+						if addr > 65532 {
+							var trap *rt.TrapError
+							if !errors.As(err, &trap) || trap.Code != rt.TrapLinMemOutOfBounds {
+								t.Fatalf("count=%d input=%x enabled=%v guard=%v trap=%v", count, input, enabled, guard, err)
+							}
+							continue
+						}
+						last := input
+						if overwrite {
+							last = uint32(args[1])
+						}
+						want := uint64(uint32(0x1234) + sum + last)
+						if err != nil || got != want {
+							t.Fatalf("count=%d input=%x overwrite=%v enabled=%v guard=%v got=%x want=%x err=%v", count, input, overwrite, enabled, guard, got, want, err)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestBorrowedAddressShiftLeavesNumericalShiftsAlone(t *testing.T) {
+	for _, op := range []byte{0x74, 0x75, 0x76, 0x77, 0x78} {
+		m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 2, op, 0x20, 0, 0x6a, 0x0b})
+		var off []byte
+		for _, enabled := range []bool{false, true} {
+			var stats ModuleStats
+			opts := CompileOptions{Optimizations: map[string]bool{"borrowed-address-shift": enabled}}
+			if diagnosticsEnabled {
+				opts.Stats = &stats
+			}
+			cm, err := CompileModuleWith(m, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diagnosticsEnabled && stats.Funcs[0].Peephole["borrowed-address-shift"] != 0 {
+				t.Fatalf("numerical shift admitted op=%x", op)
+			}
+			if enabled && string(off) != string(cm.Code) {
+				t.Fatalf("numerical shift changed op=%x", op)
+			}
+			off = append([]byte(nil), cm.Code...)
+			if cm.CodeImage != nil {
+				cm.CodeImage.Close()
+			}
+		}
+	}
+}

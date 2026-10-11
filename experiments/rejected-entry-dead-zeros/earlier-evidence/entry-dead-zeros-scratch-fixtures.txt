@@ -1,0 +1,65 @@
+=== RUN   TestEntryDeadZerosPreserveJoinedInitialValues
+--- PASS: TestEntryDeadZerosPreserveJoinedInitialValues (0.00s)
+=== RUN   TestEntryDeadZerosKeepInitialLoopRead
+--- PASS: TestEntryDeadZerosKeepInitialLoopRead (0.00s)
+=== RUN   TestEntryDeadZerosScratchAndPrefixPolicy
+--- PASS: TestEntryDeadZerosScratchAndPrefixPolicy (0.00s)
+=== RUN   TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64
+--- PASS: TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64 (0.00s)
+=== RUN   TestInitialLocalReadsModuleReference
+    structured_local_liveness_arm64_test.go:41: one-pass initial-value proof matches reference CFG for57functions
+--- PASS: TestInitialLocalReadsModuleReference (0.00s)
+=== RUN   TestStructuredLocalLiveness
+=== RUN   TestStructuredLocalLiveness/overwrite-both-targets
+=== RUN   TestStructuredLocalLiveness/one-live-target
+=== RUN   TestStructuredLocalLiveness/backedge-overwrite
+=== RUN   TestStructuredLocalLiveness/backedge-read
+=== RUN   TestStructuredLocalLiveness/if-one-live-arm
+=== RUN   TestStructuredLocalLiveness/if-both-dead-arms
+--- PASS: TestStructuredLocalLiveness (0.00s)
+    --- PASS: TestStructuredLocalLiveness/overwrite-both-targets (0.00s)
+    --- PASS: TestStructuredLocalLiveness/one-live-target (0.00s)
+    --- PASS: TestStructuredLocalLiveness/backedge-overwrite (0.00s)
+    --- PASS: TestStructuredLocalLiveness/backedge-read (0.00s)
+    --- PASS: TestStructuredLocalLiveness/if-one-live-arm (0.00s)
+    --- PASS: TestStructuredLocalLiveness/if-both-dead-arms (0.00s)
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls/overwritten-after-call
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls/call-argument-reads-zero
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls/live-across-call
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls/tail-call
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls/bulk-memory-before-overwrite
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls/bulk-memory-input-reads-zero
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls/typed-call-argument-reads-zero
+=== RUN   TestStructuredEntryLocalLivenessAcrossCalls/typed-tail-call-argument-reads-zero
+--- PASS: TestStructuredEntryLocalLivenessAcrossCalls (0.00s)
+    --- PASS: TestStructuredEntryLocalLivenessAcrossCalls/overwritten-after-call (0.00s)
+    --- PASS: TestStructuredEntryLocalLivenessAcrossCalls/call-argument-reads-zero (0.00s)
+    --- PASS: TestStructuredEntryLocalLivenessAcrossCalls/live-across-call (0.00s)
+    --- PASS: TestStructuredEntryLocalLivenessAcrossCalls/tail-call (0.00s)
+    --- PASS: TestStructuredEntryLocalLivenessAcrossCalls/bulk-memory-before-overwrite (0.00s)
+    --- PASS: TestStructuredEntryLocalLivenessAcrossCalls/bulk-memory-input-reads-zero (0.00s)
+    --- PASS: TestStructuredEntryLocalLivenessAcrossCalls/typed-call-argument-reads-zero (0.00s)
+    --- PASS: TestStructuredEntryLocalLivenessAcrossCalls/typed-tail-call-argument-reads-zero (0.00s)
+=== RUN   TestInitialLocalReadsNestedEdges
+=== RUN   TestInitialLocalReadsNestedEdges/outer-block-skips-definition
+=== RUN   TestInitialLocalReadsNestedEdges/outer-loop-backedge-cannot-clear-write
+=== RUN   TestInitialLocalReadsNestedEdges/backedge-before-write-and-forward-exit-after-write
+=== RUN   TestInitialLocalReadsNestedEdges/branch-table-outer-block-and-loop
+=== RUN   TestInitialLocalReadsNestedEdges/unreachable-then-defined-else
+=== RUN   TestInitialLocalReadsNestedEdges/function-label-then-live-else
+=== RUN   TestInitialLocalReadsNestedEdges/function-label-does-not-revive-dead-tail
+=== RUN   TestInitialLocalReadsNestedEdges/function-branch-table-terminal
+--- PASS: TestInitialLocalReadsNestedEdges (0.00s)
+    --- PASS: TestInitialLocalReadsNestedEdges/outer-block-skips-definition (0.00s)
+    --- PASS: TestInitialLocalReadsNestedEdges/outer-loop-backedge-cannot-clear-write (0.00s)
+    --- PASS: TestInitialLocalReadsNestedEdges/backedge-before-write-and-forward-exit-after-write (0.00s)
+    --- PASS: TestInitialLocalReadsNestedEdges/branch-table-outer-block-and-loop (0.00s)
+    --- PASS: TestInitialLocalReadsNestedEdges/unreachable-then-defined-else (0.00s)
+    --- PASS: TestInitialLocalReadsNestedEdges/function-label-then-live-else (0.00s)
+    --- PASS: TestInitialLocalReadsNestedEdges/function-label-does-not-revive-dead-tail (0.00s)
+    --- PASS: TestInitialLocalReadsNestedEdges/function-branch-table-terminal (0.00s)
+=== RUN   TestInitialLocalReadsRejectsUnmodeledOrMalformedControl
+--- PASS: TestInitialLocalReadsRejectsUnmodeledOrMalformedControl (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.325s

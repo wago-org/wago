@@ -1,0 +1,4 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: entry-dead-zeros
+{"workload":"modular-arithmetic","phase":"exec","round":0,"on":false,"iterations":827,"us":13.53451269649335}
+{"workload":"modular-arithmetic","phase":"exec","round":0,"on":true,"iterations":827,"us":15.1373446191052}

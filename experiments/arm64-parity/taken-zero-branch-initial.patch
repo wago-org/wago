@@ -1,0 +1,55 @@
+diff --git a/src/core/compiler/backend/railshot/arm64/knobs.go b/src/core/compiler/backend/railshot/arm64/knobs.go
+index 2daca4e8..b76771ff 100644
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -33,6 +33,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
+ 	optimization.Bind("dominated-indexed-key", &dominatedIndexedKeyEnabled),
+ 	optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
+ 	optimization.Bind("common-exit-compare", &commonExitCompareEnabled),
++	optimization.Bind("taken-zero-branch", &takenZeroBranchEnabled),
+ 	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
+ 	optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
+ 	optimization.Bind("br-table-branch-vector", &brTableBranchVectorEnabled),
+@@ -116,6 +117,7 @@ var (
+ 	optScopedLoopIntConst   = optimizationBindings.Option("scoped-loop-int-const")
+ 	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
+ 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
++	optTakenZeroBranch      = optimizationBindings.Option("taken-zero-branch")
+ 	optBorrowedDivRem       = optimizationBindings.Option("borrowed-div-rem")
+ 	optBoundedQuotient      = optimizationBindings.Option("bounded-signed-quotient")
+ 	optBrTableBranchVector  = optimizationBindings.Option("br-table-branch-vector")
+diff --git a/src/core/compiler/backend/railshot/arm64/peephole.go b/src/core/compiler/backend/railshot/arm64/peephole.go
+index cfdc5500..c151ece6 100644
+--- a/src/core/compiler/backend/railshot/arm64/peephole.go
++++ b/src/core/compiler/backend/railshot/arm64/peephole.go
+@@ -26,7 +26,7 @@ const (
+ // the branch-target set is collected once here and threaded into both passes.
+ func (f *fn) finalizePeepholes(entryOffsets ...int) {
+ 	compact := nativeFinalizerEnabled && f.compactNative()
+-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !compact {
++	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optTakenZeroBranch) && !compact {
+ 		return
+ 	}
+ 	// The established size-stable peephole abandons a function when it reaches
+@@ -85,6 +85,9 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
+ 		f.foldSingleBitBranches(b, n, targets)
+ 		f.foldBranchPairs(b, n, targets)
+ 	}
++	if f.opt(optTakenZeroBranch) {
++		f.threadTakenZeroBranches(b, n, targets)
++	}
+ 	if f.opt(optStoreLoadFwd) {
+ 		f.forwardStoreLoads(b, n, targets)
+ 	}
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index b68ff15c..3888e13b 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -463,6 +463,7 @@ var catalog = []Definition{
+ 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: []string{"arm64"}},
++	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: false, Architectures: []string{"arm64"}},
+ 	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: []string{"arm64"}},

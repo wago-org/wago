@@ -1,0 +1,46 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var borrowedAddressShiftEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_BORROWED_ADDRESS_SHIFT") == "1"
+
+// condenseBorrowedAddressShift only handles a memory32 address whose deferred
+// left shift reads a permanent integer local. The source remains unchanged and
+// the address owns its result register, exactly as with ordinary condensation.
+// Keeping the shift in a W register preserves i32 wrapping before memory bounds
+// checks; a scaled X-register address would instead widen before shifting.
+func (f *fn) condenseBorrowedAddressShift() {
+	node := f.s.back()
+	if node == nil || !node.isDeferred() || node.st.typ != mtI32 || node.deferredOp() != opShl {
+		return
+	}
+	left, right := f.s.arg0(node), f.s.arg1(node)
+	if left.elemKind() != ekValue || left.st.kind != stLocalReg ||
+		right.elemKind() != ekValue || right.st.kind != stConst {
+		return
+	}
+	src := left.st.reg
+	x := left.st.index()
+	if x < 0 || x >= len(f.locals) || f.locals[x].reg != src ||
+		src == regNone || !f.pinnedLocalMask.has(src) {
+		return
+	}
+	if len(f.intervalLast) != 0 && f.intervalOwner[src] == x {
+		return
+	}
+	if regallocCheckEnabled {
+		f.checkInputs(node)
+	}
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(node)
+		defer f.switchProfileOrigin(previous)
+	}
+	f.stats.addCondense()
+	dst := f.allocReg(maskOf(src))
+	f.a.LslImm(dst, src, byte(right.st.cval&31), true)
+	f.consumeBlockBelow(node)
+	f.occupy(node, dst)
+	f.stats.peep("borrowed-address-shift")
+}

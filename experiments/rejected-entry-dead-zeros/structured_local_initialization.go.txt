@@ -1,0 +1,158 @@
+//go:build arm64
+
+package arm64
+
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
+const maxLocalInitializationBody = 4 << 10
+
+type localInitializationFrame struct {
+	entry, end                            uint64
+	kind                                  byte
+	entryReachable, endReachable, hasElse bool
+}
+
+func (fr *localInitializationFrame) merge(written uint64, reachable bool) {
+	if !reachable {
+		return
+	}
+	if fr.endReachable {
+		fr.end &= written
+	} else {
+		fr.end = written
+		fr.endReachable = true
+	}
+}
+
+// scanInitialLocalReads proves which incoming scalar-local values may be read
+// before any definition. Written bits only increase along an execution path.
+// Forward target and if joins intersect every reachable predecessor. A loop's
+// initial-entry mask remains a lower bound on every backedge: assignments cannot
+// make a local unwritten. One traversal therefore suffices, without a CFG,
+// fixed-point passes, heap allocation, or a retained per-module sidecar.
+func scanInitialLocalReads(body []byte, classifier wasm.ModuleInstructionClassifier) (needed uint64, ok bool) {
+	if len(body) == 0 || len(body) > maxLocalInitializationBody {
+		return 0, false
+	}
+	var frames [64]localInitializationFrame
+	frames[0] = localInitializationFrame{entryReachable: true}
+	depth := 1
+	written, reachable := uint64(0), true
+	r := wasm.ReaderFrom(body)
+	branch := func(label uint32) bool {
+		if uint64(label) >= uint64(depth) {
+			return false
+		}
+		fr := &frames[depth-1-int(label)]
+		if fr.kind != 0 && fr.kind != 0x03 {
+			fr.merge(written, reachable)
+		}
+		return true
+	}
+	for r.HasNext() && depth != 0 {
+		op, err := r.Byte()
+		if err != nil {
+			return 0, false
+		}
+		switch op {
+		case 0x00, 0x0f:
+			reachable = false
+		case 0x12, 0x13, 0x15:
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
+				return 0, false
+			}
+			reachable = false
+		case 0x02, 0x03, 0x04:
+			if depth == len(frames) {
+				return 0, false
+			}
+			if err := wasm.SkipInstructionImmediate(&r, op); err != nil {
+				return 0, false
+			}
+			frames[depth] = localInitializationFrame{kind: op, entry: written, entryReachable: reachable}
+			depth++
+		case 0x05:
+			fr := &frames[depth-1]
+			if fr.kind != 0x04 || fr.hasElse {
+				return 0, false
+			}
+			fr.merge(written, reachable)
+			written, reachable = fr.entry, fr.entryReachable
+			fr.hasElse = true
+		case 0x0b:
+			fr := &frames[depth-1]
+			if fr.kind == 0x04 && !fr.hasElse {
+				fr.merge(fr.entry, fr.entryReachable)
+			}
+			fr.merge(written, reachable)
+			written, reachable = fr.end, fr.endReachable
+			depth--
+		case 0x0c, 0x0d:
+			label, err := r.U32()
+			if err != nil || !branch(label) {
+				return 0, false
+			}
+			if op == 0x0c {
+				reachable = false
+			}
+		case 0x0e:
+			n, err := r.U32()
+			if err != nil || uint64(n)+1 > uint64(r.BytesLeft()) {
+				return 0, false
+			}
+			for j := uint32(0); j <= n; j++ {
+				label, err := r.U32()
+				if err != nil || !branch(label) {
+					return 0, false
+				}
+			}
+			reachable = false
+		case 0x20, 0x21, 0x22:
+			x, err := r.U32()
+			if err != nil || x >= 64 {
+				return 0, false
+			}
+			if reachable {
+				bit := uint64(1) << x
+				if op == 0x20 {
+					needed |= bit &^ written
+				} else {
+					written |= bit
+				}
+			}
+		case 0x06, 0x07, 0x08, 0x09, 0x0a, 0x18, 0x19, 0x1f:
+			return 0, false // EH has additional handler edges
+		default:
+			if op >= 0xd0 && op != 0xfc {
+				return 0, false
+			}
+			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+				continue
+			}
+			var err error
+			switch op {
+			case 0x41:
+				_, err = r.I32()
+			case 0x42:
+				_, err = r.I64()
+			case 0x43:
+				_, err = r.Bytes(4)
+			case 0x44:
+				_, err = r.Bytes(8)
+			case 0x10, 0x14, 0x23, 0x24, 0x25, 0x26, 0x3f, 0x40:
+				_, err = r.U32()
+			default:
+				var imm wasm.InstructionImmediate
+				err = classifier.ClassifyInto(&r, op, &imm)
+			}
+			if err != nil {
+				return 0, false
+			}
+		}
+	}
+	if depth != 0 || r.HasNext() {
+		return 0, false
+	}
+	return needed, true
+}

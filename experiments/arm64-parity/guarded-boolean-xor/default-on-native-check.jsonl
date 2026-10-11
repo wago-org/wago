@@ -1,0 +1,4 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"geo-point-in-polygon","phase":"exec","round":0,"on":false,"iterations":47,"us":20.719872340425532}
+{"workload":"geo-point-in-polygon","phase":"exec","round":0,"on":true,"iterations":47,"us":20.253531914893617}

@@ -33,6 +33,8 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("dominated-indexed-key", &dominatedIndexedKeyEnabled),
 	optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
 	optimization.Bind("common-exit-compare", &commonExitCompareEnabled),
+	optimization.Bind("taken-zero-branch", &takenZeroBranchEnabled),
+	optimization.Bind("guarded-boolean-xor", &guardedBooleanXorEnabled),
 	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
 	optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
 	optimization.Bind("br-table-branch-vector", &brTableBranchVectorEnabled),
@@ -116,6 +118,8 @@ var (
 	optScopedLoopIntConst   = optimizationBindings.Option("scoped-loop-int-const")
 	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
+	optTakenZeroBranch      = optimizationBindings.Option("taken-zero-branch")
+	optGuardedBooleanXor    = optimizationBindings.Option("guarded-boolean-xor")
 	optBorrowedDivRem       = optimizationBindings.Option("borrowed-div-rem")
 	optBoundedQuotient      = optimizationBindings.Option("bounded-signed-quotient")
 	optBrTableBranchVector  = optimizationBindings.Option("br-table-branch-vector")

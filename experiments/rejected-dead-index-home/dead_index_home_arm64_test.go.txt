@@ -1,0 +1,114 @@
+//go:build (linux || darwin) && arm64
+
+package arm64
+
+import (
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+func TestDeadIndexStructuredLiveness(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body []byte
+		pc   int
+		dead bool
+	}{
+		{"overwrite-both-targets", []byte{0x02, 0x40, 0x02, 0x40, 0x20, 0, 0x0e, 1, 0, 1, 0x0b, 0x41, 11, 0x21, 0, 0x0f, 0x0b, 0x41, 22, 0x21, 0, 0x20, 0, 0x0b}, 6, true},
+		{"one-live-target", []byte{0x02, 0x40, 0x02, 0x40, 0x20, 0, 0x0e, 1, 0, 1, 0x0b, 0x41, 11, 0x21, 0, 0x0f, 0x0b, 0x20, 0, 0x0b}, 6, false},
+		{"backedge-overwrite", []byte{0x03, 0x40, 0x41, 7, 0x21, 0, 0x02, 0x40, 0x20, 0, 0x0e, 1, 0, 1, 0x0b, 0x0c, 0, 0x0b, 0x0b}, 10, true},
+		{"backedge-read", []byte{0x03, 0x40, 0x20, 0, 0x1a, 0x02, 0x40, 0x20, 0, 0x0e, 1, 0, 1, 0x0b, 0x0c, 0, 0x0b, 0x0b}, 9, false},
+		{"if-one-live-arm", []byte{0x02, 0x40, 0x20, 0, 0x0e, 0, 0, 0x0b, 0x41, 1, 0x04, 0x40, 0x41, 7, 0x21, 0, 0x05, 0x20, 0, 0x1a, 0x0b, 0x0b}, 4, false},
+		{"if-both-dead-arms", []byte{0x02, 0x40, 0x20, 0, 0x0e, 0, 0, 0x0b, 0x41, 1, 0x04, 0x40, 0x41, 7, 0x21, 0, 0x05, 0x41, 8, 0x21, 0, 0x0b, 0x20, 0, 0x0b}, 4, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nodes, edges, ok := buildDeadIndexGraph(tc.body, wasm.NewModuleInstructionClassifier(nil, false), nil, nil)
+			if !ok {
+				t.Fatal("graph rejected")
+			}
+			for _, node := range nodes {
+				if int(node.pos) != tc.pc {
+					continue
+				}
+				var live uint64
+				for _, edge := range edges[node.first : node.first+node.count] {
+					if int(edge.to) < len(nodes) {
+						live |= nodes[edge.to].live
+					}
+				}
+				if got := live&1 == 0; got != tc.dead {
+					t.Fatalf("dead=%v want%v", got, tc.dead)
+				}
+				return
+			}
+			t.Fatal("branch node missing")
+		})
+	}
+}
+
+func TestStructuredEntryLocalLivenessAcrossCalls(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body []byte
+		want uint64
+	}{
+		{"overwritten-after-call", []byte{0x10, 0, 0x41, 7, 0x21, 0, 0x20, 0, 0x0b}, 0},
+		{"call-argument-reads-zero", []byte{0x20, 0, 0x10, 0, 0x0b}, 1},
+		{"live-across-call", []byte{0x10, 0, 0x20, 0, 0x0b}, 1},
+		{"tail-call", []byte{0x12, 0, 0x0b}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nodes, _, ok := buildDeadIndexGraph(tc.body, wasm.NewModuleInstructionClassifier(nil, false), nil, nil)
+			if !ok || nodes[0].live != tc.want {
+				t.Fatalf("ok=%v nodes=%v want=%x", ok, nodes, tc.want)
+			}
+		})
+	}
+}
+
+func TestDeadIndexHomePreservesSourceAndOlderStack(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, liveSource := range []bool{false, true} {
+		for _, oldSnapshot := range []bool{false, true} {
+			body := []byte{0}
+			if oldSnapshot {
+				body = append(body, 0x20, 0)
+			}
+			body = append(body, 0x02, 0x40, 0x02, 0x40, 0x20, 0, 0x41, 1, 0x71, 0x0e, 1, 0, 1, 0x0b, 0x41, 11, 0x21, 0, 0x0b)
+			if !liveSource {
+				body = append(body, 0x41, 22, 0x21, 0)
+			}
+			body = append(body, 0x20, 0)
+			if oldSnapshot {
+				body = append(body, 0x6a)
+			}
+			body = append(body, 0x0b)
+			m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			for _, guard := range []bool{false, true} {
+				for _, enabled := range []bool{false, true} {
+					for _, x := range []uint64{0, 1, 2, 3, 0xffffffffffffffff} {
+						stats := &ModuleStats{}
+						got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: stats, ElideBoundsChecks: guard, Optimizations: map[string]bool{"dead-index-home": enabled}}, x)
+						want := uint64(22)
+						if liveSource {
+							want = uint64(uint32(x))
+							if x&1 == 0 {
+								want = 11
+							}
+						}
+						if oldSnapshot {
+							want = uint64(uint32(want + uint64(uint32(x))))
+						}
+						if err != nil || uint32(got) != uint32(want) {
+							t.Fatalf("live=%v snapshot=%v enabled=%v guard=%v x=%x got=%x want=%x err=%v", liveSource, oldSnapshot, enabled, guard, x, got, want, err)
+						}
+						if admitted := stats.Funcs[0].Peephole["dead-index-home"] != 0; admitted != (enabled && !liveSource) {
+							t.Fatalf("admitted=%v live=%v enabled=%v stats=%v", admitted, liveSource, enabled, stats.Funcs[0].Peephole)
+						}
+					}
+				}
+			}
+		}
+	}
+}

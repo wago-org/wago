@@ -1,0 +1,2 @@
+148 combined default-ON SIGNAL images match independently timed and qualified changes; only hardware-boolean-anf.bin, geo-point-in-polygon.bin change.
+148 both-OFF SIGNAL images are byte-identical to exact37174169. All exact contracts pass in both bounds modes;1x application timings are used only for correctness/image capture.

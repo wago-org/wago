@@ -1,0 +1,3 @@
+geo-point-in-polygon: exact oracle passes; 640-byte profile image matches current qualified baseline.
+compiler-register-allocation: exact oracle passes; 1952-byte profile image matches current qualified baseline.
+language-register-vm: exact oracle passes; 1232-byte profile image matches current qualified baseline.

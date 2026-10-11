@@ -1,0 +1,90 @@
+//go:build (linux || darwin) && arm64
+
+package arm64
+
+import (
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+func TestEntryDeadZerosPreserveJoinedInitialValues(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, liveElse := range []bool{false, true} {
+		for _, oldSnapshot := range []bool{false, true} {
+			body := []byte{1, 8, 0x7f}
+			if oldSnapshot {
+				body = append(body, 0x20, 1)
+			}
+			body = append(body, 0x20, 0, 0x04, 0x40, 0x41, 11, 0x21, 1, 0x05)
+			if !liveElse {
+				body = append(body, 0x41, 22, 0x21, 1)
+			}
+			body = append(body, 0x0b, 0x20, 8, 0x10, 1, 0x1a, 0x20, 1)
+			if oldSnapshot {
+				body = append(body, 0x6a)
+			}
+			body = append(body, 0x0b)
+			m := modFuncs(t,
+				funcDef{[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body},
+				funcDef{[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x0b}},
+			)
+			for _, guard := range []bool{false, true} {
+				for _, enabled := range []bool{false, true} {
+					for _, x := range []uint64{0, 1, 2, 0xffffffff} {
+						stats := &ModuleStats{}
+						opts := CompileOptions{Stats: stats, ElideBoundsChecks: guard, Optimizations: map[string]bool{"entry-dead-zeros": enabled, "inline": false, "inline-callfree": false}}
+						got, err := runArm64WrapperWithOptions(t, m, opts, x)
+						want := uint32(11)
+						if x == 0 {
+							want = 22
+							if liveElse {
+								want = 0
+							}
+						}
+						if err != nil || uint32(got) != want {
+							t.Fatalf("live=%v old=%v enabled=%v guard=%v x=%x got=%x want=%x err=%v", liveElse, oldSnapshot, enabled, guard, x, got, want, err)
+						}
+						wantSkipped := 0
+						if enabled {
+							wantSkipped = 7
+							if liveElse || oldSnapshot {
+								wantSkipped = 6
+							}
+						}
+						if n := stats.Funcs[0].Peephole["entry-dead-zero-elide"]; n != wantSkipped {
+							t.Fatalf("skips=%d want%d live=%v old=%v enabled=%v stats=%v", n, wantSkipped, liveElse, oldSnapshot, enabled, stats.Funcs[0].Peephole)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestEntryDeadZerosKeepInitialLoopRead(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	// The first loop iteration must see declared local1's zero. Later iterations
+	// would see a write, which alone cannot prove the initial value dead.
+	body := []byte{1, 8, 0x7f, 0x03, 0x40, 0x20, 1, 0x10, 1, 0x21, 2, 0x41, 1, 0x21, 1, 0x20, 0, 0x41, 1, 0x6b, 0x22, 0, 0x0d, 0, 0x0b, 0x20, 2, 0x0b}
+	m := modFuncs(t,
+		funcDef{[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body},
+		funcDef{[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x0b}},
+	)
+	for _, enabled := range []bool{false, true} {
+		for _, x := range []uint64{1, 2, 3} {
+			stats := &ModuleStats{}
+			got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: stats, Optimizations: map[string]bool{"entry-dead-zeros": enabled, "inline": false, "inline-callfree": false}}, x)
+			want := uint64(0)
+			if x > 1 {
+				want = 1
+			}
+			if err != nil || got != want {
+				t.Fatalf("enabled=%v x=%d got=%d want%d err=%v", enabled, x, got, want, err)
+			}
+			if enabled && stats.Funcs[0].Peephole["entry-dead-zero-elide"] != 7 {
+				t.Fatalf("stats=%v", stats.Funcs[0].Peephole)
+			}
+		}
+	}
+}

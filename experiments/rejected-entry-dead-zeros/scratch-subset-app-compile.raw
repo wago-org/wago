@@ -1,0 +1,14 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: entry-dead-zeros
+{"workload":"stats-gini","phase":"compile","round":0,"on":false,"iterations":1185,"us":83.33790379746836}
+{"workload":"stats-gini","phase":"compile","round":0,"on":true,"iterations":1185,"us":82.93301687763713}
+{"workload":"stats-gini","phase":"compile","round":1,"on":true,"iterations":1185,"us":85.95049282700421}
+{"workload":"stats-gini","phase":"compile","round":1,"on":false,"iterations":1185,"us":88.15274261603375}
+{"workload":"stats-gini","phase":"compile","round":2,"on":false,"iterations":1185,"us":81.51093502109704}
+{"workload":"stats-gini","phase":"compile","round":2,"on":true,"iterations":1185,"us":84.3914911392405}
+{"workload":"stats-gini","phase":"compile","round":3,"on":true,"iterations":1185,"us":82.9984523206751}
+{"workload":"stats-gini","phase":"compile","round":3,"on":false,"iterations":1185,"us":85.84866329113923}
+{"workload":"stats-gini","phase":"compile","round":4,"on":false,"iterations":1185,"us":106.07426160337553}
+{"workload":"stats-gini","phase":"compile","round":4,"on":true,"iterations":1185,"us":79.52626582278482}
+{"workload":"stats-gini","phase":"compile","round":5,"on":true,"iterations":1185,"us":82.33737721518987}
+{"workload":"stats-gini","phase":"compile","round":5,"on":false,"iterations":1185,"us":88.03368523206751}
