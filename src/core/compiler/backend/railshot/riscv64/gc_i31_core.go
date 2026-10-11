@@ -31,6 +31,8 @@ func admitRV64I31CoreWire(data []byte) bool {
 		return sha256.Sum256(data) == [sha256.Size]byte{0x02, 0x4b, 0x9a, 0x33, 0x4c, 0x9a, 0x7b, 0xb6, 0x93, 0x32, 0x43, 0xfa, 0x1e, 0xaf, 0x60, 0xed, 0x65, 0x33, 0x38, 0x03, 0x4b, 0xfa, 0xf9, 0xe5, 0x4f, 0xb2, 0x3c, 0xcc, 0x13, 0xc9, 0xad, 0x87}
 	case 131:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x75, 0x7d, 0x32, 0x66, 0x61, 0x7e, 0xa9, 0x01, 0x22, 0x1f, 0xac, 0xbd, 0xa9, 0xb6, 0x60, 0xd6, 0xd1, 0xfd, 0x52, 0xad, 0xf4, 0x92, 0xff, 0xa8, 0x2b, 0xa0, 0x65, 0x8d, 0xc8, 0x46, 0xb2, 0x6d}
+	case 262:
+		return sha256.Sum256(data) == [sha256.Size]byte{0x57, 0x23, 0x87, 0xa2, 0xc9, 0xd7, 0xea, 0x91, 0x12, 0xf3, 0x94, 0x00, 0x25, 0xb7, 0xc5, 0x70, 0x41, 0xcd, 0x94, 0x78, 0x18, 0x5e, 0xd7, 0xe3, 0x2b, 0xb9, 0x3a, 0x01, 0xfb, 0xfa, 0x5a, 0x69}
 	case 96:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x0a, 0x26, 0xe5, 0x0d, 0x6e, 0xc8, 0xcc, 0xba, 0xf1, 0xcc, 0x3a, 0x59, 0xfc, 0x2e, 0x1b, 0xe6, 0xdc, 0xa2, 0xc2, 0x22, 0x19, 0xba, 0x70, 0xca, 0x80, 0xa0, 0x14, 0x51, 0x88, 0x2b, 0xf0, 0xe4}
 	case 252:
@@ -54,11 +56,11 @@ func AdmitI31CoreSource(data []byte) bool {
 // lowering. This is intentionally narrower than the general collector-free
 // i31 implementation on complete backends.
 func admitRV64I31Core(m *wasm.Module) bool {
-	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m)
+	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m) || admitRV64I31OfficialAnyTable(m)
 }
 
 func admitRV64I31TableProduct(m *wasm.Module) bool {
-	return admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m)
+	return admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialAnyTable(m)
 }
 
 func admitRV64I31MinimalCore(m *wasm.Module) bool {
@@ -174,13 +176,28 @@ func admitRV64I31OfficialCore(m *wasm.Module) bool {
 // Its compact eight-byte table rows exercise the complete table lifecycle, so
 // no other i31 table shape inherits this collector-free lowering.
 func admitRV64I31OfficialTable(m *wasm.Module) bool {
+	return admitRV64I31OfficialTableShape(m, false)
+}
+
+// admitRV64I31OfficialAnyTable pins the sixth official spec-v3 gc/i31 module.
+// Its anyref table is still confined to compact i31 values by the exact element
+// and instruction shape, including an explicit nullable i31 cast on reads.
+func admitRV64I31OfficialAnyTable(m *wasm.Module) bool {
+	return admitRV64I31OfficialTableShape(m, true)
+}
+
+func admitRV64I31OfficialTableShape(m *wasm.Module, anyref bool) bool {
 	if m == nil || len(m.Types) != 4 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Tables) != 1 || len(m.Elements) != 2 || len(m.Exports) != 6 ||
 		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0]
-	if table.Init != nil || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min != 3 || table.Type.Limits.Max != 10 || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.I31Ref) {
+	wantTableType := wasm.I31Ref
+	if anyref {
+		wantTableType = wasm.AnyRef
+	}
+	if table.Init != nil || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax || table.Type.Limits.Min != 3 || table.Type.Limits.Max != 10 || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wantTableType) {
 		return false
 	}
 	types := []struct{ params, results []wasm.ValType }{
@@ -202,6 +219,9 @@ func admitRV64I31OfficialTable(m *wasm.Module) bool {
 		{0x20, 0, 0x20, 1, 0xfb, 0x1c, 0x20, 2, 0xfc, 0x11, 0, 0x0b},
 		{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 0, 0, 0x0b},
 		{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 1, 0, 0x0b},
+	}
+	if anyref {
+		wantBodies[1] = []byte{0x20, 0, 0x25, 0, 0xfb, 0x17, 0x6c, 0xfb, 0x1e, 0x0b}
 	}
 	for i, binding := range m.FuncTypes {
 		if binding.Rec || binding.Index != wantBindings[i] {
