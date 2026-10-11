@@ -84,6 +84,46 @@ func rv64GCTypeSubtypingDeclarationsProfile(c *Compiled) uint8 {
 				{ID: 5, Kind: corergc.KindFunc, Super: 4, HasSuper: true},
 			},
 		},
+		{
+			types: []DefinedTypeDescriptor{
+				{RecGroup: 0, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(anyref, false)}},
+				{RecGroup: 1, Supers: []uint32{0}, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(refType(1, false), false)}},
+				{RecGroup: 2, Supers: []uint32{1}, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(refType(1, false), false), field(i32, false)}},
+			},
+			descs: []nativegc.TypeDesc{
+				{ID: 0, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageRefNull}}, Size: 4, Align: 4, HasRefs: true},
+				{ID: 1, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageRef}}, Size: 4, Align: 4, HasRefs: true, Super: 0, HasSuper: true},
+				{ID: 2, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageRef}, {Kind: corergc.StorageI32, Offset: 4}}, Size: 8, Align: 4, HasRefs: true, Super: 1, HasSuper: true},
+			},
+		},
+		{
+			types: []DefinedTypeDescriptor{
+				{RecGroup: 0, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(i32, false), field(refType(0, false), false)}},
+				{RecGroup: 1, Supers: []uint32{0}, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(i32, false), field(refType(2, false), false)}},
+				{RecGroup: 1, Supers: []uint32{0}, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(i32, false), field(refType(1, false), false)}},
+			},
+			descs: []nativegc.TypeDesc{
+				{ID: 0, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageI32}, {Kind: corergc.StorageRef, Offset: 4}}, Size: 8, Align: 4, HasRefs: true},
+				{ID: 1, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageI32}, {Kind: corergc.StorageRef, Offset: 4}}, Size: 8, Align: 4, HasRefs: true, Super: 0, HasSuper: true},
+				{ID: 2, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageI32}, {Kind: corergc.StorageRef, Offset: 4}}, Size: 8, Align: 4, HasRefs: true, Super: 0, HasSuper: true},
+			},
+		},
+		{
+			types: []DefinedTypeDescriptor{
+				{RecGroup: 0, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(i32, false), field(refType(1, false), false)}},
+				{RecGroup: 0, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(i64, false), field(refType(0, false), false)}},
+				{RecGroup: 1, Supers: []uint32{1}, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(i64, false), field(refType(0, false), false), field(i32, false)}},
+				{RecGroup: 1, Supers: []uint32{0}, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(i32, false), field(refType(1, false), false), field(i32, false)}},
+				{RecGroup: 1, Supers: []uint32{1}, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field(i64, false), field(refType(3, false), false), field(i32, false)}},
+			},
+			descs: []nativegc.TypeDesc{
+				{ID: 0, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageI32}, {Kind: corergc.StorageRef, Offset: 4}}, Size: 8, Align: 4, HasRefs: true},
+				{ID: 1, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageI64}, {Kind: corergc.StorageRef, Offset: 8}}, Size: 16, Align: 8, HasRefs: true},
+				{ID: 2, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageI64}, {Kind: corergc.StorageRef, Offset: 8}, {Kind: corergc.StorageI32, Offset: 12}}, Size: 16, Align: 8, HasRefs: true, Super: 1, HasSuper: true},
+				{ID: 3, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageI32}, {Kind: corergc.StorageRef, Offset: 4}, {Kind: corergc.StorageI32, Offset: 8}}, Size: 12, Align: 4, HasRefs: true, Super: 0, HasSuper: true},
+				{ID: 4, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageI64}, {Kind: corergc.StorageRef, Offset: 8}, {Kind: corergc.StorageI32, Offset: 12}}, Size: 16, Align: 8, HasRefs: true, Super: 1, HasSuper: true},
+			},
+		},
 	}
 	for profileIndex, profile := range profiles {
 		if len(c.Types) != len(profile.types) || len(c.GCTypeDescs) != len(profile.descs) {

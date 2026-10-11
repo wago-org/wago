@@ -255,9 +255,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	usesSWAR, err := moduleUsesSWAR(m)
-	if err != nil {
-		return nil, err
+	var usesSWAR bool
+	var err error
+	if !opts.gcTypeSubtypingDeclarations {
+		usesSWAR, err = moduleUsesSWAR(m)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if opts.NativeReferenceFunctions {
 		opts.referenceFunctions, err = hasDefinedReferenceFunctions(m)
@@ -302,8 +306,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if usesSWAR {
 		return compileSWARProductionModule(m, opts)
 	}
-	if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
-		return nil, err
+	if !opts.gcTypeSubtypingDeclarations {
+		if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
+			return nil, err
+		}
 	}
 	if len(m.Customs) > MaxFunctions {
 		return nil, unsupported("decoded custom section count bound")

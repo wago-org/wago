@@ -19,6 +19,9 @@ var rv64PublicGCTypeSubtypingDeclarationsHex = []string{
 	"0061736d0100000001a8808080000750005e7f005001005e7f0050005e6e0050005e63000050005e64010050005e7f015001055e7f01",
 	"0061736d0100000001b3808080000650005f005001005f005001015f017f005001025f027f006300005001035f037f006400007e015001045f037f006401007e01",
 	"0061736d0100000001af808080000650005f005001005f00500060016401016e5001026001640001646e5001036001630001640050010460016b016401",
+	"0061736d010000000199808080000350005f016e005001005f016401005001015f026401007f00",
+	"0061736d0100000001a0808080000250005f027f006400004e025001005f027f006402005001005f027f00640100",
+	"0061736d0100000001bb80808000024e0250005f027f0064010050005f027e006400004e035001015f037e006400007f005001005f037f006401007f005001015f037e006403007f00",
 }
 
 func rv64PublicGCTypeSubtypingDeclarationsBytes(t testing.TB, variant uint8) []byte {
@@ -53,6 +56,10 @@ func TestRV64PublicGCTypeSubtypingDeclarationsExecutionAndArtifact(t *testing.T)
 				original, err := rv64I31Config().Compile(rv64PublicGCTypeSubtypingDeclarationsBytes(t, variant))
 				if err != nil {
 					t.Fatal(err)
+				}
+				if profile := rv64GCTypeSubtypingDeclarationsProfile(original.executionView()); profile != variant {
+					original.Close()
+					t.Fatalf("compiled declaration profile mismatch: got=%d want=%d types=%#v descs=%#v", profile, variant, original.Types, original.GCTypeDescs)
 				}
 				blob, err := original.MarshalBinary()
 				if err != nil {
@@ -117,8 +124,8 @@ func TestRV64PublicGCTypeSubtypingDeclarationsAdmissionIsExact(t *testing.T) {
 		}
 		base := compiled.executionView()
 		for name, mutate := range map[string]func(*Compiled){
-			"type":       func(v *Compiled) { v.Types[1].Supers = nil },
-			"descriptor": func(v *Compiled) { v.GCTypeDescs[1].HasSuper = false },
+			"type":       func(v *Compiled) { v.Types[0].Final = !v.Types[0].Final },
+			"descriptor": func(v *Compiled) { v.GCTypeDescs[0].Final = !v.GCTypeDescs[0].Final },
 			"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		} {
 			t.Run(strconv.Itoa(int(variant))+"/"+name, func(t *testing.T) {

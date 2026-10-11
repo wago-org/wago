@@ -13,6 +13,16 @@ import (
 // semantics; this gate only excludes custom/inert sections, explicit recursive
 // wrappers, and sources outside the deliberately small checkpoint budget.
 func admitExactProductWireShape(data []byte, wantIDs []byte) bool {
+	return admitExactProductWireShapeMode(data, wantIDs, false)
+}
+
+// admitExactProductWireShapeWithRecGroups is reserved for exact products that
+// independently pin a decoded recursive type graph.
+func admitExactProductWireShapeWithRecGroups(data []byte, wantIDs []byte) bool {
+	return admitExactProductWireShapeMode(data, wantIDs, true)
+}
+
+func admitExactProductWireShapeMode(data []byte, wantIDs []byte, allowRecGroups bool) bool {
 	if len(data) < 8 || len(data) > 512 || !bytes.Equal(data[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) {
 		return false
 	}
@@ -36,7 +46,7 @@ func admitExactProductWireShape(data []byte, wantIDs []byte) bool {
 				return false
 			}
 		}
-		if id == 1 {
+		if id == 1 && !allowRecGroups {
 			for _, b := range data[8+start+section.Offset() : 8+end] {
 				if b == 0x4e { // explicit rec group, flattened by public decoding
 					return false

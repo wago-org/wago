@@ -4,7 +4,9 @@ package riscv64
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -14,13 +16,25 @@ import (
 )
 
 func TestRV64GCTypeSubtypingDeclarationsAdmissionIsExact(t *testing.T) {
-	wantLengths := []int{54, 65, 61}
+	wantLengths := []int{54, 65, 61, 39, 46, 73}
+	wantDigests := []string{
+		"aa9754e0665bda5f10ec77a3261759da4b462e813ecf9d0e12ec912acff996d6",
+		"ddca4046060c72d14ed416806860b0512b8e34ae2d11555ed88ff8676f6d1871",
+		"30ea9ab7a806640c081a4cd0bb68ecd9125f37524b6137f60af89a1c69df2839",
+		"76131bcda4dc51168d7c55feabbc7bfb3489dc399b2bb3d0a89a05c56964b5cd",
+		"2be8c2ca40f321f5ab956b191184d9b988e1f81963704f316f506bf18235bc9b",
+		"ad59582ba55bea406e6c3f6a473bb1fbef90e66275bec4848972483b302ac8c9",
+	}
 	for wireIndex, pinned := range rv64GCTypeSubtypingDeclarationsWires {
 		variant := uint8(wireIndex + 1)
 		t.Run(strconv.Itoa(int(variant)), func(t *testing.T) {
 			data := bytes.Clone(pinned)
-			if len(data) != wantLengths[wireIndex] || !AdmitGCTypeSubtypingDeclarationsSource(data) || GCTypeSubtypingDeclarationsSourceVariant(data) != variant {
-				t.Fatal("pinned declaration-only type-subtyping source was not admitted")
+			digest := fmt.Sprintf("%x", sha256.Sum256(data))
+			if len(data) != wantLengths[wireIndex] || digest != wantDigests[wireIndex] || !AdmitGCTypeSubtypingDeclarationsSource(data) || GCTypeSubtypingDeclarationsSourceVariant(data) != variant {
+				t.Fatalf("pinned declaration-only type-subtyping source was not admitted: len=%d want=%d digest=%s want=%s variant=%d", len(data), wantLengths[wireIndex], digest, wantDigests[wireIndex], GCTypeSubtypingDeclarationsSourceVariant(data))
+			}
+			if wireIndex >= 4 && (admitExactProductWireShape(data, []byte{1}) || !admitExactProductWireShapeWithRecGroups(data, []byte{1})) {
+				t.Fatal("recursive wrapper escaped the exact-profile-only wire gate")
 			}
 			m, err := wasm.DecodeModule(data)
 			if err != nil || admitRV64GCTypeSubtypingDeclarations(m) != variant {

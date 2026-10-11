@@ -32,9 +32,13 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 		return railshot.CompileModuleWith(m, opts)
 	}
 	maxImportArity := coreruntime.MaxHostArity
-	vectorProfile, err := railshot.UsesSWAR(m)
-	if err != nil {
-		return nil, err
+	vectorProfile := false
+	if opts.GCTypeSubtypingDeclarationsSource == 0 {
+		var err error
+		vectorProfile, err = railshot.UsesSWAR(m)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if vectorProfile {
 		maxImportArity = 128
