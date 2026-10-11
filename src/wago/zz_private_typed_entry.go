@@ -11,11 +11,7 @@ var smallTypedEntryEnabled = os.Getenv("WAGO_SMALL_TYPED_ENTRY") != "0"
 // driver revalidates mutable ownership under the ordinary invocation gates.
 func (in *Instance) tryInvokePrivateTypedI32(export string, args []uint64) (out []uint64, err error, admitted bool) {
 	state := in.pluginState.Load()
-	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
-		return nil, nil, false
-	}
-	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
-		in.endDirectInvocation()
+	if !in.tryBeginOrdinaryInvocation(state) {
 		return nil, nil, false
 	}
 	ic := in.findInvokeCache(export)
@@ -23,14 +19,12 @@ func (in *Instance) tryInvokePrivateTypedI32(export string, args []uint64) (out 
 	if ic == nil || !ic.boundedNumericHost || len(args) != int(ic.paramSlots) ||
 		!privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
 		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
 	p := in.eng.PreparedScalarHost()
 	if p == nil || !p.DetachedNumericContext() || !p.IntegerGuestContext() {
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
 	// No Caller or collector authority is exposed by this scalar-only private
@@ -39,7 +33,7 @@ func (in *Instance) tryInvokePrivateTypedI32(export string, args []uint64) (out 
 	admitted = true
 	nativeOwned := false
 	defer func() {
-		defer func() { state.invocationID = 0; state.invokeMu.Unlock(); in.endDirectInvocation() }()
+		defer func() { state.invocationID = 0; in.endOrdinaryInvocation(state) }()
 		if r := recover(); r != nil {
 			if !nativeOwned {
 				panic(r)
