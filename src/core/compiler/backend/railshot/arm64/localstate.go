@@ -37,9 +37,9 @@ const (
 	lsConstZero                 // declared local's initial zero, not materialized yet
 )
 
-// packedLocStates stores up to 64 local merge states in two bits each. Call-making
-// functions with more locals do not admit whole-function pins; call-free wide
-// pins do not use these merge snapshots. A recorded snapshot contains a pin in
+// packedLocStates stores up to 64 local merge states in two bits each. Functions
+// with more locals do not admit whole-function pins, so they never need a
+// snapshot. A recorded snapshot contains at least one pinned local in
 // lsStackReg or lsMem; the all-zero value is therefore the absent sentinel.
 type packedLocStates [2]uint64
 
@@ -496,8 +496,8 @@ func (f *fn) setLocalsState(t packedLocStates) {
 }
 
 // snapshotLocalStates captures the complete local-state tracker for speculative
-// edge emission. Larger functions decline this edge optimization, including
-// call-free functions with bounded wide pins.
+// edge emission. Whole-function pins are admitted only for functions covered by
+// packedLocStates, so larger functions have no profitable edge state to defer.
 func (f *fn) snapshotLocalStates() (localStateSnapshot, bool) {
 	var snapshot localStateSnapshot
 	if len(f.locals) > len(snapshot) {

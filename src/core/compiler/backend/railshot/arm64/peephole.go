@@ -26,7 +26,7 @@ const (
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	compact := nativeFinalizerEnabled && f.compactNative()
-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
+	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optCsetLineage) && !compact {
 		return
 	}
 	// The established size-stable peephole abandons a function when it reaches
@@ -56,18 +56,12 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		targets = make([]uint64, words)
 	}
 	sc.branchTargets = targets
-	threadEligible := f.opt(optTakenZeroBranch) && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
-	threadCandidate := false
-	guardedEligible := f.opt(optGuardedBooleanXor) && !f.moduleEH && len(f.customInstructions) == 0 && !f.opaqueFragments
-	guardedCandidate := false
 	lineageEligible := f.opt(optCsetLineage) && n <= 4096 && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
 	lineageCandidate := false
 	firstLineageSet := -1
 	for pc := 0; pc < n; pc += 4 {
 		w := rdWord(b, pc)
 		if lineageEligible {
-			// No boolean lineage can precede its first CSET. Stop all
-			// preflight work once a subsequent consumer pair is present.
 			if firstLineageSet < 0 {
 				if w&0x7fff0fe0 == 0x1a9f07e0 {
 					firstLineageSet = pc
@@ -83,54 +77,19 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		if t, ok := branchTarget(pc, w); ok {
 			sc.hasBranchTargets = true
 			branchTargetAdd(targets, t, n)
-			if threadEligible && !threadCandidate && w&0x7e000000 == 0x34000000 && t >= 0 && t+4 <= n && t != pc {
-				next := rdWord(b, t)
-				threadCandidate = next&0x7e000000 == 0x34000000 && (w^next)&0xfe00001f == 0
-			}
 			if compact && t == pc+4 && w&0xFC000000 != 0x94000000 {
 				f.recordBranchNext(pc)
 			}
-			// Inspect only bounded direct branch destinations in the existing
-			// scan; other functions never pay a second boolean-region walk.
-			// Include B here because branch folding may turn its preceding
-			// conditional skip into the eventual guarded region branch.
-			if guardedEligible && !guardedCandidate && w&0xfc000000 != 0x94000000 && t >= pc+20 && t <= pc+68 && t <= n {
-				guardedCandidate = rdWord(b, t-8)&0x7fff0fe0 == 0x1a9f07e0 && rdWord(b, t-4)&0x7fe0fc00 == 0x4a000000
-			}
-		}
-	}
-	if f.opt(optDominatedIndexedBase) && !f.moduleEH && len(f.customInstructions) == 0 {
-		hits := 0
-		if f.opt(optDominatedIndexedKey) {
-			hits = f.a.FoldDominatedIndexedBasesByKey(entryOffsets...)
-			f.stats.peepN("dominated-indexed-key", hits)
-		} else {
-			hits = f.a.FoldDominatedIndexedBases(entryOffsets...)
-		}
-		for ; hits > 0; hits-- {
-			f.stats.peep("dominated-indexed-base")
 		}
 	}
 	if f.opt(optBranchFold) {
 		f.foldSingleBitBranches(b, n, targets)
 		f.foldBranchPairs(b, n, targets)
 	}
-	if threadCandidate {
-		f.threadTakenZeroBranches(b, n, targets)
-	}
 	if f.opt(optStoreLoadFwd) {
 		f.forwardStoreLoads(b, n, targets)
 	}
-	if f.opt(optCommonExitCompare) {
-		f.foldCommonExitCompares(b, n, targets, entryOffsets...)
-	}
-	if f.opt(optGuardedTestCCMP) {
-		f.foldGuardedTests(b, n, targets)
-	}
-	if guardedCandidate {
-		f.foldGuardedBooleanXors(b, n, targets, entryOffsets...)
-	}
-	if lineageCandidate && firstLineageSet >= 0 {
+	if lineageCandidate {
 		f.foldCsetLineage(b, n, firstLineageSet, targets, entryOffsets...)
 	}
 }

@@ -3,11 +3,10 @@
 package arm64
 
 import (
-	"encoding/binary"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func appendGroupUpdates(body []byte, destination, mask, input byte, spread bool, trapLast ...bool) []byte {
@@ -103,159 +102,6 @@ func TestSelectGroupMasksAndPrefix(t *testing.T) {
 			}
 		}
 	}
-}
-
-func selectGroupLoopModule(t testing.TB, mode string, spread bool, minimal bool) *wasm.Module {
-	body := []byte{1, 3, 0x7f, 0x3f, 0, 0x1a, 0x41}
-	body = append(body, wasmtest.SLEB32(65536)...)
-	body = append(body, 0x21, 2, 0x20, 1, 0x21, 3, 0x20, 0, 0x21, 4)
-	if mode == "alternating" {
-		body = append(body, 0x41, 0, 0x21, 4)
-	}
-	body = append(body, 0x03, 0x40)
-	switch mode {
-	case "zero":
-		body = append(body, 0x41, 0, 0x21, 4)
-	case "full":
-		body = append(body, 0x41, 0x7f, 0x21, 4)
-	case "alternating":
-		body = append(body, 0x20, 4, 0x41, 0x7f, 0x73, 0x21, 4)
-	case "random":
-		for _, shift := range []byte{13, 17, 5} {
-			op := byte(0x74)
-			if shift == 17 {
-				op = 0x76
-			}
-			body = append(body, 0x20, 4, 0x20, 4, 0x41, shift, op, 0x73, 0x21, 4)
-		}
-	}
-	body = append(body, 0x20, 3, 0x22, 3)
-	if minimal {
-		body = appendMinimalGroupUpdates(body, spread)
-	} else {
-		body = appendGroupUpdates(body, 3, 4, 1, spread)
-	}
-	body = append(body, 0x20, 2, 0x41, 1, 0x6b, 0x22, 2, 0x0d, 0, 0x0b, 0x20, 3, 0x0b)
-	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
-	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
-	return m
-}
-
-func BenchmarkSelectGroupConditions(b *testing.B)        { benchmarkSelectGroups(b, false) }
-func BenchmarkSelectGroupMinimalConditions(b *testing.B) { benchmarkSelectGroups(b, true) }
-func benchmarkSelectGroups(b *testing.B, minimal bool) {
-	saved := selectGroupEnabled
-	defer func() { selectGroupEnabled = saved }()
-	for _, mode := range []string{"zero", "full", "alternating", "random"} {
-		for _, spread := range []bool{false, true} {
-			label := mode + "/contiguous"
-			if spread {
-				label = mode + "/spread"
-			}
-			m := selectGroupLoopModule(b, mode, spread, minimal)
-			mask, accumulator := uint32(0x76543210), uint32(0x12345679)
-			if mode == "alternating" {
-				mask = 0
-			}
-			for i := 0; i < 65536; i++ {
-				switch mode {
-				case "zero":
-					mask = 0
-				case "full":
-					mask = ^uint32(0)
-				case "alternating":
-					mask = ^mask
-				case "random":
-					mask ^= mask << 13
-					mask ^= mask >> 17
-					mask ^= mask << 5
-				}
-				if minimal {
-					for bit := uint32(0); bit < 6; bit++ {
-						position := bit
-						if spread {
-							position *= 5
-						}
-						if mask&(uint32(1)<<position) != 0 {
-							accumulator *= 0x12345679
-						}
-					}
-				} else {
-					accumulator = groupOracle(mask, 0x12345679, accumulator, spread)
-				}
-			}
-			for _, enabled := range []bool{false, true} {
-				name := label + "/eager"
-				if enabled {
-					name = label + "/guarded"
-				}
-				b.Run(name, func(b *testing.B) {
-					selectGroupEnabled = enabled
-					cm, err := CompileModule(m)
-					if err != nil {
-						b.Fatal(err)
-					}
-					if cm.CodeImage != nil {
-						defer cm.CodeImage.Close()
-					}
-					eng, err := coreruntime.NewEngine()
-					if err != nil {
-						b.Fatal(err)
-					}
-					defer eng.Close()
-					memory, err := coreruntime.NewJobMemory(65536)
-					if err != nil {
-						b.Fatal(err)
-					}
-					defer memory.Close()
-					arena, err := coreruntime.NewArena(4096)
-					if err != nil {
-						b.Fatal(err)
-					}
-					defer arena.Close()
-					code, base, err := coreruntime.MapCode(cm.Code)
-					if err != nil {
-						b.Fatal(err)
-					}
-					defer coreruntime.Unmap(code)
-					args, results, trap := arena.Alloc(16), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
-					binary.LittleEndian.PutUint64(args, 0x76543210)
-					binary.LittleEndian.PutUint64(args[8:], 0x12345679)
-					check := func() {
-						if err := eng.Call(base+uintptr(cm.Entry[0]), args, memory.LinearMemory(), trap, results); err != nil {
-							b.Fatal(err)
-						}
-						if got := uint32(binary.LittleEndian.Uint64(results)); got != accumulator {
-							b.Fatalf("got=%x want=%x", got, accumulator)
-						}
-					}
-					check()
-					b.ResetTimer()
-					for i := 0; i < b.N; i++ {
-						check()
-					}
-				})
-			}
-		}
-	}
-}
-
-func appendMinimalGroupUpdates(body []byte, spread bool) []byte {
-	for i := uint32(0); i < 6; i++ {
-		body = append(body, 0x20, 1, 0x6c, 0x20, 3, 0x20, 4, 0x41)
-		bit := i
-		if spread {
-			bit *= 5
-		}
-		body = append(body, wasmtest.SLEB32(int32(uint32(1)<<bit))...)
-		body = append(body, 0x71, 0x1b)
-		if i == 5 {
-			body = append(body, 0x21, 3)
-		} else {
-			body = append(body, 0x22, 3)
-		}
-	}
-	return body
 }
 
 func TestSelectGroupRetainsEagerLoadTrap(t *testing.T) {

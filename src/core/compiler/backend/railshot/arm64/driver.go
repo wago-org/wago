@@ -49,14 +49,6 @@ func (f *fn) representationError() error {
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	for len(f.ctrl) > minCtrl {
 		f.finishSelectGroup(r.Offset())
-		if f.streamingReduction && f.s.head.prev == sentinelNodeID {
-			if done, err := f.tryStreamReduction(r); done || err != nil {
-				if err != nil {
-					return err
-				}
-				continue
-			}
-		}
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
 		op, err := r.Byte()
 		if err != nil {
@@ -80,9 +72,6 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			previous = f.enterProfileInstruction()
 		}
 
-		if f.intervalControl && intervalRegionBoundary(op, f.intervalCalls) {
-			f.clearIntervalControlRegion()
-		}
 		f.prepareStoreForward(op)
 		switch op {
 		case 0x00: // unreachable
@@ -308,9 +297,6 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x6c:
 		f.pushBinOp(opMul, mtI32)
 	case 0x6d:
-		if f.opt(optBoundedQuotient) && f.tryBoundedSignedQuotient(r) {
-			break
-		}
 		f.pushBinOp(opDivS, mtI32)
 	case 0x6e:
 		f.pushBinOp(opDivU, mtI32)
@@ -765,44 +751,18 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 	// operand blocks are consumed before the final CSEL overwrites dest.
 	f.realizeLocalRefs(x, f.s.baseOfValentBlock(a))
 	w := at.is64() || bt.is64()
-	if f.tryPureSelectSinkGuard(a, b, cond, x, dest, w) {
-	} else if isFusableCondition(cond) {
-		savedPinned := f.pinned
-		constA, constB := storage{kind: stReg}, storage{kind: stReg}
-		if f.opt(optSelectSourceRead) {
-			if a.elemKind() == ekValue {
-				constA = a.st
-			}
-			if b.elemKind() == ekValue {
-				constB = b.st
-			}
-		}
-		aReg, ownA := f.selectSinkRead(a)
+	if isFusableCompare(cond) {
+		aReg := f.materialize(a)
 		f.pinned = f.pinned.add(aReg)
-		bReg, ownB := f.selectSinkRead(b)
+		bReg := f.materialize(b)
 		f.pinned = f.pinned.add(bReg)
-		savedConsts := f.iconstN
-		if f.opt(optSelectSourceRead) {
-			f.selectSinkPublishConst(constA, aReg)
-			f.selectSinkPublishConst(constB, bReg)
-		}
 		cc := f.condenseToFlags(cond)
-		f.iconstN = savedConsts
 		f.a.Csel(dest, bReg, aReg, invertCond(cc), w)
-		if !ownA || !ownB {
-			f.stats.peep("select-source-read")
-		}
-		f.pinned = savedPinned
-		if ownA {
-			f.release(aReg)
-		}
-		if ownB && (!ownA || bReg != aReg) {
-			f.release(bReg)
-		}
+		f.pinned = f.pinned.remove(aReg).remove(bReg)
+		f.release(aReg)
+		f.release(bReg)
 		f.erase(b)
 		f.erase(a)
-	} else if f.opt(optSelectLocalRead) {
-		f.emitIntegerSelectLocalRead(a, b, cond, dest, f.localType[x].is64())
 	} else {
 		condVal := f.popValue()
 		condReg := f.materialize(condVal)
@@ -835,11 +795,6 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 // B.cond directly. This is deliberately one-deep and only covers a pinned i32
 // local, so the existing local and branch paths remain the fallback oracle.
 func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
-	// This peephole consumes br_if itself. A live regional cache needs the
-	// ordinary branch path to canonicalize its locals at that edge.
-	if f.intervalControl && f.intervalActive != 0 {
-		return false, nil
-	}
 	if !f.opt(optSTFlags) || f.unreachable || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
 		return false, nil
 	}
@@ -928,24 +883,6 @@ func (f *fn) popValue() *elem {
 	e := f.s.back()
 	if e.isDeferred() {
 		f.condense(e, regNone)
-	}
-	// A regional home is a lease, not a permanent local register. Once this
-	// value leaves the operand stack, eviction can no longer see its borrowed
-	// reference. Give detached values an owned register before removing them.
-	if len(f.intervalLast) != 0 && e.elemKind() == ekValue {
-		x := -1
-		switch e.st.kind {
-		case stLocalReg:
-			x = e.st.index()
-		case stMemRef:
-			x = e.st.memBorrow()
-		}
-		if x >= 0 && x < len(f.locals) {
-			reg := f.locals[x].reg
-			if reg != regNone && f.intervalOwner[reg] == x {
-				f.materializeByType(e)
-			}
-		}
 	}
 	f.erase(e)
 	return e
@@ -1051,7 +988,7 @@ func (f *fn) emitSelect() {
 	// branches are integers, emit the compare's CMP and a CSEL on its flags directly
 	// — skipping the Cset + TEST that materializing the boolean costs. The compare is
 	// condensed last (right before the CSEL), so its NZCV flags are live.
-	if top := f.s.back(); isFusableCondition(top) && !top.st.typ.isFloat() && f.trySelectOnFlags(top) {
+	if top := f.s.back(); isFusableCompare(top) && !top.st.typ.isFloat() && f.trySelectOnFlags(top) {
 		return
 	}
 	cond := f.popValue()
