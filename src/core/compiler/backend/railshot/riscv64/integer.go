@@ -1598,7 +1598,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewDefault:
-				if (!state.gcRefEq && !state.gcArrayLocal && !state.gcArrayFixedOfficial) || (state.gcRefEq && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1) {
+				if (!state.gcRefEq && !state.gcArrayLocal && !state.gcArrayFixedOfficial && !state.gcArrayInitDataWide) || (state.gcRefEq && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1) || (state.gcArrayInitDataWide && imm.Index > 1) {
 					return integerSummary{}, unsupported("array.new_default outside exact GC profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -1674,8 +1674,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcArrayInitializeElements(h, imm.Index, imm.Index2)
 				}
 			case wasm.InstrArrayInitData:
-				if !state.gcArrayInitData || (imm.Index != 1 && imm.Index != 2) || imm.Index2 != 0 {
-					return integerSummary{}, unsupported("array.init_data outside exact packed init-data profile")
+				packed := state.gcArrayInitData && !state.gcArrayInitDataWide && (imm.Index == 1 || imm.Index == 2) && imm.Index2 == 0
+				wide := state.gcArrayInitDataWide && imm.Index <= 1 && imm.Index2 <= 6
+				if !packed && !wide {
+					return integerSummary{}, unsupported("array.init_data outside exact data-initialization profile")
 				}
 				for i := 0; i < 3; i++ {
 					if _, err = popClass(false); err != nil {

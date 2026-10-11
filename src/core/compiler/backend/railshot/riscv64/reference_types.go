@@ -40,8 +40,8 @@ type internalReferenceTypes struct {
 	// gcArrayInitElem admits the two indexed array heaps used by the pinned
 	// official funcref element-initialization product.
 	gcArrayInitElem bool
-	// gcArrayInitData admits the three indexed packed-array heaps in the pinned
-	// official data-initialization product.
+	// gcArrayInitData admits the bounded indexed array heaps in the pinned
+	// official packed and wide data-initialization products.
 	gcArrayInitData bool
 }
 

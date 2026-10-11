@@ -175,6 +175,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.gcArrayReference = opts.gcArrayReference
 	state.gcArrayInitElem = opts.gcArrayInitElem
 	state.gcArrayInitData = opts.gcArrayInitData
+	state.gcArrayInitDataWide = opts.gcArrayInitData && admitRV64GCArrayInitDataWide(m)
 	state.core3RefIsNullExecution = opts.referenceFunctions && isCore3RefIsNullExecution(m)
 	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))

@@ -13,13 +13,17 @@ import (
 
 var rv64GCArrayInitDataCodeDigest = [sha256.Size]byte{0xe3, 0x5f, 0xf5, 0x4a, 0xa5, 0xb4, 0x99, 0x1e, 0x8e, 0xa7, 0xf2, 0x38, 0x90, 0x2d, 0x15, 0x9b, 0x9f, 0x88, 0x1f, 0x74, 0x8e, 0xcb, 0x0d, 0xa7, 0xce, 0x70, 0x4e, 0x7c, 0x35, 0xf2, 0x25, 0xef}
 
-func rv64GCArrayInitDataExecutionCode(c *Compiled) bool {
+func rv64GCArrayInitDataPackedExecutionCode(c *Compiled) bool {
 	return c != nil && len(c.code) == 4824 && sha256.Sum256(c.code) == rv64GCArrayInitDataCodeDigest
 }
 
-func rv64GCArrayInitDataMetadata(c *Compiled, requireInitializers bool) bool {
+func rv64GCArrayInitDataExecutionCode(c *Compiled) bool {
+	return rv64GCArrayInitDataPackedExecutionCode(c) || rv64GCArrayInitDataWideExecutionCode(c)
+}
+
+func rv64GCArrayInitDataPackedMetadata(c *Compiled, requireInitializers bool) bool {
 	wantEntry := []int{0, 720, 1440, 2160, 2912, 3664}
-	if c == nil || !rv64GCArrayInitDataExecutionCode(c) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled ||
+	if c == nil || !rv64GCArrayInitDataPackedExecutionCode(c) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled ||
 		c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape ||
 		c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) || !slices.Equal(c.Entry, wantEntry) || !slices.Equal(c.InternalEntry, wantEntry) {
 		return false
@@ -113,10 +117,12 @@ func rv64GCArrayInitDataMetadata(c *Compiled, requireInitializers bool) bool {
 		!c.usesGCStructHelpers() && c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == CoreFeatureBulkMemoryOperations|CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC && c.requiredAMD64Features == 0
 }
 
-func rv64GCArrayInitData(c *Compiled) bool { return rv64GCArrayInitDataMetadata(c, true) }
+func rv64GCArrayInitData(c *Compiled) bool {
+	return rv64GCArrayInitDataPackedMetadata(c, true) || rv64GCArrayInitDataWideMetadata(c)
+}
 
 func railshotRestoreGCArrayInitDataArtifact(c *Compiled) {
-	if !rv64GCArrayInitDataMetadata(c, false) {
+	if !rv64GCArrayInitDataPackedMetadata(c, false) {
 		return
 	}
 	c.memoryDir.gcArrayGlobals = []gcArrayGlobalInit{
