@@ -46,6 +46,9 @@ func (a *Asm) AddShifted(rd, rn, rm Reg, shift uint8, w bool) {
 }
 
 func (a *Asm) AddShiftedReg(rd, rn, rm Reg, kind RegShift, shift uint8, w bool) {
+	if !w && rd == X16 && rn != X16 && rm != X16 && rn != ZR && rm != ZR && kind == RegShiftLSL && shift == 0 && a.DominatedIndexedCandidates != ^uint16(0) {
+		a.DominatedIndexedCandidates++
+	}
 	a.shiftedReg(0x0B000000, 0x8B000000, rd, rn, rm, kind, shift, w)
 }
 

@@ -105,6 +105,7 @@ type Asm struct {
 	LogicalMoveImmediates         int
 	CompactMoveImmediates32       int
 	IndexedBaseReuses             int
+	DominatedIndexedCandidates    uint16
 }
 
 // word appends one 32-bit instruction little-endian.
@@ -141,7 +142,7 @@ func (a *Asm) addSubReg(base uint32, rd, rn, rm Reg) {
 	}
 }
 
-func (a *Asm) Add64(rd, rn, rm Reg)  { a.addSubReg(0x8B000000, rd, rn, rm) }
+func (a *Asm) Add64(rd, rn, rm Reg)  { a.AddShifted(rd, rn, rm, 0, false) }
 func (a *Asm) Add32(rd, rn, rm Reg)  { a.addSubReg(0x0B000000, rd, rn, rm) }
 func (a *Asm) Sub64(rd, rn, rm Reg)  { a.addSubReg(0xCB000000, rd, rn, rm) }
 func (a *Asm) Sub32(rd, rn, rm Reg)  { a.addSubReg(0x4B000000, rd, rn, rm) }

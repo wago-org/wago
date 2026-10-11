@@ -125,7 +125,7 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	}
 	// Reuse proofs must see scratch-register writes introduced by every earlier
 	// fold, including guarded tests that materialize their result in X16.
-	if f.opt(optDominatedIndexedBase) && !f.moduleEH && len(f.customInstructions) == 0 {
+	if f.opt(optDominatedIndexedBase) && f.a.DominatedIndexedCandidates >= 2 && !f.moduleEH && len(f.customInstructions) == 0 {
 		hits := 0
 		if f.opt(optDominatedIndexedKey) {
 			hits = f.a.FoldDominatedIndexedBasesByKey(entryOffsets...)

@@ -263,6 +263,20 @@ func TestScanBodyBytesFloatConstHintArm64(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesLoopMemoryHintArm64(t *testing.T) {
+	outside, err := scanBodyBytes([]byte{0x41, 0x00, 0x28, 0x02, 0x00, 0x1a, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inside, err := scanBodyBytes([]byte{0x03, 0x40, 0x41, 0x00, 0x28, 0x02, 0x00, 0x1a, 0x0b, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outside.hasLoopMemory() || !inside.hasLoopMemory() {
+		t.Fatalf("loop memory hints: outside=%v inside=%v", outside.hasLoopMemory(), inside.hasLoopMemory())
+	}
+}
+
 func TestControlDepthHintCountsNestedFramesArm64(t *testing.T) {
 	h, err := scanBodyBytes([]byte{
 		0x02, 0x40, // block

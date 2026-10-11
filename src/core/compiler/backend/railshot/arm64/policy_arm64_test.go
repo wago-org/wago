@@ -147,6 +147,7 @@ func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 	ordinary := shared.DefaultCodegenPolicy(selection)
 	compact := shared.CompactCodegenPolicy(selection)
 	hot := funcHints{flags: hintHasLoop}
+	scopedFloat := funcHints{flags: hintHasLoop | hintHasCall | hintHasFloatConst, localCount: 16}
 	for _, test := range []struct {
 		name      string
 		off       int
@@ -160,6 +161,7 @@ func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 		{name: "ordinary adapter", off: 4, bodyBytes: 12, adapter: true, policy: ordinary, want: 12},
 		{name: "ordinary hot within budget", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: 4},
 		{name: "ordinary hot over budget", off: 4, bodyBytes: 64, hints: hot, policy: ordinary, want: 0},
+		{name: "ordinary scoped float", off: 16, bodyBytes: 64, hints: scopedFloat, policy: ordinary, want: 16},
 		{name: "compact", off: 4, bodyBytes: 512, adapter: true, hints: hot, policy: compact, want: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -85,8 +85,9 @@ func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	// memOps packs a saturated memory-op count in the low 20 bits and exact
-	// memory-zero offset+width=four accesses in the high 12 bits. Keeping the
+	// memOps packs a saturated memory-op count in the low 20 bits, exact
+	// memory-zero offset+width=four accesses in the next 11 bits, and whether a
+	// loop contains a memory operation in the high bit. Keeping the
 	// secondary frequency in existing header storage preserves the 28-byte hint.
 	memOps          uint32
 	localStart      uint32
@@ -766,6 +767,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				if instrTouchesMemory(in.Kind) {
 					h.flags.set(hintTouchesMemory)
 					h.addMemOp()
+					if curLoop >= 0 {
+						h.markLoopMemory()
+					}
 				}
 			}
 		}
@@ -1453,6 +1457,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
 				s.h.addMemOp()
+				if loopDepth != 0 {
+					s.h.markLoopMemory()
+				}
 				if isExactBounds4Opcode(op) && imm.MemOffset == 0 && (!imm.HasMemIndex || imm.MemIndex == 0) {
 					s.h.addBounds4Op()
 				}
@@ -1626,11 +1633,15 @@ func instrTouchesMemory(k wasm.InstrKind) bool {
 const (
 	memOpCountBits = 20
 	memOpCountMask = uint32(1<<memOpCountBits - 1)
-	bounds4OpMask  = uint32(1<<(32-memOpCountBits) - 1)
+	loopMemoryMask = uint32(1 << 31)
+	bounds4OpMask  = uint32(1<<(31-memOpCountBits) - 1)
 )
 
 func (h funcHints) memOpCount() uint32     { return h.memOps & memOpCountMask }
-func (h funcHints) bounds4OpCount() uint32 { return h.memOps >> memOpCountBits }
+func (h funcHints) bounds4OpCount() uint32 { return h.memOps >> memOpCountBits & bounds4OpMask }
+func (h funcHints) hasLoopMemory() bool    { return h.memOps&loopMemoryMask != 0 }
+
+func (h *funcHintView) markLoopMemory() { h.memOps |= loopMemoryMask }
 
 func (h *funcHintView) addMemOp() {
 	if h.memOpCount() != memOpCountMask {

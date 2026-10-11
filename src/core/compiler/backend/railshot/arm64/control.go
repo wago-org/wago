@@ -1530,8 +1530,16 @@ func (f *fn) alignLoopHeader() {
 	if loopAlign == 0 {
 		loopAlign = 4
 	}
+	scopedFloat := f.nLocals <= pollFreeLoopPhaseMaxLocals && len(f.fconsts) != 0 &&
+		f.fconsts[0].loopDepth != 0
+	if scopedFloat && loopAlign < 5 {
+		// A cached FP constant removes one instruction from the loop body.
+		// Put the shortened body on a full fetch boundary instead of preserving
+		// the phase chosen for the uncached four-instruction poll.
+		loopAlign = 5
+	}
 	f.alignCode(loopAlign)
-	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
+	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals && !scopedFloat {
 		f.a.Nop4()
 	}
 }
@@ -1760,10 +1768,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if kind == cfLoop {
 			if pN == 0 && rN == 0 {
 				f.emitPureReduce(r)
-				f.emitDotLoop(r)
-				f.emitMinPlusLoop(r)
-				f.emitFloatMapLoop(r)
-				f.emitAbsReduceLoop(r)
+				if f.loopMemory {
+					f.emitDotLoop(r)
+					f.emitMinPlusLoop(r)
+					f.emitFloatMapLoop(r)
+					f.emitAbsReduceLoop(r)
+				}
 			}
 			f.preloadScopedLoopConsts(&fr)
 			f.preloadScopedFloatConsts(r)

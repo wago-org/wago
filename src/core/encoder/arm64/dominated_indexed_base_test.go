@@ -2,6 +2,18 @@ package arm64
 
 import "testing"
 
+func TestDominatedIndexedCandidateCount(t *testing.T) {
+	var a Asm
+	a.AddShifted(X16, X26, X20, 0, false)
+	a.Add64(X16, X26, X21)
+	a.AddShifted(X16, X16, X20, 0, false)
+	a.AddShifted(X16, X26, X20, 1, false)
+	a.AddShifted(X15, X26, X20, 0, false)
+	if got := a.DominatedIndexedCandidates; got != 2 {
+		t.Fatalf("dominated indexed candidates = %d, want 2", got)
+	}
+}
+
 func TestDominatedIndexedBaseDiamond(t *testing.T) {
 	for _, outside := range []bool{false, true} {
 		var a Asm
