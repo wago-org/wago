@@ -1,1 +1,0 @@
-All148default-on signal images match measured/qualified prototype.

@@ -1,1 +1,0 @@
-Final default ON; no EXPT environment; both common loop-memory-base states exactly match measured/qualified640B enabled image.

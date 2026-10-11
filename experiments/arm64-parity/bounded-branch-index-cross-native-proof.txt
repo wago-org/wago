@@ -1,4 +1,0 @@
-language-register-vm: both process images match the screened option inventories.
-compiler-register-allocation: both process images match the screened option inventories.
-hardware-boolean-anf: both process images match the screened option inventories.
-files-glob-match: both process images match the screened option inventories.

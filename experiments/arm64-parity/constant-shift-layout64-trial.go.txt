@@ -1,6 +1,0 @@
-	if loopAlign == 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
-		f.alignCode(6)
-		return
-	}
-	f.alignCode(loopAlign)
-	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {

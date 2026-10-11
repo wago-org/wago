@@ -1,5 +1,0 @@
-modular-arithmetic: OFF exact37174169 baseline identity 93588B; ON 93220B; CHANGED
-audio-adpcm: OFF exact37174169 baseline identity 544B; ON 544B; unchanged
-files-glob-match: OFF exact37174169 baseline identity 416B; ON 416B; unchanged
-language-register-vm: OFF exact37174169 baseline identity 1232B; ON 1232B; unchanged
-serialization-protobuf: OFF exact37174169 baseline identity 656B; ON 656B; unchanged

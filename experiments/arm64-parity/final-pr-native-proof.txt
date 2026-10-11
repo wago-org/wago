@@ -1,5 +1,0 @@
-signal core: all 46 final images exactly match qualified retained default-ON source
-signal app: all 102 final images exactly match qualified retained default-ON source
-explicit core: all 46 final images exactly match qualified retained default-ON source
-explicit app: all 102 final images exactly match qualified retained default-ON source
-Five post-37174169 defaults: 36 changed, 112 pristine37174169-identical signal images

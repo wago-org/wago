@@ -1,1 +1,0 @@
-Capture saved to /Users/work/Code/Wago/wago/experiments/arm64-parity/profile-next-20261011-language-register-vm

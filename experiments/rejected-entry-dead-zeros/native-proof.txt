@@ -1,2 +1,0 @@
-app: compared every signal image to exact37174169 baseline, 102images.
-core: compared every signal image to exact37174169 baseline, 46images.

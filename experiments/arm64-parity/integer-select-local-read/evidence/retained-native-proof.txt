@@ -1,6 +1,0 @@
-signal default ON: 46core exact contracts pass; images match qualified narrow ON.
-signal default ON: 102app exact contracts pass; images match qualified narrow ON.
-signal disabled: 46core exact contracts pass; images match pristine37174169.
-signal disabled: 102app exact contracts pass; images match pristine37174169.
-explicit default ON: 46core exact contracts pass; images match qualified narrow ON.
-explicit default ON: 102app exact contracts pass; images match qualified narrow ON.

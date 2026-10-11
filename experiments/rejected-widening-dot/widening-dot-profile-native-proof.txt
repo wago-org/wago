@@ -1,1 +1,0 @@
-Exact LibTomMath oracle passes; 94356-byte profile image matches timed candidate.

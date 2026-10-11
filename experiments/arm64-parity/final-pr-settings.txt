@@ -1,1 +1,0 @@
-ok  	github.com/wago-org/wago/cli/internal/settings	2.384s

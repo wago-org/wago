@@ -1,3 +1,0 @@
-files-glob-match: exact oracle passes; 416-byte profile image matches qualified37174169.
-hardware-boolean-anf: exact oracle passes; 1904-byte profile image matches qualified37174169.
-ml-kmeans: exact oracle passes; 2808-byte profile image matches qualified37174169.

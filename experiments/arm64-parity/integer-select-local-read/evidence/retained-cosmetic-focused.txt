@@ -1,3 +1,0 @@
-After abbreviating optIntegerSelectLocalRead to optSelectLocalRead solely to preserve existing gofmt alignment:
-python3 /Users/work/benchmark-lock.py --wait --owner division-next -- env GOWORK=off WAGO_SHARED_SCALAR=0 go test -tags wago_guardpage,wago_codegenstats,wago_regalloccheck ./src/core/compiler/backend/railshot/arm64 -run "^(TestIntegerSelectLocalRead|TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64)" -count=1
-ok  github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64 0.424s

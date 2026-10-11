@@ -1,4 +1,0 @@
-All148 combined default-ON SIGNAL images qualified;34 changed,114 pristine37174169-identical.
-All four options OFF reproduce every pristine37174169 SIGNAL image.
-Relative to1bb0757b, only register VM changes;1224B image exactly matches independently timed/qualified/profiled bounded-index image.
-Every other integrated image matches the prior three-option qualified inventory.

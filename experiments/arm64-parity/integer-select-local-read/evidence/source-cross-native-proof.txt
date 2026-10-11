@@ -1,6 +1,0 @@
-app audio-adpcm-1.bin: common loop-memory-base ON baseline544B candidate544B identical
-app document-layout-1.bin: common loop-memory-base ON baseline644B candidate636B changed
-app geo-polygon-clipping-1.bin: common loop-memory-base ON baseline2320B candidate2256B changed
-app ml-kmeans-1.bin: common loop-memory-base ON baseline2808B candidate2744B changed
-app video-dct-1.bin: common loop-memory-base ON baseline4032B candidate4032B identical
-core render-1.bin: common loop-memory-base ON baseline8840B candidate8832B changed

@@ -1,1 +1,0 @@
-Capture saved to experiments/arm64-parity/profile-equality-countdown-lcs-1

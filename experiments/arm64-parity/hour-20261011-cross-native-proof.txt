@@ -1,8 +1,0 @@
-audio-adpcm: candidate and pristine baseline images match qualified inventories.
-video-dct: candidate and pristine baseline images match qualified inventories.
-graphics-reed-solomon: candidate and pristine baseline images match qualified inventories.
-files-glob-match: candidate and pristine baseline images match qualified inventories.
-image-median: candidate and pristine baseline images match qualified inventories.
-compiler-register-allocation: candidate and pristine baseline images match qualified inventories.
-vision-components: candidate and pristine baseline images match qualified inventories.
-geo-point-in-polygon: candidate and pristine baseline images match qualified inventories.

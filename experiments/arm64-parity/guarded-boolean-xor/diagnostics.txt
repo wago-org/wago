@@ -1,9 +1,0 @@
-ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	1.561s
-ok  	github.com/wago-org/wago/src/core/compiler/optimization	(cached)
-ok  	github.com/wago-org/wago/src/core/runtime	(cached)
-ok  	github.com/wago-org/wago/src/core/runtime/abi	(cached)
-ok  	github.com/wago-org/wago/src/core/runtime/arm64spike	(cached)
-ok  	github.com/wago-org/wago/src/core/runtime/gc	(cached)
-ok  	github.com/wago-org/wago/src/core/runtime/gc/native	(cached)
-ok  	github.com/wago-org/wago/src/core/runtime/hostthunk	(cached)
-ok  	github.com/wago-org/wago/src/core/encoder/arm64	(cached)

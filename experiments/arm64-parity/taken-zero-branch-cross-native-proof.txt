@@ -1,4 +1,0 @@
-hardware-boolean-anf: both process images match exact qualified source inventories.
-audio-adpcm: both process images match exact qualified source inventories.
-files-glob-match: both process images match exact qualified source inventories.
-compiler-register-allocation: both process images match exact qualified source inventories.

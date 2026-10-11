@@ -1,7 +1,0 @@
-# Rejected indexed seed preflight (Apple M4 Max, arm64)
-
-Only peephole.go was changed, then restored byte-for-byte from its saved original. Candidate counts canonical ADD X16,base,index,LSL0 words in the existing branch-target scan and skips the dominated indexed-address pass when fewer than2 static seeds exist. Both dominated passes start unknown and need a repeated seed, so this cheap gate cannot alter native images; an overcount of unsupported register pairs only wastes analysis. This source proof was not promoted to an all148 image-identity claim because the timing tradeoff failed.
-
-Four reversed-process100ms compile pairs compare the frozen final compiler /tmp/paired-hour-20261011 against /tmp/paired-compile-seed-preflight, selecting loop-memory-base ON in both binaries. ADPCM improves -3.63% paired (-4.12% pooled), but DCT slows +1.53% paired, Reed +2.41%, regalloc +1.15%, geo-point +0.45%; glob is -0.49% paired with +0.30% pooled. Four of six workloads slow, so this mitigation is rejected. Do not credit noisy differences as retained gains. No further qualification or full timing set was run.
-
-The added per-instruction seed check appears to trade a useful no-seed decline against additional work in the common first scan. This is an inference from the timing pattern, not an isolated instruction-cost measurement. Raw process outputs, normalized paired JSONL, summary, scripts, and the disabled candidate patch are retained under compile-seed-preflight-*.

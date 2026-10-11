@@ -1,2 +1,0 @@
-profile-hour-20261011-glob-off: exact oracle passes; 420-byte image equals integrated paired state 0.
-profile-hour-20261011-glob-on: exact oracle passes; 416-byte image equals integrated paired state 1.

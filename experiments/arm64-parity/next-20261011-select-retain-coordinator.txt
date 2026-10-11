@@ -1,4 +1,0 @@
-148 combined default-ON SIGNAL images qualified; 33 change,115 baseline-identical.
-All three options OFF reproduce every pristine37174169 SIGNAL image.
-All other combined images exactly match isolated select or prior qualified two-option images.
-Boolean ANF: isolated select image1888B plus exactly7 same-width/same-register CBZ retargets at 0x1a4, 0x244, 0x2f4, 0x3a4, 0x454, 0x504, 0x5b4

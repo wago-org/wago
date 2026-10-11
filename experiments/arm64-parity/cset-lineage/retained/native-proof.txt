@@ -1,3 +1,0 @@
-core: all retained defaultON affected images exact frozen first/timed candidate; all unaffected exact currentfour baseline; all rollbackOFF exact currentfour baseline
-app: all retained defaultON affected images exact frozen first/timed candidate; all unaffected exact currentfour baseline; all rollbackOFF exact currentfour baseline
-Existing register-VM dispatch1224B image preserved; no new changes outside the14 qualified CSET-lineage images.

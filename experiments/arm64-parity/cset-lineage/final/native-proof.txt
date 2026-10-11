@@ -1,2 +1,0 @@
-core: all finalSIGNAL ON images exact first qualified/timedcandidate; all finalOFF exact pristine-source root3 baseline
-app: all finalSIGNAL ON images exact first qualified/timedcandidate; all finalOFF exact pristine-source root3 baseline

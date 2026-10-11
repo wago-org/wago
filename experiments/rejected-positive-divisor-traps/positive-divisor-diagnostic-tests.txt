@@ -1,6 +1,0 @@
-Device occupied; polling ~/LOCK.md and waiting for release.
-Device occupied; polling ~/LOCK.md and waiting for release.
-Device occupied; polling ~/LOCK.md and waiting for release.
-ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	1.344s
-ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.190s
-ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.521s

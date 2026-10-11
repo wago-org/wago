@@ -1,9 +1,0 @@
-=== RUN   TestBuildTinyGoEmbedsArtifactWithoutCompiler
-    build_test.go:147: go mod: exit status 1
-        go: go.mod requires go >= 1.27.1 (running go 1.25.8; GOTOOLCHAIN=local)
---- FAIL: TestBuildTinyGoEmbedsArtifactWithoutCompiler (0.11s)
-=== RUN   TestBuildTinyGoStripsByDefault
-    build_test.go:205: go mod: exit status 1
-        go: go.mod requires go >= 1.27.1 (running go 1.25.8; GOTOOLCHAIN=local)
---- FAIL: TestBuildTinyGoStripsByDefault (0.04s)
-FAIL
