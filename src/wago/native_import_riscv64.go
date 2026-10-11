@@ -375,6 +375,10 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// buffers so helper staging cannot cross an arena boundary.
 		params = max(params, 6)
 	}
+	if rv64GCStructNull(c) {
+		// struct.set stages the reference, value, exact type, and field index.
+		params = max(params, 4)
+	}
 	if rv64GCArrayFill(c) {
 		// The packed fill bridge adds the exact type index after the array,
 		// destination, value, and length operands.

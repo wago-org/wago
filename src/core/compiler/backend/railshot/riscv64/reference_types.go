@@ -49,6 +49,9 @@ type internalReferenceTypes struct {
 	// gcArrayCopy admits the two indexed packed-array heaps in the pinned
 	// official bulk-copy product.
 	gcArrayCopy bool
+	// gcStructNull admits the single indexed struct heap in the official
+	// null-dereference product.
+	gcStructNull bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -110,6 +113,9 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	}
 	heap := ref.Heap()
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {
+		return true
+	}
+	if types.gcStructNull && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index == 0) {
 		return true
 	}
 	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference || types.gcArrayInitElem || types.gcArrayInitData || types.gcArrayFill || types.gcArrayCopy {

@@ -147,7 +147,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 	}
 	var err error
-	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy, opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy); err != nil {
+	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy, opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
@@ -162,11 +162,12 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.referenceFunctions = opts.referenceFunctions
 	state.publicReferenceCarriers = opts.referenceFunctions && admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	state.publicDynamicHostReferenceCarriers = state.publicReferenceCarriers && admitPublicDynamicHostReferenceBoundary(m)
-	state.i31Core = opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy
+	state.i31Core = opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy
 	state.i31RefTest = opts.i31Core && admitRV64I31OfficialRefTest(m)
 	state.i31RefEq = (opts.i31Core && admitRV64I31RefEqPilot(m)) || opts.gcRefEq
 	state.gcRefEq = opts.gcRefEq
 	state.gcStructGet = opts.gcStructGet
+	state.gcStructNull = opts.gcStructNull
 	state.gcArrayLocal = opts.gcArrayLocal
 	state.gcArrayUniform = opts.gcArrayUniform
 	state.gcArrayFixedLocal = opts.gcArrayFixedLocal
@@ -188,7 +189,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	for i := range m.Code {
 		ft, _ := m.LocalFuncType(i)
 		summaries[i] = shared.AdmitScalarFunction(&m.Code[i], ft)
-		fallback[i] = opts.ForceFallback || opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy || !summaries[i].Eligible
+		fallback[i] = opts.ForceFallback || opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcStructNull || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy || !summaries[i].Eligible
 		if fallback[i] {
 			integerSummaries[i], err = walkInteger(&m.Code[i], ft, &state, nil)
 			if err != nil {
@@ -252,7 +253,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		slots  int
 	}
 	helperEntries := make(map[helperBridge]int, 12)
-	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructGet, 3}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}} {
+	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructGet, 3}, {gcStructSet, 4}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}} {
 		used := false
 		for _, call := range relocations {
 			used = used || call.helper == bridge.helper && (call.helper != gcArrayAllocFixed || call.helperSlots == bridge.slots)
@@ -265,7 +266,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			c.code = append(c.code, 0x13, 0, 0, 0)
 		}
 		paramSlots, resultSlots := bridge.slots, 1
-		if bridge.helper == gcArraySet || bridge.helper == gcArrayDropElem || bridge.helper == gcArrayFill || bridge.helper == gcArrayCopy || bridge.helper == gcArrayInitData || bridge.helper == gcArrayInitElem {
+		if bridge.helper == gcStructSet || bridge.helper == gcArraySet || bridge.helper == gcArrayDropElem || bridge.helper == gcArrayFill || bridge.helper == gcArrayCopy || bridge.helper == gcArrayInitData || bridge.helper == gcArrayInitElem {
 			resultSlots = 0
 		}
 		payload, ok := shared.EncodeGCDispatch(bridge.helper, 0)
@@ -474,7 +475,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCStructGet(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
+	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCStructGet(m) || admitRV64GCStructNull(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
 		return nil
 	}
 	i31Core := referenceFunctions && admitRV64I31Core(m)

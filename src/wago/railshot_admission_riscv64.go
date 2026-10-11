@@ -79,6 +79,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
 	exactGCRefEq := rv64OfficialGCRefEq(c)
 	exactGCStructGet := rv64GCStructGet(c)
+	exactGCStructNull := rv64GCStructNull(c)
 	exactGCArrayLocal := rv64GCArrayLocal(c)
 	exactGCArrayUniform := rv64GCArrayUniform(c)
 	exactGCArrayFixedLocal := rv64GCArrayFixedLocal(c)
@@ -95,6 +96,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCStructGetExecutionCode(c) && !exactGCStructGet {
 		return reject("allocating gc/struct.get image requires its exact retained metadata")
+	}
+	if rv64GCStructNullExecutionCode(c) && !exactGCStructNull {
+		return reject("gc/struct null image requires its exact retained metadata")
 	}
 	if rv64GCArrayLocalExecutionCode(c) && !exactGCArrayLocal {
 		return reject("allocating gc/array local image requires its exact retained metadata")
@@ -238,7 +242,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -249,10 +253,10 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+	if exactGCRefEq || exactGCStructGet || exactGCStructNull || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
 		qualifiedFeatures |= CoreFeatureGC
 	}
-	if exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+	if exactGCStructNull || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	if exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData {
@@ -353,7 +357,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}

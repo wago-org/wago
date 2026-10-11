@@ -22,6 +22,7 @@ const (
 	gcStructDispatchBit  uint32 = 1 << 30
 	gcStructAllocDefault uint32 = 1
 	gcStructGet          uint32 = 2
+	gcStructSet          uint32 = 3
 	gcArrayAllocDefault  uint32 = 16
 	gcArrayGet           uint32 = 17
 	gcArrayGetS          uint32 = 18
@@ -403,6 +404,38 @@ func (f *integerEmitter) gcStructGetField0(base int) {
 	}
 	f.a.Lwu(enc.X5, result, 0)
 	f.Store(f.SpillOffset(base), 5, false)
+}
+
+func (f *integerEmitter) gcStructGetI32(base int, typeIndex, fieldIndex, helper uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0) // object reference
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 8) // type index
+	f.a.Constant32(enc.X5, fieldIndex)
+	f.a.Sd(enc.X5, enc.X10, 16) // field index
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Lwu(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, false)
+}
+
+func (f *integerEmitter) gcStructSetI32(base int, typeIndex, fieldIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0) // object reference
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // field value
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.a.Constant32(enc.X5, fieldIndex)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructSet})
+	f.restoreCallTransport()
 }
 
 // Resolve the current activation's dynamic host target before any call-arena
