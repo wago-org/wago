@@ -101,6 +101,8 @@ func productionTrapCode(code int) int {
 		return abi.TrapCalledFnNotLinked
 	case trapNullReference:
 		return abi.TrapNullReference
+	case trapI31CastFailure:
+		return abi.TrapCastFailure
 	default:
 		panic("rv64: unknown admitted integer trap")
 	}

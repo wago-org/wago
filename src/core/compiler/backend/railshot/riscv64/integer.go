@@ -1232,7 +1232,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("global index")
 			}
 			g := state.globals[idx]
-			reference := wasm.EqualValType(g.typ, wasm.FuncRef) || state.i31Core && (isI31CoreRef(g.typ) || wasm.EqualValType(g.typ, wasm.I31Ref))
+			reference := wasm.EqualValType(g.typ, wasm.FuncRef) || state.i31Core && (isI31CoreRef(g.typ) || wasm.EqualValType(g.typ, wasm.I31Ref) || wasm.EqualValType(g.typ, wasm.AnyRef))
 			if reference && !state.i31Core && (!privateRefs || !state.importReferences || g.mutable && !state.localMutableReferences) {
 				return integerSummary{}, unsupported("immutable retained reference global required")
 			}
@@ -1501,6 +1501,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.Store(emit.SpillOffset(h), 5, false)
 				}
 				if err = push(false); err != nil {
+					return integerSummary{}, err
+				}
+			case wasm.InstrRefCast:
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), true)
+					emit.i31Cast(imm.Subopcode == 23)
+					emit.Store(emit.SpillOffset(h), 5, true)
+				}
+				if err = pushReference(); err != nil {
 					return integerSummary{}, err
 				}
 			default:

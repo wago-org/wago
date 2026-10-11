@@ -16,16 +16,17 @@ var rv64I31OfficialCoreCodeDigest = [sha256.Size]byte{0x1a, 0x1f, 0xe4, 0x7e, 0x
 var rv64I31OfficialTableCodeDigest = [sha256.Size]byte{0xf6, 0xf3, 0x62, 0x07, 0xa9, 0x73, 0xb1, 0x78, 0xfd, 0xad, 0xda, 0x46, 0xed, 0xe6, 0xce, 0x23, 0x94, 0xc7, 0x8a, 0x66, 0x58, 0xc7, 0x82, 0xf3, 0xd0, 0x24, 0x04, 0x7e, 0x37, 0xa9, 0x17, 0x1d}
 var rv64I31OfficialTableGlobalInitializerCodeDigest = [sha256.Size]byte{0x85, 0x9f, 0xb4, 0x09, 0x53, 0xeb, 0xac, 0x16, 0x55, 0xf4, 0x66, 0xe7, 0x2f, 0xa9, 0xa8, 0x7a, 0x8c, 0x12, 0xf0, 0x28, 0xc7, 0x10, 0x6e, 0x69, 0x46, 0x7d, 0x8c, 0x73, 0x49, 0xc9, 0xcf, 0xb2}
 var rv64I31OfficialGlobalInitializerCodeDigest = [sha256.Size]byte{0xaa, 0x0b, 0xe9, 0x11, 0x63, 0x9f, 0xa4, 0x57, 0x90, 0x15, 0x35, 0xfc, 0xb1, 0x6f, 0xd6, 0xde, 0x01, 0x08, 0x5d, 0x8e, 0x56, 0x1f, 0x5b, 0xee, 0x2d, 0x5b, 0x57, 0x0a, 0x20, 0x2e, 0xf6, 0xd5}
+var rv64I31OfficialAnyGlobalCodeDigest = [sha256.Size]byte{0xe1, 0xcc, 0x81, 0x73, 0x72, 0x8a, 0xfe, 0xa4, 0xb3, 0x52, 0x20, 0x6c, 0xa0, 0x67, 0x3c, 0xf2, 0xa8, 0xca, 0xc3, 0x70, 0x7f, 0x57, 0x52, 0x6b, 0x87, 0xad, 0x22, 0xb3, 0x06, 0xc6, 0xfc, 0x2d}
 
-// rv64I31Core is the retained-artifact counterpart of the five exact source
+// rv64I31Core is the retained-artifact counterpart of the six exact source
 // classifiers in the backend. Wasm bodies are not serialized, so callable
 // visibility is bound to exact RV64G code images and complete surviving
 // metadata.
 func rv64I31Core(c *Compiled) bool {
-	return rv64I31MinimalCore(c) || rv64I31OfficialCore(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c)
+	return rv64I31MinimalCore(c) || rv64I31OfficialCore(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || rv64I31OfficialAnyGlobal(c)
 }
 
-// rv64I31CoreExecutionCode recognizes the five qualified machine-code images
+// rv64I31CoreExecutionCode recognizes the six qualified machine-code images
 // without trusting the artifact's removable semantic sidecar. The loader uses
 // it to reject an i31 image whose feature/product witness was stripped.
 func rv64I31CoreExecutionCode(c *Compiled) bool {
@@ -43,9 +44,87 @@ func rv64I31CoreExecutionCode(c *Compiled) bool {
 		return sha256.Sum256(c.code) == rv64I31OfficialTableGlobalInitializerCodeDigest
 	case 688:
 		return sha256.Sum256(c.code) == rv64I31OfficialGlobalInitializerCodeDigest
+	case 1592:
+		return sha256.Sum256(c.code) == rv64I31OfficialAnyGlobalCodeDigest
 	default:
 		return false
 	}
+}
+
+func rv64I31OfficialAnyGlobal(c *Compiled) bool {
+	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI ||
+		!c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
+		return false
+	}
+	wantExports := map[string]int{"get_globals": 0, "set_global": 1}
+	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 2 || len(c.Types) != 2 || len(c.Exports) != len(wantExports) ||
+		len(c.Globals) != 2 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || len(c.ValueTypes) != 1 || c.tableCount() != 0 || len(c.extraTables) != 0 || len(c.tableExports) != 0 || c.memoryCount() != 0 || c.tagImportCount() != 0 ||
+		c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 || c.Names != nil || len(c.customInstructions) != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+		return false
+	}
+	for name, index := range wantExports {
+		if got, ok := c.Exports[name]; !ok || got != index {
+			return false
+		}
+	}
+	if c.HasTable || c.HasMemory || c.HasTableInitFunc || c.TableInitFunc != 0 || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
+		return false
+	}
+	d := c.memoryDir
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+		return false
+	}
+	wantFuncs := []FuncSig{
+		{Results: []ValType{ValI32, ValI32}, TypeIndex: 0, HasTypeIndex: true},
+		{Params: []ValType{ValI32}, TypeIndex: 1, HasTypeIndex: true},
+	}
+	typeSigs := []*wasm.CompType{
+		{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32, wasm.I32}},
+		{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}},
+	}
+	if len(c.FuncTypeID) != len(typeSigs) {
+		return false
+	}
+	for i, want := range wantFuncs {
+		got := c.Funcs[i]
+		if !slices.Equal(got.Params, want.Params) || !slices.Equal(got.Results, want.Results) || got.TypeIndex != want.TypeIndex || !got.HasTypeIndex || got.unsafeCrossTail || c.FuncTypeID[i] != wasm.StructuralFuncTypeKey(typeSigs[i]) {
+			return false
+		}
+		typ := c.Types[i]
+		if typ.RecGroup != uint32(i) || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.Describes != 0 || typ.HasDescriptor || typ.Descriptor != 0 || typ.Kind != CompositeTypeFunction || len(typ.Fields) != 0 || typ.Array != (FieldTypeDescriptor{}) || len(typ.Params) != len(typeSigs[i].Params) || len(typ.Results) != len(typeSigs[i].Results) {
+			return false
+		}
+		for j, value := range typeSigs[i].Params {
+			if !rv64I31ValueTypeDescriptor(typ.Params[j], value) {
+				return false
+			}
+		}
+		for j, value := range typeSigs[i].Results {
+			if !rv64I31ValueTypeDescriptor(typ.Results[j], value) {
+				return false
+			}
+		}
+	}
+	anyref := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapAny}}}
+	if c.ValueTypes[0] != anyref || len(c.GCTypeDescs) != 2 {
+		return false
+	}
+	for i, desc := range c.GCTypeDescs {
+		if desc.ID != nativegc.TypeID(i) || desc.Kind != corergc.KindFunc || len(desc.Fields) != 0 || desc.Elem != 0 || desc.Size != 0 || desc.ElemSize != 0 || desc.Align != 0 || desc.HasRefs || !desc.Final || desc.Super != 0 || desc.HasSuper {
+			return false
+		}
+	}
+	wantBits := []uint64{2469, 11357}
+	for i, global := range c.Globals {
+		if global.Type != ValAnyRef || !global.HasValueType || global.ValueTypeIndex != 0 || global.Mutable != (i == 1) || global.Bits != wantBits[i] || global.V128 != (V128{}) || global.HasInitGlobal || global.InitGlobal != 0 || global.HasInitFunc || global.InitFunc != 0 || len(global.InitExpr) != 0 {
+			return false
+		}
+	}
+	product, staged := c.stagedGCI31Product(), c.stagedFeatures()
+	productWitness := product == stagedGCI31ProductAnyGlobal || product == stagedGCI31ProductCore
+	stagedWitness := staged == CoreFeatureGC || staged == CoreFeatureTypedFunctionReferences|CoreFeatureGC
+	return c.requiredFeatures == CoreFeatureMultiValue|CoreFeatureReferenceTypes|CoreFeatureGC && c.requiredAMD64Features == 0 && productWitness && stagedWitness &&
+		slices.Equal(c.Entry, []int{0, 960}) && slices.Equal(c.InternalEntry, []int{0, 960}) && len(c.code) == 1592 && sha256.Sum256(c.code) == rv64I31OfficialAnyGlobalCodeDigest
 }
 
 func rv64I31OfficialGlobalInitializer(c *Compiled) bool {

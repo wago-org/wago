@@ -36,7 +36,8 @@ case "$mode" in
       WAGO_RV64_I31_OFFICIAL_ARTIFACT_DIR WAGO_RV64_I31_OFFICIAL_ARTIFACT_MODE \
       WAGO_RV64_I31_TABLE_ARTIFACT_DIR WAGO_RV64_I31_TABLE_ARTIFACT_MODE \
       WAGO_RV64_I31_TABLE_GLOBAL_ARTIFACT_DIR WAGO_RV64_I31_TABLE_GLOBAL_ARTIFACT_MODE \
-      WAGO_RV64_I31_GLOBAL_ARTIFACT_DIR WAGO_RV64_I31_GLOBAL_ARTIFACT_MODE
+      WAGO_RV64_I31_GLOBAL_ARTIFACT_DIR WAGO_RV64_I31_GLOBAL_ARTIFACT_MODE \
+      WAGO_RV64_I31_ANY_GLOBAL_ARTIFACT_DIR WAGO_RV64_I31_ANY_GLOBAL_ARTIFACT_MODE
     for check in ordinary checked; do
       tags=wago_rv64_experimental
       if [[ "$check" == checked ]]; then
@@ -56,8 +57,10 @@ case "$mode" in
         WAGO_RV64_I31_TABLE_GLOBAL_ARTIFACT_MODE=prepare \
         WAGO_RV64_I31_GLOBAL_ARTIFACT_DIR="$artifact_dir/$check/i31-global" \
         WAGO_RV64_I31_GLOBAL_ARTIFACT_MODE=prepare \
+        WAGO_RV64_I31_ANY_GLOBAL_ARTIFACT_DIR="$artifact_dir/$check/i31-any-global" \
+        WAGO_RV64_I31_ANY_GLOBAL_ARTIFACT_MODE=prepare \
         go test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^TestRV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact)|LocalMutableReference)'
+        -run '^TestRV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact)|LocalMutableReference)'
       WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=load \
         WAGO_RV64_I31_ARTIFACT_DIR="$artifact_dir/$check/i31" \
@@ -70,8 +73,10 @@ case "$mode" in
         WAGO_RV64_I31_TABLE_GLOBAL_ARTIFACT_MODE=load \
         WAGO_RV64_I31_GLOBAL_ARTIFACT_DIR="$artifact_dir/$check/i31-global" \
         WAGO_RV64_I31_GLOBAL_ARTIFACT_MODE=load \
+        WAGO_RV64_I31_ANY_GLOBAL_ARTIFACT_DIR="$artifact_dir/$check/i31-any-global" \
+        WAGO_RV64_I31_ANY_GLOBAL_ARTIFACT_MODE=load \
         go test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^Test(RV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialCompilerFreeRejectsSource|OfficialTableCompilerFreeRejectsSource|OfficialTableGlobalInitializerCompilerFreeRejectsSource|OfficialGlobalInitializerCompilerFreeRejectsSource)|LocalMutableReference)|RV64ActualImportedTablePrecompiledCompilerGate)'
+        -run '^Test(RV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialCompilerFreeRejectsSource|OfficialTableCompilerFreeRejectsSource|OfficialTableGlobalInitializerCompilerFreeRejectsSource|OfficialGlobalInitializerCompilerFreeRejectsSource|OfficialAnyGlobalCompilerFreeRejectsSource)|LocalMutableReference)|RV64ActualImportedTablePrecompiledCompilerGate)'
     done
     ;;
   *)

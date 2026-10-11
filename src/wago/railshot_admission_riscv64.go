@@ -83,7 +83,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c != nil && c.stagedGCI31Product() != 0 && !rv64I31Core(c) {
 		return reject("i31 execution product requires its exact retained image")
 	}
-	typedI31 := rv64I31OfficialCore(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c)
+	exactAnyI31 := rv64I31OfficialAnyGlobal(c)
+	typedI31 := rv64I31OfficialCore(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || exactAnyI31
 	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
 	if rv64Core3RefIsNullExecutionCode(c) && !exactCore3RefIsNull {
 		return reject("Core 3 ref.is_null image requires its exact retained metadata")
@@ -306,7 +307,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	hasReferenceGlobal := false
 	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
 	for i, global := range c.Globals {
-		if typedI31 && global.Type == ValI31Ref {
+		if typedI31 && (global.Type == ValI31Ref || exactAnyI31 && global.Type == ValAnyRef) {
 			continue // The exact product witness pins both globals and their initial values.
 		}
 		if global.Type == ValExternRef {

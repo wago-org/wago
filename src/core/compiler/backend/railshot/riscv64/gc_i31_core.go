@@ -10,6 +10,8 @@ import (
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
+const trapI31CastFailure = 18 // private tag; production TrapCastFailure is 18
+
 // rv64I31CoreWire is the first public GC source admitted by the RV64
 // non-allocating i31 checkpoint. The official spec fixture is admitted below by
 // its pinned length and digest.
@@ -27,6 +29,8 @@ func admitRV64I31CoreWire(data []byte) bool {
 	switch len(data) {
 	case 88:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x02, 0x4b, 0x9a, 0x33, 0x4c, 0x9a, 0x7b, 0xb6, 0x93, 0x32, 0x43, 0xfa, 0x1e, 0xaf, 0x60, 0xed, 0x65, 0x33, 0x38, 0x03, 0x4b, 0xfa, 0xf9, 0xe5, 0x4f, 0xb2, 0x3c, 0xcc, 0x13, 0xc9, 0xad, 0x87}
+	case 131:
+		return sha256.Sum256(data) == [sha256.Size]byte{0x75, 0x7d, 0x32, 0x66, 0x61, 0x7e, 0xa9, 0x01, 0x22, 0x1f, 0xac, 0xbd, 0xa9, 0xb6, 0x60, 0xd6, 0xd1, 0xfd, 0x52, 0xad, 0xf4, 0x92, 0xff, 0xa8, 0x2b, 0xa0, 0x65, 0x8d, 0xc8, 0x46, 0xb2, 0x6d}
 	case 96:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x0a, 0x26, 0xe5, 0x0d, 0x6e, 0xc8, 0xcc, 0xba, 0xf1, 0xcc, 0x3a, 0x59, 0xfc, 0x2e, 0x1b, 0xe6, 0xdc, 0xa2, 0xc2, 0x22, 0x19, 0xba, 0x70, 0xca, 0x80, 0xa0, 0x14, 0x51, 0x88, 0x2b, 0xf0, 0xe4}
 	case 252:
@@ -50,7 +54,7 @@ func AdmitI31CoreSource(data []byte) bool {
 // lowering. This is intentionally narrower than the general collector-free
 // i31 implementation on complete backends.
 func admitRV64I31Core(m *wasm.Module) bool {
-	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m)
+	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m)
 }
 
 func admitRV64I31TableProduct(m *wasm.Module) bool {
@@ -301,6 +305,47 @@ func admitRV64I31OfficialGlobalInitializer(m *wasm.Module) bool {
 	return ex.Name == "get" && ex.Index.Kind == wasm.ExternFunc && ex.Index.Index == 0
 }
 
+// admitRV64I31OfficialAnyGlobal pins the fifth official spec-v3 gc/i31 module.
+// Its nullable anyref globals carry only compact i31 values, so casts can be
+// lowered without provisioning a collector or admitting arbitrary anyref state.
+func admitRV64I31OfficialAnyGlobal(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Globals) != 2 || len(m.Exports) != 2 ||
+		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	if !i31CoreFunctionType(&m.Types[0], nil, []wasm.ValType{wasm.I32, wasm.I32}) || !i31CoreFunctionType(&m.Types[1], []wasm.ValType{wasm.I32}, nil) {
+		return false
+	}
+	wantBindings := []uint32{0, 1}
+	wantBodies := [][]byte{
+		{0x23, 0, 0xfb, 0x17, 0x6c, 0xfb, 0x1e, 0x23, 1, 0xfb, 0x17, 0x6c, 0xfb, 0x1e, 0x0b},
+		{0x20, 0, 0xfb, 0x1c, 0x24, 1, 0x0b},
+	}
+	for i, binding := range m.FuncTypes {
+		if binding.Rec || binding.Index != wantBindings[i] {
+			return false
+		}
+		fn := &m.Code[i]
+		if len(fn.Locals.Runs) != 0 || fn.LocalDeclBytes != 1 || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || !bytes.Equal(fn.BodyBytes, wantBodies[i]) {
+			return false
+		}
+	}
+	wantInitializers := [][]byte{{0x41, 0xd2, 0x09, 0xfb, 0x1c, 0x0b}, {0x41, 0xae, 0x2c, 0xfb, 0x1c, 0x0b}}
+	for i, global := range m.Globals {
+		if !wasm.EqualValType(global.Type.Type, wasm.AnyRef) || global.Type.Mutable != (i == 1) || len(global.Init.Instrs) != 0 || !bytes.Equal(global.Init.BodyBytes, wantInitializers[i]) {
+			return false
+		}
+	}
+	wantExports := []string{"get_globals", "set_global"}
+	for i, ex := range m.Exports {
+		if ex.Name != wantExports[i] || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
+			return false
+		}
+	}
+	return true
+}
+
 func i31CoreGlobalValue(expr wasm.Expr) (uint64, error) {
 	r := wasm.ReaderFrom(expr.BodyBytes)
 	op, err := r.Byte()
@@ -354,4 +399,22 @@ func (f *integerEmitter) i31Get(signed bool) {
 	// Every shared i32 boundary carries uint32 bits in a zero-extended word,
 	// including the signed extraction of a negative 31-bit payload.
 	f.NormalizeI32(5)
+}
+
+func (f *integerEmitter) i31Cast(nullable bool) {
+	// Compact i31 references are the only odd gc.Ref values. Null and every
+	// heap-object reference are even. A nullable cast preserves null so the
+	// following i31 operation can report its more specific null-reference trap.
+	null := -1
+	if nullable {
+		null = f.a.BranchLong(enc.EQ, enc.X5, enc.Zero)
+	}
+	f.a.Addi(enc.X6, enc.Zero, 1)
+	f.a.And(enc.X6, enc.X5, enc.X6)
+	f.trap(trapI31CastFailure, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
+	if nullable {
+		if err := f.Patch(null, f.Position()); err != nil {
+			f.err = err
+		}
+	}
 }

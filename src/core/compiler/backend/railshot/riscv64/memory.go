@@ -283,7 +283,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	importedGlobals := len(s.globals)
 	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
 	for _, g := range m.Globals {
-		if i31Core && (isI31CoreRef(g.Type.Type) || wasm.EqualValType(g.Type.Type, wasm.I31Ref)) {
+		if i31Core && (isI31CoreRef(g.Type.Type) || wasm.EqualValType(g.Type.Type, wasm.I31Ref) || wasm.EqualValType(g.Type.Type, wasm.AnyRef)) {
 			v, err := i31CoreGlobalValue(g.Init)
 			if err != nil {
 				return s, err
