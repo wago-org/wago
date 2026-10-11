@@ -32,6 +32,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 	if c.nativeReferenceFunctionABI {
 		counts.MaskSlots = n
 	}
+	publicReferenceCarriers := rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierTarget(c, 0)
 	for i := 0; i < n; i++ {
 		if railshotNonCallableFunction(c, i) {
 			counts.NonCallable++
@@ -43,7 +44,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		} else {
 			sig = c.Funcs[i-c.NumImports]
 		}
-		values, e := rv64NativeTailSignatureValues(sig)
+		values, e := rv64NativeTailSignatureValues(sig, publicReferenceCarriers && i == 0)
 		if e != nil {
 			return counts, 0, e
 		}
@@ -116,7 +117,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 	return counts, metadata, err
 }
 
-func rv64NativeTailSignatureValues(sig FuncSig) (int, error) {
+func rv64NativeTailSignatureValues(sig FuncSig, referenceCarriers bool) (int, error) {
 	for _, list := range [][]ValType{sig.Params, sig.Results} {
 		if len(list) > 256 {
 			return 0, rv64TailGenerationError("native owner signature count")
@@ -128,6 +129,11 @@ func rv64NativeTailSignatureValues(sig FuncSig) (int, error) {
 				cells++
 			case ValV128:
 				cells += 2
+			case ValFuncRef, ValExternRef:
+				if !referenceCarriers {
+					return 0, rv64TailGenerationError("native owner signature type")
+				}
+				cells++
 			default:
 				return 0, rv64TailGenerationError("native owner signature type")
 			}

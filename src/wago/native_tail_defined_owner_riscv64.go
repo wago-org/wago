@@ -89,6 +89,7 @@ func rv64NativeDefinedTailOwnerCounts(in *Instance) (int, int, error) {
 		return 0, 0, fmt.Errorf("%w: RV64 defined tail snapshot function arena", railshot.ErrUnsupported)
 	}
 	values := 0
+	publicReferenceCarriers := rv64PublicReferenceCallBoundary(in.c) && rv64PublicReferenceCarrierTarget(in.c, 0)
 	for i, sig := range in.c.Funcs[:n] {
 		if railshotNonCallableFunction(in.c, i) {
 			continue
@@ -104,6 +105,11 @@ func rv64NativeDefinedTailOwnerCounts(in *Instance) (int, int, error) {
 					cells++
 				case ValV128:
 					cells += 2
+				case ValFuncRef, ValExternRef:
+					if !publicReferenceCarriers || i != 0 {
+						return 0, 0, fmt.Errorf("%w: RV64 defined tail signature type", railshot.ErrUnsupported)
+					}
+					cells++
 				default:
 					return 0, 0, fmt.Errorf("%w: RV64 defined tail signature type", railshot.ErrUnsupported)
 				}

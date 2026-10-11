@@ -177,7 +177,7 @@ func publicReferenceCallBoundaryWireShape(data []byte) bool {
 	if bytes.Equal(bodies[2], wrapper) {
 		return true
 	}
-	if referenceCarriers || !sameResults || len(wrapper) < 3 {
+	if !sameResults || len(wrapper) < 3 {
 		return false
 	}
 	wrapper[len(wrapper)-3] = 0x15 // canonical return_call_ref alternate
@@ -187,13 +187,12 @@ func publicReferenceCallBoundaryWireShape(data []byte) bool {
 // admitPublicReferenceCallBoundary is the first public owner-scoped call_ref
 // surface. It is deliberately table-free and reference-global-free: a target,
 // a token-producing wrapper, and a wrapper that forwards the target parameters
-// plus one nullable exact target reference to call_ref. The broad form carries
-// only shared scalars. One separate exact form forwards a nullable abstract
-// funcref or externref to a one-reference i32 nullness observer, proving two
-// independently authenticated reference arguments without allowing a reference
-// result or proper tail. The compiler witness, public token authentication, and
-// invocation owner graph are all required; no other public dynamic-reference
-// shape inherits this exception.
+// plus one nullable exact target reference to call_ref or return_call_ref. The
+// bounded target vector may mix shared scalars with nullable abstract funcref
+// and externref carriers; a proper tail is admitted only when the wrapper
+// returns the target's exact result vector. The compiler witness, public token
+// authentication, retained tail plan, and invocation owner graph are all
+// required; no other public dynamic-reference shape inherits this exception.
 func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 3 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
 		return false
@@ -256,9 +255,6 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	callerBody = append(callerBody, 0x0b)
 	tailBody := append(callerPrefix, 0x15, 0, 0x0b)
 	if !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, callerBody) && (!numericResult || !bytes.Equal(m.Code[2].BodyBytes, tailBody)) {
-		return false
-	}
-	if referenceCarriers && bytes.Equal(m.Code[2].BodyBytes, tailBody) {
 		return false
 	}
 	for i, name := range []string{"target", "get", "call"} {
@@ -604,7 +600,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 						return err
 					}
 				} else if err := integerNumericSignature(sig, true); err != nil {
-					if !publicReferenceCallBoundary || op != 0x14 || imm.Index != 0 || !publicReferenceCarrierTarget(sig) {
+					if !publicReferenceCallBoundary || (op != 0x14 && op != 0x15) || imm.Index != 0 || !publicReferenceCarrierTarget(sig) {
 						return err
 					}
 				}

@@ -80,8 +80,8 @@ func tailRASignature(sig *wasm.CompType) error {
 	vector := false
 	for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
 		for _, typ := range list {
-			if swarClassOf(typ) == swarInvalid {
-				return unsupported("private tail numeric/vector carriers")
+			if swarClassOf(typ) == swarInvalid && !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef) {
+				return unsupported("private tail carrier type")
 			}
 			if wasm.EqualValType(typ, wasm.V128) {
 				vector = true

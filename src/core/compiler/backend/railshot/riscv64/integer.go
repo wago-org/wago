@@ -1055,8 +1055,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("private dynamic typed tail profile required")
 			}
 			sig := state.types[typeIndex]
+			callParams := sig.params
+			callParamRefs := []bool(nil)
+			referenceCarriers := false
 			if err = integerCallable(sig, floating); err != nil {
-				return integerSummary{}, err
+				if !state.publicReferenceCarriers || typeIndex != 0 || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature) {
+					return integerSummary{}, err
+				}
+				callParams, _, callParamRefs, _, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
+				if err != nil {
+					return integerSummary{}, err
+				}
+				referenceCarriers = true
 			}
 			if functionRefs {
 				err = admitReferenceTailResults(ft, sig.signature)
@@ -1068,7 +1078,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			importTails++
 			callCount++
-			budget += len(sig.params) + len(sig.results) + 1
+			if !referenceCarriers {
+				budget += len(sig.params) + len(sig.results)
+			}
+			budget++
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("typed reference tail count/slot budget")
 			}
@@ -1082,10 +1095,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			referenceSlot := h
 			if functionRefs {
-				if err = match(sig.params, nil, false, true); err != nil {
+				if err = match(callParams, callParamRefs, false, true); err != nil {
 					return integerSummary{}, err
 				}
-				h -= len(sig.params)
+				h -= len(callParams)
 			} else {
 				for j := len(sig.params) - 1; j >= 0; j-- {
 					if err = popWidth(sig.params[j]); err != nil {

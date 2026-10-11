@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -50,6 +49,14 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 }
 
 func rv64PublicReferenceCallBoundary(c *Compiled) bool {
+	return rv64PublicReferenceCallBoundaryWithPlan(c, true)
+}
+
+// Artifact decoding validates declared reference carriers before it reaches
+// the address-free native-tail appendix. The prefix mode therefore derives the
+// expected tail shape from the exact feature set, while final admission still
+// requires the canonical retained plan below.
+func rv64PublicReferenceCallBoundaryWithPlan(c *Compiled, requirePlan bool) bool {
 	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 3 || len(c.Types) != 3 || len(c.ValueTypes) != 0 || len(c.Exports) != 3 || c.tableCount() != 0 || len(c.extraTables) != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.tagImportCount() != 0 || c.HasStart {
 		return false
 	}
@@ -58,6 +65,9 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	}
 	wantFeatures := CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
 	tail := rv64HasReferenceTail(c)
+	if !requirePlan && c.requiredFeatures.IsEnabled(CoreFeatureTailCall) {
+		tail = true
+	}
 	if tail {
 		wantFeatures |= CoreFeatureTailCall
 	}
@@ -90,7 +100,7 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	}
 	numericResult := rv64PublicReferenceSameTypes(caller.Results, target.Results)
 	referenceResult := len(caller.Results) == 1 && caller.Results[0] == ValFuncRef
-	if !numericResult && !referenceResult || tail && !numericResult || referenceCarriers && (!numericResult || tail) {
+	if !numericResult && !referenceResult || tail && !numericResult || referenceCarriers && !numericResult {
 		return false
 	}
 	targetType, producerType, callerType := c.Types[0], c.Types[1], c.Types[2]
@@ -130,29 +140,12 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 			return false
 		}
 	}
+	if !requirePlan {
+		return true
+	}
 	m := rv64NativeTailModule(c)
 	if tail {
-		if m == nil || len(m.Plans) != 1 {
-			return false
-		}
-		p := m.Plans[0]
-		wantPC := uint32(1)
-		for i := 0; i <= len(target.Params); i++ {
-			wantPC += 1 + rv64PublicReferenceU32Bytes(uint32(i))
-		}
-		// The canonical wrapper has N+1 parameters and a peak stack of N+1:
-		// its argument homes begin after the fixed header and local homes, the
-		// reference immediately follows the N scalar homes, and the complete
-		// frame is 16-byte aligned. Bind retained metadata to that layout so an
-		// otherwise in-bounds artifact cannot redirect the tail proof to a
-		// different set of frame cells.
-		n := len(target.Params)
-		wantSourceBase := 56 + 8*n
-		wantReferenceBase := 56 + 16*n
-		wantFrameBytes := 64 + 16*n
-		if p.Kind != encoder.NativeTailReference || p.TypeIndex != 0 || p.FunctionIndex != 2 || p.ImportIndex != 0 || p.SourcePC != wantPC || p.FrameBytes != wantFrameBytes || p.SourceBase != wantSourceBase || p.SourceStride != 8 || p.ReferenceBase != wantReferenceBase {
-			return false
-		}
+		return m != nil && len(m.Plans) == 1 && rv64PublicReferenceTailPlan(c, m.Plans[0])
 	} else if m != nil {
 		return false
 	}
@@ -697,7 +690,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 		if err := validateFuncSignature(sig, c.Types); err != nil {
 			return err
 		}
-		if _, err := rv64NativeTailSignatureValues(sig); err != nil {
+		if _, err := rv64NativeTailSignatureValues(sig, false); err != nil {
 			return err
 		}
 	}

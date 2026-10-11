@@ -149,7 +149,9 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 				return err
 			}
 		} else if err := integerNumericSignature(target, true); err != nil {
-			return err
+			if p.kind != enc.NativeTailReference || !admitPublicReferenceCallBoundary(m) || p.typeIndex != 0 || !publicReferenceCarrierTarget(target) {
+				return err
+			}
 		}
 		values += len(target.Params) + len(target.Results)
 		if err := NativeTailMetadataBudget(len(*opts.tailPlans), values); err != nil {

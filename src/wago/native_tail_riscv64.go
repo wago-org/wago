@@ -104,6 +104,10 @@ func rv64TailTypes(values []ValType) ([]wasm.ValType, error) {
 			out[i] = wasm.F64
 		case ValV128:
 			out[i] = wasm.V128
+		case ValFuncRef:
+			out[i] = wasm.FuncRef
+		case ValExternRef:
+			out[i] = wasm.ExternRef
 		default:
 			return nil, fmt.Errorf("RV64 staged tail transport type")
 		}

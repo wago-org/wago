@@ -12,13 +12,18 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // The target deliberately mixes narrow, wide and both public reference
 // carriers in both directions. The wrapper forwards the complete vector to an
 // authenticated exact call_ref target and returns it without reinterpretation.
-func rv64PublicReferenceCarrierModule() []byte {
+func rv64PublicReferenceCarrierModule(tail bool) []byte {
+	call := byte(0x14)
+	if tail {
+		call = 0x15
+	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType(
@@ -38,134 +43,157 @@ func rv64PublicReferenceCarrierModule() []byte {
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x20, 2, 0x20, 1, 0x20, 0, 0x20, 3, 0x0b}),
 			wasmtest.Code([]byte{0xd2, 0, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x14, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, call, 0, 0x0b}),
 		)),
 	)
 }
 
+func rv64AssertPublicReferenceCarrierStateClear(t *testing.T, in *Instance) {
+	t.Helper()
+	rv64AssertPublicReferenceArgumentScopesClear(t, in)
+	state := &in.pluginState.Load().railshotInvocation
+	if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != 0 {
+		t.Fatal("public reference carrier call retained invocation state", state.tailGenerationBudget.count, state.definedTailOwner, rv64EntryCapability(in))
+	}
+}
+
 func TestRV64PublicReferenceFunctionCarriersSourceArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
-			if !artifact && os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
-				t.Skip("precompiled artifact path only")
-			}
-			c := rv64NativeTailCompile(t, "reference-function-carriers", rv64PublicReferenceCarrierModule(), artifact)
-			if !rv64PublicReferenceCallBoundary(c) || !rv64PublicReferenceCarrierTarget(c, 0) || rv64NativeTailModule(c) != nil {
-				t.Fatal("public reference carrier metadata")
-			}
-			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
-			defer rv64HostCertificateCloseRuntime(t, rt)
-			ref, err := rt.NewExternRef("reference-carrier")
-			if err != nil {
-				t.Fatal(err)
-			}
-			extern := ValueExternRef(ref).Bits()
-			in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-			defer in.Close()
-			callable, err := in.Invoke("get")
-			if err != nil || len(callable) != 1 || callable[0] == 0 {
-				t.Fatal("reference carrier target token", callable, err)
-			}
-			args := []uint64{0xfeedface89abcdef, callable[0], extern, 0xfedcba9876543210, callable[0]}
-			got, err := in.Invoke("call", args...)
-			if err != nil || len(got) != 4 || got[0] != extern || got[2] != 0x89abcdef || got[3] != args[3] || !in.FuncRefMatchesFunction(ValueOf(ValFuncRef, got[1]).FuncRef(), 0) {
-				t.Fatal("mixed reference carrier call", got, err)
-			}
-			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+	for _, tail := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("tail%t/artifact%t", tail, artifact), func(t *testing.T) {
+				if !artifact && os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
+					t.Skip("precompiled artifact path only")
+				}
+				c := rv64NativeTailCompile(t, fmt.Sprintf("reference-function-carriers-tail-%t", tail), rv64PublicReferenceCarrierModule(tail), artifact)
+				m := rv64NativeTailModule(c)
+				if !rv64PublicReferenceCallBoundary(c) || !rv64PublicReferenceCarrierTarget(c, 0) || tail != (m != nil) {
+					t.Fatal("public reference carrier metadata")
+				}
+				if tail {
+					if len(m.Plans) != 1 {
+						t.Fatal("public reference carrier tail plan count", m)
+					}
+					p := m.Plans[0]
+					if p.Kind != encoder.NativeTailReference || p.TypeIndex != 0 || p.FunctionIndex != 2 || p.ImportIndex != 0 || p.SourcePC != 11 || p.FrameBytes != 128 || p.SourceBase != 88 || p.SourceStride != 8 || p.ReferenceBase != 120 {
+						t.Fatal("public reference carrier tail plan", p)
+					}
+				}
+				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+				defer rv64HostCertificateCloseRuntime(t, rt)
+				ref, err := rt.NewExternRef("reference-carrier")
+				if err != nil {
+					t.Fatal(err)
+				}
+				extern := ValueExternRef(ref).Bits()
+				in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+				defer in.Close()
+				callable, err := in.Invoke("get")
+				if err != nil || len(callable) != 1 || callable[0] == 0 {
+					t.Fatal("reference carrier target token", callable, err)
+				}
+				args := []uint64{0xfeedface89abcdef, callable[0], extern, 0xfedcba9876543210, callable[0]}
+				got, err := in.Invoke("call", args...)
+				if err != nil || len(got) != 4 || got[0] != extern || got[2] != 0x89abcdef || got[3] != args[3] || !in.FuncRefMatchesFunction(ValueOf(ValFuncRef, got[1]).FuncRef(), 0) {
+					t.Fatal("mixed reference carrier call", got, err)
+				}
+				rv64AssertPublicReferenceCarrierStateClear(t, in)
 
-			callable, err = in.Invoke("get")
-			if err != nil || len(callable) != 1 {
-				t.Fatal("fresh typed reference carrier target", callable, err)
-			}
-			typed, err := in.InvokeValues(context.Background(), "call",
-				ValueI32(-1985229329), ValueFuncRef(ValueOf(ValFuncRef, callable[0]).FuncRef()),
-				ValueExternRef(ref), ValueI64(-81985529216486896),
-				ValueFuncRef(ValueOf(ValFuncRef, callable[0]).FuncRef()))
-			if err != nil || len(typed) != 4 || typed[0].Type() != ValExternRef || typed[0].ExternRef() != ref || typed[1].Type() != ValFuncRef || !in.FuncRefMatchesFunction(typed[1].FuncRef(), 0) || typed[2].Type() != ValI32 || typed[2].Bits() != 0x89abcdef || typed[3].Type() != ValI64 {
-				t.Fatal("typed mixed reference carrier call", typed, err)
-			}
-			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+				callable, err = in.Invoke("get")
+				if err != nil || len(callable) != 1 {
+					t.Fatal("fresh typed reference carrier target", callable, err)
+				}
+				typed, err := in.InvokeValues(context.Background(), "call",
+					ValueI32(-1985229329), ValueFuncRef(ValueOf(ValFuncRef, callable[0]).FuncRef()),
+					ValueExternRef(ref), ValueI64(-81985529216486896),
+					ValueFuncRef(ValueOf(ValFuncRef, callable[0]).FuncRef()))
+				if err != nil || len(typed) != 4 || typed[0].Type() != ValExternRef || typed[0].ExternRef() != ref || typed[1].Type() != ValFuncRef || !in.FuncRefMatchesFunction(typed[1].FuncRef(), 0) || typed[2].Type() != ValI32 || typed[2].Bits() != 0x89abcdef || typed[3].Type() != ValI64 {
+					t.Fatal("typed mixed reference carrier call", typed, err)
+				}
+				rv64AssertPublicReferenceCarrierStateClear(t, in)
 
-			callable, err = in.Invoke("get")
-			if err != nil || len(callable) != 1 {
-				t.Fatal("fresh prepared reference carrier target", callable, err)
-			}
-			fn, err := in.WasmFunc("call")
-			if err != nil {
-				t.Fatal(err)
-			}
-			session, err := fn.OpenSession()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got, err = session.Invoke(7, 0, 0, 9, callable[0]); err != nil || !slices.Equal(got, []uint64{0, 0, 7, 9}) {
-				t.Fatal("prepared null reference carrier call", got, err)
-			}
-			session.Close()
-			rv64AssertPublicReferenceArgumentScopesClear(t, in)
+				callable, err = in.Invoke("get")
+				if err != nil || len(callable) != 1 {
+					t.Fatal("fresh prepared reference carrier target", callable, err)
+				}
+				fn, err := in.WasmFunc("call")
+				if err != nil {
+					t.Fatal(err)
+				}
+				session, err := fn.OpenSession()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got, err = session.Invoke(7, 0, 0, 9, callable[0]); err != nil || !slices.Equal(got, []uint64{0, 0, 7, 9}) {
+					t.Fatal("prepared null reference carrier call", got, err)
+				}
+				session.Close()
+				rv64AssertPublicReferenceCarrierStateClear(t, in)
 
-			if got, err = in.Invoke("target", 11, callable[0], extern, 13); err != nil || len(got) != 4 || got[0] != extern || got[2] != 11 || got[3] != 13 {
-				t.Fatal("direct reference carrier target", got, err)
-			}
-			rv64AssertPublicReferenceArgumentScopesClear(t, in)
-			if !rt.ReleaseExternRef(ref) {
-				t.Fatal("reference carrier externref remained pinned")
-			}
-		})
+				if got, err = in.Invoke("target", 11, callable[0], extern, 13); err != nil || len(got) != 4 || got[0] != extern || got[2] != 11 || got[3] != 13 {
+					t.Fatal("direct reference carrier target", got, err)
+				}
+				rv64AssertPublicReferenceCarrierStateClear(t, in)
+				if !rt.ReleaseExternRef(ref) {
+					t.Fatal("reference carrier externref remained pinned")
+				}
+			})
+		}
 	}
 }
 
 func TestRV64PublicReferenceFunctionCarriersForeignOwners(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
-			if !artifact && os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
-				t.Skip("precompiled artifact path only")
-			}
-			c := rv64NativeTailCompile(t, "reference-function-carriers-foreign", rv64PublicReferenceCarrierModule(), artifact)
-			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
-			defer rv64HostCertificateCloseRuntime(t, rt)
-			ref, err := rt.NewExternRef(struct{ Name string }{"carrier-owner"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			argumentProducer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-			targetProducer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-			consumer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-			defer consumer.Close()
-			argument, err := argumentProducer.Invoke("get")
-			if err != nil || len(argument) != 1 {
-				t.Fatal("foreign carrier argument", argument, err)
-			}
-			target, err := targetProducer.Invoke("get")
-			if err != nil || len(target) != 1 {
-				t.Fatal("foreign carrier target", target, err)
-			}
-			argumentDescriptor, argumentOK := consumer.refStore.resolve(argument[0])
-			if !argumentOK || argumentDescriptor == 0 {
-				t.Fatal("foreign carrier argument descriptor", argumentDescriptor, argumentOK)
-			}
-			if err := argumentProducer.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if err := targetProducer.Close(); err != nil {
-				t.Fatal(err)
-			}
-			got, err := consumer.Invoke("call", 17, argument[0], ValueExternRef(ref).Bits(), 19, target[0])
-			returnedDescriptor, returnedOK := uint64(0), false
-			if len(got) == 4 {
-				returnedDescriptor, returnedOK = consumer.refStore.resolve(got[1])
-			}
-			if err != nil || len(got) != 4 || got[0] != ValueExternRef(ref).Bits() || got[2] != 17 || got[3] != 19 || !returnedOK || returnedDescriptor != argumentDescriptor {
-				t.Fatal("foreign mixed reference carrier call", got, err)
-			}
-			rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
-			if argumentProducer.usesIndependentExecution() || targetProducer.usesIndependentExecution() || consumer.usesIndependentExecution() || !argumentProducer.nativeControlIsShared() || !targetProducer.nativeControlIsShared() || !consumer.nativeControlIsShared() {
-				t.Fatal("foreign reference carrier owners did not reconcile shared execution")
-			}
-			if !rt.ReleaseExternRef(ref) {
-				t.Fatal("foreign reference carrier externref remained pinned")
-			}
-		})
+	for _, tail := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("tail%t/artifact%t", tail, artifact), func(t *testing.T) {
+				if !artifact && os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
+					t.Skip("precompiled artifact path only")
+				}
+				c := rv64NativeTailCompile(t, fmt.Sprintf("reference-function-carriers-foreign-tail-%t", tail), rv64PublicReferenceCarrierModule(tail), artifact)
+				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+				defer rv64HostCertificateCloseRuntime(t, rt)
+				ref, err := rt.NewExternRef(struct{ Name string }{"carrier-owner"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				argumentProducer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+				targetProducer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+				consumer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+				defer consumer.Close()
+				argument, err := argumentProducer.Invoke("get")
+				if err != nil || len(argument) != 1 {
+					t.Fatal("foreign carrier argument", argument, err)
+				}
+				target, err := targetProducer.Invoke("get")
+				if err != nil || len(target) != 1 {
+					t.Fatal("foreign carrier target", target, err)
+				}
+				argumentDescriptor, argumentOK := consumer.refStore.resolve(argument[0])
+				if !argumentOK || argumentDescriptor == 0 {
+					t.Fatal("foreign carrier argument descriptor", argumentDescriptor, argumentOK)
+				}
+				if err := argumentProducer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := targetProducer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				got, err := consumer.Invoke("call", 17, argument[0], ValueExternRef(ref).Bits(), 19, target[0])
+				returnedDescriptor, returnedOK := uint64(0), false
+				if len(got) == 4 {
+					returnedDescriptor, returnedOK = consumer.refStore.resolve(got[1])
+				}
+				if err != nil || len(got) != 4 || got[0] != ValueExternRef(ref).Bits() || got[2] != 17 || got[3] != 19 || !returnedOK || returnedDescriptor != argumentDescriptor {
+					t.Fatal("foreign mixed reference carrier call", got, err)
+				}
+				rv64AssertPublicReferenceCarrierStateClear(t, consumer)
+				if argumentProducer.usesIndependentExecution() || targetProducer.usesIndependentExecution() || consumer.usesIndependentExecution() || !argumentProducer.nativeControlIsShared() || !targetProducer.nativeControlIsShared() || !consumer.nativeControlIsShared() {
+					t.Fatal("foreign reference carrier owners did not reconcile shared execution")
+				}
+				if !rt.ReleaseExternRef(ref) {
+					t.Fatal("foreign reference carrier externref remained pinned")
+				}
+			})
+		}
 	}
 }
 
@@ -173,7 +201,7 @@ func TestRV64PublicReferenceFunctionCarriersAdmission(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
 		t.Skip("source compiler path only")
 	}
-	base := rv64NativeTailCompile(t, "reference-function-carriers-admission", rv64PublicReferenceCarrierModule(), false)
+	base := rv64NativeTailCompile(t, "reference-function-carriers-admission", rv64PublicReferenceCarrierModule(false), false)
 	for _, tc := range []struct {
 		name   string
 		mutate func(*Compiled)
@@ -201,6 +229,41 @@ func TestRV64PublicReferenceFunctionCarriersAdmission(t *testing.T) {
 			tc.mutate(c)
 			if err := railshotValidateCompiled(c); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("non-matching public reference carrier boundary admitted", err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicReferenceFunctionCarrierTailAdmission(t *testing.T) {
+	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
+		t.Skip("source compiler path only")
+	}
+	base := rv64NativeTailCompile(t, "reference-function-carriers-tail-admission", rv64PublicReferenceCarrierModule(true), false)
+	for _, tc := range []struct {
+		name   string
+		mutate func(*Compiled)
+	}{
+		{"missing-call-owner-abi", func(c *Compiled) { c.nativeReferenceCallABI = false }},
+		{"missing-tail-feature", func(c *Compiled) { c.requiredFeatures &^= CoreFeatureTailCall }},
+		{"missing-plan", func(c *Compiled) { rv64StoreNativeTailModule(c, nil) }},
+		{"plan-kind", func(c *Compiled) { rv64NativeTailModule(c).Plans[0].Kind = encoder.NativeTailIndirect }},
+		{"plan-type", func(c *Compiled) { rv64NativeTailModule(c).Plans[0].TypeIndex = 1 }},
+		{"plan-function", func(c *Compiled) { rv64NativeTailModule(c).Plans[0].FunctionIndex = 1 }},
+		{"plan-source", func(c *Compiled) { rv64NativeTailModule(c).Plans[0].SourcePC++ }},
+		{"plan-frame", func(c *Compiled) { rv64NativeTailModule(c).Plans[0].FrameBytes += 16 }},
+		{"plan-source-base", func(c *Compiled) { rv64NativeTailModule(c).Plans[0].SourceBase -= 8 }},
+		{"plan-source-stride", func(c *Compiled) { rv64NativeTailModule(c).Plans[0].SourceStride = 16 }},
+		{"plan-reference-base", func(c *Compiled) { rv64NativeTailModule(c).Plans[0].ReferenceBase -= 8 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := cloneCompiledMetadata(base)
+			c.validateMemo, c.codeCache = &validateMemo{}, nil
+			if m := rv64NativeTailModule(base); m != nil {
+				rv64StoreNativeTailModule(c, &encoder.NativeTailModule{Plans: slices.Clone(m.Plans)})
+			}
+			tc.mutate(c)
+			if err := railshotValidateCompiled(c); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("non-matching public reference carrier tail admitted", err)
 			}
 		})
 	}

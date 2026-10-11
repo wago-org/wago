@@ -94,6 +94,29 @@ type rv64TailSignatureView struct {
 	declared        *DefinedTypeDescriptor
 }
 
+func rv64PublicReferenceTailPlan(c *Compiled, p encoder.NativeTailPlan) bool {
+	if p.Kind != encoder.NativeTailReference || p.TypeIndex != 0 || !rv64PublicReferenceCallBoundaryWithPlan(c, false) {
+		return false
+	}
+	wantPC := uint32(1)
+	for i := 0; i <= len(c.Funcs[0].Params); i++ {
+		wantPC += 1 + rv64PublicReferenceU32Bytes(uint32(i))
+	}
+	// The canonical wrapper has N+1 parameters and a peak stack of N+1:
+	// its argument homes begin after the fixed header and local homes, the
+	// target reference immediately follows the N carrier homes, and the full
+	// frame remains 16-byte aligned.
+	n := len(c.Funcs[0].Params)
+	return p.FunctionIndex == 2 && p.ImportIndex == 0 && p.SourcePC == wantPC && p.FrameBytes == 64+16*n && p.SourceBase == 56+8*n && p.SourceStride == 8 && p.ReferenceBase == 56+16*n
+}
+
+func rv64PublicReferenceTailDeclaredCarrier(v ValueTypeDescriptor, referenceCarriers bool) bool {
+	if v.Kind <= ValueTypeV128 {
+		return v.Ref == (ReferenceTypeDescriptor{})
+	}
+	return referenceCarriers && v.Kind == ValueTypeReference && !v.Ref.Exact && v.Ref.Nullable && !v.Ref.Heap.Defined && (v.Ref.Heap.Abstract == AbstractHeapFunc || v.Ref.Heap.Abstract == AbstractHeapExtern)
+}
+
 func (s rv64TailSignatureView) paramCount() int {
 	if s.declared != nil {
 		return len(s.declared.Params)
@@ -138,10 +161,11 @@ func rv64NativeTailPlanSignature(c *Compiled, p encoder.NativeTailPlan) (rv64Tai
 	if d.Kind != CompositeTypeFunction || !d.Final || len(d.Supers) != 0 || d.HasDescribes || d.HasDescriptor || len(d.Params) > 256 || len(d.Results) > 256 {
 		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail plain declared function type")
 	}
+	referenceCarriers := rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0)
 	for _, list := range [][]ValueTypeDescriptor{d.Params, d.Results} {
 		slots := 0
 		for _, v := range list {
-			if v.Kind > ValueTypeV128 || v.Ref != (ReferenceTypeDescriptor{}) {
+			if !rv64PublicReferenceTailDeclaredCarrier(v, referenceCarriers) {
 				return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail numeric declared signature")
 			}
 			slots++
@@ -196,6 +220,7 @@ func rv64ValidateNativeTailPlansWithCodeBytes(c *Compiled, plans []encoder.Nativ
 		if sig.paramCount() > 256 || sig.resultCount() > 256 {
 			return fmt.Errorf("RV64 native tail signature count")
 		}
+		referenceCarriers := rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0)
 		for _, result := range []bool{false, true} {
 			count, slots := sig.paramCount(), 0
 			if result {
@@ -208,6 +233,11 @@ func rv64ValidateNativeTailPlansWithCodeBytes(c *Compiled, plans []encoder.Nativ
 				}
 				switch v(n) {
 				case ValI32, ValI64, ValF32, ValF64:
+					slots++
+				case ValFuncRef, ValExternRef:
+					if !referenceCarriers {
+						return fmt.Errorf("RV64 native tail numeric signature")
+					}
 					slots++
 				case ValV128:
 					slots += 2
@@ -236,6 +266,10 @@ func rv64ValidateNativeTailPlansWithCodeBytes(c *Compiled, plans []encoder.Nativ
 			width := 8
 			switch sig.param(i) {
 			case ValI32, ValI64, ValF32, ValF64:
+			case ValFuncRef, ValExternRef:
+				if !referenceCarriers {
+					return fmt.Errorf("RV64 native tail parameter type")
+				}
 			case ValV128:
 				width = 16
 				if p.SourceStride != 16 {

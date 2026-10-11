@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -417,7 +418,6 @@ func TestPublicReferenceCallBoundaryReferenceArgumentAdmission(t *testing.T) {
 			m.Types[0].SubTypes[0].Comp.Results[0] = wasm.AnyRef
 			m.Types[2].SubTypes[0].Comp.Results[0] = wasm.AnyRef
 		}},
-		{"tail", func(m *wasm.Module) { m.Code[2].BodyBytes[4] = 0x15 }},
 		{"argument-order", func(m *wasm.Module) { m.Code[2].BodyBytes[1], m.Code[2].BodyBytes[3] = 1, 0 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -427,6 +427,11 @@ func TestPublicReferenceCallBoundaryReferenceArgumentAdmission(t *testing.T) {
 				t.Fatal("nearby public reference-argument shape inherited the boundary")
 			}
 		})
+	}
+	tail := publicReferenceArgumentCallBoundaryDecode(t)
+	tail.Code[2].BodyBytes[4] = 0x15
+	if !admitPublicReferenceCallBoundary(tail) || admitClosedReferenceFunctionModule(tail, false) != nil {
+		t.Fatal("public reference-argument return_call_ref was not admitted")
 	}
 }
 
@@ -460,7 +465,6 @@ func TestPublicReferenceCallBoundaryReferenceCarrierAdmission(t *testing.T) {
 		{"caller-result-mismatch", func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Results[1] = wasm.ExternRef }},
 		{"unsupported-target-result", func(m *wasm.Module) { m.Types[0].SubTypes[0].Comp.Results[0] = wasm.AnyRef }},
 		{"caller-body-order", func(m *wasm.Module) { m.Code[2].BodyBytes[1], m.Code[2].BodyBytes[3] = 1, 0 }},
-		{"tail", func(m *wasm.Module) { m.Code[2].BodyBytes[10] = 0x15 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			candidate := publicReferenceCarrierCallBoundaryDecode(t)
@@ -472,6 +476,18 @@ func TestPublicReferenceCallBoundaryReferenceCarrierAdmission(t *testing.T) {
 				t.Fatal("nearby mixed reference carrier shape was admitted", err)
 			}
 		})
+	}
+	tail := publicReferenceCarrierCallBoundaryDecode(t)
+	tail.Code[2].BodyBytes[10] = 0x15
+	if !admitPublicReferenceCallBoundary(tail) {
+		t.Fatal("public mixed reference carrier return_call_ref was not recognized")
+	}
+	if err := admitClosedReferenceFunctionModule(tail, false); err != nil {
+		t.Fatal("public mixed reference carrier return_call_ref was not admitted", err)
+	}
+	image, err = CompileModuleWith(tail, closedReferenceProductionOptions(true, true))
+	if err != nil || image.NativeTail == nil || len(image.NativeTail.Plans) != 1 || image.NativeTail.Plans[0].Kind != enc.NativeTailReference {
+		t.Fatal("public mixed reference carrier return_call_ref lowering", err)
 	}
 
 	wireMutation := bytes.Clone(source)
