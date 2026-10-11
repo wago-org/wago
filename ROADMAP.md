@@ -59,7 +59,14 @@ indices, value types, features, and ABI flags. Source/artifact instantiation,
 actual compiler-free reload and source rejection, W^X publication, executable
 leases, and final unmapping are qualified under baseline QEMU RV64G. The six
 modules have no exports, and native cache/performance qualification remains
-open. Cross-instance subtype boundaries remain closed for later checkpoints.
+open. Official `.17` is now a separate exact callable checkpoint. Its three
+private function-subtype descriptors populate an immutable table; genuine RV64
+`call_indirect` admits only the pinned transitive subtype keys and genuine
+`ref.cast` traps on non-matching full-width canonical descriptors. Source,
+artifact, actual compiler-free, W^X lease, final-unmap, success, and six failure
+paths are covered under baseline QEMU RV64G without a collector. Cross-instance
+subtype boundaries and later `gc/type-subtyping` runtime products remain closed
+for later checkpoints; native cache/performance qualification is still open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

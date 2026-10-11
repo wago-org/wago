@@ -1159,6 +1159,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	gcTypeSubtypingDeclarationsSourceVariant := railshotGCTypeSubtypingDeclarationsSource(wasmBytes)
 	gcTypeSubtypingRecursiveFunctionsSourceVariant := railshotGCTypeSubtypingRecursiveFunctionsSource(wasmBytes)
 	gcTypeSubtypingRefFuncGlobalsSourceVariant := railshotGCTypeSubtypingRefFuncGlobalsSource(wasmBytes)
+	exactGCTypeSubtypingRuntimeCallCastSource := railshotGCTypeSubtypingRuntimeCallCastSource(wasmBytes)
 	exactGCStructGetSource := railshotGCStructGetSource(wasmBytes)
 	exactGCStructMutationSource := railshotGCStructMutationSource(wasmBytes)
 	exactGCStructNullSource := railshotGCStructNullSource(wasmBytes)
@@ -1225,7 +1226,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// strict because it selects the collector-free function-identity lowering,
 		// but any module with that proven shape receives the same semantics.
 		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && gcTypeSubtypingDeclarationsSourceVariant != 0 || product == stagedGCTypeSubtypingRecursiveFunctions && gcTypeSubtypingRecursiveFunctionsSourceVariant != 0 || product == stagedGCTypeSubtypingRefFuncGlobals && gcTypeSubtypingRefFuncGlobalsSourceVariant != 0) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && gcTypeSubtypingDeclarationsSourceVariant != 0 || product == stagedGCTypeSubtypingRecursiveFunctions && gcTypeSubtypingRecursiveFunctionsSourceVariant != 0 || product == stagedGCTypeSubtypingRefFuncGlobals && gcTypeSubtypingRefFuncGlobalsSourceVariant != 0 || product == stagedGCTypeSubtypingRuntimeCallCast && exactGCTypeSubtypingRuntimeCallCastSource) {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcTypeSubtypingProduct = product
@@ -1428,6 +1429,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	railshotConfigureGCBrOnCastFailNullability(exactGCBrOnCastFailNullabilitySource, &compileOptions)
 	railshotConfigureGCTypeSubtypingDeclarations(gcTypeSubtypingDeclarationsSourceVariant, &compileOptions)
 	railshotConfigureGCTypeSubtypingRecursiveFunctions(gcTypeSubtypingRecursiveFunctionsSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingRuntimeCallCast(exactGCTypeSubtypingRuntimeCallCastSource, &compileOptions)
 	railshotConfigureGCStructGet(exactGCStructGetSource, &compileOptions)
 	railshotConfigureGCStructMutation(exactGCStructMutationSource, &compileOptions)
 	railshotConfigureGCStructNull(exactGCStructNullSource, &compileOptions)
@@ -3840,6 +3842,7 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	railshotRestoreGCTypeSubtypingDeclarationsArtifact(decoded)
 	railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(decoded)
 	railshotRestoreGCTypeSubtypingRefFuncGlobalsArtifact(decoded)
+	railshotRestoreGCTypeSubtypingRuntimeCallCastArtifact(decoded)
 	railshotRestoreGCArrayFixedOfficialArtifact(decoded)
 	railshotRestoreGCStructPackedArtifact(decoded)
 	railshotRestoreGCStructBasicArtifact(decoded)

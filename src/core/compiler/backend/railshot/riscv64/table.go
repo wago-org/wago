@@ -2594,15 +2594,21 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 }
 
 func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int, indexWide bool, tableIndex uint32) {
+	f.indirectCallKeys(sig, []uint64{sig.key}, base, indexSlot, indexWide, tableIndex)
+}
+
+func (f *integerEmitter) indirectCallKeys(sig functionSpec, keys []uint64, base, indexSlot int, indexWide bool, tableIndex uint32) {
 	f.Load(5, f.SpillOffset(indexSlot), indexWide) // table32 zero-normalizes dirty incoming i32; table64 preserves all bits
-	f.ownedIndirectTargetAt(sig.key, tableIndex)
+	f.ownedIndirectTargetAtKeys(keys, tableIndex)
 	// All dynamic guards precede writes to potentially smaller shared call arenas.
 	f.restoreCallTransport()
 	for j, wide := range sig.params {
 		f.Load(5, f.SpillOffset(base+j), wide)
 		f.a.Sd(enc.X5, enc.X10, int32(j*8))
 	}
-	if f.mode.foreignTableCalls {
+	if f.mode.gcTypeSubtypingRuntimeCallCast {
+		f.a.Jalr(enc.RA, enc.X28, 0)
+	} else if f.mode.foreignTableCalls {
 		f.nativeTableCall(sig.key, len(sig.params), len(sig.results))
 	} else {
 		f.a.Jalr(enc.RA, enc.X28, 0)
@@ -2625,6 +2631,35 @@ func (f *integerEmitter) ownedIndirectTarget(key uint64) {
 }
 
 func (f *integerEmitter) ownedIndirectTargetAt(key uint64, tableIndex uint32) {
+	f.ownedIndirectTargetAtKeys([]uint64{key}, tableIndex)
+}
+
+func (f *integerEmitter) guardSignatureKeys(actual enc.Reg, keys []uint64) {
+	if len(keys) == 0 || len(keys) > 3 || len(keys) > 1 && !f.mode.gcTypeSubtypingRuntimeCallCast {
+		f.err = unsupported("indirect signature set")
+		return
+	}
+	if len(keys) == 1 {
+		// Preserve the established exact-key image for every existing product.
+		f.a.Constant64(enc.X5, int64(keys[0]))
+		f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, actual, enc.X5))
+		return
+	}
+	var matches []int
+	for _, key := range keys {
+		f.a.Constant64(enc.X5, int64(key))
+		matches = append(matches, f.a.BranchLong(enc.EQ, actual, enc.X5))
+	}
+	f.trap(trapIndirectSignature, f.Jump())
+	for _, site := range matches {
+		if err := f.Patch(site, f.Position()); err != nil {
+			f.err = err
+			return
+		}
+	}
+}
+
+func (f *integerEmitter) ownedIndirectTargetAtKeys(keys []uint64, tableIndex uint32) {
 	if tableIndex == 0 {
 		f.a.Ld(enc.X6, enc.X25, -80)
 	} else {
@@ -2641,8 +2676,7 @@ func (f *integerEmitter) ownedIndirectTargetAt(key uint64, tableIndex uint32) {
 	f.a.Ld(enc.X28, enc.X6, 8)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X28, enc.Zero))
 	f.a.Ld(enc.X7, enc.X6, 16)
-	f.a.Constant64(enc.X5, int64(key))
-	f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	f.guardSignatureKeys(enc.X7, keys)
 	if f.mode.foreignTableCalls {
 		// The owner supplies retained immutable canonical descriptors. Verify the
 		// copied table row still names that exact entry/key/home before root writes.
@@ -2654,8 +2688,7 @@ func (f *integerEmitter) ownedIndirectTargetAt(key uint64, tableIndex uint32) {
 		f.a.Ld(enc.X7, enc.X14, 0)
 		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X28))
 		f.a.Ld(enc.X7, enc.X14, 8)
-		f.a.Constant64(enc.X5, int64(key))
-		f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+		f.guardSignatureKeys(enc.X7, keys)
 		f.a.Ld(enc.X7, enc.X14, 16)
 		f.a.Ld(enc.X5, enc.X6, 24)
 		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))

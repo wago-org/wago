@@ -85,6 +85,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcStructBasic = state.gcStructBasic
 		referenceTypes.gcTypeSubtypingRecursiveFunctions = state.gcTypeSubtypingRecursiveFunctions
 		referenceTypes.gcTypeSubtypingRefFuncGlobals = state.gcTypeSubtypingRefFuncGlobals
+		referenceTypes.gcTypeSubtypingRuntimeCallCast = state.gcTypeSubtypingRuntimeCallCast
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -775,7 +776,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, e
 				}
 				abstractNull := state.gcRefTestAbstract && (heap == -13 || heap == -14 || heap == -15 || heap == -16 || heap == -17 || heap == -18 || heap == -21 || heap == -22)
-				if heap != -16 && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				if heap != -16 && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -1181,7 +1182,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("private table call_indirect index")
 			}
 			sig := state.types[typeIndex]
-			if err = integerCallable(sig, floating); err != nil {
+			var paramRefs, resultRefs []bool
+			subtypeCall := state.gcTypeSubtypingRuntimeCallCast && typeIndex < 3
+			if subtypeCall {
+				sig.params, sig.results, paramRefs, resultRefs, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
+			} else {
+				err = integerCallable(sig, floating)
+			}
+			if err != nil {
 				return integerSummary{}, err
 			}
 			tail := op == 0x13
@@ -1209,7 +1217,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				tableBridgeBytes += nativeTableCallCodeBound(len(sig.params), len(sig.results))
 			}
 			callCount++
-			budget += len(sig.params) + len(sig.results)
+			if !subtypeCall {
+				budget += len(sig.params) + len(sig.results)
+			}
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("indirect call count/slot budget")
 			}
@@ -1231,7 +1241,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			indexSlot := h
 			if functionRefs {
-				if err = match(sig.params, nil, false, true); err != nil {
+				if err = match(sig.params, paramRefs, false, true); err != nil {
 					return integerSummary{}, err
 				}
 				h -= len(sig.params)
@@ -1255,7 +1265,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						emit.localIndirectTailCall(sig.signature, sig.key, h, indexSlot, emit.SpillOffset)
 					}
 				} else {
-					emit.indirectCall(sig, h, indexSlot, tableWide, tableIndex)
+					if subtypeCall {
+						keys := []uint64{sig.key}
+						for subtype := typeIndex + 1; subtype < 3; subtype++ {
+							keys = append(keys, state.types[subtype].key)
+						}
+						emit.indirectCallKeys(sig, keys, h, indexSlot, tableWide, tableIndex)
+					} else {
+						emit.indirectCall(sig, h, indexSlot, tableWide, tableIndex)
+					}
 				}
 			}
 			if tail {
@@ -1264,10 +1282,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				h = ctrl[depth-1].base
 				continue
 			}
-			for _, wide := range sig.results {
+			for i, wide := range sig.results {
 				if err = push(wide); err != nil {
 					return integerSummary{}, err
 				}
+				stackRefs[h-1] = len(resultRefs) != 0 && resultRefs[i]
 			}
 		case 0x23, 0x24:
 			idx, e := r.U32()
@@ -1559,7 +1578,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return integerSummary{}, err
 			}
-			if state == nil || !state.i31Core {
+			if state == nil || !state.i31Core && !state.gcTypeSubtypingRuntimeCallCast {
 				return integerSummary{}, unsupported("GC instruction outside exact i31 profile")
 			}
 			switch imm.Kind {
@@ -2134,6 +2153,23 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefCast:
+				if state.gcTypeSubtypingRuntimeCallCast && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 3 {
+					if _, err = popClass(true); err != nil {
+						return integerSummary{}, err
+					}
+					target := imm.HeapType.Type().Index
+					if live && emit != nil {
+						keys := make([]uint64, 0, 3-target)
+						for subtype := target; subtype < 3; subtype++ {
+							keys = append(keys, state.types[subtype].key)
+						}
+						emit.functionReferenceCast(h, keys, imm.Subopcode == 23)
+					}
+					if err = pushReference(); err != nil {
+						return integerSummary{}, err
+					}
+					break
+				}
 				if state.gcRefTestConcrete && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8 {
 					heap := int64(imm.HeapType.Type().Index)
 					if _, err = popClass(true); err != nil {
@@ -2574,6 +2610,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcStructBasic = state.gcStructBasic
 		referenceTypes.gcTypeSubtypingRecursiveFunctions = state.gcTypeSubtypingRecursiveFunctions
 		referenceTypes.gcTypeSubtypingRefFuncGlobals = state.gcTypeSubtypingRefFuncGlobals
+		referenceTypes.gcTypeSubtypingRuntimeCallCast = state.gcTypeSubtypingRuntimeCallCast
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

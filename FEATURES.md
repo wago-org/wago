@@ -83,8 +83,13 @@ collector. Source, retained-artifact, actual compiler-free, W^X publication,
 live-instance lease, and final-unmap paths are covered, with exact code and
 serialized metadata digests rejecting hostile substitutions. These modules
 also export nothing, so this is descriptor-initialization and lifetime evidence,
-not a callable public result. Other `gc/type-subtyping` module shapes remain
-fail-closed on RV64.
+not a callable public result. Official `gc/type-subtyping.17.wasm` is the first
+exact callable subtype-runtime product: its private immutable table publishes
+three canonical function descriptors, `call_indirect` accepts the pinned
+declared-supertype closure, and `ref.cast` checks canonical full-width descriptor
+keys. Its `run` export and all six wrong-signature/cast traps execute from source
+and compiler-free artifacts with W^X lease/cleanup coverage and no collector.
+Other `gc/type-subtyping` module shapes remain fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,
 including cold traps, with explicit wrapper/helper gaps. Unwind maps and detailed

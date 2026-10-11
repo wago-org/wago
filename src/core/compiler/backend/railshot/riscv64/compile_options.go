@@ -111,6 +111,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingRefFuncGlobalsSource identifies one of the six exact
 	// immutable ref.func-global gc/type-subtyping products.
 	GCTypeSubtypingRefFuncGlobalsSource uint8
+	// GCTypeSubtypingRuntimeCallCastSource is the exact-wire witness for the
+	// official owned-table call_indirect/ref.cast subtype execution product.
+	GCTypeSubtypingRuntimeCallCastSource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -191,6 +194,7 @@ type CompileOptions struct {
 	gcTypeSubtypingDeclarations       bool
 	gcTypeSubtypingRecursiveFunctions bool
 	gcTypeSubtypingRefFuncGlobals     bool
+	gcTypeSubtypingRuntimeCallCast    bool
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

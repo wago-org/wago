@@ -33,6 +33,11 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 	if c == nil || !c.nativeReferenceFunctionABI {
 		return false
 	}
+	if function >= 0 && function < 3 && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingRuntimeCallCast && rv64GCTypeSubtypingRuntimeCallCast(c) {
+		// The exact runtime call/cast product keeps these reference-valued
+		// functions private, but its immutable table must be able to call them.
+		return false
+	}
 	if (function == 0 && len(c.Funcs) != 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0])) ||
 		(function == 1 && len(c.Funcs) == 1 && rv64PublicHostReferenceBoundary(c)) ||
 		(function <= 1 && rv64PublicDynamicHostReferenceBoundary(c)) {
@@ -781,13 +786,14 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("RV64 closed reference functions: %s", detail) }
 	publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c)
 	publicDynamicHostReferenceBoundary := rv64PublicDynamicHostReferenceBoundary(c)
+	privateRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c)
 	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports > 0) {
 		return reject("bounded numeric import directory required")
 	}
 	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions-c.NumImports || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return reject("bounded framed function ABI required")
 	}
-	if c.dynamicFuncrefEscape && !rv64PublicReferenceCallBoundary(c) && !publicHostReferenceBoundary && !publicDynamicHostReferenceBoundary || !c.HasStart && c.StartIsImport || (!c.HasStart || c.StartIsImport) && c.StartLocalFunc != 0 || (!c.HasStart || !c.StartIsImport) && c.StartImportIdx != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.customInstructions) != 0 {
+	if c.dynamicFuncrefEscape && !privateRuntimeCallCast && !rv64PublicReferenceCallBoundary(c) && !publicHostReferenceBoundary && !publicDynamicHostReferenceBoundary || !c.HasStart && c.StartIsImport || (!c.HasStart || c.StartIsImport) && c.StartLocalFunc != 0 || (!c.HasStart || !c.StartIsImport) && c.StartImportIdx != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.customInstructions) != 0 {
 		return reject("external state or callable escape")
 	}
 	if c.HasStart {
@@ -829,12 +835,12 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if err := c.validateImportModuleEnds(); err != nil {
 		return err
 	}
-	if !rv64GCTypeSubtypingRecursiveFunctions(c) && !rv64GCTypeSubtypingRefFuncGlobals(c) {
+	if !rv64GCTypeSubtypingRecursiveFunctions(c) && !rv64GCTypeSubtypingRefFuncGlobals(c) && !privateRuntimeCallCast {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return err
 		}
 	}
-	hasReferences := false
+	hasReferences := privateRuntimeCallCast
 	for i, sig := range c.Funcs {
 		if !sig.HasTypeIndex || uint64(sig.TypeIndex) >= uint64(len(c.Types)) {
 			return reject("exact actual function type binding required")

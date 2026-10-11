@@ -42,6 +42,8 @@ func railshotGCTypeSubtypingRecursiveFunctionsSource([]byte) uint8              
 func railshotConfigureGCTypeSubtypingRecursiveFunctions(uint8, *railshotCompileOptions) {}
 func railshotGCTypeSubtypingRefFuncGlobalsSource([]byte) uint8                          { return 0 }
 func railshotConfigureGCTypeSubtypingRefFuncGlobals(uint8, *railshotCompileOptions)     {}
+func railshotGCTypeSubtypingRuntimeCallCastSource([]byte) bool                          { return false }
+func railshotConfigureGCTypeSubtypingRuntimeCallCast(bool, *railshotCompileOptions)     {}
 func railshotGCStructGetSource([]byte) bool                                             { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)                        {}
 func railshotGCStructMutationSource([]byte) bool                                        { return false }

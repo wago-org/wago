@@ -41,6 +41,9 @@ func railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(*Compiled) {}
 func rv64GCTypeSubtypingRefFuncGlobals(*Compiled) bool                   { return false }
 func rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(*Compiled) bool      { return false }
 func railshotRestoreGCTypeSubtypingRefFuncGlobalsArtifact(*Compiled)     {}
+func rv64GCTypeSubtypingRuntimeCallCast(*Compiled) bool                  { return false }
+func rv64GCTypeSubtypingRuntimeCallCastExecutionCode(*Compiled) bool     { return false }
+func railshotRestoreGCTypeSubtypingRuntimeCallCastArtifact(*Compiled)    {}
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled)                 {}
 func rv64GCRefCastConcrete(*Compiled) bool                               { return false }
 func rv64GCRefCastConcreteExecutionCode(*Compiled) bool                  { return false }

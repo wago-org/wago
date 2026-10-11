@@ -71,6 +71,7 @@ type internalReferenceTypes struct {
 	gcStructBasic                     bool
 	gcTypeSubtypingRecursiveFunctions bool
 	gcTypeSubtypingRefFuncGlobals     bool
+	gcTypeSubtypingRuntimeCallCast    bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -137,7 +138,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	if types.gcStructBasic && heap == wasm.AbsHeap(wasm.HeapAny) {
 		return true
 	}
-	if (types.gcTypeSubtypingRecursiveFunctions || types.gcTypeSubtypingRefFuncGlobals) && heap.Kind() == wasm.HeapTypeIndex {
+	if (types.gcTypeSubtypingRecursiveFunctions || types.gcTypeSubtypingRefFuncGlobals || types.gcTypeSubtypingRuntimeCallCast) && heap.Kind() == wasm.HeapTypeIndex {
 		return true
 	}
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {
@@ -252,7 +253,8 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 	}
 	declarationExtern := block && types.declarationExtern && lead == 0x64 && heap == -17
 	gcAbstract := block && (types.gcRefTestAbstract && (heap == -15 || heap == -18 || heap == -19 || heap == -20 || heap == -21 || heap == -22 || heap == 1 || heap == 2) || types.gcBrOnCastNullability && (heap == -18 || heap == 0))
-	if heap != -16 && !declarationExtern && !gcAbstract && !(typed && heap >= 0 && types.function(uint32(heap))) {
+	runtimeSubtype := types.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3
+	if heap != -16 && !declarationExtern && !gcAbstract && !runtimeSubtype && !(typed && heap >= 0 && types.function(uint32(heap))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}
 	return requiresTyped, nil

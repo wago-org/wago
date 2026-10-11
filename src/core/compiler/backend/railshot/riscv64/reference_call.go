@@ -69,3 +69,33 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 		f.Store(spill(base+j), 5, wide)
 	}
 }
+
+// functionReferenceCast checks the canonical descriptor's exact structural key
+// against the bounded subtype closure admitted for one target indexed heap. The
+// carrier itself is unchanged on success.
+func (f *integerEmitter) functionReferenceCast(base int, keys []uint64, nullable bool) {
+	if !f.mode.referenceCalls || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > 3 {
+		f.err = unsupported("function ref.cast owner/signature contract")
+		return
+	}
+	f.Load(14, f.SpillOffset(base), true)
+	var success []int
+	if nullable {
+		success = append(success, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
+	} else {
+		f.trap(trapI31CastFailure, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
+	}
+	f.canonicalReferenceGuard(enc.X14, enc.X5, enc.X7)
+	f.a.Ld(enc.X7, enc.X14, 8)
+	for _, key := range keys {
+		f.a.Constant64(enc.X5, int64(key))
+		success = append(success, f.a.BranchLong(enc.EQ, enc.X7, enc.X5))
+	}
+	f.trap(trapI31CastFailure, f.Jump())
+	for _, site := range success {
+		if err := f.Patch(site, f.Position()); err != nil {
+			f.err = err
+			return
+		}
+	}
+}
