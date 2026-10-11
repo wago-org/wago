@@ -76,6 +76,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcArrayFill = state.gcArrayFill
 		referenceTypes.gcArrayCopy = state.gcArrayCopy
 		referenceTypes.gcStructNull = state.gcStructNull
+		referenceTypes.gcStructMutation = state.gcStructMutation
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 	}
@@ -1542,7 +1543,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructNewDefault:
-				if (!state.gcRefEq && !state.gcStructGet && !state.gcStructBasic) || imm.Index != 0 {
+				if (!state.gcRefEq && !state.gcStructGet && !state.gcStructMutation && !state.gcStructBasic) || imm.Index != 0 {
 					return integerSummary{}, unsupported("struct.new_default outside exact GC profile")
 				}
 				callCount++
@@ -1556,7 +1557,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
-				regularGet := state.gcStructGet && imm.Index == 0 && imm.Index2 == 0
+				regularGet := (state.gcStructGet || state.gcStructMutation) && imm.Index == 0 && imm.Index2 == 0
 				basicGet := state.gcStructBasic && imm.Index == 0 && imm.Index2 < 2 && imm.Kind == wasm.InstrStructGet
 				nullGet := state.gcStructNull && imm.Index == 0 && imm.Index2 == 1
 				packedGet := state.gcStructPacked && imm.Index == 0 && imm.Index2 < 4 && imm.Kind != wasm.InstrStructGet
@@ -1589,8 +1590,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructSet:
-				if !(state.gcStructNull && imm.Index == 0 && imm.Index2 == 1) && !(state.gcStructPacked && imm.Index == 0 && (imm.Index2 == 1 || imm.Index2 == 3)) && !(state.gcStructBasic && imm.Index == 0 && imm.Index2 == 1) {
-					return integerSummary{}, unsupported("struct.set outside exact gc struct null profile")
+				if !(state.gcStructMutation && imm.Index == 0 && imm.Index2 == 0) && !(state.gcStructNull && imm.Index == 0 && imm.Index2 == 1) && !(state.gcStructPacked && imm.Index == 0 && (imm.Index2 == 1 || imm.Index2 == 3)) && !(state.gcStructBasic && imm.Index == 0 && imm.Index2 == 1) {
+					return integerSummary{}, unsupported("struct.set outside exact gc struct profile")
 				}
 				if _, err = popClass(false); err != nil {
 					return integerSummary{}, err
@@ -2301,6 +2302,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcArrayFill = state.gcArrayFill
 		referenceTypes.gcArrayCopy = state.gcArrayCopy
 		referenceTypes.gcStructNull = state.gcStructNull
+		referenceTypes.gcStructMutation = state.gcStructMutation
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 	}

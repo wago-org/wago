@@ -22,6 +22,8 @@ func railshotGCRefEqSource([]byte) bool                                     { re
 func railshotConfigureGCRefEq(bool, *railshotCompileOptions)                {}
 func railshotGCStructGetSource([]byte) bool                                 { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)            {}
+func railshotGCStructMutationSource([]byte) bool                            { return false }
+func railshotConfigureGCStructMutation(bool, *railshotCompileOptions)       {}
 func railshotGCStructNullSource([]byte) bool                                { return false }
 func railshotConfigureGCStructNull(bool, *railshotCompileOptions)           {}
 func railshotGCStructPackedSource([]byte) bool                              { return false }

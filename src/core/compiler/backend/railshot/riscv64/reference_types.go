@@ -51,9 +51,12 @@ type internalReferenceTypes struct {
 	gcArrayCopy bool
 	// gcStructNull admits the single indexed struct heap in the official
 	// null-dereference product.
-	gcStructNull   bool
-	gcStructPacked bool
-	gcStructBasic  bool
+	gcStructNull bool
+	// gcStructMutation admits the single nullable indexed struct local in the
+	// pinned numeric struct.get/struct.set product.
+	gcStructMutation bool
+	gcStructPacked   bool
+	gcStructBasic    bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -123,7 +126,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	if types.gcStructNull && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index == 0) {
 		return true
 	}
-	if (types.gcStructPacked || types.gcStructBasic) && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index == 0) {
+	if (types.gcStructMutation || types.gcStructPacked || types.gcStructBasic) && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index == 0) {
 		return true
 	}
 	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference || types.gcArrayInitElem || types.gcArrayInitData || types.gcArrayFill || types.gcArrayCopy {

@@ -75,6 +75,9 @@ type CompileOptions struct {
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
+	// GCStructMutationSource is the exact-wire witness for the bounded numeric
+	// struct.new_default/struct.get/struct.set checkpoint.
+	GCStructMutationSource bool
 	// GCStructNullSource is the exact-wire witness for the official
 	// struct.get/struct.set null-dereference checkpoint.
 	GCStructNullSource bool
@@ -143,6 +146,7 @@ type CompileOptions struct {
 	i31Core              bool
 	gcRefEq              bool
 	gcStructGet          bool
+	gcStructMutation     bool
 	gcStructNull         bool
 	gcStructPacked       bool
 	gcStructBasic        bool
