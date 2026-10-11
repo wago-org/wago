@@ -9,6 +9,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 type minPlusPlan struct {
 	counter, dst, src, pivot int
 	limit                    uint32
+	scalarReloadPivot        bool
 }
 
 func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
@@ -26,6 +27,7 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 	var written, initialRead [32]bool
 	var stack [24]int
 	var stores [2][2]int
+	var storeAfter [2]int
 	n, depth, ns, loads := f.nLocals, 0, 0, 0
 	for i := 0; i < n; i++ {
 		nodes[i] = dotNode{op: 0x20, a: i}
@@ -129,6 +131,7 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 				}
 				depth -= 2
 				stores[ns] = [2]int{stack[depth], stack[depth+1]}
+				storeAfter[ns] = n
 				ns++
 			}
 		case 0x0d:
@@ -199,6 +202,11 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 				src, off, yes := affineDotAddress(nodes[:n], srcLoad.a, p.counter)
 				if !yes || off+srcLoad.v != uint32(i*4) {
 					return p, false
+				}
+				if i == 1 {
+					// Node order records whether the second pivot load occurs
+					// after the first store, as the generated scalar packet does.
+					p.scalarReloadPivot = add.b >= storeAfter[0]
 				}
 				pivot := nodes[pivotLoad.a]
 				if pivot.op != 0x20 {
@@ -328,7 +336,8 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	var scalar [2]int
 	nScalar := 0
 	emitVector := func(bytes uint32) {
-		// Any byte overlap with the pivot needs sequential stores and reloads.
+		// Pivot overlap must resume the original body: the source may cache
+		// both pivot loads before its first store.
 		f.a.Sub64(X16, pivot, d)
 		f.a.AddImm64(X16, X16, 3)
 		f.cmpImm(X16, bytes+3, true)
@@ -364,19 +373,24 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	for i := 0; i < nScalar; i++ {
 		f.patchBranch19(scalar[i], f.a.Len())
 	}
-	for off := uint32(0); off < 8; off += 4 {
-		f.a.Load32(X16, s, off)
-		f.a.Load32(X17, pivot, 0)
-		f.a.Add32(X16, X16, X17)
-		f.a.Load32(X17, d, off)
-		f.cmpRR(X16, X17, false)
-		f.a.Csel32(X16, X16, X17, condL)
-		f.a.Store32(X16, d, off)
+	if p.scalarReloadPivot {
+		// This packet is safe only when the source reloads the pivot between
+		// stores. Otherwise overlap resumes the original body below.
+		for off := uint32(0); off < 8; off += 4 {
+			f.a.Load32(X16, s, off)
+			f.a.Load32(X17, pivot, 0)
+			f.a.Add32(X16, X16, X17)
+			f.a.Load32(X17, d, off)
+			f.cmpRR(X16, X17, false)
+			f.a.Csel32(X16, X16, X17, condL)
+			f.a.Store32(X16, d, off)
+		}
+		f.a.AddImm64(d, d, 8)
+		f.a.AddImm64(s, s, 8)
+		f.a.AddImm32(counter, counter, 8)
+		f.patchBranch26(f.a.Branch(), loop)
 	}
-	f.a.AddImm64(d, d, 8)
-	f.a.AddImm64(s, s, 8)
-	f.a.AddImm32(counter, counter, 8)
-	f.patchBranch26(f.a.Branch(), loop)
+	// Both a completed prefix and pivot overlap resume at the current counter.
 	f.patchBranch19(done, f.a.Len())
 	if reg, _, pin := f.pinReg(p.counter); pin {
 		f.a.MovReg32(reg, counter)

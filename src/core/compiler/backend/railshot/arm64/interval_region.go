@@ -541,6 +541,11 @@ func (f *fn) clearIntervalControlRegion() {
 	if !f.intervalControl || f.intervalActive == 0 {
 		return
 	}
+	// wasmPC already points at this edge. Looking ahead during flush could
+	// mistake an overwrite on the fallthrough path for a dead value on both
+	// paths. Save operands and dirty locals before resuming next-use proofs.
+	next := f.intervalNext
+	f.intervalNext = false
 	f.flush()
 	for reg, x := range f.intervalOwner {
 		if x < 0 {
@@ -556,6 +561,7 @@ func (f *fn) clearIntervalControlRegion() {
 		f.pinnedLocalMask = f.pinnedLocalMask.remove(Reg(reg))
 	}
 	f.intervalActive = 0
+	f.intervalNext = next
 }
 
 // Call-making regions must leave all homes current before native callees or

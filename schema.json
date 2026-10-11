@@ -158,6 +158,7 @@
               "reg-abi",
               "reg-merge",
               "regional-memory-read",
+              "scoped-loop-float-const",
               "scoped-loop-int-const",
               "select-group-guard",
               "select-sink-pure-guard",

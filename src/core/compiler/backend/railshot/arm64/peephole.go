@@ -101,18 +101,6 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 			}
 		}
 	}
-	if f.opt(optDominatedIndexedBase) && !f.moduleEH && len(f.customInstructions) == 0 {
-		hits := 0
-		if f.opt(optDominatedIndexedKey) {
-			hits = f.a.FoldDominatedIndexedBasesByKey(entryOffsets...)
-			f.stats.peepN("dominated-indexed-key", hits)
-		} else {
-			hits = f.a.FoldDominatedIndexedBases(entryOffsets...)
-		}
-		for ; hits > 0; hits-- {
-			f.stats.peep("dominated-indexed-base")
-		}
-	}
 	if f.opt(optBranchFold) {
 		f.foldSingleBitBranches(b, n, targets)
 		f.foldBranchPairs(b, n, targets)
@@ -134,6 +122,20 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	}
 	if lineageCandidate && firstLineageSet >= 0 {
 		f.foldCsetLineage(b, n, firstLineageSet, targets, entryOffsets...)
+	}
+	// Reuse proofs must see scratch-register writes introduced by every earlier
+	// fold, including guarded tests that materialize their result in X16.
+	if f.opt(optDominatedIndexedBase) && !f.moduleEH && len(f.customInstructions) == 0 {
+		hits := 0
+		if f.opt(optDominatedIndexedKey) {
+			hits = f.a.FoldDominatedIndexedBasesByKey(entryOffsets...)
+			f.stats.peepN("dominated-indexed-key", hits)
+		} else {
+			hits = f.a.FoldDominatedIndexedBases(entryOffsets...)
+		}
+		for ; hits > 0; hits-- {
+			f.stats.peep("dominated-indexed-base")
+		}
 	}
 }
 

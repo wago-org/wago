@@ -202,6 +202,7 @@ func affineDotAddress(nodes []dotNode, x int, counter int) (base int, offset uin
 }
 
 func proveDotLoop(nodes []dotNode, values []int, written []bool, plan dotLoopPlan) (dotLoopPlan, bool) {
+	var usedLoads [128]bool
 	load := func(x int) (base int, offset, bias uint32, ok bool) {
 		v := nodes[x]
 		if v.op == 0x6a || v.op == 0x6b {
@@ -216,7 +217,8 @@ func proveDotLoop(nodes []dotNode, values []int, written []bool, plan dotLoopPla
 			if v.op == 0x6b {
 				bias = -bias
 			}
-			v = nodes[left]
+			x = left
+			v = nodes[x]
 		}
 		if v.op != 0x28 {
 			return
@@ -226,6 +228,7 @@ func proveDotLoop(nodes []dotNode, values []int, written []bool, plan dotLoopPla
 			return 0, 0, 0, false
 		}
 		offset += v.v
+		usedLoads[x] = true
 		return
 	}
 	for acc := range values {
@@ -259,6 +262,7 @@ func proveDotLoop(nodes []dotNode, values []int, written []bool, plan dotLoopPla
 		if !flatten(values[acc]) || identities != 1 || uint32(count*4) != plan.step {
 			continue
 		}
+		clear(usedLoads[:])
 		seen := uint32(0)
 		valid := true
 		for i := 0; i < count; i++ {
@@ -293,6 +297,14 @@ func proveDotLoop(nodes []dotNode, values []int, written []bool, plan dotLoopPla
 			}
 			plan.aliases[plan.nAliases] = dotAlias{local, base, offset}
 			plan.nAliases++
+		}
+		// Even an overwritten load can trap. The vector path must account for
+		// every source load, not just the final values of locals.
+		for x, node := range nodes {
+			if node.op == 0x28 && !usedLoads[x] {
+				valid = false
+				break
+			}
 		}
 		if valid {
 			return plan, true
