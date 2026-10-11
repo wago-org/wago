@@ -78,6 +78,9 @@ type CompileOptions struct {
 	// GCStructNullSource is the exact-wire witness for the official
 	// struct.get/struct.set null-dereference checkpoint.
 	GCStructNullSource bool
+	// GCStructPackedSource is the exact-wire witness for the official packed
+	// i8/i16 struct global/get/set checkpoint.
+	GCStructPackedSource bool
 	// GCArrayLocalSource is the exact-wire witness for the bounded numeric
 	// array.new_default/get/set/len checkpoint.
 	GCArrayLocalSource bool
@@ -135,6 +138,7 @@ type CompileOptions struct {
 	gcRefEq              bool
 	gcStructGet          bool
 	gcStructNull         bool
+	gcStructPacked       bool
 	gcArrayLocal         bool
 	gcArrayUniform       bool
 	gcArrayFixedLocal    bool

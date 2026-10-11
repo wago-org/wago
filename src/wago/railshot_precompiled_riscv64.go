@@ -24,6 +24,8 @@ func railshotGCStructGetSource([]byte) bool                                 { re
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)            {}
 func railshotGCStructNullSource([]byte) bool                                { return false }
 func railshotConfigureGCStructNull(bool, *railshotCompileOptions)           {}
+func railshotGCStructPackedSource([]byte) bool                              { return false }
+func railshotConfigureGCStructPacked(bool, *railshotCompileOptions)         {}
 func railshotGCArrayLocalSource([]byte) bool                                { return false }
 func railshotConfigureGCArrayLocal(bool, *railshotCompileOptions)           {}
 func railshotGCArrayUniformSource([]byte) bool                              { return false }

@@ -375,7 +375,7 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		// buffers so helper staging cannot cross an arena boundary.
 		params = max(params, 6)
 	}
-	if rv64GCStructNull(c) {
+	if rv64GCStructNull(c) || rv64GCStructPacked(c) {
 		// struct.set stages the reference, value, exact type, and field index.
 		params = max(params, 4)
 	}

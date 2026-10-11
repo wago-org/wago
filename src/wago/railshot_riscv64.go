@@ -91,6 +91,8 @@ func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStruct
 
 func railshotGCStructNullSource(data []byte) bool { return railshot.AdmitGCStructNullSource(data) }
 
+func railshotGCStructPackedSource(data []byte) bool { return railshot.AdmitGCStructPackedSource(data) }
+
 func railshotGCArrayLocalSource(data []byte) bool { return railshot.AdmitGCArrayLocalSource(data) }
 
 func railshotGCArrayUniformSource(data []byte) bool { return railshot.AdmitGCArrayUniformSource(data) }
@@ -145,6 +147,10 @@ func railshotConfigureGCStructGet(exactSource bool, opts *railshotCompileOptions
 
 func railshotConfigureGCStructNull(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCStructNullSource = exactSource
+}
+
+func railshotConfigureGCStructPacked(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCStructPackedSource = exactSource
 }
 
 func railshotConfigureGCArrayLocal(exactSource bool, opts *railshotCompileOptions) {

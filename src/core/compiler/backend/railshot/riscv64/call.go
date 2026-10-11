@@ -23,6 +23,8 @@ const (
 	gcStructAllocDefault uint32 = 1
 	gcStructGet          uint32 = 2
 	gcStructSet          uint32 = 3
+	gcStructGetS         uint32 = 4
+	gcStructGetU         uint32 = 5
 	gcArrayAllocDefault  uint32 = 16
 	gcArrayGet           uint32 = 17
 	gcArrayGetS          uint32 = 18

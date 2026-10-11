@@ -80,6 +80,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCRefEq := rv64OfficialGCRefEq(c)
 	exactGCStructGet := rv64GCStructGet(c)
 	exactGCStructNull := rv64GCStructNull(c)
+	exactGCStructPacked := rv64GCStructPacked(c)
 	exactGCArrayLocal := rv64GCArrayLocal(c)
 	exactGCArrayUniform := rv64GCArrayUniform(c)
 	exactGCArrayFixedLocal := rv64GCArrayFixedLocal(c)
@@ -99,6 +100,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCStructNullExecutionCode(c) && !exactGCStructNull {
 		return reject("gc/struct null image requires its exact retained metadata")
+	}
+	if rv64GCStructPackedExecutionCode(c) && !exactGCStructPacked {
+		return reject("gc/struct packed image requires its exact retained metadata")
 	}
 	if rv64GCArrayLocalExecutionCode(c) && !exactGCArrayLocal {
 		return reject("allocating gc/array local image requires its exact retained metadata")
@@ -242,7 +246,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCStructPacked && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -253,10 +257,10 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCRefEq || exactGCStructGet || exactGCStructNull || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+	if exactGCRefEq || exactGCStructGet || exactGCStructNull || exactGCStructPacked || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
 		qualifiedFeatures |= CoreFeatureGC
 	}
-	if exactGCStructNull || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+	if exactGCStructNull || exactGCStructPacked || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	if exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData {
@@ -357,7 +361,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCStructNull && !exactGCStructPacked && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
@@ -372,6 +376,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	hasReferenceGlobal := false
 	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
 	for i, global := range c.Globals {
+		if exactGCStructPacked && i < 2 {
+			continue // The exact product pins both rooted non-null struct initializers.
+		}
 		if exactGCArrayFixedOfficial && i == 0 || exactGCArrayDefaultOfficial && i < 2 || exactGCArrayInitElem && i < 2 || exactGCArrayInitData && i < 3 || exactGCArrayFill && i < 2 || exactGCArrayCopy && i < 2 {
 			continue // The exact product pins this rooted non-null array initializer.
 		}
@@ -477,7 +484,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("memory export index bound")
 		}
 	}
-	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
+	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 && !exactGCStructPacked || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
 		return reject("GC/EH initializer lowering is pending")
 	}
 	return nil
