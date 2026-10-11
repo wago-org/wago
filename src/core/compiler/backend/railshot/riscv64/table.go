@@ -2106,6 +2106,14 @@ func admitOwnedTwoTable32Indirect(m *wasm.Module, production, public bool) bool 
 // canonical table owner graph; the consumer has no local reference payload or
 // initializer that can manufacture a row.
 func admitImportedTable64Indirect(m *wasm.Module, production, public bool) bool {
+	return admitImportedTable64IndirectProduct(m, production, public, false) || admitImportedTable64IndirectProduct(m, production, public, true)
+}
+
+func admitImportedTable64IndirectTail(m *wasm.Module, production, public bool) bool {
+	return admitImportedTable64IndirectProduct(m, production, public, true)
+}
+
+func admitImportedTable64IndirectProduct(m *wasm.Module, production, public, tail bool) bool {
 	if !production || !public || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 0 || m.Start != nil {
 		return false
 	}
@@ -2114,6 +2122,9 @@ func admitImportedTable64Indirect(m *wasm.Module, production, public bool) bool 
 	}
 	table, ok := m.TableType(0)
 	if !ok || !table.Limits.Addr64 || !table.Limits.HasMax || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || m.FuncTypes[0].Rec || m.FuncTypes[0].Index != 1 {
+		return false
+	}
+	if tail && (table.Limits.Min != 1 || table.Limits.Max != 4) {
 		return false
 	}
 	for i := range m.Types {
@@ -2128,8 +2139,12 @@ func admitImportedTable64Indirect(m *wasm.Module, production, public bool) bool 
 			return false
 		}
 	}
+	opcode := byte(0x11)
+	if tail {
+		opcode = 0x13
+	}
 	fn := m.Code[0]
-	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 || !bytes.Equal(fn.BodyBytes, []byte{0x20, 0, 0x11, 0, 0, 0x0b}) {
+	if len(fn.Locals.Runs) != 0 || len(fn.Body.Instrs) != 0 || !bytes.Equal(fn.BodyBytes, []byte{0x20, 0, opcode, 0, 0, 0x0b}) {
 		return false
 	}
 	hasFunctionExport := false

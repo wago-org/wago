@@ -123,7 +123,7 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 				return unsupported("closed reference imported-tail target binding")
 			}
 		case enc.NativeTailIndirect:
-			if !opts.dynamicTailCalls || !opts.indirectTailInstructions || p.importIndex != 0 || len(m.Tables) != 1 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) || uint64(p.typeIndex) >= uint64(len(m.Types)) {
+			if !opts.dynamicTailCalls || !opts.indirectTailInstructions || p.importIndex != 0 || len(m.Tables) != 1 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) && !admitImportedTable64IndirectTail(m, true, true) || uint64(p.typeIndex) >= uint64(len(m.Types)) {
 				return unsupported("closed reference numeric indirect-tail binding")
 			}
 			target = &m.Types[p.typeIndex].SubTypes[0].Comp
@@ -162,7 +162,7 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 		}
 		if p.kind == enc.NativeTailIndirect {
 			tableIndex, err := r.U32()
-			if err != nil || tableIndex != 0 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) {
+			if err != nil || tableIndex != 0 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) && !admitImportedTable64IndirectTail(m, true, true) {
 				return unsupported("closed reference tail source table immediate")
 			}
 		}

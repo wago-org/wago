@@ -1805,6 +1805,82 @@ func rv64MixedTable64ActiveIndirectProduct(c *Compiled, tail, beforeGCDescriptor
 }
 
 func rv64ImportedTable64Indirect(c *Compiled) bool {
+	return rv64ImportedTable64IndirectCall(c) || rv64ImportedTable64IndirectTail(c)
+}
+
+func rv64ImportedTable64IndirectCall(c *Compiled) bool {
+	if rv64NativeTailModule(c) != nil {
+		return false
+	}
+	return rv64ImportedTable64IndirectCommon(c)
+}
+
+func rv64ImportedTable64IndirectTail(c *Compiled) bool {
+	return rv64ImportedTable64IndirectTailProduct(c, false)
+}
+
+// The native-tail appendix precedes GC descriptors in an artifact. Admit the
+// same exact product while that redundant descriptor vector is still absent;
+// complete retained admission requires the full classifier after decoding.
+func rv64ImportedTable64IndirectTailPlanShape(c *Compiled) bool {
+	return rv64ImportedTable64IndirectTailProduct(c, true)
+}
+
+func rv64ImportedTable64IndirectTailProduct(c *Compiled, beforeGCDescriptors bool) bool {
+	if !rv64ImportedTable64IndirectCommon(c) {
+		return false
+	}
+	def, _ := c.tableImportAt(0)
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	i32, _ := valueTypeDescriptorFromValType(ValI32)
+	i64, _ := valueTypeDescriptorFromValType(ValI64)
+	callerKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}})
+	exact, err := c.tableExactType(0)
+	if def.Min != 1 || def.Max != 4 || err != nil || exact != plain || len(c.Types) != 2 || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 1 || c.FuncTypeID[0] != callerKey || len(c.Entry) != 1 || len(c.InternalEntry) != 1 || c.Entry[0] != 0 || c.InternalEntry[0] != 0 || len(c.Exports) != 1 || len(c.tableExports) != 1 {
+		return false
+	}
+	if (!beforeGCDescriptors && len(c.GCTypeDescs) != 2) || (beforeGCDescriptors && len(c.GCTypeDescs) != 0 && len(c.GCTypeDescs) != 2) {
+		return false
+	}
+	for _, desc := range c.GCTypeDescs {
+		if desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper {
+			return false
+		}
+	}
+	for i, d := range c.Types {
+		if d.RecGroup != uint32(i) || !d.Final || len(d.Supers) != 0 || d.HasDescribes || d.HasDescriptor || d.Kind != CompositeTypeFunction || len(d.Fields) != 0 || d.Array != (FieldTypeDescriptor{}) || len(d.Results) != 1 || d.Results[0] != i32 || i == 0 && len(d.Params) != 0 || i == 1 && (len(d.Params) != 1 || d.Params[0] != i64) {
+			return false
+		}
+	}
+	if c.requiredFeatures != CoreFeatureTable64|CoreFeatureTailCall || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI {
+		return false
+	}
+	wantCode := [32]byte{0xa9, 0x67, 0xe6, 0x62, 0xfd, 0xd6, 0x5c, 0x25, 0x37, 0x1d, 0xd0, 0x96, 0x73, 0x16, 0x14, 0x00, 0x7c, 0x39, 0x98, 0x6d, 0xa3, 0x11, 0x30, 0xa1, 0x7b, 0xa1, 0xbd, 0xa4, 0x5c, 0xbf, 0x47, 0xae}
+	if len(c.code) != 1436 || sha256.Sum256(c.code) != wantCode {
+		return false
+	}
+	tailModule := rv64NativeTailModule(c)
+	if tailModule == nil || len(tailModule.Plans) != 1 {
+		return false
+	}
+	p := tailModule.Plans[0]
+	if p.Kind != encoder.NativeTailIndirect || p.TypeIndex != 0 || p.FunctionIndex != 0 || p.ImportIndex != 0 || p.ReferenceBase != 56 || p.SourcePC != 3 || p.FrameBytes != 64 || p.SourceBase != 56 || p.SourceStride != 8 {
+		return false
+	}
+	for _, index := range c.Exports {
+		if index != 0 {
+			return false
+		}
+	}
+	for _, index := range c.tableExports {
+		if index != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func rv64ImportedTable64IndirectCommon(c *Compiled) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 1 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) == 0 {
 		return false
 	}
