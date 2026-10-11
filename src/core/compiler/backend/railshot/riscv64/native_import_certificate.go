@@ -3,8 +3,9 @@
 package riscv64
 
 import (
-	"crypto/sha256"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/codeimage"
 )
 
 // NativeImportCertificate records construction provenance for one ordinary
@@ -12,7 +13,7 @@ import (
 // users must retain both endpoint instances and the transport arena separately.
 // Fields are immutable after construction; no certificate is serialized.
 type NativeImportCertificate struct {
-	digest                    [sha256.Size]byte
+	digest                    codeimage.IntegrityDigest
 	target                    nativeImportCertificateTarget
 	callerHome, callerContext uintptr
 	index                     uint32
@@ -41,7 +42,7 @@ func NativeImportThunkWithCertificate(target NativeImportTarget, callerHome, cal
 	if err != nil {
 		return nil, nil, err
 	}
-	return code, &NativeImportCertificate{digest: sha256.Sum256(code), target: nativeImportCertificateTargetOf(target), callerHome: callerHome, callerContext: callerContext, index: index, codeBytes: len(code)}, nil
+	return code, &NativeImportCertificate{digest: codeimage.Digest(code), target: nativeImportCertificateTargetOf(target), callerHome: callerHome, callerContext: callerContext, index: index, codeBytes: len(code)}, nil
 }
 
 // Validate checks the particular published image owner before touching native
@@ -55,7 +56,7 @@ func (c *NativeImportCertificate) Validate(image *NativeTailCodeImage, offset in
 		return err
 	}
 	code := image.Bytes()
-	if offset < 0 || offset&15 != 0 || offset > len(code) || c.codeBytes > len(code)-offset || sha256.Sum256(code[offset:offset+c.codeBytes]) != c.digest {
+	if offset < 0 || offset&15 != 0 || offset > len(code) || c.codeBytes > len(code)-offset || codeimage.Digest(code[offset:offset+c.codeBytes]) != c.digest {
 		return unsupported("native import construction certificate image")
 	}
 	return nil

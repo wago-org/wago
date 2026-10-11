@@ -3,10 +3,10 @@
 package riscv64
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/codeimage"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -18,7 +18,7 @@ import (
 // dispatchIndex is the host resolver's index, not a Wasm function index.
 // No field or process address is serialized into a compiled artifact.
 type NativeTailHostCertificate struct {
-	digest                     [sha256.Size]byte
+	digest                     codeimage.IntegrityDigest
 	dispatchIndex              uint32
 	params, results, codeBytes int
 	owned                      bool
@@ -36,7 +36,7 @@ func NativeTailHostThunkWithCertificate(index uint32, params, results int, owned
 	if len(code) == 0 {
 		return nil, nil, unsupported("native tail host wrapper construction")
 	}
-	return code, &NativeTailHostCertificate{digest: sha256.Sum256(code), dispatchIndex: index, params: params, results: results, codeBytes: len(code), owned: owned}, nil
+	return code, &NativeTailHostCertificate{digest: codeimage.Digest(code), dispatchIndex: index, params: params, results: results, codeBytes: len(code), owned: owned}, nil
 }
 
 func (c *NativeTailHostCertificate) CodeBytes() int {
@@ -56,7 +56,7 @@ func (c *NativeTailHostCertificate) Validate(image *NativeTailCodeImage, offset 
 		return err
 	}
 	b := image.Bytes()
-	if offset < 0 || offset&15 != 0 || offset > len(b) || c.codeBytes > len(b)-offset || sha256.Sum256(b[offset:offset+c.codeBytes]) != c.digest {
+	if offset < 0 || offset&15 != 0 || offset > len(b) || c.codeBytes > len(b)-offset || codeimage.Digest(b[offset:offset+c.codeBytes]) != c.digest {
 		return unsupported("native tail host certificate image")
 	}
 	return nil

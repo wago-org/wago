@@ -28,7 +28,7 @@ func admitCore3RefAsNonNullDeclarationsWire(data []byte) bool {
 // non-null indexed, func and extern parameters, but no function or value is
 // nameable through an export, start, element, ref.func, call or resource.
 func admitCore3RefAsNonNullDeclarations(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 4 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Imports) != 0 || len(m.Exports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.NameSec != nil || len(m.RawNameSecPayload) != 0 || m.BranchHints != nil || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 4 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Imports) != 0 || len(m.Exports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Types {

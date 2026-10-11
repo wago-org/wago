@@ -4,20 +4,13 @@ package riscv64
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-var (
-	publicDynamicHostReferenceTailBoundaryDigest = [sha256.Size]byte{0x16, 0x4c, 0x3f, 0x1e, 0x5c, 0x8e, 0x40, 0x9f, 0x8c, 0xa9, 0x68, 0x86, 0x1f, 0x76, 0x54, 0x84, 0xfd, 0x2b, 0x38, 0x8d, 0x0d, 0x87, 0x40, 0xeb, 0xd4, 0x74, 0x28, 0xb1, 0x49, 0xfa, 0x8c, 0x2a}
-	publicDynamicHostReferenceCallBoundaryDigest = [sha256.Size]byte{0xc0, 0xb8, 0xcd, 0xee, 0x66, 0xb0, 0xf6, 0x78, 0xfe, 0x3a, 0x07, 0x23, 0xcd, 0xaf, 0xfd, 0x44, 0xe2, 0xda, 0xc0, 0xdd, 0x45, 0x11, 0x89, 0xa8, 0xff, 0x59, 0x87, 0xb0, 0x9e, 0x56, 0x86, 0x45}
-)
-
 func admitPublicDynamicHostReferenceBoundaryWire(data []byte) bool {
-	digest := sha256.Sum256(data)
-	if len(data) != 174 || digest != publicDynamicHostReferenceTailBoundaryDigest && digest != publicDynamicHostReferenceCallBoundaryDigest {
+	if !admitExactProductWireShape(data, nil) {
 		return false
 	}
 	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
@@ -283,11 +276,11 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 
 // admitPublicDynamicHostReferenceBoundary pins the first reference-bearing
 // public call_ref/return_call_ref bridge to one exact imported host target, one local
-// identity and one selector wrapper. The source digest above retains the
-// canonical wire/body contract; this decoded check independently binds every
-// semantic directory and type before the exception reaches lowering.
+// identity and one selector wrapper. The bounded structural wire gate retains
+// the canonical representation contract; this decoded check independently
+// binds every semantic directory and type before the exception reaches lowering.
 func admitPublicDynamicHostReferenceBoundary(m *wasm.Module) bool {
-	if m == nil || len(m.Imports) != 1 || m.Imports[0].Module != "env" || m.Imports[0].Name != "target" || m.Imports[0].Type != wasm.NewFuncExternType(wasm.TypeIdx{}) || len(m.Types) != 4 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 2 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
+	if m == nil || len(m.Imports) != 1 || m.Imports[0].Module != "env" || m.Imports[0].Name != "target" || m.Imports[0].Type != wasm.NewFuncExternType(wasm.TypeIdx{}) || len(m.Types) != 4 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 2 || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Types {
@@ -315,7 +308,7 @@ func admitPublicDynamicHostReferenceBoundary(m *wasm.Module) bool {
 	if len(caller.Params) != len(want)+1 || !slices.EqualFunc(caller.Params[:len(want)], want, wasm.EqualValType) || !wasm.EqualValType(caller.Params[len(want)], wasm.I32) || !slices.EqualFunc(caller.Results, want, wasm.EqualValType) || len(producer.Params) != 0 || !slices.EqualFunc(producer.Results, want, wasm.EqualValType) {
 		return false
 	}
-	if m.FuncTypes[0] != (wasm.TypeIdx{Index: 0}) || m.FuncTypes[1] != (wasm.TypeIdx{Index: 1}) || len(m.Code[0].Locals.Runs) != 0 || len(m.Code[1].Locals.Runs) != 0 || len(m.Code[0].Body.Instrs) != 0 || len(m.Code[1].Body.Instrs) != 0 {
+	if m.FuncTypes[0] != (wasm.TypeIdx{Index: 0}) || m.FuncTypes[1] != (wasm.TypeIdx{Index: 1}) || m.Code[0].LocalDeclBytes != 1 || m.Code[1].LocalDeclBytes != 1 || len(m.Code[0].Locals.Runs) != 0 || len(m.Code[1].Locals.Runs) != 0 || len(m.Code[0].Body.Instrs) != 0 || len(m.Code[1].Body.Instrs) != 0 || len(m.Code[0].Body.BodyBytes) != 0 || len(m.Code[1].Body.BodyBytes) != 0 {
 		return false
 	}
 	identity := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0x0b}

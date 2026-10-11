@@ -9,48 +9,11 @@ import (
 )
 
 func admitRV64GCArrayFixedOfficialWire(data []byte) bool {
-	if len(data) < 8 || !bytes.Equal(data[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) {
+	if !admitExactProductWireShape(data, []byte{1, 3, 6, 7, 10}) {
 		return false
 	}
-	// Preserve only representation that survives the decoded whole-module
-	// proof below. Present empty sections and explicit recursive wrappers are
-	// semantically inert after decoding, but are outside this first checkpoint.
-	wantIDs := [...]byte{1, 3, 6, 7, 10}
-	wantCounts := [...]uint32{9, 7, 1, 4, 7}
-	r := wasm.ReaderFrom(data[8:])
-	sectionIndex := 0
-	for r.HasNext() {
-		if sectionIndex == len(wantIDs) {
-			return false
-		}
-		id, err := r.Byte()
-		if err != nil || id != wantIDs[sectionIndex] {
-			return false
-		}
-		n, err := r.U32()
-		if err != nil || uint64(n) > uint64(r.BytesLeft()) {
-			return false
-		}
-		start := r.Offset()
-		end := start + int(n)
-		section := wasm.ReaderFrom(data[8+start : 8+end])
-		count, err := section.U32()
-		if err != nil || count != wantCounts[sectionIndex] {
-			return false
-		}
-		if id == 1 {
-			for _, b := range data[8+section.Offset()+start : 8+end] {
-				if b == 0x4e { // explicit rec group, flattened by public decoding
-					return false
-				}
-			}
-		}
-		if err = r.JumpTo(end); err != nil {
-			return false
-		}
-		sectionIndex++
-	}
-	return sectionIndex == len(wantIDs)
+	m, err := wasm.DecodeModule(data)
+	return err == nil && admitRV64GCArrayFixedOfficial(m)
 }
 
 func AdmitGCArrayFixedOfficialSource(data []byte) bool {

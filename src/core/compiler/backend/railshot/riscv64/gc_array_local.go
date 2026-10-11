@@ -4,15 +4,16 @@ package riscv64
 
 import (
 	"bytes"
-	"crypto/sha256"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-var rv64GCArrayLocalSourceDigest = [sha256.Size]byte{0xcf, 0xa5, 0x15, 0xe6, 0x6b, 0x09, 0x4d, 0xb4, 0x34, 0xe5, 0x9a, 0x3b, 0xbd, 0x21, 0xb6, 0x6e, 0x99, 0xf3, 0x91, 0xaa, 0xa5, 0x26, 0x14, 0xe2, 0xfa, 0x1a, 0x5f, 0xec, 0x4f, 0x0e, 0x7b, 0x3b}
-
 func admitRV64GCArrayLocalWire(data []byte) bool {
-	return len(data) == 146 && sha256.Sum256(data) == rv64GCArrayLocalSourceDigest
+	if !admitExactProductWireShape(data, []byte{1, 3, 7, 10}) {
+		return false
+	}
+	m, err := wasm.DecodeModule(data)
+	return err == nil && admitRV64GCArrayLocal(m)
 }
 
 // AdmitGCArrayLocalSource is the wire-provenance half of the exact numeric

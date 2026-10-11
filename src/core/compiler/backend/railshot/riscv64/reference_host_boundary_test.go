@@ -4,7 +4,6 @@ package riscv64
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
 	"slices"
 	"testing"
@@ -67,12 +66,8 @@ func TestPublicDynamicHostReferenceBoundaryAdmission(t *testing.T) {
 	for _, ordinary := range []bool{false, true} {
 		t.Run(fmt.Sprintf("ordinary%t", ordinary), func(t *testing.T) {
 			source := publicDynamicHostReferenceBoundarySource(ordinary)
-			digest := publicDynamicHostReferenceTailBoundaryDigest
-			if ordinary {
-				digest = publicDynamicHostReferenceCallBoundaryDigest
-			}
-			if len(source) != 174 || sha256.Sum256(source) != digest || !admitPublicDynamicHostReferenceBoundaryWire(source) || AdmitProductionSource(source) != nil {
-				t.Fatal("canonical dynamic host reference source was not admitted", len(source), sha256.Sum256(source))
+			if len(source) != 174 || !admitPublicDynamicHostReferenceBoundaryWire(source) || AdmitProductionSource(source) != nil {
+				t.Fatal("canonical dynamic host reference source was not admitted", len(source))
 			}
 			m, err := wasm.DecodeModule(source)
 			if err != nil {
@@ -104,15 +99,20 @@ func TestPublicDynamicHostReferenceBoundaryAdmission(t *testing.T) {
 func TestPublicDynamicHostReferenceBoundaryRejectsNearMisses(t *testing.T) {
 	base := publicDynamicHostReferenceBoundarySource()
 	mutations := map[string]func(*wasm.Module){
-		"import-name":      func(m *wasm.Module) { m.Imports[0].Name = "other" },
-		"import-type":      func(m *wasm.Module) { m.Imports[0].Type = wasm.NewFuncExternType(wasm.TypeIdx{Index: 1}) },
-		"function-binding": func(m *wasm.Module) { m.FuncTypes[1] = wasm.TypeIdx{Index: 2} },
-		"target-type":      func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Results[0] = wasm.I64 },
-		"identity-body":    func(m *wasm.Module) { m.Code[0].BodyBytes[1]++ },
-		"caller-body":      func(m *wasm.Module) { m.Code[1].BodyBytes[18] = 0x14 },
-		"element":          func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 1 },
-		"export":           func(m *wasm.Module) { m.Exports[0].Index.Index = 1 },
-		"table":            func(m *wasm.Module) { m.Tables = append(m.Tables, wasm.Table{}) },
+		"import-name":         func(m *wasm.Module) { m.Imports[0].Name = "other" },
+		"import-type":         func(m *wasm.Module) { m.Imports[0].Type = wasm.NewFuncExternType(wasm.TypeIdx{Index: 1}) },
+		"function-binding":    func(m *wasm.Module) { m.FuncTypes[1] = wasm.TypeIdx{Index: 2} },
+		"target-type":         func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"identity-local-decl": func(m *wasm.Module) { m.Code[0].LocalDeclBytes = 2 },
+		"caller-local-decl":   func(m *wasm.Module) { m.Code[1].LocalDeclBytes = 2 },
+		"identity-expr-body":  func(m *wasm.Module) { m.Code[0].Body.BodyBytes = []byte{0x0b} },
+		"caller-expr-body":    func(m *wasm.Module) { m.Code[1].Body.BodyBytes = []byte{0x0b} },
+		"identity-body":       func(m *wasm.Module) { m.Code[0].BodyBytes[1]++ },
+		"caller-body":         func(m *wasm.Module) { m.Code[1].BodyBytes[18] = 0x14 },
+		"element":             func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 1 },
+		"export":              func(m *wasm.Module) { m.Exports[0].Index.Index = 1 },
+		"table":               func(m *wasm.Module) { m.Tables = append(m.Tables, wasm.Table{}) },
+		"name-metadata":       func(m *wasm.Module) { m.RawNameSecPayload = []byte{0} },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -139,6 +139,37 @@ func TestPublicDynamicHostReferenceBoundaryRejectsNearMisses(t *testing.T) {
 	for name, source := range wires {
 		if admitPublicDynamicHostReferenceBoundaryWire(source) {
 			t.Fatal("dynamic host reference wire near miss admitted", name)
+		}
+	}
+	for _, ordinary := range []bool{false, true} {
+		source := publicDynamicHostReferenceBoundarySource(ordinary)
+		decoded, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		needle := append([]byte{0}, decoded.Code[0].BodyBytes...)
+		localAt := bytes.Index(source, needle)
+		if localAt < 2 || source[localAt-1]&0x80 != 0 {
+			t.Fatal("canonical first function body layout changed")
+		}
+		codeAt := bytes.LastIndex(source[:localAt], []byte{10})
+		if codeAt < 0 || source[codeAt+1]&0x80 != 0 {
+			t.Fatal("canonical code section layout changed")
+		}
+		noncanonical := append([]byte(nil), source[:localAt]...)
+		noncanonical = append(noncanonical, 0x80, 0)
+		noncanonical = append(noncanonical, source[localAt+1:]...)
+		noncanonical[localAt-1]++
+		noncanonical[codeAt+1]++
+		candidate, err := wasm.DecodeModule(noncanonical)
+		if err != nil {
+			t.Fatal("decode noncanonical zero-local vector", err)
+		}
+		if candidate.Code[0].LocalDeclBytes != 2 || !bytes.Equal(candidate.Code[0].BodyBytes, decoded.Code[0].BodyBytes) {
+			t.Fatal("noncanonical zero-local vector did not preserve decoded body", candidate.Code[0].LocalDeclBytes)
+		}
+		if admitPublicDynamicHostReferenceBoundary(candidate) || admitPublicDynamicHostReferenceBoundaryWire(noncanonical) {
+			t.Fatal("noncanonical zero-local vector inherited dynamic host reference admission", ordinary)
 		}
 	}
 }
