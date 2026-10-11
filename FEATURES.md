@@ -54,6 +54,12 @@ The exact official concrete struct-subtyping `br_on_cast` and
 artifacts. Indexed targets 0 through 7 use the rooted concrete subtype helper;
 canonical-equivalent, declared-supertype, default/stress GC, and exact retained
 metadata paths are covered. Other concrete branch-cast shapes remain fail-closed.
+The two official validation-only nullability `br_on_cast` and
+`br_on_cast_fail` modules are admitted through exact source and compiler-free
+artifact contracts. All six functions receive genuine framed RV64 lowering for
+non-null/nullable `anyref`, indexed empty-struct targets, typed block results,
+and depth-one branch transfer. They instantiate with a collector but no table
+state; retained metadata and helper-slot capacity remain fail-closed.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,
 including cold traps, with explicit wrapper/helper gaps. Unwind maps and detailed

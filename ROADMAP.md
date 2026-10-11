@@ -31,8 +31,11 @@ The exact official concrete struct-subtyping `br_on_cast` and
 the rooted four-slot subtype helper, including canonical-equivalent and declared
 supertype cases. Source and compiler-free artifact execution, retained metadata,
 stress collection, and the eight rooted table objects are covered under RV64G
-QEMU. Native cache/performance qualification and nullability-only branch-cast
-products remain pending.
+QEMU. The two remaining official nullability-only branch-cast products now also
+have genuine framed RV64 lowering, exact source/artifact admission, collector
+lifecycle coverage without table state, and compiler-free reload. Native
+cache/performance qualification and broader non-official branch-cast shapes
+remain pending.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

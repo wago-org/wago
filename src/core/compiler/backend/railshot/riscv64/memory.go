@@ -42,30 +42,31 @@ type moduleState struct {
 	publicReferenceCarriers            bool
 	publicDynamicHostReferenceCarriers bool
 	// Exact GC/i31 qualification profiles.
-	i31Core              bool
-	i31RefTest           bool
-	i31RefEq             bool
-	gcRefEq              bool
-	gcRefTestTable       bool
-	gcRefTestConcrete    bool
-	gcRefTestAbstract    bool
-	gcStructGet          bool
-	gcStructMutation     bool
-	gcStructNull         bool
-	gcStructPacked       bool
-	gcStructBasic        bool
-	gcStructGlobals      bool
-	gcArrayLocal         bool
-	gcArrayUniform       bool
-	gcArrayFixedLocal    bool
-	gcArrayFixedOfficial bool
-	gcArrayPackedData    bool
-	gcArrayReference     bool
-	gcArrayInitElem      bool
-	gcArrayInitData      bool
-	gcArrayInitDataWide  bool
-	gcArrayFill          bool
-	gcArrayCopy          bool
+	i31Core               bool
+	i31RefTest            bool
+	i31RefEq              bool
+	gcRefEq               bool
+	gcRefTestTable        bool
+	gcRefTestConcrete     bool
+	gcRefTestAbstract     bool
+	gcBrOnCastNullability bool
+	gcStructGet           bool
+	gcStructMutation      bool
+	gcStructNull          bool
+	gcStructPacked        bool
+	gcStructBasic         bool
+	gcStructGlobals       bool
+	gcArrayLocal          bool
+	gcArrayUniform        bool
+	gcArrayFixedLocal     bool
+	gcArrayFixedOfficial  bool
+	gcArrayPackedData     bool
+	gcArrayReference      bool
+	gcArrayInitElem       bool
+	gcArrayInitData       bool
+	gcArrayInitDataWide   bool
+	gcArrayFill           bool
+	gcArrayCopy           bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -209,7 +210,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
-	gcRefTestConcrete := admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCBrOnCastConcrete(m) || admitRV64GCBrOnCastFailConcrete(m)
+	gcBrOnCastNullability := admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m)
+	gcRefTestConcrete := admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCBrOnCastConcrete(m) || admitRV64GCBrOnCastFailConcrete(m) || gcBrOnCastNullability
 	gcExtern := admitRV64GCExtern(m)
 	gcRefCastAbstract := admitRV64GCRefCastAbstract(m)
 	gcBrOnCastAbstract := admitRV64GCBrOnCastAbstract(m) || admitRV64GCBrOnCastFailAbstract(m)
@@ -438,10 +440,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			}
 		}
 		for k, t := range ft.Params {
-			fn.params[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+			fn.params[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
 		}
 		for k, t := range ft.Results {
-			fn.results[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+			fn.results[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
 		}
 		s.types = append(s.types, fn)
 	}

@@ -64,8 +64,11 @@ type internalReferenceTypes struct {
 	// gcRefTestAbstract admits the exact mixed abstract-reference products,
 	// including branch-cast block signatures and nullable externref parameters.
 	gcRefTestAbstract bool
-	gcStructPacked    bool
-	gcStructBasic     bool
+	// gcBrOnCastNullability additionally admits abstract anyref carriers and the
+	// single indexed empty-struct heap in the exact nullability products.
+	gcBrOnCastNullability bool
+	gcStructPacked        bool
+	gcStructBasic         bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -147,6 +150,9 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	if types.gcRefTestConcrete && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index < 8) {
 		return true
 	}
+	if types.gcBrOnCastNullability && heap == wasm.AbsHeap(wasm.HeapAny) {
+		return true
+	}
 	if types.gcRefTestAbstract {
 		if heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && (heap.Type().Index == 1 || heap.Type().Index == 2) {
 			return true
@@ -199,7 +205,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 // Both lower through the existing internal full-width result class.
 func internalReferenceBlockType(r *wasm.Reader, typed bool, types internalReferenceTypes) (int64, error) {
 	lead, ok := r.Peek()
-	if ok && (types.gcRefTestAbstract && (lead == 0x6a || lead == 0x6b || lead == 0x6c || lead == 0x6d || lead == 0x6e) || types.gcRefTestConcrete && lead == 0x6b) {
+	if ok && (types.gcRefTestAbstract && (lead == 0x6a || lead == 0x6b || lead == 0x6c || lead == 0x6d || lead == 0x6e) || types.gcRefTestConcrete && lead == 0x6b || types.gcBrOnCastNullability && lead == 0x6e) {
 		if _, err := r.S33(); err != nil {
 			return 0, err
 		}
@@ -240,7 +246,7 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 		return false, unsupported("reference annotation requires retained typed-reference protocol")
 	}
 	declarationExtern := block && types.declarationExtern && lead == 0x64 && heap == -17
-	gcAbstract := block && types.gcRefTestAbstract && (heap == -15 || heap == -18 || heap == -19 || heap == -20 || heap == -21 || heap == -22 || heap == 1 || heap == 2)
+	gcAbstract := block && (types.gcRefTestAbstract && (heap == -15 || heap == -18 || heap == -19 || heap == -20 || heap == -21 || heap == -22 || heap == 1 || heap == 2) || types.gcBrOnCastNullability && (heap == -18 || heap == 0))
 	if heap != -16 && !declarationExtern && !gcAbstract && !(typed && heap >= 0 && types.function(uint32(heap))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}

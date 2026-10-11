@@ -80,6 +80,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcRefTestTable = state.gcRefTestTable
 		referenceTypes.gcRefTestConcrete = state.gcRefTestConcrete
 		referenceTypes.gcRefTestAbstract = state.gcRefTestAbstract
+		referenceTypes.gcBrOnCastNullability = state.gcBrOnCastNullability
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 	}
@@ -2566,6 +2567,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcRefTestTable = state.gcRefTestTable
 		referenceTypes.gcRefTestConcrete = state.gcRefTestConcrete
 		referenceTypes.gcRefTestAbstract = state.gcRefTestAbstract
+		referenceTypes.gcBrOnCastNullability = state.gcBrOnCastNullability
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 	}

@@ -98,6 +98,10 @@ type CompileOptions struct {
 	// witnesses for the two official concrete subtype branch-cast products.
 	GCBrOnCastConcreteSource     bool
 	GCBrOnCastFailConcreteSource bool
+	// GCBrOnCastNullabilitySource and GCBrOnCastFailNullabilitySource are
+	// exact-wire witnesses for the validation-only nullability/control products.
+	GCBrOnCastNullabilitySource     bool
+	GCBrOnCastFailNullabilitySource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -169,31 +173,32 @@ type CompileOptions struct {
 	referenceControlInstructions bool
 	// Selected only when the exact source and decoded witnesses agree for a
 	// qualified non-allocating i31 module.
-	i31Core              bool
-	gcRefEq              bool
-	gcRefTestTable       bool
-	gcRefTestConcrete    bool
-	gcRefTestAbstract    bool
-	gcExtern             bool
-	gcRefCastAbstract    bool
-	gcStructGet          bool
-	gcStructMutation     bool
-	gcStructNull         bool
-	gcStructPacked       bool
-	gcStructBasic        bool
-	gcStructGlobals      bool
-	gcArrayLocal         bool
-	gcArrayUniform       bool
-	gcArrayFixedLocal    bool
-	gcArrayFixedOfficial bool
-	gcArrayPackedData    bool
-	gcArrayReference     bool
-	gcArrayInitElem      bool
-	gcArrayInitData      bool
-	gcArrayFill          bool
-	gcArrayCopy          bool
-	tailPlans            *[]tailImportPlan
-	tailSiteBase         uint32
+	i31Core               bool
+	gcRefEq               bool
+	gcRefTestTable        bool
+	gcRefTestConcrete     bool
+	gcRefTestAbstract     bool
+	gcBrOnCastNullability bool
+	gcExtern              bool
+	gcRefCastAbstract     bool
+	gcStructGet           bool
+	gcStructMutation      bool
+	gcStructNull          bool
+	gcStructPacked        bool
+	gcStructBasic         bool
+	gcStructGlobals       bool
+	gcArrayLocal          bool
+	gcArrayUniform        bool
+	gcArrayFixedLocal     bool
+	gcArrayFixedOfficial  bool
+	gcArrayPackedData     bool
+	gcArrayReference      bool
+	gcArrayInitElem       bool
+	gcArrayInitData       bool
+	gcArrayFill           bool
+	gcArrayCopy           bool
+	tailPlans             *[]tailImportPlan
+	tailSiteBase          uint32
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.
