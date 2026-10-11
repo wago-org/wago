@@ -28,6 +28,9 @@ type internalReferenceTypes struct {
 	// i31 is confined to the exact non-allocating Core 3 product. It admits the
 	// abstract i31 heap as one full-width internal immediate carrier.
 	i31 bool
+	// gcArrayFixedOfficial admits only the two indexed f32 array heaps and the
+	// abstract array supertype in the pinned official fixed-array product.
+	gcArrayFixedOfficial bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -90,6 +93,14 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	heap := ref.Heap()
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {
 		return true
+	}
+	if types.gcArrayFixedOfficial {
+		if heap == wasm.AbsHeap(wasm.HeapArray) {
+			return true
+		}
+		if heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index < 2 {
+			return true
+		}
 	}
 	// Exact Core 3 declaration and execution profiles contain nullable abstract
 	// externref carriers. Their enclosing whole-module proofs establish which

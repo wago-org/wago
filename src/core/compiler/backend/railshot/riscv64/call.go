@@ -12,9 +12,10 @@ const callFrameHeader = 48
 const maxDirectCalls = 1024
 
 type directCall struct {
-	site   int
-	callee uint32
-	helper uint32
+	site        int
+	callee      uint32
+	helper      uint32
+	helperSlots int
 }
 
 const (
@@ -133,7 +134,7 @@ func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint3
 	f.a.Sd(enc.X5, enc.X10, int32(count*8))
 	f.a.Constant32(enc.X5, count)
 	f.a.Sd(enc.X5, enc.X10, int32((count+1)*8))
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocFixed})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocFixed, helperSlots: int(count) + 2})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -143,13 +144,48 @@ func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint3
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
-func (f *integerEmitter) gcArrayGetI32(base int) {
+// The official mutable f32 fixture leaves its public index below three fixed
+// initializer operands. Allocate from the first pointer-free value, then write
+// the remaining two values without another safepoint. This keeps the helper
+// exchange bounded while preserving array.new_fixed operand order exactly.
+func (f *integerEmitter) gcFixedArrayAllocation3ViaUniform(base int, typeIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), false)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.a.Constant32(enc.X5, 3)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocUniform})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
+	for index := 1; index < 3; index++ {
+		f.restoreCallTransport()
+		f.Load(5, f.SpillOffset(base), true)
+		f.a.Sd(enc.X5, enc.X10, 0)
+		f.a.Constant32(enc.X5, uint32(index))
+		f.a.Sd(enc.X5, enc.X10, 8)
+		f.Load(5, f.SpillOffset(base+index), false)
+		f.a.Sd(enc.X5, enc.X10, 16)
+		f.a.Constant32(enc.X5, typeIndex)
+		f.a.Sd(enc.X5, enc.X10, 24)
+		f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArraySet})
+		f.restoreCallTransport()
+	}
+}
+
+func (f *integerEmitter) gcArrayGetI32(base int, typeIndex uint32) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
 	f.Load(5, f.SpillOffset(base+1), false)
 	f.a.Sd(enc.X5, enc.X10, 8)
-	f.a.Constant32(enc.X5, 0)
+	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayGet})
 	f.restoreCallTransport()
@@ -161,7 +197,7 @@ func (f *integerEmitter) gcArrayGetI32(base int) {
 	f.Store(f.SpillOffset(base), 5, false)
 }
 
-func (f *integerEmitter) gcArraySetI32(base int) {
+func (f *integerEmitter) gcArraySetI32(base int, typeIndex uint32) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
@@ -169,7 +205,7 @@ func (f *integerEmitter) gcArraySetI32(base int) {
 	f.a.Sd(enc.X5, enc.X10, 8)
 	f.Load(5, f.SpillOffset(base+2), false)
 	f.a.Sd(enc.X5, enc.X10, 16)
-	f.a.Constant32(enc.X5, 0)
+	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArraySet})
 	f.restoreCallTransport()

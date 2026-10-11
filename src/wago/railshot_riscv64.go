@@ -97,6 +97,10 @@ func railshotGCArrayFixedLocalSource(data []byte) bool {
 	return railshot.AdmitGCArrayFixedLocalSource(data)
 }
 
+func railshotGCArrayFixedOfficialSource(data []byte) bool {
+	return railshot.AdmitGCArrayFixedOfficialSource(data)
+}
+
 func railshotConfigureI31Core(exactSource bool, opts *railshotCompileOptions) {
 	opts.I31CoreSource = exactSource
 }
@@ -119,4 +123,8 @@ func railshotConfigureGCArrayUniform(exactSource bool, opts *railshotCompileOpti
 
 func railshotConfigureGCArrayFixedLocal(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCArrayFixedLocalSource = exactSource
+}
+
+func railshotConfigureGCArrayFixedOfficial(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayFixedOfficialSource = exactSource
 }

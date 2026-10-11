@@ -82,6 +82,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCArrayLocal := rv64GCArrayLocal(c)
 	exactGCArrayUniform := rv64GCArrayUniform(c)
 	exactGCArrayFixedLocal := rv64GCArrayFixedLocal(c)
+	exactGCArrayFixedOfficial := rv64GCArrayFixedOfficial(c)
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")
 	}
@@ -96,6 +97,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCArrayFixedLocalExecutionCode(c) && !exactGCArrayFixedLocal {
 		return reject("allocating gc/array fixed local image requires its exact retained metadata")
+	}
+	if rv64GCArrayFixedOfficialExecutionCode(c) && !exactGCArrayFixedOfficial {
+		return reject("allocating official gc/array fixed image requires its exact retained metadata")
 	}
 	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
 		return reject("i31 execution image requires its exact retained metadata")
@@ -206,7 +210,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -217,10 +221,10 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal {
+	if exactGCRefEq || exactGCStructGet || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial {
 		qualifiedFeatures |= CoreFeatureGC
 	}
-	if exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal {
+	if exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
@@ -312,13 +316,13 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && (!exactGCArrayFixedOfficial || typ != ValAnyRef) {
 					return reject("unsupported signature")
 				}
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCStructGet && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
@@ -333,6 +337,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	hasReferenceGlobal := false
 	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
 	for i, global := range c.Globals {
+		if exactGCArrayFixedOfficial && i == 0 {
+			continue // The exact product pins this rooted non-null array initializer.
+		}
 		if typedI31 && (global.Type == ValI31Ref || exactAnyI31 && global.Type == ValAnyRef) {
 			continue // The exact product witness pins both globals and their initial values.
 		}
@@ -435,7 +442,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("memory export index bound")
 		}
 	}
-	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 || len(c.memoryDir.gcArrayGlobals) != 0 || c.memoryDir.gcArrayElement != nil || c.memoryDir.gcI31TableInit != nil) {
+	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial || c.memoryDir.gcArrayElement != nil || c.memoryDir.gcI31TableInit != nil) {
 		return reject("GC/EH initializer lowering is pending")
 	}
 	return nil

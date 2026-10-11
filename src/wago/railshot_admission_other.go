@@ -20,6 +20,8 @@ func railshotGCArrayUniformSource([]byte) bool                                  
 func railshotConfigureGCArrayUniform(bool, *railshotCompileOptions)                     {}
 func railshotGCArrayFixedLocalSource([]byte) bool                                       { return false }
 func railshotConfigureGCArrayFixedLocal(bool, *railshotCompileOptions)                  {}
+func railshotGCArrayFixedOfficialSource([]byte) bool                                    { return false }
+func railshotConfigureGCArrayFixedOfficial(bool, *railshotCompileOptions)               {}
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
 func railshotValidateResolvedImports(*Compiled, resolvedImports, *referenceStore) error { return nil }
 func railshotNeedsImportContextHeader(int) bool                                         { return false }
