@@ -23,7 +23,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) {
+	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -333,7 +333,7 @@ func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.Compi
 // Instruction bytes were bounded before this pass.
 func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, bool, error) {
 	referenceTails, indirectTails, hasReferenceCall, hasReferenceControl := false, false, false, false
-	publicReferenceBoundary := referenceFunctions && !vector && admitPublicReferenceCallBoundary(m)
+	publicReferenceBoundary := referenceFunctions && !vector && admitPublicReferenceCarrierBoundary(m)
 	types := internalReferenceTypes{
 		decoded:                  m.Types,
 		decodedSWAR:              vector,

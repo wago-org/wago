@@ -307,6 +307,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		return nil
 	}
 	publicReferenceCallBoundary := !vector && admitPublicReferenceCallBoundary(m)
+	publicHostReferenceBoundary := !vector && admitPublicHostReferenceBoundary(m)
+	publicReferenceCarrierBoundary := publicReferenceCallBoundary || publicHostReferenceBoundary
 	counts, err := countClosedReferenceImports(m)
 	if err != nil {
 		return err
@@ -337,7 +339,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		decodedSWAR:              vector,
 		declarationExtern:        !vector && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
 		declarationNonNullExtern: !vector && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
-		publicReferenceCarriers:  publicReferenceCallBoundary && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp),
+		publicReferenceCarriers:  publicReferenceCarrierBoundary && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp),
 	}
 	limit := 256
 	if vector {
@@ -356,8 +358,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		}
 	}
 	var references [MaxFunctions]bool
-	// The imported prefix is numeric. Internal reference carriers never cross
-	// an imported signature, including an unused import or unreachable call.
+	// The imported prefix is numeric except for the exact single-host forwarding
+	// boundary. No unused import or broader module topology inherits that bridge.
 	for _, im := range m.Imports {
 		if im.Type.Kind != wasm.ExternFunc {
 			continue // Numeric resource shape was checked with owned state.
@@ -373,7 +375,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 				return err
 			}
 		} else if err := integerNumericSignature(sig, true); err != nil {
-			return err
+			if !publicHostReferenceBoundary || index.Index != 0 || !publicReferenceCarrierTarget(sig) {
+				return err
+			}
 		}
 	}
 	var importSignatures [MaxHostFunctionImports]*wasm.CompType

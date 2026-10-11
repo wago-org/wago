@@ -46,7 +46,8 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 				declarationExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64Core3ReferenceDeclarationMetadata(c)
 				declarationNonNullExtern := heap.Abstract == AbstractHeapExtern && !v.Ref.Nullable && (rv64Core3RefAsNonNullDeclarationMetadata(c) || rv64Core3RefIsNullDeclarationMetadata(c))
 				publicCallExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicReferenceCallBoundaryWithPlan(c, false) && rv64PublicReferenceCarrierSignature(c.Funcs[0])
-				if heap.TypeIndex != 0 || heap.Abstract != AbstractHeapFunc && !executionExtern && !declarationExtern && !declarationNonNullExtern && !publicCallExtern {
+				publicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicHostReferenceBoundary(c)
+				if heap.TypeIndex != 0 || heap.Abstract != AbstractHeapFunc && !executionExtern && !declarationExtern && !declarationNonNullExtern && !publicCallExtern && !publicHostExtern {
 					return false, false, fmt.Errorf("RV64 internal abstract function reference required")
 				}
 				continue

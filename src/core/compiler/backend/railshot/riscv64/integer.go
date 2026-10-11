@@ -80,7 +80,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			return integerSummary{}, unsupported("private reference function directory bound")
 		}
 		for i, sig := range state.functions {
-			if i < state.importedFunctions {
+			if i < state.importedFunctions && !(state.publicReferenceCarriers && publicReferenceCarrierTarget(sig.signature)) {
 				if err := integerNumericSignature(sig.signature, floating); err != nil {
 					return integerSummary{}, err
 				}

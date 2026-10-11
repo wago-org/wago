@@ -138,13 +138,14 @@ func railshotValidateCompiled(c *Compiled) error {
 		if vectorProfile {
 			maxImportArity = 128
 		}
+		publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c)
 		for _, sig := range c.importFuncSigs {
 			if len(sig.Params) > maxImportArity || len(sig.Results) > maxImportArity {
 				return reject("function import signature arity")
 			}
 			for _, values := range [][]ValType{sig.Params, sig.Results} {
 				for _, typ := range values {
-					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) {
+					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!publicHostReferenceBoundary || typ != ValFuncRef && typ != ValExternRef) {
 						return reject("unsupported function import signature")
 					}
 				}
@@ -264,7 +265,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if vectorProfile {
 		maxArity = 128
 	}
-	declarationExtern := exactCore3RefIsNull || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c)
+	declarationExtern := exactCore3RefIsNull || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c)
 	for _, sig := range c.Funcs {
 		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
 			return reject("signature arity")
@@ -479,8 +480,10 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 		}
 		switch value := value.(type) {
 		case *HostFuncRef:
-			if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
-				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			if !rv64PublicHostReferenceBoundary(c) {
+				if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
+					return fmt.Errorf("public RV64 import %q: %w", key, err)
+				}
 			}
 			// The shared attachment path repeats this check under its ownership
 			// lock before retaining the handle; reject invalid input before mapping.
@@ -496,8 +499,10 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 		case I32HostEvent, gatedI32HostEvent:
 			return fmt.Errorf("%w: public RV64 import %q target ownership/protocol is pending", railshot.ErrUnsupported, key)
 		}
-		if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
-			return fmt.Errorf("public RV64 import %q: %w", key, err)
+		if !rv64PublicHostReferenceBoundary(c) {
+			if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
 		}
 		if _, err := bindSyncHostImport(value, c.importFuncSigs[i]); err != nil {
 			return fmt.Errorf("public RV64 import %q: %w", key, err)
