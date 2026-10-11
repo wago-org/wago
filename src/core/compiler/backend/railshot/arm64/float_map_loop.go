@@ -460,6 +460,10 @@ func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
 		}
 	}
 	read(p.counter, counter)
+	// Recover every borrowed local before any guard can bypass its reload.
+	for i := 0; i < ng; i++ {
+		read(groups[i].base, groups[i].reg)
+	}
 	var guards [64]int
 	nGuards := 0
 	guard := func(cc Cond) { guards[nGuards] = f.a.Bcond(cc); nGuards++ }
@@ -482,7 +486,6 @@ func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
 	f.ld64(size, linMemReg, -int32(bdCurBytes))
 	for i := 0; i < ng; i++ {
 		g := &groups[i]
-		read(g.base, g.reg)
 		f.a.Add32(g.reg, g.reg, counter)
 		f.a.MovImm64(X16, uint64(g.min))
 		f.a.Add32(g.reg, g.reg, X16)
@@ -566,9 +569,7 @@ func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
 	// The bounded expression has at most eight levels. Count constants before
 	// emitting anything that would need an unbounded register reservation.
 	preload(p.result)
-	loop := f.a.Len()
-	f.cmpImm(span, 16+p.step, false)
-	done := f.a.Bcond(condB)
+	var block int32
 	var emit func(int) (Reg, bool)
 	emit = func(x int) (Reg, bool) {
 		v := p.nodes[x]
@@ -584,7 +585,7 @@ func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
 			base, off := locate(p.addresses[x])
 			r := f.allocFReg(0)
 			f.fpinned = f.fpinned.add(r)
-			f.a.LdrQ(r, base, int32(off))
+			f.a.LdrQ(r, base, int32(off)+block)
 			return r, true
 		}
 		a, ownA := emit(v.a)
@@ -608,23 +609,44 @@ func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
 		}
 		return out, true
 	}
-	value, owned := emit(p.result)
-	f.a.StrQ(d, int32(dOff), value)
-	if owned {
-		f.fpinned = f.fpinned.remove(value)
-		f.releaseF(value)
+	packet := func(width uint32, target int) {
+		for block = 0; block < int32(width); block += 16 {
+			value, owned := emit(p.result)
+			f.a.StrQ(d, int32(dOff)+block, value)
+			if owned {
+				f.fpinned = f.fpinned.remove(value)
+				f.releaseF(value)
+			}
+		}
+		for i := 0; i < ng; i++ {
+			f.a.AddImm64(groups[i].reg, groups[i].reg, width)
+		}
+		f.a.AddImm32(counter, counter, width)
+		f.a.SubImm32(span, span, width)
+		f.patchBranch26(f.a.Branch(), target)
 	}
-	for i := 0; i < ng; i++ {
-		f.a.AddImm64(groups[i].reg, groups[i].reg, 16)
-	}
-	f.a.AddImm32(counter, counter, 16)
-	f.a.SubImm32(span, span, 16)
-	f.patchBranch26(f.a.Branch(), loop)
+	// Four wider packets repay the extra code. Short trips use the compact
+	// loop directly, and the original scalar packet remains observable at exit.
+	f.cmpImm(span, 4*32+p.step, false)
+	short := f.a.Bcond(condB)
+	wideLoop := f.a.Len()
+	f.cmpImm(span, 32+p.step, false)
+	tail := f.a.Bcond(condB)
+	packet(32, wideLoop)
+	f.patchBranch19(short, f.a.Len())
+	f.patchBranch19(tail, f.a.Len())
+	loop := f.a.Len()
+	f.cmpImm(span, 16+p.step, false)
+	done := f.a.Bcond(condB)
+	packet(16, loop)
+	f.stats.peep("float-map-loop-unroll")
 	f.patchBranch19(done, f.a.Len())
 	if reg, _, pin := f.pinReg(p.counter); pin {
 		f.a.MovReg32(reg, counter)
+		f.markLocalDirty(p.counter)
 	} else {
 		f.st64(SP, f.localOff(p.counter), counter)
+		f.locals[p.counter].state = lsMem
 	}
 	for i := 0; i < nGuards; i++ {
 		f.patchBranch19(guards[i], f.a.Len())

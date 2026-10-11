@@ -10,7 +10,7 @@ var scopedLoopFloatConstsEnabled = true
 // bulk operations and extensions before reserving any register. The lease ends
 // at this loop's end, so calls elsewhere in the function may clobber its cache.
 func (f *fn) preloadScopedFloatConsts(source *wasm.Reader) {
-	if !f.makesCalls || !f.opt(optScopedLoopFloatConst) || len(f.fconsts) != 0 || f.moduleEH || f.interruptible || len(f.customInstructions) != 0 || len(f.ctrl) >= 65535 {
+	if !f.makesCalls || !f.scopedConstHints.flags.has(hintHasFloatConst) || !f.opt(optScopedLoopFloatConst) || len(f.fconsts) != 0 || f.moduleEH || f.interruptible || len(f.customInstructions) != 0 || len(f.ctrl) >= 65535 {
 		return
 	}
 	scan := *source

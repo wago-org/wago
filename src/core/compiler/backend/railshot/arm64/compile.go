@@ -3454,6 +3454,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// workaround; the actual root cause was the opElse merge edge skipping
 	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
 	f.makesCalls = hasCall
+	f.scopedConstHints.flags = hints.flags
 	if f.opt(optScopedLoopIntConst) && hasCall && hints.loopIntConstCount != 0 {
 		f.scopedConstHints = scopedConstHintsFrom(hints)
 	}

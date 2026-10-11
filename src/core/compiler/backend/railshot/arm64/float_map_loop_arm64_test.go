@@ -106,6 +106,11 @@ func TestFloatMapLoopRangesAliasesAndScalarTail(t *testing.T) {
 	for i := 0; i < len(initial)/8; i++ {
 		binary.LittleEndian.PutUint64(initial[8*i:], math.Float64bits(float64(i%91-45)*0.125))
 	}
+	// Include canonical NaNs, infinities, signed zero and subnormals alongside
+	// ordinary data. Compare complete bytes against the scalar implementation.
+	for i, bits := range []uint64{0x7ff8000000000000, 0xfff8000000000000, 0x7ff0000000000000, 0xfff0000000000000, 0x8000000000000000, 1, 0x000fffffffffffff} {
+		binary.LittleEndian.PutUint64(initial[8*i:], bits)
+	}
 	for _, wide := range []bool{false, true} {
 		size := uint32(4)
 		if wide {
@@ -113,7 +118,7 @@ func TestFloatMapLoopRangesAliasesAndScalarTail(t *testing.T) {
 		}
 		for _, packets := range []int{1, 2} {
 			step := size * uint32(packets)
-			for _, length := range []uint32{step, 2 * step, 4 * step, 8 * step, 32 * step} {
+			for _, length := range []uint32{step, 2 * step, 4 * step, 8 * step, 32 * step, 128, 128 + step, 128 + 2*step, 64 * step} {
 				for _, neighbor := range []uint32{0, size, 256} {
 					for _, layout := range [][2]uint32{{0, 4096}, {4096, 0}, {4096, 4096}, {4096, 4097}, {4096, 4104}, {65504, 65512}, {0xfffffff0, 4096}, {1, 8193}} {
 						for _, countdown := range []bool{false, true} {
