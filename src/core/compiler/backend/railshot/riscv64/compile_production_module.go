@@ -72,7 +72,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if opts.GCTypeSubtypingDeclarationsSource != decodedGCTypeSubtypingDeclarations {
 		return nil, unsupported("gc type-subtyping declarations source provenance")
 	}
-	opts.gcTypeSubtypingDeclarations = decodedGCTypeSubtypingDeclarations
+	opts.gcTypeSubtypingDeclarations = decodedGCTypeSubtypingDeclarations != 0
 	decodedI31Core := admitRV64I31Core(m)
 	if opts.I31CoreSource != decodedI31Core {
 		return nil, unsupported("i31 core source provenance")

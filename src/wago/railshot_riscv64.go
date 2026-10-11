@@ -133,8 +133,8 @@ func railshotGCBrOnCastFailNullabilitySource(data []byte) bool {
 	return railshot.AdmitGCBrOnCastFailNullabilitySource(data)
 }
 
-func railshotGCTypeSubtypingDeclarationsSource(data []byte) bool {
-	return railshot.AdmitGCTypeSubtypingDeclarationsSource(data)
+func railshotGCTypeSubtypingDeclarationsSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingDeclarationsSourceVariant(data)
 }
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
@@ -249,8 +249,8 @@ func railshotConfigureGCBrOnCastFailNullability(exactSource bool, opts *railshot
 	opts.GCBrOnCastFailNullabilitySource = exactSource
 }
 
-func railshotConfigureGCTypeSubtypingDeclarations(exactSource bool, opts *railshotCompileOptions) {
-	opts.GCTypeSubtypingDeclarationsSource = exactSource
+func railshotConfigureGCTypeSubtypingDeclarations(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingDeclarationsSource = sourceVariant
 }
 
 func railshotConfigureGCStructGet(exactSource bool, opts *railshotCompileOptions) {

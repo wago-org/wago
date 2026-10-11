@@ -208,7 +208,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 }
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
-	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m)
+	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
 	gcBrOnCastNullability := admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m)

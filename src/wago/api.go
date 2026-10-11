@@ -1156,7 +1156,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	exactGCBrOnCastFailConcreteSource := railshotGCBrOnCastFailConcreteSource(wasmBytes)
 	exactGCBrOnCastNullabilitySource := railshotGCBrOnCastNullabilitySource(wasmBytes)
 	exactGCBrOnCastFailNullabilitySource := railshotGCBrOnCastFailNullabilitySource(wasmBytes)
-	exactGCTypeSubtypingDeclarationsSource := railshotGCTypeSubtypingDeclarationsSource(wasmBytes)
+	gcTypeSubtypingDeclarationsSourceVariant := railshotGCTypeSubtypingDeclarationsSource(wasmBytes)
 	exactGCStructGetSource := railshotGCStructGetSource(wasmBytes)
 	exactGCStructMutationSource := railshotGCStructMutationSource(wasmBytes)
 	exactGCStructNullSource := railshotGCStructNullSource(wasmBytes)
@@ -1223,7 +1223,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// strict because it selects the collector-free function-identity lowering,
 		// but any module with that proven shape receives the same semantics.
 		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && exactGCTypeSubtypingDeclarationsSource) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && gcTypeSubtypingDeclarationsSourceVariant != 0) {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcTypeSubtypingProduct = product
@@ -1424,7 +1424,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	railshotConfigureGCBrOnCastFailConcrete(exactGCBrOnCastFailConcreteSource, &compileOptions)
 	railshotConfigureGCBrOnCastNullability(exactGCBrOnCastNullabilitySource, &compileOptions)
 	railshotConfigureGCBrOnCastFailNullability(exactGCBrOnCastFailNullabilitySource, &compileOptions)
-	railshotConfigureGCTypeSubtypingDeclarations(exactGCTypeSubtypingDeclarationsSource, &compileOptions)
+	railshotConfigureGCTypeSubtypingDeclarations(gcTypeSubtypingDeclarationsSourceVariant, &compileOptions)
 	railshotConfigureGCStructGet(exactGCStructGetSource, &compileOptions)
 	railshotConfigureGCStructMutation(exactGCStructMutationSource, &compileOptions)
 	railshotConfigureGCStructNull(exactGCStructNullSource, &compileOptions)

@@ -102,9 +102,9 @@ type CompileOptions struct {
 	// exact-wire witnesses for the validation-only nullability/control products.
 	GCBrOnCastNullabilitySource     bool
 	GCBrOnCastFailNullabilitySource bool
-	// GCTypeSubtypingDeclarationsSource is the exact-wire witness for the
-	// first declaration-only gc/type-subtyping module.
-	GCTypeSubtypingDeclarationsSource bool
+	// GCTypeSubtypingDeclarationsSource identifies the exact-wire witness for
+	// one of the initial declaration-only gc/type-subtyping modules.
+	GCTypeSubtypingDeclarationsSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool

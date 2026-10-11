@@ -9,47 +9,100 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// rv64GCTypeSubtypingDeclarationsWire is type-subtyping.0.wasm from the
-// pinned Core 3 corpus. It contains only seven array type declarations and no
-// functions, state, initializers or metadata.
-var rv64GCTypeSubtypingDeclarationsWire = []byte{
-	0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-	0x01, 0xa8, 0x80, 0x80, 0x80, 0x00, 0x07,
-	0x50, 0x00, 0x5e, 0x7f, 0x00,
-	0x50, 0x01, 0x00, 0x5e, 0x7f, 0x00,
-	0x50, 0x00, 0x5e, 0x6e, 0x00,
-	0x50, 0x00, 0x5e, 0x63, 0x00, 0x00,
-	0x50, 0x00, 0x5e, 0x64, 0x01, 0x00,
-	0x50, 0x00, 0x5e, 0x7f, 0x01,
-	0x50, 0x01, 0x05, 0x5e, 0x7f, 0x01,
+// rv64GCTypeSubtypingDeclarationsWires are type-subtyping.0.wasm through
+// type-subtyping.2.wasm from the pinned Core 3 corpus. They contain only the
+// initial array, struct and function supertype declarations, respectively.
+var rv64GCTypeSubtypingDeclarationsWires = [][]byte{
+	{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+		0x01, 0xa8, 0x80, 0x80, 0x80, 0x00, 0x07,
+		0x50, 0x00, 0x5e, 0x7f, 0x00,
+		0x50, 0x01, 0x00, 0x5e, 0x7f, 0x00,
+		0x50, 0x00, 0x5e, 0x6e, 0x00,
+		0x50, 0x00, 0x5e, 0x63, 0x00, 0x00,
+		0x50, 0x00, 0x5e, 0x64, 0x01, 0x00,
+		0x50, 0x00, 0x5e, 0x7f, 0x01,
+		0x50, 0x01, 0x05, 0x5e, 0x7f, 0x01,
+	},
+	{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+		0x01, 0xb3, 0x80, 0x80, 0x80, 0x00, 0x06,
+		0x50, 0x00, 0x5f, 0x00,
+		0x50, 0x01, 0x00, 0x5f, 0x00,
+		0x50, 0x01, 0x01, 0x5f, 0x01, 0x7f, 0x00,
+		0x50, 0x01, 0x02, 0x5f, 0x02, 0x7f, 0x00, 0x63, 0x00, 0x00,
+		0x50, 0x01, 0x03, 0x5f, 0x03, 0x7f, 0x00, 0x64, 0x00, 0x00, 0x7e, 0x01,
+		0x50, 0x01, 0x04, 0x5f, 0x03, 0x7f, 0x00, 0x64, 0x01, 0x00, 0x7e, 0x01,
+	},
+	{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+		0x01, 0xaf, 0x80, 0x80, 0x80, 0x00, 0x06,
+		0x50, 0x00, 0x5f, 0x00,
+		0x50, 0x01, 0x00, 0x5f, 0x00,
+		0x50, 0x00, 0x60, 0x01, 0x64, 0x01, 0x01, 0x6e,
+		0x50, 0x01, 0x02, 0x60, 0x01, 0x64, 0x00, 0x01, 0x64, 0x6e,
+		0x50, 0x01, 0x03, 0x60, 0x01, 0x63, 0x00, 0x01, 0x64, 0x00,
+		0x50, 0x01, 0x04, 0x60, 0x01, 0x6b, 0x01, 0x64, 0x01,
+	},
 }
 
-var rv64GCTypeSubtypingDeclarationsTypes = func() []wasm.RecType {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingDeclarationsWire)
-	if err != nil {
-		panic(err)
+var rv64GCTypeSubtypingDeclarationsTypes = func() [][]wasm.RecType {
+	types := make([][]wasm.RecType, len(rv64GCTypeSubtypingDeclarationsWires))
+	for i, wire := range rv64GCTypeSubtypingDeclarationsWires {
+		m, err := wasm.DecodeModule(wire)
+		if err != nil {
+			panic(err)
+		}
+		types[i] = m.Types
 	}
-	return m.Types
+	return types
 }()
 
-func admitRV64GCTypeSubtypingDeclarationsWire(data []byte) bool {
-	if !bytes.Equal(data, rv64GCTypeSubtypingDeclarationsWire) || !admitExactProductWireShape(data, []byte{1}) {
-		return false
+func gcTypeSubtypingDeclarationsSourceVariant(data []byte) uint8 {
+	if !admitExactProductWireShape(data, []byte{1}) {
+		return 0
 	}
-	m, err := wasm.DecodeModule(data)
-	return err == nil && admitRV64GCTypeSubtypingDeclarations(m)
+	for i, wire := range rv64GCTypeSubtypingDeclarationsWires {
+		if !bytes.Equal(data, wire) {
+			continue
+		}
+		m, err := wasm.DecodeModule(data)
+		variant := uint8(i + 1)
+		if err == nil && admitRV64GCTypeSubtypingDeclarations(m) == variant {
+			return variant
+		}
+		return 0
+	}
+	return 0
+}
+
+func admitRV64GCTypeSubtypingDeclarationsWire(data []byte) bool {
+	return gcTypeSubtypingDeclarationsSourceVariant(data) != 0
 }
 
 // AdmitGCTypeSubtypingDeclarationsSource reports whether data is the exact
-// first declaration-only gc/type-subtyping product.
+// initial declaration-only gc/type-subtyping product.
 func AdmitGCTypeSubtypingDeclarationsSource(data []byte) bool {
 	return admitRV64GCTypeSubtypingDeclarationsWire(data)
 }
 
-func admitRV64GCTypeSubtypingDeclarations(m *wasm.Module) bool {
-	return m != nil && reflect.DeepEqual(m.Types, rv64GCTypeSubtypingDeclarationsTypes) &&
-		len(m.FuncTypes) == 0 && len(m.Code) == 0 && len(m.Imports) == 0 && len(m.Tables) == 0 && len(m.Memories) == 0 &&
-		len(m.Tags) == 0 && len(m.StringRefs) == 0 && len(m.Globals) == 0 && len(m.Exports) == 0 && m.Start == nil &&
-		len(m.Elements) == 0 && len(m.Data) == 0 && m.DataCount == nil && len(m.Customs) == 0 && !m.HasNameMetadata() &&
-		m.BranchHints == nil && !m.UsesCompactImports
+// GCTypeSubtypingDeclarationsSourceVariant returns the exact source variant:
+// 1 for arrays, 2 for structs, 3 for functions, or zero for every other shape.
+func GCTypeSubtypingDeclarationsSourceVariant(data []byte) uint8 {
+	return gcTypeSubtypingDeclarationsSourceVariant(data)
+}
+
+func admitRV64GCTypeSubtypingDeclarations(m *wasm.Module) uint8 {
+	if m == nil || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 ||
+		len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Globals) != 0 || len(m.Exports) != 0 || m.Start != nil ||
+		len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Customs) != 0 || m.HasNameMetadata() ||
+		m.BranchHints != nil || m.UsesCompactImports {
+		return 0
+	}
+	for i, types := range rv64GCTypeSubtypingDeclarationsTypes {
+		if reflect.DeepEqual(m.Types, types) {
+			return uint8(i + 1)
+		}
+	}
+	return 0
 }
