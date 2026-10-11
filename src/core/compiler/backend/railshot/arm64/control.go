@@ -1722,8 +1722,10 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				f.emitPureReduce(r)
 				f.emitDotLoop(r)
 				f.emitMinPlusLoop(r)
+				f.emitFloatMapLoop(r)
 			}
 			f.preloadScopedLoopConsts(&fr)
+			f.preloadScopedFloatConsts(r)
 			f.alignLoopHeader()
 			fr.controlSite = f.a.Len()
 			f.emitInterruptCheck(true)
@@ -2522,6 +2524,9 @@ func (f *fn) opElse() error {
 func (f *fn) opEnd(r *wasm.Reader) error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
+	if fr.kind == cfLoop {
+		defer f.releaseScopedFloatConsts(last + 1)
+	}
 	if fr.has(ctrlLoopConstScope) {
 		defer f.releaseScopedLoopConsts(uint8(fr.flags >> 12))
 	}

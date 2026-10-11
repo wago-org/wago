@@ -27,6 +27,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
 	optimization.Bind("loop-int-const", &loopIntConstEnabled),
 	optimization.Bind("scoped-loop-int-const", &scopedLoopConstsEnabled),
+	optimization.Bind("scoped-loop-float-const", &scopedLoopFloatConstsEnabled),
 	optimization.Bind("loop-memory-base", &loopMemoryBaseEnabled),
 	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
 	optimization.Bind("dominated-indexed-base", &dominatedIndexedBaseEnabled),
@@ -119,6 +120,7 @@ var (
 	optDirectGoHostImport   = optimizationBindings.Option("direct-go-host-import")
 	optLoopIntConst         = optimizationBindings.Option("loop-int-const")
 	optScopedLoopIntConst   = optimizationBindings.Option("scoped-loop-int-const")
+	optScopedLoopFloatConst = optimizationBindings.Option("scoped-loop-float-const")
 	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
 	optTakenZeroBranch      = optimizationBindings.Option("taken-zero-branch")

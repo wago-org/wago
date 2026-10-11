@@ -467,6 +467,10 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // eaOwned reports whether the caller must release ea. Passing guard=false
 // requires a full-access bounds proof even in a guard-page function.
 func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, guard bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	if !guard && f.boundsFacts && f.staticallyInBounds(off, size) {
+		guard = true
+		f.stats.peep("static-bounds-elide")
+	}
 	f.materializePendingTraps()
 	if f.memoryAddr64(0) {
 		return f.memAddr64(off, size)

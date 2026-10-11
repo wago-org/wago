@@ -31,3 +31,5 @@ func (*fn) checkTerminalWrites() regallocWriteMask { return regallocWriteMask{} 
 func (*fn) checkRestoreWrites(regallocWriteMask)   {}
 
 func (*fn) checkReleaseImmutableGP(Reg) {}
+
+func (*fn) checkReleaseImmutableFP(Reg) {}

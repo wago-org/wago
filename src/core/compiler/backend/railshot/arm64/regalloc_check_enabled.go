@@ -394,3 +394,15 @@ func (f *fn) checkReleaseImmutableGP(reg Reg) {
 	f.immutableValues = kept
 	f.immutableGPMask &^= uint32(1) << uint8(reg)
 }
+
+func (f *fn) checkReleaseImmutableFP(reg Reg) {
+	loc := checkReg(reg, true)
+	kept := f.immutableValues[:0]
+	for _, goal := range f.immutableValues {
+		if goal.loc != loc {
+			kept = append(kept, goal)
+		}
+	}
+	f.immutableValues = kept
+	f.immutableFPMask &^= uint32(1) << uint8(reg)
+}

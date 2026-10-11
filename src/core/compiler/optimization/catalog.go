@@ -419,6 +419,7 @@ var catalog = []Definition{
 	arm64("inverted-logical", "Inverted logical operands", "fold integer bitwise complements into logical register operations"),
 	arm64("shifted-register-alu", "Shifted-register ALU", "fold constant shifts into integer ALU operands"),
 	arm64("fp-immediate-const", "Float immediates", "materialize exact AArch64 floating-point immediates directly"),
+	arm64("scoped-loop-float-const", "Scoped loop float constants", "cache scalar float constants inside bounded call-free loops"),
 	arm64("fp-literal-pool", "Float literal pool", "load non-immediate scalar float constants from a deduplicated PC-relative pool"),
 	both("value-facts", "Value facts", "propagate bounded upper-zero and boolean provenance"),
 	arm64("load-pair", "Adjacent load pairs", "combine adjacent full-width scalar loads from one local address into LDP"),
