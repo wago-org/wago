@@ -48,6 +48,7 @@ type moduleState struct {
 	gcRefEq              bool
 	gcRefTestTable       bool
 	gcRefTestConcrete    bool
+	gcRefTestAbstract    bool
 	gcStructGet          bool
 	gcStructMutation     bool
 	gcStructNull         bool
@@ -209,6 +210,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
 	gcRefTestConcrete := admitRV64GCRefTestConcrete(m)
+	gcRefTestAbstract := admitRV64GCRefTestAbstract(m)
 	gcStructGet := admitRV64GCStructGet(m)
 	gcStructMutation := admitRV64GCStructMutation(m)
 	gcStructNull := admitRV64GCStructNull(m)
@@ -225,7 +227,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcArrayInitData := admitRV64GCArrayInitData(m)
 	gcArrayFill := admitRV64GCArrayFill(m)
 	gcArrayCopy := admitRV64GCArrayCopy(m)
-	i31Core := admitRV64I31Core(m) || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy
+	i31Core := admitRV64I31Core(m) || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy
 	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
@@ -420,7 +422,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcRefTestTable || gcRefTestConcrete || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+		if (s.ownedTable || s.importReferences) && !((gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
 			var ok bool
 			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
 			if !ok {
@@ -428,10 +430,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			}
 		}
 		for k, t := range ft.Params {
-			fn.params[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+			fn.params[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
 		}
 		for k, t := range ft.Results {
-			fn.results[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+			fn.results[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
 		}
 		s.types = append(s.types, fn)
 	}

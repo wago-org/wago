@@ -61,6 +61,9 @@ type internalReferenceTypes struct {
 	// gcRefTestConcrete admits the eight indexed struct heaps in the official
 	// concrete subtyping ref.test product.
 	gcRefTestConcrete bool
+	// gcRefTestAbstract admits the exact mixed anyref/funcref/externref tables
+	// and nullable externref public parameter of the official abstract product.
+	gcRefTestAbstract bool
 	gcStructPacked    bool
 	gcStructBasic     bool
 }
@@ -140,6 +143,13 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	}
 	if types.gcRefTestConcrete && (heap == wasm.AbsHeap(wasm.HeapStruct) || heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && heap.Type().Index < 8) {
 		return true
+	}
+	if types.gcRefTestAbstract && heap.Kind() == wasm.HeapAbs {
+		switch heap.Abs() {
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray,
+			wasm.HeapNone, wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
+			return true
+		}
 	}
 	if types.gcArrayFixedOfficial || types.gcArrayPackedData || types.gcArrayReference || types.gcArrayInitElem || types.gcArrayInitData || types.gcArrayFill || types.gcArrayCopy {
 		if heap == wasm.AbsHeap(wasm.HeapArray) {

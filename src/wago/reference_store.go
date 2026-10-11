@@ -872,17 +872,25 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	if in == nil || in.c == nil {
 		return true
 	}
-	for tableIndex := 0; tableIndex < in.c.tableCount(); tableIndex++ {
-		if !isGCRefValType(in.c.tableElementType(tableIndex)) {
-			continue
-		}
-		desc := in.tableDescriptor(tableIndex)
-		if len(desc) < 8 {
-			panic(gcHelperFailuref("generic GC table %d descriptor is unavailable", tableIndex))
-		}
-		roots := gcNativeTableRoots{desc: uintptr(unsafe.Pointer(&desc[0])), bytes: uintptr(len(desc))}
-		if !roots.walk(fn, sink) {
-			return false
+	// The exact abstract ref.test product registers compact collector slots
+	// separately. Its physical anyref descriptor can also contain bounded
+	// foreign conversion identities, which are not collector references and
+	// therefore must never be scanned as raw roots. Other qualified products
+	// retain their established descriptor walk as an additional transient root
+	// source during helper publication.
+	if !rv64GCRefTestAbstract(in.c) {
+		for tableIndex := 0; tableIndex < in.c.tableCount(); tableIndex++ {
+			if !isGCRefValType(in.c.tableElementType(tableIndex)) {
+				continue
+			}
+			desc := in.tableDescriptor(tableIndex)
+			if len(desc) < 8 {
+				panic(gcHelperFailuref("generic GC table %d descriptor is unavailable", tableIndex))
+			}
+			roots := gcNativeTableRoots{desc: uintptr(unsafe.Pointer(&desc[0])), bytes: uintptr(len(desc))}
+			if !roots.walk(fn, sink) {
+				return false
+			}
 		}
 	}
 	passiveBase := in.jm.PassiveElemPtr()

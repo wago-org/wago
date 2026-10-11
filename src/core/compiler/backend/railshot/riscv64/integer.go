@@ -79,6 +79,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcStructMutation = state.gcStructMutation
 		referenceTypes.gcRefTestTable = state.gcRefTestTable
 		referenceTypes.gcRefTestConcrete = state.gcRefTestConcrete
+		referenceTypes.gcRefTestAbstract = state.gcRefTestAbstract
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 	}
@@ -770,7 +771,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				abstractNull := state.gcRefTestAbstract && (heap == -13 || heap == -14 || heap == -15 || heap == -16 || heap == -17 || heap == -18 || heap == -21)
+				if heap != -16 && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -892,7 +894,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
-					if op == 0x26 && (state.gcRefTestTable || state.gcRefTestConcrete) {
+					gcTableSet := op == 0x26 && (state.gcRefTestTable || state.gcRefTestConcrete || state.gcRefTestAbstract && idx != 1)
+					if gcTableSet {
 						emit.gcObjectTableSet(h, idx)
 					} else {
 						emit.Load(5, emit.SpillOffset(h), tableWide)
@@ -905,7 +908,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 							emit.a.Ld(enc.X5, enc.X6, 24)
 						}
 						emit.Store(emit.SpillOffset(h), 5, true)
-					} else if !state.gcRefTestTable && !state.gcRefTestConcrete {
+					} else if !gcTableSet {
 						if compactReference {
 							emit.a.Sd(enc.X28, enc.X6, 0)
 						} else {
@@ -1549,7 +1552,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructNewDefault:
-				refTestTableNew := state.gcRefTestTable && (imm.Index == 1 || imm.Index == 2) || state.gcRefTestConcrete && imm.Index < 8
+				refTestTableNew := state.gcRefTestTable && (imm.Index == 1 || imm.Index == 2) || state.gcRefTestConcrete && imm.Index < 8 || state.gcRefTestAbstract && imm.Index == 1
 				if !refTestTableNew && ((!state.gcRefEq && !state.gcStructGet && !state.gcStructMutation && !state.gcStructBasic) || imm.Index != 0) {
 					return integerSummary{}, unsupported("struct.new_default outside exact GC profile")
 				}
@@ -1663,7 +1666,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewDefault:
-				if (!state.gcRefEq && !state.gcArrayLocal && !state.gcArrayFixedOfficial && !state.gcArrayInitDataWide) || (state.gcRefEq && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1) || (state.gcArrayInitDataWide && imm.Index > 1) {
+				if (!state.gcRefEq && !state.gcRefTestAbstract && !state.gcArrayLocal && !state.gcArrayFixedOfficial && !state.gcArrayInitDataWide) || (state.gcRefEq && imm.Index != 2) || (state.gcRefTestAbstract && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1) || (state.gcArrayInitDataWide && imm.Index > 1) {
 					return integerSummary{}, unsupported("array.new_default outside exact GC profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -1908,23 +1911,82 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if err = push(false); err != nil {
 					return integerSummary{}, err
 				}
+			case wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+				if !state.gcRefTestAbstract {
+					return integerSummary{}, unsupported("reference conversion outside exact abstract ref.test profile")
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					helper := uint32(gcAnyConvertExtern)
+					if imm.Kind == wasm.InstrExternConvertAny {
+						helper = gcExternConvertAny
+					}
+					emit.gcObjectConversion(h, helper)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
 			case wasm.InstrRefTest:
 				concreteHeap := state.gcRefTestConcrete && imm.HasHeapType && (imm.HeapType == wasm.AbsHeap(wasm.HeapStruct) || imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8)
 				tableHeap := state.gcRefTestTable && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index <= 2
-				if concreteHeap || tableHeap {
+				abstractHeap := state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs
+				if abstractHeap {
+					switch imm.HeapType.Abs() {
+					case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone, wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
+					default:
+						abstractHeap = false
+					}
+				}
+				if concreteHeap || tableHeap || abstractHeap {
 					if _, err = popClass(true); err != nil {
 						return integerSummary{}, err
 					}
-					callCount++
-					if callCount > maxDirectCalls {
-						return integerSummary{}, unsupported("GC helper call count/slot budget")
+					heap := int64(0)
+					if imm.HeapType.Kind() == wasm.HeapTypeIndex {
+						heap = int64(imm.HeapType.Type().Index)
+					} else {
+						switch imm.HeapType.Abs() {
+						case wasm.HeapNone:
+							heap = -15
+						case wasm.HeapAny:
+							heap = -18
+						case wasm.HeapEq:
+							heap = -19
+						case wasm.HeapI31:
+							heap = -20
+						case wasm.HeapStruct:
+							heap = -21
+						case wasm.HeapArray:
+							heap = -22
+						case wasm.HeapFunc:
+							heap = -16
+						case wasm.HeapNoFunc:
+							heap = -13
+						case wasm.HeapExtern:
+							heap = -17
+						case wasm.HeapNoExtern:
+							heap = -14
+						}
+					}
+					objectHeap := concreteHeap || tableHeap || heap == -15 || heap <= -18
+					if objectHeap {
+						callCount++
+						if callCount > maxDirectCalls {
+							return integerSummary{}, unsupported("GC helper call count/slot budget")
+						}
 					}
 					if live && emit != nil {
-						heap := int64(imm.HeapType.Type().Index)
-						if imm.HeapType == wasm.AbsHeap(wasm.HeapStruct) {
-							heap = -21
+						if objectHeap {
+							emit.gcObjectRefTest(h, heap, imm.Subopcode == 21)
+						} else {
+							emit.abstractReferenceTest(h, heap, imm.Subopcode == 21)
 						}
-						emit.gcObjectRefTest(h, heap, imm.Subopcode == 21)
 					}
 					if err = push(false); err != nil {
 						return integerSummary{}, err
@@ -2334,6 +2396,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcStructMutation = state.gcStructMutation
 		referenceTypes.gcRefTestTable = state.gcRefTestTable
 		referenceTypes.gcRefTestConcrete = state.gcRefTestConcrete
+		referenceTypes.gcRefTestAbstract = state.gcRefTestAbstract
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
 	}

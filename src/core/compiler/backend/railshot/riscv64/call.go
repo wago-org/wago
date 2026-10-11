@@ -27,6 +27,8 @@ const (
 	gcStructGetU         uint32 = 5
 	gcStructRefTest      uint32 = 6
 	gcStructTableSet     uint32 = 7
+	gcAnyConvertExtern   uint32 = 8
+	gcExternConvertAny   uint32 = 9
 	gcStructAllocOne     uint32 = 11
 	gcArrayAllocDefault  uint32 = 16
 	gcArrayGet           uint32 = 17
@@ -496,6 +498,39 @@ func (f *integerEmitter) gcObjectRefTest(base int, heap int64, nullable bool) {
 		result = enc.X13
 	}
 	f.a.Lwu(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, false)
+}
+
+func (f *integerEmitter) gcObjectConversion(base int, helper uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
+}
+
+func (f *integerEmitter) abstractReferenceTest(base int, heap int64, nullable bool) {
+	f.Load(5, f.SpillOffset(base), true)
+	switch heap {
+	case -13, -14: // Nullable bottom types contain only null; non-null bottom is empty.
+		if nullable {
+			f.a.Sltiu(enc.X5, enc.X5, 1)
+		} else {
+			f.a.Constant32(enc.X5, 0)
+		}
+	case -16, -17: // func/extern contain every value in their source hierarchy.
+		if nullable {
+			f.a.Constant32(enc.X5, 1)
+		} else {
+			f.a.Sltu(enc.X5, enc.Zero, enc.X5)
+		}
+	}
 	f.Store(f.SpillOffset(base), 5, false)
 }
 
