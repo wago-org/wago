@@ -137,6 +137,9 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 		}
 	}
 	for i, global := range m.Globals {
+		if i == 0 && admitRV64I31OfficialGlobalInitializer(m) {
+			continue
+		}
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
 			hasReferenceGlobal = true
 			if err := admitLocalFunctionGlobal(global, m, m.ImportedGlobalCount()+i, localMutableReferences); err != nil {

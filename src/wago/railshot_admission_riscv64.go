@@ -83,7 +83,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c != nil && c.stagedGCI31Product() != 0 && !rv64I31Core(c) {
 		return reject("i31 execution product requires its exact retained image")
 	}
-	typedI31 := rv64I31OfficialCore(c) || rv64I31OfficialTableGlobalInitializer(c)
+	typedI31 := rv64I31OfficialCore(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c)
 	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
 	if rv64Core3RefIsNullExecutionCode(c) && !exactCore3RefIsNull {
 		return reject("Core 3 ref.is_null image requires its exact retained metadata")
