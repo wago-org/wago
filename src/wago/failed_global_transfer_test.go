@@ -195,3 +195,138 @@ func TestFailedInstantiationTransfersImportedGlobalRoots(t *testing.T) {
 		_ = rt.Close()
 	})
 }
+
+func TestFailedInstantiationTransfersTableProducerToImportedGlobal(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	ownerModule, err := rt.Compile(watToWasmCA(t, `(module
+		(type $f (func (result i32)))
+		(table (export "table") 1 funcref)
+		(func $target (type $f) (result i32) (i32.const 73))
+		(elem (i32.const 0) func $target))`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ownerModule.Close()
+	owner, err := rt.Instantiate(context.Background(), ownerModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	table, err := owner.ExportedTable("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	global, err := rt.NewFuncRefGlobal(NullFuncRef(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer global.Close()
+	failedCode := MustCompile(watToWasmCA(t, `(module
+		(import "env" "table" (table 1 funcref))
+		(import "env" "global" (global (mut funcref)))
+		(func $start
+			(global.set 0 (table.get 0 (i32.const 0)))
+			unreachable)
+		(start $start))`))
+	defer failedCode.Close()
+	if in, err := Instantiate(failedCode, InstantiateOptions{
+		Imports: testImports("env.table", table, "env.global", global), store: rt.refStore,
+	}); err == nil || in != nil {
+		t.Fatalf("start-trap instantiate = %p, %v", in, err)
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !owner.hasPhysicalResources() {
+		t.Fatal("table producer released while the imported global holds its descriptor")
+	}
+	callerModule, err := rt.Compile(funcrefGlobalCallerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer callerModule.Close()
+	caller, err := rt.Instantiate(context.Background(), callerModule, WithImports(testImports("env.global", global)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := caller.InvokeValues(context.Background(), "call")
+	if err != nil || len(got) != 1 || got[0].I32() != 73 {
+		t.Fatalf("call retained table reference = %v, %v; want 73", got, err)
+	}
+	if err := caller.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := global.SetValue(ValueFuncRef(NullFuncRef())); err != nil {
+		t.Fatal(err)
+	}
+	scanGlobalAfterOverwrite(t, rt, global)
+	if owner.hasPhysicalResources() {
+		t.Fatal("table producer remained live after the global descriptor was cleared")
+	}
+}
+
+func TestFailedImportedStartKeepsActiveTableFuncref(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	table, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+	failedCode := MustCompile(watToWasmCA(t, `(module
+		(type $f (func (result i32)))
+		(import "env" "table" (table 1 funcref))
+		(import "env" "fail" (func $fail))
+		(func $target (type $f) (result i32) (i32.const 73))
+		(elem (i32.const 0) func $target)
+		(start $fail))`))
+	defer failedCode.Close()
+	start := slotHostFunc(func(HostModule, []uint64, []uint64) { panic(HostExit{Code: 7}) })
+	if in, err := Instantiate(failedCode, InstantiateOptions{
+		Imports: testImports("env.table", table, "env.fail", start), store: rt.refStore,
+	}); err == nil || in != nil {
+		t.Fatalf("imported start exit = %p, %v; want failed instance", in, err)
+	}
+	table.mu.Lock()
+	var failed *Instance
+	for root := range table.retained {
+		failed = root
+	}
+	table.mu.Unlock()
+	if failed == nil || !failed.hasPhysicalResources() {
+		t.Fatal("active table funcref did not retain the failed instance")
+	}
+	callerModule, err := rt.Compile(watToWasmCA(t, `(module
+		(type $f (func (result i32)))
+		(import "env" "table" (table 1 funcref))
+		(func (export "call") (result i32)
+			(call_indirect (type $f) (i32.const 0))))`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer callerModule.Close()
+	caller, err := rt.Instantiate(context.Background(), callerModule, WithImports(testImports("env.table", table)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := caller.InvokeValues(context.Background(), "call")
+	if err != nil || len(got) != 1 || got[0].I32() != 73 {
+		t.Fatalf("call retained active table reference = %v, %v; want 73", got, err)
+	}
+	if err := caller.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if failed.hasPhysicalResources() {
+		t.Fatal("failed instance remained live after table closed")
+	}
+}

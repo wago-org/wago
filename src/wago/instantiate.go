@@ -1756,6 +1756,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		in.refStore = conversionStore
 	}
+	if opts.runtime == nil {
+		// Active segments and start calls may leave local funcrefs in imported
+		// containers even when instantiation fails. Every failure after this point
+		// must transfer their producer lifetime before rollback detaches imports.
+		defer func() {
+			if !b.success && retainProducerRootsInImportedContainersForFinalization(in) {
+				b.success = true
+				_ = in.Close()
+			}
+		}()
+	}
 	if needsExternConversion {
 		if in.refStore == nil || gcExternConversion == nil || gcRefTestTable == nil {
 			return nil, errors.New("GC extern conversion ownership is unavailable")
@@ -1765,14 +1776,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 	if initErr != nil {
-		if opts.runtime == nil {
-			tableRetained := retainProducerRootsInImportedTables(in)
-			globalRetained := retainProducerRootsInImportedGlobals(in)
-			if tableRetained || globalRetained {
-				b.success = true
-				_ = in.Close()
-			}
-		}
 		return nil, initErr
 	}
 	if opts.afterCreate != nil {
@@ -1835,14 +1838,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				// becomes the failed instance's lifetime owner. The table prunes roots
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
-				if opts.runtime == nil {
-					tableRetained := retainProducerRootsInImportedTables(in)
-					globalRetained := retainProducerRootsInImportedGlobals(in)
-					if tableRetained || globalRetained {
-						b.success = true
-						_ = in.Close()
-					}
-				}
 				return nil, wrapContextError("start function trapped", startErr)
 			}
 		}

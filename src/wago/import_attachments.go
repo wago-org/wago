@@ -240,10 +240,10 @@ func detachImportedGlobals(in *Instance) {
 }
 
 func retainProducerRootsInImportedGlobals(in *Instance) bool {
-	return retainProducerRootsInImportedGlobalsMode(in, false)
+	return retainProducerRootsInImportedGlobalsMode(in, false, nil)
 }
 
-func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) bool {
+func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, pass *importedContainerFinalizationPass) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
@@ -276,7 +276,11 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 			}
 		}
 		if !rootsLoaded {
-			roots = importedFuncrefProducerRoots(in)
+			if pass != nil {
+				roots = pass.roots
+			} else {
+				roots = importedFuncrefProducerRoots(in)
+			}
 			rootsLoaded = true
 		}
 		for _, producer := range roots {
@@ -289,7 +293,11 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 			}
 		}
 		if rooted {
-			in.transferImportedGlobalAttachment(provided.Global)
+			if pass != nil {
+				pass.globals.add(provided.Global)
+			} else {
+				in.transferImportedGlobalAttachment(provided.Global)
+			}
 			retained = true
 		}
 	}
@@ -369,14 +377,15 @@ func detachImportedTables(in *Instance) {
 }
 
 func retainProducerRootsInImportedTables(in *Instance) bool {
-	return retainProducerRootsInImportedTablesMode(in, false)
+	return retainProducerRootsInImportedTablesMode(in, false, nil)
 }
 
-func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bool {
+func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool, pass *importedContainerFinalizationPass) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
 	retained := false
+	var seen importDedup[*Table]
 	// Each table handles the writer directly; source roots can be reused.
 	var roots []*Instance
 	rootsLoaded := false
@@ -384,6 +393,11 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if !ok || table == nil {
+			continue
+		}
+		// Finalization transfers each imported table only once. The ordinary
+		// retention pass keeps its small-import and large-table scan costs.
+		if finalization && !seen.add(table) {
 			continue
 		}
 		var rooted bool
@@ -403,7 +417,11 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		// forward every source container's actual producer roots, while the store
 		// resolver above covers still-live token and canonical descriptor owners.
 		if !rootsLoaded {
-			roots = importedFuncrefProducerRoots(in)
+			if pass != nil {
+				roots = pass.roots
+			} else {
+				roots = importedFuncrefProducerRoots(in)
+			}
 			rootsLoaded = true
 		}
 		for _, producer := range roots {
@@ -416,9 +434,16 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 			}
 		}
 		if rooted {
-			in.transferImportedTableAttachment(table)
-			if owner := table.instanceOwner(); owner != nil && transferredOwners.add(owner) {
-				in.transferImportedAttachmentsFromOwner(owner)
+			if pass != nil {
+				pass.tables.add(table)
+				if owner := table.instanceOwner(); owner != nil {
+					pass.owners.add(owner)
+				}
+			} else {
+				in.transferImportedTableAttachment(table)
+				if owner := table.instanceOwner(); owner != nil && transferredOwners.add(owner) {
+					in.transferImportedAttachmentsFromOwner(owner)
+				}
 			}
 			retained = true
 		}
@@ -426,11 +451,28 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 	return retained
 }
 
+// Finalization retains all destinations before any import attachment is handed
+// over. Until transfer, the importer pins each source container and its roots.
+type importedContainerFinalizationPass struct {
+	roots   []*Instance
+	tables  importDedup[*Table]
+	globals importDedup[*Global]
+	owners  importDedup[*Instance]
+}
+
 // Discover descriptor owners in every imported funcref container before any
 // destination transfers an import attachment. A root first resolved in a later
 // table or global may be the only producer for an earlier unresolved descriptor.
-// The retention passes then reuse one complete source-root snapshot.
+// The retention passes then share one source-root snapshot. Transfers occur only
+// after every destination has retained its roots, so concurrent closes cannot
+// release a producer between destinations.
 func retainProducerRootsInImportedContainersForFinalization(in *Instance) bool {
+	return retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in, nil)
+}
+
+// beforeTransfer is a test seam for checking that imported containers remain
+// pinned after retention and before the deferred attachment handover.
+func retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in *Instance, beforeTransfer func()) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
@@ -453,9 +495,19 @@ func retainProducerRootsInImportedContainersForFinalization(in *Instance) bool {
 				provided.Global.retainDescriptorOwnerForFinalization(in.refStore, in)
 			}
 		}
+		pass := importedContainerFinalizationPass{roots: importedFuncrefProducerRoots(in)}
+		retainedTables := retainProducerRootsInImportedTablesMode(in, true, &pass)
+		retainedGlobals := retainProducerRootsInImportedGlobalsMode(in, true, &pass)
+		if beforeTransfer != nil {
+			beforeTransfer()
+		}
+		pass.tables.each(in.transferImportedTableAttachment)
+		pass.globals.each(in.transferImportedGlobalAttachment)
+		pass.owners.each(in.transferImportedAttachmentsFromOwner)
+		return retainedTables || retainedGlobals
 	}
-	retainedTables := retainProducerRootsInImportedTablesMode(in, true)
-	retainedGlobals := retainProducerRootsInImportedGlobalsMode(in, true)
+	retainedTables := retainProducerRootsInImportedTablesMode(in, true, nil)
+	retainedGlobals := retainProducerRootsInImportedGlobalsMode(in, true, nil)
 	return retainedTables || retainedGlobals
 }
 
