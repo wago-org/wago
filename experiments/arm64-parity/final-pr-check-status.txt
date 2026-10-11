@@ -1,0 +1,2 @@
+full regalloc: FAIL (see final-pr-regalloc.txt)
+source plain, bench tests, diagnostics, spec v2 and both-bounds exact images: PASS
