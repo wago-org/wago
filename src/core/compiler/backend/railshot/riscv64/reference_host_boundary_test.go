@@ -5,6 +5,7 @@ package riscv64
 import (
 	"bytes"
 	"crypto/sha256"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -34,7 +35,7 @@ func publicHostReferenceBoundarySource(types []wasm.ValType, tail ...bool) []byt
 	)
 }
 
-func publicDynamicHostReferenceBoundarySource() []byte {
+func publicDynamicHostReferenceBoundarySource(ordinary ...bool) []byte {
 	types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}
 	callerTypes := append(slices.Clone(types), wasm.I32)
 	im := append(append(wasmtest.Name("env"), wasmtest.Name("target")...), 0, 0)
@@ -43,11 +44,15 @@ func publicDynamicHostReferenceBoundarySource() []byte {
 		args = append(args, 0x20, byte(i))
 	}
 	identity := append(slices.Clone(args), 0x0b)
+	opcode := byte(0x15)
+	if len(ordinary) != 0 && ordinary[0] {
+		opcode = 0x14
+	}
 	body := []byte{0x20, byte(len(types)), 0x04, 3}
 	body = append(body, args...)
-	body = append(body, 0xd0, 2, 0x15, 2, 0x05)
+	body = append(body, 0xd0, 2, opcode, 2, 0x05)
 	body = append(body, args...)
-	body = append(body, 0xd2, 0, 0x15, 2, 0x0b, 0x0b)
+	body = append(body, 0xd2, 0, opcode, 2, 0x0b, 0x0b)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(callerTypes, types), wasmtest.FuncType(types, types), wasmtest.FuncType(nil, types))),
 		wasmtest.Section(2, wasmtest.Vec(im)),
@@ -59,29 +64,40 @@ func publicDynamicHostReferenceBoundarySource() []byte {
 }
 
 func TestPublicDynamicHostReferenceBoundaryAdmission(t *testing.T) {
-	source := publicDynamicHostReferenceBoundarySource()
-	if len(source) != 174 || sha256.Sum256(source) != publicDynamicHostReferenceBoundaryDigest || !admitPublicDynamicHostReferenceBoundaryWire(source) || AdmitProductionSource(source) != nil {
-		t.Fatal("canonical dynamic host reference source was not admitted", len(source), sha256.Sum256(source))
-	}
-	m, err := wasm.DecodeModule(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !admitPublicDynamicHostReferenceBoundary(m) || !admitPublicReferenceCarrierBoundary(m) {
-		t.Fatal("canonical dynamic host reference module was not recognized")
-	}
-	opts := closedReferenceProductionOptions(true, true)
-	opts.ImportBindings = hostImportBindings(1)
-	image, err := CompileModuleWith(m, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if image == nil || image.NativeTail == nil || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || len(image.NativeTail.Plans) != 2 {
-		t.Fatal("dynamic host reference compiler witnesses", image)
-	}
-	want := []enc.NativeTailPlan{{Kind: enc.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 19, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}, {Kind: enc.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 36, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}}
-	if !slices.Equal(image.NativeTail.Plans, want) {
-		t.Fatal("dynamic host reference compiler plans", image.NativeTail.Plans)
+	for _, ordinary := range []bool{false, true} {
+		t.Run(fmt.Sprintf("ordinary%t", ordinary), func(t *testing.T) {
+			source := publicDynamicHostReferenceBoundarySource(ordinary)
+			digest := publicDynamicHostReferenceTailBoundaryDigest
+			if ordinary {
+				digest = publicDynamicHostReferenceCallBoundaryDigest
+			}
+			if len(source) != 174 || sha256.Sum256(source) != digest || !admitPublicDynamicHostReferenceBoundaryWire(source) || AdmitProductionSource(source) != nil {
+				t.Fatal("canonical dynamic host reference source was not admitted", len(source), sha256.Sum256(source))
+			}
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !admitPublicDynamicHostReferenceBoundary(m) || !admitPublicReferenceCarrierBoundary(m) {
+				t.Fatal("canonical dynamic host reference module was not recognized")
+			}
+			opts := closedReferenceProductionOptions(!ordinary, true)
+			opts.ImportBindings = hostImportBindings(1)
+			image, err := CompileModuleWith(m, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if image == nil || (image.NativeTail != nil) == ordinary || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+				t.Fatal("dynamic host reference compiler witnesses", image)
+			}
+			if ordinary {
+				return
+			}
+			want := []enc.NativeTailPlan{{Kind: enc.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 19, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}, {Kind: enc.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 36, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}}
+			if !slices.Equal(image.NativeTail.Plans, want) {
+				t.Fatal("dynamic host reference compiler plans", image.NativeTail.Plans)
+			}
+		})
 	}
 }
 
