@@ -40,8 +40,17 @@ The first six official `gc/type-subtyping` modules now have exact source and
 compiler-free artifact admission for their declaration-only array, struct,
 function, self-recursive, and mutually recursive subtype graphs. Retained
 type/descriptor metadata is validated exactly, while instantiation allocates
-neither executable memory nor a collector. Recursive execution and
-cross-instance subtype boundaries remain closed for later checkpoints.
+neither executable memory nor a collector. The two immediately following
+official modules now form a separate exact RV64 recursive-function checkpoint:
+three private reference-typed functions receive framed direct-call code across
+self- and mutually recursive declared function groups. Exact source and
+compiler-free artifact classifiers bind the flattened type graph, descriptor
+graph, function/type keys, entries, features, ABI flags, and code digest before
+executable publication. Instantiation is collector-free, and close tests cover
+the mapped-code lease. Because neither module exports a function, this is not
+evidence for a public recursive-call result. Functional qualification is under
+baseline QEMU RV64G; native cache and performance qualification remain open.
+Cross-instance subtype boundaries remain closed for later checkpoints.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

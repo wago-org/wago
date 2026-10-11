@@ -83,6 +83,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcBrOnCastNullability = state.gcBrOnCastNullability
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
+		referenceTypes.gcTypeSubtypingRecursiveFunctions = state.gcTypeSubtypingRecursiveFunctions
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -2570,6 +2571,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcBrOnCastNullability = state.gcBrOnCastNullability
 		referenceTypes.gcStructPacked = state.gcStructPacked
 		referenceTypes.gcStructBasic = state.gcStructBasic
+		referenceTypes.gcTypeSubtypingRecursiveFunctions = state.gcTypeSubtypingRecursiveFunctions
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

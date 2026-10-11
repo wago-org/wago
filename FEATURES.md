@@ -65,7 +65,16 @@ declaration-only products. Their array, struct, function, self-recursive, and
 mutually recursive subtype graphs, including mutable fields, indexed
 supertypes, and nullable/non-null reference variance, survive source and
 compiler-free artifact validation without executable code, mappings, or
-collector allocation. Other `gc/type-subtyping` module shapes remain
+collector allocation. The next two official modules are separate exact
+recursive-function products. Their three private reference-typed functions use
+genuine framed RV64 direct-call lowering across self- and mutually recursive
+function-type groups. Source and compiler-free artifacts pin the complete type
+graph, function bindings, entries, and native image before W^X publication;
+instantiation publishes and releases executable code without allocating a
+collector. They export no functions, so this checkpoint establishes lowering,
+publication, and lifetime correctness rather than a public call result. QEMU
+establishes functional correctness only; native cache and performance
+qualification remain pending. Other `gc/type-subtyping` module shapes remain
 fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,

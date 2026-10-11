@@ -33,7 +33,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	}
 	maxImportArity := coreruntime.MaxHostArity
 	vectorProfile := false
-	if opts.GCTypeSubtypingDeclarationsSource == 0 {
+	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 {
 		var err error
 		vectorProfile, err = railshot.UsesSWAR(m)
 		if err != nil {
@@ -139,6 +139,10 @@ func railshotGCBrOnCastFailNullabilitySource(data []byte) bool {
 
 func railshotGCTypeSubtypingDeclarationsSource(data []byte) uint8 {
 	return railshot.GCTypeSubtypingDeclarationsSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingRecursiveFunctionsSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingRecursiveFunctionsSourceVariant(data)
 }
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
@@ -255,6 +259,13 @@ func railshotConfigureGCBrOnCastFailNullability(exactSource bool, opts *railshot
 
 func railshotConfigureGCTypeSubtypingDeclarations(sourceVariant uint8, opts *railshotCompileOptions) {
 	opts.GCTypeSubtypingDeclarationsSource = sourceVariant
+}
+
+func railshotConfigureGCTypeSubtypingRecursiveFunctions(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRecursiveFunctionsSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = true
+	}
 }
 
 func railshotConfigureGCStructGet(exactSource bool, opts *railshotCompileOptions) {

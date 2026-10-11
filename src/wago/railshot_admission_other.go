@@ -38,6 +38,8 @@ func railshotGCBrOnCastFailNullabilitySource([]byte) bool                       
 func railshotConfigureGCBrOnCastFailNullability(bool, *railshotCompileOptions)          {}
 func railshotGCTypeSubtypingDeclarationsSource([]byte) uint8                            { return 0 }
 func railshotConfigureGCTypeSubtypingDeclarations(uint8, *railshotCompileOptions)       {}
+func railshotGCTypeSubtypingRecursiveFunctionsSource([]byte) uint8                      { return 0 }
+func railshotConfigureGCTypeSubtypingRecursiveFunctions(uint8, *railshotCompileOptions) {}
 func railshotGCStructGetSource([]byte) bool                                             { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)                        {}
 func railshotGCStructMutationSource([]byte) bool                                        { return false }

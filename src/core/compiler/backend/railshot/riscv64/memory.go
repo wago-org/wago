@@ -42,31 +42,32 @@ type moduleState struct {
 	publicReferenceCarriers            bool
 	publicDynamicHostReferenceCarriers bool
 	// Exact GC/i31 qualification profiles.
-	i31Core               bool
-	i31RefTest            bool
-	i31RefEq              bool
-	gcRefEq               bool
-	gcRefTestTable        bool
-	gcRefTestConcrete     bool
-	gcRefTestAbstract     bool
-	gcBrOnCastNullability bool
-	gcStructGet           bool
-	gcStructMutation      bool
-	gcStructNull          bool
-	gcStructPacked        bool
-	gcStructBasic         bool
-	gcStructGlobals       bool
-	gcArrayLocal          bool
-	gcArrayUniform        bool
-	gcArrayFixedLocal     bool
-	gcArrayFixedOfficial  bool
-	gcArrayPackedData     bool
-	gcArrayReference      bool
-	gcArrayInitElem       bool
-	gcArrayInitData       bool
-	gcArrayInitDataWide   bool
-	gcArrayFill           bool
-	gcArrayCopy           bool
+	i31Core                           bool
+	i31RefTest                        bool
+	i31RefEq                          bool
+	gcRefEq                           bool
+	gcRefTestTable                    bool
+	gcRefTestConcrete                 bool
+	gcRefTestAbstract                 bool
+	gcBrOnCastNullability             bool
+	gcStructGet                       bool
+	gcStructMutation                  bool
+	gcStructNull                      bool
+	gcStructPacked                    bool
+	gcStructBasic                     bool
+	gcStructGlobals                   bool
+	gcArrayLocal                      bool
+	gcArrayUniform                    bool
+	gcArrayFixedLocal                 bool
+	gcArrayFixedOfficial              bool
+	gcArrayPackedData                 bool
+	gcArrayReference                  bool
+	gcArrayInitElem                   bool
+	gcArrayInitData                   bool
+	gcArrayInitDataWide               bool
+	gcArrayFill                       bool
+	gcArrayCopy                       bool
+	gcTypeSubtypingRecursiveFunctions bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -209,6 +210,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
+	gcTypeSubtypingRecursiveFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
 	gcBrOnCastNullability := admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m)
@@ -430,23 +432,27 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			return s, unsupported("noninteger state export")
 		}
 	}
-	for i, rec := range m.Types {
-		ft := &rec.SubTypes[0].Comp
-		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-		if (s.ownedTable || s.importReferences) && !((gcTypeSubtypingDeclarations || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
-			var ok bool
-			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
-			if !ok {
-				return s, unsupported("bounded table signature identity")
+	flatTypeIndex := uint32(0)
+	for _, rec := range m.Types {
+		for subtypeIndex := range rec.SubTypes {
+			ft := &rec.SubTypes[subtypeIndex].Comp
+			fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
+			if (s.ownedTable || s.importReferences) && !((gcTypeSubtypingDeclarations || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+				var ok bool
+				fn.key, ok = m.StructuralTypeKeyChecked(flatTypeIndex)
+				if !ok {
+					return s, unsupported("bounded table signature identity")
+				}
 			}
+			for k, t := range ft.Params {
+				fn.params[k] = scalarWide(t) || gcTypeSubtypingRecursiveFunctions && t.Kind() == wasm.ValRef || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+			}
+			for k, t := range ft.Results {
+				fn.results[k] = scalarWide(t) || gcTypeSubtypingRecursiveFunctions && t.Kind() == wasm.ValRef || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+			}
+			s.types = append(s.types, fn)
+			flatTypeIndex++
 		}
-		for k, t := range ft.Params {
-			fn.params[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
-		}
-		for k, t := range ft.Results {
-			fn.results[k] = scalarWide(t) || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
-		}
-		s.types = append(s.types, fn)
 	}
 	if s.importedFunctions > MaxHostFunctionImports || s.importedFunctions+len(m.Code) > MaxFunctions {
 		return s, unsupported("aggregate function count bound")

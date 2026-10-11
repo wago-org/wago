@@ -1157,6 +1157,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	exactGCBrOnCastNullabilitySource := railshotGCBrOnCastNullabilitySource(wasmBytes)
 	exactGCBrOnCastFailNullabilitySource := railshotGCBrOnCastFailNullabilitySource(wasmBytes)
 	gcTypeSubtypingDeclarationsSourceVariant := railshotGCTypeSubtypingDeclarationsSource(wasmBytes)
+	gcTypeSubtypingRecursiveFunctionsSourceVariant := railshotGCTypeSubtypingRecursiveFunctionsSource(wasmBytes)
 	exactGCStructGetSource := railshotGCStructGetSource(wasmBytes)
 	exactGCStructMutationSource := railshotGCStructMutationSource(wasmBytes)
 	exactGCStructNullSource := railshotGCStructNullSource(wasmBytes)
@@ -1223,7 +1224,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// strict because it selects the collector-free function-identity lowering,
 		// but any module with that proven shape receives the same semantics.
 		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && gcTypeSubtypingDeclarationsSourceVariant != 0) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && gcTypeSubtypingDeclarationsSourceVariant != 0 || product == stagedGCTypeSubtypingRecursiveFunctions && gcTypeSubtypingRecursiveFunctionsSourceVariant != 0) {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcTypeSubtypingProduct = product
@@ -1272,7 +1273,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			gcI31Product = product
 		}
 	}
-	if features.GCI31Products && requiredByModule.IsEnabled(CoreFeatureGC) && gcI31Product == 0 && !moduleHasGCHeapType(m) {
+	if features.GCI31Products && requiredByModule.IsEnabled(CoreFeatureGC) && gcI31Product == 0 && gcTypeSubtypingProduct == 0 && !moduleHasGCHeapType(m) {
 		// Immediate i31 execution is complete and does not require a collector.
 		// Prefer the table/global initializer product when its structural proof
 		// succeeds; otherwise use the general non-allocating i31 lowering.
@@ -1425,6 +1426,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	railshotConfigureGCBrOnCastNullability(exactGCBrOnCastNullabilitySource, &compileOptions)
 	railshotConfigureGCBrOnCastFailNullability(exactGCBrOnCastFailNullabilitySource, &compileOptions)
 	railshotConfigureGCTypeSubtypingDeclarations(gcTypeSubtypingDeclarationsSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingRecursiveFunctions(gcTypeSubtypingRecursiveFunctionsSourceVariant, &compileOptions)
 	railshotConfigureGCStructGet(exactGCStructGetSource, &compileOptions)
 	railshotConfigureGCStructMutation(exactGCStructMutationSource, &compileOptions)
 	railshotConfigureGCStructNull(exactGCStructNullSource, &compileOptions)
@@ -3834,6 +3836,7 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	railshotRestoreGCBrOnCastNullabilityArtifact(decoded)
 	railshotRestoreGCBrOnCastFailNullabilityArtifact(decoded)
 	railshotRestoreGCTypeSubtypingDeclarationsArtifact(decoded)
+	railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(decoded)
 	railshotRestoreGCArrayFixedOfficialArtifact(decoded)
 	railshotRestoreGCStructPackedArtifact(decoded)
 	railshotRestoreGCStructBasicArtifact(decoded)

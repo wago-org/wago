@@ -33,7 +33,12 @@ func railshotRestoreGCBrOnCastNullabilityArtifact(*Compiled)       {}
 func railshotRestoreGCBrOnCastFailNullabilityArtifact(*Compiled)   {}
 func rv64GCTypeSubtypingDeclarations(*Compiled) bool               { return false }
 func railshotRestoreGCTypeSubtypingDeclarationsArtifact(*Compiled) {}
-func railshotRestoreGCRefCastAbstractArtifact(*Compiled)           {}
-func rv64GCRefCastConcrete(*Compiled) bool                         { return false }
-func rv64GCRefCastConcreteExecutionCode(*Compiled) bool            { return false }
-func railshotRestoreGCRefCastConcreteArtifact(*Compiled)           {}
+func rv64GCTypeSubtypingRecursiveFunctions(*Compiled) bool         { return false }
+func rv64GCTypeSubtypingRecursiveFunctionsExecutionCode(*Compiled) bool {
+	return false
+}
+func railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(*Compiled) {}
+func railshotRestoreGCRefCastAbstractArtifact(*Compiled)                 {}
+func rv64GCRefCastConcrete(*Compiled) bool                               { return false }
+func rv64GCRefCastConcreteExecutionCode(*Compiled) bool                  { return false }
+func railshotRestoreGCRefCastConcreteArtifact(*Compiled)                 {}

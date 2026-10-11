@@ -66,9 +66,10 @@ type internalReferenceTypes struct {
 	gcRefTestAbstract bool
 	// gcBrOnCastNullability additionally admits abstract anyref carriers and the
 	// single indexed empty-struct heap in the exact nullability products.
-	gcBrOnCastNullability bool
-	gcStructPacked        bool
-	gcStructBasic         bool
+	gcBrOnCastNullability             bool
+	gcStructPacked                    bool
+	gcStructBasic                     bool
+	gcTypeSubtypingRecursiveFunctions bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -133,6 +134,9 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	}
 	heap := ref.Heap()
 	if types.gcStructBasic && heap == wasm.AbsHeap(wasm.HeapAny) {
+		return true
+	}
+	if types.gcTypeSubtypingRecursiveFunctions && heap.Kind() == wasm.HeapTypeIndex {
 		return true
 	}
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {

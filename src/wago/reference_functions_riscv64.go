@@ -829,8 +829,10 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if err := c.validateImportModuleEnds(); err != nil {
 		return err
 	}
-	if err := rv64ValidateDeclaredControlTypes(c); err != nil {
-		return err
+	if !rv64GCTypeSubtypingRecursiveFunctions(c) {
+		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
+			return err
+		}
 	}
 	hasReferences := false
 	for i, sig := range c.Funcs {
