@@ -1,6 +1,23 @@
 # ARM64 retained changes after 37174169
 
-Apple M4 Max, arm64. Two general native-code optimizations are enabled by default after `37174169`. Each was measured against the actual pristine source compiler in reversed process order. These are focused comparisons, not a full timing sweep.
+Apple M4 Max, arm64. Five general optimizations are retained after `37174169`: guarded boolean XOR, taken zero branches, protected integer select reads, bounded branch indices and CSET boolean lineage. Each has exact semantic/native fixtures, a catalog option and an environment rollback. Focused timing and actual-source comparisons are recorded below; no full timing sweep was run.
+
+The final CSET change reuses the original comparison flags when a materialized boolean is later compared with zero for an integer select. It retains the original boolean value, proves the replaced comparison's flags dead, and preserves instruction count and memory access order. Its bounded scan shares the existing branch-target preflight and adds no function fields. [Decision, source, strict fixtures, all raw samples and profile](cset-lineage/README.md).
+
+| Final incremental CSET source comparison | Steady execution | Compilation |
+|---|---:|---:|
+| Polyline simplification | −18.86% | +1.14%, approximately 0.43µs |
+| Particle physics | −19.97% | +2.47%, approximately 0.56µs |
+| KMeans | −3.44% | +5.49%, approximately 4.15µs |
+| Prime implicants | +0.61% | +5.15%, approximately 2.30µs |
+| LibTomMath | −0.47% | −1.98% |
+| NanoSVG | +0.31% | +0.02% |
+
+These are six reversed 150ms source pairs against the preceding retained source, with common loop-memory-base enabled on both. The source comparison excludes bounded dispatch, whose only changed image is register VM; all compared images match their corresponding integrated versions. The two large-module compile costs observed in the first CSET prototype disappear after preflight mitigation. KMeans and prime-implicant compilation costs remain. Smaller execution movements receive no gain credit.
+
+The CSET addition changes 14 size-preserved images, all matching independently timed and qualified images. Its rollback restores every one of the preceding four-default images, including the existing 1224B register VM. All 148 exact contracts pass with default ON and rollback OFF in both bounds modes, and plain/diagnostic backend, catalog, encoder and runtime suites pass. [Qualified source image proof](cset-lineage/retained/native-proof.txt). Disable with `WAGO_ARM64_NO_CSET_LINEAGE=1` or its per-compilation option.
+
+The [focused ranking](next-20261011-retained-subset.md) incorporates fresh CSET captures for every affected image; older values are used only where the final image is unchanged. The complete historical database report remains intact. The following sections preserve the preceding four decisions and their measurements.
 
 | Optimization | Changed workload | Source-build steady exec | Source-build compile | Native size |
 |---|---|---:|---:|---:|
@@ -35,6 +52,8 @@ Only the register VM changes after `1bb0757b`, from 1232B to 1224B, exactly matc
 
 The isolated dispatch change repeats at −6.74% execution across ten300ms pairs and −4.19% against actual pristine source, with +1.60% target compile cost (approximately0.54µs). A final four150ms reversed source comparison of all four defaults confirms VM −7.26% paired/−7.33% pooled and ANF −10.45%/−10.07%. Compilation is VM +0.12%/+0.51%, ANF +2.69%/+2.18%, glob +3.14%/+2.62% and register allocation +0.51%/+0.29%; source-screen dispersion is retained. Glob's native image is unchanged, so its execution movement receives no gain credit. Register-allocation execution is +1.72% in this short source screen and gets a focused incremental selector check. [Latest source comparison](next-20261011-dispatch-cross-summary.md), [timed-image proof](next-20261011-dispatch-cross-native-proof.txt).
 
-The priority ranking now includes the four-default VM capture and updated source controls. Rollback is `WAGO_ARM64_NO_BOUNDED_BRANCH_INDEX=1` or its per-compilation option. The dispatch operand-read and CSET-lineage follow-ups remain separate experiments.
+The priority ranking includes the four-default VM capture and updated source controls. Rollback is `WAGO_ARM64_NO_BOUNDED_BRANCH_INDEX=1` or its per-compilation option. The dispatch operand-read experiment was rejected; CSET-lineage subsequently qualified as described above.
 
 The focused ten200ms selector control check leaves register allocation flat at −0.58% paired (IQR −2.89% to +1.68%), so the preceding +1.72% source movement did not repeat as an incremental selector cost. Components is +0.79% (−1.09% to +2.10%). Prime implicants has a possible small +1.57% paired cost (+0.30% to +2.87%), while its pooled ratio is −0.72%; no execution gain is credited to these controls. [Control dispersion and raw observations](next-20261011-select-control-summary.md).
+
+Wrapping experiments are archived with their source, strict checks, measurements and limitations: [dispatch operand read](../rejected-branch-index-read/README.md), [select condition read](../rejected-select-local-condition-read/README.md), [literal memory index](../rejected-literal-memory-index/README.md) and [widening dot product](../rejected-widening-dot/README.md). None of those prototypes is imported into production.

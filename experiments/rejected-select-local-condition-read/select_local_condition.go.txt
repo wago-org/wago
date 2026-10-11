@@ -1,0 +1,80 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var selectLocalConditionReadEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SELECT_LOCAL_CONDITION_READ") == "1"
+
+func matchingSelectedLocalRead(leaf, selected *elem) bool {
+	return leaf != nil && selected != nil && leaf.elemKind() == ekValue && selected.elemKind() == ekValue &&
+		leaf.st.kind == stLocalRef && selected.st.kind == stLocalRef &&
+		(leaf.st.typ == mtI32 || leaf.st.typ == mtI64) && leaf.st.typ == selected.st.typ && leaf.st.idx == selected.st.idx
+}
+
+// A concrete frame local read denotes its current value. Every local write
+// realizes earlier snapshots, so those become owned register/spill values and
+// cannot match. Only direct compare leaves are considered: no traversal, trap
+// motion or deferred arithmetic rewrite is involved.
+func (f *fn) trySelectLocalConditionRead(cond, a, b *elem, wide bool) bool {
+	if f.moduleEH || len(f.customInstructions) != 0 || !isFusableCompare(cond) {
+		return false
+	}
+	left := f.s.arg0(cond)
+	var right *elem
+	if cond.deferredOp() != opEqz {
+		right = f.s.arg1(cond)
+	}
+	if !matchingSelectedLocalRead(left, a) && !matchingSelectedLocalRead(left, b) &&
+		!matchingSelectedLocalRead(right, a) && !matchingSelectedLocalRead(right, b) {
+		return false
+	}
+	var aSource, bSource storage
+	if a.elemKind() == ekValue && a.st.kind == stLocalRef {
+		aSource = a.st
+	}
+	if b.elemKind() == ekValue && b.st.kind == stLocalRef {
+		bSource = b.st
+	}
+	originalPins := f.pinned
+	gcRoot := (a.elemKind() == ekValue && a.st.hasGCRoot()) || (b.elemKind() == ekValue && b.st.hasGCRoot())
+	aReg := f.materialize(a)
+	f.pinned = f.pinned.add(aReg)
+	bReg := f.materialize(b)
+	f.pinned = f.pinned.add(bReg)
+	loan := func(leaf *elem) {
+		if leaf == nil || leaf.elemKind() != ekValue || leaf.st.kind != stLocalRef {
+			return
+		}
+		reg := regNone
+		if aSource.kind == stLocalRef && leaf.st.typ == aSource.typ && leaf.st.idx == aSource.idx {
+			reg = aReg
+		} else if bSource.kind == stLocalRef && leaf.st.typ == bSource.typ && leaf.st.idx == bSource.idx {
+			reg = bReg
+		}
+		if reg == regNone {
+			return
+		}
+		if regallocCheckEnabled {
+			f.checkUse(leaf)
+		}
+		// The selected root remains the owner. This ephemeral read is borrowed
+		// and protected through CMP/CSEL; it never changes the local's home.
+		leaf.st.kind, leaf.st.reg = stLocalReg, reg
+		if regallocCheckEnabled {
+			f.checkUse(leaf)
+		}
+		f.stats.peep("select-local-condition-read")
+	}
+	loan(left)
+	loan(right)
+	cc := f.condenseToFlags(cond)
+	f.a.Csel(aReg, bReg, aReg, invertCond(cc), wide)
+	f.pinned = originalPins
+	f.release(bReg)
+	f.erase(b)
+	f.erase(a)
+	f.pushReg(aReg, mtI32OrWide(wide)).st.setGCRoot(gcRoot)
+	f.stats.peep("select-flags")
+	return true
+}

@@ -467,6 +467,7 @@ var catalog = []Definition{
 	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: []string{"arm64"}},
 	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},
 	{Name: "guarded-boolean-xor", Label: "Guarded boolean XOR", Description: "if-convert pure bounded integer boolean XOR regions after exact clobber proofs", Default: true, Architectures: []string{"arm64"}},
+	{Name: "cset-lineage", Label: "Boolean comparison flags", Description: "reuse unchanged flags through exact CSET boolean copies for bounded integer selects", Default: true, Architectures: []string{"arm64"}},
 	{Name: "integer-select-local-read", Label: "Integer select local reads", Description: "borrow protected integer operands for materialized local select sinks", Default: true, Architectures: []string{"arm64"}},
 	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: []string{"arm64"}},
 	{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: []string{"arm64"}},

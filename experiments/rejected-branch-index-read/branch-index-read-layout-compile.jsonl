@@ -1,0 +1,22 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: branch-index-read
+{"workload":"language-register-vm","phase":"compile","round":0,"on":false,"iterations":5743,"us":85.70969005746124}
+{"workload":"language-register-vm","phase":"compile","round":0,"on":true,"iterations":5743,"us":41.93801880550235}
+{"workload":"language-register-vm","phase":"compile","round":1,"on":true,"iterations":5743,"us":41.69155928956991}
+{"workload":"language-register-vm","phase":"compile","round":1,"on":false,"iterations":5743,"us":41.34655946369493}
+{"workload":"language-register-vm","phase":"compile","round":2,"on":false,"iterations":5743,"us":41.65965819258228}
+{"workload":"language-register-vm","phase":"compile","round":2,"on":true,"iterations":5743,"us":41.3471399965175}
+{"workload":"language-register-vm","phase":"compile","round":3,"on":true,"iterations":5743,"us":43.096283823785484}
+{"workload":"language-register-vm","phase":"compile","round":3,"on":false,"iterations":5743,"us":43.41657966219746}
+{"workload":"language-register-vm","phase":"compile","round":4,"on":false,"iterations":5743,"us":43.52329653491206}
+{"workload":"language-register-vm","phase":"compile","round":4,"on":true,"iterations":5743,"us":196.98453909106738}
+{"workload":"language-register-vm","phase":"compile","round":5,"on":true,"iterations":5743,"us":55.326012885251615}
+{"workload":"language-register-vm","phase":"compile","round":5,"on":false,"iterations":5743,"us":43.84758976144872}
+{"workload":"language-register-vm","phase":"compile","round":6,"on":false,"iterations":5743,"us":42.15784433223054}
+{"workload":"language-register-vm","phase":"compile","round":6,"on":true,"iterations":5743,"us":41.91432317604039}
+{"workload":"language-register-vm","phase":"compile","round":7,"on":true,"iterations":5743,"us":43.66997510012189}
+{"workload":"language-register-vm","phase":"compile","round":7,"on":false,"iterations":5743,"us":42.97825613790702}
+{"workload":"language-register-vm","phase":"compile","round":8,"on":false,"iterations":5743,"us":42.87285251610656}
+{"workload":"language-register-vm","phase":"compile","round":8,"on":true,"iterations":5743,"us":42.89167960995995}
+{"workload":"language-register-vm","phase":"compile","round":9,"on":true,"iterations":5743,"us":42.0152503917813}
+{"workload":"language-register-vm","phase":"compile","round":9,"on":false,"iterations":5743,"us":42.92130262928783}

@@ -1,0 +1,362 @@
+diff --git a/src/core/compiler/backend/railshot/arm64/driver.go b/src/core/compiler/backend/railshot/arm64/driver.go
+index 2d244315..3bb5a6f1 100644
+--- a/src/core/compiler/backend/railshot/arm64/driver.go
++++ b/src/core/compiler/backend/railshot/arm64/driver.go
+@@ -1142,6 +1142,9 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
+ 		return false
+ 	}
+ 	w := at.is64() || bt.is64()
++	if f.opt(optSelectLocalConditionRead) && f.trySelectLocalConditionRead(cond, aRoot, bRoot, w) {
++		return true
++	}
+ 	// Materialize both branches into owned registers BEFORE the compare: their loads
+ 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
+ 	// are pinned so condensing the compare's operands cannot spill them.
+diff --git a/src/core/compiler/backend/railshot/arm64/knobs.go b/src/core/compiler/backend/railshot/arm64/knobs.go
+index 2daca4e8..1e1b13f1 100644
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -63,6 +63,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
+ 	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+ 	optimization.Bind("single-negative-move32", &singleNegativeMove32Enabled),
+ 	optimization.Bind("select-source-read", &selectSourceReadEnabled),
++	optimization.Bind("select-local-condition-read", &selectLocalConditionReadEnabled),
+ 	optimization.Bind("select-sink-pure-guard", &selectSinkPureGuardEnabled),
+ 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
+ 	optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
+@@ -183,6 +184,8 @@ var (
+ 	optStackReg             = optimizationBindings.Option("stack-reg")
+ )
+ 
++var optSelectLocalConditionRead = optimizationBindings.Option("select-local-condition-read")
++
+ type KnobInfo = optimization.Info
+ type OptimizationSnapshot = optimization.Snapshot
+ type CodegenPolicy = shared.CodegenPolicy
+diff --git a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+index ae78e8e3..6a4d2e41 100644
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -84,6 +84,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
+ 
+ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
++		"select-local-condition-read",
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+ 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "dominated-indexed-key", "ordinary-shifted-immediate", "common-exit-compare", "borrowed-div-rem", "bounded-signed-quotient", "br-table-branch-vector", "regional-memory-read", "wide-reuse-pins",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read",
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index b68ff15c..faf04339 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -504,6 +504,7 @@ var catalog = []Definition{
+ 	both("inline", "Inlining", "inline eligible callees"),
+ 	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
+ 	both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),
++	{Name: "select-local-condition-read", Label: "Select private local condition reads", Description: "reuse a protected selected private local read in its immediate flags comparison", Experimental: true, Architectures: []string{"arm64"}},
+ }
+ 
+ func both(name, label, description string) Definition {
+diff --git a/src/core/compiler/backend/railshot/arm64/select_local_condition.go b/src/core/compiler/backend/railshot/arm64/select_local_condition.go
+new file mode 100644
+index 00000000..61ae3980
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/select_local_condition.go
+@@ -0,0 +1,80 @@
++//go:build arm64
++
++package arm64
++
++import "os"
++
++var selectLocalConditionReadEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_SELECT_LOCAL_CONDITION_READ") == "1"
++
++func matchingSelectedLocalRead(leaf, selected *elem) bool {
++	return leaf != nil && selected != nil && leaf.elemKind() == ekValue && selected.elemKind() == ekValue &&
++		leaf.st.kind == stLocalRef && selected.st.kind == stLocalRef &&
++		(leaf.st.typ == mtI32 || leaf.st.typ == mtI64) && leaf.st.typ == selected.st.typ && leaf.st.idx == selected.st.idx
++}
++
++// A concrete frame local read denotes its current value. Every local write
++// realizes earlier snapshots, so those become owned register/spill values and
++// cannot match. Only direct compare leaves are considered: no traversal, trap
++// motion or deferred arithmetic rewrite is involved.
++func (f *fn) trySelectLocalConditionRead(cond, a, b *elem, wide bool) bool {
++	if f.moduleEH || len(f.customInstructions) != 0 || !isFusableCompare(cond) {
++		return false
++	}
++	left := f.s.arg0(cond)
++	var right *elem
++	if cond.deferredOp() != opEqz {
++		right = f.s.arg1(cond)
++	}
++	if !matchingSelectedLocalRead(left, a) && !matchingSelectedLocalRead(left, b) &&
++		!matchingSelectedLocalRead(right, a) && !matchingSelectedLocalRead(right, b) {
++		return false
++	}
++	var aSource, bSource storage
++	if a.elemKind() == ekValue && a.st.kind == stLocalRef {
++		aSource = a.st
++	}
++	if b.elemKind() == ekValue && b.st.kind == stLocalRef {
++		bSource = b.st
++	}
++	originalPins := f.pinned
++	gcRoot := (a.elemKind() == ekValue && a.st.hasGCRoot()) || (b.elemKind() == ekValue && b.st.hasGCRoot())
++	aReg := f.materialize(a)
++	f.pinned = f.pinned.add(aReg)
++	bReg := f.materialize(b)
++	f.pinned = f.pinned.add(bReg)
++	loan := func(leaf *elem) {
++		if leaf == nil || leaf.elemKind() != ekValue || leaf.st.kind != stLocalRef {
++			return
++		}
++		reg := regNone
++		if aSource.kind == stLocalRef && leaf.st.typ == aSource.typ && leaf.st.idx == aSource.idx {
++			reg = aReg
++		} else if bSource.kind == stLocalRef && leaf.st.typ == bSource.typ && leaf.st.idx == bSource.idx {
++			reg = bReg
++		}
++		if reg == regNone {
++			return
++		}
++		if regallocCheckEnabled {
++			f.checkUse(leaf)
++		}
++		// The selected root remains the owner. This ephemeral read is borrowed
++		// and protected through CMP/CSEL; it never changes the local's home.
++		leaf.st.kind, leaf.st.reg = stLocalReg, reg
++		if regallocCheckEnabled {
++			f.checkUse(leaf)
++		}
++		f.stats.peep("select-local-condition-read")
++	}
++	loan(left)
++	loan(right)
++	cc := f.condenseToFlags(cond)
++	f.a.Csel(aReg, bReg, aReg, invertCond(cc), wide)
++	f.pinned = originalPins
++	f.release(bReg)
++	f.erase(b)
++	f.erase(a)
++	f.pushReg(aReg, mtI32OrWide(wide)).st.setGCRoot(gcRoot)
++	f.stats.peep("select-flags")
++	return true
++}
+diff --git a/src/core/compiler/backend/railshot/arm64/select_local_condition_arm64_test.go b/src/core/compiler/backend/railshot/arm64/select_local_condition_arm64_test.go
+new file mode 100644
+index 00000000..1ccfe8b3
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/select_local_condition_arm64_test.go
+@@ -0,0 +1,211 @@
++//go:build arm64
++
++package arm64
++
++import (
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++// The wide, loop-free table gives these sources canonical frame homes. Regional
++// pinning is disabled explicitly so the fixtures exercise actual load reuse.
++func selectConditionOptions(on, guard bool, stats *ModuleStats) CompileOptions {
++	return CompileOptions{ElideBoundsChecks: guard, Stats: stats, Optimizations: map[string]bool{
++		"select-local-condition-read": on, "interval-region-pins": false,
++	}}
++}
++
++func selectConditionModule(t *testing.T, wide bool, instructions []byte) *wasm.Module {
++	typ := wasm.I32
++	localType := byte(0x7f)
++	if wide {
++		typ = wasm.I64
++		localType = 0x7e
++	}
++	body := []byte{1, 63, localType, 0x3f, 0, 0x1a}
++	body = append(body, instructions...)
++	body = append(body, 0x0b)
++	return modMem(t, 1, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
++}
++
++func TestSelectLocalConditionReadWidthsAndAliasing(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	values := [][2]uint64{{0, 1}, {1, 0}, {0x80000000, 0x7fffffff}, {0xffffffff, 0}, {0x100000001, 2}, {0x8000000000000000, 0}, {^uint64(0), 7}}
++	for _, wide := range []bool{false, true} {
++		for _, unsigned := range []bool{false, true} {
++			lt, add := byte(0x48), byte(0x6a)
++			if wide {
++				lt, add = 0x53, 0x7c
++			}
++			if unsigned {
++				lt++
++			}
++			for _, tee := range []bool{false, true} {
++				// Preserve an older local0 snapshot below a select which writes local0.
++				body := []byte{0x20, 0, 0x20, 0, 0x20, 1, 0x20, 0, 0x20, 1, lt, 0x1b}
++				if tee {
++					body = append(body, 0x22, 0)
++				} else {
++					body = append(body, 0x21, 0, 0x20, 0)
++				}
++				body = append(body, add)
++				m := selectConditionModule(t, wide, body)
++				for _, guard := range []bool{false, true} {
++					for _, on := range []bool{false, true} {
++						var stats ModuleStats
++						cm, err := CompileModuleWith(m, selectConditionOptions(on, guard, &stats))
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							cm.CodeImage.Close()
++						}
++						got := stats.Funcs[0].Peephole["select-local-condition-read"]
++						if on && got != 2 || !on && got != 0 {
++							t.Fatalf("wide=%v unsigned=%v tee=%v guard=%v on=%v loans=%d", wide, unsigned, tee, guard, on, got)
++						}
++						for _, pair := range values {
++							x, y := pair[0], pair[1]
++							if !wide {
++								x, y = uint64(uint32(x)), uint64(uint32(y))
++							}
++							less := x < y
++							if !unsigned {
++								less = int64(x) < int64(y)
++								if !wide {
++									less = int32(x) < int32(y)
++								}
++							}
++							chosen := y
++							if less {
++								chosen = x
++							}
++							want := x + chosen
++							result, err := runArm64WrapperWithOptions(t, m, selectConditionOptions(on, guard, nil), x, y)
++							if !wide {
++								result, want = uint64(uint32(result)), uint64(uint32(want))
++							}
++							if err != nil || result != want {
++								t.Fatalf("wide=%v unsigned=%v tee=%v guard=%v on=%v x=%x y=%x got=%x want=%x err=%v", wide, unsigned, tee, guard, on, x, y, result, want, err)
++							}
++						}
++					}
++				}
++			}
++		}
++	}
++}
++
++func TestSelectLocalConditionReadVersions(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	cases := []struct {
++		name  string
++		body  []byte
++		loans int
++		want  uint64
++	}{
++		{"old-selected-source", []byte{0x20, 0, 0x41, 7, 0x21, 0, 0x20, 1, 0x20, 0, 0x45, 0x1b}, 0, 11},
++		{"old-condition-source", []byte{0x20, 0, 0x20, 1, 0x20, 0, 0x41, 7, 0x21, 0, 0x45, 0x1b}, 0, 11},
++		{"new-condition-source", []byte{0x20, 0, 0x41, 7, 0x21, 0, 0x20, 0, 0x20, 0, 0x45, 0x1b}, 1, 7},
++		{"deferred-selected-source", []byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x20, 1, 0x20, 0, 0x48, 0x1b}, 1, 11},
++		{"same-source-twice", []byte{0x20, 0, 0x20, 0, 0x20, 0, 0x45, 0x1b}, 1, 5},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			m := selectConditionModule(t, false, tc.body)
++			for _, guard := range []bool{false, true} {
++				for _, on := range []bool{false, true} {
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, selectConditionOptions(on, guard, &stats))
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						cm.CodeImage.Close()
++					}
++					wantLoans := 0
++					if on {
++						wantLoans = tc.loans
++					}
++					if got := stats.Funcs[0].Peephole["select-local-condition-read"]; got != wantLoans {
++						t.Fatalf("guard=%v on=%v loans=%d want=%d", guard, on, got, wantLoans)
++					}
++					got, err := runArm64WrapperWithOptions(t, m, selectConditionOptions(on, guard, nil), 5, 11)
++					if err != nil || uint64(uint32(got)) != tc.want {
++						t.Fatalf("guard=%v on=%v got=%d want=%d err=%v", guard, on, got, tc.want, err)
++					}
++				}
++			}
++		})
++	}
++}
++
++func TestSelectLocalConditionReadPressure(t *testing.T) {
++	requireCompilerDiagnostics(t)
++	const live = 14
++	// Materialized old values remain live below the selected sources. A deferred
++	// RHS then allocates while both selected registers must remain protected.
++	body := make([]byte, 0, 180)
++	for i := 0; i < live; i++ {
++		body = append(body, 0x20, 0, 0x20, 1, 0x6a, 0x21, 2, 0x20, 2)
++	}
++	body = append(body, 0x20, 0, 0x20, 1, 0x20, 0)
++	for i := 0; i < 8; i++ {
++		body = append(body, 0x20, 1)
++	}
++	for i := 0; i < 7; i++ {
++		body = append(body, 0x6a)
++	}
++	body = append(body, 0x48, 0x1b, 0x22, 0)
++	for i := 0; i < live; i++ {
++		body = append(body, 0x6a)
++	}
++	m := selectConditionModule(t, false, body)
++	for _, guard := range []bool{false, true} {
++		for _, on := range []bool{false, true} {
++			var stats ModuleStats
++			cm, err := CompileModuleWith(m, selectConditionOptions(on, guard, &stats))
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				cm.CodeImage.Close()
++			}
++			wantLoans := 0
++			if on {
++				wantLoans = 1
++			}
++			if got := stats.Funcs[0].Peephole["select-local-condition-read"]; got != wantLoans {
++				t.Fatalf("guard=%v on=%v loans=%d want=%d", guard, on, got, wantLoans)
++			}
++			for _, pair := range [][2]uint64{{5, 11}, {100, 1}, {0x80000000, 0xffffffff}} {
++				x, y := uint32(pair[0]), uint32(pair[1])
++				chosen := y
++				if int32(x) < int32(8*y) {
++					chosen = x
++				}
++				want := live*(x+y) + chosen
++				got, err := runArm64WrapperWithOptions(t, m, selectConditionOptions(on, guard, nil), pair[0], pair[1])
++				if err != nil || uint32(got) != want {
++					t.Fatalf("guard=%v on=%v pair=%x got=%x want=%x err=%v", guard, on, pair, got, want, err)
++				}
++			}
++		}
++	}
++}
++
++func TestMatchingSelectedLocalReadRequiresCurrentIntegerType(t *testing.T) {
++	selected := &elem{st: storage{kind: stLocalRef, typ: mtI32, idx: 7}}
++	for _, st := range []storage{
++		{kind: stLocalRef, typ: mtI64, idx: 7},
++		{kind: stLocalRef, typ: mtI32, idx: 8},
++		{kind: stLocalRef, typ: mtF32, idx: 7},
++		{kind: stReg, typ: mtI32, idx: 7},
++		{kind: stSlot, typ: mtI32, idx: 7},
++	} {
++		if matchingSelectedLocalRead(&elem{st: st}, selected) {
++			t.Fatalf("unexpected match: %+v", st)
++		}
++	}
++}

@@ -1,0 +1,209 @@
+--- a/src/core/compiler/backend/railshot/arm64/control.go
++++ b/src/core/compiler/backend/railshot/arm64/control.go
+@@ -3035,7 +3035,6 @@
+ 		indexBound, indexBounded = f.branchIndexUpperBound(f.s.back())
+ 	}
+ 	f.reconcileLocals() // eager: one state (all lsStackReg) satisfies every target
+-	ireg := f.materialize(f.popValue())
+ 	n, err := r.U32()
+ 	if err != nil {
+ 		return err
+@@ -3058,6 +3057,13 @@
+ 	def, err := r.U32()
+ 	if err != nil {
+ 		return err
++	}
++	ireg := regNone
++	if f.opt(optBranchIndexRead) && f.canBranchVector(labels, def) {
++		ireg = f.readBranchVectorIndex(f.s.back())
++	}
++	if ireg == regNone {
++		ireg = f.materialize(f.popValue())
+ 	}
+ 	d := f.depth()
+ 	f.pinned = f.pinned.add(ireg) // survive the flush
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -37,6 +37,7 @@
+ 	optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
+ 	optimization.Bind("br-table-branch-vector", &brTableBranchVectorEnabled),
+ 	optimization.Bind("bounded-branch-index", &boundedBranchIndexEnabled),
++	optimization.Bind("branch-index-read", &branchIndexReadEnabled),
+ 	optimization.Bind("convert-read", &convertReadEnabled),
+ 	optimization.Bind("cold-call-local-pins", &coldCallLocalPinsEnabled),
+ 	optimization.Bind("magic-div", &magicDivEnabled),
+@@ -121,6 +122,7 @@
+ 	optBoundedQuotient      = optimizationBindings.Option("bounded-signed-quotient")
+ 	optBrTableBranchVector  = optimizationBindings.Option("br-table-branch-vector")
+ 	optBoundedBranchIndex   = optimizationBindings.Option("bounded-branch-index")
++	optBranchIndexRead      = optimizationBindings.Option("branch-index-read")
+ 	optDominatedIndexedBase = optimizationBindings.Option("dominated-indexed-base")
+ 	optDominatedIndexedKey  = optimizationBindings.Option("dominated-indexed-key")
+ 	optOrdinaryShiftedImm   = optimizationBindings.Option("ordinary-shifted-immediate")
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -462,6 +462,7 @@
+ 	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "bounded-branch-index", Label: "Bounded branch indices", Description: "omit branch-vector bounds tests for direct i32 masks and constants proved in range", Default: true, Architectures: []string{"arm64"}},
++	{Name: "branch-index-read", Label: "Read-only branch index", Description: "compute direct i32 branch-vector masks from borrowed homes without copying", Default: false, Experimental: true, Architectures: []string{"arm64"}},
+ 	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/branch_index_read.go
+@@ -0,0 +1,40 @@
++//go:build arm64
++
++package arm64
++
++import (
++	"os"
++
++	enc "github.com/wago-org/wago/src/core/encoder/arm64"
++)
++
++var branchIndexReadEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_BRANCH_INDEX_READ") == "1"
++
++// Only the executable-vector consumer gives a target hint to this direct
++// i32 mask. The borrowed home stays pinned until the instruction executes;
++// a fresh owned result then follows ordinary index pinning through flush.
++// No arithmetic, memory, comparison, or non-vector sink changes lowering.
++func (f *fn) readBranchVectorIndex(e *elem) Reg {
++	if !f.opt(optThreeOpSink) || !e.isDeferred() || e.deferredOp() != opAnd || e.st.typ != mtI32 {
++		return regNone
++	}
++	source, constant := f.s.arg0(e), f.s.arg1(e)
++	if source.elemKind() == ekValue && source.st.kind == stConst {
++		source, constant = constant, source
++	}
++	if source.elemKind() != ekValue || source.st.typ != mtI32 ||
++		(source.st.kind != stLocalReg && source.st.kind != stGlobReg) ||
++		constant.elemKind() != ekValue || constant.st.kind != stConst || constant.st.typ != mtI32 ||
++		!enc.LogicalImmediate32(uint32(constant.st.cval)) {
++		return regNone
++	}
++	saved := f.pinned
++	f.pinned = f.pinned.add(source.st.reg)
++	result := f.allocReg(maskOf(source.st.reg))
++	f.a.Nop()             // preserve the discarded copy's instruction position
++	f.condense(e, result) // existing three-operand local-sink and source mapping
++	f.pinned = saved
++	f.erase(e)
++	f.stats.peep("branch-index-read")
++	return result
++}
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/arm64/branch_index_read_arm64_test.go
+@@ -0,0 +1,111 @@
++//go:build (linux || darwin) && arm64
++
++package arm64
++
++import (
++	"errors"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	enc "github.com/wago-org/wago/src/core/encoder/arm64"
++	rt "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func branchIndexReadModule(t *testing.T, mask uint32, lhs bool, shape string) *wasm.Module {
++	body := []byte{0}
++	for range 9 {
++		body = append(body, 0x02, 0x40)
++	}
++	if shape == "older-trap" {
++		body = append(body, 0x20, 0, 0x20, 1, 0x6e)
++	}
++	constant := append([]byte{0x41}, wasmtest.SLEB32(int32(mask))...)
++	if lhs {
++		body = append(body, constant...)
++	}
++	body = append(body, 0x20, 0)
++	if shape == "owned" {
++		body = append(body, 0x41, 1, 0x6a)
++	}
++	if !lhs {
++		if shape == "variable" {
++			body = append(body, 0x20, 2)
++		} else {
++			body = append(body, constant...)
++		}
++	}
++	body = append(body, 0x71, 0x0e, 8)
++	for i := byte(0); i < 8; i++ {
++		if shape == "duplicate" {
++			body = append(body, 0)
++		} else {
++			body = append(body, i)
++		}
++	}
++	body = append(body, 8)
++	for i := range 9 {
++		body = append(body, 0x0b, 0x20, 0, 0x41)
++		body = append(body, wasmtest.SLEB32(int32(1000+i))...)
++		body = append(body, 0x6a, 0x0f)
++	}
++	body = append(body, 0x0b)
++	return mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++}
++
++func TestBranchIndexReadNative(t *testing.T) {
++	for _, shape := range []string{"direct", "older-trap", "owned", "variable", "duplicate", "vector-off", "compact", "sink-off"} {
++		for _, mask := range []uint32{0, 3, 5, 7, 15, 0x80000007, 0xffffffff} {
++			for _, lhs := range []bool{false, true} {
++				if shape == "variable" && lhs {
++					continue
++				}
++				m := branchIndexReadModule(t, mask, lhs, shape)
++				for _, enabled := range []bool{false, true} {
++					for _, guard := range []bool{false, true} {
++						for _, x := range []uint64{0, 7, 8, 17, 0xffffffff, 0xfeedface00000011} {
++							var stats ModuleStats
++							opts := CompileOptions{ElideBoundsChecks: guard, CompactNative: shape == "compact", Optimizations: map[string]bool{"branch-index-read": enabled, "br-table-branch-vector": shape != "vector-off", "three-op-sink": shape != "sink-off"}}
++							if diagnosticsEnabled {
++								opts.Stats = &stats
++							}
++							index := uint32(x) & mask
++							if shape == "owned" {
++								index = (uint32(x) + 1) & mask
++							}
++							if index >= 8 {
++								index = 8
++							} else if shape == "duplicate" {
++								index = 0
++							}
++							got, err := runArm64WrapperWithOptions(t, m, opts, x, 1, uint64(mask))
++							want := uint32(x) + 1000 + index
++							if err != nil || got != uint64(want) {
++								t.Fatalf("shape=%s mask=%x lhs=%v on=%v bounds=%v x=%x got=%x want=%x err=%v", shape, mask, lhs, enabled, guard, x, got, want, err)
++							}
++							if diagnosticsEnabled {
++								admitted := enabled && !nativeCompactionEnabled && (shape == "direct" || shape == "older-trap") && enc.LogicalImmediate32(mask)
++								if (stats.Funcs[0].Peephole["branch-index-read"] != 0) != admitted {
++									t.Fatalf("shape=%s mask=%x on=%v stats=%v", shape, mask, enabled, stats.Funcs[0].Peephole)
++								}
++							}
++						}
++					}
++				}
++			}
++		}
++	}
++}
++
++func TestBranchIndexReadOlderTrap(t *testing.T) {
++	m := branchIndexReadModule(t, 7, false, "older-trap")
++	for _, enabled := range []bool{false, true} {
++		for _, guard := range []bool{false, true} {
++			_, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"branch-index-read": enabled}}, 8, 0, 7)
++			var trap *rt.TrapError
++			if !errors.As(err, &trap) || trap.Code != rt.TrapDivZero {
++				t.Fatalf("on=%v bounds=%v older trap=%v", enabled, guard, err)
++			}
++		}
++	}
++}

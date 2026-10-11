@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Improve ARM64 execution with guarded scalar and vector loop lowering, bounded
+  register reuse, borrowed operands, indexed address reuse, exact integer
+  arithmetic and branch/condition simplification. Each optional lowering has
+  strict admission checks and a per-compilation rollback option.
 - Bound AMD64 compiler scratch growth by recycling operand arenas at proven-empty
   instruction boundaries, tracking control-frame eligibility in constant time
   and clearing only pointer slots written since the previous cleanup.

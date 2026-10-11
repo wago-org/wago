@@ -1,0 +1,18 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"video-motion","phase":"exec","round":0,"on":false,"iterations":231,"us":432.9420995670996}
+{"workload":"video-motion","phase":"exec","round":0,"on":true,"iterations":231,"us":431.447329004329}
+{"workload":"particle-physics","phase":"exec","round":0,"on":false,"iterations":169,"us":587.1644437869822}
+{"workload":"particle-physics","phase":"exec","round":0,"on":true,"iterations":169,"us":586.1166153846153}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":false,"iterations":3482,"us":29.894277713957496}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":true,"iterations":3482,"us":30.608366743251004}
+{"workload":"files-glob-match","phase":"exec","round":0,"on":false,"iterations":775,"us":128.11053806451613}
+{"workload":"files-glob-match","phase":"exec","round":0,"on":true,"iterations":775,"us":127.06129032258065}
+{"workload":"geo-polyline-simplify","phase":"exec","round":0,"on":false,"iterations":19275,"us":5.282998236057068}
+{"workload":"geo-polyline-simplify","phase":"exec","round":0,"on":true,"iterations":19275,"us":5.2369109208819715}
+{"workload":"hardware-prime-implicants","phase":"exec","round":0,"on":false,"iterations":2189,"us":49.46153129282778}
+{"workload":"hardware-prime-implicants","phase":"exec","round":0,"on":true,"iterations":2189,"us":49.20595386021014}
+{"workload":"ml-kmeans","phase":"exec","round":0,"on":false,"iterations":4382,"us":23.291153126426288}
+{"workload":"ml-kmeans","phase":"exec","round":0,"on":true,"iterations":4382,"us":22.945591967138295}
+{"workload":"stats-quickselect","phase":"exec","round":0,"on":false,"iterations":5295,"us":17.30719225684608}
+{"workload":"stats-quickselect","phase":"exec","round":0,"on":true,"iterations":5295,"us":15.940226628895184}

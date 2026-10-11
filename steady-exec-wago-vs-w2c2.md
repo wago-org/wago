@@ -4,9 +4,9 @@ Read from the local wasm.fyi database on 2026-10-09T04:48:08+00:00.
 
 Current optimization priority: [54 qualified focused workloads on this device](experiments/arm64-parity/next-20261011-retained-subset.md). That report combines retained-image Wago captures against the historical w2c2 column below; capture protocols and ranges are included, and the complete recorded ranking remains available here.
 
-The [retained ARM64 changes](experiments/arm64-parity/next-20261011-results.md) improve point-in-polygon, Boolean ANF, KMeans and polygon clipping, with exact validation and compile costs recorded separately.
+The [retained ARM64 changes](experiments/arm64-parity/next-20261011-results.md) improve point-in-polygon, Boolean ANF, KMeans, polygon clipping, register VM, polyline simplification and particle physics, with exact validation and compile costs recorded separately.
 
-Source: `../../Web/wasm.fyi`, served at `http://localhost:8080/api/benchmarks?platform=<id>&phase=steady`. Measurement semantics: [API.md](../../Web/wasm.fyi/API.md). All paginated results were read. No benchmarks were rerun.
+Source: `../../Web/wasm.fyi`, served at `http://localhost:8080/api/benchmarks?platform=<id>&phase=steady`. Measurement semantics are documented in the sibling checkout's `../../Web/wasm.fyi/API.md`. All paginated results were read. No benchmarks were rerun for this original database capture.
 
 Each row is an individual corpus workload. Times are **microseconds per reported operation** (`latencyNs / 1,000`), using the database’s steady median; warmups are excluded. Operations differ between workloads; the host callback loop is normalized per boundary call.
 

@@ -1,0 +1,22 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: literal-memory-index
+{"workload":"modular-arithmetic","phase":"exec","round":0,"on":false,"iterations":17745,"us":12.401782192166808}
+{"workload":"modular-arithmetic","phase":"exec","round":0,"on":true,"iterations":17745,"us":12.135084981684983}
+{"workload":"modular-arithmetic","phase":"exec","round":1,"on":true,"iterations":17745,"us":12.000474330797408}
+{"workload":"modular-arithmetic","phase":"exec","round":1,"on":false,"iterations":17745,"us":11.964501718794027}
+{"workload":"modular-arithmetic","phase":"exec","round":2,"on":false,"iterations":17745,"us":12.044350521273598}
+{"workload":"modular-arithmetic","phase":"exec","round":2,"on":true,"iterations":17745,"us":12.210028684136375}
+{"workload":"modular-arithmetic","phase":"exec","round":3,"on":true,"iterations":17745,"us":12.812094956325726}
+{"workload":"modular-arithmetic","phase":"exec","round":3,"on":false,"iterations":17745,"us":13.09889642152719}
+{"workload":"modular-arithmetic","phase":"exec","round":4,"on":false,"iterations":17745,"us":12.126455846717384}
+{"workload":"modular-arithmetic","phase":"exec","round":4,"on":true,"iterations":17745,"us":11.820252183713723}
+{"workload":"modular-arithmetic","phase":"exec","round":5,"on":true,"iterations":17745,"us":11.889438320653706}
+{"workload":"modular-arithmetic","phase":"exec","round":5,"on":false,"iterations":17745,"us":11.841406029867569}
+{"workload":"modular-arithmetic","phase":"exec","round":6,"on":false,"iterations":17745,"us":11.899272076641308}
+{"workload":"modular-arithmetic","phase":"exec","round":6,"on":true,"iterations":17745,"us":11.838562524654831}
+{"workload":"modular-arithmetic","phase":"exec","round":7,"on":true,"iterations":17745,"us":11.957927078050156}
+{"workload":"modular-arithmetic","phase":"exec","round":7,"on":false,"iterations":17745,"us":11.886925894618201}
+{"workload":"modular-arithmetic","phase":"exec","round":8,"on":false,"iterations":17745,"us":11.927564102564103}
+{"workload":"modular-arithmetic","phase":"exec","round":8,"on":true,"iterations":17745,"us":11.8437235841082}
+{"workload":"modular-arithmetic","phase":"exec","round":9,"on":true,"iterations":17745,"us":11.80437216117216}
+{"workload":"modular-arithmetic","phase":"exec","round":9,"on":false,"iterations":17745,"us":11.842474387151311}

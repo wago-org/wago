@@ -1,0 +1,28 @@
+package arm64
+
+import "testing"
+
+func TestZeroIndexLoadDisplacementAddress(t *testing.T) {
+	for _, size := range []int{1, 2, 4, 8} {
+		for _, signed := range []bool{false, true} {
+			if signed && size == 8 {
+				continue
+			}
+			for _, wide := range []bool{false, true} {
+				if size == 8 && !wide {
+					continue
+				}
+				for _, disp := range []int32{0, 8, 0x2b8, 0x82b8, 0x102b8, 0xfffff8} {
+					var a Asm
+					a.LoadLiteralDisp(X9, X26, disp, size, signed, wide)
+					if got := displacementAddress(t, &a, X26); got != int64(disp) {
+						t.Fatalf("size=%d signed=%v wide=%v displacement=%x got=%x", size, signed, wide, disp, got)
+					}
+					if disp <= int32(0xfff*size) && a.Len() != 4 || disp > int32(0xfff*size) && a.Len() != 8 {
+						t.Fatalf("size=%d displacement=%x words=%d", size, disp, a.Len()/4)
+					}
+				}
+			}
+		}
+	}
+}

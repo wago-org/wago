@@ -1,0 +1,2 @@
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.379s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.187s [no tests to run]

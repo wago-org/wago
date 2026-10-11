@@ -26,7 +26,7 @@ const (
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	compact := nativeFinalizerEnabled && f.compactNative()
-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !compact {
+	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
 		return
 	}
 	// The established size-stable peephole abandons a function when it reaches
@@ -60,8 +60,23 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	threadCandidate := false
 	guardedEligible := f.opt(optGuardedBooleanXor) && !f.moduleEH && len(f.customInstructions) == 0 && !f.opaqueFragments
 	guardedCandidate := false
+	lineageEligible := f.opt(optCsetLineage) && n <= 4096 && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
+	lineageCandidate := false
+	firstLineageSet := -1
 	for pc := 0; pc < n; pc += 4 {
 		w := rdWord(b, pc)
+		if lineageEligible {
+			// No boolean lineage can precede its first CSET. Stop all
+			// preflight work once a subsequent consumer pair is present.
+			if firstLineageSet < 0 {
+				if w&0x7fff0fe0 == 0x1a9f07e0 {
+					firstLineageSet = pc
+				}
+			} else if pc+8 <= n && csetLineagePair(w, rdWord(b, pc+4)) {
+				lineageCandidate = true
+				lineageEligible = false
+			}
+		}
 		if !compact && isIndirectBranch(w) {
 			return
 		}
@@ -114,6 +129,9 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	}
 	if guardedCandidate {
 		f.foldGuardedBooleanXors(b, n, targets, entryOffsets...)
+	}
+	if lineageCandidate && firstLineageSet >= 0 {
+		f.foldCsetLineage(b, n, firstLineageSet, targets, entryOffsets...)
 	}
 }
 

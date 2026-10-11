@@ -1,0 +1,18 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: cset-lineage
+{"workload":"modular-arithmetic","phase":"compile","round":0,"on":false,"iterations":43,"us":2179.3313953488373}
+{"workload":"modular-arithmetic","phase":"compile","round":0,"on":true,"iterations":43,"us":2161.716093023256}
+{"workload":"modular-arithmetic","phase":"compile","round":1,"on":true,"iterations":43,"us":2189.6831395348836}
+{"workload":"modular-arithmetic","phase":"compile","round":1,"on":false,"iterations":43,"us":2330.147279069767}
+{"workload":"modular-arithmetic","phase":"compile","round":2,"on":false,"iterations":43,"us":2309.8391395348835}
+{"workload":"modular-arithmetic","phase":"compile","round":2,"on":true,"iterations":43,"us":2537.065906976744}
+{"workload":"modular-arithmetic","phase":"compile","round":3,"on":true,"iterations":43,"us":2276.4951627906976}
+{"workload":"modular-arithmetic","phase":"compile","round":3,"on":false,"iterations":43,"us":2198.190906976744}
+{"workload":"parse-structure","phase":"compile","round":0,"on":false,"iterations":29,"us":3289.0488620689657}
+{"workload":"parse-structure","phase":"compile","round":0,"on":true,"iterations":29,"us":3223.5186896551727}
+{"workload":"parse-structure","phase":"compile","round":1,"on":true,"iterations":29,"us":3250.163793103448}
+{"workload":"parse-structure","phase":"compile","round":1,"on":false,"iterations":29,"us":3205.8074827586206}
+{"workload":"parse-structure","phase":"compile","round":2,"on":false,"iterations":29,"us":3178.485620689655}
+{"workload":"parse-structure","phase":"compile","round":2,"on":true,"iterations":29,"us":3241.2528620689654}
+{"workload":"parse-structure","phase":"compile","round":3,"on":true,"iterations":29,"us":3206.899413793103}
+{"workload":"parse-structure","phase":"compile","round":3,"on":false,"iterations":29,"us":3199.544551724138}

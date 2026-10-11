@@ -1,0 +1,115 @@
+diff --git a/src/core/compiler/backend/railshot/arm64/driver.go b/src/core/compiler/backend/railshot/arm64/driver.go
+index 2d244315..ef068bfc 100644
+--- a/src/core/compiler/backend/railshot/arm64/driver.go
++++ b/src/core/compiler/backend/railshot/arm64/driver.go
+@@ -801,6 +801,8 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
+ 		}
+ 		f.erase(b)
+ 		f.erase(a)
++	} else if f.opt(optSelectLocalRead) {
++		f.emitIntegerSelectLocalRead(a, b, cond, dest, f.localType[x].is64())
+ 	} else {
+ 		condVal := f.popValue()
+ 		condReg := f.materialize(condVal)
+diff --git a/src/core/compiler/backend/railshot/arm64/knobs.go b/src/core/compiler/backend/railshot/arm64/knobs.go
+index 18188cb7..539445b5 100644
+--- a/src/core/compiler/backend/railshot/arm64/knobs.go
++++ b/src/core/compiler/backend/railshot/arm64/knobs.go
+@@ -34,6 +34,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
+ 	optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
+ 	optimization.Bind("common-exit-compare", &commonExitCompareEnabled),
+ 	optimization.Bind("taken-zero-branch", &takenZeroBranchEnabled),
++	optimization.Bind("cset-lineage", &csetLineageEnabled),
+ 	optimization.Bind("guarded-boolean-xor", &guardedBooleanXorEnabled),
+ 	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
+ 	optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
+@@ -65,6 +66,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
+ 	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+ 	optimization.Bind("single-negative-move32", &singleNegativeMove32Enabled),
+ 	optimization.Bind("select-source-read", &selectSourceReadEnabled),
++	optimization.Bind("integer-select-local-read", &integerSelectLocalReadEnabled),
+ 	optimization.Bind("select-sink-pure-guard", &selectSinkPureGuardEnabled),
+ 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
+ 	optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
+@@ -119,6 +121,7 @@ var (
+ 	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
+ 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
+ 	optTakenZeroBranch      = optimizationBindings.Option("taken-zero-branch")
++	optCsetLineage          = optimizationBindings.Option("cset-lineage")
+ 	optGuardedBooleanXor    = optimizationBindings.Option("guarded-boolean-xor")
+ 	optBorrowedDivRem       = optimizationBindings.Option("borrowed-div-rem")
+ 	optBoundedQuotient      = optimizationBindings.Option("bounded-signed-quotient")
+@@ -152,6 +155,7 @@ var (
+ 	optStreamReduce         = optimizationBindings.Option("streaming-i32-reduction")
+ 	optSingleNegativeMove32 = optimizationBindings.Option("single-negative-move32")
+ 	optSelectSourceRead     = optimizationBindings.Option("select-source-read")
++	optSelectLocalRead      = optimizationBindings.Option("integer-select-local-read")
+ 	optSelectSinkPureGuard  = optimizationBindings.Option("select-sink-pure-guard")
+ 	optInvertedLogical      = optimizationBindings.Option("inverted-logical")
+ 	optShiftedRegisterALU   = optimizationBindings.Option("shifted-register-alu")
+diff --git a/src/core/compiler/backend/railshot/arm64/peephole.go b/src/core/compiler/backend/railshot/arm64/peephole.go
+index 90081d9e..ccb98efc 100644
+--- a/src/core/compiler/backend/railshot/arm64/peephole.go
++++ b/src/core/compiler/backend/railshot/arm64/peephole.go
+@@ -26,7 +26,7 @@ const (
+ // the branch-target set is collected once here and threaded into both passes.
+ func (f *fn) finalizePeepholes(entryOffsets ...int) {
+ 	compact := nativeFinalizerEnabled && f.compactNative()
+-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !compact {
++	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
+ 		return
+ 	}
+ 	// The established size-stable peephole abandons a function when it reaches
+@@ -60,8 +60,13 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
+ 	threadCandidate := false
+ 	guardedEligible := f.opt(optGuardedBooleanXor) && !f.moduleEH && len(f.customInstructions) == 0 && !f.opaqueFragments
+ 	guardedCandidate := false
++	lineageEligible := f.opt(optCsetLineage) && n <= 4096 && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
++	lineageCandidate := false
+ 	for pc := 0; pc < n; pc += 4 {
+ 		w := rdWord(b, pc)
++		if lineageEligible && !lineageCandidate && pc+8 <= n {
++			lineageCandidate = csetLineagePair(w, rdWord(b, pc+4))
++		}
+ 		if !compact && isIndirectBranch(w) {
+ 			return
+ 		}
+@@ -115,6 +120,9 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
+ 	if guardedCandidate {
+ 		f.foldGuardedBooleanXors(b, n, targets, entryOffsets...)
+ 	}
++	if lineageCandidate {
++		f.foldCsetLineage(b, n, targets, entryOffsets...)
++	}
+ }
+ 
+ type singleBitTestSite struct {
+diff --git a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+index c1ccc1cb..78349657 100644
+--- a/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
++++ b/src/core/compiler/backend/railshot/arm64/policy_arm64_test.go
+@@ -86,6 +86,7 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
+ 	names := []string{
+ 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
+ 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "dominated-indexed-key", "ordinary-shifted-immediate", "common-exit-compare", "borrowed-div-rem", "bounded-signed-quotient", "br-table-branch-vector", "regional-memory-read", "wide-reuse-pins",
++		"integer-select-local-read",
+ 		"v128-direct-results", "cold-call-local-pins", "convert-read", "guarded-boolean-xor", "taken-zero-branch",
+ 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
+ 	}
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index 3bd2c0bd..ec7ac20f 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -465,10 +465,12 @@ var catalog = []Definition{
+ 	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},
++	{Name: "cset-lineage", Label: "Reuse boolean comparison flags", Description: "reuse unchanged flags through exact CSET boolean copies for bounded integer selects", Default: false, Architectures: []string{"arm64"}},
+ 	{Name: "guarded-boolean-xor", Label: "Guarded boolean XOR", Description: "if-convert pure bounded integer boolean XOR regions after exact clobber proofs", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: []string{"arm64"}},
+ 	{Name: "ordinary-shifted-immediate", Label: "Shifted integer displacements", Description: "use exact shifted immediates for read-only ordinary displacement arithmetic", Default: true, Architectures: []string{"arm64"}},
++	{Name: "integer-select-local-read", Label: "Read-only integer select local sinks", Description: "read protected integer local-select operands in place when the condition is materialized", Default: true, Architectures: []string{"arm64"}},
+ 	arm64("indexed-base-reuse", "Adjacent indexed base reuse", "reuse an unchanged base-plus-index address across adjacent memory accesses"),
+ 	arm64("convert-read", "Direct conversion reads", "read pinned integer conversion inputs without a temporary copy"),
+ 	arm64("cold-call-local-pins", "Cold-call local pins", "pin hot locals when every direct local call is outside loops"),

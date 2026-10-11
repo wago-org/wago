@@ -1,0 +1,6 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"modular-arithmetic","phase":"compile","round":0,"on":false,"iterations":43,"us":2213.671511627907}
+{"workload":"modular-arithmetic","phase":"compile","round":0,"on":true,"iterations":43,"us":2165.6017441860467}
+{"workload":"parse-structure","phase":"compile","round":0,"on":false,"iterations":31,"us":3230.276870967742}
+{"workload":"parse-structure","phase":"compile","round":0,"on":true,"iterations":31,"us":3294.899193548387}

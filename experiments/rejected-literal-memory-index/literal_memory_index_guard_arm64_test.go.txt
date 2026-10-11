@@ -1,0 +1,98 @@
+//go:build (darwin || linux || windows) && arm64 && wago_guardpage
+
+package arm64
+
+import (
+	"encoding/binary"
+	"errors"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+)
+
+func runLiteralMemoryGuarded(t *testing.T, m *wasm.Module, on bool, args ...uint64) error {
+	t.Helper()
+	cm, err := CompileModuleWith(m, literalIndexOptions(on, true, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	eng, err := coreruntime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	if err := coreruntime.InstallGuardTrapHandler(); err != nil {
+		t.Fatal(err)
+	}
+	jm, err := coreruntime.NewJobMemoryGuarded(65536, 65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	ar, err := coreruntime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ar.Close()
+	code, entry, err := coreruntime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coreruntime.Unmap(code)
+	serArgs, results, trap := ar.Alloc(256), ar.Alloc(256), ar.Alloc(coreruntime.TrapBufferBytes)
+	for i, a := range args {
+		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
+	}
+	return eng.CallGuarded(entry+uintptr(cm.Entry[0]), serArgs, jm.LinMemBase(), trap, results, jm)
+}
+
+func requireLiteralTrap(t *testing.T, err error, want coreruntime.TrapCode) {
+	t.Helper()
+	var trap *coreruntime.TrapError
+	if !errors.As(err, &trap) || trap.Code != want {
+		t.Fatalf("trap=%v want=%v", err, want)
+	}
+}
+
+func TestLiteralMemoryIndexGuardedDroppedLoad(t *testing.T) {
+	for _, tc := range []struct{ addr, off uint32 }{{0x102bc, 0}, {65535, 0}, {0xffffffff, 1}, {1, 0x7fffffff}} {
+		body := literalIndexConst([]byte{0}, tc.addr)
+		body = append(body, 0x28, 2)
+		body = append(body, wasmtest.ULEB(tc.off)...)
+		body = append(body, 0x1a, 0x41, 7, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+		for _, on := range []bool{false, true} {
+			requireLiteralTrap(t, runLiteralMemoryGuarded(t, m, on), coreruntime.TrapLinMemOutOfBounds)
+		}
+	}
+}
+
+func TestLiteralMemoryIndexTrapOrdering(t *testing.T) {
+	for _, memoryFirst := range []bool{false, true} {
+		load := literalIndexConst(nil, 0x102bc)
+		load = append(load, 0x28, 2, 0)
+		div := []byte{0x20, 0, 0x20, 1, 0x6e}
+		body := []byte{0}
+		want := coreruntime.TrapDivZero
+		if memoryFirst {
+			body = append(body, load...)
+			body = append(body, div...)
+			want = coreruntime.TrapLinMemOutOfBounds
+		} else {
+			body = append(body, div...)
+			body = append(body, load...)
+		}
+		body = append(body, 0x6a, 0x0b)
+		m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+		for _, on := range []bool{false, true} {
+			_, err := runArm64WrapperWithOptions(t, m, literalIndexOptions(on, false, nil), 1, 0)
+			requireLiteralTrap(t, err, want)
+			requireLiteralTrap(t, runLiteralMemoryGuarded(t, m, on, 1, 0), want)
+		}
+	}
+}

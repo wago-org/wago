@@ -1,0 +1,98 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"os"
+
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+)
+
+var literalMemoryIndexEnabled = os.Getenv("WAGO_ARM64_EXPERIMENT_LITERAL_MEMORY_INDEX") == "1"
+
+// Fold an actual memory32 constant into the displacement only when target
+// encoding proves fewer hot address/access words. The result remains deferred;
+// its immutable zero index is never an allocator-owned address register.
+func (f *fn) tryLiteralMemoryIndexLoad(off uint64, size int, signed, wide bool) bool {
+	if f.memoryAddr64(0) || f.moduleEH || len(f.customInstructions) != 0 {
+		return false
+	}
+	e := f.s.back()
+	if e == nil || e.elemKind() != ekValue || e.st.kind != stConst || e.st.typ != mtI32 {
+		return false
+	}
+	index := uint64(uint32(e.st.cval))
+	if off > 0x7fffffff || index+off+uint64(size) > 0x7fffffff {
+		return false
+	}
+	disp := int32(index + off)
+	var words [64]byte
+	probe := a64.Asm{B: words[:0], DenseIdxDisp: f.a.DenseIdxDisp,
+		DisableCompactMoveImmediate32: f.a.DisableCompactMoveImmediate32,
+		DisableLogicalMoveImmediate:   f.a.DisableLogicalMoveImmediate,
+		AllowSingleNegativeMove32:     f.a.AllowSingleNegativeMove32}
+	probe.MovImm32(X9, int32(e.st.cval))
+	oldBase, oldDisp := f.literalIndexLoadBase(int32(off))
+	probe.LoadIdx(X9, oldBase, X9, oldDisp, size, signed, wide)
+	oldWords := probe.Len() / 4
+	probe.B = words[:0]
+	newBase, newDisp := f.literalIndexLoadBase(disp)
+	probe.LoadLiteralDisp(X9, newBase, newDisp, size, signed, wide)
+	if probe.Len()/4 >= oldWords {
+		return false
+	}
+
+	// Match memAddr's observable ordering: all older possible traps precede
+	// this access's bounds check. The load itself stays deferred until its
+	// original consumer or an effect requiring it to be materialized.
+	f.materializePendingTraps()
+	f.popValue()
+	if !f.guardMode {
+		end := f.allocReg(0)
+		f.a.MovImm64(end, index+off+uint64(size))
+		if f.memSizeReg != regNone {
+			f.cmpRR(end, f.memSizeReg, true)
+		} else {
+			limit := f.allocReg(maskOf(end))
+			f.ld64(limit, linMemReg, -int32(bdCurBytes))
+			f.cmpRR(end, limit, true)
+			f.release(limit)
+		}
+		f.trapIf(condA, trapMemOOB)
+		f.release(end)
+	}
+	st := memRefStorage(ZR, disp, size, signed, wide, -1, -1)
+	if f.opt(optValueFacts) && !wide {
+		st.setValueFacts(factUpper32Zero)
+	}
+	f.pushValue(st)
+	// memAddr already moves its removed constant-address canonicalization word
+	// to the cold tail; preserve that independent accounting here.
+	f.phasePadWords++
+	f.stats.peep("memory-address-zext-elim")
+	f.stats.peep("literal-memory-index")
+	return true
+}
+
+// Match loadLinearIdx's bounded page-cache selection when comparing target
+// encodings. A cached base may already make the original access cheaper.
+func (f *fn) literalIndexLoadBase(disp int32) (Reg, int32) {
+	if f.opt(optLoopMemoryBase) && disp >= 0x1000 {
+		page := int64(disp &^ 0xfff)
+		for i := 0; i < int(f.iconstN); i++ {
+			c := f.iconsts[i]
+			if c.address && c.bits == page {
+				return c.reg, disp & 0xfff
+			}
+		}
+	}
+	return linMemReg, disp
+}
+
+func (f *fn) loadLiteralMemoryIndex(dst Reg, st storage) {
+	base, disp := f.literalIndexLoadBase(st.memDisp())
+	f.a.LoadLiteralDisp(dst, base, disp, st.memSize(), st.memSigned(), st.typ.is64())
+	if base != linMemReg {
+		f.stats.peep("loop-memory-base-hit")
+	}
+}

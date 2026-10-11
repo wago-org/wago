@@ -1,0 +1,14 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"audio-adpcm","phase":"compile","round":0,"on":false,"iterations":10008,"us":23.683016087130294}
+{"workload":"audio-adpcm","phase":"compile","round":0,"on":true,"iterations":10008,"us":24.163177757793765}
+{"workload":"files-merkle-tree","phase":"compile","round":0,"on":false,"iterations":4022,"us":54.86169816011934}
+{"workload":"files-merkle-tree","phase":"compile","round":0,"on":true,"iterations":4022,"us":54.795686225758324}
+{"workload":"files-glob-match","phase":"compile","round":0,"on":false,"iterations":9715,"us":26.144836129696344}
+{"workload":"files-glob-match","phase":"compile","round":0,"on":true,"iterations":9715,"us":25.718892537313433}
+{"workload":"geo-polygon-clipping","phase":"compile","round":0,"on":false,"iterations":3720,"us":67.56159274193548}
+{"workload":"geo-polygon-clipping","phase":"compile","round":0,"on":true,"iterations":3720,"us":67.28398306451612}
+{"workload":"search-horspool","phase":"compile","round":0,"on":false,"iterations":3206,"us":75.88149812850905}
+{"workload":"search-horspool","phase":"compile","round":0,"on":true,"iterations":3206,"us":77.3567919525889}
+{"workload":"search-aho-corasick","phase":"compile","round":0,"on":false,"iterations":1276,"us":182.88202037617555}
+{"workload":"search-aho-corasick","phase":"compile","round":0,"on":true,"iterations":1276,"us":392.3854169278997}

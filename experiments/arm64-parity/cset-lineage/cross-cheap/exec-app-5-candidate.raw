@@ -1,0 +1,12 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"particle-physics","phase":"exec","round":0,"on":false,"iterations":322,"us":470.55292236024843}
+{"workload":"particle-physics","phase":"exec","round":0,"on":true,"iterations":322,"us":473.11503726708077}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":false,"iterations":5318,"us":30.18932568634825}
+{"workload":"audio-adpcm","phase":"exec","round":0,"on":true,"iterations":5318,"us":29.973345242572396}
+{"workload":"geo-polyline-simplify","phase":"exec","round":0,"on":false,"iterations":35410,"us":4.30370895227337}
+{"workload":"geo-polyline-simplify","phase":"exec","round":0,"on":true,"iterations":35410,"us":4.246332250776617}
+{"workload":"hardware-prime-implicants","phase":"exec","round":0,"on":false,"iterations":3287,"us":49.10557986005477}
+{"workload":"hardware-prime-implicants","phase":"exec","round":0,"on":true,"iterations":3287,"us":48.43156130209918}
+{"workload":"ml-kmeans","phase":"exec","round":0,"on":false,"iterations":6788,"us":22.056914113140834}
+{"workload":"ml-kmeans","phase":"exec","round":0,"on":true,"iterations":6788,"us":22.504603712433706}

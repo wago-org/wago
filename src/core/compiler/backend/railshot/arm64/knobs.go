@@ -34,6 +34,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
 	optimization.Bind("common-exit-compare", &commonExitCompareEnabled),
 	optimization.Bind("taken-zero-branch", &takenZeroBranchEnabled),
+	optimization.Bind("cset-lineage", &csetLineageEnabled),
 	optimization.Bind("guarded-boolean-xor", &guardedBooleanXorEnabled),
 	optimization.Bind("integer-select-local-read", &integerSelectLocalReadEnabled),
 	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
@@ -121,6 +122,7 @@ var (
 	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
 	optTakenZeroBranch      = optimizationBindings.Option("taken-zero-branch")
+	optCsetLineage          = optimizationBindings.Option("cset-lineage")
 	optGuardedBooleanXor    = optimizationBindings.Option("guarded-boolean-xor")
 	optSelectLocalRead      = optimizationBindings.Option("integer-select-local-read")
 	optBorrowedDivRem       = optimizationBindings.Option("borrowed-div-rem")

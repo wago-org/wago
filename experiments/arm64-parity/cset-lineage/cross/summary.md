@@ -1,0 +1,22 @@
+|workload|phase|paired change|base us|candidate us|
+|---|---|---:|---:|---:|
+|audio-adpcm|compile|-1.62%|26.599|25.680|
+|audio-adpcm|exec|+0.42%|30.153|30.550|
+|files-glob-match|compile|-0.29%|28.306|28.249|
+|files-glob-match|exec|-0.81%|128.720|129.393|
+|geo-polyline-simplify|compile|+2.33%|51.701|52.463|
+|geo-polyline-simplify|exec|-18.98%|5.267|4.261|
+|hardware-prime-implicants|compile|+4.61%|50.254|52.300|
+|hardware-prime-implicants|exec|-0.30%|48.194|48.252|
+|ml-kmeans|compile|+3.59%|80.960|84.871|
+|ml-kmeans|exec|-0.14%|23.518|23.197|
+|modular-arithmetic|compile|+4.14%|2190.299|2269.626|
+|modular-arithmetic|exec|-0.20%|11.842|11.814|
+|parse-structure|compile|+6.94%|3272.874|3534.747|
+|parse-structure|exec|-0.67%|2.428|2.377|
+|particle-physics|compile|+1.80%|33.672|33.734|
+|particle-physics|exec|-19.15%|587.872|475.280|
+|stats-quickselect|compile|+1.05%|36.160|36.942|
+|stats-quickselect|exec|+0.16%|15.245|15.316|
+|video-motion|compile|-1.04%|70.283|68.799|
+|video-motion|exec|+0.67%|434.604|440.281|

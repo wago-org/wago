@@ -1,0 +1,8 @@
+compiler-register-allocation-0.bin: OFF1952B /ON1952B; byte-identical
+graphics-reed-solomon-0.bin: OFF4136B /ON4136B; byte-identical
+modular-arithmetic-0.bin: OFF93588B /ON94356B; changed
+vision-dilation-0.bin: OFF996B /ON996B; byte-identical
+Profile embedded image exactly matches94356-byte timed ON candidate.
+Strict fixture execution: both bounds, full-width products, modulo64 accumulation, dirty i32 carriers, crossing counter wrap, B final−8, odd scalar residual, short/zero/odd-distance scalar fallback, first/late OOB, outer calls, pending divide trap, compact residual; native widening/shuffle assertions; store/shared/interruptible exclusions PASS.
+Full148 exact inventory/oracles were intentionally not run because no repeated gain appeared.
+Patch reverse applicability checked against frozen isolated source.

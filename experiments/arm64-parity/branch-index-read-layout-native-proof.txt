@@ -1,0 +1,2 @@
+VM1224B unchanged layout;exactly two changed words: +0x1cc: aa1303e9->d503201f, +0x1d0: 12000929->12000a69
+OFF image matches accepted bounded-index baseline.

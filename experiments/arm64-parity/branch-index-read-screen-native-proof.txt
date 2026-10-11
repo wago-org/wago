@@ -1,0 +1,5 @@
+language-register-vm: 1224B -> 1220B; byte-identical=False
+compiler-register-allocation: 1952B -> 1952B; byte-identical=True
+audio-adpcm: 544B -> 544B; byte-identical=True
+vision-dilation: 996B -> 996B; byte-identical=True
+OFF VM matches the accepted bounded-index image.

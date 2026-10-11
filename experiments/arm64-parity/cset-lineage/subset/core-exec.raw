@@ -1,0 +1,18 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: cset-lineage
+{"workload":"modular-arithmetic","phase":"exec","round":0,"on":false,"iterations":8536,"us":11.647063378631678}
+{"workload":"modular-arithmetic","phase":"exec","round":0,"on":true,"iterations":8536,"us":11.911697516401125}
+{"workload":"modular-arithmetic","phase":"exec","round":1,"on":true,"iterations":8536,"us":11.65223266166823}
+{"workload":"modular-arithmetic","phase":"exec","round":1,"on":false,"iterations":8536,"us":11.57971626054358}
+{"workload":"modular-arithmetic","phase":"exec","round":2,"on":false,"iterations":8536,"us":11.517255388940956}
+{"workload":"modular-arithmetic","phase":"exec","round":2,"on":true,"iterations":8536,"us":11.710886246485474}
+{"workload":"modular-arithmetic","phase":"exec","round":3,"on":true,"iterations":8536,"us":11.636802952202437}
+{"workload":"modular-arithmetic","phase":"exec","round":3,"on":false,"iterations":8536,"us":11.797934161199624}
+{"workload":"parse-structure","phase":"exec","round":0,"on":false,"iterations":38684,"us":2.5006171802295523}
+{"workload":"parse-structure","phase":"exec","round":0,"on":true,"iterations":38684,"us":2.4590399131423846}
+{"workload":"parse-structure","phase":"exec","round":1,"on":true,"iterations":38684,"us":2.4461372919036295}
+{"workload":"parse-structure","phase":"exec","round":1,"on":false,"iterations":38684,"us":2.4307056147244337}
+{"workload":"parse-structure","phase":"exec","round":2,"on":false,"iterations":38684,"us":2.3917403577706544}
+{"workload":"parse-structure","phase":"exec","round":2,"on":true,"iterations":38684,"us":2.411708768483094}
+{"workload":"parse-structure","phase":"exec","round":3,"on":true,"iterations":38684,"us":2.3806612552993487}
+{"workload":"parse-structure","phase":"exec","round":3,"on":false,"iterations":38684,"us":2.43242361182918}
