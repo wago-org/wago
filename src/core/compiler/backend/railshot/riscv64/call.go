@@ -502,6 +502,30 @@ func (f *integerEmitter) gcObjectRefTest(base int, heap int64, nullable bool) {
 	f.Store(f.SpillOffset(base), 5, false)
 }
 
+// gcObjectRefTestBranch leaves the tested carrier in its spill slot and returns
+// the zero-normalized predicate in X5 for an immediately following branch.
+func (f *integerEmitter) gcObjectRefTestBranch(base int, heap int64, nullable bool) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.a.Constant64(enc.X5, heap)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.a.Constant32(enc.X5, 0)
+	if nullable {
+		f.a.Constant32(enc.X5, 1)
+	}
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.a.Constant32(enc.X5, 0)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructRefTest})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Lwu(enc.X5, result, 0)
+}
+
 func (f *integerEmitter) gcObjectRefCast(base int, heap int64, nullable bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)

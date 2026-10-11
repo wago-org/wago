@@ -1560,11 +1560,99 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("GC instruction outside exact i31 profile")
 			}
 			switch imm.Kind {
+			case wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
+				if !state.gcRefTestAbstract || !imm.HasHeapType || !imm.HasHeapType2 || uint64(imm.Index) >= uint64(depth) {
+					return integerSummary{}, unsupported("branch cast outside exact abstract profile")
+				}
+				heap := int64(0)
+				switch imm.HeapType2.Kind() {
+				case wasm.HeapTypeIndex:
+					if imm.HeapType2.Type().Rec || imm.HeapType2.Type().Index < 1 || imm.HeapType2.Type().Index > 2 {
+						return integerSummary{}, unsupported("branch cast indexed heap outside exact abstract profile")
+					}
+					heap = int64(imm.HeapType2.Type().Index)
+				case wasm.HeapAbs:
+					switch imm.HeapType2.Abs() {
+					case wasm.HeapI31:
+						heap = -20
+					case wasm.HeapStruct:
+						heap = -21
+					case wasm.HeapArray:
+						heap = -22
+					default:
+						return integerSummary{}, unsupported("branch cast heap outside exact abstract profile")
+					}
+				default:
+					return integerSummary{}, unsupported("branch cast heap encoding outside exact abstract profile")
+				}
+				fr := &ctrl[depth-1-int(imm.Index)]
+				values, references := fr.results, fr.resultRefs
+				if fr.kind == 0x03 {
+					values, references = fr.params, fr.paramRefs
+				}
+				if len(values) == 0 || len(references) == 0 || !references[len(values)-1] {
+					return integerSummary{}, unsupported("branch cast label must end in a reference")
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				prefix := len(values) - 1
+				floor := ctrl[depth-1].base
+				missing := max(0, prefix-(h-floor))
+				if missing != 0 && !ctrl[depth-1].unreachable || h+missing >= len(stack) {
+					return integerSummary{}, unsupported("branch cast payload bound/underflow")
+				}
+				for j := 0; j < prefix; j++ {
+					at := h - prefix + j
+					ref := references[j]
+					if at >= floor && !stackUnknown[at] && (stack[at] != values[j] || stackRefs[at] != ref) {
+						return integerSummary{}, unsupported("branch cast payload class")
+					}
+				}
+				if missing != 0 {
+					copy(stack[floor+missing:h+missing], stack[floor:h])
+					copy(stackRefs[floor+missing:h+missing], stackRefs[floor:h])
+					copy(stackUnknown[floor+missing:h+missing], stackUnknown[floor:h])
+					h += missing
+				}
+				for j := 0; j < prefix; j++ {
+					at := h - prefix + j
+					stack[at], stackRefs[at], stackUnknown[at] = values[j], references[j], false
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcObjectRefTestBranch(h, heap, imm.Cast.TargetNullable)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+				skip := -1
+				if live && emit != nil {
+					condition := enc.EQ // successful br_on_cast branches on nonzero.
+					if imm.Kind == wasm.InstrBrOnCastFail {
+						condition = enc.NE // failed cast branches on zero.
+					}
+					skip = emit.a.BranchLong(condition, enc.X5, enc.Zero)
+				}
+				if err = branch(imm.Index, true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					if err = patch(skip, position()); err != nil {
+						return integerSummary{}, err
+					}
+				}
 			case wasm.InstrStructNew:
-				if !state.gcStructBasic || imm.Index != 0 {
+				fields := 3
+				if state.gcRefTestAbstract && imm.Index == 1 {
+					fields = 1
+				} else if !state.gcStructBasic || imm.Index != 0 {
 					return integerSummary{}, unsupported("struct.new outside exact gc struct basic profile")
 				}
-				for i := 0; i < 3; i++ {
+				for i := 0; i < fields; i++ {
 					if _, err = popClass(false); err != nil {
 						return integerSummary{}, err
 					}
@@ -1574,7 +1662,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcStructAllocation(h, imm.Index, 3)
+					emit.gcStructAllocation(h, imm.Index, uint32(fields))
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1599,7 +1687,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				basicGet := state.gcStructBasic && imm.Index == 0 && imm.Index2 < 2 && imm.Kind == wasm.InstrStructGet
 				nullGet := state.gcStructNull && imm.Index == 0 && imm.Index2 == 1
 				packedGet := state.gcStructPacked && imm.Index == 0 && imm.Index2 < 4 && imm.Kind != wasm.InstrStructGet
-				if !regularGet && !basicGet && !nullGet && !packedGet {
+				abstractGet := state.gcRefTestAbstract && imm.Index == 1 && imm.Index2 == 0 && imm.Kind == wasm.InstrStructGetS
+				if !regularGet && !basicGet && !nullGet && !packedGet && !abstractGet {
 					return integerSummary{}, unsupported("struct.get outside exact gc struct.get profile")
 				}
 				if _, err = popClass(true); err != nil {
@@ -1645,7 +1734,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcStructSetI32(h, imm.Index, imm.Index2)
 				}
 			case wasm.InstrArrayNew:
-				if !state.gcArrayUniform || imm.Index != 0 {
+				if !(state.gcArrayUniform && imm.Index == 0) && !(state.gcRefTestAbstract && imm.Index == 2) {
 					return integerSummary{}, unsupported("array.new outside exact gc array uniform profile")
 				}
 				if _, err = popClass(false); err != nil { // length
@@ -1839,7 +1928,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				packedGet := (state.gcArrayPackedData && imm.Index <= 1 || state.gcArrayInitData && (imm.Index == 1 || imm.Index == 2) || state.gcArrayFill && imm.Index == 1 || state.gcArrayCopy && imm.Index == 1) && (imm.Kind == wasm.InstrArrayGetS || imm.Kind == wasm.InstrArrayGetU)
 				referencePackedGet := state.gcArrayReference && imm.Kind == wasm.InstrArrayGetU && imm.Index == 0
 				referenceGet := state.gcArrayReference && imm.Kind == wasm.InstrArrayGet && imm.Index <= 4 || state.gcArrayInitElem && imm.Kind == wasm.InstrArrayGet && imm.Index == 2
-				if !packedGet && !referencePackedGet && !referenceGet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || imm.Kind != wasm.InstrArrayGet || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1)) {
+				abstractGet := state.gcRefTestAbstract && imm.Kind == wasm.InstrArrayGetU && imm.Index == 2
+				if !packedGet && !referencePackedGet && !referenceGet && !abstractGet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || imm.Kind != wasm.InstrArrayGet || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1)) {
 					return integerSummary{}, unsupported("array.get outside exact gc array local profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -1899,7 +1989,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 				}
 			case wasm.InstrArrayLen:
-				if !state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData && !state.gcArrayReference {
+				if !state.gcRefTestAbstract && !state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData && !state.gcArrayReference {
 					return integerSummary{}, unsupported("array.len outside exact gc array local profile")
 				}
 				if _, err = popClass(true); err != nil {

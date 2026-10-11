@@ -109,6 +109,14 @@ func railshotGCRefCastConcreteSource(data []byte) bool {
 	return railshot.AdmitGCRefCastConcreteSource(data)
 }
 
+func railshotGCBrOnCastAbstractSource(data []byte) bool {
+	return railshot.AdmitGCBrOnCastAbstractSource(data)
+}
+
+func railshotGCBrOnCastFailAbstractSource(data []byte) bool {
+	return railshot.AdmitGCBrOnCastFailAbstractSource(data)
+}
+
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
 
 func railshotGCStructMutationSource(data []byte) bool {
@@ -195,6 +203,14 @@ func railshotConfigureGCRefCastAbstract(exactSource bool, opts *railshotCompileO
 
 func railshotConfigureGCRefCastConcrete(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCRefCastConcreteSource = exactSource
+}
+
+func railshotConfigureGCBrOnCastAbstract(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCBrOnCastAbstractSource = exactSource
+}
+
+func railshotConfigureGCBrOnCastFailAbstract(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCBrOnCastFailAbstractSource = exactSource
 }
 
 func railshotConfigureGCStructGet(exactSource bool, opts *railshotCompileOptions) {

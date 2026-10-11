@@ -396,16 +396,19 @@ func classifyFBBytes(r *reader, imm *InstructionImmediate) error {
 		} else {
 			imm.Kind = InstrBrOnCastFail
 		}
-		if _, err := decodeCastOp(r); err != nil {
+		if imm.Cast, err = decodeCastOp(r); err != nil {
 			return err
 		}
 		if imm.Index, err = r.u32(); err != nil {
 			return err
 		}
-		if err := skipHeapTypeBytes(r); err != nil {
+		if imm.HeapType, err = decodeHeapType(r); err != nil {
 			return err
 		}
-		return skipHeapTypeBytes(r)
+		imm.HasHeapType = true
+		imm.HeapType2, err = decodeHeapType(r)
+		imm.HasHeapType2 = err == nil
+		return err
 	case 35, 36:
 		imm.Kind = InstrRefCastDescEq
 		return skipRefHeapTypeBytes(r)

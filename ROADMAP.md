@@ -19,6 +19,13 @@ RV64 lowering for indexed heap types 0 through 7, retained source/artifact
 classifiers, rooted-table GC stress coverage, and compiler-free reload. Baseline
 RV64G QEMU establishes functional correctness only; native cache/performance
 qualification remains pending, and other module shapes remain closed.
+The exact official abstract `br_on_cast` and `br_on_cast_fail` products now have
+genuine RV64 lowering for nullable/non-null i31, struct, array, and indexed branch
+targets, including typed multi-value label transfer. Exact retained-metadata
+classifiers, source/artifact stress-GC execution, dirty-upper i32 table indices,
+out-of-bounds traps, and compiler-free reload are covered. This checkpoint is
+functional QEMU qualification only; native cache/performance qualification and
+broader branch-cast shapes remain pending.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

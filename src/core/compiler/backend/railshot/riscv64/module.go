@@ -158,7 +158,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.foreignTableCalls = opts.ForeignTableCalls
 	state.importTailCalls = opts.importTailCalls
 	state.dynamicTailCalls = opts.dynamicTailCalls
-	state.referenceCalls = opts.NativeReferenceCalls || opts.gcStructBasic || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy
+	state.referenceCalls = opts.NativeReferenceCalls || opts.gcRefTestAbstract || opts.gcStructBasic || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy
 	state.referenceFunctions = opts.referenceFunctions
 	state.publicReferenceCarriers = opts.referenceFunctions && admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	state.publicDynamicHostReferenceCarriers = state.publicReferenceCarriers && admitPublicDynamicHostReferenceBoundary(m)
@@ -280,10 +280,10 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		slots  int
 	}
 	helperEntries := make(map[helperBridge]int, 12)
-	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructRefCast, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}} {
+	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 2}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructRefCast, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}} {
 		used := false
 		for _, call := range relocations {
-			used = used || call.helper == bridge.helper && (call.helper != gcArrayAllocFixed || call.helperSlots == bridge.slots)
+			used = used || call.helper == bridge.helper && (call.helper != gcArrayAllocFixed && call.helper != gcStructAllocOne || call.helperSlots == bridge.slots)
 		}
 		if !used {
 			continue
@@ -305,7 +305,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			return nil, unsupported("GC helper bridge image bound")
 		}
 		key := bridge
-		if key.helper != gcArrayAllocFixed {
+		if key.helper != gcArrayAllocFixed && key.helper != gcStructAllocOne {
 			key.slots = 0
 		}
 		helperEntries[key] = len(c.code)
@@ -319,7 +319,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		if call.helper != 0 {
 			var ok bool
 			keySlots := 0
-			if call.helper == gcArrayAllocFixed {
+			if call.helper == gcArrayAllocFixed || call.helper == gcStructAllocOne {
 				keySlots = call.helperSlots
 			}
 			target, ok = helperEntries[helperBridge{call.helper, keySlots}]
@@ -502,7 +502,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCRefCastAbstract(m) || admitRV64GCStructGet(m) || admitRV64GCStructMutation(m) || admitRV64GCStructNull(m) || admitRV64GCStructPacked(m) || admitRV64GCStructBasic(m) || admitRV64GCStructNumericGlobals(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
+	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCRefCastAbstract(m) || admitRV64GCBrOnCastAbstract(m) || admitRV64GCBrOnCastFailAbstract(m) || admitRV64GCStructGet(m) || admitRV64GCStructMutation(m) || admitRV64GCStructNull(m) || admitRV64GCStructPacked(m) || admitRV64GCStructBasic(m) || admitRV64GCStructNumericGlobals(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
 		return nil
 	}
 	i31Core := referenceFunctions && admitRV64I31Core(m)

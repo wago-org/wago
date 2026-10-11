@@ -90,6 +90,10 @@ type CompileOptions struct {
 	// GCRefCastConcreteSource is the exact-wire witness for the official
 	// concrete struct-subtyping ref.cast checkpoint.
 	GCRefCastConcreteSource bool
+	// GCBrOnCastAbstractSource and GCBrOnCastFailAbstractSource are exact-wire
+	// witnesses for the two official abstract branch-cast products.
+	GCBrOnCastAbstractSource     bool
+	GCBrOnCastFailAbstractSource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool

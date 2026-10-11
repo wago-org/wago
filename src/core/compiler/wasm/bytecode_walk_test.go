@@ -117,6 +117,26 @@ func TestClassifyInstructionImmediateReportsGCHeapType(t *testing.T) {
 	}
 }
 
+func TestClassifyInstructionImmediateReportsGCBranchCastTypes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sub  byte
+		kind InstrKind
+	}{
+		{name: "br_on_cast", sub: 24, kind: InstrBrOnCast},
+		{name: "br_on_cast_fail", sub: 25, kind: InstrBrOnCastFail},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			imm, err := ClassifyInstructionImmediate(NewReader([]byte{tc.sub, 3, 7, byte(HeapAny), byte(HeapEq)}), 0xfb)
+			if err != nil || imm.Kind != tc.kind || imm.Index != 7 || !imm.Cast.SourceNullable || !imm.Cast.TargetNullable ||
+				!imm.HasHeapType || imm.HeapType.Kind() != HeapAbs || imm.HeapType.Abs() != HeapAny ||
+				!imm.HasHeapType2 || imm.HeapType2.Kind() != HeapAbs || imm.HeapType2.Abs() != HeapEq {
+				t.Fatalf("classify=%+v err=%v", imm, err)
+			}
+		})
+	}
+}
+
 func TestClassifyInstructionImmediateReportsMemargMetadata(t *testing.T) {
 	var imm InstructionImmediate
 	r := NewReader([]byte{0x02, 0x80, 0x01}) // align=2, offset=128

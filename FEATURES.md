@@ -43,6 +43,12 @@ checks preserve all 64 bits. Fallback scalar/SWAR control nesting is bounded at
 The exact official concrete struct-subtyping `gc/ref_cast` module is admitted
 through source and compiler-free artifacts, using the four-slot GC helper bridge
 and rooted table state; broader `ref.cast` module shapes remain fail-closed.
+The exact official abstract `br_on_cast` and `br_on_cast_fail` modules are also
+admitted through source and compiler-free artifacts. Their genuine RV64 lowering
+supports the pinned nullable and non-null i31/struct/array targets, typed
+multi-value branch payloads, arity-specific allocation bridges, dirty-upper i32
+table indices, and rooted-table stress collection. Other branch-cast module
+shapes remain fail-closed.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,
 including cold traps, with explicit wrapper/helper gaps. Unwind maps and detailed

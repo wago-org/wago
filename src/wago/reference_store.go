@@ -878,7 +878,7 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	// references and therefore must never be scanned as raw roots. Other products
 	// retain their established descriptor walk as an additional transient root
 	// source during helper publication.
-	if !rv64GCRefTestAbstract(in.c) && !rv64GCExtern(in.c) && !rv64GCRefCastAbstract(in.c) {
+	if !rv64GCRefTestAbstract(in.c) && !rv64GCExtern(in.c) && !rv64GCRefCastAbstract(in.c) && !rv64GCBrOnCastAbstract(in.c) && !rv64GCBrOnCastFailAbstract(in.c) {
 		for tableIndex := 0; tableIndex < in.c.tableCount(); tableIndex++ {
 			if !isGCRefValType(in.c.tableElementType(tableIndex)) {
 				continue

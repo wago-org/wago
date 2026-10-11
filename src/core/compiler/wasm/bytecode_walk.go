@@ -16,6 +16,9 @@ type InstructionImmediate struct {
 	UsesBulkMemory bool
 	HasHeapType    bool
 	HeapType       HeapType
+	HasHeapType2   bool
+	HeapType2      HeapType
+	Cast           CastOp
 }
 
 // ImmediateFreeInstructionKind reports the decoded kind for an opcode whose
