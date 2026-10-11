@@ -461,6 +461,7 @@ var catalog = []Definition{
 	{Name: "wide-reuse-pins", Label: "Wide repeated local pins", Description: "retain bounded integer locals whose loop-weighted reads exceed definitions", Default: true, Architectures: []string{"arm64"}},
 	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: true, Architectures: []string{"arm64"}},
 	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+	{Name: "bounded-branch-index", Label: "Bounded branch indices", Description: "omit branch-vector bounds tests for direct i32 masks and constants proved in range", Default: true, Architectures: []string{"arm64"}},
 	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
 	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: []string{"arm64"}},
 	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: []string{"arm64"}},

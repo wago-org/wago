@@ -3029,6 +3029,11 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		return nil
 	}
+	var indexBound uint32
+	var indexBounded bool
+	if f.opt(optBoundedBranchIndex) {
+		indexBound, indexBounded = f.branchIndexUpperBound(f.s.back())
+	}
 	f.reconcileLocals() // eager: one state (all lsStackReg) satisfies every target
 	ireg := f.materialize(f.popValue())
 	n, err := r.U32()
@@ -3073,7 +3078,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.branchJump(fr)
 	}
 	if f.canBranchVector(labels, def) {
-		f.emitBranchVector(labels, def, ireg, emitCase)
+		f.emitBranchVector(labels, def, ireg, indexBounded && indexBound < n, emitCase)
 		return nil
 	}
 	if brTableUseJump(labels, def, f.policy) {

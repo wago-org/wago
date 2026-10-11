@@ -1,0 +1,4 @@
+language-register-vm: both timed source images match exact qualified inventories.
+compiler-register-allocation: both timed source images match exact qualified inventories.
+files-glob-match: both timed source images match exact qualified inventories.
+hardware-boolean-anf: both timed source images match exact qualified inventories.

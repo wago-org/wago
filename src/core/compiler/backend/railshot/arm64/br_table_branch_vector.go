@@ -29,9 +29,14 @@ func (f *fn) branchVectorTarget(label uint32) bool {
 	return fr.kind != cfFunc && fr.branchArity() == 0 && !fr.has(ctrlRegMerge1)
 }
 
-func (f *fn) emitBranchVector(labels []uint32, def uint32, index Reg, emitCase func(uint32)) {
-	f.a.CmpImm32(index, uint32(len(labels))) // bounded unique cohort is <=32.
-	defaultSite := f.a.Bcond(condAE)
+func (f *fn) emitBranchVector(labels []uint32, def uint32, index Reg, inRange bool, emitCase func(uint32)) {
+	defaultSite := -1
+	if inRange {
+		f.stats.peep("bounded-branch-index")
+	} else {
+		f.a.CmpImm32(index, uint32(len(labels))) // bounded unique cohort is <=32.
+		defaultSite = f.a.Bcond(condAE)
+	}
 	adr := f.a.Adr(X16)
 	f.recordPCRelative(adr)
 	// W-index extension consumes exactly the Wasm i32, even with dirty high bits.
@@ -40,7 +45,9 @@ func (f *fn) emitBranchVector(labels []uint32, def uint32, index Reg, emitCase f
 	}
 	f.a.Br(X17)
 	// Keep the default nearby, independent of the selected table entry.
-	f.patchBranch19(defaultSite, f.a.Len())
+	if defaultSite >= 0 {
+		f.patchBranch19(defaultSite, f.a.Len())
+	}
 	emitCase(def)
 	start := f.a.Len()
 	f.a.PatchAdr(adr, start)

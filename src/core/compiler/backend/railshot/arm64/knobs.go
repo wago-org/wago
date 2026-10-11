@@ -39,6 +39,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
 	optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
 	optimization.Bind("br-table-branch-vector", &brTableBranchVectorEnabled),
+	optimization.Bind("bounded-branch-index", &boundedBranchIndexEnabled),
 	optimization.Bind("convert-read", &convertReadEnabled),
 	optimization.Bind("cold-call-local-pins", &coldCallLocalPinsEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
@@ -125,6 +126,7 @@ var (
 	optBorrowedDivRem       = optimizationBindings.Option("borrowed-div-rem")
 	optBoundedQuotient      = optimizationBindings.Option("bounded-signed-quotient")
 	optBrTableBranchVector  = optimizationBindings.Option("br-table-branch-vector")
+	optBoundedBranchIndex   = optimizationBindings.Option("bounded-branch-index")
 	optDominatedIndexedBase = optimizationBindings.Option("dominated-indexed-base")
 	optDominatedIndexedKey  = optimizationBindings.Option("dominated-indexed-key")
 	optOrdinaryShiftedImm   = optimizationBindings.Option("ordinary-shifted-immediate")

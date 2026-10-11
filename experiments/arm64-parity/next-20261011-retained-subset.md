@@ -1,23 +1,23 @@
 # Retained ARM64 priority subset, 2026-10-11
 
-Apple M4 Max, arm64. 54 focused workloads ranked worst-to-best against historical w2c2. These captures cover the qualified defaults after `76e52be8` plus `integer-select-local-read`. No full timing sweep was run. Times are median microseconds per exact invocation after warmup; every raw observation remains available.
+Apple M4 Max, arm64. 54 focused workloads ranked worst-to-best against historical w2c2. These captures cover the qualified defaults after `1bb0757b` plus `bounded-branch-index`. No full timing sweep was run. Times are median microseconds per exact invocation after warmup; every raw observation remains available.
 
-Seven rows use the final integrated source compiler in reversed process comparisons. Other changed images use the final isolated-select affected-workload repeat; combined validation proves those native images identical. Older captures are retained only for workloads whose native images remain identical. Captures have different dates/protocols, and ranges expose outliers. This is a priority list, not a simultaneously measured parity claim.
+Eight rows use integrated source compilers in reversed process comparisons. Seven were captured with three retained changes and four with all four changes; overlapping rows use the latter capture. Combined validation proves the three-change images unchanged after adding bounded dispatch. Other changed images use the final isolated-select affected-workload repeat with identical combined images. Older captures are retained only for unchanged native images. Dates/protocols differ, and ranges expose outliers. This is a priority list, not a simultaneously measured parity claim.
 
 w2c2 was not rerun: its microseconds come from the [complete historical device ranking](../../steady-exec-wago-vs-w2c2.md), source `main@700f5565`, captured 2026-10-09. Positive gaps mean Wago is slower. Workload contracts differ; compare each row only to its matching corpus.
 
 | Rank | Corpus workload | Retained Wago µs | Observed range µs | Historical w2c2 µs | Ratio | Gap | Wago capture |
 |---:|---|---:|---:|---:|---:|---:|---|
 | 1 | `wago/libtommath/modular-arithmetic` | 11.729894 | 11.594755–58.860480 | 6.500000 | 1.805× | +80.5% | isolated select; integrated image identical; 4×150ms |
-| 2 | `applications/compiler-register-allocation` | 17.190280 | 17.145296–17.356742 | 9.916000 | 1.734× | +73.4% | three retained defaults; 4×150ms processes |
+| 2 | `applications/compiler-register-allocation` | 17.240390 | 17.163977–17.477321 | 9.916000 | 1.739× | +73.9% | four retained defaults; 4×150ms processes |
 | 3 | `applications/geo-point-in-polygon` | 20.839113 | 20.580021–21.371876 | 12.208000 | 1.707× | +70.7% | three retained defaults; 4×150ms processes |
-| 4 | `applications/files-glob-match` | 131.637603 | 129.534298–143.049184 | 78.542000 | 1.676× | +67.6% | three retained defaults; 4×150ms processes |
+| 4 | `applications/files-glob-match` | 131.767017 | 130.509938–132.048902 | 78.542000 | 1.678× | +67.8% | four retained defaults; 4×150ms processes |
 | 5 | `applications/vision-components` | 38.618160 | 37.612128–39.223597 | 23.084000 | 1.673× | +67.3% | isolated select; integrated image identical; 4×150ms |
 | 6 | `wago/pcre2/compile-match` | 8.131038 | 8.073984–8.140213 | 4.917000 | 1.654× | +65.4% | isolated select; integrated image identical; 4×150ms |
-| 7 | `applications/language-register-vm` | 10.986821 | 10.866755–11.103671 | 6.875000 | 1.598× | +59.8% | 37174169 unchanged image; 8×150ms |
-| 8 | `wago/nanosvg/parse-structure` | 2.385712 | 2.375358–2.396604 | 1.542000 | 1.547× | +54.7% | isolated select; integrated image identical; 4×150ms |
-| 9 | `wago/zstd/decompress` | 5.669000 | 5.627000–5.694000 | 3.667000 | 1.546× | +54.6% | isolated select; integrated image identical; 4×150ms |
-| 10 | `applications/video-optical-flow` | 18.533638 | 18.458929–18.579270 | 12.041000 | 1.539× | +53.9% | 37174169 unchanged image; 8×150ms |
+| 7 | `wago/nanosvg/parse-structure` | 2.385712 | 2.375358–2.396604 | 1.542000 | 1.547× | +54.7% | isolated select; integrated image identical; 4×150ms |
+| 8 | `wago/zstd/decompress` | 5.669000 | 5.627000–5.694000 | 3.667000 | 1.546× | +54.6% | isolated select; integrated image identical; 4×150ms |
+| 9 | `applications/video-optical-flow` | 18.533638 | 18.458929–18.579270 | 12.041000 | 1.539× | +53.9% | 37174169 unchanged image; 8×150ms |
+| 10 | `applications/language-register-vm` | 10.320478 | 10.165086–10.402835 | 6.875000 | 1.501× | +50.1% | four retained defaults; 4×150ms processes |
 | 11 | `wago/monocypher/aead-blake2b` | 28.863728 | 28.777737–29.065558 | 19.458000 | 1.483× | +48.3% | isolated select; integrated image identical; 4×150ms |
 | 12 | `applications/ml-kmeans` | 23.762335 | 23.108571–26.647098 | 16.208000 | 1.466× | +46.6% | three retained defaults; 4×150ms processes |
 | 13 | `wago/fastfloat/decimal-parse` | 0.665286 | 0.655291–0.671548 | 0.458000 | 1.453× | +45.3% | isolated select; integrated image identical; 4×150ms |
@@ -25,8 +25,8 @@ w2c2 was not rerun: its microseconds come from the [complete historical device r
 | 15 | `applications/compiler-dead-code` | 4.143694 | 4.141541–4.153806 | 2.875000 | 1.441× | +44.1% | isolated select; integrated image identical; 4×150ms |
 | 16 | `applications/geo-polyline-simplify` | 5.328101 | 5.324952–5.333418 | 3.708000 | 1.437× | +43.7% | isolated select; integrated image identical; 4×150ms |
 | 17 | `wago/coremark/2k-performance` | 26146.838500 | 25820.010000–26346.479000 | 18705.583000 | 1.398× | +39.8% | isolated select; integrated image identical; 4×150ms |
-| 18 | `applications/vision-dilation` | 40.576645 | 40.100277–41.461593 | 29.375000 | 1.381× | +38.1% | 37174169 unchanged image; 8×150ms |
-| 19 | `applications/hardware-boolean-anf` | 67.620056 | 66.830062–74.161324 | 49.000000 | 1.380× | +38.0% | three retained defaults; 4×150ms processes |
+| 18 | `applications/hardware-boolean-anf` | 68.084392 | 67.213542–68.687518 | 49.000000 | 1.389× | +38.9% | four retained defaults; 4×150ms processes |
+| 19 | `applications/vision-dilation` | 40.576645 | 40.100277–41.461593 | 29.375000 | 1.381× | +38.1% | 37174169 unchanged image; 8×150ms |
 | 20 | `applications/ml-knn` | 30.148343 | 29.834279–30.388322 | 22.917000 | 1.316× | +31.6% | 37174169 unchanged image; 8×150ms |
 | 21 | `applications/files-path-normalize` | 14.404930 | 14.146318–14.478503 | 10.958000 | 1.315× | +31.5% | 37174169 unchanged image; 6×125ms |
 | 22 | `applications/search-aho-corasick` | 48.632632 | 47.754456–50.833191 | 37.292000 | 1.304× | +30.4% | 37174169 unchanged image; 6×125ms |
@@ -63,7 +63,7 @@ w2c2 was not rerun: its microseconds come from the [complete historical device r
 | 53 | `wago/utf8proc/normalize-casefold` | 0.821946 | 0.818103–0.826620 | 2.459000 | 0.334× | -66.6% | isolated select; integrated image identical; 4×150ms |
 | 54 | `wago/zlib/inflate` | 6.355500 | 6.351000–6.380000 | 44.666000 | 0.142× | -85.8% | isolated select; integrated image identical; 4×150ms |
 
-The dispatch-index prototype and subsequent experiments are excluded. OS-thread locking and QoS do not establish physical-core affinity. See [retained changes and compile costs](next-20261011-results.md), [combined native proof](next-20261011-select-retain-native-proof.txt), and [source comparison](next-20261011-select-cross-summary.md).
+Subsequent exploratory changes are excluded. OS-thread locking and QoS do not establish physical-core affinity. See [retained changes and compile costs](next-20261011-results.md), [combined native proof](next-20261011-dispatch-retain-native-proof.txt), and [latest source comparison](next-20261011-dispatch-cross-summary.md).
 
 Source SHA256:
 
@@ -72,3 +72,4 @@ Source SHA256:
 - `hour-20261011-focused-core-exec.jsonl`: `6e6114e954591f4a4ed94c29b367548320f1ebee2a31eff5b6841418fbf525a2`
 - `integer-select-local-read/affected-subset/all.jsonl`: `bee6f5b96f699e6a1fb33567f5ad817b3859ff610c0a4b1b29a82d936c82391b`
 - `next-20261011-select-cross-build.jsonl`: `6f9080290f02c7cfee8edd61cd5953dc2eb668ef93888ed4e65518fc0538ff92`
+- `next-20261011-dispatch-cross-build.jsonl`: `ca0eda0f394a7574c9c960a8eb449e4492a462130d93d70ef18881a3c13a7f1c`

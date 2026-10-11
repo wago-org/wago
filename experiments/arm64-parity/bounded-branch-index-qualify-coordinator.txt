@@ -1,0 +1,2 @@
+language-register-vm.bin: 1232B -> 1224B
+148 exact SIGNAL contracts/images inspected;147 unchanged against37174169;only VM changes and matches frozen timed candidate. All148 explicit exact contracts also pass.1x application records are correctness/image capture only.

@@ -1,0 +1,1 @@
+Default ON and NO_BOUNDED_BRANCH_INDEX=1 OFF register-VM images match the exact qualified/timed inventories; both1x exact oracles pass. Diagnostic per-compilation rollback checks also pass.

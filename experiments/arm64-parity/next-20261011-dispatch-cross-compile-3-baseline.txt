@@ -1,0 +1,10 @@
+# locked OS thread; requested user-interactive QoS; returned class=33
+# paired options: loop-memory-base
+{"workload":"compiler-register-allocation","phase":"compile","round":0,"on":false,"iterations":2155,"us":68.1872969837587}
+{"workload":"compiler-register-allocation","phase":"compile","round":0,"on":true,"iterations":2155,"us":70.39489559164734}
+{"workload":"files-glob-match","phase":"compile","round":0,"on":false,"iterations":5806,"us":27.760283844299}
+{"workload":"files-glob-match","phase":"compile","round":0,"on":true,"iterations":5806,"us":27.413738718567}
+{"workload":"hardware-boolean-anf","phase":"compile","round":0,"on":false,"iterations":2139,"us":67.66002431042543}
+{"workload":"hardware-boolean-anf","phase":"compile","round":0,"on":true,"iterations":2139,"us":67.49635764375876}
+{"workload":"language-register-vm","phase":"compile","round":0,"on":false,"iterations":3527,"us":43.03532293734052}
+{"workload":"language-register-vm","phase":"compile","round":0,"on":true,"iterations":3527,"us":43.05566572157641}
