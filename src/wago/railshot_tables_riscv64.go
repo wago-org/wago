@@ -10,6 +10,7 @@ import (
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // rv64StateOnlyTable64 is the persisted-artifact witness for the first RV64
@@ -1675,7 +1676,31 @@ func rv64MixedTable64Indirect(c *Compiled) bool {
 }
 
 func rv64MixedTable64ActiveIndirect(c *Compiled) bool {
+	return rv64MixedTable64ActiveIndirectCall(c) || rv64MixedTable64ActiveIndirectTail(c)
+}
+
+func rv64MixedTable64ActiveIndirectCall(c *Compiled) bool {
+	return rv64MixedTable64ActiveIndirectProduct(c, false, false)
+}
+
+func rv64MixedTable64ActiveIndirectTail(c *Compiled) bool {
+	return rv64MixedTable64ActiveIndirectProduct(c, true, false)
+}
+
+// The native-tail appendix precedes GC descriptors in the artifact. Its plan
+// validator may use this exact source/image witness while that one redundant
+// descriptor vector is not decoded yet; complete retained admission still
+// requires the full classifier above after decoding finishes.
+func rv64MixedTable64ActiveIndirectTailPlanShape(c *Compiled) bool {
+	return rv64MixedTable64ActiveIndirectProduct(c, true, true)
+}
+
+func rv64MixedTable64ActiveIndirectProduct(c *Compiled, tail, beforeGCDescriptors bool) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 1 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 4 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
+		return false
+	}
+	tailModule := rv64NativeTailModule(c)
+	if tail != (tailModule != nil) {
 		return false
 	}
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
@@ -1701,7 +1726,18 @@ func rv64MixedTable64ActiveIndirect(c *Compiled) bool {
 	}
 	i32Key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32}})
 	callerKey := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}})
-	if len(c.Types) != 2 || len(c.GCTypeDescs) != 2 || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 4 || len(c.Entry) != 4 || c.Entry[0] != 0 || c.Entry[1] != 592 || c.Entry[2] != 1184 || c.Entry[3] != 4032 || len(c.InternalEntry) != 4 || c.InternalEntry[0] != 0 || c.InternalEntry[1] != 592 || c.InternalEntry[2] != 1184 || c.InternalEntry[3] != 4032 {
+	if len(c.Types) != 2 || (!beforeGCDescriptors && len(c.GCTypeDescs) != 2) || (beforeGCDescriptors && len(c.GCTypeDescs) != 0 && len(c.GCTypeDescs) != 2) || len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain || len(c.FuncTypeID) != 4 || len(c.Entry) != 4 || len(c.InternalEntry) != 4 {
+		return false
+	}
+	for _, desc := range c.GCTypeDescs {
+		if desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper {
+			return false
+		}
+	}
+	if !tail && (c.Entry[0] != 0 || c.Entry[1] != 592 || c.Entry[2] != 1184 || c.Entry[3] != 4032 || c.InternalEntry[0] != 0 || c.InternalEntry[1] != 592 || c.InternalEntry[2] != 1184 || c.InternalEntry[3] != 4032) {
+		return false
+	}
+	if tail && (c.Entry[0] != 0 || c.Entry[1] != 592 || c.Entry[2] != 1184 || c.Entry[3] != 2624 || c.InternalEntry[0] != 0 || c.InternalEntry[1] != 592 || c.InternalEntry[2] != 1184 || c.InternalEntry[3] != 2624) {
 		return false
 	}
 	for i, fn := range c.Funcs {
@@ -1714,8 +1750,29 @@ func rv64MixedTable64ActiveIndirect(c *Compiled) bool {
 		}
 	}
 	wantCode := [32]byte{0x32, 0x5f, 0xde, 0x8d, 0x64, 0xeb, 0x6d, 0x83, 0x35, 0x27, 0x29, 0xcb, 0xa1, 0x58, 0x0d, 0x2f, 0x06, 0xf1, 0xf3, 0xb3, 0xb5, 0x16, 0xa2, 0x11, 0x39, 0x35, 0xb2, 0xd6, 0x00, 0x75, 0xb7, 0x28}
-	if len(c.code) != 6944 || sha256.Sum256(c.code) != wantCode || c.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {
+	if tail {
+		wantCode = [32]byte{0x3b, 0xa0, 0x4d, 0x66, 0xb9, 0x27, 0xc3, 0x70, 0x5d, 0xff, 0xc3, 0x22, 0xb8, 0x38, 0xfd, 0x8b, 0x2d, 0x8a, 0x67, 0xbe, 0xaa, 0xb2, 0x9e, 0x2f, 0x66, 0xe0, 0x6e, 0xd4, 0x97, 0x4f, 0x88, 0xfe}
+	}
+	expectedFeatures := CoreFeatureTable64 | CoreFeatureReferenceTypes
+	if tail {
+		expectedFeatures |= CoreFeatureTailCall
+	}
+	wantCodeLen := 6944
+	if tail {
+		wantCodeLen = 4124
+	}
+	if len(c.code) != wantCodeLen || sha256.Sum256(c.code) != wantCode || c.requiredFeatures != expectedFeatures || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {
 		return false
+	}
+	if tail {
+		if len(tailModule.Plans) != 2 {
+			return false
+		}
+		for i, plan := range tailModule.Plans {
+			if plan.Kind != encoder.NativeTailIndirect || plan.TypeIndex != 0 || plan.FunctionIndex != uint32(i+2) || plan.ImportIndex != 0 || plan.ReferenceBase != 56 || plan.SourcePC != 3 || plan.FrameBytes != 64 || plan.SourceBase != 56 || plan.SourceStride != 8 {
+				return false
+			}
+		}
 	}
 	for i, e := range c.Elems {
 		if e.Mode != ElemModeActive || e.TableIndex != uint32(i) || e.RefType != ValFuncRef || !e.HasValueType || e.Offset.Base != 0 || e.Offset.HasGlobal || !bytes.Equal(e.Offset.Expr, []byte{0x42, 1, 0x0b}) || len(e.Values) != 2 {

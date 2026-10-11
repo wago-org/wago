@@ -1947,6 +1947,18 @@ func admitMixedTable64MutationIndirect(m *wasm.Module, production, public bool) 
 }
 
 func admitMixedTable64ActiveIndirect(m *wasm.Module, production, public bool) bool {
+	return admitMixedTable64ActiveIndirectCall(m, production, public) || admitMixedTable64ActiveIndirectTail(m, production, public)
+}
+
+func admitMixedTable64ActiveIndirectCall(m *wasm.Module, production, public bool) bool {
+	return admitMixedTable64ActiveIndirectProduct(m, production, public, false)
+}
+
+func admitMixedTable64ActiveIndirectTail(m *wasm.Module, production, public bool) bool {
+	return admitMixedTable64ActiveIndirectProduct(m, production, public, true)
+}
+
+func admitMixedTable64ActiveIndirectProduct(m *wasm.Module, production, public, tail bool) bool {
 	if !production || !public || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 2 || len(m.FuncTypes) != 4 || len(m.Code) != 4 || len(m.Elements) != 2 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
@@ -1980,7 +1992,11 @@ func admitMixedTable64ActiveIndirect(m *wasm.Module, production, public bool) bo
 			return false
 		}
 	}
-	for i, body := range [][]byte{{0x41, 7, 0x0b}, {0x41, 8, 0x0b}, {0x20, 0, 0x11, 0, 0, 0x0b}, {0x20, 0, 0x11, 0, 1, 0x0b}} {
+	opcode := byte(0x11)
+	if tail {
+		opcode = 0x13
+	}
+	for i, body := range [][]byte{{0x41, 7, 0x0b}, {0x41, 8, 0x0b}, {0x20, 0, opcode, 0, 0, 0x0b}, {0x20, 0, opcode, 0, 1, 0x0b}} {
 		if !bytes.Equal(m.Code[i].BodyBytes, body) {
 			return false
 		}

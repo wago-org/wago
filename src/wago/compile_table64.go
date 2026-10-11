@@ -1779,9 +1779,22 @@ func stagedMixedTable64MutationIndirectShape(m *wasm.Module) bool {
 	return functions[0] && functions[1] && tables[0] && tables[1]
 }
 
-// stagedMixedTable64ActiveIndirectShape composes the exact two-target active
-// vector with a genuine call_indirect through each mixed table64 descriptor.
 func stagedMixedTable64ActiveIndirectShape(m *wasm.Module) bool {
+	return stagedMixedTable64ActiveIndirectCallShape(m) || stagedMixedTable64ActiveIndirectTailShape(m)
+}
+
+func stagedMixedTable64ActiveIndirectCallShape(m *wasm.Module) bool {
+	return stagedMixedTable64ActiveIndirectProductShape(m, false)
+}
+
+func stagedMixedTable64ActiveIndirectTailShape(m *wasm.Module) bool {
+	return stagedMixedTable64ActiveIndirectProductShape(m, true)
+}
+
+// stagedMixedTable64ActiveIndirectProductShape composes the exact two-target
+// active vector with a genuine ordinary or proper-tail indirect call through
+// each mixed table64 descriptor.
+func stagedMixedTable64ActiveIndirectProductShape(m *wasm.Module, tail bool) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 2 || len(m.FuncTypes) != 4 || len(m.Code) != 4 || len(m.Elements) != 2 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
@@ -1815,7 +1828,11 @@ func stagedMixedTable64ActiveIndirectShape(m *wasm.Module) bool {
 			return false
 		}
 	}
-	for i, body := range [][]byte{{0x41, 7, 0x0b}, {0x41, 8, 0x0b}, {0x20, 0, 0x11, 0, 0, 0x0b}, {0x20, 0, 0x11, 0, 1, 0x0b}} {
+	opcode := byte(0x11)
+	if tail {
+		opcode = 0x13
+	}
+	for i, body := range [][]byte{{0x41, 7, 0x0b}, {0x41, 8, 0x0b}, {0x20, 0, opcode, 0, 0, 0x0b}, {0x20, 0, opcode, 0, 1, 0x0b}} {
 		if !bytes.Equal(m.Code[i].BodyBytes, body) {
 			return false
 		}
