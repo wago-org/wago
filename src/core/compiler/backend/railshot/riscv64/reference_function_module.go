@@ -10,13 +10,15 @@ import (
 )
 
 // admitPublicReferenceCallBoundary is the first public owner-scoped call_ref
-// surface. It is deliberately table-free and reference-global-free: a scalar
-// target, a token-producing wrapper, and a wrapper that forwards the target's
-// scalar parameters plus one nullable exact target reference to an ordinary
-// call_ref. The wrapper may return either all scalar target results or, after
-// dropping them, the same authenticated target as a nullable funcref. The
-// compiler witness, public token authentication, and invocation owner graph are
-// all required; no other public dynamic-reference shape inherits this exception.
+// surface. It is deliberately table-free and reference-global-free: a target,
+// a token-producing wrapper, and a wrapper that forwards the target parameters
+// plus one nullable exact target reference to call_ref. The broad form carries
+// only shared scalars. One separate exact form forwards a nullable abstract
+// funcref to a (funcref)->i32 nullness observer, proving two independently
+// authenticated reference arguments without allowing a reference result or
+// proper tail. The compiler witness, public token authentication, and invocation
+// owner graph are all required; no other public dynamic-reference shape inherits
+// this exception.
 func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 3 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
 		return false
@@ -34,7 +36,8 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	producer := m.Types[1].SubTypes[0].Comp
 	caller := m.Types[2].SubTypes[0].Comp
 	indexedTarget := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
-	if integerNumericSignature(&target, true) != nil || len(producer.Params) != 0 || len(producer.Results) != 1 || !wasm.EqualValType(producer.Results[0], wasm.FuncRef) || len(caller.Params) != len(target.Params)+1 || !wasm.EqualValType(caller.Params[len(target.Params)], indexedTarget) {
+	referenceArgument := publicReferenceArgumentTarget(&target)
+	if integerNumericSignature(&target, true) != nil && !referenceArgument || len(producer.Params) != 0 || len(producer.Results) != 1 || !wasm.EqualValType(producer.Results[0], wasm.FuncRef) || len(caller.Params) != len(target.Params)+1 || !wasm.EqualValType(caller.Params[len(target.Params)], indexedTarget) {
 		return false
 	}
 	for i := range target.Params {
@@ -47,7 +50,7 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 		numericResult = wasm.EqualValType(caller.Results[i], target.Results[i])
 	}
 	referenceResult := len(caller.Results) == 1 && wasm.EqualValType(caller.Results[0], wasm.FuncRef)
-	if !numericResult && !referenceResult {
+	if !numericResult && !referenceResult || referenceArgument && !numericResult {
 		return false
 	}
 	for i := range m.FuncTypes {
@@ -80,6 +83,9 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	if !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, callerBody) && (!numericResult || !bytes.Equal(m.Code[2].BodyBytes, tailBody)) {
 		return false
 	}
+	if referenceArgument && bytes.Equal(m.Code[2].BodyBytes, tailBody) {
+		return false
+	}
 	for i, name := range []string{"target", "get", "call"} {
 		export := m.Exports[i]
 		if export.Name != name || export.Index.Kind != wasm.ExternFunc || export.Index.Index != uint32(i) {
@@ -87,6 +93,10 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 		}
 	}
 	return true
+}
+
+func publicReferenceArgumentTarget(target *wasm.CompType) bool {
+	return target != nil && target.Kind == wasm.CompFunc && len(target.Params) == 1 && wasm.EqualValType(target.Params[0], wasm.FuncRef) && len(target.Results) == 1 && wasm.EqualValType(target.Results[0], wasm.I32)
 }
 
 func appendPublicReferenceBoundaryU32(dst []byte, value uint32) []byte {
@@ -141,6 +151,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		decodedSWAR:              vector,
 		declarationExtern:        !vector && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
 		declarationNonNullExtern: !vector && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
+		publicReferenceArguments: publicReferenceCallBoundary && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp),
 	}
 	limit := 256
 	if vector {
@@ -237,6 +248,10 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		return unsupported("closed reference module requires internal reference functions")
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
+	descriptorTarget := numericTarget
+	if publicReferenceCallBoundary && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp) {
+		descriptorTarget = func(index uint32) bool { return index == 0 || numericTarget(index) }
+	}
 	if len(m.Tables) != 0 && m.Tables[0].Init != nil {
 		value, err := tableElementExpression(*m.Tables[0].Init)
 		if err != nil {
@@ -303,7 +318,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			}
 		}
 	}
-	if err := admitClosedReferenceElements(m, &remaining, numericTarget); err != nil {
+	if err := admitClosedReferenceElements(m, &remaining, descriptorTarget); err != nil {
 		return err
 	}
 	for _, custom := range m.Customs {
@@ -360,7 +375,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 					return unsupported("closed reference immutable owned global set")
 				}
 			}
-			if op == 0xd2 && !numericTarget(imm.Index) {
+			if op == 0xd2 && !descriptorTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
 			}
 			if referenceExports && (op == 0x14 || op == 0x15) && !publicReferenceCallBoundary {
@@ -399,7 +414,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 						return err
 					}
 				} else if err := integerNumericSignature(sig, true); err != nil {
-					return err
+					if !publicReferenceCallBoundary || op != 0x14 || imm.Index != 0 || !publicReferenceArgumentTarget(sig) {
+						return err
+					}
 				}
 				if op == 0x15 || op == 0x13 {
 					source := &m.Types[m.FuncTypes[function].Index].SubTypes[0].Comp

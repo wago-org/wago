@@ -32,6 +32,9 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 	if c == nil || !c.nativeReferenceFunctionABI {
 		return false
 	}
+	if function == 0 && len(c.Funcs) != 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceArgumentSignature(c.Funcs[0]) {
+		return false
+	}
 	local := function - c.NumImports
 	if local < 0 || local >= len(c.Funcs) {
 		return false
@@ -47,7 +50,7 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 }
 
 func rv64PublicReferenceCallBoundary(c *Compiled) bool {
-	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || c.dynamicFuncrefEscape || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 3 || len(c.Types) != 3 || len(c.ValueTypes) != 0 || len(c.Exports) != 3 || c.tableCount() != 0 || len(c.extraTables) != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.tagImportCount() != 0 || c.HasStart {
+	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 3 || len(c.Types) != 3 || len(c.ValueTypes) != 0 || len(c.Exports) != 3 || c.tableCount() != 0 || len(c.extraTables) != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.tagImportCount() != 0 || c.HasStart {
 		return false
 	}
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 || !c.NeedsFuncRefDescs || len(c.FuncTypeID) != 3 {
@@ -73,7 +76,11 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 		}
 	}
 	target, producer, caller := c.Funcs[0], c.Funcs[1], c.Funcs[2]
-	if !rv64PublicReferenceScalarSignature(target) || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != len(target.Params)+1 || caller.Params[len(target.Params)] != ValFuncRef {
+	referenceArgument := rv64PublicReferenceArgumentSignature(target)
+	if c.dynamicFuncrefEscape != referenceArgument {
+		return false
+	}
+	if !rv64PublicReferenceScalarSignature(target) && !referenceArgument || len(producer.Params) != 0 || len(producer.Results) != 1 || producer.Results[0] != ValFuncRef || len(caller.Params) != len(target.Params)+1 || caller.Params[len(target.Params)] != ValFuncRef {
 		return false
 	}
 	for i := range target.Params {
@@ -83,7 +90,7 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	}
 	numericResult := rv64PublicReferenceSameTypes(caller.Results, target.Results)
 	referenceResult := len(caller.Results) == 1 && caller.Results[0] == ValFuncRef
-	if !numericResult && !referenceResult || tail && !numericResult {
+	if !numericResult && !referenceResult || tail && !numericResult || referenceArgument && (!numericResult || tail) {
 		return false
 	}
 	targetType, producerType, callerType := c.Types[0], c.Types[1], c.Types[2]
@@ -103,6 +110,12 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 	}
 	if !rv64PublicReferenceScalarDescriptors(callerType.Params[:len(target.Params)], target.Params) {
 		return false
+	}
+	if referenceArgument {
+		argument := targetType.Params[0]
+		if argument.Kind != ValueTypeReference || !argument.Ref.Nullable || argument.Ref.Exact || argument.Ref.Heap.Defined || argument.Ref.Heap.Abstract != AbstractHeapFunc || callerType.Params[0] != argument {
+			return false
+		}
 	}
 	if numericResult {
 		if !rv64PublicReferenceScalarDescriptors(callerType.Results, target.Results) {
@@ -150,6 +163,22 @@ func rv64PublicReferenceCallBoundary(c *Compiled) bool {
 		return false
 	}
 	return true
+}
+
+func rv64PublicReferenceArgumentSignature(sig FuncSig) bool {
+	return len(sig.Params) == 1 && sig.Params[0] == ValFuncRef && len(sig.Results) == 1 && sig.Results[0] == ValI32
+}
+
+func rv64PublicReferenceArgumentTarget(c *Compiled, function int) bool {
+	if c == nil || function != 0 || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI || len(c.Funcs) != 3 || len(c.Types) != 3 || !rv64PublicReferenceArgumentSignature(c.Funcs[0]) || !c.Funcs[0].HasTypeIndex || c.Funcs[0].TypeIndex != 0 {
+		return false
+	}
+	typ := c.Types[0]
+	if typ.Kind != CompositeTypeFunction || len(typ.Params) != 1 || len(typ.Results) != 1 || typ.Results[0].Kind != ValueTypeI32 {
+		return false
+	}
+	param := typ.Params[0]
+	return param.Kind == ValueTypeReference && param.Ref.Nullable && !param.Ref.Exact && !param.Ref.Heap.Defined && param.Ref.Heap.Abstract == AbstractHeapFunc
 }
 
 func rv64PublicReferenceU32Bytes(value uint32) uint32 {
@@ -598,7 +627,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions-c.NumImports || len(c.Types) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return reject("bounded framed function ABI required")
 	}
-	if c.dynamicFuncrefEscape || !c.HasStart && c.StartIsImport || (!c.HasStart || c.StartIsImport) && c.StartLocalFunc != 0 || (!c.HasStart || !c.StartIsImport) && c.StartImportIdx != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.customInstructions) != 0 {
+	if c.dynamicFuncrefEscape && !rv64PublicReferenceCallBoundary(c) || !c.HasStart && c.StartIsImport || (!c.HasStart || c.StartIsImport) && c.StartLocalFunc != 0 || (!c.HasStart || !c.StartIsImport) && c.StartImportIdx != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax || len(c.tableExports) != 0 || len(c.customInstructions) != 0 {
 		return reject("external state or callable escape")
 	}
 	if c.HasStart {

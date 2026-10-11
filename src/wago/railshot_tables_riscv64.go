@@ -2323,6 +2323,13 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 		if railshotNonCallableFunction(c, i) {
 			continue // Source-attested internal signature has no callable row.
 		}
+		if i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceArgumentSignature(c.Funcs[0]) {
+			key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.FuncRef}, Results: []wasm.ValType{wasm.I32}})
+			if c.FuncTypeID[i] != key {
+				return fmt.Errorf("public reference-argument target signature key differs from its exact type")
+			}
+			continue
+		}
 		var sig FuncSig
 		if i < c.NumImports {
 			sig = c.importFuncSigs[i]

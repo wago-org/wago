@@ -37,6 +37,9 @@ type moduleState struct {
 	importTailCalls   bool
 	dynamicTailCalls  bool
 	referenceCalls    bool
+	// The exact public two-token boundary may pass one authenticated funcref
+	// argument through call_ref in addition to the callable target reference.
+	publicReferenceArguments bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool

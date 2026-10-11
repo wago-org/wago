@@ -66,6 +66,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.declarationExtern = state.declarationExternRefs
 		referenceTypes.executionExtern = state.core3RefIsNullExecution
 		referenceTypes.declarationNonNullExtern = state.declarationNonnullRefs
+		referenceTypes.publicReferenceArguments = state.publicReferenceArguments
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -986,8 +987,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("call_ref retained owner/signature contract")
 			}
 			sig := state.types[typeIndex]
+			callParams := sig.params
+			callParamRefs := []bool(nil)
 			if err = integerCallable(sig, floating); err != nil {
-				return integerSummary{}, err
+				if !state.publicReferenceArguments || typeIndex != 0 || sig.signature == nil || !publicReferenceArgumentTarget(sig.signature) {
+					return integerSummary{}, err
+				}
+				callParams = inlineResults[1][:]
+				callParamRefs = inlineReference[:]
 			}
 			callCount++
 			budget += len(sig.params) + len(sig.results) + 1
@@ -1005,10 +1012,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			referenceSlot := h
 			if functionRefs {
-				if err = match(sig.params, nil, false, true); err != nil {
+				if err = match(callParams, callParamRefs, false, true); err != nil {
 					return integerSummary{}, err
 				}
-				h -= len(sig.params)
+				h -= len(callParams)
 			} else {
 				for j := len(sig.params) - 1; j >= 0; j-- {
 					if err = popWidth(sig.params[j]); err != nil {
@@ -1776,6 +1783,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.declarationExtern = state.declarationExternRefs
 		referenceTypes.executionExtern = state.core3RefIsNullExecution
 		referenceTypes.declarationNonNullExtern = state.declarationNonnullRefs
+		referenceTypes.publicReferenceArguments = state.publicReferenceArguments
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

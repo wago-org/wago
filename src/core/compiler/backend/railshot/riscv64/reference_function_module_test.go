@@ -157,6 +157,34 @@ func publicReferenceScalarCallBoundaryDecode(t *testing.T, referenceResult bool)
 	return m
 }
 
+func publicReferenceArgumentCallBoundaryDecode(t *testing.T) *wasm.Module {
+	t.Helper()
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+			[]byte{0x60, 2, 0x70, 0x63, 0, 1, 0x7f},
+		)),
+		wasmtest.Section(3, []byte{3, 0, 1, 2}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target", 0, 0),
+			wasmtest.ExportEntry("get", 0, 1),
+			wasmtest.ExportEntry("call", 0, 2),
+		)),
+		wasmtest.Section(9, []byte{1, 3, 0, 1, 0}),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x14, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
 func TestPublicReferenceCallBoundaryExactAdmission(t *testing.T) {
 	for _, referenceResult := range []bool{false, true} {
 		base := publicReferenceCallBoundaryDecodeResult(t, referenceResult)
@@ -291,6 +319,47 @@ func TestPublicReferenceCallBoundaryScalarTailAdmission(t *testing.T) {
 	badOrder.Code[2].BodyBytes[9] = 3
 	if admitPublicReferenceCallBoundary(badOrder) {
 		t.Fatal("return_call_ref with a misplaced target inherited the boundary")
+	}
+}
+
+func TestPublicReferenceCallBoundaryReferenceArgumentAdmission(t *testing.T) {
+	m := publicReferenceArgumentCallBoundaryDecode(t)
+	if !admitPublicReferenceCallBoundary(m) {
+		t.Fatal("public call_ref reference-argument boundary was not recognized")
+	}
+	if err := admitClosedReferenceFunctionModule(m, false); err != nil {
+		t.Fatal("public call_ref reference-argument boundary was not admitted", err)
+	}
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+		t.Fatal("public call_ref reference-argument frontend", err)
+	}
+	image, err := CompileModuleWith(m, closedReferenceProductionOptions(false, true))
+	if err != nil || len(image.Entry) != 3 || len(image.Code) == 0 || !image.NativeReferenceCalls || image.NativeTail != nil {
+		t.Fatal("public call_ref reference-argument lowering", err)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*wasm.Module)
+	}{
+		{"extern-argument", func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Comp.Params[0] = wasm.ExternRef
+			m.Types[2].SubTypes[0].Comp.Params[0] = wasm.ExternRef
+		}},
+		{"reference-result", func(m *wasm.Module) {
+			m.Types[0].SubTypes[0].Comp.Results[0] = wasm.FuncRef
+			m.Types[2].SubTypes[0].Comp.Results[0] = wasm.FuncRef
+		}},
+		{"tail", func(m *wasm.Module) { m.Code[2].BodyBytes[4] = 0x15 }},
+		{"argument-order", func(m *wasm.Module) { m.Code[2].BodyBytes[1], m.Code[2].BodyBytes[3] = 1, 0 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := publicReferenceArgumentCallBoundaryDecode(t)
+			tc.mutate(candidate)
+			if admitPublicReferenceCallBoundary(candidate) {
+				t.Fatal("nearby public reference-argument shape inherited the boundary")
+			}
+		})
 	}
 }
 

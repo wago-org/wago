@@ -67,6 +67,10 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if c == nil || !c.state.referenceFunctions || c.state.importedFunctions != m.ImportedFuncCount() || len(c.functions) != len(m.Code) || len(c.code) == 0 || len(c.code) > MaxCodeBytes {
 		return nil, unsupported("closed reference staged function extent")
 	}
+	wantPublicReferenceArguments := !vector && admitPublicReferenceCallBoundary(m) && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp)
+	if c.state.publicReferenceArguments != wantPublicReferenceArguments {
+		return nil, unsupported("closed reference staged public argument protocol")
+	}
 	for _, f := range c.functions {
 		mode := f.mode
 		if !mode.referenceFunctions || !mode.production || !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || mode.importTailCalls != opts.importTailCalls || mode.dynamicTailCalls != opts.dynamicTailCalls || mode.localTailCalls != opts.NativeTailCalls || mode.referenceCalls != opts.NativeReferenceCalls || mode.profileMode != (profileMode{}) || f.FrameHeaderBytes != 16 && f.FrameHeaderBytes != callFrameHeader {

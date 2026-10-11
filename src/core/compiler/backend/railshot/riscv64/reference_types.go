@@ -20,6 +20,9 @@ type internalReferenceTypes struct {
 	// This permission is separate from declarationExtern because it applies to
 	// an exact non-null function parameter, never block/select annotations.
 	declarationNonNullExtern bool
+	// The exact public reference-argument boundary has one indexed callable
+	// type whose signature itself carries an abstract funcref parameter.
+	publicReferenceArguments bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -55,6 +58,9 @@ func (types internalReferenceTypes) function(index uint32) bool {
 	}
 	if signature == nil || signature.Kind != wasm.CompFunc || len(signature.Params) > limit || len(signature.Results) > limit {
 		return false
+	}
+	if types.publicReferenceArguments && publicReferenceArgumentTarget(signature) {
+		return true
 	}
 	for _, list := range [][]wasm.ValType{signature.Params, signature.Results} {
 		for _, typ := range list {

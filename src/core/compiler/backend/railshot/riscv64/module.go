@@ -160,6 +160,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.dynamicTailCalls = opts.dynamicTailCalls
 	state.referenceCalls = opts.NativeReferenceCalls
 	state.referenceFunctions = opts.referenceFunctions
+	state.publicReferenceArguments = opts.referenceFunctions && admitPublicReferenceCallBoundary(m) && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp)
 	state.core3RefIsNullExecution = opts.referenceFunctions && isCore3RefIsNullExecution(m)
 	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
@@ -403,6 +404,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 	declarationExtern := referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	executionExtern := referenceFunctions && isCore3RefIsNullExecution(m)
 	declarationNonNullExtern := referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
+	publicReferenceArguments := referenceFunctions && admitPublicReferenceCallBoundary(m) && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp)
 	// Public modules may contain only state. Import-only modules execute through
 	// instance-owned bridges; neither shape needs placeholder instructions.
 	if len(m.Code) > MaxFunctions || len(m.Code) == 0 && (!floating || !publicStarts) {
@@ -441,7 +443,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 			return unsupported("signature arity")
 		}
 		if referencesAllowed {
-			if _, _, err := admitDeclaredControlSignature(&s.Comp, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern, executionExtern: executionExtern, declarationNonNullExtern: declarationNonNullExtern}, true, typed, false); err != nil {
+			if _, _, err := admitDeclaredControlSignature(&s.Comp, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern, executionExtern: executionExtern, declarationNonNullExtern: declarationNonNullExtern, publicReferenceArguments: publicReferenceArguments}, true, typed, false); err != nil {
 				return err
 			}
 		} else {
@@ -462,7 +464,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 				return unsupported("numeric function binding")
 			}
 			if referenceFunctions && i >= imported {
-				if _, _, err := admitDeclaredControlSignature(ft, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern, executionExtern: executionExtern, declarationNonNullExtern: declarationNonNullExtern}, true, typed, false); err != nil {
+				if _, _, err := admitDeclaredControlSignature(ft, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern, executionExtern: executionExtern, declarationNonNullExtern: declarationNonNullExtern, publicReferenceArguments: publicReferenceArguments}, true, typed, false); err != nil {
 					return err
 				}
 			} else if err := integerNumericSignature(ft, floating); err != nil {

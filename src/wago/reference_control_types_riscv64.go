@@ -57,6 +57,9 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 			if target.Kind != CompositeTypeFunction || !target.Final || len(target.Supers) != 0 || target.HasDescribes || target.HasDescriptor || len(target.Fields) != 0 || target.Array != (FieldTypeDescriptor{}) || len(target.Params) > limit || len(target.Results) > limit {
 				return false, false, fmt.Errorf("RV64 indexed heap requires plain bounded numeric callable")
 			}
+			if heap.TypeIndex == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceArgumentSignature(c.Funcs[0]) {
+				continue
+			}
 			// Do not recurse through another reference-bearing control declaration.
 			for _, list := range [][]ValueTypeDescriptor{target.Params, target.Results} {
 				for _, t := range list {

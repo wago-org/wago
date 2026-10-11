@@ -340,6 +340,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 		declarationExtern:        !vector && referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
 		executionExtern:          !vector && referenceFunctions && isCore3RefIsNullExecution(m),
 		declarationNonNullExtern: !vector && referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
+		publicReferenceArguments: publicReferenceBoundary && publicReferenceArgumentTarget(&m.Types[0].SubTypes[0].Comp),
 	}
 	for _, group := range m.Types {
 		if len(group.SubTypes) != 1 {
