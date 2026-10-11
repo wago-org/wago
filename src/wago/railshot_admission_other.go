@@ -16,6 +16,8 @@ func railshotGCStructGetSource([]byte) bool                                     
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)                        {}
 func railshotGCArrayLocalSource([]byte) bool                                            { return false }
 func railshotConfigureGCArrayLocal(bool, *railshotCompileOptions)                       {}
+func railshotGCArrayUniformSource([]byte) bool                                          { return false }
+func railshotConfigureGCArrayUniform(bool, *railshotCompileOptions)                     {}
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
 func railshotValidateResolvedImports(*Compiled, resolvedImports, *referenceStore) error { return nil }
 func railshotNeedsImportContextHeader(int) bool                                         { return false }

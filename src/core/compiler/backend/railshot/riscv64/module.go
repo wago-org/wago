@@ -147,7 +147,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 	}
 	var err error
-	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal, opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal); err != nil {
+	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform, opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
@@ -162,12 +162,13 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.referenceFunctions = opts.referenceFunctions
 	state.publicReferenceCarriers = opts.referenceFunctions && admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	state.publicDynamicHostReferenceCarriers = state.publicReferenceCarriers && admitPublicDynamicHostReferenceBoundary(m)
-	state.i31Core = opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal
+	state.i31Core = opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform
 	state.i31RefTest = opts.i31Core && admitRV64I31OfficialRefTest(m)
 	state.i31RefEq = (opts.i31Core && admitRV64I31RefEqPilot(m)) || opts.gcRefEq
 	state.gcRefEq = opts.gcRefEq
 	state.gcStructGet = opts.gcStructGet
 	state.gcArrayLocal = opts.gcArrayLocal
+	state.gcArrayUniform = opts.gcArrayUniform
 	state.core3RefIsNullExecution = opts.referenceFunctions && isCore3RefIsNullExecution(m)
 	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
@@ -178,7 +179,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	for i := range m.Code {
 		ft, _ := m.LocalFuncType(i)
 		summaries[i] = shared.AdmitScalarFunction(&m.Code[i], ft)
-		fallback[i] = opts.ForceFallback || opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || !summaries[i].Eligible
+		fallback[i] = opts.ForceFallback || opts.referenceFunctions || opts.i31Core || opts.gcRefEq || opts.gcStructGet || opts.gcArrayLocal || opts.gcArrayUniform || !summaries[i].Eligible
 		if fallback[i] {
 			integerSummaries[i], err = walkInteger(&m.Code[i], ft, &state, nil)
 			if err != nil {
@@ -237,8 +238,8 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	// Append exact GC helper bridges only when an admitted allocating checkpoint
 	// references them. They are ordinary image-relative RV64 code;
 	// no executable address or alternate-backend implementation is retained.
-	helperEntries := make(map[uint32]int, 6)
-	for _, helper := range []uint32{gcStructAllocDefault, gcStructGet, gcArrayAllocDefault, gcArrayGet, gcArraySet, gcArrayLen} {
+	helperEntries := make(map[uint32]int, 7)
+	for _, helper := range []uint32{gcStructAllocDefault, gcStructGet, gcArrayAllocDefault, gcArrayAllocUniform, gcArrayGet, gcArraySet, gcArrayLen} {
 		used := false
 		for _, call := range relocations {
 			used = used || call.helper == helper
@@ -255,6 +256,8 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			paramSlots = 3
 		} else if helper == gcArrayAllocDefault {
 			paramSlots = 2
+		} else if helper == gcArrayAllocUniform {
+			paramSlots = 3
 		} else if helper == gcArrayGet {
 			paramSlots = 3
 		} else if helper == gcArraySet {
@@ -458,7 +461,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCStructGet(m) || admitRV64GCArrayLocal(m)) {
+	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCStructGet(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m)) {
 		return nil
 	}
 	i31Core := referenceFunctions && admitRV64I31Core(m)

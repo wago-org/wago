@@ -25,6 +25,7 @@ const (
 	gcArrayGet           uint32 = 17
 	gcArraySet           uint32 = 20
 	gcArrayLen           uint32 = 21
+	gcArrayAllocUniform  uint32 = 23
 )
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
@@ -92,6 +93,26 @@ func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool
 		f.a.Sd(enc.X5, enc.X10, 0) // type index
 	}
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
+}
+
+// gcUniformArrayAllocation calls the exact pointer-free array.new helper. Both
+// i32 operands are zero-normalized before filling their complete arena slots.
+func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), false)
+	f.a.Sd(enc.X5, enc.X10, 0) // uniform value
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // length
+	f.a.Constant32(enc.X5, typeIndex)
+	f.a.Sd(enc.X5, enc.X10, 16) // type index
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocUniform})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {

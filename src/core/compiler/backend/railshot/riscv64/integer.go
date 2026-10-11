@@ -111,7 +111,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		locals[i] = scalarWide(t) || localRefs[i]
 	}
 	for _, run := range fn.Locals.Runs {
-		arrayLocalRef := state != nil && state.gcArrayLocal && wasm.EqualValType(run.Type, wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)))
+		arrayLocalRef := state != nil && (state.gcArrayLocal || state.gcArrayUniform) && wasm.EqualValType(run.Type, wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)))
 		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, state.referenceCalls, referenceTypes)) && !arrayLocalRef {
 			return integerSummary{}, unsupported("noninteger local")
 		}
@@ -1533,6 +1533,26 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if err = push(false); err != nil {
 					return integerSummary{}, err
 				}
+			case wasm.InstrArrayNew:
+				if !state.gcArrayUniform || imm.Index != 0 {
+					return integerSummary{}, unsupported("array.new outside exact gc array uniform profile")
+				}
+				if _, err = popClass(false); err != nil { // length
+					return integerSummary{}, err
+				}
+				if _, err = popClass(false); err != nil { // uniform value
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcUniformArrayAllocation(h, imm.Index)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
 			case wasm.InstrArrayNewDefault:
 				if (!state.gcRefEq && !state.gcArrayLocal) || (state.gcRefEq && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) {
 					return integerSummary{}, unsupported("array.new_default outside exact GC profile")
@@ -1551,7 +1571,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayGet:
-				if !state.gcArrayLocal || imm.Index != 0 {
+				if (!state.gcArrayLocal && !state.gcArrayUniform) || imm.Index != 0 {
 					return integerSummary{}, unsupported("array.get outside exact gc array local profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -1571,7 +1591,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArraySet:
-				if !state.gcArrayLocal || imm.Index != 0 {
+				if (!state.gcArrayLocal && !state.gcArrayUniform) || imm.Index != 0 {
 					return integerSummary{}, unsupported("array.set outside exact gc array local profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -1591,7 +1611,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcArraySetI32(h)
 				}
 			case wasm.InstrArrayLen:
-				if !state.gcArrayLocal {
+				if !state.gcArrayLocal && !state.gcArrayUniform {
 					return integerSummary{}, unsupported("array.len outside exact gc array local profile")
 				}
 				if _, err = popClass(true); err != nil {
