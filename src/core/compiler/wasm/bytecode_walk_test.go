@@ -95,6 +95,26 @@ func TestClassifyInstructionImmediateRepresentativeFamilies(t *testing.T) {
 	}
 }
 
+func TestClassifyInstructionImmediateReportsGCHeapType(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		immediate []byte
+		kind      InstrKind
+		nullable  bool
+		heap      AbsHeapType
+	}{
+		{name: "ref.test", immediate: []byte{20, byte(HeapI31)}, kind: InstrRefTest, heap: HeapI31},
+		{name: "ref.test nullable", immediate: []byte{21, byte(HeapAny)}, kind: InstrRefTest, nullable: true, heap: HeapAny},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			imm, err := ClassifyInstructionImmediate(NewReader(tc.immediate), 0xfb)
+			if err != nil || imm.Kind != tc.kind || !imm.HasHeapType || imm.HeapType.Kind() != HeapAbs || imm.HeapType.Abs() != tc.heap || (imm.Subopcode == 21) != tc.nullable {
+				t.Fatalf("classify=%+v err=%v", imm, err)
+			}
+		})
+	}
+}
+
 func TestClassifyInstructionImmediateReportsMemargMetadata(t *testing.T) {
 	var imm InstructionImmediate
 	r := NewReader([]byte{0x02, 0x80, 0x01}) // align=2, offset=128

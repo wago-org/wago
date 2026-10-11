@@ -14,6 +14,8 @@ type InstructionImmediate struct {
 	MemOffset      uint64
 	TouchesMemory  bool
 	UsesBulkMemory bool
+	HasHeapType    bool
+	HeapType       HeapType
 }
 
 // ImmediateFreeInstructionKind reports the decoded kind for an opcode whose

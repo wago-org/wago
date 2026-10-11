@@ -756,7 +756,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 && !(state.i31Core && heap == -20) && !(state.core3RefIsNullExecution && heap == -17) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				if heap != -16 && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.core3RefIsNullExecution && heap == -17) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -1498,6 +1498,25 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), true)
 					emit.i31Get(imm.Kind == wasm.InstrI31GetS)
+					emit.Store(emit.SpillOffset(h), 5, false)
+				}
+				if err = push(false); err != nil {
+					return integerSummary{}, err
+				}
+			case wasm.InstrRefTest:
+				if !state.i31RefTest || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapAbs {
+					return integerSummary{}, unsupported("ref.test outside exact i31 profile")
+				}
+				heap := imm.HeapType.Abs()
+				if heap != wasm.HeapAny && heap != wasm.HeapEq && heap != wasm.HeapI31 && heap != wasm.HeapStruct && heap != wasm.HeapArray {
+					return integerSummary{}, unsupported("ref.test heap outside exact i31 profile")
+				}
+				if _, err = popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), true)
+					emit.i31Test(imm.Subopcode == 21, heap)
 					emit.Store(emit.SpillOffset(h), 5, false)
 				}
 				if err = push(false); err != nil {

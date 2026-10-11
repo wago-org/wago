@@ -33,6 +33,8 @@ func admitRV64I31CoreWire(data []byte) bool {
 		return sha256.Sum256(data) == [sha256.Size]byte{0x75, 0x7d, 0x32, 0x66, 0x61, 0x7e, 0xa9, 0x01, 0x22, 0x1f, 0xac, 0xbd, 0xa9, 0xb6, 0x60, 0xd6, 0xd1, 0xfd, 0x52, 0xad, 0xf4, 0x92, 0xff, 0xa8, 0x2b, 0xa0, 0x65, 0x8d, 0xc8, 0x46, 0xb2, 0x6d}
 	case 262:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x57, 0x23, 0x87, 0xa2, 0xc9, 0xd7, 0xea, 0x91, 0x12, 0xf3, 0x94, 0x00, 0x25, 0xb7, 0xc5, 0x70, 0x41, 0xcd, 0x94, 0x78, 0x18, 0x5e, 0xd7, 0xe3, 0x2b, 0xb9, 0x3a, 0x01, 0xfb, 0xfa, 0x5a, 0x69}
+	case 255:
+		return sha256.Sum256(data) == [sha256.Size]byte{0x15, 0xae, 0x51, 0xeb, 0x55, 0x7d, 0xb9, 0x16, 0x94, 0xfc, 0x8c, 0xb2, 0xe2, 0xca, 0x14, 0x87, 0x92, 0xee, 0xc4, 0xae, 0x2b, 0x52, 0x4c, 0x61, 0x0e, 0xdf, 0x80, 0x05, 0xa0, 0x48, 0x37, 0xec}
 	case 96:
 		return sha256.Sum256(data) == [sha256.Size]byte{0x0a, 0x26, 0xe5, 0x0d, 0x6e, 0xc8, 0xcc, 0xba, 0xf1, 0xcc, 0x3a, 0x59, 0xfc, 0x2e, 0x1b, 0xe6, 0xdc, 0xa2, 0xc2, 0x22, 0x19, 0xba, 0x70, 0xca, 0x80, 0xa0, 0x14, 0x51, 0x88, 0x2b, 0xf0, 0xe4}
 	case 252:
@@ -56,7 +58,7 @@ func AdmitI31CoreSource(data []byte) bool {
 // lowering. This is intentionally narrower than the general collector-free
 // i31 implementation on complete backends.
 func admitRV64I31Core(m *wasm.Module) bool {
-	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m) || admitRV64I31OfficialAnyTable(m)
+	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m) || admitRV64I31OfficialAnyTable(m) || admitRV64I31OfficialRefTest(m)
 }
 
 func admitRV64I31TableProduct(m *wasm.Module) bool {
@@ -366,6 +368,44 @@ func admitRV64I31OfficialAnyGlobal(m *wasm.Module) bool {
 	return true
 }
 
+// admitRV64I31OfficialRefTest pins the collector-free null/i31 ref.test
+// product. Its complete bodies confine every input to null or compact i31, so
+// abstract any/eq/i31/struct/array tests need no heap object classification.
+func admitRV64I31OfficialRefTest(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 7 || len(m.Code) != 7 || len(m.Exports) != 7 ||
+		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	if !i31CoreFunctionType(&m.Types[0], nil, []wasm.ValType{wasm.I32}) || !i31CoreFunctionType(&m.Types[1], []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}) {
+		return false
+	}
+	wantBindings := []uint32{0, 0, 1, 1, 1, 1, 1}
+	wantBodies := [][]byte{
+		{0xd0, 0x6e, 0xfb, 0x14, 0x6e, 0xd0, 0x6e, 0xfb, 0x15, 0x6e, 0x6a, 0x0b},
+		{0xd0, 0x6c, 0xfb, 0x14, 0x6c, 0xd0, 0x6c, 0xfb, 0x15, 0x6c, 0x6a, 0x0b},
+	}
+	for _, heap := range []byte{0x6c, 0x6e, 0x6d, 0x6b, 0x6a} {
+		wantBodies = append(wantBodies, []byte{0x20, 0, 0xfb, 0x1c, 0xfb, 0x14, heap, 0x20, 0, 0xfb, 0x1c, 0xfb, 0x15, heap, 0x6a, 0x0b})
+	}
+	for i, binding := range m.FuncTypes {
+		if binding.Rec || binding.Index != wantBindings[i] {
+			return false
+		}
+		fn := &m.Code[i]
+		if len(fn.Locals.Runs) != 0 || fn.LocalDeclBytes != 1 || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || !bytes.Equal(fn.BodyBytes, wantBodies[i]) {
+			return false
+		}
+	}
+	wantExports := []string{"null-data", "null-i31", "i31", "any", "eq", "struct", "array"}
+	for i, ex := range m.Exports {
+		if ex.Name != wantExports[i] || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
+			return false
+		}
+	}
+	return true
+}
+
 func i31CoreGlobalValue(expr wasm.Expr) (uint64, error) {
 	r := wasm.ReaderFrom(expr.BodyBytes)
 	op, err := r.Byte()
@@ -435,6 +475,26 @@ func (f *integerEmitter) i31Cast(nullable bool) {
 	if nullable {
 		if err := f.Patch(null, f.Position()); err != nil {
 			f.err = err
+		}
+	}
+}
+
+func (f *integerEmitter) i31Test(nullable bool, heap wasm.AbsHeapType) {
+	switch heap {
+	case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31:
+		if nullable {
+			f.a.Sltiu(enc.X6, enc.X5, 1)
+		}
+		f.a.Addi(enc.X7, enc.Zero, 1)
+		f.a.And(enc.X5, enc.X5, enc.X7)
+		if nullable {
+			f.a.Or(enc.X5, enc.X5, enc.X6)
+		}
+	case wasm.HeapStruct, wasm.HeapArray:
+		if nullable {
+			f.a.Sltiu(enc.X5, enc.X5, 1)
+		} else {
+			f.a.Addi(enc.X5, enc.Zero, 0)
 		}
 	}
 }
