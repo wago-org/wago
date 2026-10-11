@@ -77,6 +77,10 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 // source compilation before any executable image or host thunk is published.
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
+	exactGCRefEq := rv64OfficialGCRefEq(c)
+	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
+		return reject("allocating gc/ref.eq image requires its exact retained metadata")
+	}
 	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
 		return reject("i31 execution image requires its exact retained metadata")
 	}
@@ -186,7 +190,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper {
+		if !exactGCRefEq && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -196,6 +200,9 @@ func railshotValidateCompiled(c *Compiled) error {
 		if typedI31 {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
+	}
+	if exactGCRefEq {
+		qualifiedFeatures |= CoreFeatureGC
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
 		return reject("table.size compiler witness requires its exact owned or indexed two-table profile")
@@ -292,7 +299,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if !declarativeTyped && !typedI31 {
+	if !declarativeTyped && !typedI31 && !exactGCRefEq {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}

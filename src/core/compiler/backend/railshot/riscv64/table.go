@@ -2496,7 +2496,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	// Exact i31-table products use compact immediate carriers rather than
 	// callable funcref descriptors. Their classifiers pin the sole table and
 	// either every table instruction/segment or the imported initializer.
-	if production && importedTables && admitRV64I31TableProduct(m) {
+	if production && importedTables && (admitRV64I31TableProduct(m) || admitRV64GCRefEq(m)) {
 		return true, nil
 	}
 	if err := ownedTableBounds(m, production && importedTables); err != nil {

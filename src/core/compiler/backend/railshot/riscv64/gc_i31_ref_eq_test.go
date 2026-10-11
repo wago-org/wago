@@ -9,6 +9,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -137,5 +140,67 @@ func TestRV64I31RefEqUsesFullWidthIdentity(t *testing.T) {
 	}
 	if !rv64HasInstruction(code, 0x0062c2b3) || !rv64HasInstruction(code, rv64IType(0x13, 3, 5, 5, 1)) {
 		t.Fatal("ref.eq did not compare full carrier words and normalize its i32 result")
+	}
+}
+
+func TestRV64OfficialGCRefEqAllocationHelperImage(t *testing.T) {
+	source, err := hex.DecodeString(rv64OfficialObjectRefEqHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRefEqWire(source) || !AdmitGCRefEqSource(source) || !admitRV64GCRefEq(m) {
+		t.Fatal("official allocating ref.eq identity rejected")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, GCArrayHelpers: true, SyncHostSlots: 2, GCRefEqSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	}
+	withoutWire := opts
+	withoutWire.GCRefEqSource = false
+	if image, err := CompileModuleWith(m, withoutWire); image != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("allocating ref.eq escaped exact wire provenance", err)
+	}
+	for name, mutate := range map[string]func(*CompileOptions){
+		"missing-descriptors": func(candidate *CompileOptions) {
+			candidate.Codegen.Module.GCTypeDescs = nil
+		},
+		"wrong-descriptor": func(candidate *CompileOptions) {
+			candidate.Codegen.Module.GCTypeDescs[0].Final = !candidate.Codegen.Module.GCTypeDescs[0].Final
+		},
+		"missing-layouts": func(candidate *CompileOptions) {
+			candidate.Codegen.Module.GCTypeLayouts = nil
+		},
+		"wrong-layout": func(candidate *CompileOptions) {
+			candidate.Codegen.Module.GCTypeLayouts[0].PointerFree = !candidate.Codegen.Module.GCTypeLayouts[0].PointerFree
+		},
+		"frame-roots": func(candidate *CompileOptions) {
+			candidate.GCFrameRoots = shared.NewGCModuleFrameRootPlan(len(m.Code))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := opts
+			candidate.Codegen.Module.GCTypeDescs = slices.Clone(opts.Codegen.Module.GCTypeDescs)
+			candidate.Codegen.Module.GCTypeLayouts = slices.Clone(opts.Codegen.Module.GCTypeLayouts)
+			mutate(&candidate)
+			if image, err := CompileModuleWith(m, candidate); image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("allocating ref.eq escaped exact collector metadata", err)
+			}
+		})
+	}
+	image, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image == nil || len(image.Code) == 0 || len(image.Entry) != 2 || image.Entry[0] != 0 || image.Entry[1] <= image.Entry[0] {
+		t.Fatal("allocating ref.eq helper image metadata", image)
 	}
 }

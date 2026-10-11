@@ -291,10 +291,12 @@ func (b *instanceBuilder) prepareCollector() error {
 		return nil
 	}
 	gcConfig := b.opts.GC
-	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil {
+	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) {
 		// Generic products outside the validated native root-map slice still do
 		// not publish every native reference at allocating helper safepoints. Keep
-		// them stable and bounded rather than scanning an incomplete frame.
+		// them stable and bounded rather than scanning an incomplete frame. The
+		// exact RV64 allocating ref.eq product has no live native reference across
+		// a helper safepoint and publishes its persistent table roots separately.
 		gcConfig.Profile = gc.ProfileThroughput
 		gcConfig.DisableCollection = true
 	}

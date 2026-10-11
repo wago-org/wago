@@ -14,7 +14,14 @@ const maxDirectCalls = 1024
 type directCall struct {
 	site   int
 	callee uint32
+	helper uint32
 }
+
+const (
+	gcStructDispatchBit  uint32 = 1 << 30
+	gcStructAllocDefault uint32 = 1
+	gcArrayAllocDefault  uint32 = 16
+)
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
 // authoritative across calls; X24 is reserved and unchanged in this same-instance
@@ -64,6 +71,30 @@ func (f *integerEmitter) directCall(index uint32, sig functionSpec, base, import
 		}
 		f.Store(f.SpillOffset(base+j), 5, wide)
 	}
+}
+
+// gcDefaultAllocation calls one of the two exact allocating gc/ref_eq helpers.
+// The helper thunk uses the same checked parked-host protocol as a returning
+// import, but is image-local and carries the reserved GC dispatch identity.
+func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool) {
+	f.restoreCallTransport()
+	if array {
+		f.Load(5, f.SpillOffset(base), false)
+		f.a.Sd(enc.X5, enc.X10, 0) // length
+		f.a.Constant32(enc.X5, 2)
+		f.a.Sd(enc.X5, enc.X10, 8) // type index
+	} else {
+		f.a.Constant32(enc.X5, 0)
+		f.a.Sd(enc.X5, enc.X10, 0) // type index
+	}
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Ld(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, true)
 }
 
 // Resolve the current activation's dynamic host target before any call-arena

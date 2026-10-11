@@ -68,6 +68,10 @@ type CompileOptions struct {
 	// itself: CompileModuleWith independently rechecks the decoded module before
 	// selecting the pilot.
 	I31CoreSource bool
+	// GCRefEqSource is the exact-wire witness for the allocating official
+	// gc/ref_eq checkpoint. It is useful only when the decoded module, helper
+	// options and collector metadata independently match that product.
+	GCRefEqSource bool
 	production    bool
 	publicStarts  bool
 	hostImports   bool
@@ -89,6 +93,7 @@ type CompileOptions struct {
 	// Selected only when the exact source and decoded witnesses agree for a
 	// qualified non-allocating i31 module.
 	i31Core      bool
+	gcRefEq      bool
 	tailPlans    *[]tailImportPlan
 	tailSiteBase uint32
 }

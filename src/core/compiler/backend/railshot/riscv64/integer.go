@@ -1501,6 +1501,37 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("GC instruction outside exact i31 profile")
 			}
 			switch imm.Kind {
+			case wasm.InstrStructNewDefault:
+				if !state.gcRefEq || imm.Index != 0 {
+					return integerSummary{}, unsupported("struct.new_default outside exact gc ref.eq profile")
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcDefaultAllocation(gcStructAllocDefault, h, false)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
+			case wasm.InstrArrayNewDefault:
+				if !state.gcRefEq || imm.Index != 2 {
+					return integerSummary{}, unsupported("array.new_default outside exact gc ref.eq profile")
+				}
+				if _, err = popClass(false); err != nil {
+					return integerSummary{}, err
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("GC helper call count/slot budget")
+				}
+				if live && emit != nil {
+					emit.gcDefaultAllocation(gcArrayAllocDefault, h, true)
+				}
+				if err = pushReference(); err != nil {
+					return integerSummary{}, err
+				}
 			case wasm.InstrRefI31:
 				if _, err = popClass(false); err != nil {
 					return integerSummary{}, err

@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -125,17 +126,173 @@ func TestRV64PublicI31RefEqPilotCompilerFreeRejectsSource(t *testing.T) {
 	}
 }
 
-func TestRV64PublicI31RefEqPilotRejectsObjectBearingOfficialModule(t *testing.T) {
+func rv64OfficialGCRefEqCompile(t *testing.T, artifact bool) *Compiled {
+	t.Helper()
+	dir, mode := os.Getenv("WAGO_RV64_GC_REF_EQ_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_GC_REF_EQ_ARTIFACT_MODE")
+	path := filepath.Join(dir, "official-gc-ref-eq.wago")
+	if mode == "load" {
+		if !artifact {
+			t.Skip("compiler-free runner selected artifact case")
+		}
+		blob, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := LoadTrustedArtifact(blob)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = loaded.Close() })
+		return loaded
+	}
 	data, err := hex.DecodeString(rv64OfficialObjectRefEqHex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, err := rv64I31Config().Compile(data)
-	if compiled != nil {
-		_ = compiled.Close()
+	original, err := rv64I31Config().Compile(data)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err == nil {
-		t.Fatal("object-bearing official ref_eq module compiled without collector lowering")
+	t.Cleanup(func() { _ = original.Close() })
+	c := original
+	if artifact || mode == "prepare" {
+		blob, err := original.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mode == "prepare" {
+			if err = os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(path, blob, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if artifact {
+			loaded, err := LoadTrustedArtifact(blob)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = loaded.Close() })
+			c = loaded
+		}
+	}
+	return c
+}
+
+func TestRV64PublicOfficialGCRefEqExecutionAndArtifact(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
+			compiled := rv64OfficialGCRefEqCompile(t, artifact)
+			view := compiled.executionView()
+			if !rv64OfficialGCRefEq(view) || !rv64OfficialGCRefEqExecutionCode(view) || railshotValidateCompiled(view) != nil {
+				t.Fatalf("missing exact retained allocating gc/ref.eq witness: product=%v array=%v staged=%v required=%v code=%d/%x", view.stagedGCStructProduct(), view.stagedGCArrayProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code))
+			}
+			for _, profile := range []struct {
+				name                      string
+				config                    GCConfig
+				requireCollectsOnAllocate bool
+			}{
+				{name: "default-gc"},
+				{name: "stress-gc", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}, requireCollectsOnAllocate: true},
+			} {
+				t.Run(profile.name, func(t *testing.T) {
+					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					defer rt.Close()
+					mod, err := rt.Module(compiled)
+					if err != nil {
+						t.Fatal(err)
+					}
+					in, err := rt.Instantiate(context.Background(), mod, WithImports(NewImports()), WithGC(profile.config))
+					mod.Close()
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					if in.gc == nil {
+						t.Fatal("allocating official ref_eq module has no collector")
+					}
+					if profile.requireCollectsOnAllocate && !in.gc.CollectsOnAllocation() {
+						t.Fatal("stress collector does not collect on allocation")
+					}
+					if _, err = in.Invoke("init"); err != nil {
+						t.Fatal(err)
+					}
+					if err = in.CollectGC(); err != nil {
+						t.Fatal(err)
+					}
+					for _, tc := range []struct {
+						a, b uint64
+						want uint64
+					}{
+						{0, 1, 1}, {2, 3, 1}, {2, 4, 0}, {5, 5, 1}, {5, 6, 0}, {7, 7, 1}, {7, 8, 0}, {5, 7, 0},
+					} {
+						got, err := in.Invoke("eq", tc.a, tc.b)
+						if err != nil || len(got) != 1 || got[0] != tc.want {
+							t.Fatalf("eq(%d,%d)=%v err=%v want=%d", tc.a, tc.b, got, err, tc.want)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestRV64PublicOfficialGCRefEqCompilerFreeRejectsSource(t *testing.T) {
+	if os.Getenv("WAGO_RV64_GC_REF_EQ_ARTIFACT_MODE") != "load" {
+		t.Skip("actual compiler-free runtime only")
+	}
+	data, err := hex.DecodeString(rv64OfficialObjectRefEqHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := rv64I31Config().Compile(data)
+	if c != nil {
+		_ = c.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
+		t.Fatal("compiler-free allocating gc/ref.eq path used source compilation", err)
+	}
+}
+
+func TestRV64PublicOfficialGCRefEqAdmissionIsExact(t *testing.T) {
+	if os.Getenv("WAGO_RV64_GC_REF_EQ_ARTIFACT_MODE") == "load" {
+		t.Skip("compiler-free runner selected")
+	}
+	base := rv64OfficialGCRefEqCompile(t, false).executionView()
+	for name, mutate := range map[string]func(*Compiled){
+		"code":       func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"entry":      func(v *Compiled) { v.Entry[1], v.InternalEntry[1] = 2408, 2408 },
+		"function":   func(v *Compiled) { v.Funcs[1].Params[0] = ValI64 },
+		"type-key":   func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"descriptor": func(v *Compiled) { v.GCTypeDescs[2].Elem = 0 },
+		"supertype":  func(v *Compiled) { v.Types[3].Supers[0] = 1 },
+		"export": func(v *Compiled) {
+			delete(v.Exports, "eq")
+			v.Exports["ne"] = 1
+		},
+		"zero-export": func(v *Compiled) {
+			delete(v.Exports, "init")
+			v.Exports["renamed"] = 0
+		},
+		"table-size": func(v *Compiled) { v.TableSize = 19 },
+		"table-type": func(v *Compiled) { v.ValueTypes[0].Ref.Heap.Abstract = AbstractHeapAny },
+		"missing-gc": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
+		"extra-feature": func(v *Compiled) {
+			v.requiredFeatures |= CoreFeatureTypedFunctionReferences
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(base)
+			candidate.validateMemo = &validateMemo{}
+			mutate(candidate)
+			if rv64OfficialGCRefEq(candidate) {
+				t.Fatal("hostile retained mutation retained the allocating gc/ref.eq witness")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("hostile retained allocating gc/ref.eq mutation admitted", err)
+			}
+		})
 	}
 }
 

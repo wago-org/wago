@@ -45,6 +45,7 @@ type moduleState struct {
 	i31Core    bool
 	i31RefTest bool
 	i31RefEq   bool
+	gcRefEq    bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -186,8 +187,9 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 }
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
-	i31Core := admitRV64I31Core(m)
-	i31RefEq := i31Core && admitRV64I31RefEqPilot(m)
+	gcRefEq := admitRV64GCRefEq(m)
+	i31Core := admitRV64I31Core(m) || gcRefEq
+	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -377,7 +379,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	for i, rec := range m.Types {
 		ft := &rec.SubTypes[0].Comp
 		fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-		if s.ownedTable || s.importReferences {
+		if (s.ownedTable || s.importReferences) && !(gcRefEq && ft.Kind != wasm.CompFunc) {
 			var ok bool
 			fn.key, ok = m.StructuralTypeKeyChecked(uint32(i))
 			if !ok {

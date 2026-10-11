@@ -147,7 +147,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 	}
 	var err error
-	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core, opts.referenceFunctions || opts.i31Core); err != nil {
+	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core || opts.gcRefEq, opts.referenceFunctions || opts.i31Core || opts.gcRefEq); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
@@ -162,9 +162,10 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.referenceFunctions = opts.referenceFunctions
 	state.publicReferenceCarriers = opts.referenceFunctions && admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	state.publicDynamicHostReferenceCarriers = state.publicReferenceCarriers && admitPublicDynamicHostReferenceBoundary(m)
-	state.i31Core = opts.i31Core
+	state.i31Core = opts.i31Core || opts.gcRefEq
 	state.i31RefTest = opts.i31Core && admitRV64I31OfficialRefTest(m)
-	state.i31RefEq = opts.i31Core && admitRV64I31RefEqPilot(m)
+	state.i31RefEq = (opts.i31Core && admitRV64I31RefEqPilot(m)) || opts.gcRefEq
+	state.gcRefEq = opts.gcRefEq
 	state.core3RefIsNullExecution = opts.referenceFunctions && isCore3RefIsNullExecution(m)
 	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
@@ -175,7 +176,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	for i := range m.Code {
 		ft, _ := m.LocalFuncType(i)
 		summaries[i] = shared.AdmitScalarFunction(&m.Code[i], ft)
-		fallback[i] = opts.ForceFallback || opts.referenceFunctions || opts.i31Core || !summaries[i].Eligible
+		fallback[i] = opts.ForceFallback || opts.referenceFunctions || opts.i31Core || opts.gcRefEq || !summaries[i].Eligible
 		if fallback[i] {
 			integerSummaries[i], err = walkInteger(&m.Code[i], ft, &state, nil)
 			if err != nil {
@@ -231,11 +232,55 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 		relocations = append(relocations, calls...)
 	}
+	// Append the two exact GC helper bridges only when the admitted allocating
+	// ref.eq image references them. They are ordinary image-relative RV64 code;
+	// no executable address or alternate-backend implementation is retained.
+	helperEntries := make(map[uint32]int, 2)
+	for _, helper := range []uint32{gcStructAllocDefault, gcArrayAllocDefault} {
+		used := false
+		for _, call := range relocations {
+			used = used || call.helper == helper
+		}
+		if !used {
+			continue
+		}
+		padding := (-len(c.code)) & 15
+		for ; padding > 0; padding -= 4 {
+			c.code = append(c.code, 0x13, 0, 0, 0)
+		}
+		paramSlots := 1
+		if helper == gcArrayAllocDefault {
+			paramSlots = 2
+		}
+		payload, ok := shared.EncodeGCDispatch(helper, 0)
+		if !ok {
+			return nil, unsupported("GC helper dispatch encoding")
+		}
+		stub := HostIndirectOwnedSyncThunk(gcStructDispatchBit|payload, paramSlots, 1)
+		if len(stub) == 0 || len(stub) > MaxCodeBytes-len(c.code) {
+			return nil, unsupported("GC helper bridge image bound")
+		}
+		helperEntries[helper] = len(c.code)
+		c.code = append(c.code, stub...)
+	}
 	// All framed entries are now known. These remain image-relative transfers;
 	// no executable addresses or alternate-backend code are retained.
 	image := enc.Asm{B: c.code}
 	for _, call := range relocations {
-		if err := image.PatchLong(call.site, int64(c.functions[call.callee].Entry)); err != nil {
+		target := 0
+		if call.helper != 0 {
+			var ok bool
+			target, ok = helperEntries[call.helper]
+			if !ok {
+				return nil, unsupported("missing GC helper bridge")
+			}
+		} else {
+			if uint64(call.callee) >= uint64(len(c.functions)) {
+				return nil, unsupported("direct call relocation target")
+			}
+			target = c.functions[call.callee].Entry
+		}
+		if err := image.PatchLong(call.site, int64(target)); err != nil {
 			return nil, fmt.Errorf("rv64: direct call relocation: %w", err)
 		}
 	}
@@ -405,6 +450,9 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
+	if referenceFunctions && admitRV64GCRefEq(m) {
+		return nil
+	}
 	i31Core := referenceFunctions && admitRV64I31Core(m)
 	declarationExtern := referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	executionExtern := referenceFunctions && isCore3RefIsNullExecution(m)
