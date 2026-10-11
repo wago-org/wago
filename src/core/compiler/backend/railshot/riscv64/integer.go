@@ -67,11 +67,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.executionExtern = state.core3RefIsNullExecution
 		referenceTypes.declarationNonNullExtern = state.declarationNonnullRefs
 		referenceTypes.publicReferenceCarriers = state.publicReferenceCarriers
+		referenceTypes.i31 = state.i31Core
 	}
 	var locals [256]bool
 	var localRefs [256]bool
-	privateRefs := floating && (state.ownedTable || state.importReferences)
+	privateRefs := floating && (state.ownedTable || state.importReferences || state.i31Core)
 	functionRefs := state != nil && state.referenceFunctions
+	i31Refs := state != nil && state.i31Core
 	if functionRefs {
 		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls) {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
@@ -92,6 +94,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, state.referenceCalls, false); err != nil {
 			return integerSummary{}, err
 		}
+	} else if i31Refs {
+		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, true, false); err != nil {
+			return integerSummary{}, err
+		}
 	} else if err := integerNumericSignature(ft, floating); err != nil {
 		return integerSummary{}, err
 	}
@@ -101,7 +107,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	descriptorRefs := privateRefs
 	nlocals := len(ft.Params)
 	for i, t := range ft.Params {
-		localRefs[i] = functionRefs && t.Kind() == wasm.ValRef
+		localRefs[i] = (functionRefs || i31Refs) && t.Kind() == wasm.ValRef
 		locals[i] = scalarWide(t) || localRefs[i]
 	}
 	for _, run := range fn.Locals.Runs {
@@ -128,7 +134,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	var ctrl [1 + maxControlNesting]integerControl
 	var rootResults, rootRefs [256]bool
 	for j, t := range ft.Results {
-		rootRefs[j] = functionRefs && t.Kind() == wasm.ValRef
+		rootRefs[j] = (functionRefs || i31Refs) && t.Kind() == wasm.ValRef
 		rootResults[j] = scalarWide(t) || rootRefs[j]
 	}
 	var inlineResults = [2][1]bool{{false}, {true}}
@@ -750,7 +756,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if heap != -16 && !(state.core3RefIsNullExecution && heap == -17) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				if heap != -16 && !(state.i31Core && heap == -20) && !(state.core3RefIsNullExecution && heap == -17) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -1226,8 +1232,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("global index")
 			}
 			g := state.globals[idx]
-			reference := wasm.EqualValType(g.typ, wasm.FuncRef)
-			if reference && (!privateRefs || !state.importReferences || g.mutable && !state.localMutableReferences) {
+			reference := wasm.EqualValType(g.typ, wasm.FuncRef) || state.i31Core && isI31CoreRef(g.typ)
+			if reference && !state.i31Core && (!privateRefs || !state.importReferences || g.mutable && !state.localMutableReferences) {
 				return integerSummary{}, unsupported("immutable retained reference global required")
 			}
 			contextUsed = true
@@ -1847,10 +1853,11 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.executionExtern = state.core3RefIsNullExecution
 		referenceTypes.declarationNonNullExtern = state.declarationNonnullRefs
 		referenceTypes.publicReferenceCarriers = state.publicReferenceCarriers
+		referenceTypes.i31 = state.i31Core
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {
-		widths[i] = scalarWide(t) || functionRefs && t.Kind() == wasm.ValRef
+		widths[i] = scalarWide(t) || (functionRefs || state.i31Core) && t.Kind() == wasm.ValRef
 	}
 	for _, run := range fn.Locals.Runs {
 		for i := uint32(0); i < run.Count; i++ {
@@ -1931,7 +1938,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if err := f.finishProfileBody(); err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
-	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && (scalarWide(ft.Results[0]) || functionRefs && ft.Results[0].Kind() == wasm.ValRef), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
+	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && (scalarWide(ft.Results[0]) || (functionRefs || state.i31Core) && ft.Results[0].Kind() == wasm.ValRef), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
 	contextOffset := -1
 	if summary.context {
 		contextOffset = -8

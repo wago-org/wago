@@ -30,7 +30,8 @@ func TestStagedGCI31ProductPlatformBoundsAndIdentityGate(t *testing.T) {
 	features.TypedFunctionReferences = true
 	features.GCI31Products = true
 	c, err := compileWithFrontendFeatures(cfg, data, features)
-	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+	stagedRV64Core := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64"
+	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !stagedRV64Core {
 		if err == nil || !strings.Contains(err.Error(), "unsupported i31 product staged execution on") {
 			t.Fatalf("platform compile = %v, want explicit i31 rejection", err)
 		}
@@ -49,6 +50,15 @@ func TestStagedGCI31ProductPlatformBoundsAndIdentityGate(t *testing.T) {
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
+	if stagedRV64Core {
+		if widened != nil {
+			_ = widened.Close()
+		}
+		if err == nil {
+			t.Fatal("non-pinned i31 source escaped the staged RV64 identity gate")
+		}
+		return
+	}
 	if err != nil {
 		t.Fatalf("generic i31 product compile = %v", err)
 	}

@@ -829,7 +829,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		BulkMemory:              c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
 		SaturatingTrunc:         c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
 		ReferenceTypes:          c.features.IsEnabled(CoreFeatureReferenceTypes),
-		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences),
+		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences) || railshotI31Frontend(c),
 		TailCalls:               c.features.IsEnabled(CoreFeatureTailCall),
 		TypedTailCalls:          c.features.IsEnabled(CoreFeatureTailCall),
 		MultiMemory:             c.features.IsEnabled(CoreFeatureMultiMemory),

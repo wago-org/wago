@@ -47,9 +47,16 @@ func railshotStagedTailFeatures(c *RuntimeConfig) CoreFeatures {
 }
 func railshotStagedGCFeatures(c *RuntimeConfig) CoreFeatures {
 	if c != nil && c.railshotState.i31Products {
-		return CoreFeatureGC
+		// The official i31 function signature uses an explicit abstract reference
+		// result. Source admission remains exact and does not widen other typed-
+		// reference modules, but configuration must acknowledge the dependency.
+		return CoreFeatureGC | CoreFeatureTypedFunctionReferences
 	}
 	return 0
+}
+
+func railshotI31Frontend(c *RuntimeConfig) bool {
+	return c != nil && c.railshotState.i31Products
 }
 func railshotConfigureNativeTail(required CoreFeatures, cfg *RuntimeConfig, opts *railshotCompileOptions) {
 	opts.NativeTailCalls = required.IsEnabled(CoreFeatureTailCall)

@@ -77,9 +77,13 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 // source compilation before any executable image or host thunk is published.
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
+	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
+		return reject("i31 execution image requires its exact retained metadata")
+	}
 	if c != nil && c.stagedGCI31Product() != 0 && !rv64I31Core(c) {
 		return reject("i31 execution product requires its exact retained image")
 	}
+	officialI31 := rv64I31OfficialCore(c)
 	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
 	if rv64Core3RefIsNullExecutionCode(c) && !exactCore3RefIsNull {
 		return reject("Core 3 ref.is_null image requires its exact retained metadata")
@@ -188,6 +192,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
 	if rv64I31Core(c) {
 		qualifiedFeatures |= CoreFeatureGC
+		if officialI31 {
+			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+		}
 	}
 	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
 		return reject("table.size compiler witness requires its exact owned or indexed two-table profile")
@@ -278,13 +285,13 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!officialI31 || typ != ValI31Ref) {
 					return reject("unsupported signature")
 				}
 			}
 		}
 	}
-	if !declarativeTyped {
+	if !declarativeTyped && !officialI31 {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
@@ -299,6 +306,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	hasReferenceGlobal := false
 	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
 	for i, global := range c.Globals {
+		if officialI31 && global.Type == ValI31Ref {
+			continue // The exact product witness pins both globals and their initial values.
+		}
 		if global.Type == ValExternRef {
 			if !stateOnlyExternrefs {
 				return reject("externref globals require the exact state-only null directory")

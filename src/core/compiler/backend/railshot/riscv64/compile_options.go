@@ -85,8 +85,8 @@ type CompileOptions struct {
 	indirectTailInstructions     bool // actual private owned-table proper tails
 	referenceCallInstructions    bool
 	referenceControlInstructions bool
-	// Selected only when the exact source and decoded witnesses agree for the
-	// non-allocating two-function i31 module.
+	// Selected only when the exact source and decoded witnesses agree for a
+	// qualified non-allocating i31 module.
 	i31Core      bool
 	tailPlans    *[]tailImportPlan
 	tailSiteBase uint32

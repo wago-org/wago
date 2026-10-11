@@ -147,7 +147,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 	}
 	var err error
-	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls, opts.referenceFunctions); err != nil {
+	if err = admitShapeProfileFunctions(m, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.NativeReferenceCalls || opts.i31Core, opts.referenceFunctions || opts.i31Core); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(m, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
@@ -403,6 +403,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
+	i31Core := referenceFunctions && admitRV64I31OfficialCore(m)
 	declarationExtern := referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	executionExtern := referenceFunctions && isCore3RefIsNullExecution(m)
 	declarationNonNullExtern := referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
@@ -445,7 +446,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 			return unsupported("signature arity")
 		}
 		if referencesAllowed {
-			if _, _, err := admitDeclaredControlSignature(&s.Comp, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern, executionExtern: executionExtern, declarationNonNullExtern: declarationNonNullExtern, publicReferenceCarriers: publicReferenceCarriers}, true, typed, false); err != nil {
+			if _, _, err := admitDeclaredControlSignature(&s.Comp, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern, executionExtern: executionExtern, declarationNonNullExtern: declarationNonNullExtern, publicReferenceCarriers: publicReferenceCarriers, i31: i31Core}, true, typed, false); err != nil {
 				return err
 			}
 		} else {
@@ -466,7 +467,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 				return unsupported("numeric function binding")
 			}
 			if referenceFunctions && (i >= imported || publicReferenceCarriers && publicReferenceCarrierTarget(ft)) {
-				if _, _, err := admitDeclaredControlSignature(ft, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern, executionExtern: executionExtern, declarationNonNullExtern: declarationNonNullExtern, publicReferenceCarriers: publicReferenceCarriers}, true, typed, false); err != nil {
+				if _, _, err := admitDeclaredControlSignature(ft, internalReferenceTypes{decoded: m.Types, declarationExtern: declarationExtern, executionExtern: executionExtern, declarationNonNullExtern: declarationNonNullExtern, publicReferenceCarriers: publicReferenceCarriers, i31: i31Core}, true, typed, false); err != nil {
 					return err
 				}
 			} else if err := integerNumericSignature(ft, floating); err != nil {

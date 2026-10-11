@@ -1226,7 +1226,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if features.GCI31Products && gcProductAnalysisNeeded(requiredByModule) && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructRefCastConcrete && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
 		if product, ok := stagedGCI31ExecutionProduct(wasmBytes); ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !exactI31CoreSource {
 				return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcI31Product = product

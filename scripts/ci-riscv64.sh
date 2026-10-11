@@ -31,22 +31,32 @@ case "$mode" in
     # Artifact loading is exercised in a genuinely compiler-free executable.
     artifact_dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/wago-rv64-public.XXXXXX")
     trap 'rm -rf -- "$artifact_dir"' EXIT
-    unset WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE
+    unset WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE \
+      WAGO_RV64_I31_ARTIFACT_DIR WAGO_RV64_I31_ARTIFACT_MODE \
+      WAGO_RV64_I31_OFFICIAL_ARTIFACT_DIR WAGO_RV64_I31_OFFICIAL_ARTIFACT_MODE
     for check in ordinary checked; do
       tags=wago_rv64_experimental
       if [[ "$check" == checked ]]; then
         tags+=,wago_regalloccheck
       fi
       go test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^Test(RetainedResourceCleanup|ReferenceEntryCleanup|PhysicalFinalizerChain|ResourceCleanup|ImportDedup|FunctionImportDrain|BuilderRollbackContinues|Dependency|RV64.*(Reference|Global|NativeImport|Invocation|Start|Table|Rollback))'
+        -run '^Test(RetainedResourceCleanup|ReferenceEntryCleanup|PhysicalFinalizerChain|ResourceCleanup|ImportDedup|FunctionImportDrain|BuilderRollbackContinues|Dependency|RV64.*(Reference|Global|I31|NativeImport|Invocation|Start|Table|Rollback))'
       WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=prepare \
+        WAGO_RV64_I31_ARTIFACT_DIR="$artifact_dir/$check/i31" \
+        WAGO_RV64_I31_ARTIFACT_MODE=prepare \
+        WAGO_RV64_I31_OFFICIAL_ARTIFACT_DIR="$artifact_dir/$check/i31-official" \
+        WAGO_RV64_I31_OFFICIAL_ARTIFACT_MODE=prepare \
         go test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^TestRV64PublicLocalMutableReference'
+        -run '^TestRV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact)|LocalMutableReference)'
       WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=load \
+        WAGO_RV64_I31_ARTIFACT_DIR="$artifact_dir/$check/i31" \
+        WAGO_RV64_I31_ARTIFACT_MODE=load \
+        WAGO_RV64_I31_OFFICIAL_ARTIFACT_DIR="$artifact_dir/$check/i31-official" \
+        WAGO_RV64_I31_OFFICIAL_ARTIFACT_MODE=load \
         go test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
-        -run '^Test(RV64PublicLocalMutableReference|RV64ActualImportedTablePrecompiledCompilerGate)'
+        -run '^Test(RV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialCompilerFreeRejectsSource)|LocalMutableReference)|RV64ActualImportedTablePrecompiledCompilerGate)'
     done
     ;;
   *)

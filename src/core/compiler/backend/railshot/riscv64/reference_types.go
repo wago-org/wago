@@ -25,6 +25,9 @@ type internalReferenceTypes struct {
 	// whole-module classifier prevents this from widening other declarations or
 	// executable bodies.
 	publicReferenceCarriers bool
+	// i31 is confined to the exact non-allocating Core 3 product. It admits the
+	// abstract i31 heap as one full-width internal immediate carrier.
+	i31 bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -85,6 +88,9 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return false
 	}
 	heap := ref.Heap()
+	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {
+		return true
+	}
 	// Exact Core 3 declaration and execution profiles contain nullable abstract
 	// externref carriers. Their enclosing whole-module proofs establish which
 	// functions may execute or publish. Keep these exceptions out of every

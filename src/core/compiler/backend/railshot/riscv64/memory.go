@@ -184,6 +184,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 }
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
+	i31Core := admitRV64I31OfficialCore(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -281,6 +282,14 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	importedGlobals := len(s.globals)
 	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
 	for _, g := range m.Globals {
+		if i31Core && isI31CoreRef(g.Type.Type) {
+			v, err := i31CoreGlobalValue(g.Init)
+			if err != nil {
+				return s, err
+			}
+			s.globals = append(s.globals, globalSpec{wide: true, mutable: g.Type.Mutable, value: v, typ: g.Type.Type})
+			continue
+		}
 		if wasm.EqualValType(g.Type.Type, wasm.ExternRef) {
 			if !stateOnlyExternrefs {
 				return s, unsupported("externref global requires the exact state-only null profile")
@@ -372,10 +381,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			}
 		}
 		for k, t := range ft.Params {
-			fn.params[k] = scalarWide(t)
+			fn.params[k] = scalarWide(t) || i31Core && isI31CoreRef(t)
 		}
 		for k, t := range ft.Results {
-			fn.results[k] = scalarWide(t)
+			fn.results[k] = scalarWide(t) || i31Core && isI31CoreRef(t)
 		}
 		s.types = append(s.types, fn)
 	}
