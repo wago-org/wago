@@ -110,6 +110,10 @@ func rv64PublicReferenceTailPlan(c *Compiled, p encoder.NativeTailPlan) bool {
 	return p.FunctionIndex == 2 && p.ImportIndex == 0 && p.SourcePC == wantPC && p.FrameBytes == 64+16*n && p.SourceBase == 56+8*n && p.SourceStride == 8 && p.ReferenceBase == 56+16*n
 }
 
+func rv64PublicDynamicHostReferencePlan(c *Compiled, p encoder.NativeTailPlan) bool {
+	return rv64PublicDynamicHostReferenceTailPlan(c, p, 19) || rv64PublicDynamicHostReferenceTailPlan(c, p, 36)
+}
+
 func rv64PublicReferenceTailDeclaredCarrier(v ValueTypeDescriptor, referenceCarriers bool) bool {
 	if v.Kind <= ValueTypeV128 {
 		return v.Ref == (ReferenceTypeDescriptor{})
@@ -161,7 +165,7 @@ func rv64NativeTailPlanSignature(c *Compiled, p encoder.NativeTailPlan) (rv64Tai
 	if d.Kind != CompositeTypeFunction || !d.Final || len(d.Supers) != 0 || d.HasDescribes || d.HasDescriptor || len(d.Params) > 256 || len(d.Results) > 256 {
 		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail plain declared function type")
 	}
-	referenceCarriers := (rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0)) || rv64PublicHostReferenceTailPlan(c, p)
+	referenceCarriers := (rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0)) || rv64PublicHostReferenceTailPlan(c, p) || rv64PublicDynamicHostReferencePlan(c, p)
 	for _, list := range [][]ValueTypeDescriptor{d.Params, d.Results} {
 		slots := 0
 		for _, v := range list {
@@ -220,7 +224,7 @@ func rv64ValidateNativeTailPlansWithCodeBytes(c *Compiled, plans []encoder.Nativ
 		if sig.paramCount() > 256 || sig.resultCount() > 256 {
 			return fmt.Errorf("RV64 native tail signature count")
 		}
-		referenceCarriers := (rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0)) || rv64PublicHostReferenceTailPlan(c, p)
+		referenceCarriers := (rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0)) || rv64PublicHostReferenceTailPlan(c, p) || rv64PublicDynamicHostReferencePlan(c, p)
 		for _, result := range []bool{false, true} {
 			count, slots := sig.paramCount(), 0
 			if result {

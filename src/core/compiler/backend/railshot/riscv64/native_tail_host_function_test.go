@@ -183,3 +183,41 @@ func TestNativeTailHostFunctionFrozenPhysicalOwner(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeTailHostReferenceFunctionRequiresExplicitConstructor(t *testing.T) {
+	sig := wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef}, Results: []wasm.ValType{wasm.ExternRef, wasm.FuncRef}}
+	source := tailRAProofFunctionFixture(t, &sig, abi.RV64InstanceContextBytes)
+	binary.LittleEndian.PutUint64(source.directory[16:], uint64(source.job.LinMemBase()))
+	b, cert, err := NativeTailHostThunkWithCertificate(9, len(sig.Params), len(sig.Results), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := tailRAProofBuffer(t, b)
+	if err := code.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	image, err := NewNativeTailCodeImage(&tailPublishedOwnerForTest{view: code.Bytes()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f, err := NewNativeTailHostFunction(image, cert, source.job, source.context, source.directory, 0, 9, false, sig); f != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("ordinary host constructor accepted reference carriers", f, err)
+	}
+	f, err := NewNativeTailHostReferenceFunction(image, cert, source.job, source.context, source.directory, 0, 9, false, sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	mutated := *f
+	mutated.referenceCarriers = false
+	if err := mutated.Validate(); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("reference host capability was not retained", err)
+	}
+	mutated = *f
+	mutated.signature = &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}}
+	if err := mutated.Validate(); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("reference host constructor accepted vector carrier", err)
+	}
+}

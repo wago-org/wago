@@ -4,6 +4,8 @@ package riscv64
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -30,6 +32,99 @@ func publicHostReferenceBoundarySource(types []wasm.ValType, tail ...bool) []byt
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
+}
+
+func publicDynamicHostReferenceBoundarySource() []byte {
+	types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}
+	callerTypes := append(slices.Clone(types), wasm.I32)
+	im := append(append(wasmtest.Name("env"), wasmtest.Name("target")...), 0, 0)
+	var args []byte
+	for i := range types {
+		args = append(args, 0x20, byte(i))
+	}
+	identity := append(slices.Clone(args), 0x0b)
+	body := []byte{0x20, byte(len(types)), 0x04, 3}
+	body = append(body, args...)
+	body = append(body, 0xd0, 2, 0x15, 2, 0x05)
+	body = append(body, args...)
+	body = append(body, 0xd2, 0, 0x15, 2, 0x0b, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(callerTypes, types), wasmtest.FuncType(types, types), wasmtest.FuncType(nil, types))),
+		wasmtest.Section(2, wasmtest.Vec(im)),
+		wasmtest.Section(3, []byte{2, 0, 1}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 2), wasmtest.ExportEntry("identity", 0, 1))),
+		wasmtest.Section(9, []byte{1, 3, 0, 1, 0}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(identity), wasmtest.Code(body))),
+	)
+}
+
+func TestPublicDynamicHostReferenceBoundaryAdmission(t *testing.T) {
+	source := publicDynamicHostReferenceBoundarySource()
+	if len(source) != 174 || sha256.Sum256(source) != publicDynamicHostReferenceBoundaryDigest || !admitPublicDynamicHostReferenceBoundaryWire(source) || AdmitProductionSource(source) != nil {
+		t.Fatal("canonical dynamic host reference source was not admitted", len(source), sha256.Sum256(source))
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitPublicDynamicHostReferenceBoundary(m) || !admitPublicReferenceCarrierBoundary(m) {
+		t.Fatal("canonical dynamic host reference module was not recognized")
+	}
+	opts := closedReferenceProductionOptions(true, true)
+	opts.ImportBindings = hostImportBindings(1)
+	image, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image == nil || image.NativeTail == nil || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || len(image.NativeTail.Plans) != 2 {
+		t.Fatal("dynamic host reference compiler witnesses", image)
+	}
+	want := []enc.NativeTailPlan{{Kind: enc.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 19, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}, {Kind: enc.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 36, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}}
+	if !slices.Equal(image.NativeTail.Plans, want) {
+		t.Fatal("dynamic host reference compiler plans", image.NativeTail.Plans)
+	}
+}
+
+func TestPublicDynamicHostReferenceBoundaryRejectsNearMisses(t *testing.T) {
+	base := publicDynamicHostReferenceBoundarySource()
+	mutations := map[string]func(*wasm.Module){
+		"import-name":      func(m *wasm.Module) { m.Imports[0].Name = "other" },
+		"import-type":      func(m *wasm.Module) { m.Imports[0].Type = wasm.NewFuncExternType(wasm.TypeIdx{Index: 1}) },
+		"function-binding": func(m *wasm.Module) { m.FuncTypes[1] = wasm.TypeIdx{Index: 2} },
+		"target-type":      func(m *wasm.Module) { m.Types[2].SubTypes[0].Comp.Results[0] = wasm.I64 },
+		"identity-body":    func(m *wasm.Module) { m.Code[0].BodyBytes[1]++ },
+		"caller-body":      func(m *wasm.Module) { m.Code[1].BodyBytes[18] = 0x14 },
+		"element":          func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 1 },
+		"export":           func(m *wasm.Module) { m.Exports[0].Index.Index = 1 },
+		"table":            func(m *wasm.Module) { m.Tables = append(m.Tables, wasm.Table{}) },
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			candidate, err := wasm.DecodeModule(base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(candidate)
+			if admitPublicDynamicHostReferenceBoundary(candidate) {
+				t.Fatal("dynamic host reference semantic near miss admitted")
+			}
+		})
+	}
+	wires := map[string][]byte{
+		"truncated": append([]byte(nil), base[:len(base)-1]...),
+		"trailing":  append(append([]byte(nil), base...), 0),
+		"body":      append([]byte(nil), base...),
+		"name":      append([]byte(nil), base...),
+	}
+	wires["body"][len(wires["body"])-3] ^= 1
+	if at := bytes.Index(wires["name"], []byte("target")); at >= 0 {
+		wires["name"][at] ^= 1
+	}
+	for name, source := range wires {
+		if admitPublicDynamicHostReferenceBoundaryWire(source) {
+			t.Fatal("dynamic host reference wire near miss admitted", name)
+		}
+	}
 }
 
 func TestPublicHostReferenceBoundaryAdmission(t *testing.T) {

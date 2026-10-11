@@ -82,7 +82,7 @@ func rv64PrepareTailTargets(in *Instance, imports resolvedImports, sharedBase ui
 				continue // Keep the ordinary proxy; do not publish a tail entry.
 			}
 		} else {
-			if err := rv64ScalarHostSignature(in.c.importFuncSigs[function]); err != nil && !rv64PublicHostReferenceBoundary(in.c) {
+			if err := rv64ScalarHostSignature(in.c.importFuncSigs[function]); err != nil && !rv64PublicHostReferenceBoundary(in.c) && !rv64PublicDynamicHostReferenceBoundary(in.c) {
 				// Preserve the ordinary descriptor; this signature has no
 				// qualified tail transport yet.
 				continue
@@ -154,7 +154,7 @@ func rv64ValidateTailTargets(in *Instance) error {
 				continue
 			}
 		} else {
-			if rv64ScalarHostSignature(in.c.importFuncSigs[function]) != nil && !rv64PublicHostReferenceBoundary(in.c) {
+			if rv64ScalarHostSignature(in.c.importFuncSigs[function]) != nil && !rv64PublicHostReferenceBoundary(in.c) && !rv64PublicDynamicHostReferenceBoundary(in.c) {
 				if !rv64EmptyTailTargetRow(row) {
 					return fmt.Errorf("RV64 unsupported host tail row must be empty")
 				}

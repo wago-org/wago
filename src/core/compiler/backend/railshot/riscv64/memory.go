@@ -39,7 +39,8 @@ type moduleState struct {
 	referenceCalls    bool
 	// The exact public two-token boundary may pass one authenticated funcref
 	// argument through call_ref in addition to the callable target reference.
-	publicReferenceCarriers bool
+	publicReferenceCarriers            bool
+	publicDynamicHostReferenceCarriers bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -71,6 +72,10 @@ type moduleState struct {
 	capacity          int
 	memoryExports     map[string]bool
 	globalExports     map[string]int
+}
+
+func (s *moduleState) publicReferenceCarrierType(index uint32) bool {
+	return s != nil && s.publicReferenceCarriers && (index == 0 || s.publicDynamicHostReferenceCarriers && index == 2)
 }
 
 func (s *moduleState) tableWidth(index uint32) (wide bool, ok bool) {

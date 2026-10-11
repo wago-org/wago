@@ -66,14 +66,15 @@ func (c *NativeTailHostCertificate) Validate(image *NativeTailCodeImage, offset 
 // genuine framed guest definition. It cannot authorize a native guest frame.
 // Dynamic owner snapshots validate this certificate without granting a guest frame.
 type NativeTailHostFunction struct {
-	image           *NativeTailCodeImage
-	certificate     *NativeTailHostCertificate
-	signature       *wasm.CompType
-	job             *coreruntime.JobMemory
-	context, anchor []byte
-	offset          int
-	dispatchIndex   uint32
-	owned           bool
+	image             *NativeTailCodeImage
+	certificate       *NativeTailHostCertificate
+	signature         *wasm.CompType
+	job               *coreruntime.JobMemory
+	context, anchor   []byte
+	offset            int
+	dispatchIndex     uint32
+	owned             bool
+	referenceCarriers bool
 }
 
 // Charge both the staging signature and its frozen copy before construction.
@@ -90,7 +91,18 @@ func NativeTailHostFunctionBytes(values int) (int, error) {
 // and ordered signature. A shared cache lease alone cannot satisfy this contract:
 // identical wrapper bytes do not authenticate another instance's callback or data.
 func NewNativeTailHostFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType) (*NativeTailHostFunction, error) {
-	f := NativeTailHostFunction{image: image, certificate: certificate, signature: &signature, job: job, context: context, anchor: anchor, offset: offset, dispatchIndex: dispatchIndex, owned: owned}
+	return newNativeTailHostFunction(image, certificate, job, context, anchor, offset, dispatchIndex, owned, signature, false)
+}
+
+// NewNativeTailHostReferenceFunction is restricted to whole-module profiles
+// that separately prove authenticated public reference-carrier transport. The
+// ordinary constructor deliberately remains scalar-only.
+func NewNativeTailHostReferenceFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType) (*NativeTailHostFunction, error) {
+	return newNativeTailHostFunction(image, certificate, job, context, anchor, offset, dispatchIndex, owned, signature, true)
+}
+
+func newNativeTailHostFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType, referenceCarriers bool) (*NativeTailHostFunction, error) {
+	f := NativeTailHostFunction{image: image, certificate: certificate, signature: &signature, job: job, context: context, anchor: anchor, offset: offset, dispatchIndex: dispatchIndex, owned: owned, referenceCarriers: referenceCarriers}
 	if err := f.Validate(); err != nil {
 		return nil, err
 	}
@@ -104,7 +116,7 @@ func (f *NativeTailHostFunction) Validate() error {
 	}
 	for _, values := range [][]wasm.ValType{f.signature.Params, f.signature.Results} {
 		for _, typ := range values {
-			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && (!f.referenceCarriers || !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef)) {
 				return unsupported("native tail host scalar carrier")
 			}
 		}

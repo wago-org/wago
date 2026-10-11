@@ -33,6 +33,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		counts.MaskSlots = n
 	}
 	publicReferenceCarriers := rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierTarget(c, 0)
+	publicDynamicHostReferenceCarriers := rv64PublicDynamicHostReferenceBoundary(c)
 	for i := 0; i < n; i++ {
 		if railshotNonCallableFunction(c, i) {
 			counts.NonCallable++
@@ -44,7 +45,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		} else {
 			sig = c.Funcs[i-c.NumImports]
 		}
-		values, e := rv64NativeTailSignatureValues(sig, publicReferenceCarriers && i == 0)
+		values, e := rv64NativeTailSignatureValues(sig, publicReferenceCarriers && i == 0 || publicDynamicHostReferenceCarriers && i <= 1)
 		if e != nil {
 			return counts, 0, e
 		}
@@ -207,7 +208,12 @@ func rv64NewNativeTailOwner(in *Instance, counts railshot.NativeTailOwnerCounts)
 				return nil, err
 			}
 			r := owner.record
-			host, err := railshot.NewNativeTailHostFunction(actual, r.certificate, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, r.offset, r.dispatchIndex, r.owned, signatures[i])
+			var host *railshot.NativeTailHostFunction
+			if rv64PublicDynamicHostReferenceBoundary(in.c) && i == 0 {
+				host, err = railshot.NewNativeTailHostReferenceFunction(actual, r.certificate, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, r.offset, r.dispatchIndex, r.owned, signatures[i])
+			} else {
+				host, err = railshot.NewNativeTailHostFunction(actual, r.certificate, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, r.offset, r.dispatchIndex, r.owned, signatures[i])
+			}
 			if err != nil {
 				return nil, err
 			}

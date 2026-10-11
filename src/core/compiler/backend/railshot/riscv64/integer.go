@@ -993,7 +993,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			callResultRefs := []bool(nil)
 			referenceCarriers := false
 			if err = integerCallable(sig, floating); err != nil {
-				if !state.publicReferenceCarriers || typeIndex != 0 || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature) {
+				if !state.publicReferenceCarrierType(typeIndex) || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature) {
 					return integerSummary{}, err
 				}
 				callParams, callResults, callParamRefs, callResultRefs, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
@@ -1059,7 +1059,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			callParamRefs := []bool(nil)
 			referenceCarriers := false
 			if err = integerCallable(sig, floating); err != nil {
-				if !state.publicReferenceCarriers || typeIndex != 0 || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature) {
+				if !state.publicReferenceCarrierType(typeIndex) || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature) {
 					return integerSummary{}, err
 				}
 				callParams, _, callParamRefs, _, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)

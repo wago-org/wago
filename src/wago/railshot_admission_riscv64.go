@@ -138,7 +138,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		if vectorProfile {
 			maxImportArity = 128
 		}
-		publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c)
+		publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c)
 		for _, sig := range c.importFuncSigs {
 			if len(sig.Params) > maxImportArity || len(sig.Results) > maxImportArity {
 				return reject("function import signature arity")
@@ -265,7 +265,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if vectorProfile {
 		maxArity = 128
 	}
-	declarationExtern := exactCore3RefIsNull || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c)
+	declarationExtern := exactCore3RefIsNull || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c)
 	for _, sig := range c.Funcs {
 		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
 			return reject("signature arity")
@@ -480,7 +480,7 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 		}
 		switch value := value.(type) {
 		case *HostFuncRef:
-			if !rv64PublicHostReferenceBoundary(c) {
+			if !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
 				if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
 					return fmt.Errorf("public RV64 import %q: %w", key, err)
 				}
@@ -499,7 +499,7 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 		case I32HostEvent, gatedI32HostEvent:
 			return fmt.Errorf("%w: public RV64 import %q target ownership/protocol is pending", railshot.ErrUnsupported, key)
 		}
-		if !rv64PublicHostReferenceBoundary(c) {
+		if !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
 			if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
 				return fmt.Errorf("public RV64 import %q: %w", key, err)
 			}

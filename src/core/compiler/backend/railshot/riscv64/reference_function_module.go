@@ -4,10 +4,21 @@ package riscv64
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+var publicDynamicHostReferenceBoundaryDigest = [sha256.Size]byte{0x16, 0x4c, 0x3f, 0x1e, 0x5c, 0x8e, 0x40, 0x9f, 0x8c, 0xa9, 0x68, 0x86, 0x1f, 0x76, 0x54, 0x84, 0xfd, 0x2b, 0x38, 0x8d, 0x0d, 0x87, 0x40, 0xeb, 0xd4, 0x74, 0x28, 0xb1, 0x49, 0xfa, 0x8c, 0x2a}
+
+func admitPublicDynamicHostReferenceBoundaryWire(data []byte) bool {
+	if len(data) != 174 || sha256.Sum256(data) != publicDynamicHostReferenceBoundaryDigest {
+		return false
+	}
+	decoded, err := wasm.DecodeModuleByteBackedWithLimits(data, wasm.ValidationFeatures{}, wasm.DecodeLimits{MaxTypes: MaxFunctions, MaxMetadataBytes: 16 << 20})
+	return err == nil && admitPublicDynamicHostReferenceBoundary(decoded.Module)
+}
 
 func admitPublicReferenceCallBoundaryWire(data []byte) bool {
 	if !publicReferenceCallBoundaryWireShape(data) {
@@ -266,6 +277,55 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	return true
 }
 
+// admitPublicDynamicHostReferenceBoundary pins the first reference-bearing
+// public return_call_ref bridge to one exact imported host target, one local
+// identity and one selector wrapper. The source digest above retains the
+// canonical wire/body contract; this decoded check independently binds every
+// semantic directory and type before the exception reaches lowering.
+func admitPublicDynamicHostReferenceBoundary(m *wasm.Module) bool {
+	if m == nil || len(m.Imports) != 1 || m.Imports[0].Module != "env" || m.Imports[0].Name != "target" || m.Imports[0].Type != wasm.NewFuncExternType(wasm.TypeIdx{}) || len(m.Types) != 4 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 2 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	for i := range m.Types {
+		if len(m.Types[i].SubTypes) != 1 {
+			return false
+		}
+		sub := m.Types[i].SubTypes[0]
+		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || sub.Comp.Kind != wasm.CompFunc || len(sub.Comp.Fields) != 0 || sub.Comp.Array != (wasm.FieldType{}) {
+			return false
+		}
+	}
+	want := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}
+	target := &m.Types[0].SubTypes[0].Comp
+	if !publicReferenceCarrierTarget(target) || !slices.EqualFunc(target.Params, want, wasm.EqualValType) || !slices.EqualFunc(target.Results, want, wasm.EqualValType) {
+		return false
+	}
+	for _, index := range []int{2} {
+		typ := &m.Types[index].SubTypes[0].Comp
+		if !slices.EqualFunc(typ.Params, want, wasm.EqualValType) || !slices.EqualFunc(typ.Results, want, wasm.EqualValType) {
+			return false
+		}
+	}
+	caller := &m.Types[1].SubTypes[0].Comp
+	producer := &m.Types[3].SubTypes[0].Comp
+	if len(caller.Params) != len(want)+1 || !slices.EqualFunc(caller.Params[:len(want)], want, wasm.EqualValType) || !wasm.EqualValType(caller.Params[len(want)], wasm.I32) || !slices.EqualFunc(caller.Results, want, wasm.EqualValType) || len(producer.Params) != 0 || !slices.EqualFunc(producer.Results, want, wasm.EqualValType) {
+		return false
+	}
+	if m.FuncTypes[0] != (wasm.TypeIdx{Index: 0}) || m.FuncTypes[1] != (wasm.TypeIdx{Index: 1}) || len(m.Code[0].Locals.Runs) != 0 || len(m.Code[1].Locals.Runs) != 0 || len(m.Code[0].Body.Instrs) != 0 || len(m.Code[1].Body.Instrs) != 0 {
+		return false
+	}
+	identity := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0x0b}
+	callerBody := []byte{0x20, 6, 0x04, 3, 0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0xd0, 2, 0x15, 2, 0x05, 0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0xd2, 0, 0x15, 2, 0x0b, 0x0b}
+	if !bytes.Equal(m.Code[0].BodyBytes, identity) || !bytes.Equal(m.Code[1].BodyBytes, callerBody) {
+		return false
+	}
+	e := m.Elements[0]
+	if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Funcs) != 1 || e.Kind.Funcs[0] != 0 || len(e.Kind.Exprs) != 0 {
+		return false
+	}
+	return m.Exports[0].Name == "call" && m.Exports[0].Index == (wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}) && m.Exports[1].Name == "identity" && m.Exports[1].Index == (wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1})
+}
+
 func publicReferenceCarrierTarget(target *wasm.CompType) bool {
 	if target == nil || target.Kind != wasm.CompFunc || len(target.Params) > 256 || len(target.Results) > 256 {
 		return false
@@ -308,7 +368,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	}
 	publicReferenceCallBoundary := !vector && admitPublicReferenceCallBoundary(m)
 	publicHostReferenceBoundary := !vector && admitPublicHostReferenceBoundary(m)
-	publicReferenceCarrierBoundary := publicReferenceCallBoundary || publicHostReferenceBoundary
+	publicDynamicHostReferenceBoundary := !vector && admitPublicDynamicHostReferenceBoundary(m)
+	publicReferenceCarrierBoundary := publicReferenceCallBoundary || publicHostReferenceBoundary || publicDynamicHostReferenceBoundary
 	counts, err := countClosedReferenceImports(m)
 	if err != nil {
 		return err
@@ -375,7 +436,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 				return err
 			}
 		} else if err := integerNumericSignature(sig, true); err != nil {
-			if !publicHostReferenceBoundary || index.Index != 0 || !publicReferenceCarrierTarget(sig) {
+			if (!publicHostReferenceBoundary && !publicDynamicHostReferenceBoundary) || index.Index != 0 || !publicReferenceCarrierTarget(sig) {
 				return err
 			}
 		}
@@ -439,7 +500,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
 	descriptorTarget := numericTarget
-	if publicReferenceCallBoundary && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) {
+	if (publicReferenceCallBoundary || publicDynamicHostReferenceBoundary) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) {
 		descriptorTarget = func(index uint32) bool { return index == 0 || numericTarget(index) }
 	}
 	if len(m.Tables) != 0 && m.Tables[0].Init != nil {
@@ -568,7 +629,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			if op == 0xd2 && !descriptorTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
 			}
-			if referenceExports && (op == 0x14 || op == 0x15) && !publicReferenceCallBoundary {
+			if referenceExports && (op == 0x14 || op == 0x15) && !publicReferenceCallBoundary && !publicDynamicHostReferenceBoundary {
 				return unsupported("public reference wrapper dynamic reference call requires owner scoping")
 			}
 			if (op == 0x11 || op == 0x13) && (len(m.Tables) != 1 || imm.Index2 != 0) {
@@ -604,7 +665,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 						return err
 					}
 				} else if err := integerNumericSignature(sig, true); err != nil {
-					if !publicReferenceCallBoundary || (op != 0x14 && op != 0x15) || imm.Index != 0 || !publicReferenceCarrierTarget(sig) {
+					publicCall := publicReferenceCallBoundary && imm.Index == 0
+					publicDynamic := publicDynamicHostReferenceBoundary && imm.Index == 2
+					if (!publicCall && !publicDynamic) || (op != 0x14 && op != 0x15) || !publicReferenceCarrierTarget(sig) {
 						return err
 					}
 				}

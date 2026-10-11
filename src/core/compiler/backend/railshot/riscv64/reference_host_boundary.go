@@ -123,5 +123,5 @@ func admitPublicHostReferenceBoundary(m *wasm.Module) bool {
 }
 
 func admitPublicReferenceCarrierBoundary(m *wasm.Module) bool {
-	return admitPublicReferenceCallBoundary(m) || admitPublicHostReferenceBoundary(m)
+	return admitPublicReferenceCallBoundary(m) || admitPublicHostReferenceBoundary(m) || admitPublicDynamicHostReferenceBoundary(m)
 }

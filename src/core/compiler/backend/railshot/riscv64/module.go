@@ -161,6 +161,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.referenceCalls = opts.NativeReferenceCalls
 	state.referenceFunctions = opts.referenceFunctions
 	state.publicReferenceCarriers = opts.referenceFunctions && admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+	state.publicDynamicHostReferenceCarriers = state.publicReferenceCarriers && admitPublicDynamicHostReferenceBoundary(m)
 	state.core3RefIsNullExecution = opts.referenceFunctions && isCore3RefIsNullExecution(m)
 	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))

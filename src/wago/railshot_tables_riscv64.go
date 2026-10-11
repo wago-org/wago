@@ -2323,14 +2323,20 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 		if railshotNonCallableFunction(c, i) {
 			continue // Source-attested internal signature has no callable row.
 		}
-		if i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) {
-			for j, t := range c.Funcs[0].Params {
+		publicReferenceCarrier := i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0])
+		publicDynamicHostReferenceCarrier := i <= 1 && rv64PublicDynamicHostReferenceBoundary(c)
+		if publicReferenceCarrier || publicDynamicHostReferenceCarrier {
+			sig := c.Funcs[0]
+			if publicDynamicHostReferenceCarrier && i == 0 {
+				sig = c.importFuncSigs[0]
+			}
+			for j, t := range sig.Params {
 				params[j] = rv64ReferenceWasmType(t)
 			}
-			for j, t := range c.Funcs[0].Results {
+			for j, t := range sig.Results {
 				results[j] = rv64ReferenceWasmType(t)
 			}
-			key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: params[:len(c.Funcs[0].Params)], Results: results[:len(c.Funcs[0].Results)]})
+			key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: params[:len(sig.Params)], Results: results[:len(sig.Results)]})
 			if c.FuncTypeID[i] != key {
 				return fmt.Errorf("public reference-carrier target signature key differs from its exact type")
 			}
