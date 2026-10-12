@@ -444,7 +444,7 @@ func stageGCTypeSubtypingRuntimeTypedTableCall(c *Compiled, opts CompileOptions,
 
 func stageGCTypeSubtypingRefTestSingle(c *Compiled, opts CompileOptions, m *wasm.Module) (*enc.CompiledModule, error) {
 	wantFunctions := 2
-	if opts.gcTypeSubtypingRefTestVariant >= 6 {
+	if opts.gcTypeSubtypingRefTestVariant == 6 || opts.gcTypeSubtypingRefTestVariant == 7 {
 		wantFunctions = 3
 	}
 	if c == nil || admitRV64GCTypeSubtypingRefTestSingleVariant(m) != opts.gcTypeSubtypingRefTestVariant || !c.state.gcTypeSubtypingRefTestSingle || c.state.gcTypeSubtypingRefTestVariant != opts.gcTypeSubtypingRefTestVariant ||

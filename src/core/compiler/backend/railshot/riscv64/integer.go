@@ -96,7 +96,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	functionRefs := state != nil && state.referenceFunctions
 	i31Refs := state != nil && state.i31Core
 	if functionRefs {
-		typedFunctionRefs := state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle && state.gcTypeSubtypingRefTestVariant >= 6
+		typedFunctionRefs := state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle && (state.gcTypeSubtypingRefTestVariant == 6 || state.gcTypeSubtypingRefTestVariant == 7)
 		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls) {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
@@ -2102,7 +2102,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						(variant == 4 && target == 0) ||
 						(variant == 5 && (target == 0 || target == 4)) ||
 						(variant == 6 && target < 4) ||
-						(variant == 7 && target < 8)
+						(variant == 7 && target < 8) ||
+						(variant == 8 && target == 0)
 					accepted := uint32(6)
 					if variant == 3 || variant == 4 {
 						accepted = 4
@@ -2112,6 +2113,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						accepted = target & 1
 					} else if variant == 7 {
 						accepted = 4 + uint32(refTestCount/2&1)
+					} else if variant == 8 {
+						accepted = 0
 					}
 					if !validTarget || int(accepted) >= len(state.types) {
 						return integerSummary{}, unsupported("bounded function ref.test type relation")
