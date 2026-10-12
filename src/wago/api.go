@@ -1047,11 +1047,6 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 	if bounds != BoundsChecksExplicit {
 		return errors.New("threads currently require explicit bounds checks")
 	}
-	for i := range m.Imports {
-		if imp := &m.Imports[i]; imp.Type.Kind == wasm.ExternGlobal && imp.Type.GlobalType().Mutable {
-			return errors.New("threads currently reject mutable global imports")
-		}
-	}
 	if len(analyses) != 0 && analyses[0].ValidFor(m) {
 		if analyses[0].Flags()&wasm.ValidatedFuncUsesNonAtomicMemory == 0 {
 			return nil

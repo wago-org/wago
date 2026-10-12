@@ -1728,6 +1728,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	if threadedControl {
 		foreign := b.collectorShared || c.needsFuncRefContext() || c.tableImportCount() != 0
+		for i := range c.GlobalImports {
+			if c.GlobalImports[i].Mutable {
+				// Native global cells and their host accessors use the shared lease.
+				// A private memory backing does not make an imported cell private.
+				foreign = true
+				break
+			}
+		}
 		for i := range c.Imports {
 			if _, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport); ok {
 				foreign = true

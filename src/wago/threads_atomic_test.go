@@ -481,11 +481,27 @@ func TestThreadsRejectsUnderalignedAtomicMemoryArgument(t *testing.T) {
 	}
 }
 
-func TestThreadsRejectsMutableGlobalImports(t *testing.T) {
+func TestThreadsAdmitsMutableGlobalImports(t *testing.T) {
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
-	if compiled, err := Compile(config, sharedAtomicMutableGlobalImportModule()); err == nil {
-		compiled.Close()
-		t.Fatal("threaded module accepted a mutable global import")
+	compiled, err := Compile(config, sharedAtomicMutableGlobalImportModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	memory, err := NewSharedMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	global := NewGlobalI32(1, true)
+	defer global.Close()
+	instance, err := Instantiate(compiled, NewImports().Memory("env", "memory", memory).Global("env", "global", global))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("load"); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("shared imported globals: %v, %v", got, err)
 	}
 }
 
