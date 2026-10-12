@@ -22,16 +22,16 @@ import (
 var hostControlInstances sync.Map // map[uintptr]*Instance
 
 // hostInvocationContexts carries the public root's callback identity across a
-// native cross-instance transfer. The control-frame address is unique to the
-// parked activation and lets the producer's bound host dispatcher construct a
-// HostModule authorized by the invocation that actually owns the GC lease.
+// native cross-instance transfer. Nested entries can bind a private control
+// frame; foreign roots sharing a producer carry their identity explicitly.
 type hostInvocationContext struct {
 	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
 	profileInvocationState
-	id          invocationID
-	reservation *pluginOperationReservation
-	parent      context.Context
-	scope       *hostCallScope
+	id           invocationID
+	reservation  *pluginOperationReservation
+	parent       context.Context
+	scope        *hostCallScope
+	gcActivation gcHostActivationToken
 }
 
 // resolvedHostCall accepts identity derived by the runtime while its native
@@ -355,6 +355,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 	// owns the invocation identity and collector lease. Carry that identity into
 	// the producer's HostModule instead of reading its zero local invocation ID.
 	invocation := a.context(active)
+	invocation.gcActivation = activation
 	if root != nil && active != root {
 		// Concurrent relays own distinct scope generations even when the parked
 		// producer is the same instance. The public root retains this scope.

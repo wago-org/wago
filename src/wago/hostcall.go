@@ -2295,7 +2295,7 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 	defer gcResultTemps.release(in)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	binding.callBoundUnchecked(caller, args, results)
-	if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults, exactTypes); err != nil {
+	if err := in.translateHostReferenceResults(invocation.gcActivation, results, sig.Results, exactResults, exactTypes); err != nil {
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 }
@@ -2465,7 +2465,7 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType,
 	return nil
 }
 
-func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor) error {
+func (in *Instance) translateHostReferenceResults(activation gcHostActivationToken, values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -2532,7 +2532,7 @@ func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64,
 			if uint64(ref) == bits && ref.IsObj() {
 				return fmt.Errorf("raw compact GC reference for result %d is not a host token", i)
 			}
-			resolved, err := in.refStore.stageGCHostResult(in, ctrl, bits, required)
+			resolved, err := in.refStore.stageGCHostResult(in, activation, bits, required)
 			if err != nil {
 				return fmt.Errorf("GC reference result %d: %w", i, err)
 			}

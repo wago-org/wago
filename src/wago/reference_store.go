@@ -2712,8 +2712,8 @@ func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch ui
 	return nil
 }
 
-func (s *referenceStore) stageGCHostResult(target *Instance, ctrl uintptr, token uint64, required ValueTypeDescriptor) (gc.Ref, error) {
-	if s == nil || target == nil || target.gc == nil || target.c == nil || ctrl == 0 || token == 0 {
+func (s *referenceStore) stageGCHostResult(target *Instance, parked gcHostActivationToken, token uint64, required ValueTypeDescriptor) (gc.Ref, error) {
+	if s == nil || target == nil || target.gc == nil || target.c == nil || parked.state == nil || token == 0 {
 		return gc.Null(), fmt.Errorf("invalid GC host result token")
 	}
 	unlockNative := lockNativeExecutionForHostAccess()
@@ -2750,14 +2750,11 @@ func (s *referenceStore) stageGCHostResult(target *Instance, ctrl uintptr, token
 	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
 		return gc.Null(), fmt.Errorf("GC host result token does not match the required structural result type")
 	}
-	activation := -1
-	for i := int(targetState.hostActivationCount) - 1; i >= 0; i-- {
-		if targetState.hostActivations[i].ctrl == ctrl {
-			activation = i
-			break
-		}
-	}
-	if activation < 0 {
+	// Multiple public roots can park on the same producer control frame. The
+	// dispatch token identifies this callback's exact slot, including holes
+	// reused after another root resumes out of suspension order.
+	activation := parked.index
+	if parked.state != targetState || activation >= targetState.hostActivationCount || targetState.hostActivations[activation].stack == nil {
 		return gc.Null(), fmt.Errorf("GC host result has no active parked frame")
 	}
 	count := targetState.hostResultRootCount[activation]
