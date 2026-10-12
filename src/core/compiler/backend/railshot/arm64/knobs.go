@@ -10,6 +10,7 @@ import (
 // The binding inventory is checked against the arm64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("arm64",
+	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
@@ -75,6 +76,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 )
 
 var (
+	optAtomicZeroWait       = optimizationBindings.Option("atomic-wait-zero-timeout")
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")
 	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")

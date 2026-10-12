@@ -429,6 +429,7 @@ var catalog = []Definition{
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	arm64("leaf-scratch-memsize", "Leaf scratch memory size", "cache memory size in backend scratch for straight-line regional leaves"),
 	arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
+	both("atomic-wait-zero-timeout", "Immediate atomic waits", "resolve literal zero-timeout shared-memory waits in native code"),
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
 	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	both("prepared-direct-entry", "Direct prepared entry", "enter compiler-proved integer functions through the register ABI"),

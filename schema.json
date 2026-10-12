@@ -36,6 +36,7 @@
           "propertyNames": {
             "enum": [
               "bulk-memory-operations",
+              "compact-imports",
               "exception-handling",
               "extended-const-expressions",
               "extended-constant-expressions",
@@ -51,7 +52,8 @@
               "table64",
               "tail-call",
               "threads",
-              "typed-function-references"
+              "typed-function-references",
+              "wide-arithmetic"
             ]
           },
           "additionalProperties": { "type": "boolean" }
@@ -63,6 +65,7 @@
               "accumulator-immediate",
               "addr-zext-elim",
               "affine-lea",
+              "atomic-wait-zero-timeout",
               "assoc-tree",
               "avx512-ternary",
               "avx512-vrotate",

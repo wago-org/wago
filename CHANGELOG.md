@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Resolve literal zero-timeout shared-memory waits in native code, preserving
+  alignment/bounds trap order and retaining the parking helper for other waits.
+  `atomic-wait-zero-timeout` selects the lowering independently per compile.
+
 - Admit exact typed i64 synchronous host callbacks to the private prepared
   integer route when the bounded-work and detached-context proofs hold. Other
   callback shapes retain their existing route; each synchronous host binding

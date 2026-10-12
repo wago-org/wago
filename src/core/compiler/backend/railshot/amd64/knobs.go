@@ -10,6 +10,7 @@ import (
 // The binding inventory is checked against the amd64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("amd64",
+	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
 	optimization.Bind("simd-reduction-borrow", &simdReductionBorrowEnabled),
@@ -78,6 +79,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 )
 
 var (
+	optAtomicZeroWait          = optimizationBindings.Option("atomic-wait-zero-timeout")
 	optBoundsFacts             = optimizationBindings.Option("bounds-facts")
 	optSIMDSuperopt            = optimizationBindings.Option("simd-superopt")
 	optSIMDReductionBorrow     = optimizationBindings.Option("simd-reduction-borrow")
