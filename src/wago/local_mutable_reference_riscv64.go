@@ -10,6 +10,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64StateOnlyMutableFuncrefImport(c) {
 		return false, nil // The sole mutable cell is imported, not local executable state.
 	}
+	if rv64MutableFuncrefGlobalGet(c) {
+		return true, nil // Exact read-only imported cell reuses the full-width load gate.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable

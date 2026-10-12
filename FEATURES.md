@@ -30,8 +30,11 @@ also work without globals or tables. Local mutable nullable funcref globals
 retain full-width own descriptors in table-free modules without reference imports,
 reference-valued signatures, or mutable reference exports. A separate exact
 zero-code profile imports and re-exports one same-Runtime mutable nullable
-funcref `Global`, preserving shared mutation and descriptor-owner lifetime; guest
-`global.get`/`global.set` and mixed state remain unsupported for that profile.
+funcref `Global`, preserving shared mutation and descriptor-owner lifetime. A
+second exact table-free executable profile supports a `global.get`/`ref.is_null`
+consumer of that imported cell through source and compiler-free artifacts. Guest
+`global.set`, raw reference results, and mixed state remain unsupported for that
+profile.
 Table-free declarative segments and repeated
 `elem.drop` use dropped element state; unused legacy declarations require no
 function descriptors or element directory. Empty and state-only modules have no

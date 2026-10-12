@@ -110,6 +110,10 @@ func rv64StateOnlyMutableFuncrefImport(c *Compiled) bool {
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
 	stateOnlyMutableFuncrefImport := rv64StateOnlyMutableFuncrefImport(c)
+	mutableFuncrefGlobalGet := rv64MutableFuncrefGlobalGet(c)
+	if rv64MutableFuncrefGlobalGetExecutionCode(c) && !mutableFuncrefGlobalGet {
+		return reject("mutable funcref global.get image requires its exact retained metadata")
+	}
 	exactGCRefEq := rv64OfficialGCRefEq(c)
 	exactGCRefTestTable := rv64GCRefTestTable(c)
 	exactGCRefTestConcrete := rv64GCRefTestConcrete(c)
@@ -452,7 +456,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("global import index shape")
 	}
 	for i, global := range c.GlobalImports {
-		reference := global.Type == ValFuncRef && (!global.Mutable || stateOnlyMutableFuncrefImport) && c.tableCount() <= 1
+		reference := global.Type == ValFuncRef && (!global.Mutable || stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet) && c.tableCount() <= 1
 		if reference {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
@@ -629,7 +633,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
 			typedIndex, typed := rv64PrivateIndexedFunctionType(c, exact)
-			mutableQualified := localMutableReferences && i >= len(c.GlobalImports) || stateOnlyMutableFuncrefImport && i < len(c.GlobalImports)
+			mutableQualified := localMutableReferences && i >= len(c.GlobalImports) || (stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet) && i < len(c.GlobalImports)
 			if err != nil || exact != plain && !typed || global.Mutable && !mutableQualified || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
 				return reject("qualified reference global and retained references required")
 			}

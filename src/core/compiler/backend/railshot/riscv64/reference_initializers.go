@@ -2,7 +2,11 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"bytes"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // admitStateOnlyMutableFunctionGlobalImport is the source-side counterpart of
 // the runtime artifact witness. It admits one mutable nullable funcref import
@@ -18,6 +22,30 @@ func admitStateOnlyMutableFunctionGlobalImport(m *wasm.Module) bool {
 	typ := imp.Type.GlobalType()
 	ex := m.Exports[0]
 	return typ.Mutable && wasm.EqualValType(typ.Type, wasm.FuncRef) && ex.Index.Kind == wasm.ExternGlobal && ex.Index.Index == 0
+}
+
+// admitMutableFunctionGlobalGet is the first executable mutable-import shape.
+// Its sole function can only observe whether the imported cell is null; no raw
+// descriptor escapes and no guest write bypasses the container ownership path.
+func admitMutableFunctionGlobalGet(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+		return false
+	}
+	imp := m.Imports[0]
+	if imp.Type.Kind != wasm.ExternGlobal {
+		return false
+	}
+	typ := imp.Type.GlobalType()
+	sig, ok := m.FuncSignature(0)
+	if !ok || sig.Kind != wasm.CompFunc || len(sig.Params) != 0 || len(sig.Results) != 1 || !wasm.EqualValType(sig.Results[0], wasm.I32) || m.Code[0].LocalDeclBytes != 1 || len(m.Code[0].Locals.Runs) != 0 || !bytes.Equal(m.Code[0].BodyBytes, []byte{0x23, 0, 0xd1, 0x0b}) {
+		return false
+	}
+	functionExport, globalExport := false, false
+	for _, ex := range m.Exports {
+		functionExport = functionExport || ex.Name == "is_null" && ex.Index.Kind == wasm.ExternFunc && ex.Index.Index == 0
+		globalExport = globalExport || ex.Name == "cell" && ex.Index.Kind == wasm.ExternGlobal && ex.Index.Index == 0
+	}
+	return typ.Mutable && wasm.EqualValType(typ.Type, wasm.FuncRef) && functionExport && globalExport
 }
 
 // privateIndexedFunctionGlobal admits the table-free typed cells used to hold
@@ -99,5 +127,5 @@ func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 }
 
 func admitImportedFunctionGlobal(m *wasm.Module, typ wasm.GlobalType) bool {
-	return wasm.EqualValType(typ.Type, wasm.FuncRef) && (!typ.Mutable && len(m.Tables)+m.ImportedTableCount() <= 1 || typ.Mutable && admitStateOnlyMutableFunctionGlobalImport(m))
+	return wasm.EqualValType(typ.Type, wasm.FuncRef) && (!typ.Mutable && len(m.Tables)+m.ImportedTableCount() <= 1 || typ.Mutable && (admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m)))
 }

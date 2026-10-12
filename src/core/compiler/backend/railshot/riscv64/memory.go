@@ -264,6 +264,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
+		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m)
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -327,7 +328,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("isolated global import")
 			}
 			g := im.Type.GlobalType()
-			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m)) && admitImportedFunctionGlobal(m, g)
+			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m)) && admitImportedFunctionGlobal(m, g)
 			if !scalarType(g.Type, true) && !reference {
 				return s, unsupported("nonscalar global import")
 			}
