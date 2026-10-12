@@ -13,18 +13,28 @@ import (
 )
 
 func threadsDataModule(imported bool, activeOffset int32, count int) []byte {
+	return threadsDataModuleForAddress(imported, activeOffset, count, false)
+}
+
+func threadsDataModuleForAddress(imported bool, activeOffset int32, count int, address64 bool) []byte {
+	addressType, constantOp, limits := wasm.I32, byte(0x41), byte(3)
+	if address64 {
+		addressType = wasm.I64
+		constantOp = 0x42
+		limits = 7
+	}
 	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(
-		wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil),
+		wasmtest.FuncType([]wasm.ValType{addressType, wasm.I32, wasm.I32}, nil),
 		wasmtest.FuncType(nil, nil),
-		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType([]wasm.ValType{addressType}, []wasm.ValType{addressType}),
 	))}
 	if imported {
 		entry := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
-		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(append(entry, 2, 3, 1, 3))))
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(append(entry, 2, limits, 1, 3))))
 	}
 	sections = append(sections, wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1}, []byte{2}, []byte{1})))
 	if !imported {
-		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{3, 1, 3})))
+		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{limits, 1, 3})))
 	}
 	initBody := []byte{0x20, 0, 0x20, 1}
 	if count < 0 {
@@ -43,11 +53,11 @@ func threadsDataModule(imported bool, activeOffset int32, count int) []byte {
 			wasmtest.Code(initBody),
 			wasmtest.Code([]byte{0xfc, 9, 0, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0, 0x40, 0, 0x0b}),
-			wasmtest.Code([]byte{0x41, 8, 0x2d, 0, 0, 0x41, 0x11, 0x47, 0x04, 0x40, 0x00, 0x0b, 0x0b}),
+			wasmtest.Code([]byte{constantOp, 8, 0x2d, 0, 0, 0x41, 0x11, 0x47, 0x04, 0x40, 0x00, 0x0b, 0x0b}),
 		)),
 	)
 	active := func(off int32, data []byte) []byte {
-		result := append([]byte{0, 0x41}, wasmtest.SLEB32(off)...)
+		result := append([]byte{0, constantOp}, wasmtest.SLEB32(off)...)
 		result = append(result, 0x0b)
 		result = append(result, wasmtest.ULEB(uint32(len(data)))...)
 		return append(result, data...)

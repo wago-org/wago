@@ -390,3 +390,79 @@ func TestThreadsSharedMemory64BulkBoundsAndOverlap(t *testing.T) {
 		}
 	}
 }
+
+func TestThreadsSharedMemory64DataSegmentsAndCodec(t *testing.T) {
+	for _, imported := range []bool{false, true} {
+		for _, regABI := range []bool{false, true} {
+			for _, count := range []int{-1, 0, 1, 33, 64} {
+				t.Run(fmt.Sprintf("imported=%t/regabi=%t/count=%d", imported, regABI, count), func(t *testing.T) {
+					cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
+					c, err := cfg.Compile(threadsDataModuleForAddress(imported, 10, count, true))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer c.Close()
+					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+						imports := NewImports()
+						if imported {
+							providerModule, err := cfg.Compile(threadsMemory64Module(false))
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer providerModule.Close()
+							provider, err := Instantiate(providerModule)
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer provider.Close()
+							memory, err := provider.ExportedMemory("memory")
+							if err != nil {
+								t.Fatal(err)
+							}
+							imports.Memory("env", "memory", memory)
+						}
+						in, err := Instantiate(compiled, imports)
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer in.Close()
+						if !bytes.Equal(in.mem()[8:13], []byte{0x11, 0x22, 0x55, 0x66, 0x77}) {
+							t.Fatalf("active segment order: %x", in.mem()[8:13])
+						}
+						for _, args := range [][3]uint64{{32, 0, 64}, {33, 1, 33}, {65535, 7, 1}, {65536, 8, 0}, {65536, 0, 1}, {1<<32 | 32, 0, 1}, {^uint64(0) - 3, 0, 8}, {20, 65, 0}, {20, 1<<32 | 2, 1<<32 | 3}} {
+							before := bytes.Clone(in.mem())
+							dst, src, n := args[0], uint64(uint32(args[1])), uint64(uint32(args[2]))
+							if count >= 0 {
+								n = uint64(count)
+							}
+							valid := dst <= uint64(len(before)) && n <= uint64(len(before))-dst && src <= 64 && n <= 64-src
+							want := bytes.Clone(before)
+							if valid {
+								copy(want[dst:dst+n], threadsDataSeed()[src:src+n])
+							}
+							_, err := in.Invoke("init", args[0], args[1], args[2])
+							if (err == nil) != valid {
+								t.Fatalf("init %v count=%d: %v; valid=%t", args, count, err, valid)
+							}
+							if !bytes.Equal(want, in.mem()) {
+								t.Fatalf("init %v changed incorrect bytes", args)
+							}
+						}
+						if got, err := in.Invoke("grow", 1); err != nil || got[0] != 1 {
+							t.Fatalf("grow: %v, %v", got, err)
+						}
+						if _, err := in.Invoke("init", 65539, 0, 8); err != nil {
+							t.Fatal(err)
+						}
+						if _, err := in.Invoke("drop"); err != nil {
+							t.Fatal(err)
+						}
+						if _, err := in.Invoke("init", 0, 0, 1); (count != 0 && err == nil) || (count == 0 && err != nil) {
+							t.Fatalf("init dropped segment: %v", err)
+						}
+					}
+				})
+			}
+		}
+	}
+}

@@ -1556,7 +1556,9 @@ func (f *fn) memoryInitConst(dataIdx uint32, n int) {
 	dst := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(dst)
 	f.a.MovReg32(src, src)
-	f.a.MovReg32(dst, dst)
+	if !f.memoryAddr64(0) {
+		f.a.MovReg32(dst, dst)
+	}
 	f.bulkBoundsCheck(dst, n, 0)
 	desc := f.allocReg(maskOf(src, dst))
 	f.pinned = f.pinned.add(desc)
