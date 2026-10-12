@@ -118,8 +118,12 @@ these scalar signatures. Official `.37` and `.38` add the first positive
 recursive-struct link pair: the empty scalar `g` body remains collector-free,
 the consumer proves the structural function subtype across independently
 decoded type graphs, and its descriptor copies the provider's canonical
-identity while retaining the provider through logical close. Products after
-`.38` and native cache/performance qualification remain open.
+identity while retaining the provider through logical close. Official `.39`
+and `.40` extend that exact link contract to a projected recursive struct:
+the independently decoded consumer accepts the provider's narrower field and
+function result types, while artifact authentication keeps the shared empty
+machine image distinct through its larger type metadata. Products after `.40`
+and native cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

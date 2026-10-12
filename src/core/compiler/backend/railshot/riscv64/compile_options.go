@@ -132,6 +132,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingStructLinkSource identifies the exact official .37
 	// provider or .38 structurally compatible consumer.
 	GCTypeSubtypingStructLinkSource uint8
+	// GCTypeSubtypingStructProjectionSource identifies the exact official
+	// .39 provider or .40 projected-struct compatible consumer.
+	GCTypeSubtypingStructProjectionSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -220,6 +223,7 @@ type CompileOptions struct {
 	gcTypeSubtypingLink               uint8
 	gcTypeSubtypingFinalityLink       uint8
 	gcTypeSubtypingStructLink         uint8
+	gcTypeSubtypingStructProjection   uint8
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool
