@@ -10,40 +10,47 @@ import (
 	"testing"
 )
 
-func TestFloatParityConditionalMove(t *testing.T) {
+func TestFloatParityFallback(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		for _, op := range []wOp{opEq, opNe} {
 			for _, dst := range []Reg{RAX, RDI, R8} {
 				for _, tmp := range []Reg{RCX, RSI, R9} {
 					f := fn{a: &encoder.Asm{}, reserved: ^maskOf(dst, tmp)}
 					f.emitFCmpSetcc(op, 8, 9, wide, dst)
-					var want, old encoder.Asm
-					first, parity := condE, condNP
-					if op == opEq {
-						want.AluRR(aluTable[opXor].rr, tmp, tmp, false)
-						want.AluRR(aluTable[opXor].rr, dst, dst, false)
-						want.Ucomis(8, 9, wide)
-						want.SetccReg8(condNP, dst)
-						want.Cmovcc(condNE, dst, tmp, false)
-					} else {
-						first, parity = condNE, condP
-						want.MovImm32(tmp, 1)
-						want.AluRR(aluTable[opXor].rr, dst, dst, false)
-						want.Ucomis(8, 9, wide)
-						want.SetccReg8(condNE, dst)
-						want.Cmovcc(condP, dst, tmp, false)
-					}
-					old.Ucomis(8, 9, wide)
-					old.SetccReg(first, dst)
-					old.SetccReg(parity, tmp)
-					combine := opAnd
+					first, parity, combine := condE, condNP, opAnd
 					if op == opNe {
-						combine = opOr
+						first, parity, combine = condNE, condP, opOr
 					}
-					old.AluRR(aluTable[combine].rr, dst, tmp, false)
-					if !bytes.Equal(f.a.B, want.B) || len(f.a.B) >= len(old.B) {
-						t.Fatalf("wide=%v op=%v dst=%v tmp=%v got=%x want=%x old-bytes=%d", wide, op, dst, tmp, f.a.B, want.B, len(old.B))
+					var want encoder.Asm
+					want.Ucomis(8, 9, wide)
+					want.SetccReg(first, dst)
+					want.SetccReg(parity, tmp)
+					want.AluRR(aluTable[combine].rr, dst, tmp, false)
+					if !bytes.Equal(f.a.B, want.B) {
+						t.Fatalf("wide=%v op=%v dst=%v tmp=%v got=%x want=%x", wide, op, dst, tmp, f.a.B, want.B)
 					}
+				}
+			}
+		}
+	}
+}
+
+func TestFloatSelfCompareFullWidth(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for _, op := range []wOp{opEq, opNe} {
+			for _, dst := range []Reg{RAX, RDI, R8} {
+				f := fn{a: &encoder.Asm{}, reserved: ^maskOf(dst, RCX)}
+				f.emitFCmpSetcc(op, 8, 8, wide, dst)
+				cc := condNP
+				if op == opNe {
+					cc = condP
+				}
+				var want encoder.Asm
+				want.AluRR(aluTable[opXor].rr, dst, dst, false)
+				want.Ucomis(8, 8, wide)
+				want.SetccReg8(cc, dst)
+				if !bytes.Equal(f.a.B, want.B) {
+					t.Fatalf("wide=%v op=%v dst=%v got=%x want=%x", wide, op, dst, f.a.B, want.B)
 				}
 			}
 		}
