@@ -2007,12 +2007,12 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 	}
 	base, ea, releaseBase, eaOwned, _, disp := f.memAddrAt(memoryIndex, off, 16)
 	f.pinned = f.pinned.add(ea)
-	if memoryIndex == 0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, 16)
 	}
 	f.a.StrQIdx(base, ea, x, disp)
@@ -2097,12 +2097,12 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 	}
 	base, ea, releaseBase, eaOwned, _, disp := f.memAddrAt(memoryIndex, off, size)
 	f.pinned = f.pinned.add(ea)
-	if memoryIndex == 0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	}
 	t := f.allocReg(maskOf(base, ea))

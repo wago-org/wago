@@ -637,7 +637,7 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 }
 
 func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, releaseBase, eaOwned bool, borrow int, disp int32) {
-	if memoryIndex == 0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		ea, eaOwned, borrow, disp = f.memAddr(off, size, true, 0, f.guardMode)
 		return linMemReg, ea, false, eaOwned, borrow, disp
 	}
@@ -901,7 +901,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.invalidateStoreForward()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		out := f.allocReg(maskOf(base, ea))
@@ -1035,7 +1035,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 		f.invalidateStoreForward()
 		value := f.materialize(f.popValue())

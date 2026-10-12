@@ -898,7 +898,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.invalidateStoreForward()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		out := f.allocReg(maskOf(base).add(ea))
@@ -972,7 +972,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 		f.invalidateStoreForward()
 		value := f.materialize(f.popValue())

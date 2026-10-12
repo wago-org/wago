@@ -2425,7 +2425,7 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 }
 
 func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32, baseOwned, eaOwned bool) {
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
 		f.pinned = f.pinned.add(base).add(ea)
 		return base, ea, disp, true, true

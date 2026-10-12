@@ -32,6 +32,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Execute ordinary scalar and SIMD loads/stores against shared memory on
+  amd64 and arm64, preserving exact float/vector bits and explicit bounds.
+  Shared accesses use backing-directory addresses and bypass deferred loads
+  and store forwarding.
+
 - Execute `memory.size` against shared-memory backing on amd64 and arm64,
   including defined/imported memories and codec-loaded products. Admit
   `atomic.fence` in modules without linear memory.

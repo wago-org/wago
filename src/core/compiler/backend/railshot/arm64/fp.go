@@ -1011,7 +1011,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		x := f.allocFReg(0)
@@ -1049,7 +1049,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	f.materializePendingTraps()
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		f.a.StrFIdx(base, ea, xmm, disp, f64)

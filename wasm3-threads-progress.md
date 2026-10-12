@@ -28,8 +28,18 @@ memories with zero, one, and three pages execute correctly before and after
 codec reload on both native architectures. The full `^TestThreads` group passes
 on arm64 and amd64 after this change.
 
-This is partial thread support. Shared-memory growth, ordinary shared-memory
-access instructions, multiple memories, and broader import/segment combinations
+The ordinary access checkpoint routes all 23 scalar and 22 SIMD memory
+instruction forms through shared backing on both architectures. Shared loads
+materialize immediately; shared stores bypass ordinary store forwarding.
+Differential execution against the existing unshared path checks exact results,
+memory contents, and trap codes, with unaligned addresses, near-end accesses,
+32-bit address truncation, and offset overflow. Defined and imported shared
+memories are exercised from original and codec-loaded products. The full
+`^TestThreads` group passes on native arm64 and amd64. The local Core 3
+regression corpus and unsupported-proposal fail-closed tests also pass.
+
+This is partial thread support. Shared-memory growth, bulk operations,
+multiple memories, and broader import/segment combinations
 remain restricted. JSPI and JS-string embedding profiles remain unsupported.
 
 ## Execution measurement

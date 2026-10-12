@@ -29,8 +29,9 @@ support alone does not establish performance parity.
   atomic addressing path, with ownership retained while importers remain live.
   Memoryless `atomic.fence` and shared `memory.size` are admitted. Constant-zero shared waits now lower
   directly to native loads and comparisons on arm64 and amd64.
-  This remains partial thread support: ordinary shared-memory loads/stores,
-  growth, multiple memories, and broader import/segment combinations remain
+  Ordinary scalar and SIMD loads/stores now execute against shared backing.
+  This remains partial thread support: bulk operations, growth, multiple
+  memories, and broader import/segment combinations remain
   restricted.
 
 ## Current validation
