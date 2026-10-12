@@ -190,7 +190,7 @@ new target identity, and rejects non-null opaque store-owned payloads. Direct
 cross-Runtime compact-handle sharing remains impossible. The codec persists helper
 admission, the required native-GC ABI version, and the 16-byte `v128` storage
 contract, but never compact handles. AMD64 final scalar struct/array accesses,
-compact collector-reference reads from final structs, and initialized final-struct
+scalar and compact collector-reference reads from final or open structs, and initialized final-struct
 allocation use collector native ABI version 2. Artifact loading validates the Go/native
 layout and the codec records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
@@ -215,8 +215,11 @@ invalidating opcode can intervene. Stack canonicalization retains the pin on a
 valid address certificate so operand allocation cannot overwrite it. Final struct
 reference reads load a zero-extended four-byte compact handle and mark the result
 as a root for later calls and allocation. They use the same checked parent resolver
-as scalar reads; they change no edge and require no write barrier. Open structs,
-function references, and external references retain the getter helper. Final abstract
+as scalar reads; they change no edge and require no write barrier. Open struct
+reads use a separate shared resolver that checks the declared type against the
+actual canonical subtype interval before loading the field. Loaded collector
+references remain roots across later calls and collection. Function and external
+reference fields retain the getter helper. Final abstract
 reference stores may bypass helpers only when no metadata growth is required;
 vector, non-final, bulk, cardless/unremembered, and Tiny barrier paths remain
 helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers

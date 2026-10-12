@@ -48,7 +48,7 @@ func TestDirectGCStructReferenceReadLimits(t *testing.T) {
 	}{
 		{"eq", wasm.HeapEq, true, true}, {"any", wasm.HeapAny, true, true}, {"i31", wasm.HeapI31, true, true},
 		{"struct", wasm.HeapStruct, true, true}, {"array", wasm.HeapArray, true, true},
-		{"func", wasm.HeapFunc, true, false}, {"extern", wasm.HeapExtern, true, false}, {"open", wasm.HeapEq, false, false},
+		{"func", wasm.HeapFunc, true, false}, {"extern", wasm.HeapExtern, true, false}, {"open", wasm.HeapEq, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			typ := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(tc.heap), false))
