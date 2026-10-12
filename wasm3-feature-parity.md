@@ -172,7 +172,10 @@ pass guarded race tests. Two new wasm.fyi contracts verify against independent
 oracles in Wago and V8; the current w2c2 translator rejects memory64 limits,
 so peer parity for those contracts is unmeasured. Alternating compile fixture
 medians stay within 1.3%, with unchanged scalar allocations and worker code size.
-Multiple memories with threads, unshared atomic memory64, segment composition,
+Constant-length shared-memory64 data initialization now preserves full-width
+destinations, with imported/defined segment and growth tests. Unshared memory64
+atomics also use canonical backing and pass guarded race checks on both native
+architectures. Multiple memories with threads, wider proposal combinations,
 full conformance and overall feature/performance parity remain open.
 
 The SSH control connection persists for 24 hours; detached tmux session

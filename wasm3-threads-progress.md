@@ -896,3 +896,39 @@ Unshared memory64 with atomic instructions, multiple memories with threads,
 shared-memory64 segment composition, broader conformance and overall
 performance parity remain open. The missing detached remote session was
 recreated and verified; SSH uses ControlPersist=24h.
+
+
+## Memory64 segments and unshared atomics
+
+Wago `9a4c2d00` repairs constant-length shared-memory64 `memory.init`: its
+optimized path previously narrowed the destination to i32, accepting a high
+address and writing to low backing. Both backends now retain the i64 destination.
+Tests cover active segment ordering and start visibility, passive segment
+initialization, high destinations and overflow, i32 source/count carriers,
+growth, data.drop, imported/defined memories, both ABIs and codec reloads.
+Guarded race thread/Core 3 regression checks pass on both native architectures.
+
+wasm.fyi `06d47f1` adds the shared-memory64 passive-data contract; its artifact
+rebuilds byte for byte. Three Wago launches with five qualified 50 ms samples
+and two warmup batches yield 329,035 ns per 262,144 operations. V8 independently
+verifies the oracle. The current w2c2 translator again rejects the limits; no
+peer ratio is established. Artifact SHA-256 is
+`d7aef9ac0dc4ca95c5769b6642e1bee3c01416d966cf155cadc095775358a637`.
+Adapter identity is
+`9a4c2d0015fe5c3cde7a3833b4145d101aebd82a/source-8d85b07a549ba402da7b735d0f1e82a4a57169b2094461c5107bca7a45996e71`.
+Ignored evidence `threads-memory64-data-arm64.json` has SHA-256
+`1fcc993adc088e2582bf32fe7c3b5716fe563aec236b30655bf24e1729c37602`.
+Performance/protocol harness checks pass (five checks; one unrelated allocation
+fixture remains skipped). The threads family now contains 18 sustained
+contracts plus one separate lifecycle probe; this is cumulative coverage,
+not a full same-revision retiming.
+
+The following unshared-memory64 checkpoint uses the existing canonical backing
+and full-width bounds lowering for atomic accesses. Simply removing admission
+previously crashed: an unshared instance has no shared directory by default.
+Tests cover imported/defined memories, quota/no-quota policies, both ABIs,
+codec reloads, load/store/RMW/CAS, high addresses, growth, notify and the required
+unshared-memory wait trap. Guarded race thread/Core 3 regression checks pass on
+ARM64 and AMD64, including staged memory64 on AMD64. This checkpoint does not
+claim new peer timings. Multiple memories with threads, wider proposal
+combinations, full official conformance and overall parity remain open.
