@@ -20,6 +20,8 @@ var rv64MutableFuncrefLocalCallF32CodeDigest = [sha256.Size]byte{0xcb, 0xcd, 0xd
 
 var rv64MutableFuncrefLocalCallF64CodeDigest = [sha256.Size]byte{0xb2, 0xdb, 0xb6, 0xc6, 0x89, 0x6f, 0x4e, 0x92, 0x9d, 0x29, 0x15, 0xbb, 0x9e, 0xa9, 0x38, 0x79, 0x06, 0x5c, 0x4d, 0x33, 0x5b, 0x0c, 0xc7, 0xa6, 0x3c, 0x54, 0x29, 0xbe, 0x01, 0x15, 0xea, 0xfa}
 
+var rv64MutableFuncrefLocalCallMixedCodeDigest = [sha256.Size]byte{0x49, 0x44, 0x35, 0x48, 0x00, 0x5b, 0x2e, 0x97, 0x55, 0x33, 0x90, 0xe0, 0xdb, 0x28, 0xec, 0xb3, 0xfb, 0xed, 0x8d, 0x07, 0xea, 0x76, 0xdb, 0xab, 0xdc, 0xe2, 0x05, 0xae, 0x46, 0x93, 0x4c, 0xfa}
+
 func rv64MutableFuncrefGlobalLocalCallExecutionCode(c *Compiled) bool {
 	return rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 0
 }
@@ -43,6 +45,9 @@ func rv64MutableFuncrefGlobalLocalCallCodeVariant(c *Compiled) int {
 	}
 	if len(c.code) == 6908 && digest == rv64MutableFuncrefLocalCallF64CodeDigest {
 		return 5
+	}
+	if len(c.code) == 7324 && digest == rv64MutableFuncrefLocalCallMixedCodeDigest {
+		return 6
 	}
 	return 0
 }
@@ -76,31 +81,45 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 	if variant == 0 {
 		return false
 	}
-	scalar := wasm.I32
-	scalarABI := ValI32
-	scalarValue := ValueTypeDescriptor{Kind: ValueTypeI32}
-	scalarParams := []wasm.ValType(nil)
+	wasmParams := []wasm.ValType(nil)
+	wasmResults := []wasm.ValType{wasm.I32}
+	abiParams := []ValType(nil)
+	abiResults := []ValType{ValI32}
+	valueParams := []ValueTypeDescriptor(nil)
+	valueResults := []ValueTypeDescriptor{{Kind: ValueTypeI32}}
 	switch variant {
 	case 2:
-		scalarParams = []wasm.ValType{wasm.I32}
+		wasmParams = []wasm.ValType{wasm.I32}
+		abiParams = []ValType{ValI32}
+		valueParams = []ValueTypeDescriptor{{Kind: ValueTypeI32}}
 	case 3:
-		scalar, scalarABI, scalarValue, scalarParams = wasm.I64, ValI64, ValueTypeDescriptor{Kind: ValueTypeI64}, []wasm.ValType{wasm.I64}
+		wasmParams, wasmResults = []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}
+		abiParams, abiResults = []ValType{ValI64}, []ValType{ValI64}
+		valueParams, valueResults = []ValueTypeDescriptor{{Kind: ValueTypeI64}}, []ValueTypeDescriptor{{Kind: ValueTypeI64}}
 	case 4:
-		scalar, scalarABI, scalarValue, scalarParams = wasm.F32, ValF32, ValueTypeDescriptor{Kind: ValueTypeF32}, []wasm.ValType{wasm.F32}
+		wasmParams, wasmResults = []wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32}
+		abiParams, abiResults = []ValType{ValF32}, []ValType{ValF32}
+		valueParams, valueResults = []ValueTypeDescriptor{{Kind: ValueTypeF32}}, []ValueTypeDescriptor{{Kind: ValueTypeF32}}
 	case 5:
-		scalar, scalarABI, scalarValue, scalarParams = wasm.F64, ValF64, ValueTypeDescriptor{Kind: ValueTypeF64}, []wasm.ValType{wasm.F64}
+		wasmParams, wasmResults = []wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}
+		abiParams, abiResults = []ValType{ValF64}, []ValType{ValF64}
+		valueParams, valueResults = []ValueTypeDescriptor{{Kind: ValueTypeF64}}, []ValueTypeDescriptor{{Kind: ValueTypeF64}}
+	case 6:
+		wasmParams = []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+		wasmResults = slices.Clone(wasmParams)
+		abiParams = []ValType{ValI32, ValI64, ValF32, ValF64}
+		abiResults = slices.Clone(abiParams)
+		valueParams = []ValueTypeDescriptor{{Kind: ValueTypeI32}, {Kind: ValueTypeI64}, {Kind: ValueTypeF32}, {Kind: ValueTypeF64}}
+		valueResults = slices.Clone(valueParams)
 	}
-	scalarType := &wasm.CompType{Kind: wasm.CompFunc, Params: scalarParams, Results: []wasm.ValType{scalar}}
+	scalarType := &wasm.CompType{Kind: wasm.CompFunc, Params: wasmParams, Results: wasmResults}
 	voidType := &wasm.CompType{Kind: wasm.CompFunc}
 	scalarKey, voidKey := wasm.StructuralFuncTypeKey(scalarType), wasm.StructuralFuncTypeKey(voidType)
 	wantTypes := []uint32{0, 0, 1, 1, 1, 0}
 	for i, sig := range c.Funcs {
 		wantKey := scalarKey
-		validResults := len(sig.Results) == 1 && sig.Results[0] == scalarABI
-		validParams := len(sig.Params) == len(scalarParams)
-		if len(scalarParams) != 0 && validParams {
-			validParams = sig.Params[0] == scalarABI
-		}
+		validResults := slices.Equal(sig.Results, abiResults)
+		validParams := slices.Equal(sig.Params, abiParams)
 		if wantTypes[i] == 1 {
 			wantKey = voidKey
 			validResults = len(sig.Results) == 0
@@ -111,11 +130,8 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		}
 	}
 	for i, typ := range c.Types {
-		validResults := slices.Equal(typ.Results, []ValueTypeDescriptor{scalarValue})
-		validParams := len(typ.Params) == len(scalarParams)
-		if len(scalarParams) != 0 && validParams {
-			validParams = typ.Params[0] == scalarValue
-		}
+		validResults := slices.Equal(typ.Results, valueResults)
+		validParams := slices.Equal(typ.Params, valueParams)
 		if i == 1 {
 			validResults = len(typ.Results) == 0
 			validParams = len(typ.Params) == 0
@@ -141,6 +157,8 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		wantEntry = []int{0, 608, 1264, 1984, 2704, 3360}
 	} else if variant == 3 {
 		wantEntry = []int{0, 608, 1248, 1968, 2688, 3344}
+	} else if variant == 6 {
+		wantEntry = []int{0, 672, 1504, 2224, 2944, 3600}
 	}
 	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry) && rv64MutableFuncrefGlobalLocalCallExecutionCode(c)
 }

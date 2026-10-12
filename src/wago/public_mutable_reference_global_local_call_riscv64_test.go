@@ -72,6 +72,28 @@ func rv64MutableFuncrefLocalCallI32Module() []byte {
 	return rv64MutableFuncrefLocalCallScalarModule(wasm.I32, []byte{0x20, 0, 0x41, 1, 0x6a, 0x0b})
 }
 
+func rv64MutableFuncrefLocalCallMixedModule() []byte {
+	types := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x42, 1, 0x7c, 0x20, 2, 0x43, 0, 0, 0x80, 0x3f, 0x92, 0x20, 3, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x23, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
 func TestRV64PublicMutableFuncrefGlobalLocalCall(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -333,6 +355,77 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallScalars(t *testing.T) {
 	}
 }
 
+func TestRV64PublicMutableFuncrefGlobalLocalCallMixed(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rt.Close()
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed", rv64MutableFuncrefLocalCallMixedModule(), artifact)
+			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+				t.Fatal("mixed local-call witness missing")
+			}
+			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			input := []uint64{0xdeadbeef80000001, ^uint64(0), 0xfeedface00000000 | uint64(math.Float32bits(1.5)), math.Float64bits(1.5)}
+			identity := []uint64{0x80000001, ^uint64(0), uint64(math.Float32bits(1.5)), math.Float64bits(1.5)}
+			increment := []uint64{0x80000002, 0, uint64(math.Float32bits(2.5)), math.Float64bits(2.5)}
+			assertCall := func(want []uint64) {
+				t.Helper()
+				got, err := consumer.Invoke("call", input...)
+				if err != nil || !slices.Equal(got, want) {
+					t.Fatal("mutable mixed funcref call_ref", got, err, "want", want)
+				}
+			}
+			if _, err := consumer.Invoke("set_0"); err != nil {
+				t.Fatal("install mixed identity", err)
+			}
+			assertCall(identity)
+			if _, err := consumer.Invoke("set_1"); err != nil {
+				t.Fatal("install mixed arithmetic target", err)
+			}
+			assertCall(increment)
+
+			types := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed-producer", rv64PublicNativeIdentityModule(types), artifact)
+			producer := rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
+			descriptor, ok := producer.localFuncrefDescriptor(0)
+			if !ok {
+				t.Fatal("foreign mixed producer descriptor")
+			}
+			token, err := rt.refStore.issue(producer, descriptor)
+			if err != nil {
+				t.Fatal("foreign mixed producer token", err)
+			}
+			if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+				t.Fatal("install foreign mixed target", err)
+			}
+			assertCall(identity)
+			if _, err := consumer.Invoke("clear"); err != nil {
+				t.Fatal("clear mixed target", err)
+			}
+			if got, invokeErr := consumer.Invoke("call", input...); got != nil {
+				t.Fatal("cleared mixed call_ref returned a result", got, invokeErr)
+			} else {
+				var trap *coreruntime.TrapError
+				if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapNullReference {
+					t.Fatal("cleared mixed mutable funcref call trap", invokeErr)
+				}
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestRV64PublicMutableFuncrefGlobalLocalCallParkedClearRetainsTarget(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -511,6 +604,38 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallScalarAdmission(t *testing.T) {
 						t.Fatal("hostile scalar local-call artifact admitted", err)
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalCallMixedAdmission(t *testing.T) {
+	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed-admission", rv64MutableFuncrefLocalCallMixedModule(), false)
+	defer compiled.Close()
+	if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+		t.Fatal("base mixed local-call witness rejected")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"code": func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"function-parameter": func(v *Compiled) {
+			v.Funcs = slices.Clone(v.Funcs)
+			v.Funcs[5].Params = slices.Clone(v.Funcs[5].Params)
+			v.Funcs[5].Params[2] = ValI32
+		},
+		"type-result": func(v *Compiled) {
+			v.Types = slices.Clone(v.Types)
+			v.Types[0].Results = slices.Clone(v.Types[0].Results)
+			v.Types[0].Results[3] = ValueTypeDescriptor{Kind: ValueTypeI32}
+		},
+		"entry": func(v *Compiled) { v.Entry = slices.Clone(v.Entry); v.Entry[1] += 4 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *compiled.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Types = slices.Clone(bad.Types)
+			mutate(&bad)
+			if err := railshotValidateCompiled(&bad); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("hostile mixed local-call artifact admitted", err)
 			}
 		})
 	}
