@@ -27,7 +27,7 @@ support alone does not establish performance parity.
 - Threads now support instance-owned shared memory as well as imported shared
   memory. Separate backing and instance-control mappings preserve the existing
   atomic addressing path, with ownership retained while importers remain live.
-  Memoryless `atomic.fence` is admitted. Constant-zero shared waits now lower
+  Memoryless `atomic.fence` and shared `memory.size` are admitted. Constant-zero shared waits now lower
   directly to native loads and comparisons on arm64 and amd64.
   This remains partial thread support: ordinary shared-memory loads/stores,
   growth, multiple memories, and broader import/segment combinations remain

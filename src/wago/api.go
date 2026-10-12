@@ -1072,7 +1072,7 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 			if err != nil {
 				return err
 			}
-			if (imm.TouchesMemory || imm.Kind == wasm.InstrMemorySize || imm.Kind == wasm.InstrMemoryGrow) && op != 0xfe {
+			if (imm.TouchesMemory || imm.Kind == wasm.InstrMemoryGrow) && imm.Kind != wasm.InstrMemorySize && op != 0xfe {
 				return fmt.Errorf("threads function %d uses %s outside the initial atomic-only memory boundary", function, imm.Kind)
 			}
 		}

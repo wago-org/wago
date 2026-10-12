@@ -1634,7 +1634,7 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 		return err
 	}
 	out := f.allocReg(0)
-	if memoryIndex == 0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		f.a.Load32(out, RBX, -bdCurPages)
 	} else {
 		dir := f.allocReg(maskOf(out))

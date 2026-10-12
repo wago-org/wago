@@ -32,6 +32,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Execute `memory.size` against shared-memory backing on amd64 and arm64,
+  including defined/imported memories and codec-loaded products. Admit
+  `atomic.fence` in modules without linear memory.
+
 - Execute defined shared memory with classic atomics and wait/notify, keeping
   shared backing separate from per-instance control. Preserve backing ownership
   across exports and producer close, and account for both native mappings.

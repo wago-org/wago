@@ -22,6 +22,12 @@ Wago `967218d9` admits memoryless `atomic.fence`, with original and codec-loaded
 execution coverage. The [threads proposal](https://github.com/WebAssembly/threads/blob/main/proposals/threads/Overview.md)
 defines fences without a target memory.
 
+The next checkpoint routes shared `memory.size` through the instance memory
+directory rather than the separate control mapping. Defined and imported
+memories with zero, one, and three pages execute correctly before and after
+codec reload on both native architectures. The full `^TestThreads` group passes
+on arm64 and amd64 after this change.
+
 This is partial thread support. Shared-memory growth, ordinary shared-memory
 access instructions, multiple memories, and broader import/segment combinations
 remain restricted. JSPI and JS-string embedding profiles remain unsupported.
