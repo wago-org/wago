@@ -301,3 +301,36 @@ func TestCallerReexport(t *testing.T) {
 		t.Fatal("reexport callback lifetime")
 	}
 }
+
+func TestCallerExternRefScalarDispatchAllocations(t *testing.T) {
+	c := MustCompile(watToWasmCA(t, `(module (import "env" "read" (func $read (param externref) (result i32))) (func (export "read") (param externref) (result i32) local.get 0 call $read))`))
+	defer c.Close()
+	var retained Caller
+	in, err := Instantiate(c, testImports("env.read", callerSlotHostFunc(func(h Caller, p, r []uint64) {
+		if retained.valid() {
+			t.Fatal("expired caller revived")
+		}
+		retained = h
+		r[0] = 42
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	external, err := in.NewExternRef("cursor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bits := ValueExternRef(external).Bits()
+	if got := testing.AllocsPerRun(1000, func() {
+		out, err := in.Invoke("read", bits)
+		if err != nil || len(out) != 1 || out[0] != 42 {
+			t.Fatalf("read=%v, %v", out, err)
+		}
+	}); got != 0 {
+		t.Fatalf("externref-to-scalar allocations=%g, want 0", got)
+	}
+	if retained.valid() {
+		t.Fatal("retained caller is active")
+	}
+}

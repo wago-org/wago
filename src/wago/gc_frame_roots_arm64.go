@@ -49,16 +49,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, ana
 			if !ok {
 				return reject("function import %d has no validated signature", funcImport-1)
 			}
-			// Reference-free imports use the parked synchronous wrapper and need
-			// not also fit the internal register ABI. Preserve the existing
-			// collector-boundary path so reference ownership and root handling
-			// remain coupled to that module-level proof.
-			if collectorBoundary || wasmFuncTypeReferenceFree(ft) {
-				if !arm64GCFrameHostCallABI(ft) {
-					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
-				}
-			} else if !arm64GCFrameReferenceCallABI(m, ft) {
-				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
+			// Direct imports use the parked synchronous host frame. Its slot ABI
+			// accepts external tokens; they are not managed collector roots.
+			if !arm64GCFrameHostCallABI(ft) {
+				return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
@@ -144,7 +138,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, ana
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		var liveMasks gcFrameLiveMasks
-		plan.Conservative = arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) || len(plan.Locals) == 0
+		plan.Conservative = arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) || len(plan.Locals) == 0 && !gcFrameNeedsReachableMasks(m.Code[function].BodyBytes, &classifier)
 		if plan.Conservative {
 			liveMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
 		} else {
@@ -279,11 +273,7 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 				return false
 			}
 			if int(imm.Index) < m.ImportedFuncCount() {
-				if collectorBoundary || wasmFuncTypeReferenceFree(ft) {
-					if !arm64GCFrameHostCallABI(ft) {
-						return false
-					}
-				} else if !arm64GCFrameReferenceCallABI(m, ft) {
+				if !arm64GCFrameHostCallABI(ft) {
 					return false
 				}
 			}

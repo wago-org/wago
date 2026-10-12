@@ -430,3 +430,61 @@ func BenchmarkCompiledGCFrameRootsSafepointByIDDense(b *testing.B) {
 		b.Fatal("dense lookup returned nil")
 	}
 }
+
+func TestCompiledGCFrameRootsCallsiteIndex(t *testing.T) {
+	for _, n := range []int{0, 1, 8, 9, 17} {
+		plan := &compiledGCFrameRoots{callsites: make([]compiledGCFrameCallsite, n)}
+		for i := range plan.callsites {
+			plan.callsites[i].returnOffset = uint32(2*i + 2)
+		}
+		for offset := uint32(0); offset <= uint32(2*n+2); offset++ {
+			want := -1
+			if offset >= 2 && offset%2 == 0 && int(offset/2) <= n {
+				want = int(offset/2) - 1
+			}
+			if got := plan.callsiteIndexByReturnOffset(offset); got != want {
+				t.Fatalf("size=%d offset=%d index=%d, want%d", n, offset, got, want)
+			}
+		}
+	}
+	var empty *compiledGCFrameRoots
+	if got := empty.callsiteIndexByReturnOffset(42); got != -1 {
+		t.Fatalf("nil index=%d", got)
+	}
+}
+
+var gcCallsiteBenchmarkSink int
+
+func BenchmarkGCFrameCallsiteLookup(b *testing.B) {
+	for _, n := range []int{8, 16, 100671} {
+		plan := &compiledGCFrameRoots{callsites: make([]compiledGCFrameCallsite, n)}
+		for i := range plan.callsites {
+			plan.callsites[i].returnOffset = uint32(2*i + 2)
+		}
+		for _, miss := range []bool{false, true} {
+			offset := uint32(n * 2)
+			if miss {
+				offset++
+			}
+			b.Run(fmt.Sprintf("indexed/%d/miss=%v", n, miss), func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					gcCallsiteBenchmarkSink = plan.callsiteIndexByReturnOffset(offset)
+				}
+			})
+			b.Run(fmt.Sprintf("linear/%d/miss=%v", n, miss), func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					index := -1
+					for j := range plan.callsites {
+						if plan.callsites[j].returnOffset == offset {
+							index = j
+							break
+						}
+					}
+					gcCallsiteBenchmarkSink = index
+				}
+			})
+		}
+	}
+}

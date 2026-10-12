@@ -1150,3 +1150,18 @@ additional steady-state allocations or meaningful throughput regression, and
 shared-module metadata must scale with executable images rather than instances.
 No viewer, protobuf encoder, symbolizer, or cgo requirement may enter the ordinary
 runtime dependency graph as a consequence of profiling.
+
+### Exact roots at synchronous host calls
+
+Direct host imports use the synchronous 64-slot ABI, including external reference
+parameters and results. External tokens are not managed collector roots. Dynamic
+reference calls retain their separate register-ABI limits. Non-EH bodies with
+terminating control transfers use CFG reachability for allocation and call masks;
+dead calls after a non-fallthrough loop do not consume an emitted callsite.
+Collection remains disabled when complete validated root maps are unavailable.
+
+Host activation finds a validated return address with a binary lookup for tables
+larger than eight entries. The table remains strictly sorted and exact-match-only.
+Reference callbacks with scalar results use no result-token scratch for ordinary
+imports. Separately owned host-function type contexts and reference results keep
+per-dispatch scratch and the existing callback-expiry checks.
