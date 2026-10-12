@@ -38,7 +38,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
-- Combine the low-byte results of scalar floating equality and parity tests before one full-width zero extension.
+- Materialize scalar floating equality and inequality with a cleared result and a parity-aware conditional move.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain

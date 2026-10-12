@@ -765,27 +765,25 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 	switch kind {
 	case opEq:
-		// Allocation can realize pending loads. Finish it before the flag
-		// producer, then combine the two low-byte results before extending.
+		// Allocation can realize pending loads. Finish it before clearing
+		// the results and producing the comparison flags.
 		t := f.allocReg(maskOf(dst))
+		f.a.AluRR(aluTable[opXor].rr, t, t, false)
+		f.a.AluRR(aluTable[opXor].rr, dst, dst, false)
 		f.a.Ucomis(xa, xb, f64)
-		f.a.SetccReg8(condE, dst)
-		f.a.SetccReg8(condNP, t)
-		f.a.AluRR8(0x20, dst, t)
-		f.a.Movzx8(dst, dst, false)
+		f.a.SetccReg8(condNP, dst)        // ordered gives 1; unordered stays 0
+		f.a.Cmovcc(condNE, dst, t, false) // clear ordered unequal
 		f.release(t)
-		f.stats.peep("float-parity-single-extension")
+		f.stats.peep("float-parity-conditional-move")
 	case opNe:
-		// Allocation can realize pending loads. Finish it before the flag
-		// producer, then combine the two low-byte results before extending.
 		t := f.allocReg(maskOf(dst))
+		f.a.MovImm32(t, 1)
+		f.a.AluRR(aluTable[opXor].rr, dst, dst, false)
 		f.a.Ucomis(xa, xb, f64)
 		f.a.SetccReg8(condNE, dst)
-		f.a.SetccReg8(condP, t)
-		f.a.AluRR8(0x08, dst, t)
-		f.a.Movzx8(dst, dst, false)
+		f.a.Cmovcc(condP, dst, t, false) // unordered must give 1
 		f.release(t)
-		f.stats.peep("float-parity-single-extension")
+		f.stats.peep("float-parity-conditional-move")
 	case opGtS: // fc gt
 		f.a.Ucomis(xa, xb, f64)
 		f.a.SetccReg(condA, dst)

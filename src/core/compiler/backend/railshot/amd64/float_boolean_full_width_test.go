@@ -37,7 +37,9 @@ func TestFloatParityConditionalMove(t *testing.T) {
 					old.SetccReg(first, dst)
 					old.SetccReg(parity, tmp)
 					combine := opAnd
-					if op == opNe { combine = opOr }
+					if op == opNe {
+						combine = opOr
+					}
 					old.AluRR(aluTable[combine].rr, dst, tmp, false)
 					if !bytes.Equal(f.a.B, want.B) || len(f.a.B) >= len(old.B) {
 						t.Fatalf("wide=%v op=%v dst=%v tmp=%v got=%x want=%x old-bytes=%d", wide, op, dst, tmp, f.a.B, want.B, len(old.B))
