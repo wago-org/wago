@@ -1028,13 +1028,14 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 	}
 	// Validation already requires a memory for every atomic access and wait.
 	// atomic.fence is independent of linear memory and its ownership boundary.
-	if m.MemCount() == 0 {
+	memories := m.MemCount()
+	if memories == 0 {
 		return nil
 	}
-	for i := 1; i < m.MemCount(); i++ {
+	for i := 1; i < memories; i++ {
 		mt, ok := m.MemoryType(uint32(i))
-		if !ok || mt.Shared || i < m.ImportedMemCount() {
-			return errors.New("threads currently require locally defined unshared additional memories")
+		if !ok || mt.Shared {
+			return errors.New("threads currently require unshared additional memories")
 		}
 	}
 	mt, _ := m.MemoryType(0)

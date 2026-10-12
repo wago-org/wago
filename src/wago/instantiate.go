@@ -1739,6 +1739,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 		}
+		for i := 1; i < c.memoryCount(); i++ {
+			def := c.memoryDef(i)
+			if def.ImportKey != "" && !def.Shared {
+				// Ordinary imported backing can alias another instance or host accessor.
+				// Its non-atomic accesses must keep the common execution lease.
+				foreign = true
+				break
+			}
+		}
 		for i := range c.Imports {
 			if _, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport); ok {
 				foreign = true
