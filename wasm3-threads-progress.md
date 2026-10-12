@@ -1042,3 +1042,56 @@ The AMD64 suite ran in the detached `core3` window of
 `wago-wasm3-parity`; its status file records exit 0. Both source checkouts and
 native tools remain available for subsequent validation. Full feature and
 performance parity work remains open.
+
+
+## Pinned threads proposal conformance with actual concurrent workers
+
+Wago `2f7d37ea` adds `TestThreadsOfficialAtomicSuite`, pinned to
+WebAssembly/threads `cc535ada1aa21cfaa3cabf3ac73b89acef78a0a0`. Its original
+atomic script passes all 5 modules and 274 assertions on native ARM64 and AMD64.
+The first run found a harness vocabulary gap: 49 correct atomic-alignment traps
+were rejected because `unaligned atomic` was not mapped. The runner now maps
+that exact text to `TrapAtomicUnaligned`, with a negative bounds-code check.
+No production trap classification was relaxed.
+
+Wago `72fe8dd3` extends the binary-script converter and spectest runner for
+shared-module references and actual parallel workers. Module filenames retain
+one counter across nested scripts. Worker Runtimes keep their own module
+namespaces; only explicitly selected parent module instances are shared.
+Workers inherit bounded invocation contexts, and parents join workers before
+closing provider instances. The existing serialized Wasmtime fixture path is
+preserved for its separate independent-store scripts.
+
+All 12 concurrent files in the pinned proposal's `test/core/threads` directory
+pass: simple, thread, nested, deeply_nested, unlinkable, wait_notify, LB,
+LB_atomic, MP, MP_atomic, SB and SB_atomic. They include ordinary/shared atomic
+accesses, imported shared backing, nested workers, namespace isolation, blocking
+wait/notify and allowed memory-ordering outcomes. The pinned threads reference
+interpreter (`wasm 2.0.1`) converts text to binary scripts; WABT 1.0.41 cannot
+parse the concurrent WAST commands. The atomic-only file uses WABT 1.0.41.
+
+The concurrent files account for 46 modules and 38 assertions; together with
+atomic.wast, all 13 files pass 51 modules and 312 assertions, with zero failures,
+skips or reported gaps. Both native architectures pass guarded race execution.
+Three repeated guarded race runs of the official suite plus the local Core 3
+regression corpus also pass on each architecture. A complete pinned Core 3
+rerun after the harness change still passes 2,226 modules and 58,238 assertions
+on ARM64. These are correctness runs; the finite litmus scripts do not prove
+all possible schedules or establish worker performance parity.
+
+Retained ignored evidence SHA-256:
+
+- `official-threads-atomic-arm64.txt`:
+  `1cce92166a3d23b99df3f6b1bea71e9ef8c660f621c3cbd96b112b502a88d963`
+- `official-threads-atomic-amd64.txt`:
+  `878cae5e9c843aae1e63cb9c0c26d9dc7c1f22abeb31170195a15139581e2f78`
+- `official-threads-repeated-arm64.txt`:
+  `bfdf3e34ed5a29a78a5361438a6250d2dc35ca6b8d5dc8edd66dac31f6b2bc48`
+- `official-threads-repeated-amd64.txt`:
+  `4a2930d243020623c3cf501ff0a181fe2259cc76930abe72840b75741f14baf6`
+- `official-core3-thread-harness-arm64.txt`:
+  `60b5e3b462cb24d74f7a5e2575300c55d1a90291a1f2087cf180cad2cad61770`
+
+Current remaining work includes multiple memories with threads, broader
+proposal combinations, phase 5 embedding behavior and feature-by-feature
+performance parity. Passing the pinned suites does not remove those limitations.

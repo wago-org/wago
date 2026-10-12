@@ -195,6 +195,14 @@ use checksummed WABT 1.0.41 assets and the reference interpreter built from
 fallback. This establishes the current Core 3 suite result, independently of
 performance parity and the remaining phase 4/5 work.
 
+The pinned WebAssembly/threads proposal suite also passes on both native
+architectures under guarded race execution: all 13 scripts, 51 modules and
+312 assertions. The harness now preserves shared-module declarations and runs
+workers concurrently, including nested workers and blocking wait/notify. Three
+repeated suite/regression runs pass on both architectures. Multiple memories
+with threads, wider proposal combinations, phase 5 embedding behavior and
+feature-by-feature performance parity remain open.
+
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
 `~/.cache/wago-wasm3-parity/wago`.
