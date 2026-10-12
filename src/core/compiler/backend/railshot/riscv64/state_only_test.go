@@ -139,6 +139,80 @@ func mutableFuncrefLocalTransferSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalExportSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{5, 0, 0, 0, 0, 0}),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, true, []byte{0xd0, 0x70, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0),
+			wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2),
+			wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0x24, 0, 0x0b}),
+		)),
+	)
+}
+
+func TestMutableFuncrefLocalExportProduction(t *testing.T) {
+	source := mutableFuncrefLocalExportSource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitMutableFunctionGlobalLocalExport(m) {
+		t.Fatal("local-export source was not admitted")
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("mutable funcref local-export compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0x43, 0xe5, 0xa7, 0xf5, 0xb0, 0x84, 0xca, 0x26, 0xfc, 0x98, 0x7a, 0x08, 0x17, 0x13, 0x2d, 0xfc, 0x87, 0xaa, 0x47, 0x0a, 0x69, 0x8d, 0xec, 0xd9, 0x9b, 0x81, 0x44, 0x36, 0xd6, 0xc8, 0xaa, 0xa1}
+	wantEntry := []int{0, 208, 416, 752, 1088}
+	if len(image.Code) != 1580 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
+		t.Fatalf("mutable funcref local-export compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
+	}
+}
+
+func TestMutableFuncrefLocalExportProductionRejectsBroaderSources(t *testing.T) {
+	for name, mutate := range map[string]func(*wasm.Module){
+		"local-nonnull": func(m *wasm.Module) { m.Globals[0].Init.BodyBytes = []byte{0xd2, 0, 0x0b} },
+		"foreign-import": func(m *wasm.Module) {
+			m.Imports = append(m.Imports, wasm.Import{Module: "env", Name: "cell", Type: wasm.ExternType{}})
+		},
+		"set-other-func":      func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0xd2, 2, 0x24, 0, 0x0b} },
+		"write-other-global":  func(m *wasm.Module) { m.Code[4].BodyBytes = []byte{0xd0, 0x70, 0x24, 1, 0x0b} },
+		"wrong-global-export": func(m *wasm.Module) { m.Exports[5].Name = "other" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(mutableFuncrefLocalExportSource())
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(m)
+			if admitMutableFunctionGlobalLocalExport(m) {
+				t.Fatal("broader local-export source admitted")
+			}
+			staged := false
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
+			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
+				t.Fatal("broader mutable funcref local-export source reached staging", image, err, staged)
+			}
+		})
+	}
+}
+
 func TestMutableFuncrefLocalTransferProduction(t *testing.T) {
 	source := mutableFuncrefLocalTransferSource()
 	if err := AdmitProductionSource(source); err != nil {

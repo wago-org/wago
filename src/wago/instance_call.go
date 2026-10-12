@@ -319,12 +319,22 @@ func (in *Instance) SetGlobalValue(name string, v Value) (err error) {
 	nativeMu := in.acquireInstanceNativeStateForHostAccess()
 	var roots globalValueRoots
 	var cleanup resourceCleanup
-	defer func() { finishGlobalValueAccess(nativeMu, in, &roots, &cleanup) }()
-	cleanup.run(func() { err = in.setGlobalValueNoLease(name, v, &roots) })
+	var markShared bool
+	defer func() {
+		cleanup.run(nativeMu.Unlock)
+		cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&roots.descriptorDependencies) })
+		cleanup.run(roots.release)
+		if markShared {
+			cleanup.run(in.markNativeControlShared)
+		}
+		cleanup.run(in.endInvocation)
+		cleanup.finish()
+	}()
+	cleanup.run(func() { err = in.setGlobalValueNoLease(name, v, &roots, &markShared) })
 	return err
 }
 
-func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalValueRoots) error {
+func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalValueRoots, markShared *bool) error {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return err
@@ -337,7 +347,30 @@ func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalVal
 		return fmt.Errorf("exported global %q is immutable", name)
 	}
 	cell := in.globalCells[idx]
-	if isReferenceValType(g.Type) && cell.owner != nil {
+	managedReference := false
+	if g.Type == ValFuncRef {
+		in.lifeMu.Lock()
+		if cell.owner == nil {
+			exact, exactErr := in.c.globalExactType(idx)
+			if exactErr != nil {
+				in.lifeMu.Unlock()
+				return fmt.Errorf("global %q exact type: %w", name, exactErr)
+			}
+			owner := &globalOwner{store: in.refStore, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
+			railshotLinkOwnedGlobalDescriptorHolderLocked(in, owner)
+			cell.owner = owner
+			if markShared != nil {
+				*markShared = true
+			}
+		}
+		managedReference = cell.owner != nil
+		in.lifeMu.Unlock()
+	} else if g.Type == ValExternRef {
+		in.lifeMu.Lock()
+		managedReference = cell.owner != nil
+		in.lifeMu.Unlock()
+	}
+	if managedReference {
 		if err := cell.setValueNoLease(v, roots); err != nil {
 			return fmt.Errorf("global %q: %w", name, err)
 		}

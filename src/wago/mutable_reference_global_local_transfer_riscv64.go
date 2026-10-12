@@ -83,7 +83,9 @@ func rv64MutableFuncrefGlobalLocalTransfer(c *Compiled) bool {
 // ownership bookkeeping as an exported reference global without making the
 // cell public. The bridge calls this only while guest execution is parked.
 func (in *Instance) ensureGuestLocalFuncrefGlobalOwner(index int) error {
-	if in == nil || !rv64MutableFuncrefGlobalLocalTransfer(in.c) || index != 2 || len(in.globalCells) != 3 || in.refStore == nil {
+	localTransfer := in != nil && rv64MutableFuncrefGlobalLocalTransfer(in.c) && index == 2 && len(in.globalCells) == 3
+	localExport := in != nil && rv64MutableFuncrefGlobalLocalExport(in.c) && index == 0 && len(in.globalCells) == 1
+	if !localTransfer && !localExport || in.refStore == nil {
 		return fmt.Errorf("invalid RV64 private funcref owner request")
 	}
 	g := in.globalCells[index]
@@ -117,8 +119,8 @@ func (in *Instance) ensureGuestLocalFuncrefGlobalOwner(index int) error {
 // concurrent logical Close reject this otherwise valid in-flight write. The
 // parked bridge has released native execution, so acquire only the native-state
 // mutex and retain the outer invocation through the complete root transaction.
-func (in *Instance) copyGuestFuncrefDescriptorToLocal(descriptor uint64) (err error) {
-	if err := in.ensureGuestLocalFuncrefGlobalOwner(2); err != nil {
+func (in *Instance) copyGuestFuncrefDescriptorToLocal(index int, descriptor uint64) (err error) {
+	if err := in.ensureGuestLocalFuncrefGlobalOwner(index); err != nil {
 		return err
 	}
 	nativeMu := in.acquireInstanceNativeStateForHostAccess()
@@ -130,6 +132,6 @@ func (in *Instance) copyGuestFuncrefDescriptorToLocal(descriptor uint64) (err er
 		cleanup.run(roots.release)
 		cleanup.finish()
 	}()
-	cleanup.run(func() { err = in.globalCells[2].copyGuestFuncrefDescriptorNoLease(in, descriptor, &roots) })
+	cleanup.run(func() { err = in.globalCells[index].copyGuestFuncrefDescriptorNoLease(in, descriptor, &roots) })
 	return err
 }

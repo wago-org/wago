@@ -120,6 +120,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	mutableFuncrefGlobalLocalCopy := rv64MutableFuncrefGlobalLocalCopy(c)
 	mutableFuncrefGlobalLocalPublish := rv64MutableFuncrefGlobalLocalPublish(c)
 	mutableFuncrefGlobalLocalTransfer := rv64MutableFuncrefGlobalLocalTransfer(c)
+	mutableFuncrefGlobalLocalExport := rv64MutableFuncrefGlobalLocalExport(c)
 	if rv64MutableFuncrefGlobalGetExecutionCode(c) && !mutableFuncrefGlobalGet {
 		return reject("mutable funcref global.get image requires its exact retained metadata")
 	}
@@ -146,6 +147,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64MutableFuncrefGlobalLocalTransferExecutionCode(c) && !mutableFuncrefGlobalLocalTransfer {
 		return reject("mutable funcref local-transfer image requires its exact retained metadata")
+	}
+	if rv64MutableFuncrefGlobalLocalExportExecutionCode(c) && !mutableFuncrefGlobalLocalExport {
+		return reject("mutable funcref local-export image requires its exact retained metadata")
 	}
 	exactGCRefEq := rv64OfficialGCRefEq(c)
 	exactGCRefTestTable := rv64GCRefTestTable(c)

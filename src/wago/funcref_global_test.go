@@ -191,6 +191,22 @@ func TestLocalFuncrefGlobalRoundTripRetainsProducer(t *testing.T) {
 		t.Fatalf("producer get = %v, %v; want non-null funcref", out, err)
 	}
 	token := out[0]
+	if global.globalCells[1].owner != nil {
+		t.Fatal("local exported mutable cell acquired an owner before host ingress")
+	}
+	if err := global.SetGlobalValue("mutable", token); err != nil {
+		t.Fatalf("initial SetGlobalValue(mutable, token): %v", err)
+	}
+	if global.globalCells[1].instanceOwner() != global {
+		t.Fatal("host ingress did not install the local reference container owner")
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("Close producer after initial host ingress: %v", err)
+	}
+	got, err := global.GlobalValue("mutable")
+	if err != nil || got.Bits() != token.Bits() {
+		t.Fatalf("GlobalValue after early producer close = %v, %v; want retained token %#x", got, err, token.Bits())
+	}
 
 	roundTrip, err := global.InvokeValues(context.Background(), "set_and_get", token)
 	if err != nil || len(roundTrip) != 1 || roundTrip[0].Bits() != token.Bits() {
@@ -199,7 +215,7 @@ func TestLocalFuncrefGlobalRoundTripRetainsProducer(t *testing.T) {
 	if err := global.SetGlobalValue("mutable", token); err != nil {
 		t.Fatalf("SetGlobalValue(mutable, token): %v", err)
 	}
-	got, err := global.GlobalValue("mutable")
+	got, err = global.GlobalValue("mutable")
 	if err != nil || got.Bits() != token.Bits() {
 		t.Fatalf("GlobalValue(mutable) = %v, %v; want token %#x", got, err, token.Bits())
 	}
@@ -214,9 +230,6 @@ func TestLocalFuncrefGlobalRoundTripRetainsProducer(t *testing.T) {
 		t.Fatalf("reference Global.Set(token) error = %v, want typed-accessor rejection", err)
 	}
 
-	if err := producer.Close(); err != nil {
-		t.Fatalf("Close producer: %v", err)
-	}
 	got, err = global.GlobalValue("mutable")
 	if err != nil || got.Bits() != token.Bits() {
 		t.Fatalf("GlobalValue after producer close = %v, %v; want retained token %#x", got, err, token.Bits())
