@@ -1285,11 +1285,11 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	constantLength := -1
 	if memoryIndex == 0 && f.threadedMemory0 {
 		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint32(top.st.cval); n <= 64 {
-				constantLength = int(n)
+				f.memoryInitConst(dataIdx, int(n))
+				return nil
 			}
 		}
 	}
@@ -1322,28 +1322,77 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.a.Load64(R8, R8, disp) // segment base pointer
 
 	f.a.Add64(RSI, R8) // absolute src
-	if constantLength >= 0 {
-		// Passive source and destination cannot alias. Emit exact, ascending
-		// chunks after both checks; zero length still validates both ranges.
-		f.stats.peep("meminit-unroll")
-		if constantLength != 0 {
-			f.a.MovImm64(RCX, 0)
-		}
-		for off := 0; off < constantLength; {
-			size := 8
-			for size > constantLength-off {
-				size >>= 1
-			}
-			f.a.LoadIdx(RAX, RSI, RCX, int32(off), size, false, size == 8)
-			f.a.StoreIdx(RDI, RCX, RAX, int32(off), size)
-			off += size
-		}
-	} else {
-		f.a.RepMovsb()
-	}
+	f.a.RepMovsb()
 
 	f.setDepth(d - 3)
 	return nil
+}
+
+// memoryInitConst retains live values in their allocated registers instead of
+// flushing the entire operand stack. Both checks precede all destination writes.
+func (f *fn) memoryInitConst(dataIdx uint32, n int) {
+	f.stats.peep("meminit-unroll")
+	f.materializePendingLoads()
+	f.erase(f.s.back())
+	callerPins := f.pinned
+	src := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(src)
+	dst := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(dst)
+	f.a.MovRegReg32(src, src)
+	f.a.MovRegReg32(dst, dst)
+	f.bulkBoundsCheck(dst, n, 0)
+	desc := f.allocReg(maskOf(src, dst))
+	f.pinned = f.pinned.add(desc)
+	f.a.Load64(desc, RBX, -offPassiveDataPtr)
+	length := f.allocReg(maskOf(src, dst, desc))
+	f.pinned = f.pinned.add(length)
+	f.a.Load32(length, desc, int32(dataIdx)*16+8)
+	end := f.allocReg(maskOf(src, dst, desc, length))
+	f.a.LeaDisp(end, src, int32(n))
+	f.trapUnlessLE(end, length)
+	f.release(end)
+	f.pinned = f.pinned.remove(length)
+	f.release(length)
+	if n != 0 {
+		base, owned := f.bulkMemory0Base(maskOf(src, dst, desc))
+		f.a.Add64(dst, base)
+		if owned {
+			f.release(base)
+		}
+		f.a.Load64(desc, desc, int32(dataIdx)*16)
+		f.a.Add64(src, desc)
+	}
+	f.pinned = f.pinned.remove(desc)
+	f.release(desc)
+	off := 0
+	if n >= 16 {
+		vec := f.allocFReg(0)
+		for ; off+16 <= n; off += 16 {
+			f.a.MovdquLoadDisp(vec, src, int32(off))
+			f.a.MovdquStoreDisp(dst, int32(off), vec)
+		}
+		f.releaseF(vec)
+	}
+	if off < n {
+		zero := f.allocReg(maskOf(src, dst))
+		scratch := f.allocReg(maskOf(src, dst, zero))
+		f.a.MovImm64(zero, 0)
+		for off < n {
+			size := 8
+			for size > n-off {
+				size >>= 1
+			}
+			f.a.LoadIdx(scratch, src, zero, int32(off), size, false, size == 8)
+			f.a.StoreIdx(dst, zero, scratch, int32(off), size)
+			off += size
+		}
+		f.release(scratch)
+		f.release(zero)
+	}
+	f.pinned = callerPins
+	f.release(src)
+	f.release(dst)
 }
 
 // dataDrop lowers data.drop by setting the passive segment descriptor length to

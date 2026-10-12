@@ -1506,11 +1506,11 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	constantLength := -1
 	if memoryIndex == 0 && f.threadedMemory0 {
 		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint32(top.st.cval); n <= 64 {
-				constantLength = int(n)
+				f.memoryInitConst(dataIdx, int(n))
+				return nil
 			}
 		}
 	}
@@ -1538,46 +1538,86 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.ld64(X13, X13, disp) // segment base pointer
 
 	f.a.Add64(X10, X10, X13) // absolute src
-	if constantLength >= 0 {
-		// Passive source and destination cannot alias. Emit exact, ascending
-		// chunks after both checks; zero length still validates both ranges.
-		f.stats.peep("meminit-unroll")
-		off := 0
-		if constantLength >= 16 {
-			vec := f.allocFReg(0)
-			for ; off+16 <= constantLength; off += 16 {
-				f.a.LdrQ(vec, X10, int32(off))
-				f.a.StrQ(X9, int32(off), vec)
-			}
-			f.releaseF(vec)
+	f.copyFwdLoop(X9, X10, X11)
+
+	f.setDepth(d - 3)
+	return nil
+}
+
+// memoryInitConst retains live values in their allocated registers instead of
+// flushing the entire operand stack. Both checks precede all destination writes.
+func (f *fn) memoryInitConst(dataIdx uint32, n int) {
+	f.stats.peep("meminit-unroll")
+	f.materializePendingLoads()
+	f.erase(f.s.back())
+	callerPins := f.pinned
+	src := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(src)
+	dst := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(dst)
+	f.a.MovReg32(src, src)
+	f.a.MovReg32(dst, dst)
+	f.bulkBoundsCheck(dst, n, 0)
+	desc := f.allocReg(maskOf(src, dst))
+	f.pinned = f.pinned.add(desc)
+	f.ld64(desc, linMemReg, -int32(offPassiveDataPtr))
+	length := f.allocReg(maskOf(src, dst, desc))
+	f.pinned = f.pinned.add(length)
+	f.ld32(length, desc, int32(dataIdx)*16+8)
+	end := f.allocReg(maskOf(src, dst, desc, length))
+	f.leaDisp(end, src, int32(n), true)
+	f.trapUnlessLE(end, length)
+	f.release(end)
+	f.pinned = f.pinned.remove(length)
+	f.release(length)
+	if n != 0 {
+		base, owned := f.indexedMemoryBase(0, maskOf(src, dst, desc))
+		f.a.Add64(dst, dst, base)
+		if owned {
+			f.release(base)
 		}
-		for off < constantLength {
+		f.ld64(desc, desc, int32(dataIdx)*16)
+		f.a.Add64(src, src, desc)
+	}
+	f.pinned = f.pinned.remove(desc)
+	f.release(desc)
+	off := 0
+	if n >= 16 {
+		vec := f.allocFReg(0)
+		for ; off+16 <= n; off += 16 {
+			f.a.LdrQ(vec, src, int32(off))
+			f.a.StrQ(dst, int32(off), vec)
+		}
+		f.releaseF(vec)
+	}
+	if off < n {
+		scratch := f.allocReg(maskOf(src, dst))
+		for off < n {
 			size := 8
-			for size > constantLength-off {
+			for size > n-off {
 				size >>= 1
 			}
 			switch size {
 			case 8:
-				f.a.Load64(X12, X10, uint32(off))
-				f.a.Store64(X12, X9, uint32(off))
+				f.a.Load64(scratch, src, uint32(off))
+				f.a.Store64(scratch, dst, uint32(off))
 			case 4:
-				f.a.Load32(X12, X10, uint32(off))
-				f.a.Store32(X12, X9, uint32(off))
+				f.a.Load32(scratch, src, uint32(off))
+				f.a.Store32(scratch, dst, uint32(off))
 			case 2:
-				f.a.Ldrh(X12, X10, uint32(off))
-				f.a.Strh(X12, X9, uint32(off))
+				f.a.Ldrh(scratch, src, uint32(off))
+				f.a.Strh(scratch, dst, uint32(off))
 			case 1:
-				f.a.Ldrb(X12, X10, uint32(off))
-				f.a.Strb(X12, X9, uint32(off))
+				f.a.Ldrb(scratch, src, uint32(off))
+				f.a.Strb(scratch, dst, uint32(off))
 			}
 			off += size
 		}
-	} else {
-		f.copyFwdLoop(X9, X10, X11)
+		f.release(scratch)
 	}
-
-	f.setDepth(d - 3)
-	return nil
+	f.pinned = callerPins
+	f.release(src)
+	f.release(dst)
 }
 
 // dataDrop lowers data.drop by setting the passive segment descriptor length to

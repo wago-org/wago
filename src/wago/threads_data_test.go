@@ -269,3 +269,74 @@ func TestThreadsSharedDataConstantLengths(t *testing.T) {
 		})
 	}
 }
+
+func threadsDataPressureModule() []byte {
+	// Keep sixteen computed scalar locals, twenty-four vector locals and eight
+	// prior memory loads live across a constant initialization that overwrites
+	// some of those loads' addresses. This checks pins, spills and load ordering.
+	body := []byte{2, 16, 0x7f, 24, 0x7b}
+	for i := byte(0); i < 16; i++ {
+		body = append(body, 0x20, 1, 0x41, i+1, 0x6a, 0x21, i+2)
+	}
+	for i := byte(0); i < 24; i++ {
+		body = append(body, 0x20, 1, 0x41, i+17, 0x6a, 0xfd, 17, 0x21, i+18)
+	}
+	for i := byte(0); i < 8; i++ {
+		body = append(body, 0x41, i*8, 0x29, 3, 0)
+	}
+	body = append(body, 0x20, 0, 0x20, 1, 0x41, 33, 0xfc, 8, 0, 0)
+	for i := 0; i < 7; i++ {
+		body = append(body, 0x7c)
+	}
+	for i := byte(0); i < 16; i++ {
+		body = append(body, 0x20, i+2, 0xad, 0x7c)
+	}
+	for i := byte(0); i < 24; i++ {
+		body = append(body, 0x20, i+18, 0xfd, 27, 0, 0xad, 0x7c)
+	}
+	body = append(body, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{3, 1, 3})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(12, []byte{1}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		wasmtest.Section(11, wasmtest.Vec(append([]byte{1, 64}, threadsDataSeed()...))),
+	)
+}
+
+func TestThreadsSharedDataLiveValuesAndCodec(t *testing.T) {
+	for _, cache := range []bool{false, true} {
+		for _, regABI := range []bool{false, true} {
+			t.Run(fmt.Sprintf("cache=%t/regabi=%t", cache, regABI), func(t *testing.T) {
+				cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit).
+					WithOptimization("shared-memory-base", cache).WithOptimization("reg-abi", regABI)
+				c, err := cfg.Compile(threadsDataPressureModule())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+					in, err := Instantiate(compiled, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					for i := uint32(0); i < 8; i++ {
+						if !in.WriteUint64Le(i*8, uint64(i+100)) {
+							t.Fatal("initialize live loads")
+						}
+					}
+					result, err := in.Invoke("run", 32, 0)
+					if err != nil || len(result) != 1 || result[0] != 1648 {
+						t.Fatalf("live values: %v, %v; want 1648", result, err)
+					}
+					if !bytes.Equal(in.mem()[32:65], threadsDataSeed()[:33]) {
+						t.Fatal("wrong initialized bytes")
+					}
+				}
+			})
+		}
+	}
+}
