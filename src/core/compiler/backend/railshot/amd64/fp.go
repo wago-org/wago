@@ -741,11 +741,13 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa, xaOwned := f.operandRegF(a) // read-only: only compared
-	f.fpinned = f.fpinned.add(xa)
+	saved := f.fpinned
+	f.fpinned = saved.add(xa)
 	xb, xbOwned := f.operandRegF(b) // read-only: only compared
-	f.fpinned = f.fpinned.remove(xa)
+	f.fpinned = f.fpinned.add(xb)
 	dst := f.allocReg(0)
 	f.emitFCmpSetcc(kind, xa, xb, f64, dst)
+	f.fpinned = saved
 	if xaOwned {
 		f.releaseF(xa)
 	}
@@ -763,19 +765,27 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 	switch kind {
 	case opEq:
-		f.a.Ucomis(xa, xb, f64)
+		// Allocation can realize pending loads. Finish it before the flag
+		// producer, then combine the two low-byte results before extending.
 		t := f.allocReg(maskOf(dst))
-		f.a.SetccReg(condE, dst)
-		f.a.SetccReg(condNP, t)
-		f.a.AluRR(aluTable[opAnd].rr, dst, t, false)
+		f.a.Ucomis(xa, xb, f64)
+		f.a.SetccReg8(condE, dst)
+		f.a.SetccReg8(condNP, t)
+		f.a.AluRR8(0x20, dst, t)
+		f.a.Movzx8(dst, dst, false)
 		f.release(t)
+		f.stats.peep("float-parity-single-extension")
 	case opNe:
-		f.a.Ucomis(xa, xb, f64)
+		// Allocation can realize pending loads. Finish it before the flag
+		// producer, then combine the two low-byte results before extending.
 		t := f.allocReg(maskOf(dst))
-		f.a.SetccReg(condNE, dst)
-		f.a.SetccReg(condP, t)
-		f.a.AluRR(aluTable[opOr].rr, dst, t, false)
+		f.a.Ucomis(xa, xb, f64)
+		f.a.SetccReg8(condNE, dst)
+		f.a.SetccReg8(condP, t)
+		f.a.AluRR8(0x08, dst, t)
+		f.a.Movzx8(dst, dst, false)
 		f.release(t)
+		f.stats.peep("float-parity-single-extension")
 	case opGtS: // fc gt
 		f.a.Ucomis(xa, xb, f64)
 		f.a.SetccReg(condA, dst)
