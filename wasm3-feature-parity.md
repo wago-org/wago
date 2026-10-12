@@ -294,3 +294,36 @@ time +1.76%, allocation bytes +0.12%, generated code +0.91%, and peak RSS
 The tracked `docs/benchmarks/wasm3-2026-10-12/notify-empty-results.json` records
 versions, process medians, compile measurements and raw-evidence hashes.
 Fence arithmetic and broader feature performance parity remain open.
+
+## Integer induction sums and fence checkpoint (2026-10-12)
+
+`99eeef13` introduces and `60c27eba` corrects the controllable `integer-sum-loop` optimization on ARM64 and
+AMD64. It recognizes a proven zero-based unsigned unit-stride local sum and
+computes the complete wrapping i32/i64 result in closed form. It preserves the
+do-while final counter (`max(1,n)`) and one barrier per reduced loop entry when
+fences occur. Memory accesses, calls, traps, other escapes, enclosing loops,
+and interrupt-polling functions are excluded. An untouched declared-local proof scans original assignments in a bounded
+source prefix, including assignments consumed by emitter fusions. No runtime
+structure grows.
+
+The measured fence workload drops from 311,924 ns to 153 ns per invocation on
+Apple M4 Max, versus 281 ns for checked w2c2 and 279 ns for unchecked w2c2.
+The copy with only its fence removed has the same improvement, establishing
+that arithmetic loop elimination closes this measured gap. This is one
+single-actor contract, not a concurrent ordering or all-feature parity claim.
+
+Both native architectures pass guarded race tests, i32/i64 unsigned-extreme
+execution against an arbitrary-precision oracle, policy overrides, both calling
+conventions, codec execution and saved stack values. The pinned official Core 3
+suite passes 2,226 modules/58,238 assertions on each architecture; official
+threads passes 51 modules/312 assertions on each. The broad ARM64 statistics
+suite retains the same 44 failure names as the b54c7110 baseline, with none new.
+
+A larger six-process alternating Core 3 capture gives time +0.12%, unchanged
+allocation traffic/code size, retired instructions +0.17% and peak RSS -0.52%.
+The initial three-process capture had a wider timing spread and +4.11% median
+latency, with essentially unchanged cycles; both captures are retained. Threads
+time is +0.42%, allocation bytes effectively unchanged and code size +0.09%.
+`docs/benchmarks/wasm3-2026-10-12/integer-sum-results.json` retains exact
+versions, per-process medians and evidence hashes. Broader proposal composition,
+remaining unchecked-peer gaps and feature-by-feature parity remain open.

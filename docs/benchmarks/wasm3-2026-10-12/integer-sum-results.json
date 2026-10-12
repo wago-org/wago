@@ -1,0 +1,310 @@
+{
+  "schema": 1,
+  "platform": {
+    "cpu": "Apple M4 Max",
+    "os": "darwin",
+    "arch": "arm64",
+    "go": "go1.27.1"
+  },
+  "baseline_revision": "48b1eed3f46d396dcb5672071e6d464964bad078",
+  "current_revision": "60c27ebaf0f35bc9bfd2731f38357ec8e8ff1ae5",
+  "phase": "steady",
+  "independent_processes_per_profile": 3,
+  "samples_per_process": 5,
+  "minimum_batch_ns": 50000000,
+  "warmup_batches": 2,
+  "workloads": {
+    "diagnostic/threads/fence-without-barrier": {
+      "artifact_sha256": "f1567b6d8ca2a32ab3a388186197a08dd0094a24fab6706ea3361973303b5a4f",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "oracle": [
+        536739840
+      ],
+      "profiles": {
+        "before": {
+          "version": "48b1eed3f46d396dcb5672071e6d464964bad078/source-a63856c82b3f8e5ca8f46452dda89b76d426baeec91bd5af2d046f569437bc43",
+          "median_ns": 346224.35714285716,
+          "process_medians_ns": [
+            342538.04347826086,
+            348642.5300546448,
+            346224.35714285716
+          ],
+          "cv_range": [
+            0.00415995941565231,
+            0.008179614079866176
+          ]
+        },
+        "current": {
+          "version": "60c27ebaf0f35bc9bfd2731f38357ec8e8ff1ae5/source-61f81d2e432c5cdcd574a21018062706f731831ffc9fd55cf495ec71b89d40e4",
+          "median_ns": 151.64395061373364,
+          "process_medians_ns": [
+            151.64395061373364,
+            150.8472893520985,
+            153.64414555464126
+          ],
+          "cv_range": [
+            0.008114640659354794,
+            0.016210787865978862
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "median_ns": 286.74187584916587,
+          "process_medians_ns": [
+            277.55978634888356,
+            290.30504408625154,
+            286.74187584916587
+          ],
+          "cv_range": [
+            0.006356389134735578,
+            0.021199741858752823
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "median_ns": 281.75526850393356,
+          "process_medians_ns": [
+            281.1973811341066,
+            281.75526850393356,
+            284.864894582917
+          ],
+          "cv_range": [
+            0.0070378511844941954,
+            0.015765970370717742
+          ]
+        }
+      }
+    },
+    "features/threads/atomic-fence/performance-4096x64": {
+      "artifact_sha256": "1a7e144dff6701f33a7085898e90a078c51acd08a80a621ff06abd6c515d6a09",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "oracle": [
+        536739840
+      ],
+      "profiles": {
+        "before": {
+          "version": "48b1eed3f46d396dcb5672071e6d464964bad078/source-a63856c82b3f8e5ca8f46452dda89b76d426baeec91bd5af2d046f569437bc43",
+          "median_ns": 311924.01960784313,
+          "process_medians_ns": [
+            311171.5911330049,
+            314626.44554455444,
+            311924.01960784313
+          ],
+          "cv_range": [
+            0.006165593097234054,
+            0.009737924205487768
+          ]
+        },
+        "current": {
+          "version": "60c27ebaf0f35bc9bfd2731f38357ec8e8ff1ae5/source-61f81d2e432c5cdcd574a21018062706f731831ffc9fd55cf495ec71b89d40e4",
+          "median_ns": 152.5078538799653,
+          "process_medians_ns": [
+            152.25254208762078,
+            152.81261075831424,
+            152.5078538799653
+          ],
+          "cv_range": [
+            0.005361543752664219,
+            0.014841762852534426
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "median_ns": 280.92072740035536,
+          "process_medians_ns": [
+            275.39976331879643,
+            287.7888943049801,
+            280.92072740035536
+          ],
+          "cv_range": [
+            0.005196245417080825,
+            0.013573959454052938
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "median_ns": 279.06429276199873,
+          "process_medians_ns": [
+            279.06429276199873,
+            278.7257981803874,
+            284.4987028985833
+          ],
+          "cv_range": [
+            0.0050764852655047835,
+            0.016097145976466404
+          ]
+        }
+      }
+    }
+  },
+  "compile": {
+    "core3": {
+      "gomaxprocs": 1,
+      "processes_per_revision": 3,
+      "before": {
+        "Modules": 218,
+        "Passes": 100,
+        "Compiles": 21800,
+        "CodeBytes": 17900800,
+        "ElapsedNS": 410100166,
+        "AllocBytes": 777964192,
+        "Allocations": 2649938,
+        "process_elapsed_ns": [
+          415646500,
+          410100166,
+          403609500
+        ],
+        "maximum resident set size": 14270464,
+        "peak memory footprint": 9585192,
+        "instructions retired": 6160814205,
+        "cycles elapsed": 1722558311
+      },
+      "current": {
+        "Modules": 218,
+        "Passes": 100,
+        "Compiles": 21800,
+        "CodeBytes": 17900800,
+        "ElapsedNS": 426937416,
+        "AllocBytes": 777964200,
+        "Allocations": 2649936,
+        "process_elapsed_ns": [
+          460941875,
+          426937416,
+          399708917
+        ],
+        "maximum resident set size": 14008320,
+        "peak memory footprint": 9290280,
+        "instructions retired": 6174836668,
+        "cycles elapsed": 1717859741
+      }
+    },
+    "threads": {
+      "gomaxprocs": 1,
+      "processes_per_revision": 3,
+      "before": {
+        "Modules": 27,
+        "Passes": 100,
+        "Compiles": 2700,
+        "CodeBytes": 1776000,
+        "ElapsedNS": 45924250,
+        "AllocBytes": 86799264,
+        "Allocations": 376353,
+        "process_elapsed_ns": [
+          46799708,
+          44843458,
+          45924250
+        ],
+        "maximum resident set size": 12959744,
+        "peak memory footprint": 8831504,
+        "instructions retired": 845925298,
+        "cycles elapsed": 199996878
+      },
+      "current": {
+        "Modules": 27,
+        "Passes": 100,
+        "Compiles": 2700,
+        "CodeBytes": 1777600,
+        "ElapsedNS": 46118500,
+        "AllocBytes": 86799128,
+        "Allocations": 376251,
+        "process_elapsed_ns": [
+          68356041,
+          44794667,
+          46118500
+        ],
+        "maximum resident set size": 12943360,
+        "peak memory footprint": 8864272,
+        "instructions retired": 857192027,
+        "cycles elapsed": 204055592
+      }
+    },
+    "core3_repeat": {
+      "gomaxprocs": 1,
+      "processes_per_revision": 6,
+      "reason": "Initial three-process timing spread gave +4.11% while cycles were essentially unchanged; larger cohort checks added compiler work.",
+      "before": {
+        "Modules": 218.0,
+        "Passes": 100.0,
+        "Compiles": 21800.0,
+        "CodeBytes": 17900800.0,
+        "ElapsedNS": 386905729.5,
+        "AllocBytes": 777964000.0,
+        "Allocations": 2649933.0,
+        "process_elapsed_ns": [
+          380803292,
+          385933083,
+          393319209,
+          391861458,
+          386163125,
+          387648334
+        ],
+        "maximum resident set size": 14196736.0,
+        "peak memory footprint": 9470504.0,
+        "instructions retired": 6140765706.0,
+        "cycles elapsed": 1693161400.0
+      },
+      "current": {
+        "Modules": 218.0,
+        "Passes": 100.0,
+        "Compiles": 21800.0,
+        "CodeBytes": 17900800.0,
+        "ElapsedNS": 387376416.5,
+        "AllocBytes": 777964200.0,
+        "Allocations": 2649936.0,
+        "process_elapsed_ns": [
+          381306750,
+          383800666,
+          391698125,
+          385242292,
+          389510541,
+          392398333
+        ],
+        "maximum resident set size": 14123008.0,
+        "peak memory footprint": 9363972.0,
+        "instructions retired": 6151509034.5,
+        "cycles elapsed": 1680385299.5
+      }
+    }
+  },
+  "compile_manifests": "notify-empty-results.json: compile_manifests; identical 218 Core 3 and 27 threads artifacts",
+  "peer_configuration": "w2c2-peer-runtime.json; checked=1 or unchecked=0; all futex native sources linked with guest flags",
+  "evidence": {
+    "threads-fence-diagnostic-arm64.json": "a5eb425a041c61a6e40e65e352b81095cb9ebfba2fd5345c1f02490ea9346be3",
+    "threads-fence-integer-sum-final-arm64.json": "89e0928afd2ae39692ff622ee1f1b9f612cea1e303c5fb7683084efdc27f1164",
+    "threads-integer-sum-final-compile-ab.json": "3c3116180581d691d13289323b3e3c0c9ffe6d1d6dfaf4918e7a3a63b3e88d0e",
+    "threads-integer-sum-final-core3-repeat-ab.json": "1403edcfa41464d55e79b740c8183473b5b7a709d640276768ba5aaa68ab6941",
+    "integer-sum-source-proof-arm64.txt": "a71f7e3a92bbe7561a195c104846c8e6075b049d91004e2f9a7eb4f117cfd57b",
+    "integer-sum-source-proof-amd64.txt": "37ce37192ea8c236a9be8ce1e0f8a7cd846c60a0dff7d13f6f8dbc4f112c2f98",
+    "integer-sum-source-proof-official-arm64.txt": "d688442c46a1821c105ccecc20198197b35a698f04588c9eb15dda67ea9dc53a",
+    "integer-sum-source-proof-official-amd64.txt": "1e7ee5de20ca0aaf54a13fd508b383f4c52642925bb2229be126427449445a29",
+    "integer-sum-source-proof-full-stats-arm64.txt": "47041fce334f4e3cef7577dfbe0897e65d21cec7731ce1930abe3bef897f048c",
+    "integer-sum-baseline-full-stats-arm64.txt": "cec504ce368a5278126fcda7914fb54d3ec197ec082f2252282a100d2877e094"
+  },
+  "validation": {
+    "native_guarded_race_architectures": [
+      "arm64",
+      "amd64"
+    ],
+    "official_core3_each": {
+      "modules": 2226,
+      "assertions": 58238,
+      "failed": 0,
+      "skipped": 0
+    },
+    "official_threads_each": {
+      "modules": 51,
+      "assertions": 312,
+      "failed": 0,
+      "skipped": 0
+    },
+    "arm64_full_statistics_suite": "44 identical failure names on b54c7110 baseline and current; no new failure names",
+    "scope": "Original source proves a declared counter is untouched, with a <=256-byte prefix walk; enclosing loops and interrupt-polling functions excluded. Fused assignments cannot bypass the proof.",
+    "proof_fix": "60c27eba replaces incomplete emitter write history; fused select assignment regression failed before fix and passes after it, including public codec execution."
+  }
+}

@@ -1533,3 +1533,85 @@ source fingerprints, peer identity, process medians and SHA-256 hashes for
 ignored raw performance, compile and conformance evidence. Fence-only arithmetic
 still has the previously measured closed-form-loop gap; broader proposal
 composition and feature-by-feature parity remain open.
+
+## Closed-form local induction sums retain fence semantics
+
+`99eeef13` introduces and `60c27eba` corrects `integer-sum-loop` on both native
+backends. Its shared,
+bounded recognizer admits unsigned unit-stride `acc += counter; counter++`
+do-while loops, with an invariant distinct bound local. The counter must be an
+untouched declared zero local, proven from original assignments in a <=256-byte
+source-prefix walk. Emitter write history missed fused select assignments; its
+regression failed before `60c27eba` and now passes, including public execution.
+Enclosing
+loops are excluded because a later lexical write could change the counter on
+reentry. Calls, memory accesses, traps, escapes, EH/GC-frame paths and functions
+with interrupt polls retain ordinary lowering. The source reader advances
+only after the complete grammar and zero proof succeed.
+
+The exact modular sum is `floor(n/2) * (n-1+(n&1))`, plus the initial accumulator.
+Dividing a factor before multiplication preserves unsigned extrema for i32 and
+i64. The final counter is `max(1,n)`, including the mandatory first iteration
+when n is zero. Earlier deferred values materialize before the retained barrier
+and local writes. Existing local assignment paths preserve older stack borrows;
+no synthetic source positions or runtime ABI fields are introduced. Fences can
+coalesce across these private arithmetic operations, but one hardware fence
+remains per transformed loop entry. The 64-call benchmark wrapper therefore
+still executes one retained fence in each kernel call.
+
+The first diagnostic removed only atomic.fence from the original wasm.fyi WAT.
+Wago still took about 0.3 ms per sustained invocation while w2c2 took about
+0.27 microseconds: removing barriers did not close the gap. After reduction,
+three interleaved processes per profile, five verified >=50-ms samples and two
+warmups on Apple M4 Max/Darwin ARM64/Go 1.27.1 give:
+
+| Contract (262,144 logical operations) | Wago 48b1eed3 ns | Wago 60c27eba ns | Checked w2c2 ns | Unchecked w2c2 ns |
+| --- | ---: | ---: | ---: | ---: |
+| Original atomic fence | 311,924 | 152.51 | 280.92 | 279.06 |
+| Diagnostic with fence removed | 346,224 | 151.64 | 286.74 | 281.76 |
+
+The original contract is 2,045x faster than before and 1.83x faster than the
+unchecked peer. Current Wago CVs are 0.0054–0.0148; checked peer CVs are
+0.0052–0.0136. These are descriptive medians for this contract, including its
+adapter entry, not an instruction-throughput or concurrent synchronization
+claim. Peer translator, SDK, futex sources and checking flags match the preceding
+checkpoint.
+
+The selection test went red before implementation. Both architectures now
+execute all unsigned extrema against an arbitrary-precision multiplication/
+division oracle and verify a retained native barrier. Public tests cover both
+widths, enabled/disabled policy, register/wrapper ABI, original/codec products,
+do-while exit values, saved accumulator values below the loop, and an enclosing
+loop that reuses the changed counter. Parameter and previously assigned counters
+are rejected. Malformed/truncated recognition and memory/call/trap/changed-step/
+signed-bound variants are rejected. Guarded race tests pass on both architectures.
+Pinned Core 3 passes 2,226 modules and 58,238 assertions on each, and official
+threads passes 51 modules and 312 assertions on each, without failures/skips/gaps.
+
+The complete ARM64 statistics suite is not green: it has the identical 44
+failure names on the b54c7110 baseline and this implementation, with no new
+failures. These include existing shared-scalar statistics/encoding expectations
+and worker determinism checks. Targeted new reduction and policy tests pass.
+
+Compile captures use production binaries and GOMAXPROCS=1. The first three
+alternating processes per revision give Core 3 410.100 -> 426.937 ms (+4.11%),
+but current times range from 399.709 to 460.942 ms and median active cycles are
+essentially unchanged. A larger six-process alternating capture narrows that
+spread: 21,800 Core 3 compiles take 386.906 -> 387.376 ms (+0.12%), with identical
+17,900,800 code bytes and effectively identical allocation traffic. Retired
+instructions change 6,140,765,706 -> 6,151,509,034.5 (+0.17%), cycles change
+1,693,161,400 -> 1,680,385,299.5 (-0.75%), and peak RSS changes
+14,196,736 -> 14,123,008 bytes (-0.52%). Both captures remain in the receipt.
+
+Three alternating processes per revision for 2,700 threads compiles give
+45.924 -> 46.119 ms (+0.42%), allocation bytes 86,799,264 -> 86,799,128,
+allocations 376,353 -> 376,251, code bytes 1,776,000 -> 1,777,600 (+0.09%),
+and peak RSS 12,959,744 -> 12,943,360. Ordinary scalar/Core 3 scalar/
+imported-worker compile medians change -0.18%, -0.89% and +0.75%, with unchanged
+scalar allocations and worker code size. No statistical significance claim is
+made from these process cohorts.
+
+Tracked `docs/benchmarks/wasm3-2026-10-12/integer-sum-results.json` contains
+source fingerprints, per-process medians, compile values and raw-evidence
+hashes. The earlier fence gap is closed for this workload; remaining unchecked
+memory/atomic gaps, broader composition and overall feature parity remain open.
