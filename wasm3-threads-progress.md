@@ -38,8 +38,9 @@ memories are exercised from original and codec-loaded products. The full
 `^TestThreads` group passes on native arm64 and amd64. The local Core 3
 regression corpus and unsupported-proposal fail-closed tests also pass.
 
-This is partial thread support. Bulk segment initialization, shared memory64,
-multiple memories, and broader import/segment combinations remain restricted.
+At this initial checkpoint, bulk segment initialization, shared memory64,
+multiple memories, and broader import/segment combinations remained restricted.
+Later checkpoints below add segments, shared memory64, and several import combinations.
 Shared copy/fill and growth support are recorded below. JSPI and JS-string embedding profiles remain unsupported.
 
 ## Execution measurement
@@ -843,3 +844,55 @@ Compiled remains 784 bytes. These samples protect this fixture's allocation
 footprint; they do not establish corpus-wide compile latency or peak RSS.
 Evidence is `threads-owned-typed-compile-ab.json` and the two preceding
 `threads-owned-typed-{scalar,worker}-compile.txt` captures.
+
+
+## Shared memory64 composition
+
+Wago `f204d89a` admits one shared memory64 with explicit bounds checks on native
+ARM64 and AMD64. Atomic memargs retain their full u64 offsets; helper calls carry
+i64 addresses, and overflow cannot wrap wait/notify into the backing. Shared
+size/grow return i64 values, reject oversized deltas before narrowing, and return
+all 64 failure bits. Literal high-bit grow deltas do not take the zero-growth
+shortcut. This follows the address-type rules in the
+[memory64 proposal](https://github.com/WebAssembly/memory64/blob/main/proposals/memory64/Overview.md).
+The existing finite 65,535-page implementation reservation remains in force;
+this checkpoint does not provide allocations above 4 GiB.
+
+Guarded race tests pass on Apple M4 Max Darwin/ARM64 and Ryzen 7800X3D
+Linux/AMD64. Coverage includes imported/defined memory, both ABIs, stable-base
+cache modes, codec reloads, atomic load/store/RMW/CAS, full-width bounds and
+memarg arithmetic, growth visibility, blocking wait32/wait64, notification and
+cancellation. All 23 scalar and 22 SIMD access forms match the unshared
+memory64 path for results, memory bytes and trap codes. Bulk copy/fill cover
+full-width bounds, overlapping copies, zero-length boundary cases and no
+mutation on a bounds trap. Existing thread tests and the local Core 3 regression
+corpus also pass; AMD64's staged memory64 tests pass. These are targeted and
+local regression checks, not full official conformance.
+
+wasm.fyi adds two source-built shared-memory64 contracts with both `threads`
+and `memory64` recorded in their feature lists. Both artifacts rebuild byte for
+byte using wasm-tools 1.260.0. Wago and V8 independently verify the arithmetic
+oracles. Three Wago launches each retain five qualified 50 ms samples and two
+warmup batches, yielding medians of 281,707 ns for dynamic atomic load/store and
+13,513,156 ns for wait mismatch plus notify (262,144 work units per invocation).
+The pinned w2c2 translator rejects both artifacts with `invalid limit kind`;
+there is no same-feature peer timing or parity claim for shared memory64.
+The raw harness records that translation failure, rather than a measured ratio.
+Adapter identity is
+`f204d89a40be91132968e091c1caf0b0576b5b39/source-b581ad24e9432f93a392d7b754041644eba3ec2cdbfca59a6a8f7a0fde256fd0`.
+Ignored evidence `threads-memory64-arm64.json` has SHA-256
+`4f7ff3b98dd9b013a560e9e8c8d14268e59df88ab51fd991b57c66c7cc4357b6`.
+
+An alternating six-launch 300 ms compile comparison against `199209f8` yields
+scalar 6,351/6,429 ns (+1.23%), Core 3 scalar 6,381/6,330 ns (-0.80%), and
+imported workers p1 23,732,112/23,928,978 ns (+0.83%). Scalar allocation bytes and
+counts remain 19,202/74 and 19,058/73; worker code remains 1,587,220 bytes.
+Worker allocations fluctuate between 94 and 95 in both revisions. These fixtures
+show no material compile cost increase; corpus-wide latency and peak RSS remain
+unmeasured. Evidence `threads-memory64-compile-ab.json` has SHA-256
+`d25f0618c4c07670e609ed154307c55d6b8febebc391c0b6ac9b9715c64744e2`.
+
+Unshared memory64 with atomic instructions, multiple memories with threads,
+shared-memory64 segment composition, broader conformance and overall
+performance parity remain open. The missing detached remote session was
+recreated and verified; SSH uses ControlPersist=24h.

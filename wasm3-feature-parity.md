@@ -165,6 +165,16 @@ exposed and repaired exported-table producer-context selection. The ARM LSE
 metadata flag now occupies padding, restoring the 784-byte Compiled footprint.
 Full feature coverage, official conformance, and overall parity remain open.
 
+Shared memory64 now executes atomic accesses, size/grow and wait/notify on both
+native architectures with full-width bounds and helper addresses. Scalar/SIMD
+and bulk access checks, codec reloads, blocking waits, growth and cancellation
+pass guarded race tests. Two new wasm.fyi contracts verify against independent
+oracles in Wago and V8; the current w2c2 translator rejects memory64 limits,
+so peer parity for those contracts is unmeasured. Alternating compile fixture
+medians stay within 1.3%, with unchanged scalar allocations and worker code size.
+Multiple memories with threads, unshared atomic memory64, segment composition,
+full conformance and overall feature/performance parity remain open.
+
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
 `~/.cache/wago-wasm3-parity/wago`.
