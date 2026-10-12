@@ -46,10 +46,24 @@ func divInvoker(t *testing.T, m *wasm.Module) (call func(uint64) uint64, done fu
 		return binary.LittleEndian.Uint64(results)
 	}
 	done = func() {
-		runtime.Unmap(mem)
-		ar.Close()
-		jm.Close()
-		eng.Close()
+		// Drop borrowed views before releasing their mappings. The closures can
+		// outlive cleanup, and Windows may reuse released addresses for Go heap.
+		serArgs, results, trap = nil, nil, nil
+		entry = 0
+		if err := runtime.Unmap(mem); err != nil {
+			t.Error(err)
+		} else {
+			mem = nil
+		}
+		if err := ar.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := jm.Close(); err != nil {
+			t.Error(err)
+		}
+		if err := eng.Close(); err != nil {
+			t.Error(err)
+		}
 	}
 	return
 }

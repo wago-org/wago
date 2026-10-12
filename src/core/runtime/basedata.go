@@ -48,6 +48,7 @@ const (
 // WARP-compiled code expects. The linMem base pointer it receives addresses the
 // memSize cache, stack fence, mutable globals, import ctx, etc. at negative
 // offsets. It is mmap'd off-heap so its address is stable for native code.
+// Borrowed byte views must be dropped before Close releases the mapping.
 type JobMemory struct {
 	mem    []byte
 	linOff int
@@ -500,6 +501,9 @@ func (j *JobMemory) registerInterruptLinearMemory() error {
 }
 
 func (j *JobMemory) Close() error {
+	if len(j.mem) == 0 && j.reserveBase == 0 {
+		return nil
+	}
 	if interruptLinearMemoryUnregister != nil {
 		interruptLinearMemoryUnregister(j.LinMemBase())
 	}
@@ -507,9 +511,13 @@ func (j *JobMemory) Close() error {
 		if guardCloseHook != nil {
 			guardCloseHook(j.reserveBase)
 		}
-		return munmapRange(j.reserveBase, j.reserveLen)
 	}
-	return munmap(j.mem)
+	if err := closeOwnedMapping(&j.mem, j.reserveBase, j.reserveLen); err != nil {
+		return err
+	}
+	j.linOff, j.linLen = 0, 0
+	j.reserveBase, j.reserveLen = 0, 0
+	return nil
 }
 
 // ReleaseJobMemory returns a memory to a bounded reuse cache or unmaps it.
