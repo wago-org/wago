@@ -40,6 +40,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Execute shared `memory.copy` and `memory.fill` on amd64 and arm64, with
+  overlap-safe copying and bounds checks before writes. Use unrolled small
+  constant operations against shared backing on both architectures.
+
 - Execute ordinary scalar and SIMD loads/stores against shared memory on
   amd64 and arm64, preserving exact float/vector bits and explicit bounds.
   Shared accesses use backing-directory addresses and bypass deferred loads

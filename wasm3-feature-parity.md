@@ -33,7 +33,9 @@ support alone does not establish performance parity.
   ARM64 atomics use CPU-gated LSE with an exclusive-loop fallback and persisted
   artifact requirements. Both backends prove aligned constant atomic bounds
   against declared memory minimums.
-  This remains partial thread support: bulk operations, growth, multiple
+  Shared `memory.copy` and `memory.fill` now execute with bounds-before-write
+  and overlap-safe copying, including small unrolled paths on both backends.
+  This remains partial thread support: segment initialization, growth, multiple
   memories, and broader import/segment combinations remain
   restricted.
 
@@ -101,6 +103,12 @@ Current times remain 1.209 and 1.140 times w2c2; other kernels retain the gaps
 above. Sequential compile samples show unchanged allocation counts and code
 size for the measured fixtures. The thread report records CPU admission,
 codec/differential validation, alternating measurements, and raw evidence.
+
+Shared copy/fill adds two independently verified wasm.fyi contracts, bringing
+cumulative Wago coverage to 86/94. Native execution and codec checks pass on both
+architectures. On the 33-byte arm64 workloads, fill remains 1.919 times w2c2 and
+overlapping copy 1.117 times w2c2 after unrolling; the thread report records the
+exact capture identities and remaining limits.
 
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is

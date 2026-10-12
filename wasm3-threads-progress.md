@@ -38,9 +38,9 @@ memories are exercised from original and codec-loaded products. The full
 `^TestThreads` group passes on native arm64 and amd64. The local Core 3
 regression corpus and unsupported-proposal fail-closed tests also pass.
 
-This is partial thread support. Shared-memory growth, bulk operations,
-multiple memories, and broader import/segment combinations
-remain restricted. JSPI and JS-string embedding profiles remain unsupported.
+This is partial thread support. Shared-memory growth, bulk segment
+initialization, multiple memories, and broader import/segment combinations
+remain restricted. Shared copy/fill support is recorded below. JSPI and JS-string embedding profiles remain unsupported.
 
 ## Execution measurement
 
@@ -227,3 +227,79 @@ Additional ignored evidence under `.validation/wasm3-parity/`:
 - `threads-store-borrow-ab-arm64.json`, SHA-256 `a6f6ea15baf054ba084c41836ffc12a70ef9ee2cf935bcd7fd1e71ac35b03af8`.
 - `threads-store-borrow-ab-plan.json` retains alternating commands and launch
   order; `threads-lse-compile.txt` retains all compile samples.
+
+
+## Shared copy and fill
+
+Wago `8d969e51` admits shared `memory.copy` and `memory.fill` and routes their
+bounds and addresses through the shared backing directory. Both ranges are
+checked before copy writes begin. Constant-length operations initially used the
+dynamic bulk path, preserving the ordinary memory mapping's existing unrolling.
+Wago `29979007` makes the arm64 unrolled path directory-aware and reuses one
+backing base for same-memory copies. Wago `5012eb80` does the same for amd64,
+including its scalar and SIMD copy tiers. Dynamic and large operations retain
+the existing overlap-safe bulk loops.
+
+Execution tests use an independent Go memmove/fill oracle and check exact memory
+contents on success and bounds traps without partial writes. They cover defined
+and imported shared memories, original and codec-loaded artifacts, zero-page
+memories, zero-length operations at and beyond the boundary, both overlap
+directions, low-byte fill values, constant lengths through all scalar/vector
+tiers, dynamic lengths, and upper address/count-bit truncation. The allocation
+checker thread group and backend tests pass on native arm64 and amd64. Local
+race-enabled bulk tests pass. The Wasmtime Core 3 regression and unsupported
+proposal gates also pass on both platforms after restoring the missing remote
+corpus files; this is still not the full official conformance suite.
+
+wasm.fyi `d21d580` adds `bulk-fill` and `bulk-copy-overlap`. Node/V8 verifies each
+fixture's independent arithmetic oracle at every declared size twice on the
+same instance. The expanded performance inventory has 94 contracts; cumulative
+Wago execution coverage is 86/94, combining captures rather than a full rerun.
+The performance fixtures exercise 33-byte unaligned fill and overlapping copy,
+with 262,144 inner operations per entire invocation. Each table value is the
+median of three launch medians, five verified samples per launch, two warmup
+batches, and at least 50 ms per sample. Artifact hashes match across every pair.
+
+| Contract | Initial shared bulk (`8d969e51`) | ARM64 unrolled (`29979007`) | w2c2 | Unrolled / w2c2 |
+| --- | ---: | ---: | ---: | ---: |
+| bulk-fill | 451,070 ns | 351,481 ns | 183,185 ns | 1.919 |
+| bulk-copy-overlap | 745,291 ns | 679,526 ns | 608,568 ns | 1.117 |
+
+The unrolled capture takes 22.1% less time for fill and 8.8% less for overlapping
+copy than the initial implementation. Both remain slower than w2c2. These
+sequential captures do not establish a statistical speedup or general memory
+bandwidth parity. No amd64 performance claim is made from the arm64 captures.
+
+Captured Wago source identities:
+
+- Initial: `8d969e514bf24f6fb33b8ff2d9dfcfbc3d179ed4/source-05900e4560652c3ed26aa866b3f429f9da89e9e52e87133db762d30a601b21d0`.
+- Unrolled: `29979007954e7b542f4cc4092c09a7c15b080fce/source-f726f165795268ca8ae1ea16fa5b8129c9eb3a9f15a956f788158dd0bc2fc6ff`.
+
+The w2c2 translator, Clang, SDK, pthread flags, and AOT adapter retain the earlier
+comparison's identities and settings. Exact artifact SHA-256 values are
+`ac330e6ee7d95873b2eb56d4be994c2cf88eb9a5fc8fbb8c211b25df575871fe`
+for fill and `b4d356e5233268ad20244f0bc2d6bad982015e317f42e11c73b86d1d6a4ff084`
+for overlapping copy.
+
+Additional ignored evidence under `.validation/wasm3-parity/`:
+
+- `threads-bulk-arm64.json`, SHA-256 `4b723da5e384a264d975b783faa9d875433ae9d4b9a16d8c1627f42d6fad566c`.
+- `threads-bulk-unroll-arm64.json`, SHA-256 `2d846152ce99e5e1e43e1e3a7530a011ee40fe2293a1b76178e4f607369f71b6`.
+- `threads-bulk-plan.json` and `threads-bulk-unroll-plan.json` retain commands,
+  artifacts, oracles, and measurement controls.
+
+
+Five sequential ordinary compile samples at `5012eb80` retain 74/73/94
+allocations and 19,202/19,058/3,420,934 median bytes per operation for the default
+scalar/Core 3 scalar/imported-worker fixtures. Median times are 6,036 ns,
+6,155 ns, and 23,106,982 ns; larger code size remains 1,587,220 bytes. These
+sequential timings are about 0.4%, 3.3%, and 3.8% higher than the preceding
+recorded compile capture. An alternating `a0da41af`/`5012eb80` comparison then
+runs baseline/current/current/baseline/baseline/current, with 300 ms benchmark
+windows and three process launches per revision. Default scalar medians are
+6,147/6,187 ns (+0.7%), Core 3 scalar 6,071/6,149 ns (+1.3%), and imported workers
+23,649,753/23,360,518 ns (-1.2%). Allocation counts remain unchanged. These
+controlled samples show no clear material compile regression for these
+fixtures; they do not establish corpus-wide latency or peak RSS.
+`threads-bulk-compile.txt` and `threads-bulk-compile-ab.json` retain the complete
+samples and alternating order.
