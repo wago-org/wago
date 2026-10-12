@@ -5,7 +5,6 @@ package riscv64
 import (
 	"bytes"
 	"crypto/sha256"
-	"errors"
 	"slices"
 	"testing"
 
@@ -38,10 +37,8 @@ func TestCore3RefIsNullExecutionPinnedContract(t *testing.T) {
 	if !isCore3RefIsNullExecution(m) {
 		t.Fatal("pinned decoded contract rejected")
 	}
-	// Recognition alone grants no executable authority. This remains the exact
-	// public gate until the following runtime/table checkpoints are complete.
-	if err := AdmitProductionSource(source); !errors.Is(err, ErrUnsupported) {
-		t.Fatal("unqualified executable source admitted", err)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal("exact qualified source rejected", err)
 	}
 }
 
@@ -50,7 +47,7 @@ func TestCore3RefIsNullExecutionWireConfinement(t *testing.T) {
 	for i := range base {
 		mutated := bytes.Clone(base)
 		mutated[i] ^= 1
-		if isCore3RefIsNullExecutionWire(mutated) {
+		if isCore3RefIsNullExecutionWire(mutated) || AdmitProductionSource(mutated) == nil {
 			t.Fatal("one-bit source mutation admitted", i)
 		}
 	}
@@ -182,10 +179,8 @@ func TestCore3RefIsNullExecutionBackendCheckpoint(t *testing.T) {
 	if len(image.Code) != 8872 || sha256.Sum256(image.Code) != wantCodeSHA || !slices.Equal(image.Entry, wantEntries) || !slices.Equal(image.InternalEntry, wantEntries) {
 		t.Fatal("exact backend code image changed")
 	}
-	// This is deliberately a compiler-only checkpoint. The source boundary must
-	// still reject until retained metadata and runtime lifetime proofs exist.
-	if err := AdmitProductionSource(core3RefIsNullExecutionSource()); !errors.Is(err, ErrUnsupported) {
-		t.Fatal("backend checkpoint escaped public source gate", err)
+	if err := AdmitProductionSource(core3RefIsNullExecutionSource()); err != nil {
+		t.Fatal("exact qualified source rejected", err)
 	}
 }
 

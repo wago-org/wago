@@ -9,23 +9,28 @@ import (
 
 func TestRV64Core3RefIsNullExecution(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
-		t.Run(map[bool]string{false: "retained", true: "artifact"}[artifact], func(t *testing.T) {
-			compiled := rv64Core3RefIsNullExecutionRetainedFixture(t)
-			if artifact {
-				blob, err := compiled.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				compiled, err = LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
+		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
+			compiled := rv64Core3RefIsNullExecutionCompile(t, artifact)
+			t.Cleanup(func() { _ = compiled.Close() })
+			view := compiled.executionView()
+			if !rv64Core3RefIsNullExecution(view) || railshotValidateCompiled(view) != nil {
+				t.Fatal("source compiler lost the exact ref_is_null witness", railshotValidateCompiled(view))
 			}
-			defer compiled.Close()
+			cache := compiled.loadCodeCache()
+			if cache == nil || !artifact && (cache.base != 0 || len(cache.mem) != 0 || cache.sealed || cache.flags&compiledCacheWritableCode != 0) || artifact && (cache.base == 0 || len(cache.mem) < len(view.code) || cache.sealed || cache.flags&compiledCacheWritableCode == 0 || cache.refs != 0) {
+				compiled.Close()
+				t.Fatalf("ref_is_null unpublished mapping state: artifact=%t base=%#x mem=%d sealed=%t writable=%t refs=%d", artifact, cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
+			}
 
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
-			defer rv64HostCertificateCloseRuntime(t, rt)
+			t.Cleanup(func() { _ = rt.Close() })
 			in := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			if in.gc != nil || cache.base == 0 || len(cache.mem) < len(view.code) || !cache.sealed || (cache.flags&compiledCacheWritableCode != 0) != artifact || cache.refs == 0 {
+				in.Close()
+				compiled.Close()
+				rt.Close()
+				t.Fatalf("ref_is_null publication state: gc=%p base=%#x mem=%d code=%d sealed=%t writable=%t refs=%d", in.gc, cache.base, len(cache.mem), len(view.code), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
+			}
 
 			invokeI32 := func(export string, args ...uint64) int32 {
 				t.Helper()
@@ -102,6 +107,25 @@ func TestRV64Core3RefIsNullExecution(t *testing.T) {
 			rv64AssertPublicReferenceArgumentScopesClear(t, in)
 			if got, err := in.InvokeValues(context.Background(), "externref", ValueExternRef(NullExternRef())); err != nil || len(got) != 1 || got[0].I32() != 1 {
 				t.Fatal("typed null externref", got, err)
+			}
+			var invokeErr error
+			if allocs := testing.AllocsPerRun(1000, func() { _, invokeErr = in.Invoke("ref-null") }); invokeErr != nil || allocs != 0 {
+				t.Fatalf("ref_is_null steady state = %v, allocs=%v", invokeErr, allocs)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if cache.base == 0 || !cache.sealed || cache.refs == 0 {
+				t.Fatal("live ref_is_null instance lost its executable lease")
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := rt.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if cache.base != 0 || len(cache.mem) != 0 || cache.refs != 0 || !cache.closed {
+				t.Fatalf("ref_is_null executable mapping survived final close: base=%#x mem=%d refs=%d closed=%t", cache.base, len(cache.mem), cache.refs, cache.closed)
 			}
 		})
 	}

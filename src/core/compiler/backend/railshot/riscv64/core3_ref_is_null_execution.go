@@ -26,9 +26,9 @@ func isCore3RefIsNullExecutionWire(data []byte) bool {
 }
 
 // isCore3RefIsNullExecution recognizes only ref_is_null.0.wasm from the pinned
-// Core 3 suite. Recognition is deliberately not admission: the public source
-// gate remains closed until this exact module has complete table, token,
-// initialization, artifact and lifetime qualification.
+// Core 3 suite. Public admission additionally requires the exact wire image;
+// this decoded check preserves the table, token and lifetime contract after
+// decoding and through artifact restoration.
 func isCore3RefIsNullExecution(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 7 || len(m.FuncTypes) != 10 || len(m.Code) != 10 || len(m.Tables) != 3 || len(m.Elements) != 2 || len(m.Exports) != 8 || len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
