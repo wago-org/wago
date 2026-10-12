@@ -261,6 +261,7 @@ const (
 	ContractMany                               = impl.ContractMany
 	ContractOptional                           = impl.ContractOptional
 	ContractRequired                           = impl.ContractRequired
+	CoreFeatureCompactImports                  = impl.CoreFeatureCompactImports
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
 	CoreFeatureExceptionHandling               = impl.CoreFeatureExceptionHandling
 	CoreFeatureExtendedConst                   = impl.CoreFeatureExtendedConst

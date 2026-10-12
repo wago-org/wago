@@ -1109,7 +1109,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
 	validationFeatures := wasm.ValidationFeatures{
-		CompactImports:       features.MultiMemory,
+		CompactImports:       features.CompactImports || features.MultiMemory,
 		MultiMemory:          features.MultiMemory,
 		ExtendedConstGlobals: features.ExtendedConstGlobals,
 		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,

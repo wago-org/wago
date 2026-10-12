@@ -53,6 +53,7 @@ type Features struct {
 	TypedFunctionReferences bool // internal staged gate for indexed/non-null function refs and call_ref
 	TailCalls               bool // internal staged gate for bounded direct/indirect tail-call contexts
 	TypedTailCalls          bool // internal staged gate for bounded return_call_ref contexts
+	CompactImports          bool // grouped import-section entries
 	MultiMemory             bool // internal staged gate for bounded indexed memory execution
 	Memory64                bool // internal staged gate for bounded local 64-bit-address memory execution
 	Table64                 bool // internal staged gate for bounded local 64-bit-index table execution

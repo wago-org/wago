@@ -28,6 +28,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Expose compact import sections through `CoreFeatureCompactImports` and CLI
+  discovery, independently of multiple-memory admission. Enable grouped imports
+  by default without adding runtime metadata or changing native code.
+
 - Add signed/unsigned SIMD floor-average source checks, baseline benchmarks,
   and a bounded decoded corpus census.
 - Add mixed-scalar host-call checks across nested memory, global, and table
