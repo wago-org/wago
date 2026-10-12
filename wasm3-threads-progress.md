@@ -1095,3 +1095,142 @@ Retained ignored evidence SHA-256:
 Current remaining work includes multiple memories with threads, broader
 proposal combinations, phase 5 embedding behavior and feature-by-feature
 performance parity. Passing the pinned suites does not remove those limitations.
+
+
+## Defined and imported unshared secondary memories
+
+`acecc24d` permits defined unshared secondary memories beside memory zero.
+`141e4622` permits imported unshared secondary backing and retains the common
+execution lease needed for ordinary accesses that alias another instance or
+host accessor. Eight importers performing 1,000 non-atomic read/modify/write
+updates each must produce exactly 8,000. Mixed address-width growth tests verify
+that provider and consumer observe the same secondary extent and contents,
+while primary size remains independent. Both call ABIs and codec products pass.
+A native Linux mapping-registry test repeats a trapping start eight times and
+checks that no backing/control mappings remain registered after any failure.
+Targeted guarded race tests pass on both native architectures.
+
+Earlier defined-secondary tests cover independently growing both memories,
+explicit memory-zero memargs, ordinary secondary loads/stores, cross-memory
+copies, high memory64 addresses, bounds-before-write, ownership, and quota/start
+rollback. Their matrix includes imported shared primary backing, cache settings,
+both call ABIs and codec products.
+
+wasm.fyi `926655b` adds two sustained contracts; the median across three fresh
+Wago process launches on Apple M4 Max / Darwin ARM64 / Go 1.27.1 is:
+
+| Contract, 262,144 work units | Wago ns |
+| --- | ---: |
+| Private secondary ordinary load/store with primary atomic access | 233,335 |
+| Shared-primary to private-secondary copy | 251,445 |
+
+This capture uses Wago `acecc24d`, source fingerprint
+`cb831c7ac718b50de27215075b1d59ffcb3b2100ca061dce439570b6d38e68b4`.
+Each launch has two warmup batches and five independently verified timed batches
+of at least 50 ms. A separate V8 launch verifies each arithmetic oracle.
+Peer `f303ed27` traps on the ordinary indexed memarg and rejects memory.copy
+with a nonzero memory index. Its ordinary memarg reader consumes the encoded
+memory index as an offset, leaving an unreachable opcode in generated C.
+No matching peer timing exists. Raw evidence `threads-private-secondary-arm64.json`
+has SHA-256 `67b807c76a81a4f6913d02178687fc12db25b1fa007e86f83ea347c833b2a614`.
+
+## Atomic instructions on an unshared secondary memory
+
+`ed977b84` resolves the atomic memory index before selecting its memarg offset
+width. Both native backends route numeric atomics through the indexed backing;
+the existing memory-zero static proof and shared-base fast paths are retained.
+Wait/notify pass the selected index to the synchronous helper, which uses that
+memory's address width and backing. Blocking-wait classification accepts the
+additional index argument. Waiting on unshared secondary backing still produces
+the required expected-shared-memory trap; notifying it returns zero.
+
+All 63 numeric opcodes execute across 32 combinations of primary/secondary
+address width, ownership, constant/dynamic addresses and call ABI, with original
+and codec-loaded artifacts. Tests check old RMW/CAS values, narrow writes,
+unaligned traps, full-width high addresses/offsets, bounds-before-write and an
+unchanged primary sentinel. Restoring the old decoder reproduces rejection of
+memory index 1. Full thread tests plus the local Core 3 regression corpus pass
+with guarded race checking on both architectures; staged memory64 passes on
+AMD64. The expanded selected-memory matrix also passes on both architectures.
+
+wasm.fyi `8d65088` adds two more sustained contracts. Three fresh Wago launches
+with the same verified 50-ms/five-sample protocol give these medians:
+
+| Contract, 262,144 work units | Wago ns |
+| --- | ---: |
+| Private secondary atomic load/store | 240,122 |
+| Private secondary atomic RMW add | 265,913 |
+
+The Wago build is `ed977b848d91a2920a91a31ff5f659416cab779d`, source fingerprint
+`d0b5d6170afb458ba89ddf0f20e57ecce123482b06543bdc7debf42ec8e9a4d5`.
+V8 verifies both independent arithmetic oracles. All three peer launches reject
+these indexed atomic memargs: expected alignment 2, got 66. No peer ratio is
+reported. Raw `threads-secondary-atomic-arm64.json` has SHA-256
+`a06049612e97665178798103708078d7d83ee5efa0e67421d3b1be7eb76a8a44`.
+The current threads family contains 24 sustained contracts plus one growth
+lifecycle probe; the full family has not been retimed at one common revision.
+All 121 feature artifacts reproduce byte-for-byte with wasm-tools 1.260.0.
+Performance/protocol Node tests have five passes and one unrelated allocation
+artifact skip.
+
+Additional shared memories, broader proposal combinations and execution parity
+remain open. The native Go JSPI/CSP counterparts were cancelled before changes.
+
+### Compile cost of indexed atomic admission
+
+Six alternating native ARM64 processes compare `141e4622` with `ed977b84`.
+Production builds omit register-allocation checking; test validation uses it
+separately. Compilation benchmarks use 300-ms calibration windows. Timed
+captures run without concurrent builds or tests. Median times are:
+
+| Complete compilation | Before ns | Current ns | Change |
+| --- | ---: | ---: | ---: |
+| Small scalar | 6,116 | 6,233 | +1.91% |
+| Small scalar with Core 3 enabled | 6,064 | 6,043 | -0.35% |
+| Imported workers, one compiler worker | 22,780,756 | 22,922,839 | +0.62% |
+
+Scalar allocations remain 19,202 / 19,058 bytes and 74 / 73 allocations per
+compile. Worker code remains 1,587,220 bytes; allocation totals differ by only
+single-digit bytes at the median, with 94 allocations at both medians. The last
+current launch is slower across all three cases, so small latency differences
+should not be treated as an established regression or speedup.
+
+The wider corpus repeats 218 valid pinned Core 3 modules 100 times per process,
+using the tracked `compile-corpus.go` helper and the existing checksummed input
+inventory. Six alternating processes with GOMAXPROCS=1 give:
+
+| 21,800 compilations | Before | Current |
+| --- | ---: | ---: |
+| Median elapsed ns | 404,269,291 | 405,209,417 |
+| Go allocated bytes | 777,964,272 | 777,964,008 |
+| Go allocation count | 2,649,938 | 2,649,933 |
+| Generated code bytes | 17,900,800 | 17,900,800 |
+| Process maximum RSS bytes | 14,172,160 | 14,139,392 |
+| Process peak memory footprint bytes | 9,519,632 | 9,355,792 |
+
+Corpus latency differs by +0.23%; allocation/code/peak measurements show no
+material increase in these probes. RSS and footprint include input buffers and
+warmup, and do not isolate compiler-only live memory or instantiation cost.
+The input inventory is the one recorded in the prior Core 3 compile checkpoint.
+
+Ignored evidence SHA-256:
+
+- `threads-secondary-atomic-native-compile-ab.json`:
+  `71019ec0762806836e3abbd15040cee24566289f1a3d2f857a0b2adaa2d12b3e`
+- `threads-secondary-atomic-core3-compile-ab.json`:
+  `2bf29799cbe2fa73fadf05dcb1eb51c08ec1533134f23334494256e121cd4c81`
+
+An initial guarded compilation capture is retained separately at
+`threads-secondary-atomic-compile-ab.json`; its checker overhead is not the
+production compilation baseline above.
+
+The pinned official threads suite was rerun after indexed lowering: all 13
+scripts, 51 modules and 312 assertions pass on both native architectures under
+guarded race checking, with no skips or reported execution gaps. These scripts
+exercise the standard primary-memory proposal cases; selected-secondary coverage
+comes from the separate matrix above. Retained logs:
+
+- `official-threads-indexed-arm64.txt` SHA-256:
+  `8006def98b59f9e9986252cfa2de9b0d6041ac57570486e087bc00b5392fea78`
+- `official-threads-indexed-amd64.txt` SHA-256:
+  `6d840cc11e93251321d3f25cb6df1ba72ea31c1f7134bfe623a202561293a2a4`

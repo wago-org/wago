@@ -47,8 +47,11 @@ support alone does not establish performance parity.
   Mutable-global imports now use the shared execution lease, including host
   access and concurrent importers. Shared memory64 now retains full-width atomic
   and helper addresses, growth results, and data initialization destinations.
-  Unshared memory32/64 atomics use canonical backing. Multiple memories with
-  threads and wider proposal composition remain open.
+  Unshared memory32/64 atomics use canonical backing. Defined and imported
+  unshared secondary memories now execute beside a shared primary memory, with
+  all numeric atomics and wait/notify selecting the encoded memory index.
+  Imported unshared secondary backing retains the common execution lease.
+  Additional shared memories and wider proposal composition remain open.
 
 ## Current validation
 
@@ -206,3 +209,24 @@ feature-by-feature performance parity remain open.
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
 `~/.cache/wago-wasm3-parity/wago`.
+
+## Indexed threads checkpoint (2026-10-12)
+
+`acecc24d` admits defined unshared secondary memories; `141e4622` also admits
+imported unshared secondary backing while preserving its common execution lease.
+`ed977b84` lowers indexed atomic instructions against the selected backing and
+resolves memory64 memarg offsets from that memory's address type. Targeted and
+broader guarded race tests pass on ARM64 and AMD64. The selected-memory matrix
+covers all 63 numeric atomic opcodes, wait/notify, both call ABIs, constant and
+dynamic addresses, imported backing, mixed memory32/64 address widths, and
+artifact reloads. Additional shared memories remain gated.
+
+wasm.fyi `926655b` adds private secondary ordinary-access/copy contracts;
+`8d65088` adds secondary atomic load/store and RMW contracts. All four execute
+verified arithmetic oracles in Wago. The current peer rejects or misdecodes these
+multi-memory instructions, so no same-feature performance ratio is available.
+See `wasm3-threads-progress.md` for revision-specific timings and compile costs.
+
+The requested native Go analogues for JS Promise Integration and Web CSP were
+cancelled before implementation. Browser-specific behavior remains outside this
+native embedding; no Go async host-call or compile-policy API was added.
