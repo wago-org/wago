@@ -1547,7 +1547,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
+	// Shared memory uses the directory-backed bulk path; constant unrolling
+	// below is reserved for the ordinary linear-memory mapping.
+	if !f.threadedMemory0 && !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
 		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
@@ -1706,7 +1708,9 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if !f.memoryAddr64(memoryIndex) {
+	// Shared memory uses the directory-backed bulk path; constant unrolling
+	// below is reserved for the ordinary linear-memory mapping.
+	if !f.threadedMemory0 && !f.memoryAddr64(memoryIndex) {
 		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
@@ -1938,7 +1942,7 @@ func (f *fn) memoryAddr64(memoryIndex uint32) bool {
 func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	f.a.Adds64(X12, offset, n)
 	f.trapIf(condAE, trapMemOOB)
-	if memoryIndex == 0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		mb := f.memSizeReg
 		if mb == regNone {
 			mb = X13

@@ -1072,9 +1072,9 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 			if err != nil {
 				return err
 			}
-			// Scalar and SIMD accesses use the shared backing directory. Bulk
-			// operations and growth still need shared-specific publication paths.
-			admittedMemory := op == 0xfe || op >= 0x28 && op <= 0x3e || op == 0xfd || imm.Kind == wasm.InstrMemorySize
+			// Scalar, SIMD, copy and fill accesses use the shared backing
+			// directory. Growth and segment initialization remain restricted.
+			admittedMemory := op == 0xfe || op >= 0x28 && op <= 0x3e || op == 0xfd || imm.Kind == wasm.InstrMemorySize || imm.Kind == wasm.InstrMemoryCopy || imm.Kind == wasm.InstrMemoryFill
 			if (imm.TouchesMemory || imm.Kind == wasm.InstrMemoryGrow) && !admittedMemory {
 				return fmt.Errorf("threads function %d uses %s outside the shared memory access boundary", function, imm.Kind)
 			}
