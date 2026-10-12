@@ -1032,15 +1032,11 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 	if memories == 0 {
 		return nil
 	}
-	for i := 1; i < memories; i++ {
+	for i := 0; i < memories; i++ {
 		mt, ok := m.MemoryType(uint32(i))
-		if !ok || mt.Shared {
-			return errors.New("threads currently require unshared additional memories")
+		if !ok || mt.Shared && !mt.Limits.HasMax {
+			return errors.New("threads currently require shared memory with an exact maximum")
 		}
-	}
-	mt, _ := m.MemoryType(0)
-	if mt.Shared && !mt.Limits.HasMax {
-		return errors.New("threads currently require shared memory with an exact maximum")
 	}
 	if bounds != BoundsChecksExplicit {
 		return errors.New("threads currently require explicit bounds checks")

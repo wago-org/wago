@@ -656,6 +656,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		memoryObjs[i] = &Memory{jm: secondaryJM}
 		memoryOwns[i] = true
+		if def.Shared {
+			if err := memoryObjs[i].share(nil, def); err != nil {
+				closeMem()
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("shared memory %d: %w", i, err)
+			}
+		}
 	}
 	var nativeMemoryDir []byte
 	var nativeTagIDs []byte
@@ -1570,71 +1577,66 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	if initErr == nil && c.activeDataCount() > 0 {
-		// Shared backing is separate from instance control. Serialize guarded
-		// host-view extension with growth; native readers may observe the bytes.
-		var sharedState *memoryState
-		var sharedBacking *runtime.JobMemory
-		if threadedControl {
-			sharedState = memObj.state.Load()
-			sharedState.mu.Lock()
-			sharedBacking = memObj.jm
-		}
 		for seg := 0; seg < c.activeDataCount(); seg++ {
 			d := c.activeDataAt(seg)
-			dataJM := jm
-			if sharedBacking != nil {
-				dataJM = sharedBacking
-			}
-			if d.MemoryIndex != 0 {
-				if int(d.MemoryIndex) >= len(memoryObjs) || memoryObjs[d.MemoryIndex] == nil {
-					initErr = fmt.Errorf("active data segment %d memory index %d is unavailable", seg, d.MemoryIndex)
-					break
+			initErr = func() error {
+				memory := memObj
+				if d.MemoryIndex != 0 {
+					if int(d.MemoryIndex) >= len(memoryObjs) || memoryObjs[d.MemoryIndex] == nil {
+						return fmt.Errorf("active data segment %d memory index %d is unavailable", seg, d.MemoryIndex)
+					}
+					memory = memoryObjs[d.MemoryIndex]
 				}
-				dataJM = memoryObjs[d.MemoryIndex].jobMemory()
-			}
-			// Imported guarded memory may have grown beyond its initial committed Go
-			// slice. Re-slice the stable reservation to the current logical size.
-			lin, hostErr := dataJM.HostBytesChecked()
-			if hostErr != nil {
-				initErr = fmt.Errorf("active data segment %d memory %d host access: %w", seg, d.MemoryIndex, hostErr)
+				var dataJM *runtime.JobMemory
+				if c.memoryDef(int(d.MemoryIndex)).Shared {
+					// Lock only this segment's backing. Two memory declarations may
+					// alias one Memory; nested jobMemory locks would deadlock.
+					state := memory.state.Load()
+					state.mu.Lock()
+					dataJM = memory.jm
+					defer func() { dataJM.PublishSharedData(); state.mu.Unlock() }()
+				} else {
+					dataJM = memory.jobMemory()
+				}
+				// Imported guarded memory may have grown beyond its initial committed Go
+				// slice. Re-slice the stable reservation to the current logical size.
+				lin, hostErr := dataJM.HostBytesChecked()
+				if hostErr != nil {
+					return fmt.Errorf("active data segment %d memory %d host access: %w", seg, d.MemoryIndex, hostErr)
+				}
+				memory64 := c.memoryDef(int(d.MemoryIndex)).Addr64
+				off := uint64(d.Offset.Base)
+				if d.Offset.HasGlobal {
+					if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
+						return fmt.Errorf("data offset global %d out of range", d.Offset.Global)
+					}
+					off = uint64(uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)))
+				}
+				if len(d.Offset.Expr) != 0 {
+					want := ValI32
+					if memory64 {
+						want = ValI64
+					}
+					value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, constExprGlobalScope{context: constExprDataOffset, limit: len(c.Globals)})
+					if err != nil {
+						return wrapContextError("data offset extended expression", err)
+					}
+					off = value
+				}
+				length := uint64(len(d.Bytes))
+				if off > ^uint64(0)-length {
+					return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d overflows u64", seg, d.MemoryIndex, off, len(d.Bytes))
+				}
+				end := off + length
+				if end > uint64(len(lin)) {
+					return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, d.MemoryIndex, off, len(d.Bytes), len(lin))
+				}
+				copy(lin[int(off):int(end)], d.Bytes)
+				return nil
+			}()
+			if initErr != nil {
 				break
 			}
-			memory64 := c.memoryDef(int(d.MemoryIndex)).Addr64
-			off := uint64(d.Offset.Base)
-			if d.Offset.HasGlobal {
-				if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
-					initErr = fmt.Errorf("data offset global %d out of range", d.Offset.Global)
-					break
-				}
-				off = uint64(uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)))
-			}
-			if len(d.Offset.Expr) != 0 {
-				want := ValI32
-				if memory64 {
-					want = ValI64
-				}
-				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, constExprGlobalScope{context: constExprDataOffset, limit: len(c.Globals)})
-				if err != nil {
-					initErr = wrapContextError("data offset extended expression", err)
-					break
-				}
-				off = value
-			}
-			length := uint64(len(d.Bytes))
-			if off > ^uint64(0)-length {
-				initErr = fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d overflows u64", seg, d.MemoryIndex, off, len(d.Bytes))
-				break
-			}
-			end := off + length
-			if end > uint64(len(lin)) {
-				initErr = fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, d.MemoryIndex, off, len(d.Bytes), len(lin))
-				break
-			}
-			copy(lin[int(off):int(end)], d.Bytes)
-		}
-		if sharedState != nil {
-			sharedBacking.PublishSharedData()
-			sharedState.mu.Unlock()
 		}
 	}
 
@@ -1729,7 +1731,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if !b.collectorShared && c.allowsIndependentInstanceExecution(imports, independentInstances) {
 		in.executionFlags.Store(executionFlagIndependent)
 	}
-	if threadedControl {
+	sharedMemory := threadedControl
+	for i := 1; !sharedMemory && i < memoryCount; i++ {
+		sharedMemory = c.memoryDef(i).Shared
+	}
+	if sharedMemory {
+		in.executionFlags.Store(in.executionFlags.Load() | executionFlagThreadedMemory)
 		foreign := b.collectorShared || c.needsFuncRefContext() || c.tableImportCount() != 0
 		for i := range c.GlobalImports {
 			if c.GlobalImports[i].Mutable {
@@ -1739,7 +1746,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 		}
-		for i := 1; i < c.memoryCount(); i++ {
+		for i := 0; i < c.memoryCount(); i++ {
 			def := c.memoryDef(i)
 			if def.ImportKey != "" && !def.Shared {
 				// Ordinary imported backing can alias another instance or host accessor.

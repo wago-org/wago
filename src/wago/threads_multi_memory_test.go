@@ -416,6 +416,10 @@ func TestThreadsImportedSecondaryAddressWidthsGrowthAndCodec(t *testing.T) {
 // Secondary atomics deliberately mix the primary and selected address widths.
 // Every defined numeric atomic opcode is exercised through explicit memarg 1.
 func threadsSecondaryAtomicModule(primary64, secondary64, imported, constant bool) []byte {
+	return threadsSecondaryAtomicModuleWithSharing(primary64, secondary64, imported, constant, false)
+}
+
+func threadsSecondaryAtomicModuleWithSharing(primary64, secondary64, imported, constant, secondaryShared bool) []byte {
 	address := wasm.I32
 	limits0, limits1 := byte(3), byte(1)
 	addressOp := byte(0x41)
@@ -424,6 +428,9 @@ func threadsSecondaryAtomicModule(primary64, secondary64, imported, constant boo
 	}
 	if secondary64 {
 		address, limits1, addressOp = wasm.I64, 5, 0x42
+	}
+	if secondaryShared {
+		limits1 |= 2
 	}
 	var types, functions, exports, bodies [][]byte
 	exports = append(exports, wasmtest.ExportEntry("memory0", 2, 0), wasmtest.ExportEntry("memory1", 2, 1))
@@ -514,6 +521,14 @@ func threadsSecondaryAtomicModule(primary64, secondary64, imported, constant boo
 }
 
 func TestThreadsSecondaryAtomicMatrix(t *testing.T) {
+	testThreadsSecondaryAtomicMatrix(t, false)
+}
+
+func TestThreadsSharedSecondaryAtomicMatrix(t *testing.T) {
+	testThreadsSecondaryAtomicMatrix(t, true)
+}
+
+func testThreadsSecondaryAtomicMatrix(t *testing.T, secondaryShared bool) {
 	for _, primary64 := range []bool{false, true} {
 		for _, secondary64 := range []bool{false, true} {
 			for _, imported := range []bool{false, true} {
@@ -521,7 +536,7 @@ func TestThreadsSecondaryAtomicMatrix(t *testing.T) {
 					for _, regABI := range []bool{false, true} {
 						t.Run(fmt.Sprintf("p64=%t/q64=%t/imported=%t/constant=%t/regabi=%t", primary64, secondary64, imported, constant, regABI), func(t *testing.T) {
 							cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
-							c, err := cfg.Compile(threadsSecondaryAtomicModule(primary64, secondary64, imported, constant))
+							c, err := cfg.Compile(threadsSecondaryAtomicModuleWithSharing(primary64, secondary64, imported, constant, secondaryShared))
 							if err != nil {
 								t.Fatal(err)
 							}
@@ -529,7 +544,7 @@ func TestThreadsSecondaryAtomicMatrix(t *testing.T) {
 							for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
 								imports := NewImports()
 								if imported {
-									pc, err := cfg.Compile(threadsPrivateSecondaryModule(primary64, secondary64, false))
+									pc, err := cfg.Compile(threadsSecondaryAtomicModuleWithSharing(primary64, secondary64, false, constant, secondaryShared))
 									if err != nil {
 										t.Fatal(err)
 									}
@@ -643,10 +658,21 @@ func TestThreadsSecondaryAtomicMatrix(t *testing.T) {
 									t.Fatalf("unshared notify=%v,%v", got, err)
 								}
 								for _, name := range []string{"helper1", "helper2"} {
-									_, err := in.Invoke(name, 0, 0, 0)
-									var trap *TrapError
-									if !errors.As(err, &trap) || trap.Code != TrapExpectedSharedMemory {
-										t.Fatalf("unshared %s=%v", name, err)
+									got, err := in.Invoke(name, 0, 0, 0)
+									if secondaryShared {
+										if err != nil || len(got) != 1 || got[0] != 1 {
+											t.Fatalf("shared %s=%v,%v", name, got, err)
+										}
+										binary.LittleEndian.PutUint64(m1.UnsafeBytes()[8:], 9)
+										got, err = in.Invoke(name, 0, 9, 0)
+										if err != nil || len(got) != 1 || got[0] != 2 {
+											t.Fatalf("shared equal %s=%v,%v", name, got, err)
+										}
+									} else {
+										var trap *TrapError
+										if !errors.As(err, &trap) || trap.Code != TrapExpectedSharedMemory {
+											t.Fatalf("unshared %s=%v", name, err)
+										}
 									}
 								}
 								if got := binary.LittleEndian.Uint64(m0.UnsafeBytes()[8:]); got != 0x123456789abcdef0 {

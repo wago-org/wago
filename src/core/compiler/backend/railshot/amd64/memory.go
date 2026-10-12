@@ -826,7 +826,7 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 		f.a.Load64(base, RBX, -offMemoryDirPtr)
 		entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 		mb = f.allocReg(maskOf(ea).add(base))
-		if memoryIndex == 0 && f.threadedMemory0 {
+		if f.memoryShared(memoryIndex) {
 			f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
 			f.a.Load64(mb, base, -bdCurBytes)
 		} else {
@@ -1260,7 +1260,7 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	}
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	f.a.Load64(R8, RBX, -offMemoryDirPtr)
-	if memoryIndex == 0 && f.threadedMemory0 {
+	if f.memoryShared(memoryIndex) {
 		f.a.Load64(R8, R8, entry+abi.MemoryDirBaseOffset)
 		f.a.Load64(R8, R8, -bdCurBytes)
 	} else {
@@ -1747,37 +1747,42 @@ func (f *fn) loadMemoryCache() {
 }
 
 // memorySize pushes the current linear-memory size in pages.
-func (f *fn) sharedMemorySize() {
+func (f *fn) sharedMemorySize(memoryIndex uint32) {
 	out := f.allocReg(0)
-	if base := f.cachedSharedMemoryBase(); base != regNone {
+	if base := f.cachedSharedMemoryBase(); memoryIndex == 0 && base != regNone {
 		f.a.Load64(out, base, -bdCurBytes)
 	} else {
 		f.a.Load64(out, RBX, -offMemoryDirPtr)
-		f.a.Load64(out, out, abi.MemoryDirBaseOffset)
+		f.a.Load64(out, out, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
 		f.a.Load64(out, out, -bdCurBytes)
 	}
 	f.a.ShiftImm(5, out, 16, true)
-	if f.memoryAddr64(0) {
+	if f.memoryAddr64(memoryIndex) {
 		f.pushReg(out, mtI64)
 	} else {
 		f.pushReg(out, mtI32)
 	}
 }
 
-func (f *fn) sharedMemoryGrow() error {
+func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 	f.materializePendingLoads()
 	f.materializePendingTraps()
 	f.invalidateBoundsCert()
-	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst && (top.st.cval == 0 || !f.memoryAddr64(0) && uint32(top.st.cval) == 0) {
+	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst && (top.st.cval == 0 || !f.memoryAddr64(memoryIndex) && uint32(top.st.cval) == 0) {
 		f.dropValue()
-		f.sharedMemorySize()
+		f.sharedMemorySize(memoryIndex)
 		return nil
 	}
 	typ := wasm.I32
-	if f.memoryAddr64(0) {
+	if f.memoryAddr64(memoryIndex) {
 		typ = wasm.I64
 	}
-	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{typ}, Results: []wasm.ValType{typ}}
+	params := []wasm.ValType{typ}
+	if memoryIndex != 0 {
+		params = append(params, wasm.I32)
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(memoryIndex)})
+	}
+	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: []wasm.ValType{typ}}
 	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
 }
 
@@ -1786,8 +1791,8 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex == 0 && f.threadedMemory0 {
-		f.sharedMemorySize()
+	if f.memoryShared(memoryIndex) {
+		f.sharedMemorySize(memoryIndex)
 		return nil
 	}
 	out := f.allocReg(0)
@@ -1815,8 +1820,8 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex == 0 && f.threadedMemory0 {
-		return f.sharedMemoryGrow()
+	if f.memoryShared(memoryIndex) {
+		return f.sharedMemoryGrow(memoryIndex)
 	}
 	f.materializePendingTraps()
 	f.invalidateBoundsCert() // memBytes changes; end the certificate conservatively
@@ -1998,8 +2003,8 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -offMemoryDirPtr)
-		if memoryIndex == 0 && f.threadedMemory0 {
-			f.a.Load64(mb, mb, abi.MemoryDirBaseOffset)
+		if f.memoryShared(memoryIndex) {
+			f.a.Load64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
 			f.a.Load64(mb, mb, -bdCurBytes)
 		} else {
 			f.a.Load64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
@@ -2151,4 +2156,13 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	if dstOwned {
 		f.release(dst)
 	}
+}
+
+// memoryShared selects the live shared extent instead of an instance directory snapshot.
+func (f *fn) memoryShared(memoryIndex uint32) bool {
+	if memoryIndex == 0 {
+		return f.threadedMemory0
+	}
+	mt, ok := f.memoryType(memoryIndex)
+	return ok && mt.Shared
 }

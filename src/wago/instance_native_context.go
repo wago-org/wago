@@ -31,6 +31,7 @@ const (
 	executionFlagPreparedActive
 	executionFlagNativeScalarLeaf
 	executionFlagForeignNativeCalls
+	executionFlagThreadedMemory
 )
 
 type invocationID uint64
@@ -353,7 +354,7 @@ func (in *Instance) refreshMemoryDirectory() error {
 			return fmt.Errorf("indexed memory %d owner is closed", i)
 		}
 		entry := dir.native[i*abi.MemoryDirEntryBytes:]
-		if !in.threadedMemoryZero {
+		if !in.c.memoryDef(i).Shared {
 			jm.SetGuardOwner(in.jm.LinMemBase())
 		}
 		pages := jm.CurrentPages()
@@ -411,7 +412,11 @@ func (in *Instance) usesIndependentExecution() bool {
 // importing native callables also shares basedata and parked control frames;
 // those graphs use the process-wide lease until native contexts are isolated.
 func (in *Instance) usesPrivateThreadedExecution() bool {
-	return in != nil && in.threadedMemoryZero && in.executionFlags.Load()&(executionFlagNativeControlShared|executionFlagForeignNativeCalls) == 0
+	if in == nil {
+		return false
+	}
+	flags := in.executionFlags.Load()
+	return (in.threadedMemoryZero || flags&executionFlagThreadedMemory != 0) && flags&(executionFlagNativeControlShared|executionFlagForeignNativeCalls) == 0
 }
 
 func (in *Instance) markNativeControlShared() {
@@ -468,7 +473,7 @@ func (in *Instance) nativeControlIsShared() bool {
 }
 
 func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
-	if in == nil || !in.threadedMemoryZero {
+	if in == nil || (!in.threadedMemoryZero && in.executionFlags.Load()&executionFlagThreadedMemory == 0) {
 		return nil
 	}
 	in.memoryDir.invokeMu.Lock()
