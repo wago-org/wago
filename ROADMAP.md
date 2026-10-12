@@ -438,6 +438,18 @@ callable externref or ownership contract. With the exact invalid module pinned
 to its validation failure, these three valid modules and the invalid module
 complete file-level qualification for the pinned `br_on_non_null.wast`; they
 do not imply broader typed-reference corpus parity.
+The three unreachable-typing modules `.1` through `.3` from the pinned Core 3
+`call_ref.wast` now exercise the existing bounded genuine RV64 `call_ref`
+lowering through exact WABT 1.0.41 source identities, retained artifacts and
+actual compiler-free reload. They preserve unreachable-first trap order; the
+two `ref.func` forms retain authenticated full-width private descriptors after
+their declarative elements are consumed. W^X publication, repeated trap-frame
+attribution, feature rejection, leases and final unmapping are covered under
+baseline QEMU RV64G. The file's four type-invalid modules `.4` through `.7`
+are pinned to their exact validation failures before code publication. The
+larger recursive executable `.0` module remains unqualified, so this is an
+independently reviewable partial-file checkpoint rather than `call_ref.wast`
+file-level parity or a broader reference ABI claim.
 Mixed table/call_ref and private mutable-cell fixtures retain
 foreign owners through retirement without extra control-only call transport.
 Conservative resource-root accounting and an independently tested bounded receipt
