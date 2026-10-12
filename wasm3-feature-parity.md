@@ -268,3 +268,29 @@ loop in closed form; it keeps a real hardware barrier. Wago notify still enters
 Go even when no waiter is queued. These are the next concrete optimization
 paths, with broader feature parity still open. See `wasm3-threads-progress.md`
 and the tracked peer runtime manifest for exact configurations and evidence.
+
+## Empty notify checkpoint (2026-10-12)
+
+`48b1eed3` completes the ARM64/AMD64 empty-notify shortcut introduced in
+`c7f4f790` and corrected on AMD64 in `0a41c011`. Bounds and alignment checks
+remain before returning zero. A shared backing publishes registering and queued
+waits before the value comparison; any pending wait sends notify through the
+locking Go helper. Codec products carry a runtime requirement that older
+loaders reject. No basedata or Compiled structure grows.
+
+On the same Apple M4 Max workload, three interleaved processes per profile give
+median 0.639 ms versus 14.071 ms before, 5.364 ms for checked w2c2 and 1.953 ms
+for unchecked w2c2, per 262,144 operations. Every timed sample verifies its
+result. This closes the measured single-actor wait-mismatch/empty-notify gap;
+it does not establish concurrent throughput parity. Both native architectures
+pass guarded race checks and all 51 modules/312 assertions in the pinned
+official threads suite. A regression test blocks registration at the queue
+registry and fails on the previous publication order.
+
+Alternating compile runs show Core 3 corpus time -1.59%, unchanged generated
+code and negligible allocation differences. The 27 threads workloads show
+time +1.76%, allocation bytes +0.12%, generated code +0.91%, and peak RSS
++0.51%. Ordinary compile fixtures remain within about 1% of baseline.
+The tracked `docs/benchmarks/wasm3-2026-10-12/notify-empty-results.json` records
+versions, process medians, compile measurements and raw-evidence hashes.
+Fence arithmetic and broader feature performance parity remain open.
