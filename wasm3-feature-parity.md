@@ -356,3 +356,23 @@ Alternating compile captures show Core 3 latency -0.43%, allocation bytes
 allocation bytes -1.51%, code bytes -7.74% and peak RSS -0.64%. These are small
 descriptive local cohorts. The tracked `memory-min-results.json` receipt retains
 exact profiles, medians and hashes. Broader feature-by-feature parity remains open.
+
+### Vector load lane extraction
+
+`9914eafb` adds immediate scalar lane extraction from vector loads on both
+native architectures. It keeps the full original 16-byte bounds check, including
+signal-based guard configurations, and retains an actual memory read. Every lane,
+integer signedness, float edge bits, unaligned floats, memory32/64, shared and
+unshared primary/secondary memories, both ABIs and codec products are covered.
+Native guarded race tests and both pinned conformance suites pass on both
+architectures. ARM64 statistics retains the same 44 known parent failures.
+
+A fresh wasm.fyi three-process comparison shows SIMD load/store falling from
+240,398 to 148,599 ns per invocation (-38.19%), still 1.405x slower than unchecked
+w2c2. Other unchecked-peer gaps persist: ordinary 1.373x, bulk 1.507x, RMW
+1.163x and CAS 1.068x. Full feature parity remains open.
+
+Alternating production compile measurements show Core 3 latency +0.27%,
+threads latency -0.11%, essentially unchanged allocations, and peak RSS
+-0.35%/+2.08%. The tracked `simd-load-extract-results.json` report preserves
+revision/source fingerprints, process medians, compile costs and evidence hashes.

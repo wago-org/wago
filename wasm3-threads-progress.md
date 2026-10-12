@@ -1687,3 +1687,61 @@ Tracked `docs/benchmarks/wasm3-2026-10-12/memory-min-results.json` records
 source fingerprints, medians, raw evidence hashes and peer C/assembly hashes.
 Remaining unchecked-peer gaps, broader proposal composition and overall feature
 performance parity remain open.
+
+## Scalar lanes from vector loads
+
+`9914eafb` adds controllable `simd-load-extract` on ARM64 and AMD64. An immediate
+integer or floating-point lane extraction from `v128.load` becomes a scalar
+load of that lane. The compiler retains the original full 16-byte span check;
+it forces explicit checking even for a primary memory using hardware guards,
+where a narrower access might otherwise fit and incorrectly avoid the trap.
+The optimization retains an actual memory read and adds no runtime ABI fields.
+
+Tests cover every supported lane, signed/unsigned integer lanes, raw float
+negative-zero/infinity/quiet-NaN/signalling-NaN bits, unaligned float reads,
+memory32/64, shared/unshared primary and secondary memories, enabled/disabled
+optimization, both calling conventions, and original/codec products. Guard-page
+builds test signals-based unshared memory; threads require explicit bounds.
+Native guarded race tests and broader SIMD/threads/policy/bounds tests
+pass on both architectures. Pinned Core 3 again passes 2,226 modules/58,238
+assertions, and official threads passes 51 modules/312 assertions per architecture.
+The full ARM64 statistics suite retains exactly the same 44 parent failure names.
+
+Fresh production measurements use the same eight contracts, interleaved three
+processes per profile, two warmups and five verified >=50 ms batches per process.
+All 104 rows pass their independent result oracle and duration qualification.
+These are local Apple M4 Max execution measurements, including adapter invocation,
+against the pinned SIMD-capable w2c2 SDK with checked and unchecked profiles.
+
+| Contract | Wago 65f3c62e ns | Wago 9914eafb ns | Checked w2c2 ns | Unchecked w2c2 ns |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary load/store | 138,542 | 136,835 | 2,153,003 | 99,679 |
+| SIMD load/store | 240,398 | 148,599 | 1,601,270 | 105,731 |
+| Bulk fill | 278,685 | 281,676 | 2,168,547 | 186,860 |
+| Atomic load/store | 149,526 | 151,652 | 2,143,824 | 164,602 |
+| Atomic RMW add | 252,877 | 252,674 | 2,161,601 | 217,324 |
+| Compare exchange | 288,243 | 292,124 | 2,174,007 | 273,501 |
+| Wait mismatch + notify | 640,775 | 637,748 | 5,389,785 | 1,996,985 |
+| Fence | 153.31 | 153.68 | 285.09 | 286.42 |
+
+SIMD improves 38.19%, but still trails the unchecked peer by 1.405x. Ordinary
+and bulk ratios remain 1.373x and 1.507x; RMW/CAS remain 1.163x/1.068x.
+The other before/after changes range -1.23% to +1.42% and are descriptive,
+without a significance claim. One checked ordinary process has CV 0.113;
+SIMD current-process CVs are 0.0025–0.0052. Broader parity remains open.
+
+Alternating production compile captures use GOMAXPROCS=1 and three processes
+per revision, with no builds or tests overlapping timing. Core 3's 21,800
+compiles take 407.053 -> 408.149 ms (+0.27%); allocation bytes and emitted code
+are effectively unchanged; peak RSS is 14,155,776 -> 14,106,624 (-0.35%).
+Threads' 2,700 compiles take 46.927 -> 46.873 ms (-0.11%), with unchanged
+allocation bytes, code 1,640,000 -> 1,641,600 (+0.10%), and peak RSS
+12,599,296 -> 12,861,440 (+2.08%). Scalar/Core 3 scalar/imported-worker
+compile medians change +1.33%/+0.69%/-1.71%, with unchanged allocation counts.
+The threads corpus has a small net emitted-code increase; the optimized
+execution contract uses a scalar read rather than a vector read.
+
+Tracked `docs/benchmarks/wasm3-2026-10-12/simd-load-extract-results.json`
+records exact source fingerprints, per-process medians, compile costs and raw
+evidence hashes. Remaining unchecked-peer gaps, proposal compositions and
+feature-by-feature parity still need work.
