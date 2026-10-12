@@ -1879,6 +1879,10 @@ func (f *fn) v128Load(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if handled, err := f.trySIMDLoadExtract(r, memoryIndex, off); handled || err != nil {
+		return err
+	}
+
 	base, ea, releaseBase, eaOwned, _, disp := f.memAddrAt(memoryIndex, off, 16)
 	x := f.allocFReg(0)
 	f.a.LdrQIdx(x, base, ea, disp)

@@ -2453,6 +2453,10 @@ func (f *fn) v128Load(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if handled, err := f.trySIMDLoadExtract(r, memoryIndex, off); handled || err != nil {
+		return err
+	}
+
 	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
 	x := f.allocFReg(0)
 	f.mov128LoadIdx(x, base, ea, disp)
