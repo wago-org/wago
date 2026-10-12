@@ -78,15 +78,18 @@ declared function types share the same structural carrier. Source/artifact and
 actual compiler-free execution cover the five successful calls, both wrong-
 signature traps, post-trap re-entry, W^X leases/final unmapping, and hostile
 retained metadata under baseline QEMU RV64G without a collector. Products after
-`.20` through `.22` now form the first exact function `ref.test` checkpoints: one
+`.20` through `.23` now form the first exact function `ref.test` checkpoints: one
 private canonical descriptor crosses equivalent recursive type groups and
 produces a normalized true result through table-free genuine RV64 lowering.
 The second checkpoint retains mutually recursive indexed function parameters
 and results; the third proves the reverse type direction returns normalized
-false despite a structurally identical carrier. Source-specific compiler-free
+false despite a structurally identical carrier; the fourth projects the matching
+supertype and returns normalized true. The third and fourth intentionally reuse
+the same type-4 comparison image while distinct retained graphs select the actual
+type-6 and type-4 descriptors. Source-specific compiler-free
 artifacts pair each full image with
 its own retained graph; W^X lifetime, hostile metadata, and private-runtime
-permission are covered without a collector. Products after `.22` and native
+permission are covered without a collector. Products after `.23` and native
 cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain

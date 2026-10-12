@@ -88,6 +88,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcTypeSubtypingRuntimeCallCast = state.gcTypeSubtypingRuntimeCallCast
 		referenceTypes.gcTypeSubtypingFinalityCallCast = state.gcTypeSubtypingFinalityCallCast
 		referenceTypes.gcTypeSubtypingRefTestSingle = state.gcTypeSubtypingRefTestSingle
+		referenceTypes.gcTypeSubtypingRefTestVariant = state.gcTypeSubtypingRefTestVariant
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -2079,7 +2080,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			case wasm.InstrRefTest:
 				if state.gcTypeSubtypingRefTestSingle {
-					if len(state.types) <= 6 || state.gcTypeSubtypingRefTestVariant == 0 || state.gcTypeSubtypingRefTestVariant > 3 || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapTypeIndex || imm.HeapType.Type().Rec || imm.HeapType.Type().Index != 4 {
+					expectedHeap := uint32(4)
+					if state.gcTypeSubtypingRefTestVariant == 4 {
+						expectedHeap = 0
+					}
+					if len(state.types) <= 6 || state.gcTypeSubtypingRefTestVariant == 0 || state.gcTypeSubtypingRefTestVariant > 4 || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapTypeIndex || imm.HeapType.Type().Rec || imm.HeapType.Type().Index != expectedHeap {
 						return integerSummary{}, unsupported("single function ref.test type relation")
 					}
 					if _, err = popClass(true); err != nil {
@@ -2087,7 +2092,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					if live && emit != nil {
 						accepted := uint32(6)
-						if state.gcTypeSubtypingRefTestVariant == 3 {
+						if state.gcTypeSubtypingRefTestVariant >= 3 {
 							accepted = 4
 						}
 						emit.functionReferenceTest(h, []uint64{state.types[accepted].key}, imm.Subopcode == 21)
