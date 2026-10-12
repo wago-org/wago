@@ -159,9 +159,17 @@ extend that negative proof across three provider and two consumer recursive grou
 the requested consumer type is transitively related inside its own graph but remains
 incompatible with the provider's separately decoded final group. The exact scalar
 provider remains callable and the failed link again leaves it live and unretained,
-with source and compiler-free artifacts covered under baseline QEMU RV64G. Products
-after `.54` and native
-cache/performance qualification remain open.
+with source and compiler-free artifacts covered under baseline QEMU RV64G. The
+next executable product, official `.76`, now has exact source and artifact
+admission for its non-flat declared subtype graph. Six genuinely framed scalar
+RV64 functions export `f1` through `f6`, each returning `f32` zero without a
+collector or steady-state allocation. The retained type graph, canonical
+function-type identities, descriptors, exports, entries, feature set, code, and
+serialized metadata are authenticated before publication; actual compiler-free
+reload, W^X leases, and final unmapping are covered. Official `.55` through `.75`
+are invalid or unlinkable assertions rather than additional executable product
+images. Products after `.76` and native cache/performance qualification remain
+open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

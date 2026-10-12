@@ -33,7 +33,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	}
 	maxImportArity := coreruntime.MaxHostArity
 	vectorProfile := false
-	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 && opts.GCTypeSubtypingLinkSource == 0 && opts.GCTypeSubtypingFinalityLinkSource == 0 && opts.GCTypeSubtypingStructLinkSource == 0 && opts.GCTypeSubtypingStructProjectionSource == 0 && opts.GCTypeSubtypingStructMismatchSource == 0 && opts.GCTypeSubtypingIndependentStructSource == 0 && opts.GCTypeSubtypingExtendedProjectionSource == 0 && opts.GCTypeSubtypingDuplicateRecursiveSource == 0 && opts.GCTypeSubtypingExtendedRecursiveSource == 0 && opts.GCTypeSubtypingCrossGroupMismatchSource == 0 && opts.GCTypeSubtypingTransitiveMismatchSource == 0 {
+	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 && opts.GCTypeSubtypingLinkSource == 0 && opts.GCTypeSubtypingFinalityLinkSource == 0 && opts.GCTypeSubtypingStructLinkSource == 0 && opts.GCTypeSubtypingStructProjectionSource == 0 && opts.GCTypeSubtypingStructMismatchSource == 0 && opts.GCTypeSubtypingIndependentStructSource == 0 && opts.GCTypeSubtypingExtendedProjectionSource == 0 && opts.GCTypeSubtypingDuplicateRecursiveSource == 0 && opts.GCTypeSubtypingExtendedRecursiveSource == 0 && opts.GCTypeSubtypingCrossGroupMismatchSource == 0 && opts.GCTypeSubtypingTransitiveMismatchSource == 0 && !opts.GCTypeSubtypingNonFlatExportSource {
 		var err error
 		vectorProfile, err = railshot.UsesSWAR(m)
 		if err != nil {
@@ -207,6 +207,10 @@ func railshotGCTypeSubtypingCrossGroupMismatchLinkSource(data []byte) uint8 {
 
 func railshotGCTypeSubtypingTransitiveMismatchLinkSource(data []byte) uint8 {
 	return railshot.GCTypeSubtypingTransitiveMismatchLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingNonFlatExportSource(data []byte) bool {
+	return railshot.GCTypeSubtypingNonFlatExportSource(data)
 }
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
@@ -455,6 +459,14 @@ func railshotConfigureGCTypeSubtypingCrossGroupMismatchLink(sourceVariant uint8,
 func railshotConfigureGCTypeSubtypingTransitiveMismatchLink(sourceVariant uint8, opts *railshotCompileOptions) {
 	opts.GCTypeSubtypingTransitiveMismatchSource = sourceVariant
 	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingNonFlatExport(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingNonFlatExportSource = exactSource
+	if exactSource {
 		opts.NativeReferenceCalls = false
 		opts.NativeReferenceFunctions = false
 	}

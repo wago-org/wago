@@ -102,6 +102,12 @@ func rv64GCTypeSubtypingTransitiveMismatchLinkExecutionCode(*Compiled) bool {
 }
 func railshotRestoreGCTypeSubtypingTransitiveMismatchLinkArtifact(*Compiled) {
 }
+func rv64GCTypeSubtypingNonFlatExport(*Compiled) bool { return false }
+func rv64GCTypeSubtypingNonFlatExportExecutionCode(*Compiled) bool {
+	return false
+}
+func railshotRestoreGCTypeSubtypingNonFlatExportArtifact(*Compiled) {
+}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }
