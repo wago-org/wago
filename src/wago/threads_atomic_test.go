@@ -124,8 +124,16 @@ func sharedAtomicCmpxchgModule(sub, align byte, typ wasm.ValType) []byte {
 }
 
 func sharedAtomicWriteAtModule(sub, align byte, typ wasm.ValType, operands int) []byte {
+	return atomicWriteAtModule(sub, align, typ, operands, true)
+}
+
+func atomicWriteAtModule(sub, align byte, typ wasm.ValType, operands int, shared bool) []byte {
 	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
-	memoryImport = append(memoryImport, 0x02, 0x03, 0x01, 0x01)
+	limits := byte(1)
+	if shared {
+		limits = 3
+	}
+	memoryImport = append(memoryImport, 0x02, limits, 0x01, 0x01)
 	params := []wasm.ValType{wasm.I32}
 	for range operands {
 		params = append(params, typ)
@@ -1113,4 +1121,91 @@ func TestThreadsAtomicWaitHonorsInvokeCancellationAndClose(t *testing.T) {
 		}
 		assertNoMemoryWaiters(t, memory)
 	})
+}
+
+func TestThreadsUnsharedMemory32AtomicWrites(t *testing.T) {
+	for _, regABI := range []bool{false, true} {
+		for _, wide := range []bool{false, true} {
+			typ, align := wasm.I32, byte(2)
+			if wide {
+				typ = wasm.I64
+				align = 3
+			}
+			for _, tc := range []struct {
+				sub      byte
+				want     uint64
+				operands int
+			}{
+				{0x17, 9, 1}, {0x1e, 16, 1}, {0x25, ^uint64(1), 1}, {0x2c, 1, 1}, {0x33, 15, 1}, {0x3a, 14, 1}, {0x41, 9, 1}, {0x48, 9, 2},
+			} {
+				t.Run(fmt.Sprintf("regabi=%t/wide=%t/sub=%x", regABI, wide, tc.sub), func(t *testing.T) {
+					sub := tc.sub
+					if wide {
+						sub++
+					}
+					cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
+					c, err := cfg.Compile(atomicWriteAtModule(sub, align, typ, tc.operands, false))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer c.Close()
+					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+						memory, err := NewMemory(1, 1)
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer memory.Close()
+						in, err := Instantiate(compiled, NewImports().Memory("env", "memory", memory))
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer in.Close()
+						for _, address := range []uint64{0, 1 << 32} {
+							binary.LittleEndian.PutUint64(memory.UnsafeBytes()[8:], 7)
+							args := []uint64{address, 9}
+							if tc.operands == 2 {
+								args = []uint64{address, 7, 9}
+							}
+							got, err := in.Invoke("write", args...)
+							if err != nil {
+								t.Fatal(err)
+							}
+							if tc.sub >= 0x1e && (len(got) != 1 || got[0] != 7) {
+								t.Fatalf("old value = %v", got)
+							}
+							want := tc.want
+							actual := binary.LittleEndian.Uint64(memory.UnsafeBytes()[8:])
+							if !wide {
+								want = uint64(uint32(want))
+								actual = uint64(uint32(actual))
+							}
+							if actual != want {
+								t.Fatalf("memory = %x, want %x", actual, want)
+							}
+						}
+						for _, address := range []uint64{1, 65528, 0xfffffff8, 1<<32 | 65528} {
+							before := bytes.Clone(memory.UnsafeBytes())
+							args := []uint64{address, 9}
+							if tc.operands == 2 {
+								args = []uint64{address, 7, 9}
+							}
+							_, err := in.Invoke("write", args...)
+							trap, ok := err.(*TrapError)
+							want := TrapLinMemOutOfBounds
+							if address == 1 {
+								want = TrapAtomicUnaligned
+							}
+							if !ok || trap.Code != want {
+								t.Fatalf("address=%x: %v, want %v", address, err, want)
+							}
+							if !bytes.Equal(before, memory.UnsafeBytes()) {
+								t.Fatalf("trapping write at %x changed memory", address)
+							}
+						}
+
+					}
+				})
+			}
+		}
+	}
 }

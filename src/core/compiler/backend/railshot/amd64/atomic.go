@@ -176,8 +176,12 @@ func (f *fn) atomicMem(off uint64, size int) (base, ea Reg, disp int32) {
 	if base, ea, ok := f.staticAtomicMem(off, size); ok {
 		return base, ea, 0
 	}
-	if f.memoryAddr64(0) && !f.threadedMemory0 {
-		ea, _, _, disp = f.memAddr64(off, size)
+	if !f.threadedMemory0 {
+		if f.memoryAddr64(0) {
+			ea, _, _, disp = f.memAddr64(off, size)
+		} else {
+			ea, _, _, disp = f.memAddr(uint32(off), size, false, 0)
+		}
 		base = f.allocReg(maskOf(ea))
 		f.a.MovReg64(base, RBX)
 	} else {

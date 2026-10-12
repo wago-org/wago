@@ -136,8 +136,8 @@ func (f *fn) atomicAddr(off uint64, size int) Reg {
 	}
 	var base, ea Reg
 	var disp int32
-	if f.memoryAddr64(0) && !f.threadedMemory0 {
-		ea, _, _, disp = f.memAddr64(off, size)
+	if !f.threadedMemory0 {
+		ea, _, _, disp = f.memAddr(off, size, false, 0, false)
 		base = linMemReg
 	} else {
 		base, ea, disp = f.indexedMemAddr(0, off, size)
