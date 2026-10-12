@@ -1239,7 +1239,11 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.invalidateGCResolvedObject()
 	f.stats.call(callKindHostSync)
-	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
+	// Blocking waits use the complete host frame and GC callsite maps. Other
+	// atomic helpers retain the compact internal transition.
+	atomicWait := uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 &&
+		(uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait32 || uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait64)
+	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	nativeStructType := f.nativeStructAllocType
 	nativeArray := f.nativeArrayAlloc
 	f.nativeStructAllocType = 0
@@ -1247,7 +1251,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	p, rN := len(ft.Params), len(ft.Results)
 	var rootOffsets []uint32
 	recordRoots := false
-	if uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) == 0 {
+	if !internalGC {
 		rootOffsets, recordRoots = f.prepareGCFrameCallsite(p)
 	}
 	paramSlots := funcTypeSlots(ft.Params)
@@ -2024,6 +2028,19 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	})
 	finishRoots()
 	return nil
+}
+
+// Advance the source mask when an inline zero-timeout wait cannot suspend.
+func (f *fn) consumeGCFrameCallsite() {
+	plan := f.gcFrameRoots
+	if plan == nil || !plan.Candidate {
+		return
+	}
+	if f.gcCallsiteIndex >= plan.CallMaskCount() {
+		plan.Exact = false
+		return
+	}
+	f.gcCallsiteIndex++
 }
 
 func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {

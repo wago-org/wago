@@ -2332,7 +2332,10 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 }
 
 func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
-	scope := &in.ensurePluginState().hostScope
+	scope := invocation.scope
+	if scope == nil {
+		scope = &in.ensurePluginState().hostScope
+	}
 	if importIdx&shared.AtomicWaitDispatchBit != 0 {
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
@@ -2840,7 +2843,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		restoreInvocationContext := bindHostInvocationParent(in, waitParent)
 		defer restoreInvocationContext()
 	}
-	if goruntime.GOARCH != "arm64" || in.c.usesAtomicWaitHelpers() {
+	if goruntime.GOARCH != "arm64" || in.needsAtomicWaitContext() {
 		stopWaitContext := in.publishAtomicWaitContext(waitParent)
 		defer stopWaitContext()
 	}

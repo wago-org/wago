@@ -740,7 +740,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 	if state != nil && state.hostRootPlan != nil {
 		for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
 			activation := &state.hostActivations[i]
-			if activation.noFrame {
+			if activation.stack == nil || activation.noFrame {
 				continue
 			}
 			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
@@ -791,7 +791,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 	if state != nil && state.hostRootPlan != nil {
 		for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
 			activation := &state.hostActivations[i]
-			if activation.noFrame {
+			if activation.stack == nil || activation.noFrame {
 				continue
 			}
 			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {

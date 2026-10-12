@@ -22,8 +22,12 @@ type atomicWaitInvocationContext struct {
 
 var atomicWaitInvocationContexts sync.Map // *Instance -> *atomicWaitInvocationContext
 
+func (in *Instance) needsAtomicWaitContext() bool {
+	return in != nil && in.c != nil && (in.c.usesAtomicWaitHelpers() || in.executionFlags.Load()&executionFlagForeignNativeCalls != 0)
+}
+
 func (in *Instance) publishAtomicWaitContext(parent context.Context) func() {
-	if in == nil || in.c == nil || !in.c.usesAtomicWaitHelpers() {
+	if in == nil || in.c == nil || !in.needsAtomicWaitContext() {
 		return noOpCancellationWatch
 	}
 	if parent == nil {
@@ -54,6 +58,10 @@ func cancelAtomicWaitContext(in *Instance) {
 }
 
 func (in *Instance) dispatchAtomicWaitHelper(helper uint32, args, results []uint64) {
+	in.dispatchAtomicWaitHelperContext(helper, args, results, nil)
+}
+
+func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results []uint64, ctx context.Context) {
 	if in == nil || in.memory == nil {
 		panic(atomicWaitHelperError{err: fmt.Errorf("atomic helper has no shared memory")})
 	}
@@ -68,9 +76,11 @@ func (in *Instance) dispatchAtomicWaitHelper(helper uint32, args, results []uint
 		results[0] = uint64(in.memory.growShared(uint32(args[0]), maximum))
 		return
 	}
-	ctx := context.Background()
-	if state, ok := atomicWaitInvocationContexts.Load(in); ok {
-		ctx = state.(*atomicWaitInvocationContext).ctx
+	if ctx == nil {
+		ctx = context.Background()
+		if state, ok := atomicWaitInvocationContexts.Load(in); ok {
+			ctx = state.(*atomicWaitInvocationContext).ctx
+		}
 	}
 	var (
 		result uint32

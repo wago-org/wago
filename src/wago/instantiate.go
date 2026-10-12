@@ -1723,6 +1723,18 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if !b.collectorShared && c.allowsIndependentInstanceExecution(imports, independentInstances) {
 		in.executionFlags.Store(executionFlagIndependent)
 	}
+	if threadedControl {
+		foreign := b.collectorShared || c.needsFuncRefContext() || c.tableImportCount() != 0
+		for i := range c.Imports {
+			if _, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport); ok {
+				foreign = true
+				break
+			}
+		}
+		if foreign {
+			in.executionFlags.Store(in.executionFlags.Load()&^executionFlagIndependent | executionFlagForeignNativeCalls)
+		}
+	}
 	b.registeredInstance = in
 	if in.syncMode {
 		if err := registerHostControl(in); err != nil {

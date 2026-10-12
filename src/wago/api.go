@@ -1047,8 +1047,8 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 	if bounds != BoundsChecksExplicit {
 		return errors.New("threads currently require explicit bounds checks")
 	}
-	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.TagCount() != 0 || len(m.Elements) != 0 {
-		return errors.New("threads currently admit numeric functions and globals without host imports, tables, tags, or element segments")
+	if m.TableCount() != 0 || m.TagCount() != 0 || len(m.Elements) != 0 {
+		return errors.New("threads currently admit functions and globals without tables, tags, or element segments")
 	}
 	for i := range m.Imports {
 		if imp := &m.Imports[i]; imp.Type.Kind == wasm.ExternGlobal && imp.Type.GlobalType().Mutable {

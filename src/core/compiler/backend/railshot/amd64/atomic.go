@@ -50,6 +50,7 @@ func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
 		mt, ok := f.memoryType(0)
 		top := f.s.back()
 		if ok && mt.Shared && top.elemKind() == ekValue && top.st.kind == stConst && top.st.cval == 0 {
+			f.consumeGCFrameCallsite()
 			return f.atomicZeroWait(d)
 		}
 	}

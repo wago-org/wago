@@ -1359,11 +1359,15 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 // their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call(callKindHostSync)
-	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
+	// Blocking waits use the complete host frame and GC callsite maps. Other
+	// atomic helpers retain the compact internal transition.
+	atomicWait := uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 &&
+		(uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait32 || uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait64)
+	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	p := len(ft.Params)
 	var rootOffsets []uint32
 	recordRoots := false
-	if uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) == 0 {
+	if !internalGC {
 		rootOffsets, recordRoots = f.prepareGCFrameCallsite(p)
 	}
 	paramSlots := funcTypeSlots(ft.Params)
