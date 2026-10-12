@@ -331,6 +331,10 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	if err := w.funcSigs(c.Funcs, c.Types); err != nil {
 		return nil, sizes, err
 	}
+	w.bool(c.HasStart)
+	w.bool(c.StartIsImport)
+	w.uvar(uint64(c.StartLocalFunc))
+	w.uvar(uint64(c.StartImportIdx))
 	mark(&sizes.Functions)
 	w.stringIntMap(c.Exports)
 	w.nameSec(c.Names)
@@ -1014,6 +1018,26 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if err != nil {
 		return err
 	}
+	c.HasStart, err = r.bool()
+	if err != nil {
+		return err
+	}
+	c.StartIsImport, err = r.bool()
+	if err != nil {
+		return err
+	}
+	startLocal, err := r.uvar()
+	if err != nil {
+		return err
+	}
+	startImport, err := r.uvar()
+	if err != nil {
+		return err
+	}
+	if startLocal > uint64(maxInt()) || startImport > uint64(maxInt()) {
+		return fmt.Errorf("start function index overflows int")
+	}
+	c.StartLocalFunc, c.StartImportIdx = int(startLocal), int(startImport)
 	c.Exports, err = r.stringIntMap()
 	if err != nil {
 		return err

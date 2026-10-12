@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"testing"
 )
@@ -137,5 +138,62 @@ func TestStartTrapKeepsImportedActiveSegmentSideEffects(t *testing.T) {
 	}
 	if value := AsI32(got[0]); value != 104 {
 		t.Fatalf("memory[0] = %d, want 104 ('h')", value)
+	}
+}
+
+func TestCachedStartFunctions(t *testing.T) {
+	for _, tc := range []struct {
+		name, wat      string
+		imported, trap bool
+	}{
+		{name: "local", wat: `(module (global $g (mut i32) (i32.const 0)) (func (result i32) i32.const 7) (func $init i32.const 42 global.set $g) (start $init) (func (export "get") (result i32) global.get $g))`},
+		{name: "imported", wat: `(module (import "env" "unused" (func)) (import "env" "init" (func $init)) (start $init))`, imported: true},
+		{name: "trapping", wat: `(module (func $init unreachable) (start $init))`, trap: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := MustCompile(watToWasmCA(t, tc.wat))
+			defer c.Close()
+			for _, stream := range []bool{false, true} {
+				blob, err := c.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				var loaded Compiled
+				if stream {
+					_, err = loaded.ReadFrom(bytes.NewReader(blob))
+				} else {
+					err = loaded.UnmarshalBinary(blob)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer loaded.Close()
+				if !loaded.HasStart || loaded.StartIsImport != c.StartIsImport || loaded.StartLocalFunc != c.StartLocalFunc || loaded.StartImportIdx != c.StartImportIdx {
+					t.Fatalf("start metadata lost: loaded=(%v,%v,%d,%d) source=(%v,%v,%d,%d)", loaded.HasStart, loaded.StartIsImport, loaded.StartLocalFunc, loaded.StartImportIdx, c.HasStart, c.StartIsImport, c.StartLocalFunc, c.StartImportIdx)
+				}
+				calls := 0
+				in, err := Instantiate(&loaded, testImports("env.init", func() { calls++ }, "env.unused", func() { t.Fatal("non-start import called") }))
+				if tc.trap {
+					if err == nil || in != nil {
+						t.Fatalf("cached trapping start instantiated: %v", err)
+					}
+					continue
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tc.imported {
+					if calls != 1 {
+						t.Fatalf("imported start calls=%d", calls)
+					}
+				} else {
+					got, err := in.Invoke("get")
+					if err != nil || len(got) != 1 || got[0] != 42 {
+						t.Fatalf("cached initialization=%v, %v", got, err)
+					}
+				}
+				in.Close()
+			}
+		})
 	}
 }
