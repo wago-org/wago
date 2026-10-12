@@ -543,3 +543,47 @@ proposal gates pass. A broad remote bulk filter also selected unrelated staged
 GC tests, which fail because `tests/conformance/spec-v3/test/core` is absent on
 that host; the targeted AMD64 thread and backend bulk tests pass. Full official
 Core 3 conformance and passive-copy parity remain open.
+
+### Register-preserving passive initialization (2026-10-12)
+
+`15daed25` replaces the constant shared-memory initialization path's whole-stack
+flush with allocator-owned operands and scratch. Memory32 operands are narrowed
+before the live destination and private passive-source checks. Both checks
+precede writes. Source bytes cannot alias the destination, so exact ascending
+NEON/XMM chunks and scalar tails retain initialization semantics. Dynamic and
+ordinary-memory paths retain their prior lowering. No function-state fields or
+runtime metadata are added.
+
+The new pressure module retains sixteen computed scalar locals, twenty-four
+SIMD locals, and eight prior memory loads across a 33-byte initialization that
+overwrites some of those loads' addresses. It verifies prior-load ordering,
+exact initialized bytes, and all retained values, with cache on/off and both
+register/wrapper calling conventions. Original and codec-loaded products pass
+on Darwin arm64 and Linux amd64. Full thread suites and backend bulk tests pass
+on both architectures. Three guarded race repetitions of data tests pass on
+both. Local Core 3 regression (215 modules, 690 assertions) and unsupported
+proposal gates pass. These remain targeted gates rather than full conformance.
+
+An alternating before/current/peer/current/before/peer/before/current/peer run
+retains the same `326f066d...34798b` artifact and arithmetic oracle. Each of the
+three launches per product has five verified samples, two warmup batches, and
+passes the 50 ms duration target. M4 Max medians per 262,144 operations are
+429,827 ns before, 298,301 ns current (-30.6%), and 190,241 ns w2c2. Current/peer
+is 1.568; passive-copy parity remains open. Peer variation relative to the prior
+checkpoint is why this comparison uses its newly interleaved peer, not an older
+peer timing. AMD64 execution is validated, but this capture measures ARM64.
+
+Before adapter:
+`409ed3baa238d398b118dbd79f69e8de7a2a6ff2/source-7120a91fdb73bfb8f05bbca16b668ea5035cfd41722c034c246658550bc8b7c1`.
+Current adapter:
+`15daed2519f9cae6826937d776a4badb08502dfd/source-cad45205e180313b7c8a00f1bc361e3949bb01a5ef8dcf3ad567b69b765a7b2f`.
+Ignored evidence `threads-shared-data-register-ab-arm64.json` has SHA-256
+`9ed3470ffcfa52917322486e3e0e31a1aebd408e07013f0b45f9f306166e3b6d`;
+the adjacent plan retains adapter commands and ordering.
+
+Three sequential 300 ms compile samples yield median default/Core 3 scalar
+6,019/5,926 ns with 19,202/19,058 bytes and 74/73 allocations. Imported workers
+p1 yield 21,901,818 ns, 3,420,965 bytes and 94 allocations, with unchanged
+1,587,220 native code bytes. This is near the prior allocation footprint; it
+is not a controlled compile speedup or a corpus-wide peak-RSS result. Evidence
+is `threads-shared-data-register-compile.txt`.

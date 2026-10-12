@@ -139,6 +139,13 @@ a 2.354 ratio. Compile fixture samples retain approximately prior allocation
 bytes/counts and identical imported-worker code size; broader compile memory
 and full feature parity remain open.
 
+The next passive-copy checkpoint preserves allocated scalar/SIMD values instead
+of flushing the operand stack. Both architecture pressure/codec/cache/ABI and
+guarded race checks pass. Its alternating ARM64 median improves another 30.6%
+(429,827 to 298,301 ns), against a newly interleaved 190,241 ns w2c2 median,
+leaving a 1.568 ratio. Compile fixture allocation footprint and code size remain
+near the prior checkpoint. Full coverage, conformance, and parity remain open.
+
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
 `~/.cache/wago-wasm3-parity/wago`.
