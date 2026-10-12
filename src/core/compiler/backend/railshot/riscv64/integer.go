@@ -1305,7 +1305,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("global index")
 			}
 			g := state.globals[idx]
-			reference := wasm.EqualValType(g.typ, wasm.FuncRef) || state.i31Core && (isI31CoreRef(g.typ) || wasm.EqualValType(g.typ, wasm.I31Ref) || wasm.EqualValType(g.typ, wasm.AnyRef) || (state.gcStructPacked || state.gcStructBasic || state.gcArrayInitElem || state.gcArrayInitData || state.gcArrayFill || state.gcArrayCopy) && g.typ.Kind() == wasm.ValRef)
+			reference := g.reference || wasm.EqualValType(g.typ, wasm.FuncRef) || state.i31Core && (isI31CoreRef(g.typ) || wasm.EqualValType(g.typ, wasm.I31Ref) || wasm.EqualValType(g.typ, wasm.AnyRef) || (state.gcStructPacked || state.gcStructBasic || state.gcArrayInitElem || state.gcArrayInitData || state.gcArrayFill || state.gcArrayCopy) && g.typ.Kind() == wasm.ValRef)
 			if reference && !state.i31Core && (!privateRefs || !state.importReferences || g.mutable && !state.localMutableReferences) {
 				return integerSummary{}, unsupported("immutable retained reference global required")
 			}

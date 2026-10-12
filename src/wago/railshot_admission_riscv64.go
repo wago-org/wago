@@ -595,8 +595,15 @@ func railshotValidateCompiled(c *Compiled) error {
 			hasReferenceGlobal = true
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
-			if err != nil || exact != plain || global.Mutable && (!localMutableReferences || i < len(c.GlobalImports)) || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+			typedIndex, typed := rv64PrivateIndexedFunctionType(c, exact)
+			if err != nil || exact != plain && !typed || global.Mutable && (!localMutableReferences || i < len(c.GlobalImports)) || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
 				return reject("immutable reference global and retained references required")
+			}
+			if typed {
+				local := int(global.InitFunc) - c.NumImports
+				if i < len(c.GlobalImports) || global.Mutable || c.NumImports != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || c.HasStart || !global.HasInitFunc || global.HasInitGlobal || global.InitGlobal != 0 || local < 0 || local >= len(c.Funcs) || !c.Funcs[local].HasTypeIndex || c.Funcs[local].TypeIndex != typedIndex || !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
+					return reject("private indexed reference global exact target")
+				}
 			}
 			if i < len(c.GlobalImports) && (global.HasInitFunc || global.HasInitGlobal) {
 				return reject("reference import initializer")

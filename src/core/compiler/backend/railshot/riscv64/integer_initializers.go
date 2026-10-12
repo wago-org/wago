@@ -147,6 +147,10 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 			}
 			continue
 		}
+		if _, ok := privateIndexedFunctionGlobal(global, m); ok {
+			hasReferenceGlobal = true
+			continue
+		}
 		if scalarType(global.Type.Type, false) {
 			if err := admitModuleIntegerInitializer(global.Init, global.Type.Type, m, m.ImportedGlobalCount()+i); err != nil {
 				return err

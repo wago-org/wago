@@ -15,9 +15,9 @@ import (
 const TrapMemoryBounds = 5
 
 type globalSpec struct {
-	wide, mutable bool
-	value         uint64
-	typ           wasm.ValType
+	wide, mutable, reference bool
+	value                    uint64
+	typ                      wasm.ValType
 }
 type functionSpec struct {
 	params, results []bool
@@ -355,6 +355,13 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	importedGlobals := len(s.globals)
 	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
 	for _, g := range m.Globals {
+		if _, ok := privateIndexedFunctionGlobal(g, m); ok {
+			if !production || !publicExports {
+				return s, unsupported("private indexed reference global requires the public typed-reference profile")
+			}
+			s.globals = append(s.globals, globalSpec{wide: true, reference: true, typ: g.Type.Type})
+			continue
+		}
 		if gcTypeSubtypingRefFuncGlobals && g.Type.Type.Kind() == wasm.ValRef {
 			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
 			continue

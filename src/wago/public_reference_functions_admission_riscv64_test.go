@@ -201,15 +201,34 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 	copy := *c.executionView()
 	copy.nativeReferenceFunctionABI = true
 	copy.requiredFeatures |= CoreFeatureReferenceTypes
+	plainReference, ok := valueTypeDescriptorFromValType(ValFuncRef)
+	if !ok {
+		t.Fatal("plain funcref exact type")
+	}
+	copy.ValueTypes = []ValueTypeDescriptor{plainReference}
+	copy.Globals = []GlobalDef{{Type: ValFuncRef, HasValueType: true}}
 	if err := copy.validate(); err == nil {
-		t.Fatal("numeric image accepted closed witness")
+		t.Fatal("reference global manufactured a closed function witness")
+	}
+	blob, err := marshalCompiled(&copy)
+	if err == nil {
+		loaded, loadErr := LoadTrustedArtifact(blob)
+		if loaded != nil {
+			_ = loaded.Close()
+		}
+		if loadErr == nil {
+			t.Fatal("reference-global-only artifact manufactured a closed function witness")
+		}
 	}
 	// No additional directory or body bytes are serialized with the new bit.
+	witnessOnly := *c.executionView()
+	witnessOnly.nativeReferenceFunctionABI = true
+	witnessOnly.requiredFeatures |= CoreFeatureReferenceTypes
 	plain, err := marshalCompiledMetadata(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	flagged, err := marshalCompiledMetadata(&copy)
+	flagged, err := marshalCompiledMetadata(&witnessOnly)
 	if err != nil {
 		t.Fatal(err)
 	}

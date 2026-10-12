@@ -17,7 +17,9 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 		return
 	}
 	f.Load(14, spill(referenceSlot), true)
-	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
+	// call_ref has its own null-reference trap. Descriptor corruption and owner
+	// failures below remain indirect-call bounds/signature failures.
+	f.trap(trapNullReference, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
 	f.canonicalReferenceGuard(enc.X14, enc.X5, enc.X7)
 	f.a.Ld(enc.X28, enc.X14, 0)
 	f.a.Addi(enc.X5, enc.Zero, 15)

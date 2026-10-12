@@ -303,7 +303,7 @@ func TestRV64PublicReferenceFunctionNumericCallsTrapReuse(t *testing.T) {
 				for _, choice := range []uint64{0, 1, 0, 1} {
 					_, err := in.Invoke("run", 0xdeadbeef00000000|choice)
 					var trap *coreruntime.TrapError
-					want := coreruntime.TrapIndirectOutOfBounds
+					want := coreruntime.TrapNullReference
 					if choice == 1 {
 						want = coreruntime.TrapStackFenceBreached
 					}

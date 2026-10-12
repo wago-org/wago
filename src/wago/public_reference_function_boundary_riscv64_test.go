@@ -216,7 +216,7 @@ func TestRV64PublicReferenceFunctionCallBoundarySourceArtifact(t *testing.T) {
 				t.Fatal("null call_ref returned values", got, err)
 			} else {
 				var trap *coreruntime.TrapError
-				if !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds {
+				if !errors.As(err, &trap) || trap.Code != coreruntime.TrapNullReference {
 					t.Fatal("null call_ref trap", err)
 				}
 			}

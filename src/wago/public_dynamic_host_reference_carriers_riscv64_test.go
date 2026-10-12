@@ -100,7 +100,7 @@ func TestRV64PublicDynamicHostReferenceCarrierArtifactAdmission(t *testing.T) {
 	}
 	base := rv64NativeTailCompile(t, "dynamic-host-reference-carrier-admission", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}, true), false)
 	if len(base.code) != 2736 || sha256.Sum256(base.code) != [sha256.Size]byte{0x6a, 0x15, 0x65, 0xa6, 0xcd, 0xf7, 0x76, 0x44, 0x72, 0x04, 0xe6, 0x9c, 0x41, 0xd3, 0xcc, 0x5a, 0xde, 0xab, 0xfd, 0x84, 0xb7, 0xad, 0x32, 0xbd, 0xfd, 0x0e, 0x85, 0x8c, 0x61, 0xfa, 0x18, 0x6b} {
-		t.Fatal("dynamic host reference tail code changed")
+		t.Fatalf("dynamic host reference tail code changed: len=%d sha256=%x", len(base.code), sha256.Sum256(base.code))
 	}
 	if !rv64PublicDynamicHostReferenceBoundary(base) || rv64ValidateReferenceFunctions(base) != nil || railshotValidateCompiled(base) != nil {
 		t.Fatal("dynamic host reference carrier baseline")
@@ -190,8 +190,8 @@ func TestRV64PublicDynamicHostReferenceCallArtifactAdmission(t *testing.T) {
 		t.Skip("source compiler path only")
 	}
 	base := rv64NativeTailCompile(t, "dynamic-host-reference-call-admission", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}, true, true), false)
-	if len(base.code) != 7344 || sha256.Sum256(base.code) != [sha256.Size]byte{0xe9, 0x2f, 0xfd, 0x31, 0x95, 0x0a, 0x11, 0xc4, 0x28, 0x97, 0x36, 0x4c, 0xf7, 0x30, 0x3f, 0x13, 0x0d, 0xd5, 0xcc, 0x30, 0x6b, 0x78, 0xa5, 0x83, 0x74, 0x1f, 0x93, 0x1e, 0x48, 0xa0, 0xe5, 0x11} {
-		t.Fatal("dynamic host reference call code changed")
+	if len(base.code) != 7344 || sha256.Sum256(base.code) != [sha256.Size]byte{0x07, 0xa1, 0x5e, 0xd8, 0x19, 0xf1, 0xbe, 0x52, 0x83, 0xb5, 0xc7, 0xbc, 0x9b, 0xb4, 0xfc, 0xf9, 0x03, 0x77, 0x28, 0x0f, 0x48, 0xf6, 0x63, 0x19, 0x2c, 0x1c, 0xbe, 0x07, 0x2b, 0xce, 0x01, 0xab} {
+		t.Fatalf("dynamic host reference call code changed: len=%d sha256=%x", len(base.code), sha256.Sum256(base.code))
 	}
 	if !rv64PublicDynamicHostReferenceBoundary(base) || rv64NativeTailModule(base) != nil || rv64ValidateReferenceFunctions(base) != nil || railshotValidateCompiled(base) != nil {
 		t.Fatal("dynamic host reference call baseline")

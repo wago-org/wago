@@ -92,7 +92,8 @@ func admitClosedReferenceNumericStateWithImports(m *wasm.Module, vector bool, re
 	}
 	for _, global := range m.Globals {
 		typ := global.Type.Type
-		reference := wasm.EqualValType(typ, wasm.FuncRef)
+		_, indexedReference := privateIndexedFunctionGlobal(global, m)
+		reference := wasm.EqualValType(typ, wasm.FuncRef) || indexedReference
 		if !reference && (typ.Kind() == wasm.ValRef || !scalarType(typ, true) && !(vector && wasm.EqualValType(typ, wasm.V128))) {
 			return unsupported("closed reference owned numeric or private funcref globals only")
 		}

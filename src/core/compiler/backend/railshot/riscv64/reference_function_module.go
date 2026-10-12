@@ -512,7 +512,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		}
 	}
 	for _, global := range m.Globals {
-		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
+		_, indexedReference := privateIndexedFunctionGlobal(global, m)
+		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) || indexedReference {
 			value, err := tableElementExpression(global.Init)
 			if err != nil {
 				return err

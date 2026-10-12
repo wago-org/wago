@@ -125,7 +125,11 @@ func rv64PublicReferenceSourceArtifact(t *testing.T, ordinary bool) {
 						got, err := in.Invoke("call", append(slices.Clone(input), selector)...)
 						if selector != 0 {
 							var trap *coreruntime.TrapError
-							if !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds {
+							wantTrap := coreruntime.TrapIndirectOutOfBounds
+							if ordinary {
+								wantTrap = coreruntime.TrapNullReference
+							}
+							if !errors.As(err, &trap) || trap.Code != wantTrap {
 								t.Fatal("typed null reference trap", got, err)
 							}
 						} else if err != nil || !slices.Equal(got, want) {

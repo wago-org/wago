@@ -61,6 +61,16 @@ func TestReferenceCallRV64PreflightBeforeArgumentWrites(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			nullRoot := tailRANativeFrameInvocationLocals(t, sig, f.a, ca, f.da, 1, true, extra, func(e *integerEmitter) {
+				e.mode.referenceCalls, e.mode.foreignTableCalls = true, true
+				e.a.Constant64(enc.X5, 0)
+				e.Store(int32(48+16*slot), 5, true)
+				e.referenceCall(sig, key, 0, slot, func(i int) int32 { return int32(48 + 16*i) }, 16)
+				tailRANativeSerialize(e, sig.Results, 0)
+			})
+			if err := nullRoot.code.Seal(); err != nil {
+				t.Fatal(err)
+			}
 			prepare := func() {
 				f.bind(t, f.e.StackLimit())
 				f.a.SetRV64InvocationView(f.e.RV64InvocationViewPointer())
@@ -68,6 +78,13 @@ func TestReferenceCallRV64PreflightBeforeArgumentWrites(t *testing.T) {
 				for i := range f.results {
 					f.results[i] = 0xa5
 				}
+			}
+			prepare()
+			beforeArgs, beforeResults := bytes.Clone(f.args), bytes.Clone(f.results)
+			err = f.e.CallPrepared(nullRoot.code.Base(), f.args, f.a.LinMemBase(), f.trap, f.results)
+			var nullTrap *coreruntime.TrapError
+			if !errors.As(err, &nullTrap) || nullTrap.Code != coreruntime.TrapNullReference || !bytes.Equal(f.args, beforeArgs) || !bytes.Equal(f.results, beforeResults) || len(nullTrap.Frames) != 1 || nullTrap.Frames[0].FunctionIndex != 1 || !nullTrap.Frames[0].HasProgramCounter || nullTrap.Frames[0].ProgramCounter != 37 {
+				t.Fatal("call_ref null trap before writes", err)
 			}
 			prepare()
 			if err := f.e.CallPrepared(root.code.Base(), f.args, f.a.LinMemBase(), f.trap, f.results); err != nil || binary.LittleEndian.Uint64(f.results) != 0x80000001 {

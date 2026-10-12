@@ -81,7 +81,7 @@ func TestRV64PublicReferenceFunctionExternrefArgumentSourceArtifact(t *testing.T
 				t.Fatal("null callable target returned values", got, err)
 			} else {
 				var trap *coreruntime.TrapError
-				if !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds {
+				if !errors.As(err, &trap) || trap.Code != coreruntime.TrapNullReference {
 					t.Fatal("null callable target trap", err)
 				}
 			}

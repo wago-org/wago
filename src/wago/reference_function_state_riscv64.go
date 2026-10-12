@@ -8,6 +8,17 @@ import (
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 )
 
+func rv64PrivateIndexedFunctionType(c *Compiled, exact ValueTypeDescriptor) (uint32, bool) {
+	if c == nil || exact.Kind != ValueTypeReference || exact.Ref.Nullable || exact.Ref.Exact || !exact.Ref.Heap.Defined || exact.Ref.Heap.Abstract != 0 || uint64(exact.Ref.Heap.TypeIndex) >= uint64(len(c.Types)) {
+		return 0, false
+	}
+	typ := c.Types[exact.Ref.Heap.TypeIndex]
+	if typ.RecGroup != exact.Ref.Heap.TypeIndex || typ.Kind != CompositeTypeFunction || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.Describes != 0 || typ.HasDescriptor || typ.Descriptor != 0 || len(typ.Fields) != 0 || typ.Array != (FieldTypeDescriptor{}) {
+		return 0, false
+	}
+	return exact.Ref.Heap.TypeIndex, true
+}
+
 // Retained numeric state uses the ordinary exact metadata representation. The
 // closed witness confines reference cells to own numeric descriptors;
 // imported storage and signatures remain numeric.
@@ -54,18 +65,38 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 			return reject("memory bytes")
 		}
 	}
-	var kinds, used uint8
+	var kinds uint8
+	var used [6]bool
 	plainReference, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	for _, v := range c.ValueTypes {
-		if v.Kind > ValueTypeReference || v.Kind == ValueTypeReference && v != plainReference || v.Kind != ValueTypeReference && v.Ref != (ReferenceTypeDescriptor{}) || v.Kind == ValueTypeV128 && !c.requiredFeatures.IsEnabled(CoreFeatureSIMD) || kinds&(1<<v.Kind) != 0 {
-			return reject("unique numeric or canonical nullable funcref exact value types required")
+	for i, v := range c.ValueTypes {
+		if v.Kind > ValueTypeReference || v.Kind != ValueTypeReference && v.Ref != (ReferenceTypeDescriptor{}) || v.Kind == ValueTypeV128 && !c.requiredFeatures.IsEnabled(CoreFeatureSIMD) {
+			return reject("bounded numeric or private indexed function exact value types required")
+		}
+		for j := range i {
+			if c.ValueTypes[j] == v {
+				return reject("duplicate exact value type")
+			}
+		}
+		if v.Kind == ValueTypeReference {
+			if v != plainReference {
+				if _, ok := rv64PrivateIndexedFunctionType(c, v); !ok {
+					return reject("private indexed function exact value type required")
+				}
+			}
+			continue
+		}
+		if kinds&(1<<v.Kind) != 0 {
+			return reject("unique numeric exact value types required")
 		}
 		kinds |= 1 << v.Kind
 	}
 	if c.tableCount() != 0 {
 		// The preceding exact table proof establishes this pool binding even
 		// when the module has no globals consuming the canonical funcref type.
-		used |= 1 << c.TableValueTypeIndex
+		if uint64(c.TableValueTypeIndex) >= uint64(len(c.ValueTypes)) {
+			return reject("table exact value type index")
+		}
+		used[c.TableValueTypeIndex] = true
 	}
 	for index, g := range c.Globals {
 		if !g.HasValueType || uint64(g.ValueTypeIndex) >= uint64(len(c.ValueTypes)) {
@@ -75,10 +106,20 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		if !ok || v != g.Type {
 			return reject("numeric global ABI mismatch")
 		}
-		used |= 1 << g.ValueTypeIndex
+		used[g.ValueTypeIndex] = true
 		if g.Type == ValFuncRef {
-			if index < len(c.GlobalImports) || c.ValueTypes[g.ValueTypeIndex] != plainReference || g.HasInitGlobal || g.InitGlobal != 0 || len(g.InitExpr) != 0 || g.Bits != 0 || g.V128 != (V128{}) || !g.HasInitFunc && g.InitFunc != 0 || g.HasInitFunc && (uint64(g.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(g.InitFunc))) {
+			exact := c.ValueTypes[g.ValueTypeIndex]
+			typedIndex, typed := rv64PrivateIndexedFunctionType(c, exact)
+			if index < len(c.GlobalImports) || g.HasInitGlobal || g.InitGlobal != 0 || len(g.InitExpr) != 0 || g.Bits != 0 || g.V128 != (V128{}) || !g.HasInitFunc && g.InitFunc != 0 || g.HasInitFunc && (uint64(g.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(g.InitFunc))) {
 				return reject("private reference cell literal/target confinement")
+			}
+			if typed {
+				local := int(g.InitFunc) - c.NumImports
+				if g.Mutable || c.NumImports != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || c.HasStart || !g.HasInitFunc || local < 0 || local >= len(c.Funcs) || !c.Funcs[local].HasTypeIndex || c.Funcs[local].TypeIndex != typedIndex || !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || !c.needsFuncRefDescs() {
+					return reject("private indexed reference cell exact target confinement")
+				}
+			} else if exact != plainReference {
+				return reject("private reference cell exact type")
 			}
 			if !consume(18) {
 				return reject("reference cell initializer bytes")
@@ -118,12 +159,17 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 	for _, elements := range [][]ElemInit{c.Elems, c.passiveElems} {
 		for _, e := range elements {
 			if e.HasValueType {
-				used |= 1 << e.ValueTypeIndex
+				if uint64(e.ValueTypeIndex) >= uint64(len(c.ValueTypes)) {
+					return reject("element exact value type index")
+				}
+				used[e.ValueTypeIndex] = true
 			}
 		}
 	}
-	if used != uint8((1<<len(c.ValueTypes))-1) {
-		return reject("unused numeric exact value types")
+	for i := range c.ValueTypes {
+		if !used[i] {
+			return reject("unused exact value types")
+		}
 	}
 	for i := 0; i < c.activeDataCount(); i++ {
 		data := c.activeDataAt(i)

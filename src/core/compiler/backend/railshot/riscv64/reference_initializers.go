@@ -4,6 +4,31 @@ package riscv64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
+// privateIndexedFunctionGlobal admits the table-free typed cells used to hold
+// same-instance recursive call_ref targets. Keep this separate from public
+// funcref globals: the carrier is immutable, non-null, non-exact, initialized
+// directly by ref.func, and its target must have the indexed function type
+// named by the cell. No imported target or subtype conversion is accepted.
+func privateIndexedFunctionGlobal(global wasm.Global, m *wasm.Module) (uint32, bool) {
+	if m == nil || global.Type.Mutable || len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || global.Type.Type.Kind() != wasm.ValRef {
+		return 0, false
+	}
+	ref := global.Type.Type.Ref()
+	heap := ref.Heap()
+	if ref.Nullable() || ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || !internalFunctionReferenceWithTypes(global.Type.Type, true, internalReferenceTypes{decoded: m.Types}) {
+		return 0, false
+	}
+	value, err := tableElementExpression(global.Init)
+	if err != nil || value.Null || uint64(value.FuncIndex) >= uint64(len(m.Code)) {
+		return 0, false
+	}
+	target := m.FuncTypes[value.FuncIndex]
+	if target.Rec || target.Index != heap.Type().Index {
+		return 0, false
+	}
+	return value.FuncIndex, true
+}
+
 // Public immutable cells use retained canonical descriptors. Imported cells
 // require the retained-reference profile and frozen Runtime descriptor-owner roots.
 func admitImmutableFunctionGlobal(global wasm.Global, m *wasm.Module, limit int) error {

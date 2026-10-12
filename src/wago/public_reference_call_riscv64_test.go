@@ -122,7 +122,7 @@ func TestRV64PublicReferenceCallDeadAndNullSourceArtifact(t *testing.T) {
 				}
 				_, err = in.Invoke("run")
 				var trap *coreruntime.TrapError
-				want := coreruntime.TrapIndirectOutOfBounds
+				want := coreruntime.TrapNullReference
 				if dead {
 					want = coreruntime.TrapUnreachable
 				}
@@ -271,7 +271,7 @@ func TestRV64PublicReferenceCallNativeEntryGraph(t *testing.T) {
 						}
 					} else {
 						var trap *coreruntime.TrapError
-						if !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds {
+						if !errors.As(err, &trap) || trap.Code != coreruntime.TrapNullReference {
 							t.Fatal("reference callee null trap", err)
 						}
 					}
