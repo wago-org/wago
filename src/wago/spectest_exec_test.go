@@ -2410,6 +2410,8 @@ func specTrapMatches(err error, want string) (bool, string) {
 		ok = matches(wago.TrapCalledFnNotLinked, wago.TrapLinkedMemNotLinked)
 	case "failed to grow memory", "could not grow memory":
 		ok = matches(wago.TrapLinMemCouldNotExtend)
+	case "unaligned atomic":
+		ok = matches(wago.TrapAtomicUnaligned)
 	case "expected shared memory":
 		ok = matches(wago.TrapExpectedSharedMemory)
 	default:
@@ -2468,6 +2470,8 @@ func TestSpecTrapMatching(t *testing.T) {
 		{name: "indexed uninitialized element", err: &wago.TrapError{Code: wago.TrapIndirectOutOfBounds}, want: "uninitialized element 2", ok: true},
 		{name: "integer overflow division", err: &wago.TrapError{Code: wago.TrapDivOverflow}, want: "integer overflow", ok: true},
 		{name: "integer overflow conversion", err: &wago.TrapError{Code: wago.TrapTruncOverflow}, want: "integer overflow", ok: true},
+		{name: "unaligned atomic", err: &wago.TrapError{Code: wago.TrapAtomicUnaligned}, want: "unaligned atomic", ok: true},
+		{name: "atomic alignment rejects bounds trap", err: &wago.TrapError{Code: wago.TrapLinMemOutOfBounds}, want: "unaligned atomic"},
 		{name: "expected shared memory", err: &wago.TrapError{Code: wago.TrapExpectedSharedMemory}, want: "expected shared memory", ok: true},
 		{name: "non trap", err: errors.New("api failure"), want: "unreachable"},
 		{name: "unknown vocabulary", err: &wago.TrapError{Code: wago.TrapUnreachable}, want: "mystery trap"},
