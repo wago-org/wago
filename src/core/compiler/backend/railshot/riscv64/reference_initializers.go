@@ -406,7 +406,9 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 7 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
-	if !i31CoreFunctionType(&m.Types[0], nil, []wasm.ValType{wasm.I32}) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
+	zeroArgument := i31CoreFunctionType(&m.Types[0], nil, []wasm.ValType{wasm.I32})
+	i32Argument := i31CoreFunctionType(&m.Types[0], []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	if (!zeroArgument && !i32Argument) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
 		return false
 	}
 	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
@@ -422,6 +424,11 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 		{0xd2, 1, 0x24, 0, 0x0b},
 		{0xd0, 0, 0x24, 0, 0x0b},
 		{0x23, 0, 0x14, 0, 0x0b},
+	}
+	if i32Argument {
+		wantBodies[0] = []byte{0x20, 0, 0x0b}
+		wantBodies[1] = []byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}
+		wantBodies[5] = []byte{0x20, 0, 0x23, 0, 0x14, 0, 0x0b}
 	}
 	for i := range m.Code {
 		if m.FuncTypes[i] != (wasm.TypeIdx{Index: wantTypes[i]}) || m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, wantBodies[i]) {

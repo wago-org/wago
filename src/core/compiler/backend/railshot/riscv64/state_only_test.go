@@ -212,6 +212,54 @@ func mutableFuncrefLocalCallSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalCallI32Source() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0),
+			wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2),
+			wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4),
+			wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x23, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
+func TestMutableFuncrefLocalCallI32Production(t *testing.T) {
+	source := mutableFuncrefLocalCallI32Source()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitMutableFunctionGlobalLocalCall(m) {
+		t.Fatal("i32 local-call source was not admitted")
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("mutable funcref i32 local-call compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0xcb, 0x2b, 0xa8, 0x09, 0x51, 0xa2, 0xdb, 0x46, 0xbc, 0x71, 0xd5, 0xe8, 0xc3, 0x65, 0x64, 0x0a, 0xd0, 0xc7, 0xfe, 0x4b, 0xb5, 0x3c, 0xd0, 0x7f, 0x44, 0x77, 0xe0, 0x5d, 0xc0, 0xc9, 0x4d, 0xee}
+	wantEntry := []int{0, 608, 1264, 1984, 2704, 3360}
+	if len(image.Code) != 6924 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+		t.Fatalf("mutable funcref i32 local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
+	}
+}
+
 func TestMutableFuncrefLocalCallProduction(t *testing.T) {
 	source := mutableFuncrefLocalCallSource()
 	if err := AdmitProductionSource(source); err != nil {
@@ -236,38 +284,41 @@ func TestMutableFuncrefLocalCallProduction(t *testing.T) {
 }
 
 func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
-	for name, mutate := range map[string]func(*wasm.Module){
-		"abstract-global":       func(m *wasm.Module) { m.Globals[0].Type.Type = wasm.FuncRef },
-		"target-result":         func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x41, 43, 0x0b} },
-		"writer-other-function": func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0xd2, 5, 0x24, 0, 0x0b} },
-		"wrong-call-export":     func(m *wasm.Module) { m.Exports[5].Name = "other" },
-		"reordered-types": func(m *wasm.Module) {
-			m.Types[0], m.Types[1] = m.Types[1], m.Types[0]
-			for i, index := range []uint32{1, 1, 0, 0, 0, 1} {
-				m.FuncTypes[i].Index = index
-			}
-			ref := m.Globals[0].Type.Type.Ref()
-			m.Globals[0].Type.Type = wasm.RefVal(wasm.Ref(ref.Nullable(), wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), ref.Exact()))
-			m.Globals[0].Init.BodyBytes = []byte{0xd0, 1, 0x0b}
-			m.Code[4].BodyBytes = []byte{0xd0, 1, 0x24, 0, 0x0b}
-			m.Code[5].BodyBytes = []byte{0x23, 0, 0x14, 1, 0x0b}
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			m, err := wasm.DecodeModule(mutableFuncrefLocalCallSource())
-			if err != nil {
-				t.Fatal(err)
-			}
-			mutate(m)
-			if admitMutableFunctionGlobalLocalCall(m) {
-				t.Fatal("broader local-call source admitted")
-			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref local-call source reached staging", image, err, staged)
-			}
-		})
+	for variant, source := range map[string]func() []byte{"zero": mutableFuncrefLocalCallSource, "i32": mutableFuncrefLocalCallI32Source} {
+		for name, mutate := range map[string]func(*wasm.Module){
+			"abstract-global":       func(m *wasm.Module) { m.Globals[0].Type.Type = wasm.FuncRef },
+			"target-result":         func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x41, 43, 0x0b} },
+			"writer-other-function": func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0xd2, 5, 0x24, 0, 0x0b} },
+			"wrong-call-export":     func(m *wasm.Module) { m.Exports[5].Name = "other" },
+			"reordered-types": func(m *wasm.Module) {
+				m.Types[0], m.Types[1] = m.Types[1], m.Types[0]
+				for i, index := range []uint32{1, 1, 0, 0, 0, 1} {
+					m.FuncTypes[i].Index = index
+				}
+				ref := m.Globals[0].Type.Type.Ref()
+				m.Globals[0].Type.Type = wasm.RefVal(wasm.Ref(ref.Nullable(), wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), ref.Exact()))
+				m.Globals[0].Init.BodyBytes = []byte{0xd0, 1, 0x0b}
+				m.Code[4].BodyBytes = []byte{0xd0, 1, 0x24, 0, 0x0b}
+				m.Code[5].BodyBytes = slices.Clone(m.Code[5].BodyBytes)
+				m.Code[5].BodyBytes[len(m.Code[5].BodyBytes)-2] = 1
+			},
+		} {
+			t.Run(variant+"-"+name, func(t *testing.T) {
+				m, err := wasm.DecodeModule(source())
+				if err != nil {
+					t.Fatal(err)
+				}
+				mutate(m)
+				if admitMutableFunctionGlobalLocalCall(m) {
+					t.Fatal("broader local-call source admitted")
+				}
+				staged := false
+				image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
+				if image != nil || !errors.Is(err, ErrUnsupported) || staged {
+					t.Fatal("broader mutable funcref local-call source reached staging", image, err, staged)
+				}
+			})
+		}
 	}
 }
 
