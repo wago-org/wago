@@ -77,8 +77,8 @@ its indexed typed table stores two nominal function subtypes, and genuine RV64
 declared function types share the same structural carrier. Source/artifact and
 actual compiler-free execution cover the five successful calls, both wrong-
 signature traps, post-trap re-entry, W^X leases/final unmapping, and hostile
-retained metadata under baseline QEMU RV64G without a collector. Products after
-`.20` through `.25` now form the first exact function `ref.test` checkpoints: one
+retained metadata under baseline QEMU RV64G without a collector. Official `.20`
+through `.26` now form the first exact function `ref.test` checkpoints: one
 private canonical descriptor crosses equivalent recursive type groups and
 produces a normalized true result through table-free genuine RV64 lowering.
 The second checkpoint retains mutually recursive indexed function parameters
@@ -93,8 +93,9 @@ permission are covered without a collector. The fifth checkpoint adds two
 multi-value tests and returns `[1, 1]` for the root and intermediate projections
 of one deeper nominal subtype. The sixth keeps two reference-signature source
 functions non-callable while testing their exact canonical arena identities
-across equivalent recursive groups, returning `[1, 1, 1, 1]`. Products after
-`.25` and native
+across equivalent recursive groups, returning `[1, 1, 1, 1]`. The seventh
+extends both recursive signature pairs across eight exact projections and
+returns eight normalized true results. Products after `.26` and native
 cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain

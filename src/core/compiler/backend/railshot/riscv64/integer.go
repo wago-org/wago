@@ -2092,11 +2092,17 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						if refTestCount >= len(targets) || target != targets[refTestCount] {
 							return integerSummary{}, unsupported("paired function ref.test sequence")
 						}
+					} else if variant == 7 {
+						targets := [...]uint32{0, 2, 0, 2, 4, 6, 5, 7}
+						if refTestCount >= len(targets) || target != targets[refTestCount] {
+							return integerSummary{}, unsupported("full multi function ref.test sequence")
+						}
 					}
 					validTarget := (variant > 0 && variant < 4 && target == 4) ||
 						(variant == 4 && target == 0) ||
 						(variant == 5 && (target == 0 || target == 4)) ||
-						(variant == 6 && target < 4)
+						(variant == 6 && target < 4) ||
+						(variant == 7 && target < 8)
 					accepted := uint32(6)
 					if variant == 3 || variant == 4 {
 						accepted = 4
@@ -2104,6 +2110,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						accepted = 8
 					} else if variant == 6 {
 						accepted = target & 1
+					} else if variant == 7 {
+						accepted = 4 + uint32(refTestCount/2&1)
 					}
 					if !validTarget || int(accepted) >= len(state.types) {
 						return integerSummary{}, unsupported("bounded function ref.test type relation")
@@ -2112,8 +2120,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, err
 					}
 					if live && emit != nil {
-						if variant == 6 {
-							emit.functionReferenceIdentityTest(h, uint32(refTestCount/2), imm.Subopcode == 21)
+						if variant == 6 || variant == 7 {
+							functionIndex := uint32(refTestCount / 2)
+							if variant == 7 {
+								functionIndex &= 1
+							}
+							emit.functionReferenceIdentityTest(h, functionIndex, imm.Subopcode == 21)
 						} else {
 							emit.functionReferenceTest(h, []uint64{state.types[accepted].key}, imm.Subopcode == 21)
 						}
