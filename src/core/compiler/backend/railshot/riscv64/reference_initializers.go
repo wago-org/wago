@@ -487,11 +487,9 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	for i := range m.Code {
 		body := bytes.Equal(m.Code[i].BodyBytes, wantBodies[i])
 		if i == 5 {
-			if i32Argument || vectorArgument {
-				body = body || bytes.Equal(m.Code[i].BodyBytes, []byte{0x20, 0, 0x23, 0, 0x15, 0, 0x0b})
-			} else if mixedVectorArgument {
-				body = body || bytes.Equal(m.Code[i].BodyBytes, []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x23, 0, 0x15, 0, 0x0b})
-			}
+			tailBody := append([]byte(nil), wantBodies[i]...)
+			tailBody[len(tailBody)-3] = 0x15
+			body = body || bytes.Equal(m.Code[i].BodyBytes, tailBody)
 		}
 		if m.FuncTypes[i] != (wasm.TypeIdx{Index: wantTypes[i]}) || m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0 || !body {
 			return false

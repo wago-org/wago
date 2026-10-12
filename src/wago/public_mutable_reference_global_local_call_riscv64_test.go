@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -41,6 +42,17 @@ func rv64MutableFuncrefLocalCallModule() []byte {
 			wasmtest.Code([]byte{0x23, 0, 0x14, 0, 0x0b}),
 		)),
 	)
+}
+
+func rv64MutableFuncrefLocalTailCallModule(source []byte) []byte {
+	tail := slices.Clone(source)
+	pattern := []byte{0x23, 0, 0x14, 0, 0x0b}
+	i := bytes.LastIndex(tail, pattern)
+	if i < 0 {
+		panic("mutable call_ref body not found")
+	}
+	tail[i+2] = 0x15
+	return tail
 }
 
 func rv64MutableFuncrefLocalCallScalarModule(typ wasm.ValType, targetBody []byte) []byte {
@@ -469,6 +481,137 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallI32(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalTailCallRemaining(t *testing.T) {
+	wideTypes := make([]wasm.ValType, 9)
+	wideInput := []uint64{
+		0xdeadbeef80000000, 0xcafebabeffffffff, 0xfeedface00000001,
+		0x111111117fffffff, 0x2222222280000001, 0x33333333fffffffe,
+		0x4444444400000002, 0x55555555abcdef01, 0x6666666612345678,
+	}
+	wideIdentity, wideIncrement := make([]uint64, len(wideInput)), make([]uint64, len(wideInput))
+	for i, value := range wideInput {
+		wideTypes[i] = wasm.I32
+		wideIdentity[i] = uint64(uint32(value))
+		wideIncrement[i] = uint64(uint32(value) + 1)
+	}
+	tests := map[string]struct {
+		source      []byte
+		types       []wasm.ValType
+		input       []uint64
+		identity    []uint64
+		transformed []uint64
+		foreign     []uint64
+	}{
+		"zero": {
+			rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallModule()), nil, nil,
+			[]uint64{42}, []uint64{57}, []uint64{51},
+		},
+		"i64": {
+			rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallScalarModule(wasm.I64, []byte{0x20, 0, 0x42, 1, 0x7c, 0x0b})), []wasm.ValType{wasm.I64}, []uint64{^uint64(0)},
+			[]uint64{^uint64(0)}, []uint64{0}, []uint64{^uint64(0)},
+		},
+		"f32": {
+			rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallScalarModule(wasm.F32, []byte{0x20, 0, 0x43, 0, 0, 0x80, 0x3f, 0x92, 0x0b})), []wasm.ValType{wasm.F32}, []uint64{0xdeadbeef00000000 | uint64(math.Float32bits(1.5))},
+			[]uint64{uint64(math.Float32bits(1.5))}, []uint64{uint64(math.Float32bits(2.5))}, []uint64{uint64(math.Float32bits(1.5))},
+		},
+		"f64": {
+			rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallScalarModule(wasm.F64, []byte{0x20, 0, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b})), []wasm.ValType{wasm.F64}, []uint64{math.Float64bits(1.5)},
+			[]uint64{math.Float64bits(1.5)}, []uint64{math.Float64bits(2.5)}, []uint64{math.Float64bits(1.5)},
+		},
+		"mixed": {
+			rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallMixedModule()), []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64},
+			[]uint64{0xdeadbeef80000001, ^uint64(0), 0xfeedface00000000 | uint64(math.Float32bits(1.5)), math.Float64bits(1.5)},
+			[]uint64{0x80000001, ^uint64(0), uint64(math.Float32bits(1.5)), math.Float64bits(1.5)},
+			[]uint64{0x80000002, 0, uint64(math.Float32bits(2.5)), math.Float64bits(2.5)},
+			[]uint64{0x80000001, ^uint64(0), uint64(math.Float32bits(1.5)), math.Float64bits(1.5)},
+		},
+		"wide-i32": {
+			rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallWideI32Module()), wideTypes, wideInput, wideIdentity, wideIncrement, wideIdentity,
+		},
+	}
+	for name, test := range tests {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s-artifact%t", name, artifact), func(t *testing.T) {
+				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+				defer rt.Close()
+				compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-"+name, test.source, artifact)
+				view := compiled.executionView()
+				if !rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view) {
+					t.Fatal("local-tail-call witness missing", name)
+				}
+				consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+				assertCall := func(want []uint64) {
+					t.Helper()
+					got, err := consumer.Invoke("call", test.input...)
+					if err != nil || !slices.Equal(got, want) {
+						t.Fatal("mutable return_call_ref", name, got, err, "want", want)
+					}
+				}
+				if _, err := consumer.Invoke("set_0"); err != nil {
+					t.Fatal("install tail identity", name, err)
+				}
+				assertCall(test.identity)
+				if _, err := consumer.Invoke("set_1"); err != nil {
+					t.Fatal("install tail transform", name, err)
+				}
+				assertCall(test.transformed)
+
+				var producerCode *Compiled
+				var producer *Instance
+				var token uint64
+				if name == "zero" {
+					producerCode = rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-zero-producer", rv64PublicReferenceFunctionCallBoundaryModule(51), artifact)
+					producer = rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
+					bits, err := producer.Invoke("get")
+					if err != nil || len(bits) != 1 || bits[0] == 0 {
+						t.Fatal("foreign zero tail producer token", bits, err)
+					}
+					token = bits[0]
+				} else {
+					producerCode = rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-"+name+"-producer", rv64PublicReferenceTailModule(test.types, false, true), artifact)
+					producer = rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
+					descriptor, ok := producer.localFuncrefDescriptor(0)
+					if !ok {
+						t.Fatal("foreign tail producer descriptor", name)
+					}
+					var err error
+					token, err = rt.refStore.issue(producer, descriptor)
+					if err != nil {
+						t.Fatal("foreign tail producer token", name, err)
+					}
+				}
+				if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+					t.Fatal("install foreign tail target", name, err)
+				}
+				if err := producer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				assertCall(test.foreign)
+				if _, err := consumer.Invoke("clear"); err != nil {
+					t.Fatal("clear tail target", name, err)
+				}
+				if got, invokeErr := consumer.Invoke("call", test.input...); got != nil {
+					t.Fatal("cleared return_call_ref returned a result", name, got, invokeErr)
+				} else {
+					var trap *coreruntime.TrapError
+					if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds {
+						t.Fatal("cleared mutable return_call_ref trap", name, invokeErr)
+					}
+				}
+				if err := producerCode.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := consumer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := compiled.Close(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 }
 

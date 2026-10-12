@@ -3,6 +3,7 @@
 package riscv64
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"slices"
@@ -213,6 +214,17 @@ func mutableFuncrefLocalCallSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalTailCallSource(source []byte) []byte {
+	tail := slices.Clone(source)
+	pattern := []byte{0x23, 0, 0x14, 0, 0x0b}
+	i := bytes.LastIndex(tail, pattern)
+	if i < 0 {
+		panic("mutable call_ref body not found")
+	}
+	tail[i+2] = 0x15
+	return tail
+}
+
 func mutableFuncrefLocalCallScalarSource(typ wasm.ValType, targetBody []byte) []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{typ}), wasmtest.FuncType(nil, nil))),
@@ -341,6 +353,66 @@ func mutableFuncrefLocalCallWideI32Source() []byte {
 			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), wasmtest.Code(append(call, 0x23, 0, 0x14, 0, 0x0b)),
 		)),
 	)
+}
+
+func TestMutableFuncrefLocalTailCallRemainingProduction(t *testing.T) {
+	tests := map[string]struct {
+		source []byte
+		length int
+		digest [sha256.Size]byte
+		entry  []int
+		plan   enc.NativeTailPlan
+	}{
+		"zero": {
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallSource()), 4668,
+			[sha256.Size]byte{0x31, 0xf2, 0xdc, 0x9c, 0xd5, 0x1b, 0x3b, 0x57, 0x47, 0x50, 0xbf, 0x6b, 0x47, 0x25, 0xef, 0xf3, 0x82, 0x90, 0x44, 0x7f, 0xe8, 0x34, 0x93, 0x9e, 0x0f, 0x1a, 0xe8, 0xc1, 0xba, 0xfb, 0xea, 0xb2},
+			[]int{0, 608, 1216, 1936, 2656, 3312}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 3, FrameBytes: 64, SourceBase: 48, SourceStride: 8, ReferenceBase: 48},
+		},
+		"i64": {
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallI64Source()), 4732,
+			[sha256.Size]byte{0xc1, 0x07, 0x27, 0xc9, 0xbf, 0x29, 0xfb, 0x08, 0xbc, 0xb9, 0xa7, 0xa9, 0x98, 0xd5, 0xf6, 0x90, 0x62, 0xf7, 0x95, 0x88, 0x49, 0x7b, 0xaa, 0x66, 0xb9, 0x5f, 0x84, 0xad, 0xac, 0xca, 0x15, 0xb7},
+			[]int{0, 608, 1248, 1968, 2688, 3344}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64},
+		},
+		"f32": {
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF32Source()), 4748,
+			[sha256.Size]byte{0xeb, 0xfe, 0x25, 0x36, 0x35, 0xe5, 0xbf, 0xfa, 0xe4, 0xff, 0xbc, 0x80, 0x18, 0x90, 0x8b, 0xec, 0xb7, 0xd0, 0x0f, 0x78, 0x4a, 0x30, 0x18, 0x25, 0x43, 0x85, 0xd3, 0x9c, 0x9b, 0x62, 0x48, 0xb6},
+			[]int{0, 608, 1264, 1984, 2704, 3360}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64},
+		},
+		"f64": {
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF64Source()), 4748,
+			[sha256.Size]byte{0x7f, 0x43, 0x2b, 0x1b, 0xa7, 0xc1, 0xdf, 0xb0, 0x53, 0x57, 0x09, 0x14, 0x65, 0xd7, 0x3a, 0x04, 0x8e, 0x5b, 0xc1, 0x6e, 0x1e, 0x4f, 0xf0, 0x85, 0x55, 0x9a, 0x3b, 0x06, 0x4d, 0xdb, 0x9a, 0x80},
+			[]int{0, 608, 1264, 1984, 2704, 3360}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64},
+		},
+		"mixed": {
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallMixedSource()), 5052,
+			[sha256.Size]byte{0x40, 0xf3, 0x50, 0x8e, 0x7f, 0xdd, 0x6b, 0xfe, 0x77, 0xc2, 0xbc, 0x06, 0x73, 0x48, 0x1a, 0xa9, 0xbb, 0x7c, 0x25, 0xf0, 0x26, 0x1f, 0x82, 0x2b, 0xfb, 0x47, 0x2f, 0x8e, 0x94, 0xfc, 0x9b, 0x64},
+			[]int{0, 672, 1504, 2224, 2944, 3600}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 11, FrameBytes: 128, SourceBase: 80, SourceStride: 8, ReferenceBase: 112},
+		},
+		"wide-i32": {
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallWideI32Source()), 5628,
+			[sha256.Size]byte{0x55, 0x99, 0xe1, 0x83, 0x21, 0x2a, 0x61, 0xcd, 0x65, 0xab, 0x8c, 0xf6, 0x44, 0xa3, 0x85, 0xe4, 0xed, 0x07, 0x76, 0xdf, 0x74, 0xe9, 0x88, 0x53, 0xf2, 0x95, 0x9d, 0xa6, 0x40, 0x84, 0x51, 0x79},
+			[]int{0, 800, 1952, 2672, 3392, 4048}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 21, FrameBytes: 208, SourceBase: 120, SourceStride: 8, ReferenceBase: 192},
+		},
+	}
+	for name, test := range tests {
+		source := test.source
+		t.Run(name, func(t *testing.T) {
+			if err := AdmitProductionSource(source); err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(source)
+			if err != nil || !admitMutableFunctionGlobalLocalCall(m) {
+				t.Fatal("local-tail-call admission", err)
+			}
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, NativeTailCalls: true, SyncHostSlots: 64})
+			if err != nil || image == nil {
+				t.Fatal("local-tail-call compilation", err)
+			}
+			if len(image.Code) != test.length || sha256.Sum256(image.Code) != test.digest || !slices.Equal(image.Entry, test.entry) || !slices.Equal(image.InternalEntry, test.entry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{test.plan}) || !image.NativeReferenceFunctions || image.NativeReferenceCalls || !image.NativeReferenceControl {
+				t.Fatalf("%s local-tail-call compilation drifted: code=%d digest=%x entries=%v/%v tail=%+v refs=%t/%t/%t", name, len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeTail, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
+			}
+		})
+	}
 }
 
 func mutableFuncrefLocalCallVectorSource() []byte {
@@ -629,7 +701,26 @@ func TestMutableFuncrefLocalCallProduction(t *testing.T) {
 }
 
 func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
-	for variant, source := range map[string]func() []byte{"zero": mutableFuncrefLocalCallSource, "i32": mutableFuncrefLocalCallI32Source, "i32-tail": mutableFuncrefLocalTailCallI32Source, "i64": mutableFuncrefLocalCallI64Source, "f32": mutableFuncrefLocalCallF32Source, "f64": mutableFuncrefLocalCallF64Source, "mixed": mutableFuncrefLocalCallMixedSource, "wide-i32": mutableFuncrefLocalCallWideI32Source, "vector": mutableFuncrefLocalCallVectorSource, "vector-tail": mutableFuncrefLocalTailCallVectorSource, "mixed-vector": mutableFuncrefLocalCallMixedVectorSource, "mixed-vector-tail": mutableFuncrefLocalTailCallMixedVectorSource} {
+	for variant, source := range map[string]func() []byte{
+		"zero":              mutableFuncrefLocalCallSource,
+		"zero-tail":         func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallSource()) },
+		"i32":               mutableFuncrefLocalCallI32Source,
+		"i32-tail":          mutableFuncrefLocalTailCallI32Source,
+		"i64":               mutableFuncrefLocalCallI64Source,
+		"i64-tail":          func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallI64Source()) },
+		"f32":               mutableFuncrefLocalCallF32Source,
+		"f32-tail":          func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF32Source()) },
+		"f64":               mutableFuncrefLocalCallF64Source,
+		"f64-tail":          func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF64Source()) },
+		"mixed":             mutableFuncrefLocalCallMixedSource,
+		"mixed-tail":        func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallMixedSource()) },
+		"wide-i32":          mutableFuncrefLocalCallWideI32Source,
+		"wide-i32-tail":     func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallWideI32Source()) },
+		"vector":            mutableFuncrefLocalCallVectorSource,
+		"vector-tail":       mutableFuncrefLocalTailCallVectorSource,
+		"mixed-vector":      mutableFuncrefLocalCallMixedVectorSource,
+		"mixed-vector-tail": mutableFuncrefLocalTailCallMixedVectorSource,
+	} {
 		for name, mutate := range map[string]func(*wasm.Module){
 			"abstract-global":       func(m *wasm.Module) { m.Globals[0].Type.Type = wasm.FuncRef },
 			"target-body":           func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x00, 0x0b} },
