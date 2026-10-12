@@ -220,8 +220,9 @@ def action(form):
 
 
 class Converter:
-    def __init__(self, output):
+    def __init__(self, output, source="WebAssembly/spec interpreter 3.0.0"):
         self.output = output
+        self.source = source
         self.commands = []
         self.module_index = 0
 
@@ -296,6 +297,25 @@ class Converter:
             op = head(form)
             if op == "module":
                 self.module(form)
+            elif op == "thread":
+                name = atom(form.items[1])
+                children = list(form.items[2:])
+                shared = []
+                if children and isinstance(children[0], Form) and head(children[0]) == "shared":
+                    for module in children.pop(0).items[1:]:
+                        if head(module) != "module" or len(module.items) != 2:
+                            raise ValueError(f"line {form.line}: invalid shared module")
+                        shared.append(atom(module.items[1]))
+                parent_commands = self.commands
+                self.commands = []
+                try:
+                    nested = self.convert(children)["commands"]
+                finally:
+                    self.commands = parent_commands
+                self.commands.append({"type": "thread", "line": form.line, "name": name,
+                                      "shared_modules": shared, "commands": nested})
+            elif op == "wait":
+                self.commands.append({"type": "wait", "line": form.line, "thread": atom(form.items[1])})
             elif op == "register":
                 cmd = {"type": "register", "line": form.line, "as": string(form.items[1])}
                 if len(form.items) > 2:
@@ -314,17 +334,18 @@ class Converter:
                 self.assertion_module(form, op)
             else:
                 raise ValueError(f"line {form.line}: unsupported binary script command {op}")
-        return {"source": "WebAssembly/spec interpreter 3.0.0", "commands": self.commands}
+        return {"source": self.source, "commands": self.commands}
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--source", default="WebAssembly/spec interpreter 3.0.0")
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     forms = parse(args.input.read_text())
-    document = Converter(args.output).convert(forms)
+    document = Converter(args.output, args.source).convert(forms)
     args.output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
 
 

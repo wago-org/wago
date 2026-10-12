@@ -131,19 +131,20 @@ type specAction struct {
 }
 
 type specExecCmd struct {
-	Type       string        `json:"type"`
-	Line       int           `json:"line"`
-	Filename   string        `json:"filename"`
-	Name       string        `json:"name"`
-	Module     string        `json:"module"`
-	As         string        `json:"as"`
-	Thread     string        `json:"thread"`
-	Action     specAction    `json:"action"`
-	Expected   []specValue   `json:"expected"`
-	Either     []specValue   `json:"either"`
-	Text       string        `json:"text"`
-	ModuleType string        `json:"module_type"`
-	Commands   []specExecCmd `json:"commands"`
+	Type          string        `json:"type"`
+	Line          int           `json:"line"`
+	Filename      string        `json:"filename"`
+	Name          string        `json:"name"`
+	Module        string        `json:"module"`
+	As            string        `json:"as"`
+	Thread        string        `json:"thread"`
+	Action        specAction    `json:"action"`
+	Expected      []specValue   `json:"expected"`
+	Either        []specValue   `json:"either"`
+	Text          string        `json:"text"`
+	ModuleType    string        `json:"module_type"`
+	Commands      []specExecCmd `json:"commands"`
+	SharedModules []string      `json:"shared_modules"`
 }
 
 type specExecFile struct {
@@ -1673,7 +1674,22 @@ func runSpecExecFileWithConfigAndImports(t *testing.T, base, tmp string, sf spec
 	return runSpecExecFileObserved(t, base, tmp, sf, cfg, extraImports, nil)
 }
 
+type specThreadScope struct {
+	ctx     context.Context
+	cancel  context.CancelFunc
+	modules map[string]specModule
+}
+
+type specThreadResult struct {
+	done   chan specExecStats
+	joined bool
+}
+
 func runSpecExecFileObserved(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports map[string]any, observer *specExecutionObserver) (stats specExecStats) {
+	return runSpecExecFileShared(t, base, tmp, sf, cfg, extraImports, observer, nil)
+}
+
+func runSpecExecFileShared(t *testing.T, base, tmp string, sf specExecFile, cfg *wago.RuntimeConfig, extraImports map[string]any, observer *specExecutionObserver, scope *specThreadScope) (stats specExecStats) {
 	var cur specModule
 	var curRetained bool
 	var live []specModule
@@ -1711,6 +1727,20 @@ func runSpecExecFileObserved(t *testing.T, base, tmp string, sf specExecFile, cf
 		}
 	}()
 	named := map[string]specModule{}
+	if scope != nil {
+		for name, module := range scope.modules {
+			named[name] = module
+		}
+	}
+	parallelThreads := map[string]*specThreadResult{}
+	defer func() {
+		for _, worker := range parallelThreads {
+			if !worker.joined {
+				stats.add(<-worker.done)
+				worker.joined = true
+			}
+		}
+	}()
 	registered := map[string]specModule{}
 	definitions := map[string][]byte{}
 	threads := map[string]bool{}
@@ -1757,6 +1787,9 @@ func runSpecExecFileObserved(t *testing.T, base, tmp string, sf specExecFile, cf
 		}
 		stats.modulesPassed++
 		cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef), observer: observer}
+		if scope != nil {
+			cur.ctx = scope.ctx
+		}
 		if observer != nil && observer.loaded != nil {
 			observer.loaded(c, data, cur)
 		}
@@ -1781,6 +1814,32 @@ func runSpecExecFileObserved(t *testing.T, base, tmp string, sf specExecFile, cf
 			if c.Name == "" || threads[c.Name] || len(c.Commands) == 0 {
 				t.Fatalf("%s.wast:%d invalid or duplicate thread %q", base, c.Line, c.Name)
 			}
+
+			if scope != nil {
+				shared := make(map[string]specModule, len(c.SharedModules))
+				for _, name := range c.SharedModules {
+					module, ok := named[name]
+					if !ok || module.inst == nil {
+						t.Fatalf("%s:%d shared module %q is unavailable", base, c.Line, name)
+					}
+					shared[name] = module
+				}
+				result := &specThreadResult{done: make(chan specExecStats, 1)}
+				parallelThreads[c.Name] = result
+				threads[c.Name] = true
+				childScope := &specThreadScope{ctx: scope.ctx, cancel: scope.cancel, modules: shared}
+				go func(c specExecCmd) {
+					var childStats specExecStats
+					defer func() {
+						if t.Failed() {
+							scope.cancel()
+						}
+						result.done <- childStats
+					}()
+					childStats = runSpecExecFileShared(t, base+"/thread:"+c.Name, tmp, specExecFile{Source: sf.Source, Commands: c.Commands}, cfg, extraImports, nil, childScope)
+				}(c)
+				continue
+			}
 			// Wasmtime WAST threads execute in independent Stores. Replaying the
 			// nested command graph recursively gives it an independent Runtime and
 			// collector domain; returning closes every nested instance before a
@@ -1793,6 +1852,15 @@ func runSpecExecFileObserved(t *testing.T, base, tmp string, sf specExecFile, cf
 		case "wait":
 			if c.Thread == "" || !threads[c.Thread] {
 				t.Fatalf("%s.wast:%d wait references unknown thread %q", base, c.Line, c.Thread)
+			}
+
+			if scope != nil {
+				worker := parallelThreads[c.Thread]
+				if worker == nil || worker.joined {
+					t.Fatalf("%s:%d invalid parallel wait %q", base, c.Line, c.Thread)
+				}
+				stats.add(<-worker.done)
+				worker.joined = true
 			}
 		case "module_definition":
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
@@ -2047,6 +2115,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 // compiled metadata (used to confirm an export exists before invoking, so an
 // absent-export skip is never confused with a trap).
 type specModule struct {
+	ctx        context.Context
 	observer   *specExecutionObserver
 	inst       *wago.Instance
 	compiled   *wago.Compiled
@@ -2175,7 +2244,13 @@ func invokeAction(c specExecCmd, m specModule, _ *testing.T) (out specActionOutc
 			}
 			args = append(args, slots...)
 		}
-		res, err := m.inst.Invoke(c.Action.Field, args...)
+		var res []uint64
+		var err error
+		if m.ctx != nil {
+			res, err = m.inst.InvokeContext(m.ctx, c.Action.Field, args...)
+		} else {
+			res, err = m.inst.Invoke(c.Action.Field, args...)
+		}
 		return specActionOutcome{results: res, trap: err}
 	case "get":
 		g, err := m.inst.ExportedGlobalObject(c.Action.Field)
