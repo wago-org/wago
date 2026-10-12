@@ -327,3 +327,32 @@ time is +0.42%, allocation bytes effectively unchanged and code size +0.09%.
 `docs/benchmarks/wasm3-2026-10-12/integer-sum-results.json` retains exact
 versions, per-process medians and evidence hashes. Broader proposal composition,
 remaining unchecked-peer gaps and feature-by-feature parity remain open.
+
+## Bounded addresses against declared minimums (2026-10-12)
+
+`65f3c62e` adds `memory-min-bounds` on ARM64 and AMD64. A bounded unsigned
+expression analysis proves masked/shifted addresses and entire accesses fit the
+selected memory's immutable declared minimum. It preserves source operations,
+memory loads/stores and atomic alignment checks, and uses no new runtime or
+per-local fields. Unknown/wrapping ranges saturate conservatively; zero minima
+and accesses crossing the minimum retain live-extent checks.
+
+Native guarded race tests pass for memory32/64, shared/unshared primary and
+secondary memories, both calling conventions, original/codec products, traps,
+policy overrides and growth from zero minimum. Both pinned conformance suites
+pass on both architectures again. Broad ARM64 statistics retains its 44 parent
+failure names; constant-store assertions now account for valid check removal.
+
+The eight threaded workloads have a fresh, interleaved three-process comparison
+against checked and unchecked w2c2. Atomic load/store is now 149,327 ns versus
+162,583 ns for the unchecked peer. Ordinary load/store improves 30.77% and bulk
+fill improves 11.79%, but still trail unchecked w2c2 by 1.45x and 1.52x. SIMD
+remains 2.30x slower, despite receiving both minimum proofs. Peer assembly
+retains ordinary loads and narrows SIMD load-plus-lane extraction to a scalar
+load; that narrowing is the next concrete path, preserving full original bounds.
+
+Alternating compile captures show Core 3 latency -0.43%, allocation bytes
+-0.14%, code bytes -0.80% and peak RSS +0.59%. Threads latency is +0.03%,
+allocation bytes -1.51%, code bytes -7.74% and peak RSS -0.64%. These are small
+descriptive local cohorts. The tracked `memory-min-results.json` receipt retains
+exact profiles, medians and hashes. Broader feature-by-feature parity remains open.

@@ -1615,3 +1615,75 @@ Tracked `docs/benchmarks/wasm3-2026-10-12/integer-sum-results.json` contains
 source fingerprints, per-process medians, compile values and raw-evidence
 hashes. The earlier fence gap is closed for this workload; remaining unchecked
 memory/atomic gaps, broader composition and overall feature parity remain open.
+
+## Expression bounds against selected memory minimums
+
+`65f3c62e` adds controllable `memory-min-bounds` to both backends. Its transient
+expression walk spends at most 32 nodes. Constants and unsigned AND, OR/XOR,
+add, multiply and shifts yield conservative maxima. Potential wrap saturates
+to the full domain; OR/XOR expand interval maxima into bit envelopes rather
+than treating them as masks. Unknown operations remain unknown. The whole
+effective access, including memarg offset and width, must fit the selected
+declaration's immutable minimum, with overflow-safe subtraction checks.
+
+The proof removes redundant size reads/comparisons and proven impossible
+effective-address carry traps. Address expressions still execute, memory
+operations remain, and numeric atomics still check alignment and retain their
+ordering instructions. No cached shared extent supplies the proof, so growth
+cannot invalidate it. Zero minima and ranges that may cross the minimum use
+the original live-extent path. The proof adds no runtime or per-local fields.
+
+The selection test failed before implementation. Both native architectures
+pass guarded race checks, randomized concrete-result range containment,
+overflow/boundary checks, selected primary/secondary memory32/64 cases,
+shared/unshared memory, both calling conventions, original/codec products,
+explicit policy overrides, observable host writes, atomic alignment and OOB
+traps, and live growth from a zero minimum. Pinned Core 3 passes 2,226 modules/
+58,238 assertions and official threads passes 51 modules/312 assertions on
+each architecture, with zero failures/skips/gaps. The complete ARM64 statistics
+suite has the same 44 failure names as the parent. Its constant-store bounds
+assertions were updated because an access at offset 16 in a one-page minimum
+now correctly requires no check or trap stub.
+
+Apple M4 Max/Darwin ARM64/Go 1.27.1, 262,144 logical operations per invocation,
+three interleaved processes per profile, two warmups and five verified >=50-ms
+samples per process. The peer uses the same SIMD SDK/futex sources and both
+checking profiles as preceding checkpoints:
+
+| Contract | Wago 60c27eba ns | Wago 65f3c62e ns | Checked w2c2 ns | Unchecked w2c2 ns |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary load/store | 206,764 | 143,150 | 2,126,316 | 99,067 |
+| SIMD load/store | 231,470 | 240,066 | 1,599,242 | 104,368 |
+| Bulk fill | 318,223 | 280,692 | 2,129,083 | 184,660 |
+| Atomic load/store | 277,272 | 149,327 | 2,131,615 | 162,583 |
+| Atomic RMW add | 250,207 | 249,118 | 2,142,556 | 224,600 |
+| Atomic compare-exchange | 284,274 | 282,894 | 2,171,303 | 275,139 |
+| Wait mismatch/notify | 635,812 | 631,853 | 5,354,337 | 1,951,692 |
+| Atomic fence arithmetic | 153.16 | 153.00 | 280.75 | 281.37 |
+
+Atomic load/store crosses the unchecked target on this workload (ratio 0.918).
+Ordinary load/store and bulk fill improve 30.77%/11.79%, but still have ratios
+1.445/1.520; SIMD remains at 2.300. RMW/CAS retain smaller gaps. One current
+ordinary process has CV 0.065 and one unchecked bulk process has CV 0.097;
+these medians do not establish statistical significance or concurrent throughput.
+
+The ordinary peer assembly retains a real load after its store, ruling out
+store forwarding as the main difference here. Both Wago SIMD accesses receive
+minimum proofs, so early scalar materialization is not why SIMD remains slow.
+The peer instead uses a scalar 32-bit lane load after the vector store; Wago
+reloads the whole vector before extraction. A future load/extract fusion must
+keep the original full-vector bounds and trap behavior.
+
+Production compile captures use GOMAXPROCS=1 and three alternating processes
+per revision. 21,800 Core 3 compiles take 419.661 -> 417.838 ms (-0.43%),
+allocation bytes 777,964,264 -> 776,898,504 (-0.14%), code bytes
+17,900,800 -> 17,757,600 (-0.80%) and peak RSS 13,893,632 -> 13,975,552
+(+0.59%). 2,700 threads compiles take 45.697 -> 45.712 ms (+0.03%), allocation
+bytes 86,799,112 -> 85,487,144 (-1.51%), code bytes 1,777,600 -> 1,640,000
+(-7.74%) and peak RSS 12,894,208 -> 12,812,288 (-0.64%). Ordinary scalar/
+Core 3 scalar/imported-worker medians change +0.04%, +1.26% and +0.12%.
+
+Tracked `docs/benchmarks/wasm3-2026-10-12/memory-min-results.json` records
+source fingerprints, medians, raw evidence hashes and peer C/assembly hashes.
+Remaining unchecked-peer gaps, broader proposal composition and overall feature
+performance parity remain open.
