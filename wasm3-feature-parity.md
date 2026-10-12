@@ -61,8 +61,11 @@ wasm.fyi's source-built performance script produced 90 long execution contracts,
 lacks the AOT adapter; an isolated copy of the existing hub native adapter was
 retrieved to restore measurement capability without modifying that checkout.
 The local SIMD fork is `f303ed2`; its translator and an AOT adapter build
-successfully. Actual feature timings, per-feature gap diagnosis, optimized
-lowerings, and both-platform compile/RSS measurements remain open.
+successfully. The initial 90-contract comparison is complete: Wago passed 77; w2c2 passed 51,
+with 27 unsupported and 12 failed. All 51 successful pairs match artifacts and
+met the 50 ms sample-duration target. See [the full initial comparison](wasm3-feature-baseline.md).
+Per-feature gap diagnosis, optimized lowerings, missing host profiles, and
+both-platform compile/RSS measurements remain open.
 
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
