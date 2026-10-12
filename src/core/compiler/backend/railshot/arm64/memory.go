@@ -468,6 +468,7 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // eaOwned reports whether the caller must release ea. Passing guard=false
 // requires a full-access bounds proof even in a guard-page function.
 func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, guard bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	minimumAccess := !guard && !f.memoryAddr64(0) && f.minimumMemoryAccess(0, off, size)
 	f.materializePendingTraps()
 	if f.memoryAddr64(0) {
 		return f.memAddr64(off, size)
@@ -530,7 +531,10 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		f.release(t)
 	}
 
-	if guard {
+	if guard || minimumAccess {
+		if minimumAccess {
+			f.stats.peep("memory-min-bounds")
+		}
 		return ea, eaOwned, borrow, disp
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
@@ -586,6 +590,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 // staged memory64 allocation remains bounded to 65,535 pages, but neither u64
 // addition may wrap into that range.
 func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	minimumAccess := f.minimumMemoryAccess(0, off, size)
 	f.materializePendingTraps()
 	e := f.popValue()
 	ea, eaOwned = f.materialize(e), true
@@ -593,9 +598,17 @@ func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, 
 	if off != 0 {
 		t := f.allocReg(maskOf(ea))
 		f.a.MovImm64(t, off)
-		f.a.Adds64(ea, ea, t)
-		f.trapIf(condAE, trapMemOOB) // carry set
+		if minimumAccess {
+			f.a.Add64(ea, ea, t)
+		} else {
+			f.a.Adds64(ea, ea, t)
+			f.trapIf(condAE, trapMemOOB)
+		} // carry set
 		f.release(t)
+	}
+	if minimumAccess {
+		f.stats.peep("memory-min-bounds")
+		return ea, eaOwned, borrow, disp
 	}
 	f.pinned = f.pinned.add(ea)
 	end := f.allocReg(maskOf(ea))
@@ -647,6 +660,7 @@ func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, 
 }
 
 func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
+	minimumAccess := f.minimumMemoryAccess(memoryIndex, off, size)
 	f.materializePendingTraps()
 	e := f.popValue()
 	loadDefinedLocal := f.loadDefinedAddressLocal(e)
@@ -664,9 +678,24 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	if off != 0 {
 		t := f.allocReg(maskOf(ea))
 		f.a.MovImm64(t, off)
-		f.a.Adds64(ea, ea, t)
-		f.trapIf(condAE, trapMemOOB)
+		if minimumAccess {
+			f.a.Add64(ea, ea, t)
+		} else {
+			f.a.Adds64(ea, ea, t)
+			f.trapIf(condAE, trapMemOOB)
+		}
 		f.release(t)
+	}
+	if minimumAccess {
+		base = f.allocReg(maskOf(ea))
+		if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
+			f.a.MovReg64(base, f.cachedSharedMemoryBase())
+		} else {
+			f.ld64(base, linMemReg, -int32(offMemoryDirPtr))
+			f.ld64(base, base, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		}
+		f.stats.peep("memory-min-bounds")
+		return base, ea, disp
 	}
 	f.pinned = f.pinned.add(ea)
 	dir := regNone

@@ -435,6 +435,7 @@ var catalog = []Definition{
 	arm64("atomic-lse", "LSE atomics", "use native acquire/release atomic RMW and compare-exchange on LSE hosts"),
 	both("atomic-static-bounds", "Constant atomic bounds", "prove aligned constant atomic addresses against the declared memory minimum"),
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
+	both("memory-min-bounds", "Declared minimum memory bounds", "prove bounded integer address expressions fit the selected memory minimum"),
 	both("integer-sum-loop", "Integer induction sums", "replace proven zero-based unsigned local sums with exact modular arithmetic and retain any fence"),
 	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	both("prepared-direct-entry", "Direct prepared entry", "enter compiler-proved integer functions through the register ABI"),

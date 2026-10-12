@@ -12,6 +12,7 @@ import (
 var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
+	optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
 	optimization.Bind("integer-sum-loop", &integerSumLoopEnabled),
 	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
 	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
@@ -82,6 +83,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 
 var (
 	optIntegerSumLoop       = optimizationBindings.Option("integer-sum-loop")
+	optMemoryMinimumBounds  = optimizationBindings.Option("memory-min-bounds")
 	optAtomicNotifyEmpty    = optimizationBindings.Option("atomic-notify-empty")
 	optAtomicStaticBounds   = optimizationBindings.Option("atomic-static-bounds")
 	optAtomicZeroWait       = optimizationBindings.Option("atomic-wait-zero-timeout")
