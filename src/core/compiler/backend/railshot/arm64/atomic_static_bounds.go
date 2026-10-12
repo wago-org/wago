@@ -22,7 +22,9 @@ func (f *fn) staticAtomicAddr(offset uint64, size int) (Reg, bool) {
 	f.materializePendingTraps()
 	f.dropValue()
 	addr := f.allocReg(0)
-	if base := f.cachedSharedMemoryBase(); base != regNone {
+	if !f.threadedMemory0 {
+		f.a.MovReg64(addr, linMemReg)
+	} else if base := f.cachedSharedMemoryBase(); base != regNone {
 		f.a.MovReg64(addr, base)
 	} else {
 		f.ld64(addr, linMemReg, -int32(offMemoryDirPtr))

@@ -22,7 +22,9 @@ func (f *fn) staticAtomicMem(offset uint64, size int) (base, ea Reg, ok bool) {
 	f.materializePendingTraps()
 	f.dropValue()
 	base = f.allocReg(0)
-	if cached := f.cachedSharedMemoryBase(); cached != regNone {
+	if !f.threadedMemory0 {
+		f.a.MovReg64(base, RBX)
+	} else if cached := f.cachedSharedMemoryBase(); cached != regNone {
 		f.a.MovReg64(base, cached)
 	} else {
 		f.a.Load64(base, RBX, -offMemoryDirPtr)
