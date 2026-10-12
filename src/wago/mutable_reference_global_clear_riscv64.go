@@ -73,6 +73,46 @@ func railshotUsesGuestGlobalStoreHelper(c *Compiled) bool {
 	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c) || rv64MutableFuncrefGlobalBidirectionalCopy(c)
 }
 
+// retainGuestGlobalStoreDescriptor closes the raw-load/park ownership window
+// for exact guest-global helper products. It runs while native execution is
+// still leased, before a competing host writer can retire the container root.
+// The caller owns the returned physical root and releases it while still
+// parked, before native execution resumes; destination publication acquires its
+// own independent unit.
+func (in *Instance) retainGuestGlobalStoreDescriptor(dispatch uint32, args, results []uint64) (*Instance, error) {
+	if dispatch != hostFuncRefDispatchBit || in == nil || !railshotUsesGuestGlobalStoreHelper(in.c) || len(results) != 0 {
+		return nil, nil
+	}
+	var descriptor uint64
+	switch {
+	case rv64MutableFuncrefGlobalClear(in.c) && len(args) == 0 && len(in.globalCells) == 1:
+		return nil, nil
+	case rv64MutableFuncrefGlobalStoreSelf(in.c) && len(args) == 1 && len(in.globalCells) == 1:
+		descriptor = args[0]
+	case rv64MutableFuncrefGlobalCopy(in.c) && len(args) == 1 && len(in.globalCells) == 2:
+		descriptor = args[0]
+	case rv64MutableFuncrefGlobalMove(in.c) && len(args) == 1 && len(in.globalCells) == 2:
+		descriptor = args[0]
+	case rv64MutableFuncrefGlobalMove(in.c) && len(args) == 0 && len(in.globalCells) == 2:
+		return nil, nil
+	case rv64MutableFuncrefGlobalBidirectionalCopy(in.c) && len(args) == 2 && len(in.globalCells) == 2 && args[1] < 2:
+		descriptor = args[0]
+	default:
+		return nil, fmt.Errorf("invalid RV64 guest global store bridge")
+	}
+	if descriptor == 0 {
+		return nil, nil
+	}
+	if in.refStore == nil {
+		return nil, fmt.Errorf("RV64 guest global store reference owner is unavailable")
+	}
+	owner := in.refStore.retainDescriptorOwnerForFinalization(descriptor)
+	if owner == nil {
+		return nil, fmt.Errorf("RV64 guest global store descriptor owner is unavailable")
+	}
+	return owner, nil
+}
+
 // The zero-index host-funcref dispatch encoding is permanently invalid for a
 // public HostFuncRef. The exact authenticated image uses it as a private bridge
 // while retaining the ordinary parked-host lease and context restoration path.

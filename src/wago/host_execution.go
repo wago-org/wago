@@ -358,10 +358,21 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	if active == root && a.localNativeMu() != nil {
 		localMu = a.localNativeMu()
 		localVersion = state.nativeContextVersion.Load()
-		localMu.Unlock()
 	} else if active.usesIndependentExecution() {
 		localMu = active.independentNativeExecutionMu()
 		localVersion = state.nativeContextVersion.Load()
+	}
+	// An authenticated RV64 guest-global helper receives a raw descriptor that
+	// native code may have loaded from a mutable imported container. Resolve and
+	// retain its canonical owner immediately before releasing the native lease:
+	// another host entry may overwrite the source container as soon as the lease
+	// is dropped. The helper transaction acquires the destination's independent
+	// root while this temporary unit keeps the descriptor arena live.
+	guestDescriptorOwner, err := active.retainGuestGlobalStoreDescriptor(importIdx, args, results)
+	if err != nil {
+		panic(invalidHostReference{err: err})
+	}
+	if localMu != nil {
 		localMu.Unlock()
 	} else {
 		epoch = nativeExecutionEpoch
@@ -373,6 +384,16 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
+		primary := recover()
+		var cleanup resourceCleanup
+		// Fallback for a failure between acquisition and the callback-scoped drain
+		// below. The normal path has already claimed and cleared this pointer while
+		// callback authority was still published.
+		if guestDescriptorOwner != nil {
+			owner := guestDescriptorOwner
+			guestDescriptorOwner = nil
+			cleanup.run(owner.releaseResourceRoot)
+		}
 		if gcSuspension != nil {
 			gcSuspension.resume()
 		}
@@ -429,6 +450,10 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 			active.jm.SetCustomCtx(ctrl)
 		}
 		railshotRestoreNativeInvocation(active, root, parkedNativeInvocation)
+		if primary != nil {
+			panic(primary)
+		}
+		cleanup.finish()
 	}()
 	// Only arbitrary host code can synchronously re-enter this instance. The
 	// active marker includes the callback-scoped invocation identity, so another
@@ -448,6 +473,23 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	if active != root {
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
+	}
+	if guestDescriptorOwner != nil {
+		// Release while native execution is parked and the active/root callback
+		// markers and cross-instance invocation binding are still published.
+		// Physical finalization may synchronously reenter this invocation. Claim
+		// the unit before the callback so an unwinding fallback cannot double it.
+		defer func() {
+			primary := recover()
+			owner := guestDescriptorOwner
+			guestDescriptorOwner = nil
+			var cleanup resourceCleanup
+			cleanup.run(owner.releaseResourceRoot)
+			if primary != nil {
+				panic(primary)
+			}
+			cleanup.finish()
+		}()
 	}
 	if codeProfileEnabled && invocation.profileSession() != nil {
 		a.callProfiledHost(active, ctrl, importIdx, args, results, invocation)
