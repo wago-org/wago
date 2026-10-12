@@ -763,27 +763,34 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 // unordered (NaN) yields false; eq/ne combine the equal/parity bits. Shared by
 // fcmp (eager boolean).
 func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
+	if xa == xb && (kind == opEq || kind == opNe) {
+		// Both inputs have already been evaluated. An ordered self-compare
+		// is equal; an unordered one is not. Clear before producing flags.
+		cc := condNP
+		if kind == opNe {
+			cc = condP
+		}
+		f.a.AluRR(aluTable[opXor].rr, dst, dst, false)
+		f.a.Ucomis(xa, xb, f64)
+		f.a.SetccReg8(cc, dst)
+		f.stats.peep("float-self-compare-full-width")
+		return
+	}
+
 	switch kind {
-	case opEq:
-		// Allocation can realize pending loads. Finish it before clearing
-		// the results and producing the comparison flags.
+	case opEq, opNe:
+		// Allocation can realize pending loads. Finish it before the flag
+		// producer while both input XMM registers remain protected.
 		t := f.allocReg(maskOf(dst))
-		f.a.AluRR(aluTable[opXor].rr, t, t, false)
-		f.a.AluRR(aluTable[opXor].rr, dst, dst, false)
+		first, parity, combine := condE, condNP, opAnd
+		if kind == opNe {
+			first, parity, combine = condNE, condP, opOr
+		}
 		f.a.Ucomis(xa, xb, f64)
-		f.a.SetccReg8(condNP, dst)        // ordered gives 1; unordered stays 0
-		f.a.Cmovcc(condNE, dst, t, false) // clear ordered unequal
+		f.a.SetccReg(first, dst)
+		f.a.SetccReg(parity, t)
+		f.a.AluRR(aluTable[combine].rr, dst, t, false)
 		f.release(t)
-		f.stats.peep("float-parity-conditional-move")
-	case opNe:
-		t := f.allocReg(maskOf(dst))
-		f.a.MovImm32(t, 1)
-		f.a.AluRR(aluTable[opXor].rr, dst, dst, false)
-		f.a.Ucomis(xa, xb, f64)
-		f.a.SetccReg8(condNE, dst)
-		f.a.Cmovcc(condP, dst, t, false) // unordered must give 1
-		f.release(t)
-		f.stats.peep("float-parity-conditional-move")
 	case opGtS: // fc gt
 		f.a.Ucomis(xa, xb, f64)
 		f.a.SetccReg(condA, dst)

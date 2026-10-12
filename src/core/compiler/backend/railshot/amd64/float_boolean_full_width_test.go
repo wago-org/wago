@@ -41,6 +41,8 @@ func TestFloatSelfCompareFullWidth(t *testing.T) {
 			for _, dst := range []Reg{RAX, RDI, R8} {
 				f := fn{a: &encoder.Asm{}, reserved: ^maskOf(dst, RCX)}
 				f.emitFCmpSetcc(op, 8, 8, wide, dst)
+				only := fn{a: &encoder.Asm{}, reserved: ^maskOf(dst)}
+				only.emitFCmpSetcc(op, 8, 8, wide, dst)
 				cc := condNP
 				if op == opNe {
 					cc = condP
@@ -49,7 +51,7 @@ func TestFloatSelfCompareFullWidth(t *testing.T) {
 				want.AluRR(aluTable[opXor].rr, dst, dst, false)
 				want.Ucomis(8, 8, wide)
 				want.SetccReg8(cc, dst)
-				if !bytes.Equal(f.a.B, want.B) {
+				if !bytes.Equal(f.a.B, want.B) || !bytes.Equal(only.a.B, want.B) {
 					t.Fatalf("wide=%v op=%v dst=%v got=%x want=%x", wide, op, dst, f.a.B, want.B)
 				}
 			}
