@@ -610,3 +610,17 @@ func (j *JobMemory) putU64(below int, v uint64) {
 func (j *JobMemory) getU64(below int) uint64 {
 	return binary.LittleEndian.Uint64(j.mem[j.linOff-below:])
 }
+
+// SetSharedNotifyPending publishes queue presence on shared backing mappings.
+// It must never be called on an instance control mapping.
+func (j *JobMemory) SetSharedNotifyPending(pending bool) {
+	value := uint32(0)
+	if pending {
+		value = 1
+	}
+	atomic.StoreUint32((*uint32)(unsafe.Pointer(&j.mem[j.linOff-abi.SharedNotifyPendingOffset])), value)
+}
+
+func (j *JobMemory) SharedNotifyPending() uint32 {
+	return atomic.LoadUint32((*uint32)(unsafe.Pointer(&j.mem[j.linOff-abi.SharedNotifyPendingOffset])))
+}

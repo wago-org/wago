@@ -1365,6 +1365,17 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		(uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait32 || uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait64)
 	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	p := len(ft.Params)
+	notifyIndex := uint32(0)
+	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
+	if notifyFast && p == 4 {
+		top := f.s.back()
+		if top.st.kind != stConst {
+			notifyFast = false
+		} else {
+			notifyIndex = uint32(top.st.cval)
+		}
+	}
+
 	var rootOffsets []uint32
 	recordRoots := false
 	if !internalGC {
@@ -1461,6 +1472,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16))
 	f.st32(X11, hcNArgs, X16)
 
+	notifyDone := -1
+	if notifyFast {
+		notifyDone = f.notifyEmptyShortcut(notifyIndex)
+	}
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.ld64(X16, X11, hcTrampoline)
@@ -1470,6 +1485,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.a.Blr(X16)
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
+	}
+	if notifyDone >= 0 {
+		f.patchBranch26(notifyDone, f.a.Len())
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 

@@ -429,6 +429,7 @@ var catalog = []Definition{
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	arm64("leaf-scratch-memsize", "Leaf scratch memory size", "cache memory size in backend scratch for straight-line regional leaves"),
 	arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
+	both("atomic-notify-empty", "Empty atomic notifications", "bypass the Go notification helper when shared backing has no queued waiters"),
 	both("atomic-wait-zero-timeout", "Immediate atomic waits", "resolve literal zero-timeout shared-memory waits in native code"),
 	both("shared-memory-base", "Shared memory backing cache", "reuse stable shared backing addresses while reading live extents"),
 	arm64("atomic-lse", "LSE atomics", "use native acquire/release atomic RMW and compare-exchange on LSE hosts"),

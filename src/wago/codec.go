@@ -29,6 +29,7 @@ const (
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
 	compiledRegisterABIDisabled           uint64 = 1 << 58
 	compiledAtomicWaitExecution           uint64 = 1 << 59
+	compiledNotifyPendingExecution        uint64 = 1 << 60
 	compiledCPUFeatureBMI2                uint64 = uint64(shared.AMD64BMI2) << 32
 	compiledCPUFeatureLZCNT               uint64 = uint64(shared.AMD64LZCNT) << 32
 	compiledCPUFeatureTZCNT               uint64 = uint64(shared.AMD64BMI1) << 32
@@ -382,6 +383,9 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	}
 	if c.usesAtomicWaitHelpers() {
 		required |= compiledAtomicWaitExecution
+	}
+	if c.requiresNotifyPending {
+		required |= compiledNotifyPendingExecution
 	}
 	if c.requiresARM64LSE {
 		required |= compiledCPUFeatureARM64LSE
@@ -1087,10 +1091,11 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
 		return fmt.Errorf("unknown AMD64 CPU requirements %#x", c.requiredAMD64Features)
 	}
+	c.requiresNotifyPending = required&compiledNotifyPendingExecution != 0
 	c.requiresARM64LSE = required&compiledCPUFeatureARM64LSE != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatures | compiledCPUFeatureARM64LSE))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledNotifyPendingExecution | compiledGCExecutionMask | compiledCPUFeatures | compiledCPUFeatureARM64LSE))
 	// Version-5 EH code dereferences descriptor zero to recover its owning native
 	// context on an exceptional cross-instance return. Derive the fixed-header
 	// requirement from authoritative feature metadata as well as the redundant
@@ -1139,6 +1144,9 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= c.requiredFeatures & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
 		c.codeCache.gcI31Product = stagedGCI31ProductCore
+	}
+	if c.requiresNotifyPending && required&compiledAtomicWaitExecution == 0 {
+		return fmt.Errorf("native notify queue requirement needs recorded atomic helper execution")
 	}
 	if required&compiledAtomicWaitExecution != 0 {
 		if !c.requiredFeatures.IsEnabled(CoreFeatureThreads) {

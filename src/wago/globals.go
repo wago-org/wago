@@ -1104,11 +1104,12 @@ type Compiled struct {
 	needsFuncRefContextHeader bool
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
-	registerABIDisabled bool
-	hasGCCodeTelemetry  bool // occupies existing flag padding
-	requiresARM64LSE    bool // shares flag padding without growing Compiled
-	requiredFeatures    CoreFeatures
-	importFuncSigs      []FuncSig
+	registerABIDisabled   bool
+	hasGCCodeTelemetry    bool // occupies existing flag padding
+	requiresNotifyPending bool
+	requiresARM64LSE      bool // shares flag padding without growing Compiled
+	requiredFeatures      CoreFeatures
+	importFuncSigs        []FuncSig
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 

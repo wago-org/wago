@@ -11,6 +11,7 @@ import (
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
+	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
 	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
 	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
 	optimization.Bind("atomic-lse", &atomicLSEEnabled),
@@ -79,6 +80,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 )
 
 var (
+	optAtomicNotifyEmpty    = optimizationBindings.Option("atomic-notify-empty")
 	optAtomicStaticBounds   = optimizationBindings.Option("atomic-static-bounds")
 	optAtomicZeroWait       = optimizationBindings.Option("atomic-wait-zero-timeout")
 	optSharedMemoryBase     = optimizationBindings.Option("shared-memory-base")

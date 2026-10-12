@@ -1371,6 +1371,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// re-entry loop copies back only the real result count. Both fit uint16.
 	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16))
 
+	notifyDone := -1
+	if notifyFast {
+		notifyDone = f.notifyEmptyShortcut(notifyIndex)
+	}
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	if regallocCheckEnabled {
@@ -1379,6 +1383,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.a.CallMem(R8, hcTrampoline)
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(len(f.a.B)), 0, rootOffsets)
+	}
+	if notifyDone >= 0 {
+		f.a.PatchRel32(notifyDone, f.a.Len())
 	}
 	if nativeAllocDone >= 0 {
 		f.a.PatchRel32(nativeAllocDone, f.a.Len())
@@ -1727,6 +1734,17 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	f.stats.call(kind)
 	p := len(ft.Params)
+	notifyIndex := uint32(0)
+	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
+	if notifyFast && p == 4 {
+		top := f.s.back()
+		if top.st.kind != stConst {
+			notifyFast = false
+		} else {
+			notifyIndex = uint32(top.st.cval)
+		}
+	}
+
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
