@@ -85,14 +85,15 @@ type moduleState struct {
 	importReferences        bool
 	localMutableReferences  bool
 	// Exact imported mutable-funcref writes use the parked ownership bridge.
-	mutableFuncrefGlobalClear   bool
-	mutableFuncrefGlobalSetSelf bool
-	mutableFuncrefGlobalCopy    bool
-	mutableFuncrefGlobalMove    bool
-	ownedTable                  bool
-	ownedTableGrowth            bool
-	table64                     bool
-	tableAddr64                 []bool
+	mutableFuncrefGlobalClear             bool
+	mutableFuncrefGlobalSetSelf           bool
+	mutableFuncrefGlobalCopy              bool
+	mutableFuncrefGlobalMove              bool
+	mutableFuncrefGlobalBidirectionalCopy bool
+	ownedTable                            bool
+	ownedTableGrowth                      bool
+	table64                               bool
+	tableAddr64                           []bool
 	// Compact reference tables store one authenticated opaque carrier per
 	// eight-byte row. Funcref tables retain their 32-byte callable descriptor
 	// rows. Keep physical layout independent from the table index width.
@@ -266,6 +267,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.mutableFuncrefGlobalSetSelf = admitMutableFunctionGlobalSetSelf(m)
 	s.mutableFuncrefGlobalCopy = admitMutableFunctionGlobalCopy(m)
 	s.mutableFuncrefGlobalMove = admitMutableFunctionGlobalMove(m)
+	s.mutableFuncrefGlobalBidirectionalCopy = admitMutableFunctionGlobalBidirectionalCopy(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -273,7 +275,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove
+		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -337,7 +339,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("isolated global import")
 			}
 			g := im.Type.GlobalType()
-			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove) && admitImportedFunctionGlobal(m, g)
+			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy) && admitImportedFunctionGlobal(m, g)
 			if !scalarType(g.Type, true) && !reference {
 				return s, unsupported("nonscalar global import")
 			}

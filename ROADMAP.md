@@ -24,9 +24,12 @@ into that cell after authenticating the complete local descriptor and transferri
 one precise owner root. A fourth copies one imported mutable nullable funcref cell
 to a second through the same parked transaction, including null overwrite,
 canonical foreign-owner transfer, repeated-copy deduplication and aliased cells.
-One final exact composition moves source to target and then clears source through
+One exact composition moves source to target and then clears source through
 two ordered parked transactions, preserving the owner root across the handoff
 and retiring the expected roots for null and aliased moves.
+An additional exact two-function product copies in either direction through an
+indexed parked bridge. Both one-write paths preserve canonical owners, null
+overwrite and alias deduplication without exposing arbitrary multi-write bodies.
 Other non-null or general guest `global.set`, raw reference escape, and broader
 executable mutable-reference shapes remain unsupported.
 Parked callbacks, retirement and compiler-free artifact tests cover these bounded

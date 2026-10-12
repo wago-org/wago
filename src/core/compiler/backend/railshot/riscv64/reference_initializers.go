@@ -149,6 +149,41 @@ func admitMutableFunctionGlobalMove(m *wasm.Module) bool {
 	return ex.Name == "move" && ex.Index.Kind == wasm.ExternFunc && ex.Index.Index == 0
 }
 
+// admitMutableFunctionGlobalBidirectionalCopy admits two independently safe
+// cross-container writes. Each exported function copies one imported mutable
+// funcref cell into the other; no guest temporary can outlive a container root.
+// The indexed parked bridge is therefore exercised for both destination cells
+// without opening arbitrary multi-write bodies.
+func admitMutableFunctionGlobalBidirectionalCopy(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Imports) != 2 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+		return false
+	}
+	for i, name := range []string{"source", "target"} {
+		imp := m.Imports[i]
+		if imp.Module != "env" || imp.Name != name || imp.Type.Kind != wasm.ExternGlobal {
+			return false
+		}
+		typ := imp.Type.GlobalType()
+		if !typ.Mutable || !wasm.EqualValType(typ.Type, wasm.FuncRef) {
+			return false
+		}
+	}
+	wantBodies := [][]byte{{0x23, 0, 0x24, 1, 0x0b}, {0x23, 1, 0x24, 0, 0x0b}}
+	for i := range m.Code {
+		sig, ok := m.FuncSignature(uint32(i))
+		if !ok || sig.Kind != wasm.CompFunc || len(sig.Params) != 0 || len(sig.Results) != 0 || m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, wantBodies[i]) {
+			return false
+		}
+	}
+	wantExports := []string{"copy_to_target", "copy_to_source"}
+	for i, ex := range m.Exports {
+		if ex.Name != wantExports[i] || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
+			return false
+		}
+	}
+	return true
+}
+
 // privateIndexedFunctionGlobal admits the table-free typed cells used to hold
 // same-instance recursive call_ref targets. Keep this separate from public
 // funcref globals: the carrier is immutable, non-null, non-exact, initialized
@@ -228,5 +263,5 @@ func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 }
 
 func admitImportedFunctionGlobal(m *wasm.Module, typ wasm.GlobalType) bool {
-	return wasm.EqualValType(typ.Type, wasm.FuncRef) && (!typ.Mutable && len(m.Tables)+m.ImportedTableCount() <= 1 || typ.Mutable && (admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m)))
+	return wasm.EqualValType(typ.Type, wasm.FuncRef) && (!typ.Mutable && len(m.Tables)+m.ImportedTableCount() <= 1 || typ.Mutable && (admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m)))
 }

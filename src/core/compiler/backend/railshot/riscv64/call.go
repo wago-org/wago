@@ -47,8 +47,9 @@ const (
 	gcArrayInitData      uint32 = 29
 	gcArrayInitElem      uint32 = 30
 	// guestGlobalClear is an internal relocation key, not a GC helper ID.
-	guestGlobalClear uint32 = ^uint32(0)
-	guestGlobalStore uint32 = ^uint32(0) - 1
+	guestGlobalClear        uint32 = ^uint32(0)
+	guestGlobalStore        uint32 = ^uint32(0) - 1
+	guestGlobalStoreIndexed uint32 = ^uint32(0) - 2
 	// guestGlobalStoreDispatch matches the permanently invalid zero-index
 	// HostFuncRef dispatch encoding reserved by the runtime bridge.
 	guestGlobalStoreDispatch uint32 = 1 << 31
@@ -88,6 +89,19 @@ func (f *integerEmitter) storeGuestGlobal(slot int) {
 	f.Load(5, f.SpillOffset(slot), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: guestGlobalStore})
+	f.restoreCallTransport()
+}
+
+// storeGuestGlobalIndexed transfers one authenticated descriptor and its exact
+// destination index through the parked bridge. Only the two-function exact
+// bidirectional-copy profile can emit this relocation.
+func (f *integerEmitter) storeGuestGlobalIndexed(slot int, index uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(slot), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.a.Addi(enc.X5, enc.Zero, int32(index))
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: guestGlobalStoreIndexed})
 	f.restoreCallTransport()
 }
 

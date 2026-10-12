@@ -70,7 +70,7 @@ func rv64MutableFuncrefGlobalClear(c *Compiled) bool {
 }
 
 func railshotUsesGuestGlobalStoreHelper(c *Compiled) bool {
-	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c)
+	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c) || rv64MutableFuncrefGlobalBidirectionalCopy(c)
 }
 
 // The zero-index host-funcref dispatch encoding is permanently invalid for a
@@ -95,6 +95,8 @@ func (in *Instance) dispatchGuestGlobalStore(dispatch uint32, args, results []ui
 		err = in.globalCells[1].copyGuestFuncrefDescriptor(in, args[0])
 	case rv64MutableFuncrefGlobalMove(in.c) && len(args) == 0 && len(in.globalCells) == 2:
 		err = in.globalCells[0].SetValue(ValueFuncRef(NullFuncRef()))
+	case rv64MutableFuncrefGlobalBidirectionalCopy(in.c) && len(args) == 2 && len(in.globalCells) == 2 && args[1] < 2:
+		err = in.globalCells[args[1]].copyGuestFuncrefDescriptor(in, args[0])
 	default:
 		panic(invalidHostReference{err: fmt.Errorf("invalid RV64 guest global store bridge")})
 	}

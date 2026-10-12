@@ -5,6 +5,7 @@ package riscv64
 import (
 	"crypto/sha256"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -168,6 +169,96 @@ func mutableFuncrefMoveSource() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("move", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x24, 1, 0xd0, 0x70, 0x24, 0, 0x0b}))),
 	)
+}
+
+func mutableFuncrefBidirectionalCopySource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(
+			wasmtest.GlobalImportEntry("env", "source", wasm.FuncRef, true),
+			wasmtest.GlobalImportEntry("env", "target", wasm.FuncRef, true),
+		)),
+		wasmtest.Section(3, []byte{2, 0, 0}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("copy_to_target", 0, 0),
+			wasmtest.ExportEntry("copy_to_source", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0, 0x24, 1, 0x0b}),
+			wasmtest.Code([]byte{0x23, 1, 0x24, 0, 0x0b}),
+		)),
+	)
+}
+
+func TestMutableFuncrefBidirectionalCopyProduction(t *testing.T) {
+	source := mutableFuncrefBidirectionalCopySource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitMutableFunctionGlobalBidirectionalCopy(m) {
+		t.Fatal("exact mutable funcref bidirectional copy source rejected")
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("mutable funcref bidirectional copy compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0xb2, 0xb7, 0x62, 0xca, 0x55, 0x2d, 0x4f, 0x9b, 0x4b, 0x69, 0xaa, 0x27, 0x86, 0x30, 0xca, 0xe0, 0xe9, 0x39, 0x2d, 0x86, 0x73, 0x70, 0xd9, 0xeb, 0x85, 0x61, 0xfa, 0x98, 0x7f, 0x25, 0x23, 0x30}
+	if len(image.Code) != 812 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, []int{0, 288}) || !slices.Equal(image.InternalEntry, []int{0, 288}) {
+		t.Fatalf("mutable funcref bidirectional copy compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
+	}
+}
+
+func TestMutableFuncrefBidirectionalCopyProductionRejectsBroaderSources(t *testing.T) {
+	module := func(exports, first, second []byte) []byte {
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(2, wasmtest.Vec(
+				wasmtest.GlobalImportEntry("env", "source", wasm.FuncRef, true),
+				wasmtest.GlobalImportEntry("env", "target", wasm.FuncRef, true),
+			)),
+			wasmtest.Section(3, []byte{2, 0, 0}),
+			wasmtest.Section(7, exports),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(first), wasmtest.Code(second))),
+		)
+	}
+	exactExports := wasmtest.Vec(
+		wasmtest.ExportEntry("copy_to_target", 0, 0),
+		wasmtest.ExportEntry("copy_to_source", 0, 1),
+	)
+	forward := []byte{0x23, 0, 0x24, 1, 0x0b}
+	reverse := []byte{0x23, 1, 0x24, 0, 0x0b}
+	for name, source := range map[string][]byte{
+		"two-forward":       module(exactExports, forward, forward),
+		"two-reverse":       module(exactExports, reverse, reverse),
+		"swapped-functions": module(exactExports, reverse, forward),
+		"wrong-first-export": module(wasmtest.Vec(
+			wasmtest.ExportEntry("other", 0, 0),
+			wasmtest.ExportEntry("copy_to_source", 0, 1),
+		), forward, reverse),
+		"swapped-exports": module(wasmtest.Vec(
+			wasmtest.ExportEntry("copy_to_source", 0, 1),
+			wasmtest.ExportEntry("copy_to_target", 0, 0),
+		), forward, reverse),
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal("fixture decoding", err)
+			}
+			if admitMutableFunctionGlobalBidirectionalCopy(m) {
+				t.Fatal("broader bidirectional copy source matched exact profile")
+			}
+			staged := false
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
+			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
+				t.Fatal("broader bidirectional copy source reached staging", image, err, staged)
+			}
+		})
+	}
 }
 
 func TestMutableFuncrefMoveProduction(t *testing.T) {

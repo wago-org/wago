@@ -179,6 +179,11 @@ publishes source into target, then clears source. The first transaction acquires
 the target root before the second can retire the source root, so a logically
 closed descriptor owner remains physically live across the handoff. Null and
 aliased moves use the same transactions rather than a raw-cell shortcut.
+The exact bidirectional-copy product adds a two-slot indexed variant of that
+bridge. Each of its two exported bodies performs exactly one load and one write;
+the runtime accepts only target indices zero or one after the complete artifact
+shape and code image are authenticated. This permits both transfer directions
+without letting a guest temporary outlive the only container root for a descriptor.
 Reference-global imports combined with instance-owned imported tables, general
 mutable reference imports/exports and typed references remain gated pending
 separate ownership qualification.

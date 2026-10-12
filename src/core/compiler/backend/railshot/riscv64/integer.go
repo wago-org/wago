@@ -1317,12 +1317,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if _, err = popClass(reference); err != nil {
 					return integerSummary{}, err
 				}
-				if state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove {
+				if state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove || state.mutableFuncrefGlobalBidirectionalCopy {
 					want := uint32(0)
 					if state.mutableFuncrefGlobalCopy || (state.mutableFuncrefGlobalMove && idx == 1) {
 						want = 1
 					}
-					if idx != want || !reference {
+					if (!state.mutableFuncrefGlobalBidirectionalCopy && idx != want) || !reference {
 						return integerSummary{}, unsupported("mutable funcref store target")
 					}
 					callCount++
@@ -1332,6 +1332,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if live && emit != nil {
 						if state.mutableFuncrefGlobalClear || (state.mutableFuncrefGlobalMove && idx == 0) {
 							emit.clearGuestGlobal()
+						} else if state.mutableFuncrefGlobalBidirectionalCopy {
+							emit.storeGuestGlobalIndexed(h, idx)
 						} else {
 							emit.storeGuestGlobal(h)
 						}

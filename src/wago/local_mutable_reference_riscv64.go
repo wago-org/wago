@@ -25,6 +25,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalMove(c) {
 		return true, nil // Exact move transfers the owner root before clearing its source.
 	}
+	if rv64MutableFuncrefGlobalBidirectionalCopy(c) {
+		return true, nil // Exact indexed copies mutate either imported container safely.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable
