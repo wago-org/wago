@@ -1005,3 +1005,40 @@ Raw `threads-memory64-core3-compile-ab.json` has SHA-256
 The SSH control master and detached `wago-wasm3-parity` session were verified
 live after these captures. Multiple memories with threads, broader composition,
 full official conformance and overall performance parity remain open.
+
+
+## Full pinned official Core 3 suite restored and validated
+
+The pinned `tests/conformance/spec-v3` submodule is now initialized locally and
+in the dedicated AMD64 workspace at
+`9d36019973201a19f9c9ebb0f10828b2fe2374aa`. Both native runs use the checksummed
+WABT 1.0.41 release asset from `scripts/bootstrap-wabt.sh` and the official
+reference interpreter built by `scripts/bootstrap-spec-interpreter.sh`, with
+version/revision and build provenance verified. ARM64's interpreter uses
+OCaml 5.5.1, Dune 3.24.2 and Menhir 20260209; AMD64's uses OCaml 4.14.1,
+Dune 3.14.0 and Menhir 20231231. AMD64 tools and standard libraries were extracted
+under the dedicated workspace cache, requiring no system installation.
+
+At Wago `c88d2457` (production source identical to `d793333f`),
+`TestSpecSuiteExec` with `wago_regalloccheck` passes on Apple M4 Max
+Darwin/ARM64 Go 1.27.1 and Ryzen 7800X3D Linux/AMD64 Go 1.22. Both runs cover all
+258 pinned files with 2,226 modules and 58,238 assertions passed, zero failures,
+skips or reported execution gaps. Exactly 28 files use the official interpreter
+fallback when WABT cannot parse the text. The current count is 200 assertions
+above the historical committed baseline; the current captures retain per-file
+counts and are not substituted into that historical record. The checksummed
+release assets and both independently built interpreters agree on the current
+counts. This result does not establish threads proposal conformance or overall
+performance parity.
+
+Ignored logs and their SHA-256 values:
+
+- `official-core3-pinned-arm64.txt`:
+  `3f215111d2096a47142cc80e822d7c7aaf63eede1e64b285ba75e59133134f33`
+- `official-core3-pinned-amd64.txt`:
+  `89b0ccb0cb81eb1fa79377b124b9da86361af3b17419d182f6d4aad8d293d11d`
+
+The AMD64 suite ran in the detached `core3` window of
+`wago-wasm3-parity`; its status file records exit 0. Both source checkouts and
+native tools remain available for subsequent validation. Full feature and
+performance parity work remains open.

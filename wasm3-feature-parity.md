@@ -45,8 +45,10 @@ support alone does not establish performance parity.
   Defined/imported tables, active/passive elements, and exception tags now
   execute with shared memory, including foreign dispatch and exception catches.
   Mutable-global imports now use the shared execution lease, including host
-  access and concurrent importers. Shared memory64 and multiple memories remain
-  restricted; full thread composition and conformance remain open.
+  access and concurrent importers. Shared memory64 now retains full-width atomic
+  and helper addresses, growth results, and data initialization destinations.
+  Unshared memory32/64 atomics use canonical backing. Multiple memories with
+  threads and wider proposal composition remain open.
 
 ## Current validation
 
@@ -185,6 +187,13 @@ for unshared load/store and RMW add. A matched 218-module Core 3 compile capture
 shows equivalent allocated bytes/counts, native code size and process RSS, with
 a 1.35% lower compile-interval median; this is a local corpus check, not all
 feature combinations or memory-instantiation costs.
+
+The complete pinned official Core 3 suite now passes on both native architectures:
+258 files, 2,226 modules, 58,238 assertions, zero failures/skips/gaps. Both runs
+use checksummed WABT 1.0.41 assets and the reference interpreter built from
+`9d36019973201a19f9c9ebb0f10828b2fe2374aa`; 28 files use the interpreter text
+fallback. This establishes the current Core 3 suite result, independently of
+performance parity and the remaining phase 4/5 work.
 
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
