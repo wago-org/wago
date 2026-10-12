@@ -829,7 +829,7 @@ func (h staticHostModule) ReleaseExternRef(ref ExternRef) bool {
 // a public funcref boundary.
 type HostFuncRef struct {
 	mu            sync.Mutex
-	fn            slotHostFunc
+	fn            *syncHostBinding
 	store         *referenceStore
 	sig           FuncSig
 	source        *Instance
@@ -913,18 +913,12 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	if err != nil {
 		return nil, fmt.Errorf("wago: host function: %w", err)
 	}
-	fn := slotHostFunc(func(module HostModule, params, results []uint64) {
-		caller, ok := resolveHostCaller(module)
-		if !ok {
-			panic(HostTrap{Err: fmt.Errorf("wago: invalid host function caller")})
-		}
-		binding.callUnchecked(caller, params, results)
-	})
 	owner := &HostFuncRef{
-		fn:    fn,
+		fn:    &binding,
 		store: rt.refStore,
 		sig:   sig,
 	}
+	binding.sig = &owner.sig
 	owner.gcCapable = gcCapable
 	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)
 	if err != nil {
@@ -932,6 +926,23 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	}
 	owner.dispatchIndex = dispatchIndex
 	return owner, nil
+}
+
+// Attached importers retain the owner until their native code is released.
+// Pure typed numeric callbacks need no callback Caller or reference translation;
+// keeping their immutable binding permits the ordinary per-import scalar portal.
+// Materialized funcrefs still retain their owner and owned dispatch namespace.
+func (h *HostFuncRef) directNumericBinding() (syncHostBinding, bool) {
+	if h == nil {
+		return syncHostBinding{}, false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed || h.gcCapable || h.fn == nil || h.fn.gate != nil || h.fn.scalarKind < syncHostTypedI32 ||
+		hasReferenceValType(h.sig.Params) || hasReferenceValType(h.sig.Results) {
+		return syncHostBinding{}, false
+	}
+	return *h.fn, true
 }
 
 func funcSigHasGCRefs(sig FuncSig) bool {
@@ -1419,7 +1430,14 @@ func bindHostImport(v any, sig FuncSig) (slotHostFunc, error) {
 		if !funcSigEqual(f.sig, sig) {
 			return nil, fmt.Errorf("host funcref signature mismatch")
 		}
-		return f.fn, nil
+		binding := f.fn
+		return slotHostFunc(func(module HostModule, params, results []uint64) {
+			caller, ok := resolveHostCaller(module)
+			if !ok {
+				panic(HostTrap{Err: fmt.Errorf("wago: invalid host function caller")})
+			}
+			binding.callUnchecked(caller, params, results)
+		}), nil
 	case nil:
 		return nil, fmt.Errorf("no host function provided")
 	default:
@@ -1816,6 +1834,13 @@ func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 		return syncHostBinding{}, fmt.Errorf("v128 host callbacks are not supported")
 	}
 	switch fn := value.(type) {
+	case *HostFuncRef:
+		if binding, ok := fn.directNumericBinding(); ok {
+			if !funcSigEqual(fn.sig, sig) {
+				return syncHostBinding{}, fmt.Errorf("host funcref signature mismatch")
+			}
+			return binding, nil
+		}
 	case I32HostEvent, gatedI32HostEvent:
 		return syncHostBinding{}, fmt.Errorf("deferred host event cannot be used by a module that requires synchronous host control")
 	case callerSlotHostFunc:
@@ -2166,7 +2191,7 @@ func (t *gcHostTempTokens) release(in *Instance) {
 
 type boundHostFuncRefCall struct {
 	owner           *HostFuncRef
-	fn              slotHostFunc
+	fn              *syncHostBinding
 	sig             FuncSig
 	params, results []ValueTypeDescriptor
 	types           *[]DefinedTypeDescriptor
@@ -2294,7 +2319,7 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 	caller.ephemeralGCResults = &gcResultTemps
 	defer gcResultTemps.release(in)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
-	binding.callBoundUnchecked(caller, args, results)
+	binding.callUnchecked(caller, args, results)
 	if err := in.translateHostReferenceResults(invocation.gcActivation, results, sig.Results, exactResults, exactTypes); err != nil {
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
@@ -2371,7 +2396,11 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 			exactTypes = exact.types
 			exactTypesPtr = &exact.types
 		}
-		dispatchSyncHostReference(in, scope, ctrl, importIdx, &syncHostBinding{fn: fn}, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
+		if fn.scalarKind >= syncHostTypedI32 && !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) {
+			dispatchSyncHostScalar(in, scope, fn, args, results, invocation)
+		} else {
+			dispatchSyncHostReference(in, scope, ctrl, importIdx, fn, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
+		}
 		return
 	}
 	if int(importIdx) >= len(in.syncHosts) || !in.syncHosts[importIdx].callable() {

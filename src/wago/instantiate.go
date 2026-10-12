@@ -2119,6 +2119,10 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool) (s
 		}
 		if syncMode {
 			if owner, ok := imports[key].(*HostFuncRef); ok && owner != nil {
+				if _, direct := owner.directNumericBinding(); direct {
+					needsShared = true
+					continue
+				}
 				if fidx >= len(c.importFuncSigs) {
 					return 0, nil, nil, nil, fmt.Errorf("import %q wrapper signature is missing", displayKey)
 				}
