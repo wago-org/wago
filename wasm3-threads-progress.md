@@ -1372,3 +1372,107 @@ thread and targeted regression validation above uses both.
   `e4680565ecd8123994208f346cae750b4f4f0db95a5d4fc6fc2f8e0a8d08ffd9`
 - `official-core3-shared-secondary-amd64.txt` SHA-256:
   `d6a2debe616546ec85519c8532113968862434bfe5a335a0096c0cc7c751cbcc`
+
+
+## Refreshed peer contract and runtime hookup
+
+The earlier peer captures used the fork's default `W2C2_RUNTIME_CHECKS=0`.
+`wasmMemoryCheckRange` and `wasmAtomicCheckAccess` are no-ops in that profile;
+Wago's threads products retain explicit bounds and alignment checks. Those older
+measurements are useful unchecked native targets, but they do not establish
+parity under equal checking policies. They remain preserved rather than being
+relabelled as checked results.
+
+A fresh attempted wait/notify comparison also exposed a missing link dependency:
+the adapter omitted the fork's futex runtime and reported undefined symbols for
+wasmMemoryAtomicWait/Notify. Linking futex.c, list.c and map.c restores the exact
+wait/notify oracle. wasm.fyi `d64d55c` makes its w2c2 SDK packager install those
+sources/headers, the SIMD header, and the entire transitive vendored SIMDe tree.
+It preserves futex.h's upstream relative include path with a byte-identical base
+header copy and returns exact native source paths for compiler argument lists.
+All guest, bridge and runtime translation units must use the same checking and
+threads flags; linking a runtime precompiled with different flags is excluded.
+
+The rebuilt SDK uses unmodified JairusSW/w2c2
+`f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b`; its translator has the same SHA-256
+as the prior executable:
+`b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15`.
+The retained tracked `docs/benchmarks/wasm3-2026-10-12/w2c2-peer-runtime.json`
+records all 24 installed runtime file hashes, the three compiler input sources,
+common flags and separate checked/unchecked profiles. Its SHA-256 is
+`999bfb99d71ede30566d065f41ff80501ebbe72e276d2fbc84b0106267ee7530`.
+The actual packaging/build ran successfully from the local fork. SDK regression
+checks include transitive SIMD headers, exact source hashes, all link inputs,
+missing dependency rejection and legacy forks without SIMD/futex support.
+The SDK plus existing performance/protocol tests have nine passes and one
+unrelated allocation-artifact skip.
+
+### Fresh steady comparison with both checking profiles
+
+Apple M4 Max, Darwin ARM64, Go 1.27.1. Wago is
+`0f9eb66e3af53d87ebc3e5afe01f52a0d1d81e73`, source fingerprint
+`84281aae26a0eefff72874b85e72ea8d4aef05f70702bcad514f6667b56c0656`.
+The peer uses the packaged SDK above, Clang -O3 -march=native
+-fno-strict-aliasing -DWASM_THREADS_PTHREADS -pthread, plus either explicit
+-DW2C2_RUNTIME_CHECKS=1 or =0 and the three installed runtime source files.
+Both profiles are tested, without silently replacing the faster unchecked target.
+
+Each engine/profile has three independently launched processes, interleaved in
+one capture; every launch/contract has two warmup batches and five oracle-verified
+timed batches of at least 50 ms. A separate V8 process verifies the arithmetic
+oracles. All eight contracts pass in all three configurations. Identical Wasm
+artifact hashes, signatures, work counts and native call paths are retained
+within each contract. Median ns per complete 262,144-work-unit invocation:
+
+| Contract | Wago | Checked w2c2 | Unchecked w2c2 | Wago / checked | Wago / unchecked |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Ordinary shared load/store | 210,398 | 2,155,022 | 101,876 | 0.098 | 2.065 |
+| SIMD shared load/store | 233,950 | 1,670,506 | 107,225 | 0.140 | 2.182 |
+| Bulk fill | 322,696 | 1,970,209 | 188,040 | 0.164 | 1.716 |
+| Atomic load/store | 280,718 | 2,158,465 | 166,974 | 0.130 | 1.681 |
+| Atomic RMW add | 258,422 | 2,198,335 | 231,146 | 0.118 | 1.118 |
+| Atomic compare/exchange | 295,587 | 2,212,288 | 279,884 | 0.134 | 1.056 |
+| Wait mismatch and notify | 14,205,698 | 5,492,473 | 1,988,211 | 2.586 | 7.145 |
+| Fence-only arithmetic | 313,474 | 298 | 286 | 1053.621 | 1096.452 |
+
+The checked peer locks the shared memory mutex for range/size observation;
+unchecked range and alignment checks are absent. Thus the two peer columns are
+separate optimization targets, not interchangeable estimates of one engine cost.
+Some checked memory batches have appreciable variance; the table reports
+observed medians rather than statistical speedup claims. These single-actor
+kernels do not establish concurrent throughput or native C data-race equivalence.
+Wago exceeds checked-peer speed on these six memory/numeric atomic kernels, but
+fence arithmetic and wait/notify remain slower, and the unchecked gaps remain.
+The full feature-by-feature performance objective is not complete.
+
+### Fence diagnosis
+
+The minimized translated fence contract contains no guest memory accesses: only
+local arithmetic, the fence, and its loop latch. w2c2 emits a real
+__atomic_thread_fence(__ATOMIC_SEQ_CST). Clang's native code keeps one DMB ISH,
+coalesces the repeated barriers, and replaces the arithmetic loop with an exact
+integer formula; even the 64-call performance wrapper becomes straight-line
+arithmetic plus one fence. Wago still executes its loop and fence each iteration.
+This is a loop/barrier optimization gap, not an omitted peer fence or mainly
+wrapper admission overhead. Any Wago optimization must preserve fences around
+observable memory/call effects; simply deleting fences is not an acceptable fix.
+
+Wait mismatch uses Wago's native zero-timeout wait path, but notify still crosses
+into the synchronous Go helper on every iteration even when no waiter is queued.
+The newly linked peer now provides a valid baseline for that transition cost.
+No Wago compiler/runtime code changed in this checkpoint; compile cost therefore
+remains covered by the preceding source-identical measurements.
+
+Ignored raw evidence SHA-256:
+
+- Final linked SDK, both profiles: `threads-peer-matched-refresh-arm64.json`
+  `951f1add3bdc826f4bf0fe9aacba22564a419c0ad313c5d442672e6305daf9f5`
+- Initial unchecked attempt, missing futex link:
+  `threads-peer-refresh-arm64.json`
+  `ec1d022cc6a759cbc08cf9d551e4213a28b266ef0d0df4367c8228d9be34b147`
+- Initial checked attempt, missing futex link:
+  `threads-checked-peer-refresh-arm64.json`
+  `bf1480bd60f8fa90115ca584521c581209b2d792f9c67379b84f89d5edaa2bbd`
+- Isolated linked checked wait validation:
+  `threads-linked-wait-peer-refresh-arm64.json`
+  `94bb83615f5b43d09bfeb4a021b356eedf11b87d97a58785afb8728d016470ef`

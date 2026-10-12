@@ -250,3 +250,21 @@ Guarded race checks pass on ARM64 and AMD64; both pinned official threads suites
 pass again. wasm.fyi `1ce2a5c` adds shared secondary atomic, wait/size and copy
 contracts, verified through Wago and an independent V8 oracle. The peer still
 rejects indexed atomic memargs, so no same-feature parity ratio exists.
+
+## Refreshed performance contract (2026-10-12)
+
+wasm.fyi `d64d55c` packages the fork's transitive SIMD headers and its futex
+runtime compiler inputs. Linking all three runtime sources makes the existing
+wait/notify peer contract executable again. Eight current threaded contracts now
+have interleaved, three-process, verified 50-ms steady captures for Wago and both
+checked/unchecked w2c2 profiles. Earlier default peer runs disabled bounds and
+alignment checks; they remain explicitly labelled unchecked targets.
+
+Wago is faster than the checked peer on the six refreshed memory/numeric atomic
+kernels. It remains 2.586x slower on wait mismatch/notify and about 1,054x slower
+on the fence-only arithmetic kernel. The faster unchecked peer also retains
+broader gaps. Clang coalesces repeated fences and computes the local arithmetic
+loop in closed form; it keeps a real hardware barrier. Wago notify still enters
+Go even when no waiter is queued. These are the next concrete optimization
+paths, with broader feature parity still open. See `wasm3-threads-progress.md`
+and the tracked peer runtime manifest for exact configurations and evidence.

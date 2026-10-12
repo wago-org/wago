@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "repository": "JairusSW/w2c2",
+  "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+  "translatorSha256": "b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+  "sdkPackagingHelper": "../../Web/wasm.fyi/scripts/lib/c-transpiler-sdk.mjs:packageW2c2Runtime",
+  "runtimeFiles": [
+    {
+      "source": "w2c2/w2c2_base.h",
+      "installed": "w2c2_base.h",
+      "sha256": "418c75aa23e61d2e660c48bfa4c0e01cd308fb1ec12862625f4cf854f8abc990"
+    },
+    {
+      "source": "w2c2/w2c2_simd.h",
+      "installed": "w2c2_simd.h",
+      "sha256": "8cbc59a1f44002a7afe9d689cf6ffda9975e6dce0559a73d0d619fd2a961bcaf"
+    },
+    {
+      "source": "w2c2/simde/check.h",
+      "installed": "simde/check.h",
+      "sha256": "5fb278f5294101ce081f32ed0a931f994bf7dbd83ed69357703a2240a93151c6"
+    },
+    {
+      "source": "w2c2/simde/COPYING",
+      "installed": "simde/COPYING",
+      "sha256": "75ce0a8c5a7bff42fbd6f8f3b469b518132132c4f4948fb8d02b1ccb5d0df9d8"
+    },
+    {
+      "source": "w2c2/simde/debug-trap.h",
+      "installed": "simde/debug-trap.h",
+      "sha256": "be42d16f4786bae73f033eced87468782ee4d33539f847c6da2de5eed8a130a7"
+    },
+    {
+      "source": "w2c2/simde/hedley.h",
+      "installed": "simde/hedley.h",
+      "sha256": "8b325e7b78db665c5400c8d596d64e7f29b322b700469aeacbc1f5849f8344d0"
+    },
+    {
+      "source": "w2c2/simde/README.w2c2.md",
+      "installed": "simde/README.w2c2.md",
+      "sha256": "afb3b51cdcaa998f8be4dbf008f5dc6ce061f9aaba231e96b83438912e3654a4"
+    },
+    {
+      "source": "w2c2/simde/simde-align.h",
+      "installed": "simde/simde-align.h",
+      "sha256": "70d10319e003e0e8ea57a1fce40bce7d6d39e0d7ca7f3a295d95503c6ba69115"
+    },
+    {
+      "source": "w2c2/simde/simde-arch.h",
+      "installed": "simde/simde-arch.h",
+      "sha256": "d16418026c2e1f8c453225a70bebebb1e418d5326b036cc211845d1614fac698"
+    },
+    {
+      "source": "w2c2/simde/simde-common.h",
+      "installed": "simde/simde-common.h",
+      "sha256": "c9b2c8d5043dcefadaf17693a80eddfb0d5baff319660c9bf9efd9906d562b82"
+    },
+    {
+      "source": "w2c2/simde/simde-constify.h",
+      "installed": "simde/simde-constify.h",
+      "sha256": "08e029bce27502966e7ba0a0886e17aea3ee997f9ec25f962529364d7c7d711d"
+    },
+    {
+      "source": "w2c2/simde/simde-detect-clang.h",
+      "installed": "simde/simde-detect-clang.h",
+      "sha256": "20a8bf9a9324fd22d088e0d1514a800605d730f572865cb66b6f9520f1879026"
+    },
+    {
+      "source": "w2c2/simde/simde-diagnostic.h",
+      "installed": "simde/simde-diagnostic.h",
+      "sha256": "4f92f558ddf6ae57ad38ad0e279d88d0b582df2bd77fd616e9b0f51cbc78ee2b"
+    },
+    {
+      "source": "w2c2/simde/simde-features.h",
+      "installed": "simde/simde-features.h",
+      "sha256": "8777b1dd5b2b0247b3fb2eb6acb7e4e5261622365e125ed9929533de28aad860"
+    },
+    {
+      "source": "w2c2/simde/simde-math.h",
+      "installed": "simde/simde-math.h",
+      "sha256": "07140b20863f1f4905a2cdbe5b1d2ef1d6a5a2e8d623e046c2cc6b91e9235239"
+    },
+    {
+      "source": "w2c2/simde/WABT-LICENSE",
+      "installed": "simde/WABT-LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "source": "w2c2/simde/wasm/simd128.h",
+      "installed": "simde/wasm/simd128.h",
+      "sha256": "5e217505fe1f1369cf65776f181e411f466629fa515281d25fcf6ee316809011"
+    },
+    {
+      "source": "w2c2/w2c2_base.h",
+      "installed": "w2c2/w2c2_base.h",
+      "sha256": "418c75aa23e61d2e660c48bfa4c0e01cd308fb1ec12862625f4cf854f8abc990"
+    },
+    {
+      "source": "futex/futex.h",
+      "installed": "futex/futex.h",
+      "sha256": "296c1f63dd241652decde607d11d09e059b655ff3206a7643f94a50ea5782fa6"
+    },
+    {
+      "source": "futex/futex.c",
+      "installed": "futex/futex.c",
+      "sha256": "a805121cb1087d6cdeabf48ee8a6518d47d4633bd925bc5b1fa34174585b8011"
+    },
+    {
+      "source": "futex/list.h",
+      "installed": "futex/list.h",
+      "sha256": "b7ecbd01483c6026a1f7c61fa8b121923e4b6cb630b3bd869533a0fbe0e7201d"
+    },
+    {
+      "source": "futex/list.c",
+      "installed": "futex/list.c",
+      "sha256": "c7b0d87f353617052855b38ad2099d55473fc2f418db24b54971c781b15a3fba"
+    },
+    {
+      "source": "futex/map.h",
+      "installed": "futex/map.h",
+      "sha256": "50712df7b04b71fb1862ee3efe3ce2048587be7f9bb79a8b97cb84d18b9a733b"
+    },
+    {
+      "source": "futex/map.c",
+      "installed": "futex/map.c",
+      "sha256": "e9acdcb2b69e9cc18c895c7b32f3fec85f841a9bba7f1b9a6e3e04ca48763792"
+    }
+  ],
+  "nativeSources": [
+    "futex/futex.c",
+    "futex/list.c",
+    "futex/map.c"
+  ],
+  "commonCompilerFlags": [
+    "-O3",
+    "-march=native",
+    "-fno-strict-aliasing",
+    "-DWASM_THREADS_PTHREADS",
+    "-pthread"
+  ],
+  "boundsProfiles": {
+    "checked": [
+      "-DW2C2_RUNTIME_CHECKS=1"
+    ],
+    "unchecked": [
+      "-DW2C2_RUNTIME_CHECKS=0"
+    ]
+  },
+  "linkPolicy": "Append all three installed nativeSources to the native compiler argument list for every prepared module. Compile guest, bridge, and runtime with the same bounds and threads flags. Keep their paths in captured compiler_flags metadata."
+}
