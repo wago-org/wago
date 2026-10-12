@@ -95,6 +95,7 @@ type moduleState struct {
 	mutableFuncrefGlobalLocalTransfer     bool
 	mutableFuncrefGlobalLocalExport       bool
 	mutableFuncrefGlobalLocalObserve      bool
+	mutableFuncrefGlobalLocalCall         bool
 	ownedTable                            bool
 	ownedTableGrowth                      bool
 	table64                               bool
@@ -278,6 +279,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.mutableFuncrefGlobalLocalTransfer = admitMutableFunctionGlobalLocalTransfer(m)
 	s.mutableFuncrefGlobalLocalExport = admitMutableFunctionGlobalLocalExport(m)
 	s.mutableFuncrefGlobalLocalObserve = admitMutableFunctionGlobalLocalObserve(m)
+	s.mutableFuncrefGlobalLocalCall = admitMutableFunctionGlobalLocalCall(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -285,7 +287,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer || s.mutableFuncrefGlobalLocalExport || s.mutableFuncrefGlobalLocalObserve
+		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer || s.mutableFuncrefGlobalLocalExport || s.mutableFuncrefGlobalLocalObserve || s.mutableFuncrefGlobalLocalCall
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -376,7 +378,11 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	}
 	importedGlobals := len(s.globals)
 	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
-	for _, g := range m.Globals {
+	for i, g := range m.Globals {
+		if s.mutableFuncrefGlobalLocalCall && i == 0 {
+			s.globals = append(s.globals, globalSpec{wide: true, reference: true, mutable: true, typ: g.Type.Type})
+			continue
+		}
 		if _, ok := privateIndexedFunctionGlobal(g, m); ok {
 			if !production || !publicExports {
 				return s, unsupported("private indexed reference global requires the public typed-reference profile")

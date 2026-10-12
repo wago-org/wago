@@ -43,6 +43,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalLocalObserve(c) {
 		return true, nil // Exact exported container adds only a nullness observer.
 	}
+	if rv64MutableFuncrefGlobalLocalCall(c) {
+		return true, nil // Exact exported typed container has one owner-scoped call_ref consumer.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable

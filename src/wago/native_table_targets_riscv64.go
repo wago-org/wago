@@ -169,7 +169,87 @@ func (s *rv64NativeTableTargets) refreshWithArguments(root *Instance, arguments 
 			}
 		}
 	}
+	if err := s.addMutableLocalCallTarget(root); err != nil {
+		return err
+	}
 	return s.validateReachable()
+}
+
+// addMutableLocalCallTarget promotes the exact mutable cell's current callable
+// owner from a container root into this activation. Native execution is leased
+// by the caller, so a parked callback may replace the cell only after this
+// independent root is installed. The old owner then remains physical until the
+// activation resumes and unwinds, even when it was already logically closed.
+func (s *rv64NativeTableTargets) addMutableLocalCallTarget(root *Instance) error {
+	if root == nil || !rv64MutableFuncrefGlobalLocalCall(root.c) {
+		return nil
+	}
+	if len(root.globalCells) != 1 || root.refStore == nil {
+		return fmt.Errorf("RV64 mutable call target cell is unavailable")
+	}
+	cell := root.globalCells[0]
+	if cell == nil || cell.Type != ValFuncRef || !cell.Mutable || len(cell.cell) < 8 {
+		return fmt.Errorf("RV64 mutable call target cell metadata changed")
+	}
+	root.lifeMu.Lock()
+	o := cell.owner
+	root.lifeMu.Unlock()
+	if o == nil {
+		if readGlobalObject(cell, ValFuncRef) != 0 {
+			return fmt.Errorf("RV64 ownerless mutable call target is non-null")
+		}
+		// Local reference cells acquire ownership lazily on their first store or
+		// host object access. The authenticated initializer is null, so the first
+		// call must reach call_ref and report the ordinary null-reference trap.
+		return nil
+	}
+	o.mu.Lock()
+	if o.closed || o.instance != root || o.store != root.refStore || o.typ != ValFuncRef || !o.mutable || cell.Type != ValFuncRef || !cell.Mutable || len(cell.cell) < 8 {
+		o.mu.Unlock()
+		return fmt.Errorf("RV64 mutable call target cell metadata changed")
+	}
+	descriptor := readGlobalObject(cell, ValFuncRef)
+	var target *Instance
+	if descriptor == 0 {
+		if len(o.retained) != 0 {
+			o.mu.Unlock()
+			return fmt.Errorf("RV64 null mutable call target retained an owner")
+		}
+	} else if _, local := root.funcrefDescriptorIndex(descriptor); local {
+		if len(o.retained) != 0 {
+			o.mu.Unlock()
+			return fmt.Errorf("RV64 local mutable call target retained a foreign owner")
+		}
+		target = root
+	} else {
+		if len(o.retained) != 1 {
+			o.mu.Unlock()
+			return fmt.Errorf("RV64 foreign mutable call target has no precise owner")
+		}
+		for owner, state := range o.retained {
+			if owner == nil || state == nil || !state.precise || state.activeWriters != 0 || len(state.proxyDescriptors) != 0 {
+				o.mu.Unlock()
+				return fmt.Errorf("RV64 foreign mutable call target ownership is imprecise")
+			}
+			target = owner
+		}
+	}
+	o.mu.Unlock()
+	if descriptor == 0 {
+		return nil
+	}
+	if target == nil || target.refStore != root.refStore {
+		return fmt.Errorf("RV64 mutable call target owner changed")
+	}
+	if _, valid := rv64PublishedDescriptor(target, descriptor); !valid {
+		return fmt.Errorf("RV64 mutable call target descriptor changed")
+	}
+	expected, err := root.c.globalExactType(0)
+	actual, actualTypes, typed := instanceFuncrefExactType(target, descriptor)
+	if err != nil || !typed || !valueTypeSubtype(actual, actualTypes, expected, root.c.Types) {
+		return fmt.Errorf("RV64 mutable call target type changed")
+	}
+	return s.add(target)
 }
 
 // The caller holds nativeExecutionMu and releases roots only after unlocking.

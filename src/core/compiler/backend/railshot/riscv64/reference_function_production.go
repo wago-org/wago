@@ -16,7 +16,7 @@ func hasDefinedReferenceFunctions(m *wasm.Module) (bool, error) {
 	if m == nil || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.FuncTypes) != len(m.Code) {
 		return false, unsupported("closed reference selection directory bound")
 	}
-	references := false
+	references := admitMutableFunctionGlobalLocalCall(m)
 	for _, index := range m.FuncTypes {
 		if index.Rec || uint64(index.Index) >= uint64(len(m.Types)) || len(m.Types[index.Index].SubTypes) != 1 {
 			return false, unsupported("closed reference selection function binding")

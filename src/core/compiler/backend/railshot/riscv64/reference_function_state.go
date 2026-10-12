@@ -90,18 +90,21 @@ func admitClosedReferenceNumericStateWithImports(m *wasm.Module, vector bool, re
 			return unsupported("closed reference memory declaration bytes")
 		}
 	}
-	for _, global := range m.Globals {
+	localCall := !vector && admitMutableFunctionGlobalLocalCall(m)
+	for i, global := range m.Globals {
 		typ := global.Type.Type
 		_, indexedReference := privateIndexedFunctionGlobal(global, m)
-		reference := wasm.EqualValType(typ, wasm.FuncRef) || indexedReference
+		reference := wasm.EqualValType(typ, wasm.FuncRef) || indexedReference || localCall && i == 0
 		if !reference && (typ.Kind() == wasm.ValRef || !scalarType(typ, true) && !(vector && wasm.EqualValType(typ, wasm.V128))) {
 			return unsupported("closed reference owned numeric or private funcref globals only")
 		}
 		if reference {
 			// This parser is bounded and never calls the local-mutable helper:
 			// early initializer approval may itself call the closed-module proof.
-			if _, err := tableElementExpression(global.Init); err != nil {
-				return err
+			if !localCall || i != 0 {
+				if _, err := tableElementExpression(global.Init); err != nil {
+					return err
+				}
 			}
 		}
 		if len(global.Init.Instrs) != 0 || len(global.Init.BodyBytes) == 0 || len(global.Init.BodyBytes) > MaxIntegerInitializerBytes || !consume(2+len(global.Init.BodyBytes)) {

@@ -284,7 +284,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if err != nil {
 		return nil, err
 	}
-	mode.localMutableReferences = mode.localMutableReferences || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m) || admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m) || admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m)
+	mode.localMutableReferences = mode.localMutableReferences || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m) || admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m) || admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m) || admitMutableFunctionGlobalLocalCall(m)
 	if mode.localMutableReferences && !(state.publicInitializers && state.exports && mode.foreignTableCalls && mode.interruptible) {
 		return nil, unsupported("mutable reference globals require the retained cooperative public profile")
 	}

@@ -368,6 +368,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	publicReferenceCallBoundary := !vector && admitPublicReferenceCallBoundary(m)
 	publicHostReferenceBoundary := !vector && admitPublicHostReferenceBoundary(m)
 	publicDynamicHostReferenceBoundary := !vector && admitPublicDynamicHostReferenceBoundary(m)
+	publicMutableLocalCall := !vector && admitMutableFunctionGlobalLocalCall(m)
 	publicReferenceCarrierBoundary := publicReferenceCallBoundary || publicHostReferenceBoundary || publicDynamicHostReferenceBoundary
 	counts, err := countClosedReferenceImports(m)
 	if err != nil {
@@ -494,7 +495,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			return unsupported("closed reference module local declaration byte bound")
 		}
 	}
-	if !hasReferenceFunction {
+	if !hasReferenceFunction && !publicMutableLocalCall {
 		return unsupported("closed reference module requires internal reference functions")
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
@@ -552,7 +553,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			}
 		case wasm.ExternGlobal:
 			// Reference cells are private even though their values name numeric slots.
-			if uint64(ex.Index.Index) >= uint64(counts.globals+len(m.Globals)) || int(ex.Index.Index) >= counts.globals && m.Globals[int(ex.Index.Index)-counts.globals].Type.Type.Kind() == wasm.ValRef {
+			if uint64(ex.Index.Index) >= uint64(counts.globals+len(m.Globals)) || int(ex.Index.Index) >= counts.globals && m.Globals[int(ex.Index.Index)-counts.globals].Type.Type.Kind() == wasm.ValRef && (!publicMutableLocalCall || ex.Name != "cell" || ex.Index.Index != 0) {
 				return unsupported("closed reference module owned numeric global export index")
 			}
 		default:

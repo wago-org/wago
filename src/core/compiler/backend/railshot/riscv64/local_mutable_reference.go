@@ -9,7 +9,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // exported mutable cell. Exact transfer profiles are admitted separately and
 // route every foreign write through the parked container-ownership bridge.
 func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
-	if admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m) || admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m) {
+	if admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m) || admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m) || admitMutableFunctionGlobalLocalCall(m) {
 		return true, nil
 	}
 	has := false

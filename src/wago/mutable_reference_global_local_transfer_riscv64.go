@@ -86,7 +86,8 @@ func (in *Instance) ensureGuestLocalFuncrefGlobalOwner(index int) error {
 	localTransfer := in != nil && rv64MutableFuncrefGlobalLocalTransfer(in.c) && index == 2 && len(in.globalCells) == 3
 	localExport := in != nil && rv64MutableFuncrefGlobalLocalExport(in.c) && index == 0 && len(in.globalCells) == 1
 	localObserve := in != nil && rv64MutableFuncrefGlobalLocalObserve(in.c) && index == 0 && len(in.globalCells) == 1
-	if !localTransfer && !localExport && !localObserve || in.refStore == nil {
+	localCall := in != nil && rv64MutableFuncrefGlobalLocalCall(in.c) && index == 0 && len(in.globalCells) == 1
+	if !localTransfer && !localExport && !localObserve && !localCall || in.refStore == nil {
 		return fmt.Errorf("invalid RV64 private funcref owner request")
 	}
 	g := in.globalCells[index]

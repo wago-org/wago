@@ -858,6 +858,9 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	if !c.nativeReferenceFunctionABI {
 		return nil
 	}
+	if rv64MutableFuncrefGlobalLocalCall(c) {
+		return nil // Exact code and retained metadata bind the sole typed-cell call_ref product.
+	}
 	if rv64Core3RefIsNullExecution(c) {
 		return nil
 	}

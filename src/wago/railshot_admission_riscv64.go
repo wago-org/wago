@@ -122,6 +122,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	mutableFuncrefGlobalLocalTransfer := rv64MutableFuncrefGlobalLocalTransfer(c)
 	mutableFuncrefGlobalLocalExport := rv64MutableFuncrefGlobalLocalExport(c)
 	mutableFuncrefGlobalLocalObserve := rv64MutableFuncrefGlobalLocalObserve(c)
+	mutableFuncrefGlobalLocalCall := rv64MutableFuncrefGlobalLocalCall(c)
 	if rv64MutableFuncrefGlobalGetExecutionCode(c) && !mutableFuncrefGlobalGet {
 		return reject("mutable funcref global.get image requires its exact retained metadata")
 	}
@@ -154,6 +155,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64MutableFuncrefGlobalLocalObserveExecutionCode(c) && !mutableFuncrefGlobalLocalObserve {
 		return reject("mutable funcref local-observe image requires its exact retained metadata")
+	}
+	if rv64MutableFuncrefGlobalLocalCallExecutionCode(c) && !mutableFuncrefGlobalLocalCall {
+		return reject("mutable funcref local-call image requires its exact retained metadata")
 	}
 	exactGCRefEq := rv64OfficialGCRefEq(c)
 	exactGCRefTestTable := rv64GCRefTestTable(c)
@@ -674,11 +678,12 @@ func railshotValidateCompiled(c *Compiled) error {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
 			typedIndex, typed := rv64PrivateIndexedFunctionType(c, exact)
+			callTyped := mutableFuncrefGlobalLocalCall && i == 0 && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && exact.Ref.Heap.Defined && exact.Ref.Heap.Abstract == 0 && exact.Ref.Heap.TypeIndex == 0
 			mutableQualified := localMutableReferences && i >= len(c.GlobalImports) || (stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && i < len(c.GlobalImports)
-			if err != nil || exact != plain && !typed || global.Mutable && !mutableQualified || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+			if err != nil || exact != plain && !typed && !callTyped || global.Mutable && !mutableQualified || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
 				return reject("qualified reference global and retained references required")
 			}
-			if typed {
+			if typed && !callTyped {
 				local := int(global.InitFunc) - c.NumImports
 				if i < len(c.GlobalImports) || global.Mutable || c.NumImports != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || c.HasStart || !global.HasInitFunc || global.HasInitGlobal || global.InitGlobal != 0 || local < 0 || local >= len(c.Funcs) || !c.Funcs[local].HasTypeIndex || c.Funcs[local].TypeIndex != typedIndex || !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
 					return reject("private indexed reference global exact target")

@@ -8,6 +8,14 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func admitMutableFunctionGlobalLocalCallWire(data []byte) bool {
+	if !admitExactProductWireShape(data, []byte{1, 3, 6, 7, 10}) {
+		return false
+	}
+	m, err := wasm.DecodeModule(data)
+	return err == nil && admitMutableFunctionGlobalLocalCall(m)
+}
+
 // admitStateOnlyMutableFunctionGlobalImport is the source-side counterpart of
 // the runtime artifact witness. It admits one mutable nullable funcref import
 // only when the module does nothing except re-export that exact cell.
@@ -390,6 +398,47 @@ func admitMutableFunctionGlobalLocalObserve(m *wasm.Module) bool {
 	return ex.Name == "cell" && ex.Index.Kind == wasm.ExternGlobal && ex.Index.Index == 0
 }
 
+// admitMutableFunctionGlobalLocalCall admits the first mutable local typed
+// funcref cell that can be invoked. Both local writers have the exact target
+// signature, host ingress is checked against the same indexed heap type, and
+// the sole reader immediately consumes the retained descriptor with call_ref.
+func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 7 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+		return false
+	}
+	if !i31CoreFunctionType(&m.Types[0], nil, []wasm.ValType{wasm.I32}) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
+		return false
+	}
+	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
+	local := m.Globals[0]
+	if !local.Type.Mutable || !wasm.EqualValType(local.Type.Type, indexed) || len(local.Init.Instrs) != 0 || !bytes.Equal(local.Init.BodyBytes, []byte{0xd0, 0, 0x0b}) {
+		return false
+	}
+	wantTypes := []uint32{0, 0, 1, 1, 1, 0}
+	wantBodies := [][]byte{
+		{0x41, 42, 0x0b},
+		{0x41, 57, 0x0b},
+		{0xd2, 0, 0x24, 0, 0x0b},
+		{0xd2, 1, 0x24, 0, 0x0b},
+		{0xd0, 0, 0x24, 0, 0x0b},
+		{0x23, 0, 0x14, 0, 0x0b},
+	}
+	for i := range m.Code {
+		if m.FuncTypes[i] != (wasm.TypeIdx{Index: wantTypes[i]}) || m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, wantBodies[i]) {
+			return false
+		}
+	}
+	wantFunctionExports := []string{"target_0", "target_1", "set_0", "set_1", "clear", "call"}
+	for i, name := range wantFunctionExports {
+		ex := m.Exports[i]
+		if ex.Name != name || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
+			return false
+		}
+	}
+	ex := m.Exports[6]
+	return ex.Name == "cell" && ex.Index.Kind == wasm.ExternGlobal && ex.Index.Index == 0
+}
+
 // privateIndexedFunctionGlobal admits the table-free typed cells used to hold
 // same-instance recursive call_ref targets. Keep this separate from public
 // funcref globals: the carrier is immutable, non-null, non-exact, initialized
@@ -440,7 +489,7 @@ func admitImmutableFunctionGlobal(global wasm.Global, m *wasm.Module, limit int)
 // Export chains are validated before folding. Imported-function targets need
 // same-store native binding validation at public instantiation.
 func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
-	if index == 0 && (admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m)) {
+	if index == 0 && (admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m) || admitMutableFunctionGlobalLocalCall(m)) {
 		return nil
 	}
 	imported := m.ImportedGlobalCount()
