@@ -70,6 +70,9 @@ func rv64GCTypeSubtypingStructProjectionLinkExecutionCode(*Compiled) bool {
 	return false
 }
 func railshotRestoreGCTypeSubtypingStructProjectionLinkArtifact(*Compiled) {}
+func rv64GCTypeSubtypingStructMismatchLink(*Compiled) bool                 { return false }
+func rv64GCTypeSubtypingStructMismatchLinkExecutionCode(*Compiled) bool    { return false }
+func railshotRestoreGCTypeSubtypingStructMismatchLinkArtifact(*Compiled)   {}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }

@@ -122,8 +122,12 @@ identity while retaining the provider through logical close. Official `.39`
 and `.40` extend that exact link contract to a projected recursive struct:
 the independently decoded consumer accepts the provider's narrower field and
 function result types, while artifact authentication keeps the shared empty
-machine image distinct through its larger type metadata. Products after `.40`
-and native cache/performance qualification remain open.
+machine image distinct through its larger type metadata. Official `.41` and
+`.42` add the corresponding negative recursive-struct pair: both exact products
+compile and authenticate, but their structurally different companion fields
+make the imported function types incompatible. The consumer therefore rejects
+the provider before attachment, leaving its resource-retention count unchanged.
+Products after `.42` and native cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

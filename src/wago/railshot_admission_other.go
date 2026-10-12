@@ -62,6 +62,9 @@ func railshotConfigureGCTypeSubtypingStructLink(uint8, *railshotCompileOptions) 
 func railshotGCTypeSubtypingStructProjectionLinkSource([]byte) uint8               { return 0 }
 func railshotConfigureGCTypeSubtypingStructProjectionLink(uint8, *railshotCompileOptions) {
 }
+func railshotGCTypeSubtypingStructMismatchLinkSource([]byte) uint8 { return 0 }
+func railshotConfigureGCTypeSubtypingStructMismatchLink(uint8, *railshotCompileOptions) {
+}
 
 func railshotGCStructGetSource([]byte) bool                                             { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)                        {}
