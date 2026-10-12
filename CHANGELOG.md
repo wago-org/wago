@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Use single-instruction acquire/release LSE atomics for arm64 RMW and
+  compare-exchange when supported by the host. Preserve exclusive-loop fallback
+  through `atomic-lse`, and persist CPU requirements for artifact admission.
+
 - Resolve literal zero-timeout shared-memory waits in native code, preserving
   alignment/bounds trap order and retaining the parking helper for other waits.
   `atomic-wait-zero-timeout` selects the lowering independently per compile.

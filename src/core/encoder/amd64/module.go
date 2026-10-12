@@ -10,6 +10,7 @@ import "github.com/wago-org/wago/src/core/codeimage"
 type CompiledModule struct {
 	// RequiredAMD64Features records optional instructions emitted by the AMD64 backend.
 	RequiredAMD64Features uint32
+	RequiresARM64LSE      bool // optional LSE instructions emitted by the arm64 backend
 
 	Code  []byte // all local functions concatenated, 16-byte aligned
 	Entry []int  // Entry[localFuncIdx] = byte offset of that function in Code

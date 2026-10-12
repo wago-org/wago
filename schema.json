@@ -66,6 +66,7 @@
               "addr-zext-elim",
               "affine-lea",
               "atomic-wait-zero-timeout",
+              "atomic-lse",
               "assoc-tree",
               "avx512-ternary",
               "avx512-vrotate",

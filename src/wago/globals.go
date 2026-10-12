@@ -1129,6 +1129,7 @@ type Compiled struct {
 
 	codeCache             *compiledCodeCache
 	customInstructions    map[uint32]railshot.CustomInstruction
+	requiresARM64LSE      bool
 	requiredAMD64Features shared.AMD64Features
 	syncHostSlots         uint16
 	// independentInstances allows instances without cross-instance Wasm imports

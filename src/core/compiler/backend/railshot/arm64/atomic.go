@@ -87,19 +87,29 @@ func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
 	}
 	addr := f.atomicAddr(d.Offset, int(d.Size))
 	old := f.allocReg(maskOf(addr, replacement, expected, compare))
-	status := f.allocReg(maskOf(addr, replacement, expected, compare, old))
-	loop := f.a.Len()
-	f.a.Ldaxr(old, addr, int(d.Size))
-	f.cmpRR(old, compare, d.ResultSize == 8)
-	notEqual := f.a.Bcond(condNE)
-	f.a.Stlxr(status, replacement, addr, int(d.Size))
-	f.patchBranch19(f.a.Cbnz64(status), loop)
-	done := f.a.Branch()
-	f.patchBranch19(notEqual, f.a.Len())
-	f.a.Clrex()
-	f.patchBranch26(done, f.a.Len())
+	if f.useAtomicLSE() {
+		if d.Size == 8 {
+			f.a.MovReg64(old, compare)
+		} else {
+			f.a.MovReg32(old, compare)
+		}
+		f.a.CasAL(old, replacement, addr, int(d.Size))
+		f.requiresLSE = true
+	} else {
+		status := f.allocReg(maskOf(addr, replacement, expected, compare, old))
+		loop := f.a.Len()
+		f.a.Ldaxr(old, addr, int(d.Size))
+		f.cmpRR(old, compare, d.ResultSize == 8)
+		notEqual := f.a.Bcond(condNE)
+		f.a.Stlxr(status, replacement, addr, int(d.Size))
+		f.patchBranch19(f.a.Cbnz64(status), loop)
+		done := f.a.Branch()
+		f.patchBranch19(notEqual, f.a.Len())
+		f.a.Clrex()
+		f.patchBranch26(done, f.a.Len())
 
-	f.release(status)
+		f.release(status)
+	}
 	f.release(addr)
 	if compare != expected {
 		f.pinned = f.pinned.remove(compare)
@@ -172,56 +182,60 @@ func (f *fn) atomicRMW(d railshared.Atomic) error {
 	addr := f.atomicAddr(d.Offset, int(d.Size))
 
 	old := f.allocReg(maskOf(vreg, addr))
-	next := f.allocReg(maskOf(vreg, addr, old))
-	status := f.allocReg(maskOf(vreg, addr, old, next))
-	loop := f.a.Len()
-	f.a.Ldaxr(old, addr, int(d.Size))
 	wide := d.ResultSize == 8
-	switch d.Operation {
-	case railshared.AtomicAdd:
-		if wide {
-			f.a.Add64(next, old, vreg)
-		} else {
-			f.a.Add32(next, old, vreg)
+	if f.useAtomicLSE() {
+		f.atomicRMWLSE(d, vreg, old, addr)
+	} else {
+		next := f.allocReg(maskOf(vreg, addr, old))
+		status := f.allocReg(maskOf(vreg, addr, old, next))
+		loop := f.a.Len()
+		f.a.Ldaxr(old, addr, int(d.Size))
+		switch d.Operation {
+		case railshared.AtomicAdd:
+			if wide {
+				f.a.Add64(next, old, vreg)
+			} else {
+				f.a.Add32(next, old, vreg)
+			}
+		case railshared.AtomicSub:
+			if wide {
+				f.a.Sub64(next, old, vreg)
+			} else {
+				f.a.Sub32(next, old, vreg)
+			}
+		case railshared.AtomicAnd:
+			if wide {
+				f.a.And64(next, old, vreg)
+			} else {
+				f.a.And32(next, old, vreg)
+			}
+		case railshared.AtomicOr:
+			if wide {
+				f.a.Orr64(next, old, vreg)
+			} else {
+				f.a.Orr32(next, old, vreg)
+			}
+		case railshared.AtomicXor:
+			if wide {
+				f.a.Eor64(next, old, vreg)
+			} else {
+				f.a.Eor32(next, old, vreg)
+			}
+		case railshared.AtomicXchg:
+			if wide {
+				f.a.MovReg64(next, vreg)
+			} else {
+				f.a.MovReg32(next, vreg)
+			}
+		default:
+			return fmt.Errorf("arm64: unsupported atomic RMW operation %d", d.Operation)
 		}
-	case railshared.AtomicSub:
-		if wide {
-			f.a.Sub64(next, old, vreg)
-		} else {
-			f.a.Sub32(next, old, vreg)
-		}
-	case railshared.AtomicAnd:
-		if wide {
-			f.a.And64(next, old, vreg)
-		} else {
-			f.a.And32(next, old, vreg)
-		}
-	case railshared.AtomicOr:
-		if wide {
-			f.a.Orr64(next, old, vreg)
-		} else {
-			f.a.Orr32(next, old, vreg)
-		}
-	case railshared.AtomicXor:
-		if wide {
-			f.a.Eor64(next, old, vreg)
-		} else {
-			f.a.Eor32(next, old, vreg)
-		}
-	case railshared.AtomicXchg:
-		if wide {
-			f.a.MovReg64(next, vreg)
-		} else {
-			f.a.MovReg32(next, vreg)
-		}
-	default:
-		return fmt.Errorf("arm64: unsupported atomic RMW operation %d", d.Operation)
-	}
-	f.a.Stlxr(status, next, addr, int(d.Size))
-	f.patchBranch19(f.a.Cbnz64(status), loop)
+		f.a.Stlxr(status, next, addr, int(d.Size))
+		f.patchBranch19(f.a.Cbnz64(status), loop)
 
-	f.release(status)
-	f.release(next)
+		f.release(status)
+		f.release(next)
+	}
 	f.release(addr)
 	f.pinned = f.pinned.remove(vreg)
 	if vOwned {
