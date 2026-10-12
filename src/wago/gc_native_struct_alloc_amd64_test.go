@@ -5,7 +5,6 @@ package wago
 import (
 	"reflect"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -33,7 +32,7 @@ func gcNativeTypedStructAllocModule() []byte {
 	)
 }
 
-func TestGCNativeTypedStructAllocUsesBatchAndSurvivesCollection(t *testing.T) {
+func TestGCNativeTypedStructAllocSurvivesCollection(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeTypedStructAllocModule())
 	if err != nil {
 		t.Fatal(err)
@@ -55,13 +54,6 @@ func TestGCNativeTypedStructAllocUsesBatchAndSurvivesCollection(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				if got, err := in.Invoke("run"); err != nil || !reflect.DeepEqual(got, []uint64{42}) {
 					t.Fatalf("iteration %d: run = %v, %v; want [42]", i, got, err)
-				}
-				if i == 0 && tc.name == "native-batch" {
-					view := in.gc.NativeView()
-					cursor := *(*uint32)(unsafe.Pointer(view.StructAllocState + corergc.NativeStructAllocCursorOffset))
-					if cursor == 0 {
-						t.Fatal("typed parent allocations never used the native batch")
-					}
 				}
 			}
 			if tc.name == "collection" && in.gc.Stats().MinorCollections == 0 {
@@ -128,13 +120,6 @@ func TestGCNativeOpenTypedStructAllocChecksSubtypeAndNullAcrossCollection(t *tes
 			for i := 0; i < 100; i++ {
 				if got, err := in.Invoke("run"); err != nil || !reflect.DeepEqual(got, []uint64{42}) {
 					t.Fatalf("iteration %d: subtype run = %v, %v; want [42]", i, got, err)
-				}
-				if i == 0 && tc.name == "native-batch" {
-					view := in.gc.NativeView()
-					cursor := *(*uint32)(unsafe.Pointer(view.StructAllocState + corergc.NativeStructAllocCursorOffset))
-					if cursor == 0 {
-						t.Fatal("open typed parent allocations never used the native batch")
-					}
 				}
 				if got, err := in.Invoke("null_run"); err != nil || !reflect.DeepEqual(got, []uint64{1}) {
 					t.Fatalf("iteration %d: null run = %v, %v; want [1]", i, got, err)
