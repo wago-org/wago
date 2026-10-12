@@ -1031,8 +1031,11 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 	if m.MemCount() == 0 {
 		return nil
 	}
-	if m.MemCount() != 1 {
-		return errors.New("threads currently require exactly one memory, shared or unshared")
+	for i := 1; i < m.MemCount(); i++ {
+		mt, ok := m.MemoryType(uint32(i))
+		if !ok || mt.Shared || i < m.ImportedMemCount() {
+			return errors.New("threads currently require locally defined unshared additional memories")
+		}
 	}
 	mt, _ := m.MemoryType(0)
 	if mt.Shared && !mt.Limits.HasMax {
@@ -3123,7 +3126,7 @@ func (c *Compiled) memoryCount() int {
 }
 
 func (c *Compiled) threadedMemory0() bool {
-	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureThreads) || c.memoryCount() != 1 {
+	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureThreads) || c.memoryCount() == 0 {
 		return false
 	}
 	return c.memoryDef(0).Shared

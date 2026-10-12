@@ -600,6 +600,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			memoryAttachments.each((*Memory).detachImporter)
 			return
 		}
+		if threadedControl {
+			runtime.ReleaseJobMemory(jm)
+		}
 		for i := memoryCount - 1; i >= 0; i-- {
 			memory := memoryObjs[i]
 			if memory != nil && memoryOwns[i] {

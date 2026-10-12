@@ -83,8 +83,18 @@ func DecodeAtomicForMemory(r *wasm.Reader, address64 bool) (Atomic, error) {
 	if err != nil {
 		return Atomic{}, err
 	}
-	if d.Align >= 64 {
-		return Atomic{}, fmt.Errorf("atomic explicit memory index is outside the initial threads boundary")
+	if d.Align&^127 != 0 {
+		return Atomic{}, fmt.Errorf("atomic memarg has unsupported alignment flags")
+	}
+	if d.Align&64 != 0 {
+		index, readErr := r.U32()
+		if readErr != nil {
+			return Atomic{}, readErr
+		}
+		if index != 0 {
+			return Atomic{}, fmt.Errorf("atomic memory index %d is outside the current threads boundary", index)
+		}
+		d.Align &= 63
 	}
 	if address64 {
 		d.Offset, err = r.U64()

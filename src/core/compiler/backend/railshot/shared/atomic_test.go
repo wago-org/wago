@@ -39,7 +39,7 @@ func TestDecodeAtomicMatrix(t *testing.T) {
 }
 
 func TestDecodeAtomicRejectsOutsideInitialBoundary(t *testing.T) {
-	for _, body := range [][]byte{{0x04, 0, 0}, {0x4f, 0, 0}, {0x10, 0x40, 0, 0}, {0x03, 1}} {
+	for _, body := range [][]byte{{0x04, 0, 0}, {0x4f, 0, 0}, {0x10, 0x40, 1, 0}, {0x03, 1}} {
 		if _, err := DecodeAtomic(wasm.NewReader(body)); err == nil {
 			t.Fatalf("accepted %x", body)
 		}
@@ -60,6 +60,15 @@ func TestDecodeAtomicMemory64Offsets(t *testing.T) {
 		}
 		if _, err := DecodeAtomic(wasm.NewReader(tc.bytes)); err == nil {
 			t.Fatal("memory32 accepted a 64-bit offset")
+		}
+	}
+}
+
+func TestDecodeAtomicExplicitMemoryZero(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		got, err := DecodeAtomicForMemory(wasm.NewReader([]byte{0x10, 0x42, 0, 7}), wide)
+		if err != nil || got.Align != 2 || got.Offset != 7 || got.Size != 4 {
+			t.Fatalf("explicit zero descriptor = %+v, %v", got, err)
 		}
 	}
 }
