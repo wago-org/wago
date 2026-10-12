@@ -1204,82 +1204,92 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallParkedClearRetainsTarget(t *test
 }
 
 func TestRV64PublicMutableFuncrefGlobalLocalCallHostReentryClear(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
-			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
-			defer rt.Close()
+	for _, tail := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("tail%t-artifact%t", tail, artifact), func(t *testing.T) {
+				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+				defer rt.Close()
 
-			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-host-reentry", rv64MutableFuncrefLocalCallI32Module(), artifact)
-			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
-			var producer *Instance
-			callbackRoots := -1
-			callbackPhysical := false
-			calls := 0
-			host := rv64HostTokenOwner(t, rt, ValI32, slotHostFunc(func(_ HostModule, params, results []uint64) {
-				calls++
-				if len(params) != 1 || len(results) != 1 || params[0] != 0x80000001 {
-					panic("mutable call host transport")
+				consumerSource := rv64MutableFuncrefLocalCallI32Module()
+				if tail {
+					consumerSource = rv64MutableFuncrefLocalTailCallI32Module()
 				}
-				if err := consumer.SetGlobalValue("cell", ValueFuncRef(NullFuncRef())); err != nil {
-					panic(fmt.Sprintf("mutable call host reentry clear: %v", err))
+				compiled := rv64NativeTailCompile(t, fmt.Sprintf("mutable-funcref-local-call-host-reentry-tail%t", tail), consumerSource, artifact)
+				view := compiled.executionView()
+				if !rv64MutableFuncrefGlobalLocalCall(view) || rv64HasReferenceTail(view) != tail {
+					t.Fatal("mutable host reentry caller witness", tail)
 				}
-				snapshot := producer.referenceLifetime().snapshot()
-				callbackRoots = snapshot.ResourceRoots
-				callbackPhysical = snapshot.PhysicalResources
-				results[0] = uint64(uint32(params[0]) + 5)
-			}))
+				consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+				var producer *Instance
+				callbackRoots := -1
+				callbackPhysical := false
+				calls := 0
+				host := rv64HostTokenOwner(t, rt, ValI32, slotHostFunc(func(_ HostModule, params, results []uint64) {
+					calls++
+					if len(params) != 1 || len(results) != 1 || params[0] != 0x80000001 {
+						panic("mutable call host transport")
+					}
+					if err := consumer.SetGlobalValue("cell", ValueFuncRef(NullFuncRef())); err != nil {
+						panic(fmt.Sprintf("mutable call host reentry clear: %v", err))
+					}
+					snapshot := producer.referenceLifetime().snapshot()
+					callbackRoots = snapshot.ResourceRoots
+					callbackPhysical = snapshot.PhysicalResources
+					results[0] = 0xfeedface00000000 | uint64(uint32(params[0])+5)
+				}))
 
-			// Reuse the qualified table-free host-reference producer: imported
-			// function zero is materialized into immutable global zero, but no
-			// public token is issued. The mutable cell is therefore the provider's
-			// sole root before the outer activation starts.
-			source := rv64ReferenceNoTableModule(false, false, false)
-			types := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})))
-			imports := wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("target")...), 0, 0)))
-			source = rv64ReplaceTableStageSection(t, source, 1, append(types, imports...))
-			source = rv64ReplaceTableStageSection(t, source, 3, wasmtest.Section(3, []byte{2, 1, 1}))
-			source = rv64ReplaceTableStageSection(t, source, 7, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("isnull", 0, 1), wasmtest.ExportEntry("carrier", 0, 2), wasmtest.ExportEntry("reference", 3, 255), wasmtest.ExportEntry("first", 3, 0))))
-			carrier := []byte{1, 1, 0x70, 0x23, 0xff, 1, 0x21, 0, 0x02, 0x70, 0x20, 0, 0x0c, 0, 0x0b, 0xd1, 0x0b}
-			source = rv64ReplaceTableStageSection(t, source, 10, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0xff, 1, 0xd1, 0x0b}), append(wasmtest.ULEB(uint32(len(carrier))), carrier...))))
-			producerCode := rv64TableStageCompile(t, "mutable-funcref-local-call-host-producer", source, artifact)
-			producer = rv64NativeTokenInstantiate(t, rt, producerCode, NewImports().Function("env", "target", host))
-			descriptor := readGlobalObject(producer.globalCells[0], ValFuncRef)
-			if descriptor == 0 {
-				t.Fatal("host producer descriptor")
-			}
-			if err := consumer.ensureGuestLocalFuncrefGlobalOwner(0); err != nil {
-				t.Fatal("install host cell owner", err)
-			}
-			if err := consumer.globalCells[0].copyGuestFuncrefDescriptor(consumer, descriptor); err != nil {
-				t.Fatal("install raw host target", err)
-			}
-			if err := producer.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if err := producerCode.Close(); err != nil {
-				t.Fatal(err)
-			}
-			before := producer.referenceLifetime().snapshot()
-			if !before.LogicallyClosed || !before.PhysicalResources || before.ResourceRoots != 1 {
-				t.Fatal("mutable cell did not solely retain host producer", before)
-			}
-			got, err := consumer.Invoke("call", 0xdeadbeef80000001)
-			if err != nil || !slices.Equal(got, []uint64{0x80000006}) || calls != 1 {
-				t.Fatal("mutable host call_ref", got, calls, err)
-			}
-			if callbackRoots != 1 || !callbackPhysical {
-				t.Fatal("host reentry clear retired parked producer", callbackRoots, callbackPhysical)
-			}
-			if retired := producer.referenceLifetime().snapshot(); !retired.LogicallyClosed || retired.PhysicalResources || retired.ResourceRoots != 0 {
-				t.Fatal("host target activation did not retire after resume", retired)
-			}
-			if err := consumer.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if err := compiled.Close(); err != nil {
-				t.Fatal(err)
-			}
-		})
+				// Reuse the qualified table-free host-reference producer: imported
+				// function zero is materialized into immutable global zero, but no
+				// public token is issued. The mutable cell is therefore the provider's
+				// sole root before the outer activation starts.
+				source := rv64ReferenceNoTableModule(false, false, false)
+				types := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})))
+				imports := wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("target")...), 0, 0)))
+				source = rv64ReplaceTableStageSection(t, source, 1, append(types, imports...))
+				source = rv64ReplaceTableStageSection(t, source, 3, wasmtest.Section(3, []byte{2, 1, 1}))
+				source = rv64ReplaceTableStageSection(t, source, 7, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("isnull", 0, 1), wasmtest.ExportEntry("carrier", 0, 2), wasmtest.ExportEntry("reference", 3, 255), wasmtest.ExportEntry("first", 3, 0))))
+				carrier := []byte{1, 1, 0x70, 0x23, 0xff, 1, 0x21, 0, 0x02, 0x70, 0x20, 0, 0x0c, 0, 0x0b, 0xd1, 0x0b}
+				source = rv64ReplaceTableStageSection(t, source, 10, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0xff, 1, 0xd1, 0x0b}), append(wasmtest.ULEB(uint32(len(carrier))), carrier...))))
+				producerCode := rv64TableStageCompile(t, "mutable-funcref-local-call-host-producer", source, artifact)
+				producer = rv64NativeTokenInstantiate(t, rt, producerCode, NewImports().Function("env", "target", host))
+				descriptor := readGlobalObject(producer.globalCells[0], ValFuncRef)
+				if descriptor == 0 {
+					t.Fatal("host producer descriptor")
+				}
+				if err := consumer.ensureGuestLocalFuncrefGlobalOwner(0); err != nil {
+					t.Fatal("install host cell owner", err)
+				}
+				if err := consumer.globalCells[0].copyGuestFuncrefDescriptor(consumer, descriptor); err != nil {
+					t.Fatal("install raw host target", err)
+				}
+				if err := producer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := producerCode.Close(); err != nil {
+					t.Fatal(err)
+				}
+				before := producer.referenceLifetime().snapshot()
+				if !before.LogicallyClosed || !before.PhysicalResources || before.ResourceRoots != 1 {
+					t.Fatal("mutable cell did not solely retain host producer", before)
+				}
+				got, err := consumer.Invoke("call", 0xdeadbeef80000001)
+				if err != nil || !slices.Equal(got, []uint64{0x80000006}) || calls != 1 {
+					t.Fatal("mutable host call_ref", got, calls, err)
+				}
+				if callbackRoots != 1 || !callbackPhysical {
+					t.Fatal("host reentry clear retired parked producer", callbackRoots, callbackPhysical)
+				}
+				if retired := producer.referenceLifetime().snapshot(); !retired.LogicallyClosed || retired.PhysicalResources || retired.ResourceRoots != 0 {
+					t.Fatal("host target activation did not retire after resume", retired)
+				}
+				if err := consumer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := compiled.Close(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 }
 
