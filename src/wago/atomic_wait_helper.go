@@ -73,7 +73,16 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 			panic(atomicWaitHelperError{err: fmt.Errorf("shared memory.grow helper has invalid arguments or directory")})
 		}
 		maximum := binary.LittleEndian.Uint32(in.memoryDir.native[abi.MemoryDirPolicyMaxPagesOffset:])
-		results[0] = uint64(in.memory.growShared(uint32(args[0]), maximum))
+		address64 := in.c.memoryDef(0).Addr64
+		if address64 && args[0] > uint64(^uint32(0)) {
+			results[0] = ^uint64(0)
+			return
+		}
+		previous := in.memory.growShared(uint32(args[0]), maximum)
+		results[0] = uint64(previous)
+		if address64 && previous == ^uint32(0) {
+			results[0] = ^uint64(0)
+		}
 		return
 	}
 	if ctx == nil {
@@ -92,19 +101,19 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 			err = fmt.Errorf("atomic notify helper arity = %d, want 3", len(args))
 			break
 		}
-		result, err = in.memory.notify(uint64(uint32(args[0]))+args[2], uint32(args[1]))
+		result, err = in.memory.notify(in.atomicHelperAddress(args[0], args[2], 4), uint32(args[1]))
 	case shared.AtomicHelperWait32:
 		if len(args) != 4 {
 			err = fmt.Errorf("atomic wait32 helper arity = %d, want 4", len(args))
 			break
 		}
-		result, err = in.memory.wait32(ctx, uint64(uint32(args[0]))+args[3], uint32(args[1]), int64(args[2]))
+		result, err = in.memory.wait32(ctx, in.atomicHelperAddress(args[0], args[3], 4), uint32(args[1]), int64(args[2]))
 	case shared.AtomicHelperWait64:
 		if len(args) != 4 {
 			err = fmt.Errorf("atomic wait64 helper arity = %d, want 4", len(args))
 			break
 		}
-		result, err = in.memory.wait64(ctx, uint64(uint32(args[0]))+args[3], args[1], int64(args[2]))
+		result, err = in.memory.wait64(ctx, in.atomicHelperAddress(args[0], args[3], 8), args[1], int64(args[2]))
 	default:
 		err = fmt.Errorf("unknown atomic wait helper %d", helper)
 	}
@@ -112,4 +121,17 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 		panic(atomicWaitHelperError{err: err})
 	}
 	results[0] = uint64(result)
+}
+
+func (in *Instance) atomicHelperAddress(address, offset, width uint64) uint64 {
+	if in.c == nil || !in.c.memoryDef(0).Addr64 {
+		address = uint64(uint32(address))
+	}
+	effective := address + offset
+	if effective < address {
+		// Preserve the alignment-before-bounds trap order even when addition
+		// exceeds 64 bits. An aligned impossible address cannot wrap into backing.
+		return (^uint64(0) &^ (width - 1)) | (effective & (width - 1))
+	}
+	return effective
 }

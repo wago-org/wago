@@ -12,7 +12,7 @@ import (
 // emitFE lowers the core threads proposal's 0xfe instruction family. Keep this
 // dispatch exhaustive and fail closed while the family is landed incrementally.
 func (f *fn) emitFE(r *wasm.Reader) error {
-	d, err := railshared.DecodeAtomic(r)
+	d, err := railshared.DecodeAtomicForMemory(r, f.memoryAddr64(0))
 	if err != nil {
 		return err
 	}
@@ -56,6 +56,9 @@ func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
 			helper = railshared.AtomicHelperWait64
 			params[1] = wasm.I64
 		}
+	}
+	if f.memoryAddr64(0) {
+		params[0] = wasm.I64
 	}
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: int64(d.Offset)})
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: []wasm.ValType{wasm.I32}}

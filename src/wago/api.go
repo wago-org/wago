@@ -1035,11 +1035,8 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 		return errors.New("threads currently require exactly one memory, shared or unshared")
 	}
 	mt, _ := m.MemoryType(0)
-	if mt.Limits.Addr64 {
-		if mt.Shared {
-			return errors.New("threads currently do not support shared memory64")
-		}
-		return errors.New("threads currently require memory32")
+	if mt.Limits.Addr64 && !mt.Shared {
+		return errors.New("threads currently require shared memory for memory64")
 	}
 	if mt.Shared && !mt.Limits.HasMax {
 		return errors.New("threads currently require shared memory with an exact maximum")
@@ -1053,6 +1050,7 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 		}
 		// Preserve the exact instruction and function diagnostic on rejection.
 	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for function, fn := range m.Code {
 		r := wasm.NewReader(fn.BodyBytes)
 		for r.HasNext() {
@@ -1060,8 +1058,8 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 			if err != nil {
 				return err
 			}
-			imm, err := wasm.ClassifyInstructionImmediate(r, op)
-			if err != nil {
+			var imm wasm.InstructionImmediate
+			if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 				return err
 			}
 			// Memory accesses use the shared backing directory. Passive data
@@ -1291,12 +1289,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		for i := uint32(0); i < uint32(m.MemCount()); i++ {
-			mt, ok := m.MemoryType(i)
+			_, ok := m.MemoryType(i)
 			if !ok {
 				return nil, fmt.Errorf("compile: staged memory64 memory %d type is unavailable", i)
-			}
-			if mt.Limits.Addr64 && mt.Shared {
-				return nil, fmt.Errorf("compile: staged memory64 rejects shared memory %d", i)
 			}
 		}
 	}

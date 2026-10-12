@@ -812,9 +812,6 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 		if !p.feat.Threads {
 			return p.unsupported("memory", "shared (threads disabled)", ctx)
 		}
-		if mem.Limits.Addr64 {
-			return p.unsupported("memory", "shared memory64", ctx)
-		}
 	}
 	if mem.Limits.Addr64 && !p.feat.Memory64 {
 		return p.unsupported("memory", "memory64 (memory64 disabled)", ctx)

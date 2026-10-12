@@ -12,11 +12,19 @@ import (
 )
 
 func threadsBulkMemoryModule(fill, imported bool, pages byte, length int) []byte {
+	return threadsBulkMemoryModuleForAddress(fill, imported, pages, length, false)
+}
+
+func threadsBulkMemoryModuleForAddress(fill, imported bool, pages byte, length int, address64 bool) []byte {
 	body := []byte{0x20, 0, 0x20, 1}
 	if length < 0 {
 		body = append(body, 0x20, 2)
 	} else {
-		body = append(body, 0x41)
+		constantOp := byte(0x41)
+		if address64 {
+			constantOp = 0x42
+		}
+		body = append(body, constantOp)
 		body = append(body, wasmtest.SLEB32(int32(length))...)
 	}
 	if fill {
@@ -25,15 +33,24 @@ func threadsBulkMemoryModule(fill, imported bool, pages byte, length int) []byte
 		body = append(body, 0xfc, 10, 0, 0)
 	}
 	body = append(body, 0x0b)
-	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil)))}
+	addressType, limits := wasm.I32, byte(3)
+	if address64 {
+		addressType = wasm.I64
+		limits = 7
+	}
+	secondType := addressType
+	if fill {
+		secondType = wasm.I32
+	}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{addressType, secondType, addressType}, nil)))}
 	if imported {
 		entry := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
-		entry = append(entry, 2, 3, pages, pages)
+		entry = append(entry, 2, limits, pages, pages)
 		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(entry)))
 	}
 	sections = append(sections, wasmtest.Section(3, wasmtest.Vec([]byte{0})))
 	if !imported {
-		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{3, pages, pages})))
+		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{limits, pages, pages})))
 	}
 	sections = append(sections,
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("bulk", 0, 0))),

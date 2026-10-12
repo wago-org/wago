@@ -1755,19 +1755,27 @@ func (f *fn) sharedMemorySize() {
 		f.a.Load64(out, out, -bdCurBytes)
 	}
 	f.a.ShiftImm(5, out, 16, true)
-	f.pushReg(out, mtI32)
+	if f.memoryAddr64(0) {
+		f.pushReg(out, mtI64)
+	} else {
+		f.pushReg(out, mtI32)
+	}
 }
 
 func (f *fn) sharedMemoryGrow() error {
 	f.materializePendingLoads()
 	f.materializePendingTraps()
 	f.invalidateBoundsCert()
-	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst && uint32(top.st.cval) == 0 {
+	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst && (top.st.cval == 0 || !f.memoryAddr64(0) && uint32(top.st.cval) == 0) {
 		f.dropValue()
 		f.sharedMemorySize()
 		return nil
 	}
-	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
+	typ := wasm.I32
+	if f.memoryAddr64(0) {
+		typ = wasm.I64
+	}
+	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{typ}, Results: []wasm.ValType{typ}}
 	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
 }
 

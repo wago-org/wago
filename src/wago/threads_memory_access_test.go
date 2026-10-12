@@ -16,6 +16,10 @@ import (
 // returns zeros. The ordinary unshared path supplies a differential oracle for
 // the shared directory path, including exact float/vector bits and trap codes.
 func threadsMemoryAccessModule(op byte, simd, shared, imported bool, offset uint32) []byte {
+	return threadsMemoryAccessModuleForAddress(op, simd, shared, imported, uint64(offset), false)
+}
+
+func threadsMemoryAccessModuleForAddress(op byte, simd, shared, imported bool, offset uint64, address64 bool) []byte {
 	body := []byte{0x20, 0} // dynamic address
 	locals := []byte{0}
 	store := op >= 0x36 && op <= 0x3e
@@ -27,7 +31,7 @@ func threadsMemoryAccessModule(op byte, simd, shared, imported bool, offset uint
 			body = append(body, []byte{0x80, 0x7f, 0xff, 0x01, 0x33, 0x88, 0x00, 0xaa, 0x44, 0xdd, 0xee, 0x99, 0x7e, 0x55, 0x66, 0xbb}...)
 		}
 		body = append(body, 0xfd, op, 0)
-		body = append(body, wasmtest.ULEB(offset)...)
+		body = append(body, threadsULEB64(offset)...)
 		if op >= 84 && op <= 91 {
 			body = append(body, 1) // exercise a nonzero lane
 		}
@@ -47,7 +51,7 @@ func threadsMemoryAccessModule(op byte, simd, shared, imported bool, offset uint
 			}
 		}
 		body = append(body, op, 0)
-		body = append(body, wasmtest.ULEB(offset)...)
+		body = append(body, threadsULEB64(offset)...)
 		if !store {
 			if op == 0x2a {
 				body = append(body, 0xbc) // i32.reinterpret_f32
@@ -70,7 +74,12 @@ func threadsMemoryAccessModule(op byte, simd, shared, imported bool, offset uint
 	if shared {
 		limits = 3
 	}
-	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64, wasm.I64})))}
+	addressType := wasm.I32
+	if address64 {
+		limits |= 4
+		addressType = wasm.I64
+	}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{addressType, wasm.I64}, []wasm.ValType{wasm.I64, wasm.I64})))}
 	if imported {
 		entry := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
 		entry = append(entry, 2, limits, 1, 1)

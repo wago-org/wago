@@ -45,3 +45,21 @@ func TestDecodeAtomicRejectsOutsideInitialBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeAtomicMemory64Offsets(t *testing.T) {
+	for _, tc := range []struct {
+		bytes []byte
+		want  uint64
+	}{
+		{[]byte{0x10, 2, 0x80, 0x80, 0x80, 0x80, 0x10}, 1 << 32},
+		{[]byte{0x01, 2, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 1}, ^uint64(0)},
+	} {
+		got, err := DecodeAtomicForMemory(wasm.NewReader(tc.bytes), true)
+		if err != nil || got.Offset != tc.want {
+			t.Fatalf("memory64 offset = %x, %v; want %x", got.Offset, err, tc.want)
+		}
+		if _, err := DecodeAtomic(wasm.NewReader(tc.bytes)); err == nil {
+			t.Fatal("memory32 accepted a 64-bit offset")
+		}
+	}
+}

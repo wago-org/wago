@@ -43,7 +43,7 @@ const (
 
 // Atomic describes exactly the architecture-neutral facts needed by direct
 // Railshot lowering. Align is the encoded log2 alignment; Size and ResultSize
-// are bytes. The initial product accepts memory32 index zero only.
+// are bytes. The product accepts memory32 or memory64 index zero.
 type Atomic struct {
 	Sub         uint32
 	Class       AtomicClass
@@ -56,6 +56,10 @@ type Atomic struct {
 }
 
 func DecodeAtomic(r *wasm.Reader) (Atomic, error) {
+	return DecodeAtomicForMemory(r, false)
+}
+
+func DecodeAtomicForMemory(r *wasm.Reader, address64 bool) (Atomic, error) {
 	sub, err := r.U32()
 	if err != nil {
 		return Atomic{}, err
@@ -82,11 +86,16 @@ func DecodeAtomic(r *wasm.Reader) (Atomic, error) {
 	if d.Align >= 64 {
 		return Atomic{}, fmt.Errorf("atomic explicit memory index is outside the initial threads boundary")
 	}
-	off, err := r.U32()
+	if address64 {
+		d.Offset, err = r.U64()
+	} else {
+		var off uint32
+		off, err = r.U32()
+		d.Offset = uint64(off)
+	}
 	if err != nil {
 		return Atomic{}, err
 	}
-	d.Offset = uint64(off)
 
 	switch sub {
 	case 0:
