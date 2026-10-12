@@ -749,3 +749,19 @@ Ignored evidence `threads-table-indirect-arm64.json` has SHA-256
 the adjacent plan retains exact commands and ordering. The threads performance
 family now contains 14 long contracts (including its scalar baseline) and one
 separate fresh-instance growth probe. No full-family retiming is claimed here.
+
+## Mutable-global imports
+
+Mutable-global imports are admitted with shared memory. Their native entry uses
+the shared execution lease also used by the global's host accessors; separate
+memory backing does not imply private imported-global storage. Immutable
+imports retain their existing policy. Tests combine imported shared memory and
+atomic access with a mutable numeric global, and run eight concurrent instances
+performing 10,000 updates each against one shared global. They verify the exact
+counter, host mutation handoff, re-export identity, and rejection of closing a
+global while importers remain live, with both ABIs, cache settings, and artifact
+reload. Three-repeat guarded race checks pass on ARM64 (14.083 s) and native
+AMD64 (17.078 s), including all threads, cross-instance calls, GC frames, and
+the AMD64 layout checks. This adds numeric-global execution coverage; no
+mutable-global performance contract or reference-global composition claim is
+made here. Shared memory64 and multiple-memory thread combinations remain open.

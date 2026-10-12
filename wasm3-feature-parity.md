@@ -44,8 +44,9 @@ support alone does not establish performance parity.
   Concurrent foreign callbacks retain their own scope and GC activation roots.
   Defined/imported tables, active/passive elements, and exception tags now
   execute with shared memory, including foreign dispatch and exception catches.
-  This remains partial thread support: shared memory64, multiple memories,
-  and mutable global imports remain restricted.
+  Mutable-global imports now use the shared execution lease, including host
+  access and concurrent importers. Shared memory64 and multiple memories remain
+  restricted; full thread composition and conformance remain open.
 
 ## Current validation
 
