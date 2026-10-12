@@ -1023,7 +1023,15 @@ func unsafeDirectTailImportBitset(m *wasm.Module) ([]uint64, error) {
 }
 
 func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, analyses ...*wasm.ValidatedModuleAnalysis) error {
-	if m == nil || m.MemCount() != 1 {
+	if m == nil {
+		return errors.New("threads module is nil")
+	}
+	// Validation already requires a memory for every atomic access and wait.
+	// atomic.fence is independent of linear memory and its ownership boundary.
+	if m.MemCount() == 0 {
+		return nil
+	}
+	if m.MemCount() != 1 {
 		return errors.New("threads currently require exactly one memory, shared or unshared")
 	}
 	mt, _ := m.MemoryType(0)
