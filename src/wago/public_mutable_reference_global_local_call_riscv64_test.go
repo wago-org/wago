@@ -72,6 +72,25 @@ func rv64MutableFuncrefLocalCallI32Module() []byte {
 	return rv64MutableFuncrefLocalCallScalarModule(wasm.I32, []byte{0x20, 0, 0x41, 1, 0x6a, 0x0b})
 }
 
+func rv64MutableFuncrefLocalTailCallI32Module() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x23, 0, 0x15, 0, 0x0b}),
+		)),
+	)
+}
+
 func rv64MutableFuncrefLocalCallMixedModule() []byte {
 	types := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
 	return wasmtest.Module(
@@ -331,6 +350,74 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallI32(t *testing.T) {
 
 			if err := producer.Close(); err != nil {
 				t.Fatal(err)
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalTailCallI32(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rt.Close()
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-i32", rv64MutableFuncrefLocalTailCallI32Module(), artifact)
+			view := compiled.executionView()
+			if !rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view) {
+				t.Fatal("i32 local-tail-call witness missing")
+			}
+			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			assertCall := func(want uint64) {
+				t.Helper()
+				got, err := consumer.Invoke("call", 0xdeadbeef80000001)
+				if err != nil || !slices.Equal(got, []uint64{want}) {
+					t.Fatal("mutable return_call_ref", got, err, "want", want)
+				}
+			}
+			if _, err := consumer.Invoke("set_0"); err != nil {
+				t.Fatal("install tail identity", err)
+			}
+			assertCall(0x80000001)
+			if _, err := consumer.Invoke("set_1"); err != nil {
+				t.Fatal("install tail increment", err)
+			}
+			assertCall(0x80000002)
+
+			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-i32-producer", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, false, true), artifact)
+			producer := rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
+			descriptor, ok := producer.localFuncrefDescriptor(0)
+			if !ok {
+				t.Fatal("foreign tail producer descriptor")
+			}
+			token, err := rt.refStore.issue(producer, descriptor)
+			if err != nil {
+				t.Fatal("foreign tail producer token", err)
+			}
+			if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+				t.Fatal("install foreign tail target", err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertCall(0x80000001)
+			if _, err := consumer.Invoke("clear"); err != nil {
+				t.Fatal("clear tail target", err)
+			}
+			if got, invokeErr := consumer.Invoke("call", 1); got != nil {
+				t.Fatal("cleared return_call_ref returned a result", got, invokeErr)
+			} else {
+				var trap *coreruntime.TrapError
+				if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds {
+					t.Fatal("cleared mutable return_call_ref trap", invokeErr)
+				}
 			}
 			if err := producerCode.Close(); err != nil {
 				t.Fatal(err)
