@@ -71,8 +71,14 @@ function types are separated by pinned private descriptor keys, and both
 wrong-signature indirect calls plus both cross-finality casts trap from source
 and compiler-free artifacts. Exact retained metadata, W^X publication, live
 leases, final unmapping, and framed trap re-entry are covered under baseline
-QEMU RV64G. Later `gc/type-subtyping` runtime products and native cache/performance
-qualification remain open.
+QEMU RV64G. Official `.19` now forms the next exact checkpoint:
+its indexed typed table stores two nominal function subtypes, and genuine RV64
+`call_indirect` checks pinned subtype-closure key sets even though all four
+declared function types share the same structural carrier. Source/artifact and
+actual compiler-free execution cover the five successful calls, both wrong-
+signature traps, post-trap re-entry, W^X leases/final unmapping, and hostile
+retained metadata under baseline QEMU RV64G without a collector. Products after
+`.19` and native cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

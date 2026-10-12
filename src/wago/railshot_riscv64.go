@@ -33,7 +33,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	}
 	maxImportArity := coreruntime.MaxHostArity
 	vectorProfile := false
-	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource {
+	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource {
 		var err error
 		vectorProfile, err = railshot.UsesSWAR(m)
 		if err != nil {
@@ -155,6 +155,10 @@ func railshotGCTypeSubtypingRuntimeCallCastSource(data []byte) bool {
 
 func railshotGCTypeSubtypingRuntimeFinalityCallCastSource(data []byte) bool {
 	return railshot.AdmitGCTypeSubtypingRuntimeFinalityCallCastSource(data)
+}
+
+func railshotGCTypeSubtypingRuntimeTypedTableCallSource(data []byte) bool {
+	return railshot.AdmitGCTypeSubtypingRuntimeTypedTableCallSource(data)
 }
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
@@ -298,6 +302,14 @@ func railshotConfigureGCTypeSubtypingRuntimeCallCast(exactSource bool, opts *rai
 
 func railshotConfigureGCTypeSubtypingRuntimeFinalityCallCast(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCTypeSubtypingRuntimeFinalityCallCastSource = exactSource
+	if exactSource {
+		opts.NativeReferenceCalls = true
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingRuntimeTypedTableCall(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRuntimeTypedTableCallSource = exactSource
 	if exactSource {
 		opts.NativeReferenceCalls = true
 		opts.NativeReferenceFunctions = false

@@ -93,7 +93,12 @@ Official `.18` is a separate exact finality product. Its structurally identical
 open and final function types receive distinct private descriptor keys, so both
 wrong-signature indirect calls and both cross-finality casts trap. Source and
 compiler-free artifacts cover framed trap recovery, W^X lease/cleanup, hostile
-retained-state rejection, and collector-free execution. Other
+retained-state rejection, and collector-free execution. Official `.19` extends
+the same exact boundary to a typed `(ref null type 1)` table. Four structurally
+identical function types retain distinct nominal descriptor keys; the `run`
+export accepts only the declared subtype closures, while both narrower and
+unrelated indirect calls trap. Source, compiler-free artifact, W^X lifetime,
+and hostile retained-state paths are covered without a collector. Other
 `gc/type-subtyping` module shapes remain fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,

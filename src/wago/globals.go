@@ -1064,6 +1064,9 @@ func (c *Compiled) funcTypeKey(index int) uint64 {
 		if rv64GCTypeSubtypingRuntimeFinalityCallCast(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex && c.Funcs[index].TypeIndex == 1 {
 			key ^= 0x9e3779b97f4a7c15
 		}
+		if rv64GCTypeSubtypingRuntimeTypedTableCall(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex {
+			key ^= uint64(c.Funcs[index].TypeIndex) * 0x9e3779b97f4a7c15
+		}
 		return key
 	}
 	return 0

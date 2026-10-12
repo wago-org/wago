@@ -2505,6 +2505,11 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	if production && importedTables && (admitRV64I31TableProduct(m) || admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCBrOnCastConcrete(m) || admitRV64GCBrOnCastFailConcrete(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCRefCastAbstract(m) || admitRV64GCBrOnCastAbstract(m) || admitRV64GCBrOnCastFailAbstract(m)) {
 		return true, nil
 	}
+	// The exact typed-table subtype product pins its indexed table and typed
+	// element payload in full; generic public-table admission is funcref-only.
+	if production && importedTables && admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) {
+		return true, nil
+	}
 	if err := ownedTableBounds(m, production && importedTables); err != nil {
 		return false, err
 	}

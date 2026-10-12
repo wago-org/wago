@@ -94,7 +94,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCTypeSubtypingRecursiveFunctions := rv64GCTypeSubtypingRecursiveFunctions(c)
 	exactGCTypeSubtypingRefFuncGlobals := rv64GCTypeSubtypingRefFuncGlobals(c)
 	exactGCTypeSubtypingRuntimeFinalityCallCast := rv64GCTypeSubtypingRuntimeFinalityCallCast(c)
-	exactGCTypeSubtypingRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || exactGCTypeSubtypingRuntimeFinalityCallCast
+	exactGCTypeSubtypingRuntimeTypedTableCall := rv64GCTypeSubtypingRuntimeTypedTableCall(c)
+	exactGCTypeSubtypingRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || exactGCTypeSubtypingRuntimeFinalityCallCast || exactGCTypeSubtypingRuntimeTypedTableCall
 	exactGCStructGet := rv64GCStructGet(c)
 	exactGCStructMutation := rv64GCStructMutation(c)
 	exactGCStructNull := rv64GCStructNull(c)
@@ -135,6 +136,12 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCTypeSubtypingRuntimeFinalityCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
 		return reject("gc/type-subtyping runtime finality call/cast metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode(c) && !exactGCTypeSubtypingRuntimeTypedTableCall {
+		return reject("gc/type-subtyping runtime typed-table call image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingRuntimeTypedTableCallProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeTypedTableCall {
+		return reject("gc/type-subtyping runtime typed-table call metadata requires its exact retained image")
 	}
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")

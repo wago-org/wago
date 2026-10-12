@@ -21,6 +21,14 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		*remaining -= n
 		return true
 	}
+	if rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
+		// The exact product digest binds its indexed value-type pool and proves
+		// that it has no memories, globals, imports, or data state.
+		if !consume(64) {
+			return reject("runtime typed-table state metadata budget")
+		}
+		return nil
+	}
 	memories := c.memoryCount()
 	if memories > railshot.MaxProductionMemories || len(c.Globals) > 256 || len(c.GlobalImports) > len(c.Globals) || c.activeDataCount() > 256 || len(c.PassiveData) > 256 || len(c.ValueTypes) > 6 {
 		return reject("directory bound")

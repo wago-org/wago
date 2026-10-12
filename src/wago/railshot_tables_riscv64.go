@@ -2144,7 +2144,7 @@ func rv64QualifiedTable64(c *Compiled) bool {
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
-	if rv64Core3RefIsNullExecution(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialAnyTable(c) || rv64I31RefEqPilot(c) || rv64OfficialGCRefEq(c) || rv64GCArrayReference(c) || rv64GCArrayInitElem(c) || rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c) {
+	if rv64Core3RefIsNullExecution(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialAnyTable(c) || rv64I31RefEqPilot(c) || rv64OfficialGCRefEq(c) || rv64GCArrayReference(c) || rv64GCArrayInitElem(c) || rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c) || rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
 		return nil
 	}
 	if c.tableCount() == 0 {

@@ -20,6 +20,14 @@ func rv64ValidateReferenceFunctionTable(c *Compiled, remaining *int) error {
 		*remaining -= n
 		return true
 	}
+	if rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
+		// The exact retained classifier pins the indexed table type, typed active
+		// element, two private targets, capacities, and absence of public escape.
+		if !consume(64) {
+			return reject("runtime typed-table metadata budget")
+		}
+		return nil
+	}
 	hasTable := c.tableCount() != 0
 	if hasTable {
 		plain, _ := valueTypeDescriptorFromValType(ValFuncRef)

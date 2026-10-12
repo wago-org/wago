@@ -117,6 +117,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingRuntimeFinalityCallCastSource is the exact-wire witness for
 	// the official final/nonfinal call_indirect/ref.cast product.
 	GCTypeSubtypingRuntimeFinalityCallCastSource bool
+	// GCTypeSubtypingRuntimeTypedTableCallSource is the exact-wire witness for
+	// the official indexed-function typed-table call_indirect product.
+	GCTypeSubtypingRuntimeTypedTableCallSource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -199,6 +202,7 @@ type CompileOptions struct {
 	gcTypeSubtypingRefFuncGlobals     bool
 	gcTypeSubtypingRuntimeCallCast    bool
 	gcTypeSubtypingFinalityCallCast   bool
+	gcTypeSubtypingTypedTableCall     bool
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool
