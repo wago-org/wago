@@ -70,7 +70,7 @@ func rv64MutableFuncrefGlobalClear(c *Compiled) bool {
 }
 
 func railshotUsesGuestGlobalStoreHelper(c *Compiled) bool {
-	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c) || rv64MutableFuncrefGlobalBidirectionalCopy(c) || rv64MutableFuncrefGlobalLocalCopy(c) || rv64MutableFuncrefGlobalLocalPublish(c)
+	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c) || rv64MutableFuncrefGlobalBidirectionalCopy(c) || rv64MutableFuncrefGlobalLocalCopy(c) || rv64MutableFuncrefGlobalLocalPublish(c) || rv64MutableFuncrefGlobalLocalTransfer(c)
 }
 
 // retainGuestGlobalStoreDescriptor closes the raw-load/park ownership window
@@ -100,6 +100,8 @@ func (in *Instance) retainGuestGlobalStoreDescriptor(dispatch uint32, args, resu
 	case rv64MutableFuncrefGlobalLocalCopy(in.c) && len(args) == 1 && len(in.globalCells) == 2:
 		descriptor = args[0]
 	case rv64MutableFuncrefGlobalLocalPublish(in.c) && len(args) == 1 && len(in.globalCells) == 2:
+		descriptor = args[0]
+	case rv64MutableFuncrefGlobalLocalTransfer(in.c) && len(args) == 2 && len(in.globalCells) == 3 && (args[1] == 1 || args[1] == 2):
 		descriptor = args[0]
 	default:
 		return nil, fmt.Errorf("invalid RV64 guest global store bridge")
@@ -148,6 +150,12 @@ func (in *Instance) dispatchGuestGlobalStore(dispatch uint32, args, results []ui
 			err = in.globalCells[0].SetValue(ValueFuncRef(NullFuncRef()))
 		} else {
 			err = in.globalCells[0].setGuestFuncrefDescriptor(in, args[0])
+		}
+	case rv64MutableFuncrefGlobalLocalTransfer(in.c) && len(args) == 2 && len(in.globalCells) == 3 && (args[1] == 1 || args[1] == 2):
+		if args[1] == 2 {
+			err = in.copyGuestFuncrefDescriptorToLocal(args[0])
+		} else {
+			err = in.globalCells[args[1]].copyGuestFuncrefDescriptor(in, args[0])
 		}
 	default:
 		panic(invalidHostReference{err: fmt.Errorf("invalid RV64 guest global store bridge")})

@@ -105,7 +105,7 @@ func (g *Global) copyGuestFuncrefDescriptorNoLease(source *Instance, descriptor 
 	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == mutable
 	o.mu.Unlock()
-	if closed || !consistent || typ != ValFuncRef || !mutable || store == nil || source.refStore != store || (!rv64MutableFuncrefGlobalCopy(source.c) && !rv64MutableFuncrefGlobalMove(source.c) && !rv64MutableFuncrefGlobalBidirectionalCopy(source.c)) {
+	if closed || !consistent || typ != ValFuncRef || !mutable || store == nil || source.refStore != store || (!rv64MutableFuncrefGlobalCopy(source.c) && !rv64MutableFuncrefGlobalMove(source.c) && !rv64MutableFuncrefGlobalBidirectionalCopy(source.c) && !rv64MutableFuncrefGlobalLocalTransfer(source.c)) {
 		return fmt.Errorf("invalid RV64 guest funcref global copy")
 	}
 	if descriptor == 0 {
