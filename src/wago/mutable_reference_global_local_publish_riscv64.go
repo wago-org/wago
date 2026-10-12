@@ -26,10 +26,10 @@ func rv64MutableFuncrefGlobalLocalPublish(c *Compiled) bool {
 	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
 	}
-	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 4 || len(c.FuncTypeID) != 4 || len(c.Exports) != 4 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 {
+	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 6 || len(c.FuncTypeID) != 6 || len(c.Exports) != 6 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 {
 		return false
 	}
-	for name, index := range map[string]int{"target": 0, "set_local": 1, "clear_local": 2, "publish": 3} {
+	for name, index := range map[string]int{"target_0": 0, "target_1": 1, "set_local_0": 2, "set_local_1": 3, "clear_local": 4, "publish": 5} {
 		if got, ok := c.Exports[name]; !ok || got != index {
 			return false
 		}
@@ -72,5 +72,5 @@ func rv64MutableFuncrefGlobalLocalPublish(c *Compiled) bool {
 		return false
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal
-	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && len(c.Entry) == 4 && len(c.InternalEntry) == 4 && slices.Equal(c.Entry, c.InternalEntry)
+	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && len(c.Entry) == 6 && len(c.InternalEntry) == 6 && slices.Equal(c.Entry, c.InternalEntry)
 }

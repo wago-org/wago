@@ -20,17 +20,21 @@ func rv64MutableFuncrefLocalPublishModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "target", wasm.FuncRef, true))),
-		wasmtest.Section(3, []byte{4, 0, 0, 0, 0}),
+		wasmtest.Section(3, []byte{6, 0, 0, 0, 0, 0, 0}),
 		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, true, []byte{0xd0, 0x70, 0x0b}))),
 		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("target", 0, 0),
-			wasmtest.ExportEntry("set_local", 0, 1),
-			wasmtest.ExportEntry("clear_local", 0, 2),
-			wasmtest.ExportEntry("publish", 0, 3),
+			wasmtest.ExportEntry("target_0", 0, 0),
+			wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_local_0", 0, 2),
+			wasmtest.ExportEntry("set_local_1", 0, 3),
+			wasmtest.ExportEntry("clear_local", 0, 4),
+			wasmtest.ExportEntry("publish", 0, 5),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0x0b}),
 			wasmtest.Code([]byte{0xd2, 0, 0x24, 1, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 1, 0x24, 1, 0x0b}),
 			wasmtest.Code([]byte{0xd0, 0x70, 0x24, 1, 0x0b}),
 			wasmtest.Code([]byte{0x23, 1, 0x24, 0, 0x0b}),
 		)),
@@ -62,36 +66,49 @@ func TestRV64PublicMutableFuncrefGlobalLocalPublish(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			descriptor, ok := consumer.localFuncrefDescriptor(0)
-			if !ok || descriptor == 0 || readGlobalObject(consumer.globalCells[1], ValFuncRef) != 0 {
-				t.Fatal("local mutable cell did not start null", descriptor, ok)
+			descriptor0, ok0 := consumer.localFuncrefDescriptor(0)
+			descriptor1, ok1 := consumer.localFuncrefDescriptor(1)
+			if !ok0 || !ok1 || descriptor0 == 0 || descriptor1 == 0 || descriptor0 == descriptor1 || readGlobalObject(consumer.globalCells[1], ValFuncRef) != 0 {
+				t.Fatal("local mutable cell did not start null with two targets", descriptor0, descriptor1, ok0, ok1)
 			}
 			before := consumer.referenceLifetime().snapshot()
 			if _, err = consumer.Invoke("publish"); err != nil || readGlobalObject(target, ValFuncRef) != 0 {
 				t.Fatal("initial null publish", err)
 			}
-			if _, err = consumer.Invoke("set_local"); err != nil {
-				t.Fatal("set private local", err)
+			if _, err = consumer.Invoke("set_local_0"); err != nil {
+				t.Fatal("set private local to function zero", err)
 			}
-			if got := readGlobalObject(consumer.globalCells[1], ValFuncRef); got != descriptor {
-				t.Fatalf("private local descriptor = %#x, want %#x", got, descriptor)
+			if got := readGlobalObject(consumer.globalCells[1], ValFuncRef); got != descriptor0 {
+				t.Fatalf("private local descriptor = %#x, want %#x", got, descriptor0)
 			}
 			for iteration := 0; iteration < 2; iteration++ {
 				if _, err = consumer.Invoke("publish"); err != nil {
 					t.Fatal("publish private local", iteration, err)
 				}
-				if got := readGlobalObject(target, ValFuncRef); got != descriptor {
-					t.Fatalf("published descriptor = %#x, want %#x", got, descriptor)
+				if got := readGlobalObject(target, ValFuncRef); got != descriptor0 {
+					t.Fatalf("published descriptor = %#x, want %#x", got, descriptor0)
 				}
 				after := consumer.referenceLifetime().snapshot()
 				if after.ResourceRoots != before.ResourceRoots+1 || !after.PhysicalResources || after.LogicallyClosed {
 					t.Fatal("published descriptor root drifted", before, after)
 				}
 			}
+			if _, err = consumer.Invoke("set_local_1"); err != nil {
+				t.Fatal("replace private local with function one", err)
+			}
+			if _, err = consumer.Invoke("publish"); err != nil {
+				t.Fatal("publish replacement private local", err)
+			}
+			if got := readGlobalObject(target, ValFuncRef); got != descriptor1 {
+				t.Fatalf("published replacement descriptor = %#x, want %#x", got, descriptor1)
+			}
+			if after := consumer.referenceLifetime().snapshot(); after.ResourceRoots != before.ResourceRoots+1 {
+				t.Fatal("same-owner descriptor replacement duplicated root", before, after)
+			}
 			if _, err = consumer.Invoke("clear_local"); err != nil {
 				t.Fatal("clear private local", err)
 			}
-			if readGlobalObject(consumer.globalCells[1], ValFuncRef) != 0 || readGlobalObject(target, ValFuncRef) != descriptor {
+			if readGlobalObject(consumer.globalCells[1], ValFuncRef) != 0 || readGlobalObject(target, ValFuncRef) != descriptor1 {
 				t.Fatal("private clear unexpectedly changed published target")
 			}
 			if _, err = consumer.Invoke("publish"); err != nil {
@@ -103,7 +120,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalPublish(t *testing.T) {
 			if after := consumer.referenceLifetime().snapshot(); after.ResourceRoots != before.ResourceRoots || !after.PhysicalResources || after.LogicallyClosed {
 				t.Fatal("null publish did not release target root", before, after)
 			}
-			if _, err = consumer.Invoke("set_local"); err != nil {
+			if _, err = consumer.Invoke("set_local_1"); err != nil {
 				t.Fatal(err)
 			}
 			if _, err = consumer.Invoke("publish"); err != nil {

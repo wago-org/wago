@@ -218,7 +218,7 @@ func admitMutableFunctionGlobalLocalCopy(m *wasm.Module) bool {
 // only escape copies the cell into imported mutable target zero through the
 // parked owner transaction.
 func admitMutableFunctionGlobalLocalPublish(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 4 || len(m.Code) != 4 || len(m.Imports) != 1 || len(m.Globals) != 1 || len(m.Exports) != 4 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 1 || len(m.Globals) != 1 || len(m.Exports) != 6 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	imp := m.Imports[0]
@@ -235,7 +235,9 @@ func admitMutableFunctionGlobalLocalPublish(m *wasm.Module) bool {
 	}
 	wantBodies := [][]byte{
 		{0x0b},
+		{0x0b},
 		{0xd2, 0, 0x24, 1, 0x0b},
+		{0xd2, 1, 0x24, 1, 0x0b},
 		{0xd0, 0x70, 0x24, 1, 0x0b},
 		{0x23, 1, 0x24, 0, 0x0b},
 	}
@@ -245,7 +247,7 @@ func admitMutableFunctionGlobalLocalPublish(m *wasm.Module) bool {
 			return false
 		}
 	}
-	wantExports := []string{"target", "set_local", "clear_local", "publish"}
+	wantExports := []string{"target_0", "target_1", "set_local_0", "set_local_1", "clear_local", "publish"}
 	for i, ex := range m.Exports {
 		if ex.Name != wantExports[i] || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
 			return false

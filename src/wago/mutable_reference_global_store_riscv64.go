@@ -105,8 +105,9 @@ func (g *Global) setGuestFuncrefDescriptorNoLease(source *Instance, descriptor u
 		return fmt.Errorf("invalid RV64 guest funcref global store")
 	}
 	index, indexed := source.funcrefDescriptorIndex(descriptor)
-	if !indexed || index != 0 || source.c.NumImports != 0 {
-		return fmt.Errorf("RV64 guest funcref store descriptor is not local function zero")
+	localPublish := rv64MutableFuncrefGlobalLocalPublish(source.c)
+	if !indexed || source.c.NumImports != 0 || !localPublish && index != 0 || localPublish && index >= 2 {
+		return fmt.Errorf("RV64 guest funcref store descriptor is outside the admitted local target set")
 	}
 	if _, valid := rv64PublishedDescriptor(source, descriptor); !valid {
 		return fmt.Errorf("RV64 guest funcref store descriptor is not published")
