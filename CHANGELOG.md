@@ -40,6 +40,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Execute shared `memory.grow` on amd64 and arm64, serializing growers and
+  publishing the new extent only after guarded pages are accessible. Shared
+  accesses and size queries read the live extent across active instances;
+  constant-zero growth uses a native size query. Preserve quotas and codec reload.
+
 - Execute shared `memory.copy` and `memory.fill` on amd64 and arm64, with
   overlap-safe copying and bounds checks before writes. Use unrolled small
   constant operations against shared backing on both architectures.

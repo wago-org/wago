@@ -38,9 +38,9 @@ memories are exercised from original and codec-loaded products. The full
 `^TestThreads` group passes on native arm64 and amd64. The local Core 3
 regression corpus and unsupported-proposal fail-closed tests also pass.
 
-This is partial thread support. Shared-memory growth, bulk segment
-initialization, multiple memories, and broader import/segment combinations
-remain restricted. Shared copy/fill support is recorded below. JSPI and JS-string embedding profiles remain unsupported.
+This is partial thread support. Bulk segment initialization, shared memory64,
+multiple memories, and broader import/segment combinations remain restricted.
+Shared copy/fill and growth support are recorded below. JSPI and JS-string embedding profiles remain unsupported.
 
 ## Execution measurement
 
@@ -303,3 +303,91 @@ controlled samples show no clear material compile regression for these
 fixtures; they do not establish corpus-wide latency or peak RSS.
 `threads-bulk-compile.txt` and `threads-bulk-compile-ab.json` retain the complete
 samples and alternating order.
+
+
+## Live shared-memory growth
+
+Wago `e4ea49f7` admits shared `memory.grow` on arm64 and amd64. Nonzero growth
+uses the internal synchronous memory helper, which serializes growers using the
+backing owner's mutex, enforces the instance's page quota, and commits guarded
+pages before publishing the new extent. One aligned atomic byte-size word is
+the authoritative extent. Shared scalar/SIMD, atomic, bulk, and size accesses
+read that word rather than an instance-local directory snapshot. Constant-zero
+growth stays native and uses the same sequentially consistent size query.
+Go page queries derive from the authoritative bytes, including exactly 4 GiB.
+
+Call-frame planning now recognizes shared growth as a helper call. The minimal
+single-function `memory.grow 0` regression reproduced a return-frame crash before
+that classification was added. The broader original growth tests now pass.
+Directory initialization reads the atomic extent without extending a host view;
+this fixes a guarded-view race found while importing a memory concurrently with
+growth. Shared host byte views serialize view extension under the owner's lock.
+The existing codec helper requirement admits the growth bridge after reload.
+
+Native tests cover original and codec-loaded products, defined and imported
+backing, zero-page memories, zero initialization, success/failure boundaries,
+32-bit delta truncation, supplied quotas, the 4 GiB memory32 limit, and
+fill/copy/load in the activation that grows memory. Eight competing instances
+produce 64 distinct successful previous sizes and 64 failures at the ceiling.
+A bounded active observer sees another instance's growth without returning to
+Go. Full thread checks pass on both architectures; growth checks pass three
+repetitions with both the allocation checker and guarded race detector on
+Darwin/arm64 and Linux/amd64. Runtime/backend checks, resource-quota checks, the
+local Wasmtime Core 3 corpus, and unsupported-proposal gates pass. This does not
+establish full thread or official Core 3 conformance.
+
+wasm.fyi `6bde0f4` adds `memory-size-zero-growth` and a fresh-instance
+`memory-grow` lifecycle contract. Node/V8 verifies all sizes on two fresh
+instances. Cumulative Wago coverage is now 87/95 long execution contracts,
+combining earlier captures with this checkpoint; the new growth lifecycle probe
+is separate. All ten thread execution contracts are rerun here with three
+independent launches, five verified samples per launch, two warmup batches, and
+a 50 ms minimum per sample. The older w2c2 successful captures retain identical
+artifact hashes for the nine earlier contracts; zero growth has a new w2c2 pair.
+Units below are ns per entire 262,144-operation invocation.
+
+| Contract | Wago (`e4ea49f7`) | w2c2 | Wago / w2c2 |
+| --- | ---: | ---: | ---: |
+| atomic-compare-exchange | 294,087 | 254,805 | 1.154 |
+| atomic-fence | 314,288 | 257 | 1225.044 |
+| atomic-load-store | 287,092 | 155,667 | 1.844 |
+| atomic-rmw-add | 251,837 | 204,531 | 1.231 |
+| bulk-copy-overlap | 735,723 | 608,568 | 1.209 |
+| bulk-fill | 386,563 | 183,185 | 2.110 |
+| memory-size-zero-growth | 191,639 | 2,033,699 | 0.094 |
+| ordinary-load-store | 224,551 | 94,085 | 2.387 |
+| simd-load-store | 260,164 | 103,353 | 2.517 |
+| wait-mismatch-notify | 12,666,104 | 1,916,274 | 6.610 |
+
+The zero-growth/size contract takes about 10.6 times less time in Wago than
+w2c2. It measures size queries, not allocation. Live extent reads increase the
+observed cost of several shared-access workloads relative to earlier captures;
+for example atomic load/store is now 287,092 ns versus 242,021 ns before growth
+support. These sequential captures do not isolate the change statistically.
+The gaps remain in the parity objective. Reusing stable shared backing addresses
+while retaining live extent reads is a subsequent optimization opportunity.
+
+The fresh-instance 16-page growth probe verifies all samples on both engines:
+launch-median medians are 500 ns for Wago and 333 ns for w2c2. Both adapters create
+the fresh instance before the call timer. Each sample contains one invocation;
+all are below the 50 ms duration target and therefore marked unqualified. These
+short lifecycle samples establish execution coverage, not sustained parity.
+Nonzero growth's synchronous-helper performance still needs work.
+
+Five sequential compile samples retain 74/73/94 allocations and median allocated
+bytes of 19,202/19,058/3,420,947 for default scalar/Core 3 scalar/imported workers.
+Median times are 6,126 ns, 6,046 ns, and 22,604,353 ns. Imported-worker code remains
+1,587,220 bytes. These fixtures do not show a material compile allocation or
+latency regression; broader corpus cost and peak RSS remain unmeasured.
+
+Captured Wago source identity:
+`e4ea49f7f02dd5a012306564f3cd5eb9fe3bf830/source-d4759406ea0402984410fbdf796e1a9835ec2a9f137c6b612217b198e2eacc8b`.
+Additional ignored evidence under `.validation/wasm3-parity/`:
+
+- `threads-live-size-arm64.json`, SHA-256 `95f66438f4868fd61cc8d7a5a79b9a84357bc2d29d20238c9e9d4c86f9b41bdf`.
+- `threads-zero-growth-w2c2-arm64.json`, SHA-256 `ee3634e3e7806434575c4fb35636f2bfdb86f68b0e303c21925f62f78b2e025d`.
+- `threads-growth-lifecycle-arm64.json`, SHA-256 `88b0f9e1e83c10fa0cf043f9605a82a7eaf9c8a57a90fcd88a74ed0f149082b7`.
+- Corresponding `threads-live-size-plan.json`, `threads-zero-growth-w2c2-plan.json`,
+  and `threads-growth-lifecycle-plan.json` retain commands, oracles, and controls.
+- `threads-growth-compile.txt` retains compile samples;
+  `growth-minimal-frame-before.txt` retains the minimized crash evidence.

@@ -35,7 +35,9 @@ support alone does not establish performance parity.
   against declared memory minimums.
   Shared `memory.copy` and `memory.fill` now execute with bounds-before-write
   and overlap-safe copying, including small unrolled paths on both backends.
-  This remains partial thread support: segment initialization, growth, multiple
+  Shared growth now publishes a single atomic extent after guarded pages are
+  accessible; shared accesses and size queries see growth by other instances.
+  This remains partial thread support: segment initialization, shared memory64, multiple
   memories, and broader import/segment combinations remain
   restricted.
 
@@ -109,6 +111,14 @@ cumulative Wago coverage to 86/94. Native execution and codec checks pass on bot
 architectures. On the 33-byte arm64 workloads, fill remains 1.919 times w2c2 and
 overlapping copy 1.117 times w2c2 after unrolling; the thread report records the
 exact capture identities and remaining limits.
+
+The shared-growth checkpoint passes native/codec/concurrent/guarded-race checks
+on both architectures and adds size-query and growth-lifecycle contracts.
+Cumulative long execution coverage is 87/95. Zero-growth/size queries are about
+10.6 times faster than w2c2 on the new workload, while live extent reads add cost
+to several earlier shared-access kernels. Nonzero growth's short single-operation
+samples remain unqualified for sustained parity. Compile fixture allocations
+and generated code size remain unchanged; the thread report records the gaps.
 
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
