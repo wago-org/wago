@@ -36,7 +36,8 @@ const (
 	// was the unused WARP memory-helper slot.
 	// SharedNotifyPendingOffset aliases the unused directory cell in a shared
 	// backing only. Shared memories always have separate instance control;
-	// the cell publishes whether notify must inspect an active wait queue.
+	// the cell publishes whether a wait is registering or already queued,
+	// requiring notify to acquire the queue mutex.
 	SharedNotifyPendingOffset     = 64
 	MemoryDirPtrOffset            = 64
 	MemoryDirEntryBytes           = 24

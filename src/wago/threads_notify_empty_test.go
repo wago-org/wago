@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 func TestThreadsNotifyQueuePublication(t *testing.T) {
@@ -41,6 +43,14 @@ func TestThreadsNotifyQueuePublication(t *testing.T) {
 		case <-time.After(time.Millisecond):
 		}
 	}
+	for _, expected := range []uint32{0, 1} {
+		if _, err := memory.wait32(ctx, 8, expected, 0); err != nil {
+			t.Fatal(err)
+		}
+		if got := memory.jm.SharedNotifyPending(); got != 1 {
+			t.Fatalf("nonblocking wait hid the existing queue: %d", got)
+		}
+	}
 	if got, err := memory.notify(0, 1); err != nil || got != 1 {
 		t.Fatalf("notify=%d,%v", got, err)
 	}
@@ -49,6 +59,70 @@ func TestThreadsNotifyQueuePublication(t *testing.T) {
 	state.mu.Unlock()
 	if got != 0 {
 		t.Fatalf("notified queue remains published: %d", got)
+	}
+}
+
+func TestThreadsNotifyPublishesBeforeWaitRegistration(t *testing.T) {
+	memory, err := NewSharedMemory(1, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).
+		WithBoundsChecks(BoundsChecksExplicit).
+		Compile(threadsSecondaryAtomicModuleWithSharing(false, false, true, false, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, NewImports().Memory("env", "memory", memory).Memory("env", "secondary", memory))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	type result struct {
+		value uint32
+		err   error
+	}
+	waited := make(chan result, 1)
+	notified := make(chan result, 1)
+	// Block queue allocation after the value comparison. Publishing only when
+	// inserting the queue would let native notify bypass this pending wait.
+	memoryWaiters.Lock()
+	go func() {
+		value, err := memory.wait32(ctx, 8, 0, -1)
+		waited <- result{value, err}
+	}()
+	for memory.jm.SharedNotifyPending() == 0 {
+		select {
+		case <-ctx.Done():
+			memoryWaiters.Unlock()
+			<-waited
+			t.Fatal("wait did not publish before accessing the queue registry")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	atomic.StoreUint32((*uint32)(unsafe.Pointer(&memory.jm.HostBytes()[8])), 1)
+	go func() {
+		values, err := in.Invoke("helper0", 0, 1)
+		var value uint32
+		if len(values) != 0 {
+			value = uint32(values[0])
+		}
+		notified <- result{value, err}
+	}()
+	memoryWaiters.Unlock()
+	n, w := <-notified, <-waited
+	if n.err != nil || w.err != nil {
+		t.Fatalf("notify=%+v wait=%+v", n, w)
+	}
+	if !((n.value == 1 && w.value == memoryWaitNotified) || (n.value == 0 && w.value == memoryWaitNotEqual)) {
+		t.Fatalf("store/notify missed a registering wait: notify=%d wait=%d", n.value, w.value)
+	}
+	if got := memory.jm.SharedNotifyPending(); got != 0 {
+		t.Fatalf("completed registration remains published: %d", got)
 	}
 }
 

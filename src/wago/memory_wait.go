@@ -82,6 +82,14 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 		s.mu.Unlock()
 		return 0, &TrapError{Code: TrapLinMemOutOfBounds}
 	}
+	// Publish before comparing the value, not just after queue insertion. A
+	// concurrent native store+notify must acquire this mutex once comparison
+	// starts, or it could miss a waiter that already observed the old value.
+	m.jm.SetSharedNotifyPending(true)
+	clearPending := func() {
+		ws := s.waiterStateLocked(false)
+		m.jm.SetSharedNotifyPending(ws != nil && ws.active != 0)
+	}
 	p := unsafe.Pointer(&b[offset])
 	var actual uint64
 	if size == 4 {
@@ -90,10 +98,12 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 		actual = atomic.LoadUint64((*uint64)(p))
 	}
 	if actual != expected {
+		clearPending()
 		s.mu.Unlock()
 		return memoryWaitNotEqual, nil
 	}
 	if timeout == 0 {
+		clearPending()
 		s.mu.Unlock()
 		return memoryWaitTimedOut, nil
 	}

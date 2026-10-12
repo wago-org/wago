@@ -611,7 +611,7 @@ func (j *JobMemory) getU64(below int) uint64 {
 	return binary.LittleEndian.Uint64(j.mem[j.linOff-below:])
 }
 
-// SetSharedNotifyPending publishes queue presence on shared backing mappings.
+// SetSharedNotifyPending publishes registering or queued waits on shared backings.
 // It must never be called on an instance control mapping.
 func (j *JobMemory) SetSharedNotifyPending(pending bool) {
 	value := uint32(0)
