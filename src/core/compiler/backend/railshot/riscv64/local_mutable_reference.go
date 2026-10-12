@@ -9,7 +9,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // cannot introduce foreign descriptors.
 // Every nonnull value therefore names this instance's canonical directory.
 func admitLocalMutableFunctionGlobals(m *wasm.Module) (bool, error) {
-	if admitMutableFunctionGlobalLocalCopy(m) {
+	if admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) {
 		return true, nil
 	}
 	has := false

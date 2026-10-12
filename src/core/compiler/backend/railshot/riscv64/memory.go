@@ -91,6 +91,7 @@ type moduleState struct {
 	mutableFuncrefGlobalMove              bool
 	mutableFuncrefGlobalBidirectionalCopy bool
 	mutableFuncrefGlobalLocalCopy         bool
+	mutableFuncrefGlobalLocalPublish      bool
 	ownedTable                            bool
 	ownedTableGrowth                      bool
 	table64                               bool
@@ -270,6 +271,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.mutableFuncrefGlobalMove = admitMutableFunctionGlobalMove(m)
 	s.mutableFuncrefGlobalBidirectionalCopy = admitMutableFunctionGlobalBidirectionalCopy(m)
 	s.mutableFuncrefGlobalLocalCopy = admitMutableFunctionGlobalLocalCopy(m)
+	s.mutableFuncrefGlobalLocalPublish = admitMutableFunctionGlobalLocalPublish(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -277,7 +279,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy
+		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -341,7 +343,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("isolated global import")
 			}
 			g := im.Type.GlobalType()
-			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy) && admitImportedFunctionGlobal(m, g)
+			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish) && admitImportedFunctionGlobal(m, g)
 			if !scalarType(g.Type, true) && !reference {
 				return s, unsupported("nonscalar global import")
 			}

@@ -31,6 +31,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalLocalCopy(c) {
 		return true, nil // Exact mixed-state copy publishes one own local descriptor.
 	}
+	if rv64MutableFuncrefGlobalLocalPublish(c) {
+		return true, nil // Exact mutable private state publishes only null or own function zero.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable
