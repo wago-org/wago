@@ -1564,9 +1564,21 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 
 	if initErr == nil && c.activeDataCount() > 0 {
+		// Shared backing is separate from instance control. Serialize guarded
+		// host-view extension with growth; native readers may observe the bytes.
+		var sharedState *memoryState
+		var sharedBacking *runtime.JobMemory
+		if threadedControl {
+			sharedState = memObj.state.Load()
+			sharedState.mu.Lock()
+			sharedBacking = memObj.jm
+		}
 		for seg := 0; seg < c.activeDataCount(); seg++ {
 			d := c.activeDataAt(seg)
 			dataJM := jm
+			if sharedBacking != nil {
+				dataJM = sharedBacking
+			}
 			if d.MemoryIndex != 0 {
 				if int(d.MemoryIndex) >= len(memoryObjs) || memoryObjs[d.MemoryIndex] == nil {
 					initErr = fmt.Errorf("active data segment %d memory index %d is unavailable", seg, d.MemoryIndex)
@@ -1613,6 +1625,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				break
 			}
 			copy(lin[int(off):int(end)], d.Bytes)
+		}
+		if sharedState != nil {
+			sharedBacking.PublishSharedData()
+			sharedState.mu.Unlock()
 		}
 	}
 

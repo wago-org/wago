@@ -37,9 +37,10 @@ support alone does not establish performance parity.
   and overlap-safe copying, including small unrolled paths on both backends.
   Shared growth now publishes a single atomic extent after guarded pages are
   accessible; shared accesses and size queries see growth by other instances.
-  This remains partial thread support: segment initialization, shared memory64, multiple
-  memories, and broader import/segment combinations remain
-  restricted.
+  Active data segments now initialize shared backing before start execution;
+  passive `memory.init` and instance-local `data.drop` are admitted.
+  This remains partial thread support: shared memory64, multiple memories,
+  host function imports, tables, tags, and element segments remain restricted.
 
 ## Current validation
 

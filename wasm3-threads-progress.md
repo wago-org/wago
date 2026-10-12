@@ -464,3 +464,30 @@ Additional ignored evidence under `.validation/wasm3-parity/`:
   oracles, and measurement controls.
 - `threads-cached-base-compile.txt` and `threads-cached-base-compile-ab.json`
   retain compile samples and alternating order.
+
+## Shared data segments (2026-10-12)
+
+Active data initialization now selects shared backing rather than the private
+instance control mapping. The memory owner lock serializes guarded host-view
+extension with growth. Segments apply in definition order; a final atomic RMW
+by zero provides a publication barrier without changing the live extent.
+The [threads proposal](https://github.com/WebAssembly/threads/blob/main/proposals/threads/Overview.md#instantiation)
+permits non-atomic, coalesced initialization followed by synchronization.
+
+Thread admission now permits data segments and `memory.init`. Existing native
+initialization paths already check the live destination extent and private
+passive descriptor before copying. `data.drop` changes only that instance's
+descriptor, including when instances share the same backing.
+
+`threads_data_test.go` verifies defined/imported memory and original/codec-loaded
+products: overlapping active segment order, start visibility, source/destination
+bounds with no partial writes, i32 operand truncation, initialization after
+growth, zero-length initialization after drop, and drop isolation. Failed active
+initialization preserves earlier segments, leaves the failing segment unchanged,
+and releases its memory attachment. Eight concurrent instantiation workers and
+a separate growth instance retain initialized bytes and the final memory size.
+
+The full `^TestThreads` suite passes with `wago_regalloccheck` on Darwin arm64
+and native Linux amd64. Data tests pass three repetitions with `-race` and
+`wago_guardpage,wago_regalloccheck` on both hosts. This adds execution coverage;
+passive initialization performance and broader thread conformance remain open.

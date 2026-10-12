@@ -249,6 +249,12 @@ func (j *JobMemory) GrowShared(delta, policyMaximum uint32) (uint32, bool) {
 	return pages, true
 }
 
+// PublishSharedData orders a completed data-section initialization with shared
+// operations. RMW by zero preserves concurrent growth's authoritative extent.
+func (j *JobMemory) PublishSharedData() {
+	atomic.AddUint64(j.currentBytesCell(), 0)
+}
+
 // CurrentBytes returns the host-facing view of linear memory at its current
 // (possibly grown) logical size — what Memory.UnsafeBytes exposes.
 func (j *JobMemory) CurrentBytes() []byte {

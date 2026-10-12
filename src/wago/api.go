@@ -1047,8 +1047,8 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 	if bounds != BoundsChecksExplicit {
 		return errors.New("threads currently require explicit bounds checks")
 	}
-	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.TagCount() != 0 || len(m.Data) != 0 || len(m.Elements) != 0 {
-		return errors.New("threads currently admit numeric functions and globals without host imports, tables, tags, or segments")
+	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.TagCount() != 0 || len(m.Elements) != 0 {
+		return errors.New("threads currently admit numeric functions and globals without host imports, tables, tags, or element segments")
 	}
 	for i := range m.Imports {
 		if imp := &m.Imports[i]; imp.Type.Kind == wasm.ExternGlobal && imp.Type.GlobalType().Mutable {
@@ -1072,9 +1072,9 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 			if err != nil {
 				return err
 			}
-			// Scalar, SIMD, copy and fill accesses use the shared backing
-			// directory. Segment initialization remains restricted.
-			admittedMemory := op == 0xfe || op >= 0x28 && op <= 0x3e || op == 0xfd || imm.Kind == wasm.InstrMemorySize || imm.Kind == wasm.InstrMemoryCopy || imm.Kind == wasm.InstrMemoryFill || imm.Kind == wasm.InstrMemoryGrow
+			// Memory accesses use the shared backing directory. Passive data
+			// descriptors remain private to the instance control mapping.
+			admittedMemory := op == 0xfe || op >= 0x28 && op <= 0x3e || op == 0xfd || imm.Kind == wasm.InstrMemorySize || imm.Kind == wasm.InstrMemoryCopy || imm.Kind == wasm.InstrMemoryFill || imm.Kind == wasm.InstrMemoryGrow || imm.Kind == wasm.InstrMemoryInit
 			if (imm.TouchesMemory || imm.Kind == wasm.InstrMemoryGrow) && !admittedMemory {
 				return fmt.Errorf("threads function %d uses %s outside the shared memory access boundary", function, imm.Kind)
 			}
