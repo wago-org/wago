@@ -327,7 +327,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("isolated global import")
 			}
 			g := im.Type.GlobalType()
-			reference := publicExports && importedTables && admitImportedFunctionGlobal(m, g)
+			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m)) && admitImportedFunctionGlobal(m, g)
 			if !scalarType(g.Type, true) && !reference {
 				return s, unsupported("nonscalar global import")
 			}

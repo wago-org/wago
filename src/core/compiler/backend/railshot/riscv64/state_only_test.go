@@ -66,3 +66,54 @@ func TestStateOnlyProductionStillValidatesState(t *testing.T) {
 		}
 	}
 }
+
+func stateOnlyMutableFuncrefImportSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "cell", wasm.FuncRef, true))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("cell", 3, 0))),
+	)
+}
+
+func TestStateOnlyMutableFuncrefImportProduction(t *testing.T) {
+	source := stateOnlyMutableFuncrefImportSource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true})
+	if err != nil || image == nil {
+		t.Fatal("state-only mutable funcref compilation", err)
+	}
+	if image.CodeImage != nil || len(image.Code) != 0 || len(image.Entry) != 0 || len(image.InternalEntry) != 0 {
+		t.Fatal("state-only mutable funcref allocated executable code")
+	}
+
+	for name, bad := range map[string][]byte{
+		"no-export": wasmtest.Module(
+			wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "cell", wasm.FuncRef, true))),
+		),
+		"extra-import": wasmtest.Module(
+			wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "cell", wasm.FuncRef, true), wasmtest.GlobalImportEntry("env", "count", wasm.I32, true))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("cell", 3, 0))),
+		),
+		"table": wasmtest.Module(
+			wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "cell", wasm.FuncRef, true))),
+			wasmtest.Section(4, []byte{1, 0x70, 1, 1, 1}),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("cell", 3, 0))),
+		),
+	} {
+		t.Run(name, func(t *testing.T) {
+			decoded, err := wasm.DecodeModule(bad)
+			if err != nil {
+				t.Fatal(err)
+			}
+			image, err := CompileModuleWith(decoded, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true})
+			if image != nil || !errors.Is(err, ErrUnsupported) {
+				t.Fatal("unsupported mutable funcref state source admitted", err)
+			}
+		})
+	}
+}

@@ -4,9 +4,12 @@ package wago
 
 import "fmt"
 
-// Compiled admission repeats the source profile before executable publication.
-// No mutable reference cell may be reachable through a public global handle.
+// Compiled admission repeats the local-cell source profile before executable
+// publication. No local mutable reference cell may reach a public global handle.
 func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
+	if rv64StateOnlyMutableFuncrefImport(c) {
+		return false, nil // The sole mutable cell is imported, not local executable state.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable

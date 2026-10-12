@@ -12,8 +12,12 @@ table. Nullable funcref locals/control and body-level `ref.func` of export-decla
 local or native-imported numeric/vector functions also work without module state.
 Local mutable nullable funcref globals retain only own canonical descriptors or
 null; their profile excludes tables, reference imports/signatures, and mutable
-reference exports. Parked callbacks, retirement and compiler-free artifact tests
-cover this bounded shape.
+reference exports. Separately, an exact zero-code profile admits one same-Runtime
+mutable nullable funcref `Global` import and re-export. It preserves shared cell
+identity, mutation visibility and descriptor-owner lifetime through source and
+compiler-free artifacts, but does not yet lower guest `global.get`/`global.set`.
+Parked callbacks, retirement and compiler-free artifact tests cover these bounded
+shapes.
 The exact official concrete struct-subtyping `gc/ref_cast` module now has genuine
 RV64 lowering for indexed heap types 0 through 7, retained source/artifact
 classifiers, rooted-table GC stress coverage, and compiler-free reload. Baseline
@@ -473,11 +477,9 @@ actual storage owner, host topology and unconsumed counter obligations; acquisit
 precedes native construction and adoption follows construction-lease release.
 Frozen immutable-global descriptors now have separate actual-owner receipts,
 with guarded registration, alias sharing, builder rollback and terminal cleanup.
-Mutable-container acquisitions still require receipt integration, followed by
-scalable complete registration and cycle collection. Feature admission is unchanged.
-Remaining work
-includes reference-global imports combined with instance-owned imported tables,
-general mutable reference imports/exports, reference
+Mutable global and table containers now use exact acquisition receipts; scalable
+complete registration and cycle collection remain. Remaining work includes
+executable and mixed-state mutable reference imports/exports, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
 qualification. The
 experimental build tag and unsupported-feature admission remain in place.

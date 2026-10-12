@@ -4,6 +4,22 @@ package riscv64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
+// admitStateOnlyMutableFunctionGlobalImport is the source-side counterpart of
+// the runtime artifact witness. It admits one mutable nullable funcref import
+// only when the module does nothing except re-export that exact cell.
+func admitStateOnlyMutableFunctionGlobalImport(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+		return false
+	}
+	imp := m.Imports[0]
+	if imp.Type.Kind != wasm.ExternGlobal {
+		return false
+	}
+	typ := imp.Type.GlobalType()
+	ex := m.Exports[0]
+	return typ.Mutable && wasm.EqualValType(typ.Type, wasm.FuncRef) && ex.Index.Kind == wasm.ExternGlobal && ex.Index.Index == 0
+}
+
 // privateIndexedFunctionGlobal admits the table-free typed cells used to hold
 // same-instance recursive call_ref targets. Keep this separate from public
 // funcref globals: the carrier is immutable, non-null, non-exact, initialized
@@ -83,5 +99,5 @@ func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 }
 
 func admitImportedFunctionGlobal(m *wasm.Module, typ wasm.GlobalType) bool {
-	return !typ.Mutable && wasm.EqualValType(typ.Type, wasm.FuncRef) && len(m.Tables)+m.ImportedTableCount() <= 1
+	return wasm.EqualValType(typ.Type, wasm.FuncRef) && (!typ.Mutable && len(m.Tables)+m.ImportedTableCount() <= 1 || typ.Mutable && admitStateOnlyMutableFunctionGlobalImport(m))
 }

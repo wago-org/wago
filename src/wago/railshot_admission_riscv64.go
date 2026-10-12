@@ -73,10 +73,43 @@ func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
 	return hasExternref && used == uint8((1<<len(c.ValueTypes))-1) && c.requiredFeatures == required && compiledStructuralRequiredFeatures(c) == required
 }
 
+// rv64StateOnlyMutableFuncrefImport is the persisted-artifact witness for the
+// first mutable funcref-global boundary. It admits exactly one store-bound,
+// nullable funcref cell which is imported and re-exported without executable
+// code. Guest global.get/global.set and mixed state require separate lowering.
+func rv64StateOnlyMutableFuncrefImport(c *Compiled) bool {
+	if c == nil || !c.hasNoFunctionCode() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 || len(c.FuncTypeID) != 0 || len(c.Funcs) != 0 || len(c.Exports) != 0 {
+		return false
+	}
+	if len(c.Globals) != 1 || len(c.GlobalImports) != 1 || len(c.GlobalExports) != 1 || len(c.ValueTypes) != 1 || c.tableCount() != 0 || len(c.tableExports) != 0 || c.memoryCount() != 0 || len(c.memoryExportMap()) != 0 || c.tagImportCount() != 0 || c.HasStart {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 {
+		return false
+	}
+	for _, index := range c.GlobalExports {
+		if index != 0 {
+			return false
+		}
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	imp, global := c.GlobalImports[0], c.Globals[0]
+	exact, err := c.globalExactType(0)
+	if err != nil || exact != plain || c.ValueTypes[0] != plain || !imp.HasValueType || imp.ValueTypeIndex != 0 || imp.Type != ValFuncRef || !imp.Mutable {
+		return false
+	}
+	if global.Type != ValFuncRef || !global.Mutable || !global.HasValueType || global.ValueTypeIndex != 0 || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) {
+		return false
+	}
+	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal
+	return c.requiredFeatures == required && compiledStructuralRequiredFeatures(c) == required
+}
+
 // Loading and hand-built metadata must enforce the same bounded public ABI as
 // source compilation before any executable image or host thunk is published.
 func railshotValidateCompiled(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
+	stateOnlyMutableFuncrefImport := rv64StateOnlyMutableFuncrefImport(c)
 	exactGCRefEq := rv64OfficialGCRefEq(c)
 	exactGCRefTestTable := rv64GCRefTestTable(c)
 	exactGCRefTestConcrete := rv64GCRefTestConcrete(c)
@@ -419,7 +452,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("global import index shape")
 	}
 	for i, global := range c.GlobalImports {
-		reference := global.Type == ValFuncRef && !global.Mutable && c.tableCount() <= 1
+		reference := global.Type == ValFuncRef && (!global.Mutable || stateOnlyMutableFuncrefImport) && c.tableCount() <= 1
 		if reference {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
@@ -596,8 +629,9 @@ func railshotValidateCompiled(c *Compiled) error {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := c.globalExactType(i)
 			typedIndex, typed := rv64PrivateIndexedFunctionType(c, exact)
-			if err != nil || exact != plain && !typed || global.Mutable && (!localMutableReferences || i < len(c.GlobalImports)) || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
-				return reject("immutable reference global and retained references required")
+			mutableQualified := localMutableReferences && i >= len(c.GlobalImports) || stateOnlyMutableFuncrefImport && i < len(c.GlobalImports)
+			if err != nil || exact != plain && !typed || global.Mutable && !mutableQualified || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+				return reject("qualified reference global and retained references required")
 			}
 			if typed {
 				local := int(global.InitFunc) - c.NumImports

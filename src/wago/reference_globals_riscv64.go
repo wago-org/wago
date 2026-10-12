@@ -110,7 +110,7 @@ func rv64FreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, st
 	}
 	count := 0
 	for _, imp := range c.GlobalImports {
-		if imp.Type == ValFuncRef {
+		if imp.Type == ValFuncRef && !imp.Mutable {
 			count++
 		}
 	}
@@ -131,7 +131,7 @@ func rv64FreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, st
 	}()
 	var holder *rv64FrozenGlobalDependencyRows
 	for i, imp := range c.GlobalImports {
-		if imp.Type != ValFuncRef {
+		if imp.Type != ValFuncRef || imp.Mutable {
 			continue
 		}
 		global := globals[i].global
@@ -210,6 +210,10 @@ func rv64ValidateResolvedGlobals(c *Compiled, imports resolvedImports, store *re
 		}
 		if err := global.attachReferenceImporter(store); err != nil {
 			return err
+		}
+		if imp.Mutable {
+			global.detachReferenceImporter()
+			continue
 		}
 		entry, err := rv64RetainGlobalDescriptor(global, store)
 		if entry.owner != nil {

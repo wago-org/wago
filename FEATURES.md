@@ -28,7 +28,11 @@ imported table. Nullable funcref locals and control values, including body-level
 `ref.func` of export-declared local or native-imported numeric/vector functions,
 also work without globals or tables. Local mutable nullable funcref globals
 retain full-width own descriptors in table-free modules without reference imports,
-reference-valued signatures, or mutable reference exports. Table-free declarative segments and repeated
+reference-valued signatures, or mutable reference exports. A separate exact
+zero-code profile imports and re-exports one same-Runtime mutable nullable
+funcref `Global`, preserving shared mutation and descriptor-owner lifetime; guest
+`global.get`/`global.set` and mixed state remain unsupported for that profile.
+Table-free declarative segments and repeated
 `elem.drop` use dropped element state; unused legacy declarations require no
 function descriptors or element directory. Empty and state-only modules have no
 executable mapping. Bounded opaque custom metadata and empty supported sections
@@ -146,8 +150,8 @@ Go callback and HostFuncRef reexports remain rejected. Frozen
 attachments retain the actual descriptor storage through producer retirement,
 parked callbacks, and indirect calls. Imported host tables retain the actual
 descriptor owners after writers return or close. Reference imports combined with
-instance-owned imported tables, general mutable reference imports/exports,
-broader reference signatures/equality, GC/EH,
+instance-owned imported tables are supported. Executable and mixed-state mutable
+reference imports/exports, broader reference signatures/equality, GC/EH,
 threads and table64 remain unavailable.
 Native function, memory, global and table-import acquisition receipts now track their actual
 producer Instances, including producers that share memory, through construction
