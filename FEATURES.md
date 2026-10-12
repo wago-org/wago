@@ -125,7 +125,15 @@ two source identities remain non-callable. `.27` adds the first later nominal-
 mismatch checkpoint: a callable empty-signature function from a distinct
 recursive group tests false against type 0 and returns normalized `[0]`. `.28`
 repeats the nominal mismatch one recursive layer deeper, comparing actual type
-4 with target type 2 and returning normalized `[0]`. Other
+4 with target type 2 and returning normalized `[0]`. Official `.29` and `.30`
+form the first exact cross-instance function-subtyping link pair: the provider
+publishes three nullable-reference exports in a transitive subtype chain, and
+the consumer accepts six duplicate import views at their declared supertypes.
+The consumer copies the provider's full-width canonical identities, retains the
+logically closed provider until its own close, and rejects a narrower function
+bound to the deepest import. Source, compiler-free artifact, hostile retained-
+state, W^X lease, and final-unmap paths are covered without a collector. The
+three following expected-unlinkable modules remain fail-closed. Other
 `gc/type-subtyping` module shapes remain fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,

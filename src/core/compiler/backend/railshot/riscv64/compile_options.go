@@ -123,6 +123,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingRefTestSingleSource identifies an exact official
 	// bounded recursive-function ref.test product.
 	GCTypeSubtypingRefTestSingleSource uint8
+	// GCTypeSubtypingLinkSource identifies the exact official .29 provider or
+	// .30 consumer in the first recursive-function linking cluster.
+	GCTypeSubtypingLinkSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -208,6 +211,7 @@ type CompileOptions struct {
 	gcTypeSubtypingTypedTableCall     bool
 	gcTypeSubtypingRefTestSingle      bool
 	gcTypeSubtypingRefTestVariant     uint8
+	gcTypeSubtypingLink               uint8
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

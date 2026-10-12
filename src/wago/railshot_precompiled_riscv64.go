@@ -66,6 +66,9 @@ func railshotConfigureGCTypeSubtypingRuntimeTypedTableCall(bool, *railshotCompil
 func railshotGCTypeSubtypingRefTestSingleSource([]byte) uint8 { return 0 }
 func railshotConfigureGCTypeSubtypingRefTestSingle(uint8, *railshotCompileOptions) {
 }
+func railshotGCTypeSubtypingLinkSource([]byte) uint8 { return 0 }
+func railshotConfigureGCTypeSubtypingLink(uint8, *railshotCompileOptions) {
+}
 func railshotGCStructGetSource([]byte) bool                                 { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)            {}
 func railshotGCStructMutationSource([]byte) bool                            { return false }

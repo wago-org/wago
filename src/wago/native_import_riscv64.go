@@ -100,7 +100,9 @@ func railshotValidateNativeExport(c *Compiled, index int, export *InstanceExport
 	if producer.jm == nil || producer.base == 0 || producer.nativeContext == 0 || export.localIdx < 0 || export.localIdx >= len(producer.c.Entry) || export.localIdx >= len(producer.c.Funcs) {
 		return fmt.Errorf("native instance export has no retained framed entry")
 	}
-	if index < 0 || index >= len(c.importFuncSigs) || !sigMatches(c.importFuncSigs[index], c.Types, export, false) {
+	allowSubtype := rv64GCTypeSubtypingLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkConsumer &&
+		rv64GCTypeSubtypingLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkProvider
+	if index < 0 || index >= len(c.importFuncSigs) || !sigMatches(c.importFuncSigs[index], c.Types, export, allowSubtype) {
 		return fmt.Errorf("native instance export signature mismatch")
 	}
 	return nil

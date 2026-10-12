@@ -98,7 +98,15 @@ extends both recursive signature pairs across eight exact projections and
 returns eight normalized true results. The eighth checkpoint admits the later
 distinct-recursive-group empty signature and returns normalized false. The ninth
 checkpoint repeats that nominal false relation one recursive layer deeper,
-comparing actual type 4 with target type 2. Products after `.28` and native
+comparing actual type 4 with target type 2. Official `.29` and `.30` now form
+the first exact cross-instance subtype-link checkpoint: three exported provider
+functions satisfy six ordered consumer imports through their pinned transitive
+function-subtype closure. The consumer copies canonical producer identities,
+deduplicates the retained producer lifetime across imports, and releases it only
+after consumer close. Source and compiler-free artifacts, exact hostile state,
+wrong-subtype linking, W^X publication, and final unmapping are covered under
+baseline QEMU RV64G without a collector. Expected unlinkables `.31` through
+`.33`, products after `.33`, and native
 cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain

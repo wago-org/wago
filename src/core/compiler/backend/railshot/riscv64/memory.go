@@ -74,6 +74,7 @@ type moduleState struct {
 	gcTypeSubtypingTypedTableCall     bool
 	gcTypeSubtypingRefTestSingle      bool
 	gcTypeSubtypingRefTestVariant     uint8
+	gcTypeSubtypingLink               uint8
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -217,7 +218,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
 	gcTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingle(m)
-	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || gcTypeSubtypingRefTestSingle
+	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || gcTypeSubtypingRefTestSingle || admitRV64GCTypeSubtypingLink(m) != 0
 	gcTypeSubtypingFinalityCallCast := admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
 	gcTypeSubtypingTypedTableCall := admitRV64GCTypeSubtypingRuntimeTypedTableCall(m)
 	gcTypeSubtypingRefFuncGlobals := admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0
