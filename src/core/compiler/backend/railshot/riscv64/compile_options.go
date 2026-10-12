@@ -120,8 +120,8 @@ type CompileOptions struct {
 	// GCTypeSubtypingRuntimeTypedTableCallSource is the exact-wire witness for
 	// the official indexed-function typed-table call_indirect product.
 	GCTypeSubtypingRuntimeTypedTableCallSource bool
-	// GCTypeSubtypingRefTestSingleSource is the exact-wire witness for the first
-	// official recursive-function ref.test product.
+	// GCTypeSubtypingRefTestSingleSource is the exact-wire witness for either of
+	// the first two official recursive-function ref.test products.
 	GCTypeSubtypingRefTestSingleSource bool
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.

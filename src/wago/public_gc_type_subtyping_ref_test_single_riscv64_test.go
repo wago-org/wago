@@ -87,7 +87,7 @@ func TestRV64PublicGCTypeSubtypingRefTestSingleExecutionAndArtifact(t *testing.T
 			view := compiled.executionView()
 			metadata, metadataErr := marshalCompiledMetadata(view)
 			validation := railshotValidateCompiled(view)
-			if metadataErr != nil || len(metadata) != rv64GCTypeSubtypingRefTestSingleMetadataLen || sha256.Sum256(metadata) != rv64GCTypeSubtypingRefTestSingleMetadataDigest ||
+			if metadataErr != nil || len(metadata) != rv64GCTypeSubtypingRefTestSingleMetadataLens[0] || sha256.Sum256(metadata) != rv64GCTypeSubtypingRefTestSingleMetadataDigests[0] ||
 				!rv64GCTypeSubtypingRefTestSingle(view) || view.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingRefTestSingle || validation != nil {
 				compiled.Close()
 				t.Fatalf("missing exact single ref.test witness: metadata=%d/%x err=%v exact=%t product=%v validation=%v code=%d/%x entries=%v/%v", len(metadata), sha256.Sum256(metadata), metadataErr, rv64GCTypeSubtypingRefTestSingle(view), view.stagedGCTypeSubtypingProduct(), validation, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
