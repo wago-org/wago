@@ -188,7 +188,14 @@ func (a *Arena) AllocNoZero(n int) []byte {
 	return b
 }
 
-func (a *Arena) Close() error { return munmap(a.mem) }
+func (a *Arena) Close() error {
+	if err := closeOwnedMapping(&a.mem, 0, 0); err != nil {
+		return err
+	}
+	a.off = 0
+	a.zeroOnAlloc = false
+	return nil
+}
 
 func ReleaseArena(a *Arena) error {
 	if a == nil {

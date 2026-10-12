@@ -709,7 +709,12 @@ func (e *Engine) callWithHostLoopExpanded(code uintptr, serArgs []byte, linMemBa
 
 func (e *Engine) Close() error {
 	e.preparedScalarHost = nil
-	return errors.Join(e.preparedInt.close(), munmap(e.stack))
+	preparedErr := e.preparedInt.close()
+	stackErr := closeOwnedMapping(&e.stack, 0, 0)
+	if stackErr == nil {
+		e.stackTop = 0
+	}
+	return errors.Join(preparedErr, stackErr)
 }
 
 // MapCode copies machine code into a fresh W^X executable mapping and returns

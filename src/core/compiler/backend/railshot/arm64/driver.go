@@ -35,6 +35,8 @@ func (f *fn) representationError() error {
 		field = "call relocation"
 	case functionRepresentationBranchRange:
 		return fmt.Errorf("arm64: native branch displacement exceeds instruction range")
+	case functionRepresentationADRRange:
+		return fmt.Errorf("arm64: native PC-relative address exceeds instruction range")
 	default:
 		field = "unknown field"
 	}

@@ -18,3 +18,9 @@ func (f *fn) patchBranch26(site, target int) {
 		f.setRepresentationLimit(functionRepresentationBranchRange)
 	}
 }
+
+func (f *fn) patchAdr(site, target int) {
+	if !f.a.PatchAdr(site, target) {
+		f.setRepresentationLimit(functionRepresentationADRRange)
+	}
+}

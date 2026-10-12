@@ -3867,11 +3867,7 @@ func (in *Instance) tryInvokeCachedHostScalar1(export string, args []uint64) ([]
 		return nil, nil, false
 	}
 	state := in.pluginState.Load()
-	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
-		return nil, nil, false
-	}
-	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
-		in.endDirectInvocation()
+	if !in.tryBeginOrdinaryInvocation(state) {
 		return nil, nil, false
 	}
 	ic := in.findInvokeCache(export)
@@ -3881,15 +3877,13 @@ func (in *Instance) tryInvokeCachedHostScalar1(export string, args []uint64) ([]
 		!privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
 		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 ||
 		!(in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) {
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
 	state.invocationID = newInvocationID()
 	defer func() {
 		state.invocationID = 0
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 	}()
 	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
 	var err error
@@ -3937,11 +3931,7 @@ func (in *Instance) tryInvokeCachedBoundedNumeric(export string, args []uint64) 
 		return nil, nil, false
 	}
 	state := in.pluginState.Load()
-	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
-		return nil, nil, false
-	}
-	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
-		in.endDirectInvocation()
+	if !in.tryBeginOrdinaryInvocation(state) {
 		return nil, nil, false
 	}
 	ic := in.findInvokeCache(export)
@@ -3949,15 +3939,13 @@ func (in *Instance) tryInvokeCachedBoundedNumeric(export string, args []uint64) 
 	if ic == nil || !ic.boundedNumericHost || len(args) != int(ic.paramSlots) ||
 		!privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
 		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
 	state.invocationID = newInvocationID()
 	defer func() {
 		state.invocationID = 0
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 	}()
 	// Cached eligibility has already proved the immutable binding's signature
 	// and absence of a plugin gate; the checks above revalidate mutable ownership.
@@ -3991,11 +3979,7 @@ func (in *Instance) tryInvokeCachedBoundedNumeric(export string, args []uint64) 
 
 func (in *Instance) tryInvokeCachedBoundedNumericLive(export string, args []uint64) (out []uint64, err error, admitted bool) {
 	state := in.pluginState.Load()
-	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
-		return nil, nil, false
-	}
-	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
-		in.endDirectInvocation()
+	if !in.tryBeginOrdinaryInvocation(state) {
 		return nil, nil, false
 	}
 	ic := in.findInvokeCache(export)
@@ -4003,8 +3987,7 @@ func (in *Instance) tryInvokeCachedBoundedNumericLive(export string, args []uint
 	if ic == nil || !ic.boundedNumericHost || len(args) != int(ic.paramSlots) ||
 		!privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
 		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
 	state.invocationID = newInvocationID()
@@ -4012,7 +3995,7 @@ func (in *Instance) tryInvokeCachedBoundedNumericLive(export string, args []uint
 	var locked executionLease
 	nativeOwned := false
 	defer func() {
-		defer func() { state.invocationID = 0; state.invokeMu.Unlock(); in.endDirectInvocation() }()
+		defer func() { state.invocationID = 0; in.endOrdinaryInvocation(state) }()
 		if nativeOwned && !locked.privateContext() {
 			defer in.unlockNativeEntry(locked)
 		}
@@ -4125,11 +4108,7 @@ func (in *Instance) tryInvokeCachedBoundedNumericGeneral(export string, args []u
 		return nil, nil, false
 	}
 	state := in.pluginState.Load()
-	if state == nil || !in.invocationState.CompareAndSwap(0, 1) {
-		return nil, nil, false
-	}
-	if !state.invokeMu.state.CompareAndSwap(0, invocationGateHeld) {
-		in.endDirectInvocation()
+	if !in.tryBeginOrdinaryInvocation(state) {
 		return nil, nil, false
 	}
 	ic := in.findInvokeCache(export)
@@ -4137,15 +4116,13 @@ func (in *Instance) tryInvokeCachedBoundedNumericGeneral(export string, args []u
 	if ic == nil || !ic.boundedNumericHost || len(args) != int(ic.paramSlots) ||
 		!privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
 		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
 	state.invocationID = newInvocationID()
 	defer func() {
 		state.invocationID = 0
-		state.invokeMu.Unlock()
-		in.endDirectInvocation()
+		in.endOrdinaryInvocation(state)
 	}()
 	// Cached eligibility has already proved the immutable binding's signature
 	// and absence of a plugin gate; the checks above revalidate mutable ownership.
@@ -4600,7 +4577,15 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		defer stopCancel()
 	}
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback); err != nil {
+		var err error
+		if contexts.interrupt != nil && in.contextBoundedTypedI64Eligible(ic) {
+			// Admission, ownership, and the cancellation watcher above are shared
+			// with the general path. Only the final native driver changes.
+			err = in.callCachedBoundedTypedHostContext(entry, contexts.callback)
+		} else {
+			err = in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback)
+		}
+		if err != nil {
 			return nil, err
 		}
 	} else {
@@ -4652,6 +4637,19 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 	}
 	return out, nil
+}
+
+// contextBoundedTypedI64Eligible keeps cancelable entry on the ordinary gate
+// and watcher while using the proven private integer host bridge. Atomic wait
+// helpers retain the general driver's separate parent-context publication.
+func (in *Instance) contextBoundedTypedI64Eligible(ic *invokeCache) bool {
+	if ic == nil || ic.li < 0 || !ic.boundedNumericHost || in.c.usesAtomicWaitHelpers() || !in.preparedFastStateValid() ||
+		!in.preparedBoundedNumericEligible() || !in.syncMode || len(in.syncHosts) != 1 ||
+		in.syncHosts[0].scalarKind != syncHostTypedI64 || !in.syncHosts[0].privateBoundedTypedHost() {
+		return false
+	}
+	prepared := in.eng.PreparedScalarHost()
+	return prepared != nil && prepared.DetachedNumericContext() && prepared.IntegerGuestContext()
 }
 
 // invokeLocal calls this instance's local function `li` directly (bypassing the

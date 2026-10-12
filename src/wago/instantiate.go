@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -1255,6 +1256,44 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if c.stagedGCStructProduct().requiresRefTableState() {
 		gcRefTestDescriptors = make([][]byte, c.tableCount())
 	}
+	// A failure before Instance cleanup is installed cannot transfer the producer
+	// lifetime of funcrefs written into an imported table. Undo those writes
+	// while the table attachment and this instance's arena are still live. Clear
+	// to null instead of restoring an overwritten descriptor: its old producer
+	// may have been released while this construction was in progress.
+	type importedFuncrefWrite struct {
+		table *Table
+		off   int
+		value [runtime.TableEntryBytes]byte
+	}
+	var importedFuncrefWrites []importedFuncrefWrite
+	defer func() {
+		if b.success {
+			return
+		}
+		for i := len(importedFuncrefWrites) - 1; i >= 0; i-- {
+			write := &importedFuncrefWrites[i]
+			write.table.mu.Lock()
+			if !write.table.closed && write.off+runtime.TableEntryBytes <= len(write.table.desc) {
+				entry := write.table.desc[write.off : write.off+runtime.TableEntryBytes]
+				// Avoid clearing a later write observed through this handle. Native
+				// guest table mutation does not take this lock, so concurrent guest
+				// copying remains outside the construction rollback guarantee.
+				if bytes.Equal(entry, write.value[:]) {
+					clear(entry)
+				}
+			}
+			write.table.mu.Unlock()
+		}
+	}()
+	recordImportedFuncrefWrite := func(table *Table, off int, before [runtime.TableEntryBytes]byte, entry []byte) {
+		if table == nil || len(entry) != runtime.TableEntryBytes || bytes.Equal(before[:], entry) {
+			return
+		}
+		write := importedFuncrefWrite{table: table, off: off}
+		copy(write.value[:], entry)
+		importedFuncrefWrites = append(importedFuncrefWrites, write)
+	}
 	// Table descriptors are [len u32][max u32][entry...]. Funcref entries retain
 	// their direct 32-byte call descriptor; externref entries are opaque 8-byte
 	// handles. Table 0 remains in the direct basedata slot. Multiple local tables
@@ -1269,6 +1308,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
 			var desc []byte
 			var size int
+			var importedTable *Table
 			def := c.tableDef(tableIndex)
 			entryBytes := c.tableEntryBytes(tableIndex)
 			if importDef, imported := c.tableImportAt(tableIndex); imported {
@@ -1287,6 +1327,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
 				}
 				desc = t.desc
+				importedTable = t
 				if len(desc) < 8 {
 					return nil, fmt.Errorf("imported table %q descriptor is invalid", importDef.Key)
 				}
@@ -1324,7 +1365,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 				for slot := 0; slot < size; slot++ {
 					off := 8 + slot*entryBytes
+					var before [runtime.TableEntryBytes]byte
+					if importedTable != nil {
+						copy(before[:], desc[off:off+entryBytes])
+					}
 					writeTableEntry(desc[off:off+entryBytes], def.InitFunc)
+					recordImportedFuncrefWrite(importedTable, off, before, desc[off:off+entryBytes])
 				}
 			}
 			if init := c.memoryDir.gcI31TableInit; init != nil && int(init.TableIndex) == tableIndex {
@@ -1349,6 +1395,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		for seg, el := range c.Elems {
 			desc := tableDesc
+			var importedTable *Table
+			if _, imported := c.tableImportAt(int(el.TableIndex)); imported {
+				importedTable, _ = imports.table(c.tableImportBindingKey(int(el.TableIndex)))
+			}
 			if el.TableIndex != 0 {
 				ptr := uintptr(binary.LittleEndian.Uint64(tableDir[int(el.TableIndex)*8:]))
 				header := unsafe.Slice((*byte)(offHeapPtr(ptr)), 8)
@@ -1400,8 +1450,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if k > 0 {
 					prev = desc[off-entryBytes : off]
 				}
-				if err := writeElemEntry(desc[off:off+entryBytes], prev, el.RefType, value); err != nil {
-					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, err)
+				var before [runtime.TableEntryBytes]byte
+				if importedTable != nil && entryBytes == runtime.TableEntryBytes {
+					copy(before[:], desc[off:off+entryBytes])
+				}
+				writeErr := writeElemEntry(desc[off:off+entryBytes], prev, el.RefType, value)
+				recordImportedFuncrefWrite(importedTable, off, before, desc[off:off+entryBytes])
+				if writeErr != nil {
+					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, writeErr)
 					break
 				}
 			}
@@ -1756,6 +1812,17 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 		in.refStore = conversionStore
 	}
+	if opts.runtime == nil {
+		// Active segments and start calls may leave local funcrefs in imported
+		// containers even when instantiation fails. Every failure after this point
+		// must transfer their producer lifetime before rollback detaches imports.
+		defer func() {
+			if !b.success && retainProducerRootsInImportedContainersForFinalization(in) {
+				b.success = true
+				_ = in.Close()
+			}
+		}()
+	}
 	if needsExternConversion {
 		if in.refStore == nil || gcExternConversion == nil || gcRefTestTable == nil {
 			return nil, errors.New("GC extern conversion ownership is unavailable")
@@ -1765,14 +1832,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 	if initErr != nil {
-		if opts.runtime == nil {
-			tableRetained := retainProducerRootsInImportedTables(in)
-			globalRetained := retainProducerRootsInImportedGlobals(in)
-			if tableRetained || globalRetained {
-				b.success = true
-				_ = in.Close()
-			}
-		}
 		return nil, initErr
 	}
 	if opts.afterCreate != nil {
@@ -1835,14 +1894,6 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				// becomes the failed instance's lifetime owner. The table prunes roots
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
-				if opts.runtime == nil {
-					tableRetained := retainProducerRootsInImportedTables(in)
-					globalRetained := retainProducerRootsInImportedGlobals(in)
-					if tableRetained || globalRetained {
-						b.success = true
-						_ = in.Close()
-					}
-				}
 				return nil, wrapContextError("start function trapped", startErr)
 			}
 		}

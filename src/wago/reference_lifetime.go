@@ -52,8 +52,7 @@ func (lifetime referenceLifetime) finalize() {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
-	retainProducerRootsInImportedTablesForFinalization(in)
-	retainProducerRootsInImportedGlobalsForFinalization(in)
+	retainProducerRootsInImportedContainersForFinalization(in)
 	lifetime.notifyStore(store, referenceLifetimeQuiesced)
 
 	in.lifeMu.Lock()

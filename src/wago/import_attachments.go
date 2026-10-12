@@ -240,19 +240,18 @@ func detachImportedGlobals(in *Instance) {
 }
 
 func retainProducerRootsInImportedGlobals(in *Instance) bool {
-	return retainProducerRootsInImportedGlobalsMode(in, false)
+	return retainProducerRootsInImportedGlobalsMode(in, false, nil)
 }
 
-func retainProducerRootsInImportedGlobalsForFinalization(in *Instance) bool {
-	return retainProducerRootsInImportedGlobalsMode(in, true)
-}
-
-func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) bool {
+func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, pass *importedContainerFinalizationPass) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
 	retained := false
 	var seen importDedup[*Global]
+	// The imported source roots need one snapshot for this retention pass.
+	var roots []*Instance
+	rootsLoaded := false
 	for i, imp := range in.c.GlobalImports {
 		if imp.Type != ValFuncRef {
 			continue
@@ -276,7 +275,15 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 				rooted = true
 			}
 		}
-		for _, producer := range importedFuncrefProducerRoots(in) {
+		if !rootsLoaded {
+			if pass != nil {
+				roots = pass.roots
+			} else {
+				roots = importedFuncrefProducerRoots(in)
+			}
+			rootsLoaded = true
+		}
+		for _, producer := range roots {
 			if finalization {
 				if provided.Global.retainProducerInstanceForFinalization(producer) {
 					rooted = true
@@ -286,7 +293,11 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool) b
 			}
 		}
 		if rooted {
-			in.transferImportedGlobalAttachment(provided.Global)
+			if pass != nil {
+				pass.globals.add(provided.Global)
+			} else {
+				in.transferImportedGlobalAttachment(provided.Global)
+			}
 			retained = true
 		}
 	}
@@ -366,21 +377,27 @@ func detachImportedTables(in *Instance) {
 }
 
 func retainProducerRootsInImportedTables(in *Instance) bool {
-	return retainProducerRootsInImportedTablesMode(in, false)
+	return retainProducerRootsInImportedTablesMode(in, false, nil)
 }
 
-func retainProducerRootsInImportedTablesForFinalization(in *Instance) bool {
-	return retainProducerRootsInImportedTablesMode(in, true)
-}
-
-func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bool {
+func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool, pass *importedContainerFinalizationPass) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
 	retained := false
+	var seen importDedup[*Table]
+	// Each table handles the writer directly; source roots can be reused.
+	var roots []*Instance
+	rootsLoaded := false
+	var transferredOwners importDedup[*Instance]
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if !ok || table == nil {
+			continue
+		}
+		// Finalization transfers each imported table only once. The ordinary
+		// retention pass keeps its small-import and large-table scan costs.
+		if finalization && !seen.add(table) {
 			continue
 		}
 		var rooted bool
@@ -399,7 +416,15 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		// a public token need not occur in the writer's own funcRefDescs. Carry
 		// forward every source container's actual producer roots, while the store
 		// resolver above covers still-live token and canonical descriptor owners.
-		for _, producer := range importedFuncrefProducerRoots(in) {
+		if !rootsLoaded {
+			if pass != nil {
+				roots = pass.roots
+			} else {
+				roots = importedFuncrefProducerRoots(in)
+			}
+			rootsLoaded = true
+		}
+		for _, producer := range roots {
 			if finalization {
 				if table.retainProducerInstanceForFinalization(producer) {
 					rooted = true
@@ -409,12 +434,81 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 			}
 		}
 		if rooted {
-			in.transferImportedTableAttachment(table)
-			in.transferImportedAttachmentsFromOwner(table.instanceOwner())
+			if pass != nil {
+				pass.tables.add(table)
+				if owner := table.instanceOwner(); owner != nil {
+					pass.owners.add(owner)
+				}
+			} else {
+				in.transferImportedTableAttachment(table)
+				if owner := table.instanceOwner(); owner != nil && transferredOwners.add(owner) {
+					in.transferImportedAttachmentsFromOwner(owner)
+				}
+			}
 			retained = true
 		}
 	}
 	return retained
+}
+
+// Finalization retains all destinations before any import attachment is handed
+// over. Until transfer, the importer pins each source container and its roots.
+type importedContainerFinalizationPass struct {
+	roots   []*Instance
+	tables  importDedup[*Table]
+	globals importDedup[*Global]
+	owners  importDedup[*Instance]
+}
+
+// Discover descriptor owners in every imported funcref container before any
+// destination transfers an import attachment. A root first resolved in a later
+// table or global may be the only producer for an earlier unresolved descriptor.
+// The retention passes then share one source-root snapshot. Transfers occur only
+// after every destination has retained its roots, so concurrent closes cannot
+// release a producer between destinations.
+func retainProducerRootsInImportedContainersForFinalization(in *Instance) bool {
+	return retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in, nil)
+}
+
+// beforeTransfer is a test seam for checking that imported containers remain
+// pinned after retention and before the deferred attachment handover.
+func retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in *Instance, beforeTransfer func()) bool {
+	if in == nil || in.c == nil {
+		return false
+	}
+	// One imported container has no other destination to propagate back to.
+	if in.c.tableImportCount()+len(in.c.GlobalImports) > 1 {
+		var tables importDedup[*Table]
+		for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+			table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
+			if ok && table != nil && tables.add(table) {
+				table.retainDescriptorOwnersForFinalization(in.refStore, in)
+			}
+		}
+		var globals importDedup[*Global]
+		for i, imp := range in.c.GlobalImports {
+			if imp.Type != ValFuncRef {
+				continue
+			}
+			provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
+			if ok && provided.Global != nil && globals.add(provided.Global) {
+				provided.Global.retainDescriptorOwnerForFinalization(in.refStore, in)
+			}
+		}
+		pass := importedContainerFinalizationPass{roots: importedFuncrefProducerRoots(in)}
+		retainedTables := retainProducerRootsInImportedTablesMode(in, true, &pass)
+		retainedGlobals := retainProducerRootsInImportedGlobalsMode(in, true, &pass)
+		if beforeTransfer != nil {
+			beforeTransfer()
+		}
+		pass.tables.each(in.transferImportedTableAttachment)
+		pass.globals.each(in.transferImportedGlobalAttachment)
+		pass.owners.each(in.transferImportedAttachmentsFromOwner)
+		return retainedTables || retainedGlobals
+	}
+	retainedTables := retainProducerRootsInImportedTablesMode(in, true, nil)
+	retainedGlobals := retainProducerRootsInImportedGlobalsMode(in, true, nil)
+	return retainedTables || retainedGlobals
 }
 
 // transferImportedAttachmentsFromOwner breaks a closed consumer/owner cycle

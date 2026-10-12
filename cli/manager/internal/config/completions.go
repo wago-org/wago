@@ -27,12 +27,16 @@ func Completion(shell string) (string, error) {
 			"}\n" +
 			"compdef _wago wago\n", nil
 	case "bash":
+		// Wait for the command before reading candidates in this shell.
 		return "_wago_complete() {\n" +
-			"  local candidate\n" +
+			"  local candidate candidates\n" +
 			"  COMPREPLY=()\n" +
-			"  while IFS= read -r candidate; do\n" +
-			"    COMPREPLY+=(\"$candidate\")\n" +
-			"  done < <(command wago __complete \"${COMP_WORDS[@]:1}\")\n" +
+			"  candidates=$(command wago __complete \"${COMP_WORDS[@]:1}\") || true\n" +
+			"  if [[ -n $candidates ]]; then\n" +
+			"    while IFS= read -r candidate; do\n" +
+			"      COMPREPLY+=(\"$candidate\")\n" +
+			"    done <<< \"$candidates\"\n" +
+			"  fi\n" +
 			"  if (( ${#COMPREPLY[@]} == 0 )); then\n" +
 			"    compopt -o default 2>/dev/null || true\n" +
 			"  fi\n" +
