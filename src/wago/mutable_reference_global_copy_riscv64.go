@@ -22,13 +22,17 @@ func rv64MutableFuncrefGlobalCopyExecutionCode(c *Compiled) bool {
 // global zero into imported mutable funcref global one through the parked
 // ownership bridge; no reference value escapes through a callable signature.
 func rv64MutableFuncrefGlobalCopy(c *Compiled) bool {
+	return rv64MutableFuncrefGlobalTransferMetadata(c, "copy") && rv64MutableFuncrefGlobalCopyExecutionCode(c)
+}
+
+func rv64MutableFuncrefGlobalTransferMetadata(c *Compiled, export string) bool {
 	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
 	}
 	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 1 || len(c.FuncTypeID) != 1 || len(c.Exports) != 1 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 {
 		return false
 	}
-	if index, ok := c.Exports["copy"]; !ok || index != 0 {
+	if index, ok := c.Exports[export]; !ok || index != 0 {
 		return false
 	}
 	if len(c.GlobalImports) != 2 || len(c.Globals) != 2 || len(c.GlobalExports) != 0 || len(c.ValueTypes) != 1 || c.tableCount() != 0 || len(c.extraTables) != 0 || len(c.tableExports) != 0 || c.memoryCount() != 0 || len(c.memoryExportMap()) != 0 || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 {
@@ -65,7 +69,7 @@ func rv64MutableFuncrefGlobalCopy(c *Compiled) bool {
 		}
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal
-	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, []int{0}) && slices.Equal(c.InternalEntry, []int{0}) && rv64MutableFuncrefGlobalCopyExecutionCode(c)
+	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, []int{0}) && slices.Equal(c.InternalEntry, []int{0})
 }
 
 // copyGuestFuncrefDescriptor authenticates a descriptor already loaded by the
@@ -101,7 +105,7 @@ func (g *Global) copyGuestFuncrefDescriptorNoLease(source *Instance, descriptor 
 	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == mutable
 	o.mu.Unlock()
-	if closed || !consistent || typ != ValFuncRef || !mutable || store == nil || source.refStore != store || !rv64MutableFuncrefGlobalCopy(source.c) {
+	if closed || !consistent || typ != ValFuncRef || !mutable || store == nil || source.refStore != store || (!rv64MutableFuncrefGlobalCopy(source.c) && !rv64MutableFuncrefGlobalMove(source.c)) {
 		return fmt.Errorf("invalid RV64 guest funcref global copy")
 	}
 	if descriptor == 0 {

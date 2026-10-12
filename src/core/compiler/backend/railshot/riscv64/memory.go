@@ -88,6 +88,7 @@ type moduleState struct {
 	mutableFuncrefGlobalClear   bool
 	mutableFuncrefGlobalSetSelf bool
 	mutableFuncrefGlobalCopy    bool
+	mutableFuncrefGlobalMove    bool
 	ownedTable                  bool
 	ownedTableGrowth            bool
 	table64                     bool
@@ -264,6 +265,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.mutableFuncrefGlobalClear = admitMutableFunctionGlobalClear(m)
 	s.mutableFuncrefGlobalSetSelf = admitMutableFunctionGlobalSetSelf(m)
 	s.mutableFuncrefGlobalCopy = admitMutableFunctionGlobalCopy(m)
+	s.mutableFuncrefGlobalMove = admitMutableFunctionGlobalMove(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -271,7 +273,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy
+		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -335,7 +337,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("isolated global import")
 			}
 			g := im.Type.GlobalType()
-			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy) && admitImportedFunctionGlobal(m, g)
+			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove) && admitImportedFunctionGlobal(m, g)
 			if !scalarType(g.Type, true) && !reference {
 				return s, unsupported("nonscalar global import")
 			}

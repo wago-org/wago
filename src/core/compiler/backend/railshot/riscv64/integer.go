@@ -1317,9 +1317,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if _, err = popClass(reference); err != nil {
 					return integerSummary{}, err
 				}
-				if state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy {
+				if state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove {
 					want := uint32(0)
-					if state.mutableFuncrefGlobalCopy {
+					if state.mutableFuncrefGlobalCopy || (state.mutableFuncrefGlobalMove && idx == 1) {
 						want = 1
 					}
 					if idx != want || !reference {
@@ -1330,7 +1330,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, unsupported("mutable funcref store helper count")
 					}
 					if live && emit != nil {
-						if state.mutableFuncrefGlobalClear {
+						if state.mutableFuncrefGlobalClear || (state.mutableFuncrefGlobalMove && idx == 0) {
 							emit.clearGuestGlobal()
 						} else {
 							emit.storeGuestGlobal(h)

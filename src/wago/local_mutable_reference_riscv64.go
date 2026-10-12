@@ -22,6 +22,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalCopy(c) {
 		return true, nil // Exact cross-container copy transfers the canonical descriptor root.
 	}
+	if rv64MutableFuncrefGlobalMove(c) {
+		return true, nil // Exact move transfers the owner root before clearing its source.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable

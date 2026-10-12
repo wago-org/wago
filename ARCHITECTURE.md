@@ -174,6 +174,11 @@ global zero to imported mutable global one. The parked bridge resolves the
 canonical same-store owner before publication, transfers exactly one target root,
 releases speculative roots for repeated or aliased copies, and uses the same
 transaction to retire a prior target when the copied value is null.
+An exact move product composes two such bridges in one framed body: it first
+publishes source into target, then clears source. The first transaction acquires
+the target root before the second can retire the source root, so a logically
+closed descriptor owner remains physically live across the handoff. Null and
+aliased moves use the same transactions rather than a raw-cell shortcut.
 Reference-global imports combined with instance-owned imported tables, general
 mutable reference imports/exports and typed references remain gated pending
 separate ownership qualification.

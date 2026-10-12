@@ -157,6 +157,79 @@ func TestMutableFuncrefCopyProductionRejectsBroaderSources(t *testing.T) {
 	}
 }
 
+func mutableFuncrefMoveSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(
+			wasmtest.GlobalImportEntry("env", "source", wasm.FuncRef, true),
+			wasmtest.GlobalImportEntry("env", "target", wasm.FuncRef, true),
+		)),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("move", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x24, 1, 0xd0, 0x70, 0x24, 0, 0x0b}))),
+	)
+}
+
+func TestMutableFuncrefMoveProduction(t *testing.T) {
+	source := mutableFuncrefMoveSource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitMutableFunctionGlobalMove(m) {
+		t.Fatal("exact mutable funcref move source rejected")
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("mutable funcref move compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0xfb, 0x01, 0xdd, 0x72, 0x40, 0xc5, 0x09, 0x91, 0x19, 0x19, 0xe9, 0x0d, 0x46, 0xc0, 0xf2, 0x00, 0x45, 0xe5, 0xf6, 0x15, 0x8b, 0xc9, 0x11, 0x53, 0x18, 0xf0, 0x2a, 0xff, 0xbb, 0xf0, 0xf0, 0x16}
+	if len(image.Code) != 764 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
+		t.Fatalf("mutable funcref move compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
+	}
+}
+
+func TestMutableFuncrefMoveProductionRejectsBroaderSources(t *testing.T) {
+	module := func(exports, body []byte) []byte {
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(2, wasmtest.Vec(
+				wasmtest.GlobalImportEntry("env", "source", wasm.FuncRef, true),
+				wasmtest.GlobalImportEntry("env", "target", wasm.FuncRef, true),
+			)),
+			wasmtest.Section(3, []byte{1, 0}),
+			wasmtest.Section(7, exports),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		)
+	}
+	exactExports := wasmtest.Vec(wasmtest.ExportEntry("move", 0, 0))
+	for name, source := range map[string][]byte{
+		"copy-only":    module(exactExports, []byte{0x23, 0, 0x24, 1, 0x0b}),
+		"clear-only":   module(exactExports, []byte{0xd0, 0x70, 0x24, 0, 0x0b}),
+		"clear-first":  module(exactExports, []byte{0xd0, 0x70, 0x24, 0, 0x23, 0, 0x24, 1, 0x0b}),
+		"wrong-clear":  module(exactExports, []byte{0x23, 0, 0x24, 1, 0xd0, 0x70, 0x24, 1, 0x0b}),
+		"wrong-export": module(wasmtest.Vec(wasmtest.ExportEntry("other", 0, 0)), []byte{0x23, 0, 0x24, 1, 0xd0, 0x70, 0x24, 0, 0x0b}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal("fixture decoding", err)
+			}
+			if admitMutableFunctionGlobalMove(m) {
+				t.Fatal("broader mutable funcref move source matched exact profile")
+			}
+			staged := false
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
+			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
+				t.Fatal("broader mutable funcref move source reached staging", image, err, staged)
+			}
+		})
+	}
+}
+
 func TestMutableFuncrefStoreSelfProduction(t *testing.T) {
 	source := mutableFuncrefStoreSelfSource()
 	if err := AdmitProductionSource(source); err != nil {

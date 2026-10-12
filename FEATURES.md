@@ -42,8 +42,11 @@ one precise descriptor-owner root into the container without issuing a public
 token. A fifth exact profile copies one imported mutable nullable funcref cell
 into a second. Null copies retire the target owner; non-null copies authenticate
 the complete canonical descriptor and transfer one target root, while aliased
-source/target cells do not duplicate it. Other non-null or general `global.set`,
-raw reference results, and mixed state remain unsupported for these profiles.
+source/target cells do not duplicate it. A sixth exact profile moves that value:
+it copies source to target, then clears source through a second parked ownership
+transaction. Null and aliased moves retire the expected container roots. Other
+non-null or general `global.set`, raw reference results, and mixed state remain
+unsupported for these profiles.
 Table-free declarative segments and repeated
 `elem.drop` use dropped element state; unused legacy declarations require no
 function descriptors or element directory. Empty and state-only modules have no
