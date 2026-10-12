@@ -153,6 +153,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingCrossGroupMismatchSource identifies the exact official .51
 	// provider or .52 cross-group incompatible consumer.
 	GCTypeSubtypingCrossGroupMismatchSource uint8
+	// GCTypeSubtypingTransitiveMismatchSource identifies the exact official .53
+	// provider or .54 transitive-group incompatible consumer.
+	GCTypeSubtypingTransitiveMismatchSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -248,6 +251,7 @@ type CompileOptions struct {
 	gcTypeSubtypingDuplicateRecursive uint8
 	gcTypeSubtypingExtendedRecursive  uint8
 	gcTypeSubtypingCrossGroupMismatch uint8
+	gcTypeSubtypingTransitiveMismatch uint8
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

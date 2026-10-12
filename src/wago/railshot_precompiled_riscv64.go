@@ -96,6 +96,9 @@ func railshotConfigureGCTypeSubtypingExtendedRecursiveLink(uint8, *railshotCompi
 func railshotGCTypeSubtypingCrossGroupMismatchLinkSource([]byte) uint8 { return 0 }
 func railshotConfigureGCTypeSubtypingCrossGroupMismatchLink(uint8, *railshotCompileOptions) {
 }
+func railshotGCTypeSubtypingTransitiveMismatchLinkSource([]byte) uint8 { return 0 }
+func railshotConfigureGCTypeSubtypingTransitiveMismatchLink(uint8, *railshotCompileOptions) {
+}
 func railshotGCStructGetSource([]byte) bool                                 { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)            {}
 func railshotGCStructMutationSource([]byte) bool                            { return false }

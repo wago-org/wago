@@ -227,6 +227,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcTypeSubtypingStructProjectionLink := admitRV64GCTypeSubtypingStructProjectionLink(m) != 0
 	gcTypeSubtypingStructMismatchLink := admitRV64GCTypeSubtypingStructMismatchLink(m) != 0
 	gcTypeSubtypingCrossGroupMismatchLink := admitRV64GCTypeSubtypingCrossGroupMismatchLink(m) != 0
+	gcTypeSubtypingTransitiveMismatchLink := admitRV64GCTypeSubtypingTransitiveMismatchLink(m) != 0
 	gcTypeSubtypingIndependentStructLink := admitRV64GCTypeSubtypingIndependentStructLink(m) != 0
 	gcTypeSubtypingExtendedProjectionLink := admitRV64GCTypeSubtypingExtendedProjectionLink(m) != 0
 	gcTypeSubtypingDuplicateRecursiveLink := admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0 || admitRV64GCTypeSubtypingExtendedRecursiveLink(m) != 0
@@ -460,7 +461,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		for subtypeIndex := range rec.SubTypes {
 			ft := &rec.SubTypes[subtypeIndex].Comp
 			fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-			if (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingCrossGroupMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingDuplicateRecursiveLink || gcTypeSubtypingRefTestSingle || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+			if (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingCrossGroupMismatchLink || gcTypeSubtypingTransitiveMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingDuplicateRecursiveLink || gcTypeSubtypingRefTestSingle || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
 				var ok bool
 				fn.key, ok = m.StructuralTypeKeyChecked(flatTypeIndex)
 				if !ok {

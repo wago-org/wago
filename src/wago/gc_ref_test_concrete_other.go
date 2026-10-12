@@ -96,6 +96,12 @@ func rv64GCTypeSubtypingCrossGroupMismatchLinkExecutionCode(*Compiled) bool {
 }
 func railshotRestoreGCTypeSubtypingCrossGroupMismatchLinkArtifact(*Compiled) {
 }
+func rv64GCTypeSubtypingTransitiveMismatchLink(*Compiled) bool { return false }
+func rv64GCTypeSubtypingTransitiveMismatchLinkExecutionCode(*Compiled) bool {
+	return false
+}
+func railshotRestoreGCTypeSubtypingTransitiveMismatchLinkArtifact(*Compiled) {
+}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }

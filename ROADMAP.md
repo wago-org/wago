@@ -154,7 +154,13 @@ callable, while the independently decoded consumer's superficially equal root
 belongs to a different recursive group and is rejected before import attachment.
 Exact source and compiler-free artifacts authenticate the zero-code consumer and
 shared 576-byte provider image separately; rejection leaves the provider live and
-unretained under baseline QEMU RV64G without a collector. Products after `.52` and native
+unretained under baseline QEMU RV64G without a collector. Official `.53` and `.54`
+extend that negative proof across three provider and two consumer recursive groups:
+the requested consumer type is transitively related inside its own graph but remains
+incompatible with the provider's separately decoded final group. The exact scalar
+provider remains callable and the failed link again leaves it live and unretained,
+with source and compiler-free artifacts covered under baseline QEMU RV64G. Products
+after `.54` and native
 cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
