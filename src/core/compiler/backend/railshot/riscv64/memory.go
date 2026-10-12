@@ -94,6 +94,7 @@ type moduleState struct {
 	mutableFuncrefGlobalLocalPublish      bool
 	mutableFuncrefGlobalLocalTransfer     bool
 	mutableFuncrefGlobalLocalExport       bool
+	mutableFuncrefGlobalLocalObserve      bool
 	ownedTable                            bool
 	ownedTableGrowth                      bool
 	table64                               bool
@@ -276,6 +277,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.mutableFuncrefGlobalLocalPublish = admitMutableFunctionGlobalLocalPublish(m)
 	s.mutableFuncrefGlobalLocalTransfer = admitMutableFunctionGlobalLocalTransfer(m)
 	s.mutableFuncrefGlobalLocalExport = admitMutableFunctionGlobalLocalExport(m)
+	s.mutableFuncrefGlobalLocalObserve = admitMutableFunctionGlobalLocalObserve(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -283,7 +285,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer || s.mutableFuncrefGlobalLocalExport
+		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer || s.mutableFuncrefGlobalLocalExport || s.mutableFuncrefGlobalLocalObserve
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error

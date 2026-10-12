@@ -162,6 +162,90 @@ func mutableFuncrefLocalExportSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalObserveSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, []byte{6, 0, 0, 0, 0, 0, 1}),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, true, []byte{0xd0, 0x70, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0),
+			wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2),
+			wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4),
+			wasmtest.ExportEntry("is_null", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0x23, 0, 0xd1, 0x0b}),
+		)),
+	)
+}
+
+func TestMutableFuncrefLocalObserveProduction(t *testing.T) {
+	source := mutableFuncrefLocalObserveSource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitMutableFunctionGlobalLocalObserve(m) {
+		t.Fatal("local-observe source was not admitted")
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("mutable funcref local-observe compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0x1c, 0xe0, 0xb9, 0x89, 0xdc, 0x57, 0xc1, 0xfe, 0xaa, 0x22, 0x5f, 0x7a, 0x01, 0xd1, 0x10, 0x11, 0xd6, 0x8c, 0xa9, 0x2f, 0x08, 0x9e, 0x5e, 0x11, 0xff, 0xcc, 0x25, 0xbb, 0xc3, 0x12, 0x18, 0x7d}
+	wantEntry := []int{0, 208, 416, 752, 1088, 1360}
+	if len(image.Code) != 1836 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
+		t.Fatalf("mutable funcref local-observe compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
+	}
+}
+
+func TestMutableFuncrefLocalObserveProductionRejectsBroaderSources(t *testing.T) {
+	for name, mutate := range map[string]func(*wasm.Module){
+		"observer-returns-ref": func(m *wasm.Module) {
+			m.Types[1].SubTypes[0].Comp.Results[0] = wasm.FuncRef
+			m.Code[5].BodyBytes = []byte{0x23, 0, 0x0b}
+		},
+		"observer-other-global": func(m *wasm.Module) { m.Code[5].BodyBytes = []byte{0x23, 1, 0xd1, 0x0b} },
+		"writer-other-function": func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0xd2, 2, 0x24, 0, 0x0b} },
+		"wrong-observer-export": func(m *wasm.Module) { m.Exports[5].Name = "other" },
+		"wrong-global-export":   func(m *wasm.Module) { m.Exports[6].Name = "other" },
+		"reordered-types": func(m *wasm.Module) {
+			m.Types[0], m.Types[1] = m.Types[1], m.Types[0]
+			for i := range m.FuncTypes {
+				m.FuncTypes[i].Index = 1
+			}
+			m.FuncTypes[5].Index = 0
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(mutableFuncrefLocalObserveSource())
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(m)
+			if admitMutableFunctionGlobalLocalObserve(m) {
+				t.Fatal("broader local-observe source admitted")
+			}
+			staged := false
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
+			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
+				t.Fatal("broader mutable funcref local-observe source reached staging", image, err, staged)
+			}
+		})
+	}
+}
+
 func TestMutableFuncrefLocalExportProduction(t *testing.T) {
 	source := mutableFuncrefLocalExportSource()
 	if err := AdmitProductionSource(source); err != nil {

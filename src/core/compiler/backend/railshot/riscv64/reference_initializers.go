@@ -336,6 +336,60 @@ func admitMutableFunctionGlobalLocalExport(m *wasm.Module) bool {
 	return ex.Name == "cell" && ex.Index.Kind == wasm.ExternGlobal && ex.Index.Index == 0
 }
 
+// admitMutableFunctionGlobalLocalObserve extends the host-visible local cell
+// with one guest observer. The writer set remains exactly bounded to null and
+// the two local functions; the observer can only reduce the current descriptor
+// to an i32 nullness result, so no unretained carrier escapes guest execution.
+func admitMutableFunctionGlobalLocalObserve(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 7 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+		return false
+	}
+	local := m.Globals[0]
+	if !local.Type.Mutable || !wasm.EqualValType(local.Type.Type, wasm.FuncRef) || len(local.Init.Instrs) != 0 || !bytes.Equal(local.Init.BodyBytes, []byte{0xd0, 0x70, 0x0b}) {
+		return false
+	}
+	if !i31CoreFunctionType(&m.Types[0], nil, nil) || !i31CoreFunctionType(&m.Types[1], nil, []wasm.ValType{wasm.I32}) {
+		return false
+	}
+	wantBodies := [][]byte{
+		{0x0b},
+		{0x0b},
+		{0xd2, 0, 0x24, 0, 0x0b},
+		{0xd2, 1, 0x24, 0, 0x0b},
+		{0xd0, 0x70, 0x24, 0, 0x0b},
+		{0x23, 0, 0xd1, 0x0b},
+	}
+	for i := range m.Code {
+		wantType := wasm.TypeIdx{Index: 0}
+		if i == 5 {
+			wantType.Index = 1
+		}
+		if m.FuncTypes[i] != wantType {
+			return false
+		}
+		sig, ok := m.FuncSignature(uint32(i))
+		if !ok {
+			return false
+		}
+		validResults := len(sig.Results) == 0
+		if i == 5 {
+			validResults = len(sig.Results) == 1 && wasm.EqualValType(sig.Results[0], wasm.I32)
+		}
+		if sig.Kind != wasm.CompFunc || len(sig.Params) != 0 || !validResults || m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, wantBodies[i]) {
+			return false
+		}
+	}
+	wantFunctionExports := []string{"target_0", "target_1", "set_0", "set_1", "clear", "is_null"}
+	for i, name := range wantFunctionExports {
+		ex := m.Exports[i]
+		if ex.Name != name || ex.Index.Kind != wasm.ExternFunc || ex.Index.Index != uint32(i) {
+			return false
+		}
+	}
+	ex := m.Exports[6]
+	return ex.Name == "cell" && ex.Index.Kind == wasm.ExternGlobal && ex.Index.Index == 0
+}
+
 // privateIndexedFunctionGlobal admits the table-free typed cells used to hold
 // same-instance recursive call_ref targets. Keep this separate from public
 // funcref globals: the carrier is immutable, non-null, non-exact, initialized
@@ -386,7 +440,7 @@ func admitImmutableFunctionGlobal(global wasm.Global, m *wasm.Module, limit int)
 // Export chains are validated before folding. Imported-function targets need
 // same-store native binding validation at public instantiation.
 func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
-	if index == 0 && admitMutableFunctionGlobalLocalExport(m) {
+	if index == 0 && (admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m)) {
 		return nil
 	}
 	imported := m.ImportedGlobalCount()

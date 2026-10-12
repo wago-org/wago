@@ -1317,7 +1317,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if _, err = popClass(reference); err != nil {
 					return integerSummary{}, err
 				}
-				parkedGlobalStore := state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove || state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalCopy || state.mutableFuncrefGlobalLocalPublish && idx == 0 || state.mutableFuncrefGlobalLocalTransfer || state.mutableFuncrefGlobalLocalExport
+				parkedGlobalStore := state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove || state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalCopy || state.mutableFuncrefGlobalLocalPublish && idx == 0 || state.mutableFuncrefGlobalLocalTransfer || state.mutableFuncrefGlobalLocalExport || state.mutableFuncrefGlobalLocalObserve
 				if parkedGlobalStore {
 					want := uint32(0)
 					if state.mutableFuncrefGlobalCopy || (state.mutableFuncrefGlobalMove && idx == 1) {
