@@ -129,6 +129,16 @@ are below 0.7%, with unchanged allocation counts and code size on the measured
 fixtures. Per-feature parity, broader composition, and full conformance remain
 open; the thread report retains both timing captures and the controlled evidence.
 
+Shared data initialization now passes native, codec, concurrent-growth, and
+guarded race tests on both architectures. Its new independently verified
+wasm.fyi contract brings cumulative long execution coverage to 88/96 (combined
+checkpoints, not a full same-revision rerun). On the 33-byte passive-copy workload,
+direct ARM64 NEON accesses reduce the alternating launch median by 8.7%, from
+467,268 ns to 426,593 ns per 262,144 operations. w2c2 measures 181,232 ns, leaving
+a 2.354 ratio. Compile fixture samples retain approximately prior allocation
+bytes/counts and identical imported-worker code size; broader compile memory
+and full feature parity remain open.
+
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
 `~/.cache/wago-wasm3-parity/wago`.

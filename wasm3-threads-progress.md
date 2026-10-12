@@ -491,3 +491,55 @@ The full `^TestThreads` suite passes with `wago_regalloccheck` on Darwin arm64
 and native Linux amd64. Data tests pass three repetitions with `-race` and
 `wago_guardpage,wago_regalloccheck` on both hosts. This adds execution coverage;
 passive initialization performance and broader thread conformance remain open.
+
+### Passive initialization performance checkpoint
+
+wasm.fyi commit `815077d` adds `threads/passive-data-init`: each operation copies
+33 bytes from an immutable 64-byte passive segment, selects the source offset
+from the iteration, and reads the final destination byte. The arithmetic oracle
+is independent of measured output; V8 verifies the complete performance export
+result `39452672`. Pinned wasm-tools 1.260.0 reproduces the source artifact.
+Twelve long thread contracts now exist, including the scalar baseline; cumulative
+Wago long coverage is 88/96 across checkpoints, not a full rerun of all contracts
+on this revision.
+
+Both native backends now unroll constant shared-memory initialization lengths
+up to 64 after checking both ranges. Exact ascending chunks avoid extra tail
+writes. Zero length retains the checks. Execution/codec tests cover lengths
+0,1,2,3,4,7,8,9,15,16,17,31,32,33,63,64,65, source/destination ends, and failures.
+ARM64 uses direct NEON accesses and scalar tails. The first scalar indexed
+prototype measured slower (543,534 ns launch median versus the original initial
+459,682 ns); the final direct-access implementation supersedes it.
+
+The controlled sequence before/current/peer/current/before/peer/before/current/peer
+has three independent launches per product, five verified samples and two warmup
+batches per launch, all qualified to 50 ms. On M4 Max Darwin arm64, medians per
+262,144 operations are 467,268 ns before, 426,593 ns current (-8.7%), and 181,232 ns
+w2c2 (current/peer 2.354). The identical measured artifact has SHA-256
+`326f066d54be5d3be3c8c9c9bbde22910744975760daeb254c4dac9e3e34798b`.
+The peer retains the earlier pthreads/Clang -O3 native profile.
+
+Before adapter:
+`ac2e44deee3c5484760b11b0eaee3d1810c8e288/source-583cd68e1f15a8e82e9ef4dcd6c04afec6518a2953d96e945dca4e5c352030e3`.
+Current adapter:
+`409ed3baa238d398b118dbd79f69e8de7a2a6ff2/source-7120a91fdb73bfb8f05bbca16b668ea5035cfd41722c034c246658550bc8b7c1`.
+Ignored raw evidence `threads-shared-data-neon-ab-arm64.json` has SHA-256
+`ae0d2ff6dc8fa103fd69038abc5b73f79b1f755312cd4a8be1f726c5a0769149`;
+its adjacent plan preserves ordering, commands, artifact and oracle. Initial
+and indexed-prototype captures remain in `threads-shared-data-arm64.json` and
+`threads-shared-data-unrolled-arm64.json`.
+
+Three sequential 300 ms compile samples give median default/Core 3 scalar times
+6,197/6,119 ns, allocation bytes 19,203/19,058 and counts 74/73. Imported workers
+p1 give 22,678,711 ns, 3,420,973 bytes and 94 allocations, retaining 1,587,220 native
+code bytes. These fixtures remain near earlier measurements; this is not an
+alternating compile comparison or peak-RSS assessment. Evidence is
+`threads-shared-data-compile.txt`.
+
+Final full thread suites and targeted bulk lowering tests pass on both native
+hosts, and three guarded race repetitions of data tests pass on both. The local
+Wasmtime Core 3 regression corpus (215 modules, 690 assertions) and unsupported
+proposal gates pass. A broad remote bulk filter also selected unrelated staged
+GC tests, which fail because `tests/conformance/spec-v3/test/core` is absent on
+that host; the targeted AMD64 thread and backend bulk tests pass. Full official
+Core 3 conformance and passive-copy parity remain open.
