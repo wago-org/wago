@@ -1547,9 +1547,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	// Shared memory uses the directory-backed bulk path; constant unrolling
-	// below is reserved for the ordinary linear-memory mapping.
-	if !f.threadedMemory0 && !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
+	if !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
 		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
@@ -1708,9 +1706,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	// Shared memory uses the directory-backed bulk path; constant unrolling
-	// below is reserved for the ordinary linear-memory mapping.
-	if !f.threadedMemory0 && !f.memoryAddr64(memoryIndex) {
+	if !f.memoryAddr64(memoryIndex) {
 		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
@@ -1986,11 +1982,11 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		f.leaDisp(t, base, int32(n), true)
 	}
-	if memoryIndex == 0 && f.memSizeReg != regNone {
+	if memoryIndex == 0 && !f.threadedMemory0 && f.memSizeReg != regNone {
 		f.cmpRR(t, f.memSizeReg, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
-		if memoryIndex == 0 {
+		if memoryIndex == 0 && !f.threadedMemory0 {
 			f.ld64(mb, linMemReg, -int32(bdCurBytes))
 		} else {
 			f.ld64(mb, linMemReg, -int32(offMemoryDirPtr))
@@ -2007,7 +2003,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 }
 
 func (f *fn) indexedMemoryBase(memoryIndex uint32, avoid regMask) (Reg, bool) {
-	if memoryIndex == 0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		return linMemReg, false
 	}
 	dir := f.allocReg(avoid)
@@ -2087,7 +2083,10 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	avoid := maskOf(src, dst)
 	srcBase, srcBaseOwned := f.indexedMemoryBase(srcMemory, avoid)
 	avoid = avoid.add(srcBase)
-	dstBase, dstBaseOwned := f.indexedMemoryBase(dstMemory, avoid)
+	dstBase, dstBaseOwned := srcBase, false
+	if dstMemory != srcMemory {
+		dstBase, dstBaseOwned = f.indexedMemoryBase(dstMemory, avoid)
+	}
 	avoid = avoid.add(dstBase)
 	var chunkBuf [8][2]int
 	chunks := bulkChunks(n, &chunkBuf)
