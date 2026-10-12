@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Cache stable shared-memory backing addresses on amd64 and arm64 while
+  continuing to read live atomic extents. `shared-memory-base` selects the
+  lowering independently; helper/context returns reestablish the backing cache.
+
 - Prove aligned constant atomic addresses against declared memory minimums on
   amd64 and arm64, retaining runtime checks where the proof fails.
   `atomic-static-bounds` selects this optimization independently.

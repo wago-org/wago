@@ -120,6 +120,14 @@ to several earlier shared-access kernels. Nonzero growth's short single-operatio
 samples remain unqualified for sustained parity. Compile fixture allocations
 and generated code size remain unchanged; the thread report records the gaps.
 
+The stable-backing cache checkpoint retains live extent reads and reduces the
+controlled shared scalar/SIMD workloads by about 9%, fill by 18%, and overlapping
+copy by 22% relative to the growth checkpoint. Native/codec/ABI/pressure/guarded
+race checks pass on both architectures. Controlled ordinary compile differences
+are below 0.7%, with unchanged allocation counts and code size on the measured
+fixtures. Per-feature parity, broader composition, and full conformance remain
+open; the thread report retains both timing captures and the controlled evidence.
+
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
 `~/.cache/wago-wasm3-parity/wago`.

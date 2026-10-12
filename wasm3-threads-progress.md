@@ -391,3 +391,76 @@ Additional ignored evidence under `.validation/wasm3-parity/`:
   and `threads-growth-lifecycle-plan.json` retain commands, oracles, and controls.
 - `threads-growth-compile.txt` retains compile samples;
   `growth-minimal-frame-before.txt` retains the minimized crash evidence.
+
+
+## Stable shared backing cache
+
+Wago `454f79c7` reuses stable shared-memory backing addresses on both native
+architectures. `shared-memory-base` controls the lowering independently. The
+module-wide memory register holds a backing pointer for shared memory and a
+size for ordinary memory. Shared bounds checks and size queries continue to
+read the live atomic extent. Wrapper entries establish the backing pointer;
+helper and external-context continuations reestablish it from the restored
+private directory. Small bulk operations can borrow that stable pointer.
+Shared registers cannot be leased to ordinary size or adjusted-limit paths.
+This adds no field to the compiler function state and preserves the ordinary
+memory paths' emitted instructions for the checked scalar/SIMD probes.
+
+Native execution tests compare cache on/off and register/wrapper ABIs with both
+defined and imported backing. An eight-live-value caller enters a callee that
+grows memory, fills/copies the new range, calls notify, and performs an RMW.
+Original and codec-loaded products preserve the exact result and backing bytes.
+Unshared scalar/SIMD probes produce byte-identical native code with the option
+on/off. Full thread tests and backend/shared/optimization tests pass on arm64
+and amd64. Guarded race-enabled cache/growth checks pass on both architectures;
+Core 3 regression and unsupported-proposal gates pass locally. These checks
+still do not establish full thread or official Core 3 conformance.
+
+The initial standalone capture showed higher atomic-add/CAS medians despite
+lower memory-kernel times, so it is not used to infer an atomic regression.
+The controlled capture alternates before/current/current/before/before/current,
+with three independent process launches per revision and contract. Every row
+has five verified samples, two warmup batches, and meets the 50 ms target.
+Units are ns per complete 262,144-operation invocation. All w2c2 pairs retain
+identical artifact hashes; their earlier qualified launch medians supply the
+last column, rather than a newly interleaved peer capture.
+
+| Contract | Before (`e4ea49f7`) | Cached (`454f79c7`) | Observed change | Cached / w2c2 |
+| --- | ---: | ---: | ---: | ---: |
+| atomic-compare-exchange | 308,103 | 280,839 | -8.8% | 1.102 |
+| atomic-fence | 330,545 | 316,152 | -4.4% | 1232.307 |
+| atomic-load-store | 293,290 | 281,707 | -3.9% | 1.810 |
+| atomic-rmw-add | 261,429 | 253,966 | -2.9% | 1.242 |
+| bulk-copy-overlap | 765,695 | 599,782 | -21.7% | 0.986 |
+| bulk-fill | 394,309 | 323,466 | -18.0% | 1.766 |
+| memory-size-zero-growth | 203,926 | 147,559 | -27.6% | 0.073 |
+| ordinary-load-store | 227,805 | 206,989 | -9.1% | 2.200 |
+| simd-load-store | 258,115 | 233,856 | -9.4% | 2.263 |
+| wait-mismatch-notify | 13,322,531 | 13,332,114 | +0.1% | 6.957 |
+
+The substantial memory-kernel reductions persist in the alternating comparison.
+Smaller atomic differences are descriptive medians rather than statistical
+speedup claims. Wait/notify is effectively unchanged. Overlapping copy is close
+to the recorded w2c2 time on this 33-byte workload; broader bulk parity remains
+unproven. The large fence gap and the remaining scalar/SIMD/atomic/notify gaps
+remain part of the full objective.
+
+Five sequential compile samples retain 74/73/94 allocations and median bytes of
+19,202/19,058/3,420,938 for default scalar/Core 3 scalar/imported workers. Median
+times are 6,241 ns, 6,083 ns, and 23,402,958 ns. An alternating 300 ms-window
+comparison with three process launches per revision then yields 6,129/6,171 ns
+(+0.7%), 6,044/6,054 ns (+0.2%), and 22,717,021/22,796,571 ns (+0.4%) respectively.
+The imported-worker fixture retains 1,587,220 code bytes. These measured fixtures
+show no material compile regression; corpus-wide compile cost and peak RSS
+remain open.
+
+Current adapter source identity:
+`454f79c77ac09f1e6493947657654304a79441f3/source-c48f09a43bdb08411a7d535a533f75118e7626e4ca780afa2ba63dd4f654c8ab`.
+Additional ignored evidence under `.validation/wasm3-parity/`:
+
+- `threads-cached-base-ab-arm64.json`, SHA-256 `897a242b385d5334517ec4edc674731b9feafe5185f9854965ecd0564d22eb49`.
+- `threads-cached-base-arm64.json`, SHA-256 `a1bb83e8bdbe509fb61422b1a6ef81cfd4290dbd041f5eb93ed99789c9329917` (initial standalone capture).
+- `threads-cached-base-ab-plan.json` retains alternating commands, artifacts,
+  oracles, and measurement controls.
+- `threads-cached-base-compile.txt` and `threads-cached-base-compile-ab.json`
+  retain compile samples and alternating order.
