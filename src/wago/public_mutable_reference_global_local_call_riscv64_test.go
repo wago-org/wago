@@ -94,6 +94,33 @@ func rv64MutableFuncrefLocalCallMixedModule() []byte {
 	)
 }
 
+func rv64MutableFuncrefLocalCallWideI32Module() []byte {
+	types := make([]wasm.ValType, 9)
+	identity, increment, call := []byte{}, []byte{}, []byte{}
+	for i := byte(0); i < 9; i++ {
+		types[i] = wasm.I32
+		identity = append(identity, 0x20, i)
+		increment = append(increment, 0x20, i, 0x41, 1, 0x6a)
+		call = append(call, 0x20, i)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(append(identity, 0x0b)), wasmtest.Code(append(increment, 0x0b)),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), wasmtest.Code(append(call, 0x23, 0, 0x14, 0, 0x0b)),
+		)),
+	)
+}
+
 func TestRV64PublicMutableFuncrefGlobalLocalCall(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -411,6 +438,87 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallMixed(t *testing.T) {
 				var trap *coreruntime.TrapError
 				if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapNullReference {
 					t.Fatal("cleared mixed mutable funcref call trap", invokeErr)
+				}
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalCallWideI32(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rt.Close()
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-wide-i32", rv64MutableFuncrefLocalCallWideI32Module(), artifact)
+			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+				t.Fatal("wide i32 local-call witness missing")
+			}
+			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			input := []uint64{
+				0xdeadbeef80000000, 0xcafebabeffffffff, 0xfeedface00000001,
+				0x111111117fffffff, 0x2222222280000001, 0x33333333fffffffe,
+				0x4444444400000002, 0x55555555abcdef01, 0x6666666612345678,
+			}
+			identity, increment := make([]uint64, len(input)), make([]uint64, len(input))
+			for i, value := range input {
+				identity[i] = uint64(uint32(value))
+				increment[i] = uint64(uint32(value) + 1)
+			}
+			assertCall := func(want []uint64) {
+				t.Helper()
+				got, err := consumer.Invoke("call", input...)
+				if err != nil || !slices.Equal(got, want) {
+					t.Fatal("wide i32 mutable call_ref", got, err, "want", want)
+				}
+			}
+			if _, err := consumer.Invoke("set_0"); err != nil {
+				t.Fatal("install wide i32 identity", err)
+			}
+			assertCall(identity)
+			if _, err := consumer.Invoke("set_1"); err != nil {
+				t.Fatal("install wide i32 increment", err)
+			}
+			assertCall(increment)
+
+			types := make([]wasm.ValType, len(input))
+			for i := range types {
+				types[i] = wasm.I32
+			}
+			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-wide-i32-producer", rv64PublicReferenceTailModule(types, false, true), artifact)
+			producer := rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
+			descriptor, ok := producer.localFuncrefDescriptor(0)
+			if !ok {
+				t.Fatal("foreign wide i32 producer descriptor")
+			}
+			token, err := rt.refStore.issue(producer, descriptor)
+			if err != nil {
+				t.Fatal("foreign wide i32 producer token", err)
+			}
+			if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+				t.Fatal("install foreign wide i32 target", err)
+			}
+			assertCall(identity)
+			if _, err := consumer.Invoke("clear"); err != nil {
+				t.Fatal("clear wide i32 target", err)
+			}
+			if got, invokeErr := consumer.Invoke("call", input...); got != nil {
+				t.Fatal("cleared wide i32 call_ref returned a result", got, invokeErr)
+			} else {
+				var trap *coreruntime.TrapError
+				if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapNullReference {
+					t.Fatal("cleared wide i32 mutable funcref call trap", invokeErr)
 				}
 			}
 			if err := producer.Close(); err != nil {
