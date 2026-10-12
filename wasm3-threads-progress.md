@@ -696,3 +696,56 @@ core fixtures (`br-table-state-machine` and insufficient shared-module/diversity
 inventory); its source/artifact/oracle consistency checks pass. That suite is
 not reported clean. AMD64 host-import execution remains validated, but these
 callback timing captures are ARM64 only.
+
+## Tables, element segments, and exception tags
+
+`4579ec6a` admits defined/imported tables and active/passive element segments
+with shared memory. Its test matrix covers cache settings, both call ABIs,
+artifact reload, indirect calls, passive initialization/drop, growth/copy,
+traps, and producer/caller memory-context isolation. ARM64 passes; native AMD64
+initially returned 15 instead of 17 for a foreign register-ABI table call,
+reading the consumer's shared memory instead of the producer's. This reproduced
+with cache enabled and disabled. `392128c5` makes exported-table escape detection
+architecture-independent: producer descriptors publish wrappers that switch
+instance context instead of private register entries that inherit the caller's.
+The same matrix now passes on AMD64.
+
+`f3308664` admits local/imported exception tags. Tests exercise shared-memory
+growth before throwing, local and foreign catches, uncaught exception recovery,
+payload preservation, caller memory-context restoration, artifact reload,
+cache settings, and both call ABIs. Shared memory64, multiple memories, and
+mutable global imports remain restricted; broader reference/table concurrency
+and full official threads conformance remain open.
+
+Final three-repeat guarded race checks pass on ARM64 (13.912 s, threads,
+cross-instance, GC frames) and AMD64 (19.711 s, those checks plus funcref,
+dynamic reference, and layout tests). Initially the broader AMD64 selection
+also lacked two dynamic-funcref fixtures; synchronizing the pinned local
+fixtures resolved that blocker. It exposed a 792-byte Compiled layout against
+the existing 784-byte budget. Both architectures had the same layout: the ARM
+LSE requirement flag added padding at the tail. Moving it beside the other
+flags restores 784 bytes without changing field-based serialization. The
+existing AMD64 footprint test now passes. Guarded race Core 3 regression checks
+also pass at the repaired table/exception checkpoint on both architectures:
+215 modules and 690 assertions (1.559 s ARM64, 1.617 s AMD64 with race exit delay
+disabled). These are regression fixtures, not full official conformance.
+
+wasm.fyi `3b19519` adds three correctness sizes and one sustained
+`threads/table-indirect-call` contract. It writes/reads shared memory, selects
+between two table functions, and reads memory size after returning. The pinned
+artifact rebuilds byte-for-byte. The alternating ARM64 capture at `4579ec6a`
+has three launches per runtime, five verified 50 ms samples and two warmup
+batches each. Median Wago/peer times are 467,492/1,081,869 ns for 262,144 work
+units, a 0.432 ratio (Wago 2.31 times faster). A single V8 oracle launch yields
+179,368 ns. This capture predates the AMD64-only behavior correction and
+exception admission; it measures the ARM64 table workload only.
+
+Adapter identity is
+`4579ec6a0056888cb55e734a66025a8d539663a1/source-fc62d886f6e41fb406058c3d2966efd69403dd5f1ecba976a4449ae3ba6a775d`.
+Performance artifact SHA-256 is
+`27363fe83509918397526b8291e49943f9cdf9f466409e84244de345f6d2b279`.
+Ignored evidence `threads-table-indirect-arm64.json` has SHA-256
+`475a1e345737a71125ea3cb2ec8f125ee70192bd594cc997d6d4655c42123482`;
+the adjacent plan retains exact commands and ordering. The threads performance
+family now contains 14 long contracts (including its scalar baseline) and one
+separate fresh-instance growth probe. No full-family retiming is claimed here.

@@ -42,8 +42,10 @@ support alone does not establish performance parity.
   Host function imports and native cross-instance function imports now execute
   with shared memory, including callback growth and blocking imported waits.
   Concurrent foreign callbacks retain their own scope and GC activation roots.
+  Defined/imported tables, active/passive elements, and exception tags now
+  execute with shared memory, including foreign dispatch and exception catches.
   This remains partial thread support: shared memory64, multiple memories,
-  mutable global imports, tables, tags, and element segments remain restricted.
+  and mutable global imports remain restricted.
 
 ## Current validation
 
@@ -153,7 +155,12 @@ The host-import checkpoint passes guarded race checks for threads, cross-instanc
 calls, GC frame roots, and GC host callbacks on ARM64 and AMD64. Alternating
 ARM64 execution captures show no material regression across the 11 existing
 thread kernels. Alternating compile captures preserve allocations and worker
-code size. Host-import performance contracts and peer parity remain open.
+code size. A new owned Go host-callback contract exposes a 314.2 ratio against
+the peer's C callback; callback parity remains open. A new shared-memory table
+contract measures 0.432 times the peer median on ARM64. Native AMD64 testing
+exposed and repaired exported-table producer-context selection. The ARM LSE
+metadata flag now occupies padding, restoring the 784-byte Compiled footprint.
+Full feature coverage, official conformance, and overall parity remain open.
 
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
