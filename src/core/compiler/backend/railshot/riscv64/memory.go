@@ -228,7 +228,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcTypeSubtypingStructMismatchLink := admitRV64GCTypeSubtypingStructMismatchLink(m) != 0
 	gcTypeSubtypingIndependentStructLink := admitRV64GCTypeSubtypingIndependentStructLink(m) != 0
 	gcTypeSubtypingExtendedProjectionLink := admitRV64GCTypeSubtypingExtendedProjectionLink(m) != 0
-	gcTypeSubtypingDuplicateRecursiveLink := admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0
+	gcTypeSubtypingDuplicateRecursiveLink := admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0 || admitRV64GCTypeSubtypingExtendedRecursiveLink(m) != 0
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
 	gcBrOnCastNullability := admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m)

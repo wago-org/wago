@@ -147,6 +147,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingDuplicateRecursiveSource identifies the exact official .47
 	// provider or .48 duplicate-recursion compatible consumer.
 	GCTypeSubtypingDuplicateRecursiveSource uint8
+	// GCTypeSubtypingExtendedRecursiveSource identifies the exact official .49
+	// provider or .50 extended-recursion compatible consumer.
+	GCTypeSubtypingExtendedRecursiveSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -240,6 +243,7 @@ type CompileOptions struct {
 	gcTypeSubtypingIndependentStruct  uint8
 	gcTypeSubtypingExtendedProjection uint8
 	gcTypeSubtypingDuplicateRecursive uint8
+	gcTypeSubtypingExtendedRecursive  uint8
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

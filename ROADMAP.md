@@ -141,8 +141,15 @@ groups. All four imported descriptor slots copy the matching provider canonical
 identity, while resource ownership is deduplicated to one retained provider and
 released only after consumer close. Exact source and compiler-free artifacts,
 hostile retained state, wrong-binding rejection, W^X publication, and final
-unmapping are covered under baseline QEMU RV64G without a collector. Products
-after `.48` and native cache/performance qualification remain open.
+unmapping are covered under baseline QEMU RV64G without a collector. Official
+`.49` and `.50` extend that function-link graph to four recursive groups and
+eight ordered imports. Two provider exports satisfy both the independently
+equivalent base groups and their two declared extensions; all eight consumer
+descriptor slots copy the matching provider canonical identity while retaining
+one producer resource. Exact source and compiler-free artifacts, hostile state,
+wrong-binding rejection, W^X publication, and final unmapping are covered under
+baseline QEMU RV64G without a collector. Products after `.50` and native
+cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

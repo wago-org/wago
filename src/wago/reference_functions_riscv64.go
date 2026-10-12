@@ -50,6 +50,9 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 	if function >= 0 && function < 2 && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingDuplicateRecursiveLinkProvider && rv64GCTypeSubtypingDuplicateRecursiveLink(c) {
 		return false
 	}
+	if function >= 0 && function < 2 && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingExtendedRecursiveLinkProvider && rv64GCTypeSubtypingExtendedRecursiveLink(c) {
+		return false
+	}
 	if (function == 0 && len(c.Funcs) != 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0])) ||
 		(function == 1 && len(c.Funcs) == 1 && rv64PublicHostReferenceBoundary(c)) ||
 		(function <= 1 && rv64PublicDynamicHostReferenceBoundary(c)) {

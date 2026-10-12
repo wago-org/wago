@@ -86,6 +86,10 @@ func rv64GCTypeSubtypingDuplicateRecursiveLink(*Compiled) bool               { r
 func rv64GCTypeSubtypingDuplicateRecursiveLinkExecutionCode(*Compiled) bool  { return false }
 func railshotRestoreGCTypeSubtypingDuplicateRecursiveLinkArtifact(*Compiled) {
 }
+func rv64GCTypeSubtypingExtendedRecursiveLink(*Compiled) bool              { return false }
+func rv64GCTypeSubtypingExtendedRecursiveLinkExecutionCode(*Compiled) bool { return false }
+func railshotRestoreGCTypeSubtypingExtendedRecursiveLinkArtifact(*Compiled) {
+}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }
