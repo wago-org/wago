@@ -141,3 +141,38 @@ func (f *integerEmitter) functionReferenceTest(base int, keys []uint64, nullable
 	}
 	f.Store(f.SpillOffset(base), 6, false)
 }
+
+// functionReferenceIdentityTest compares a private ref.func carrier with its
+// exact canonical arena slot. The admitted source functions are intentionally
+// non-callable reference-signature identities, so their rows have no published
+// code pointer; the arena base and fixed slot still provide an immutable,
+// instance-local identity without manufacturing a callable fallback.
+func (f *integerEmitter) functionReferenceIdentityTest(base int, functionIndex uint32, nullable bool) {
+	if !f.mode.referenceFunctions || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || functionIndex >= 2 {
+		f.err = unsupported("function ref.test identity contract")
+		return
+	}
+	f.Load(14, f.SpillOffset(base), true)
+	if nullable {
+		f.a.Constant32(enc.X6, 1)
+	} else {
+		f.a.Constant32(enc.X6, 0)
+	}
+	done := []int{f.a.BranchLong(enc.EQ, enc.X14, enc.Zero)}
+	if nullable {
+		f.a.Constant32(enc.X6, 0)
+	}
+	f.a.Ld(enc.X5, enc.X25, -abi.FuncRefDescPtrOffset)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
+	f.a.Constant64(enc.X7, int64(functionIndex+1)*40)
+	f.a.Add(enc.X5, enc.X5, enc.X7)
+	done = append(done, f.a.BranchLong(enc.NE, enc.X14, enc.X5))
+	f.a.Constant32(enc.X6, 1)
+	for _, site := range done {
+		if err := f.Patch(site, f.Position()); err != nil {
+			f.err = err
+			return
+		}
+	}
+	f.Store(f.SpillOffset(base), 6, false)
+}

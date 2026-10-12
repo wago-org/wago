@@ -443,8 +443,12 @@ func stageGCTypeSubtypingRuntimeTypedTableCall(c *Compiled, opts CompileOptions,
 }
 
 func stageGCTypeSubtypingRefTestSingle(c *Compiled, opts CompileOptions, m *wasm.Module) (*enc.CompiledModule, error) {
+	wantFunctions := 2
+	if opts.gcTypeSubtypingRefTestVariant >= 6 {
+		wantFunctions = 3
+	}
 	if c == nil || admitRV64GCTypeSubtypingRefTestSingleVariant(m) != opts.gcTypeSubtypingRefTestVariant || !c.state.gcTypeSubtypingRefTestSingle || c.state.gcTypeSubtypingRefTestVariant != opts.gcTypeSubtypingRefTestVariant ||
-		!c.state.referenceFunctions || c.state.referenceCalls || c.state.ownedTable || len(c.functions) != 2 || len(c.code) == 0 ||
+		!c.state.referenceFunctions || c.state.referenceCalls || c.state.ownedTable || len(c.functions) != wantFunctions || len(c.code) == 0 ||
 		opts.NativeTailCalls || opts.localTailCalls || opts.importTailCalls || opts.dynamicTailCalls || opts.NativeReferenceCalls ||
 		!opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext {
 		return nil, unsupported("gc type-subtyping ref.test staged ABI")

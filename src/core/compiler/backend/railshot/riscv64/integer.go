@@ -96,6 +96,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	functionRefs := state != nil && state.referenceFunctions
 	i31Refs := state != nil && state.i31Core
 	if functionRefs {
+		typedFunctionRefs := state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle && state.gcTypeSubtypingRefTestVariant >= 6
 		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls) {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
@@ -108,11 +109,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			}
-			if _, _, err := admitDeclaredControlSignature(sig.signature, referenceTypes, true, state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals, false); err != nil {
+			if _, _, err := admitDeclaredControlSignature(sig.signature, referenceTypes, true, typedFunctionRefs, false); err != nil {
 				return integerSummary{}, err
 			}
 		}
-		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals, false); err != nil {
+		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, typedFunctionRefs, false); err != nil {
 			return integerSummary{}, err
 		}
 	} else if i31Refs {
@@ -166,6 +167,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	live := true
 	contextUsed := false
 	callCount := 0
+	refTestCount := 0
 	tableBridgeBytes := 0
 	importTails := 0
 	popAny := func() (bool, bool, error) {
@@ -2085,14 +2087,23 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					target := imm.HeapType.Type().Index
 					variant := state.gcTypeSubtypingRefTestVariant
+					if variant == 6 {
+						targets := [...]uint32{0, 2, 1, 3}
+						if refTestCount >= len(targets) || target != targets[refTestCount] {
+							return integerSummary{}, unsupported("paired function ref.test sequence")
+						}
+					}
 					validTarget := (variant > 0 && variant < 4 && target == 4) ||
 						(variant == 4 && target == 0) ||
-						(variant == 5 && (target == 0 || target == 4))
+						(variant == 5 && (target == 0 || target == 4)) ||
+						(variant == 6 && target < 4)
 					accepted := uint32(6)
 					if variant == 3 || variant == 4 {
 						accepted = 4
 					} else if variant == 5 {
 						accepted = 8
+					} else if variant == 6 {
+						accepted = target & 1
 					}
 					if !validTarget || int(accepted) >= len(state.types) {
 						return integerSummary{}, unsupported("bounded function ref.test type relation")
@@ -2101,8 +2112,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, err
 					}
 					if live && emit != nil {
-						emit.functionReferenceTest(h, []uint64{state.types[accepted].key}, imm.Subopcode == 21)
+						if variant == 6 {
+							emit.functionReferenceIdentityTest(h, uint32(refTestCount/2), imm.Subopcode == 21)
+						} else {
+							emit.functionReferenceTest(h, []uint64{state.types[accepted].key}, imm.Subopcode == 21)
+						}
 					}
+					refTestCount++
 					if err = push(false); err != nil {
 						return integerSummary{}, err
 					}

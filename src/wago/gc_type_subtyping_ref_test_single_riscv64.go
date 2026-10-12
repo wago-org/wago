@@ -15,11 +15,18 @@ var rv64GCTypeSubtypingRefTestSingleCodeDigests = [...][sha256.Size]byte{
 	// Their retained graphs decide whether the ref.func carrier is type 6 or 4.
 	{0xc1, 0xf5, 0xcd, 0x7c, 0x93, 0xb8, 0x82, 0x7b, 0xd1, 0x7c, 0xa8, 0x62, 0xa8, 0x6c, 0x0f, 0x72, 0x11, 0xd5, 0x52, 0x7b, 0x23, 0xcf, 0x89, 0xb5, 0x1f, 0xdf, 0xa3, 0x23, 0x90, 0xa2, 0x8f, 0x7d},
 	{0xf1, 0xf0, 0xec, 0x44, 0x47, 0xae, 0x54, 0x72, 0x27, 0x12, 0x01, 0xca, 0xba, 0x8d, 0xba, 0x53, 0xe3, 0x5d, 0x4a, 0x95, 0xdb, 0x91, 0x2e, 0x73, 0xf1, 0xd4, 0xfa, 0x05, 0xbb, 0x78, 0xd8, 0x1d},
+	{0xc5, 0x25, 0x95, 0x83, 0x78, 0xda, 0x46, 0x40, 0x69, 0xdc, 0xe5, 0xdd, 0x12, 0xec, 0xb7, 0x7f, 0x7c, 0x56, 0x6c, 0x97, 0x3e, 0x24, 0x24, 0xce, 0x01, 0xd7, 0x65, 0x81, 0xd6, 0x25, 0x17, 0xe4},
 }
 
-var rv64GCTypeSubtypingRefTestSingleCodeLens = [...]int{1660, 1660, 1660, 1660, 2152}
+var rv64GCTypeSubtypingRefTestSingleCodeLens = [...]int{1660, 1660, 1660, 1660, 2152, 2608}
 
-var rv64GCTypeSubtypingRefTestSingleMetadataLens = [...]int{458, 616, 458, 379, 696}
+var rv64GCTypeSubtypingRefTestSingleEntries = [...][3]int{
+	{0, 576}, {0, 576}, {0, 576}, {0, 576}, {0, 576}, {0, 624, 1248},
+}
+
+var rv64GCTypeSubtypingRefTestSingleEntryLens = [...]int{2, 2, 2, 2, 2, 3}
+
+var rv64GCTypeSubtypingRefTestSingleMetadataLens = [...]int{458, 616, 458, 379, 696, 326}
 
 var rv64GCTypeSubtypingRefTestSingleMetadataDigests = [...][sha256.Size]byte{
 	{0xd6, 0xe4, 0x78, 0x1c, 0x95, 0x99, 0x8f, 0x79, 0x18, 0xe2, 0x31, 0x03, 0x78, 0x6c, 0xe6, 0xb9, 0xbf, 0x3e, 0xd1, 0x02, 0xab, 0x79, 0x91, 0xd4, 0x32, 0x0f, 0x65, 0x2c, 0x36, 0xdb, 0xff, 0x1a},
@@ -27,6 +34,7 @@ var rv64GCTypeSubtypingRefTestSingleMetadataDigests = [...][sha256.Size]byte{
 	{0x2a, 0xef, 0xc0, 0x10, 0x45, 0x99, 0xa2, 0xe7, 0xb2, 0xf9, 0x08, 0xe6, 0xc4, 0x08, 0x6b, 0x3e, 0xe5, 0x4c, 0xe5, 0x56, 0x79, 0x58, 0xbd, 0x46, 0xed, 0x8e, 0xfa, 0xea, 0x56, 0x7f, 0xe1, 0x69},
 	{0x64, 0x10, 0xbc, 0xe0, 0xda, 0x1c, 0x0e, 0x90, 0x2d, 0x0b, 0xec, 0xf9, 0xae, 0xaf, 0x23, 0x16, 0x8e, 0x02, 0x34, 0x15, 0x5a, 0x5d, 0x1e, 0x3e, 0x38, 0xb2, 0x15, 0x16, 0x9d, 0x93, 0x80, 0x32},
 	{0x5f, 0xf5, 0xcf, 0x74, 0x1e, 0x20, 0x10, 0x08, 0x86, 0x3e, 0x22, 0xee, 0xe2, 0xf9, 0x04, 0x84, 0x3e, 0xab, 0xe9, 0x28, 0x0d, 0x6b, 0xab, 0x19, 0xbe, 0x01, 0xc6, 0x0b, 0x44, 0x9a, 0x75, 0x94},
+	{0x1c, 0x28, 0xb7, 0xde, 0x45, 0x35, 0x99, 0x94, 0x63, 0x94, 0x47, 0x4b, 0xdf, 0x65, 0x12, 0xde, 0x96, 0xb3, 0x23, 0x0d, 0x2c, 0xfb, 0x7c, 0x58, 0x9f, 0xf5, 0x00, 0x1f, 0xa7, 0x91, 0x36, 0x5b},
 }
 
 func rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(c *Compiled, allowUnrestored, requireCode bool) uint8 {
@@ -34,8 +42,8 @@ func rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(c *Compiled, allowUn
 	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled ||
 		c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape ||
 		!c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) || c.usesGCStructHelpers() || c.usesGCArrayHelpers() ||
-		c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 2 || len(c.FuncTypeID) != 2 ||
-		len(c.Exports) != 1 || c.Exports["run"] != 1 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.tableCount() != 0 || len(c.extraTables) != 0 ||
+		c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || (len(c.Funcs) != 2 && len(c.Funcs) != 3) || len(c.FuncTypeID) != len(c.Funcs) ||
+		len(c.Exports) != 1 || c.Exports["run"] != len(c.Funcs)-1 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || c.tableCount() != 0 || len(c.extraTables) != 0 ||
 		len(c.tableExports) != 0 || c.memoryCount() != 0 || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 ||
 		c.Names != nil || len(c.customInstructions) != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 ||
 		c.HasTable || c.HasMemory || c.HasTableInitFunc || c.TableInitFunc != 0 || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 ||
@@ -49,10 +57,6 @@ func rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(c *Compiled, allowUn
 	}
 	staged := c.stagedFeatures()
 	if staged != CoreFeatureTypedFunctionReferences|CoreFeatureGC && (!allowUnrestored || staged != 0) {
-		return 0
-	}
-	wantEntries := []int{0, 576}
-	if !slices.Equal(c.Entry, wantEntries) || !slices.Equal(c.InternalEntry, wantEntries) {
 		return 0
 	}
 	d := c.memoryDir
@@ -78,7 +82,14 @@ func rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(c *Compiled, allowUn
 			if variant >= 5 {
 				wantFeatures |= CoreFeatureMultiValue
 			}
-			if c.requiredFeatures == wantFeatures && (product == wantProduct || allowUnrestored && product == 0) {
+			entryLen := rv64GCTypeSubtypingRefTestSingleEntryLens[i]
+			wantEntries := rv64GCTypeSubtypingRefTestSingleEntries[i][:entryLen]
+			wantFunctions := 2
+			if variant >= 6 {
+				wantFunctions = 3
+			}
+			if len(c.Funcs) == wantFunctions && slices.Equal(c.Entry, wantEntries) && slices.Equal(c.InternalEntry, wantEntries) &&
+				c.requiredFeatures == wantFeatures && (product == wantProduct || allowUnrestored && product == 0) {
 				return variant
 			}
 		}

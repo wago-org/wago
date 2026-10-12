@@ -260,7 +260,8 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 	refTestSubtype := types.gcTypeSubtypingRefTestSingle &&
 		((types.gcTypeSubtypingRefTestVariant > 0 && types.gcTypeSubtypingRefTestVariant < 4 && heap == 4) ||
 			(types.gcTypeSubtypingRefTestVariant == 4 && heap == 0) ||
-			(types.gcTypeSubtypingRefTestVariant == 5 && (heap == 0 || heap == 4)))
+			(types.gcTypeSubtypingRefTestVariant == 5 && (heap == 0 || heap == 4)) ||
+			(types.gcTypeSubtypingRefTestVariant == 6 && heap >= 0 && heap < 4))
 	if heap != -16 && !declarationExtern && !gcAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && types.function(uint32(heap))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}
