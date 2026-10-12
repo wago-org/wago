@@ -1249,6 +1249,16 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.nativeStructAllocType = 0
 	f.nativeArrayAlloc = gcArrayAllocStubSite{}
 	p, rN := len(ft.Params), len(ft.Results)
+	notifyIndex := uint32(0)
+	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
+	if notifyFast && p == 4 {
+		top := f.s.back()
+		if top.st.kind != stConst {
+			notifyFast = false
+		} else {
+			notifyIndex = uint32(top.st.cval)
+		}
+	}
 	var rootOffsets []uint32
 	recordRoots := false
 	if !internalGC {
@@ -1734,16 +1744,6 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	f.stats.call(kind)
 	p := len(ft.Params)
-	notifyIndex := uint32(0)
-	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
-	if notifyFast && p == 4 {
-		top := f.s.back()
-		if top.st.kind != stConst {
-			notifyFast = false
-		} else {
-			notifyIndex = uint32(top.st.cval)
-		}
-	}
 
 	roots := f.rootsBottomToTop()
 	d := len(roots)
