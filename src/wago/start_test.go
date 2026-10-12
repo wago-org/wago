@@ -151,7 +151,7 @@ func TestCachedStartFunctions(t *testing.T) {
 		{name: "trapping", wat: `(module (func $init unreachable) (start $init))`, trap: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := MustCompile(watToWasmCA(t, tc.wat))
+			c := compileExplicitArtifact(t, watToWasmCA(t, tc.wat))
 			defer c.Close()
 			for _, stream := range []bool{false, true} {
 				blob, err := c.MarshalBinary()
