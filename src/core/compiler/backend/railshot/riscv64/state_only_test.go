@@ -70,6 +70,96 @@ func mutableFuncrefClearSource() []byte {
 	)
 }
 
+func mutableFuncrefStoreSelfSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "cell", wasm.FuncRef, true))),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("store", 0, 0), wasmtest.ExportEntry("cell", 3, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}))),
+	)
+}
+
+func TestMutableFuncrefStoreSelfProduction(t *testing.T) {
+	source := mutableFuncrefStoreSelfSource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitMutableFunctionGlobalSetSelf(m) {
+		t.Fatal("exact mutable funcref self-store source rejected")
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("mutable funcref self-store compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0xef, 0xf3, 0x3e, 0xca, 0xb0, 0x53, 0x9a, 0xa8, 0xfd, 0x85, 0xc6, 0x7d, 0x62, 0xb2, 0xd8, 0x72, 0x59, 0x04, 0xca, 0x2c, 0x42, 0x24, 0x95, 0xed, 0xe1, 0x9e, 0x1f, 0x36, 0x72, 0xa5, 0x56, 0x91}
+	if len(image.Code) != 556 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
+		t.Fatal("mutable funcref self-store compilation drifted")
+	}
+}
+
+func TestMutableFuncrefStoreSelfProductionRejectsBroaderSources(t *testing.T) {
+	module := func(exports, body []byte, functions ...[]byte) []byte {
+		if len(functions) == 0 {
+			functions = [][]byte{body}
+		}
+		funcTypes := make([]byte, 1+len(functions))
+		funcTypes[0] = byte(len(functions))
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "cell", wasm.FuncRef, true))),
+			wasmtest.Section(3, funcTypes),
+			wasmtest.Section(7, exports),
+			wasmtest.Section(10, wasmtest.Vec(functions...)),
+		)
+	}
+	exactExports := wasmtest.Vec(wasmtest.ExportEntry("store", 0, 0), wasmtest.ExportEntry("cell", 3, 0))
+	differentTarget := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(
+			wasmtest.GlobalImportEntry("env", "cell", wasm.FuncRef, true),
+			wasmtest.GlobalImportEntry("env", "other", wasm.FuncRef, true),
+		)),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(7, exactExports),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd2, 0, 0x24, 1, 0x0b}))),
+	)
+	for name, source := range map[string][]byte{
+		"copy-existing": module(exactExports, wasmtest.Code([]byte{0x23, 0, 0x24, 0, 0x0b})),
+		"mixed-null":    module(exactExports, wasmtest.Code([]byte{0xd2, 0, 0x1a, 0xd0, 0x70, 0x24, 0, 0x0b})),
+		"other-target":  differentTarget,
+		"wrong-export": module(
+			wasmtest.Vec(wasmtest.ExportEntry("other", 0, 0), wasmtest.ExportEntry("cell", 3, 0)),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}),
+		),
+		"extra-function": module(
+			exactExports,
+			nil,
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0x0b}),
+		),
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal("fixture decoding", err)
+			}
+			if admitMutableFunctionGlobalSetSelf(m) {
+				t.Fatal("broader mutable funcref self-store source matched exact profile")
+			}
+			staged := false
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
+			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
+				t.Fatal("broader mutable funcref self-store source reached staging", image, err, staged)
+			}
+		})
+	}
+}
+
 func TestMutableFuncrefClearProduction(t *testing.T) {
 	source := mutableFuncrefClearSource()
 	if err := AdmitProductionSource(source); err != nil {

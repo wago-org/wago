@@ -457,7 +457,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 }
 
 func (in *Instance) callHostDispatch(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
-	if in.dispatchGuestGlobalClear(importIdx, args, results) {
+	if in.dispatchGuestGlobalStore(importIdx, args, results) {
 		return
 	}
 	if in.hostCall != nil {

@@ -1317,16 +1317,20 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if _, err = popClass(reference); err != nil {
 					return integerSummary{}, err
 				}
-				if state.mutableFuncrefGlobalClear {
+				if state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf {
 					if idx != 0 || !reference {
-						return integerSummary{}, unsupported("mutable funcref clear target")
+						return integerSummary{}, unsupported("mutable funcref store target")
 					}
 					callCount++
 					if callCount > maxDirectCalls {
-						return integerSummary{}, unsupported("mutable funcref clear helper count")
+						return integerSummary{}, unsupported("mutable funcref store helper count")
 					}
 					if live && emit != nil {
-						emit.clearGuestGlobal()
+						if state.mutableFuncrefGlobalClear {
+							emit.clearGuestGlobal()
+						} else {
+							emit.storeGuestGlobal(h)
+						}
 					}
 				} else if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), g.wide)

@@ -2,6 +2,6 @@
 
 package wago
 
-func railshotUsesGuestGlobalClearHelper(*Compiled) bool { return false }
+func railshotUsesGuestGlobalStoreHelper(*Compiled) bool { return false }
 
-func (*Instance) dispatchGuestGlobalClear(uint32, []uint64, []uint64) bool { return false }
+func (*Instance) dispatchGuestGlobalStore(uint32, []uint64, []uint64) bool { return false }

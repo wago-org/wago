@@ -164,6 +164,11 @@ signatures, and mutable reference exports. Cells retain full-width own canonical
 descriptors or null, including importer-owned thunks whose existing attachments
 retain foreign targets. No foreign descriptor address can enter this bounded
 shape; replacement therefore does not transfer a foreign physical root.
+Imported mutable nullable funcref cells additionally have exact executable
+profiles for observing nullness, clearing to null, and storing the writer's sole
+exported function. The non-null bridge authenticates the complete published
+descriptor and its same-store local owner before transferring one container root;
+overwrite or close retires that root through the ordinary global transaction.
 Reference-global imports combined with instance-owned imported tables, general
 mutable reference imports/exports and typed references remain gated pending
 separate ownership qualification.

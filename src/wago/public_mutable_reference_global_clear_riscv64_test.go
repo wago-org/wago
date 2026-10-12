@@ -47,7 +47,7 @@ func TestRV64PublicMutableFuncrefGlobalClear(t *testing.T) {
 			compiled := rv64TableStageCompile(t, "mutable-funcref-clear-consumer", rv64MutableFuncrefClearModule(), artifact)
 			defer compiled.Close()
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalClear(view) || !view.usesGuestGlobalClearHelper() {
+			if !rv64MutableFuncrefGlobalClear(view) || !view.usesGuestGlobalStoreHelper() {
 				t.Fatalf("mutable funcref clear witness missing: trap=%t tablectx=%t tableref=%t regoff=%t table64=%d header=%t exports=%t desc=%t escape=%t refs=%t/%t/%t tails=%t imports=%d/%d/%d funcs=%+v ids=%v exports=%v types=%+v descs=%+v globals=%+v globalimports=%+v globalexports=%v values=%+v entries=%v/%v features=%#x structural=%#x sync=%d codeok=%t", view.nativeContextTrapABI, view.nativeTableContextABI, view.nativeTableReferenceABI, view.registerABIDisabled, view.nativeTable64ABI, view.needsFuncRefContextHeader, view.hasTableExportMetadata, view.NeedsFuncRefDescs, view.dynamicFuncrefEscape, view.nativeReferenceFunctionABI, view.nativeReferenceCallABI, view.nativeReferenceControlABI, rv64HasReferenceTail(view), view.NumImports, len(view.Imports), len(view.importFuncSigs), view.Funcs, view.FuncTypeID, view.Exports, view.Types, view.GCTypeDescs, view.Globals, view.GlobalImports, view.GlobalExports, view.ValueTypes, view.Entry, view.InternalEntry, view.requiredFeatures, compiledStructuralRequiredFeatures(view), view.syncHostSlots, rv64MutableFuncrefGlobalClearExecutionCode(view))
 			}
 			module, err := rt.Module(compiled)

@@ -811,6 +811,14 @@ func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
 			}
 		}
 	}
+	return g.publishReferenceValueNoLease(typ, mutable, bits, retainedOwner, bootstrap, roots)
+}
+
+// publishReferenceValueNoLease commits a previously authenticated reference
+// and transfers exactly one acquired descriptor-owner root into the container.
+// Callers own the native-state lease and every root represented by roots.
+func (g *Global) publishReferenceValueNoLease(typ ValType, mutable bool, bits uint64, retainedOwner *Instance, bootstrap int, roots *globalValueRoots) error {
+	o := g.owner
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.closed || len(g.cell) < 8 || o.typ != typ || o.mutable != mutable || g.Type != typ || g.Mutable != mutable {

@@ -231,7 +231,7 @@ func (c *Compiled) allowsIndependentInstanceExecution(imports resolvedImports, e
 func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) int {
 	need := c.instantiateArenaNeed + railshotNativeInvocationContextBytes - runtime.InstanceContextBytes
 	baselineHostBytes := 0
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalClearHelper() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		baselineHostBytes = c.hostCtrlFrameBytes()
 	} else if len(c.Imports) > 0 {
 		baselineHostBytes = runtime.HostCallLogBytes

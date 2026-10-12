@@ -158,7 +158,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			}
 			memoryImports++
 		case wasm.ExternGlobal:
-			reference := state.exports && state.publicInitializers && (state.importedTable && mode.foreignTableCalls || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m)) && admitImportedFunctionGlobal(m, im.Type.GlobalType())
+			reference := state.exports && state.publicInitializers && (state.importedTable && mode.foreignTableCalls || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m)) && admitImportedFunctionGlobal(m, im.Type.GlobalType())
 			if !state.importedGlobals || swarClassOf(im.Type.GlobalType().Type) == swarInvalid && !reference {
 				return nil, unsupported("SWAR numeric global import profile")
 			}
@@ -284,7 +284,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if err != nil {
 		return nil, err
 	}
-	mode.localMutableReferences = mode.localMutableReferences || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m)
+	mode.localMutableReferences = mode.localMutableReferences || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m)
 	if mode.localMutableReferences && !(state.publicInitializers && state.exports && mode.foreignTableCalls && mode.interruptible) {
 		return nil, unsupported("mutable reference globals require the retained cooperative public profile")
 	}

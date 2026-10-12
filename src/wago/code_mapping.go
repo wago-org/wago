@@ -215,8 +215,8 @@ func (c *Compiled) usesAtomicWaitHelpers() bool {
 	return cc != nil && cc.flags&compiledCacheAtomicWaitHelpers != 0
 }
 
-func (c *Compiled) usesGuestGlobalClearHelper() bool {
-	return railshotUsesGuestGlobalClearHelper(c)
+func (c *Compiled) usesGuestGlobalStoreHelper() bool {
+	return railshotUsesGuestGlobalStoreHelper(c)
 }
 
 func (c *Compiled) prefersGuardMemory() bool {

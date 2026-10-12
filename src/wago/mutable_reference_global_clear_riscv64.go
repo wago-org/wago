@@ -69,22 +69,31 @@ func rv64MutableFuncrefGlobalClear(c *Compiled) bool {
 	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, []int{0}) && slices.Equal(c.InternalEntry, []int{0}) && rv64MutableFuncrefGlobalClearExecutionCode(c)
 }
 
-func railshotUsesGuestGlobalClearHelper(c *Compiled) bool {
-	return rv64MutableFuncrefGlobalClear(c)
+func railshotUsesGuestGlobalStoreHelper(c *Compiled) bool {
+	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c)
 }
 
 // The zero-index host-funcref dispatch encoding is permanently invalid for a
 // public HostFuncRef. The exact authenticated image uses it as a private bridge
 // while retaining the ordinary parked-host lease and context restoration path.
-func (in *Instance) dispatchGuestGlobalClear(dispatch uint32, args, results []uint64) bool {
+func (in *Instance) dispatchGuestGlobalStore(dispatch uint32, args, results []uint64) bool {
 	if dispatch != hostFuncRefDispatchBit {
 		return false
 	}
-	if in == nil || !rv64MutableFuncrefGlobalClear(in.c) || len(args) != 0 || len(results) != 0 || len(in.globalCells) != 1 {
-		panic(invalidHostReference{err: fmt.Errorf("invalid RV64 guest global clear bridge")})
+	if in == nil || len(results) != 0 || len(in.globalCells) != 1 {
+		panic(invalidHostReference{err: fmt.Errorf("invalid RV64 guest global store bridge")})
 	}
-	if err := in.globalCells[0].SetValue(ValueFuncRef(NullFuncRef())); err != nil {
-		panic(invalidHostReference{err: fmt.Errorf("RV64 guest global clear: %w", err)})
+	var err error
+	switch {
+	case rv64MutableFuncrefGlobalClear(in.c) && len(args) == 0:
+		err = in.globalCells[0].SetValue(ValueFuncRef(NullFuncRef()))
+	case rv64MutableFuncrefGlobalStoreSelf(in.c) && len(args) == 1:
+		err = in.globalCells[0].setGuestFuncrefDescriptor(in, args[0])
+	default:
+		panic(invalidHostReference{err: fmt.Errorf("invalid RV64 guest global store bridge")})
+	}
+	if err != nil {
+		panic(invalidHostReference{err: fmt.Errorf("RV64 guest global store: %w", err)})
 	}
 	return true
 }

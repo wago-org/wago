@@ -483,8 +483,11 @@ precedes native construction and adoption follows construction-lease release.
 Frozen immutable-global descriptors now have separate actual-owner receipts,
 with guarded registration, alias sharing, builder rollback and terminal cleanup.
 Mutable global and table containers now use exact acquisition receipts; scalable
-complete registration and cycle collection remain. Remaining work includes
-executable and mixed-state mutable reference imports/exports, reference
+complete registration and cycle collection remain. One exact executable
+mutable-funcref import can now store its own sole exported function through an
+authenticated full-width bridge, retain that writer after logical close, and
+retire it on overwrite without manufacturing a token. Remaining work includes
+general executable and mixed-state mutable reference imports/exports, reference
 signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
 qualification. The
 experimental build tag and unsupported-feature admission remain in place.

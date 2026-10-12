@@ -290,7 +290,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		slots  int
 	}
 	helperEntries := make(map[helperBridge]int, 12)
-	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 2}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructRefCast, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}, {guestGlobalClear, 0}} {
+	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 2}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructRefCast, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}, {guestGlobalClear, 0}, {guestGlobalStore, 1}} {
 		used := false
 		for _, call := range relocations {
 			used = used || call.helper == bridge.helper && (call.helper != gcArrayAllocFixed && call.helper != gcStructAllocOne || call.helperSlots == bridge.slots)
@@ -306,8 +306,8 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		if bridge.helper == gcStructSet || bridge.helper == gcStructTableSet || bridge.helper == gcArraySet || bridge.helper == gcArrayDropElem || bridge.helper == gcArrayFill || bridge.helper == gcArrayCopy || bridge.helper == gcArrayInitData || bridge.helper == gcArrayInitElem {
 			resultSlots = 0
 		}
-		dispatch := guestGlobalClearDispatch
-		if bridge.helper != guestGlobalClear {
+		dispatch := guestGlobalStoreDispatch
+		if bridge.helper != guestGlobalClear && bridge.helper != guestGlobalStore {
 			payload, ok := shared.EncodeGCDispatch(bridge.helper, 0)
 			if !ok {
 				return nil, unsupported("GC helper dispatch encoding")

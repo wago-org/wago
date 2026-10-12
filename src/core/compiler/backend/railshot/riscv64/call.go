@@ -48,9 +48,10 @@ const (
 	gcArrayInitElem      uint32 = 30
 	// guestGlobalClear is an internal relocation key, not a GC helper ID.
 	guestGlobalClear uint32 = ^uint32(0)
-	// guestGlobalClearDispatch matches the permanently invalid zero-index
+	guestGlobalStore uint32 = ^uint32(0) - 1
+	// guestGlobalStoreDispatch matches the permanently invalid zero-index
 	// HostFuncRef dispatch encoding reserved by the runtime bridge.
-	guestGlobalClearDispatch uint32 = 1 << 31
+	guestGlobalStoreDispatch uint32 = 1 << 31
 )
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
@@ -76,6 +77,17 @@ func (f *integerEmitter) restoreCallTransport() {
 func (f *integerEmitter) clearGuestGlobal() {
 	f.restoreCallTransport()
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: guestGlobalClear})
+	f.restoreCallTransport()
+}
+
+// storeGuestGlobal transfers one authenticated full-width descriptor through
+// the same parked ownership bridge. The exact source profile proves that the
+// descriptor was produced by ref.func 0 in this image.
+func (f *integerEmitter) storeGuestGlobal(slot int) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(slot), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: guestGlobalStore})
 	f.restoreCallTransport()
 }
 

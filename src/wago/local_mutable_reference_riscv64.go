@@ -16,6 +16,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalClear(c) {
 		return true, nil // Exact imported clear mutates only through the parked owner bridge.
 	}
+	if rv64MutableFuncrefGlobalStoreSelf(c) {
+		return true, nil // Exact self-store transfers one authenticated descriptor root.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable
