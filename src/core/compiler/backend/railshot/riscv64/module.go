@@ -193,6 +193,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.gcTypeSubtypingFinalityCallCast = opts.gcTypeSubtypingFinalityCallCast
 	state.gcTypeSubtypingTypedTableCall = opts.gcTypeSubtypingTypedTableCall
 	state.gcTypeSubtypingRefTestSingle = opts.gcTypeSubtypingRefTestSingle
+	state.gcTypeSubtypingRefTestVariant = opts.gcTypeSubtypingRefTestVariant
 	// Internal GC bridges stage their arguments in the same serialized arena as
 	// ordinary Wasm calls. A module whose public functions take fewer arguments
 	// must still retain the complete helper shape; otherwise helper staging can

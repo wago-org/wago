@@ -73,6 +73,7 @@ type moduleState struct {
 	gcTypeSubtypingFinalityCallCast   bool
 	gcTypeSubtypingTypedTableCall     bool
 	gcTypeSubtypingRefTestSingle      bool
+	gcTypeSubtypingRefTestVariant     uint8
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool

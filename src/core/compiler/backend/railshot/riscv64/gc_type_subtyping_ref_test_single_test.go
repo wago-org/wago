@@ -16,7 +16,7 @@ import (
 
 func TestRV64GCTypeSubtypingRefTestSingleAdmissionIsExact(t *testing.T) {
 	data := bytes.Clone(rv64GCTypeSubtypingRefTestSingleWire)
-	if !AdmitGCTypeSubtypingRefTestSingleSource(data) {
+	if GCTypeSubtypingRefTestSingleSourceVariant(data) != 1 || !AdmitGCTypeSubtypingRefTestSingleSource(data) {
 		t.Fatal("pinned single ref.test source was not admitted")
 	}
 	m, err := wasm.DecodeModule(data)
@@ -33,7 +33,7 @@ func TestRV64GCTypeSubtypingRefTestSingleAdmissionIsExact(t *testing.T) {
 		InvocationContext:                  true,
 		ForeignTableCalls:                  true,
 		GCTypeSubtypingRefTest:             true,
-		GCTypeSubtypingRefTestSingleSource: true,
+		GCTypeSubtypingRefTestSingleSource: 1,
 		Codegen: codegen.Options{Module: codegen.ModuleInfo{
 			GCTypeDescs:   metadata.Descs,
 			GCTypeLayouts: metadata.Layouts,
@@ -49,7 +49,7 @@ func TestRV64GCTypeSubtypingRefTestSingleAdmissionIsExact(t *testing.T) {
 		t.Fatalf("single ref.test product image is incomplete: code=%d/%x entries=%v/%v image=%v", len(compiled.Code), sha256.Sum256(compiled.Code), compiled.Entry, compiled.InternalEntry, compiled.CodeImage)
 	}
 	withoutWire := opts
-	withoutWire.GCTypeSubtypingRefTestSingleSource = false
+	withoutWire.GCTypeSubtypingRefTestSingleSource = 0
 	if _, err = CompileModuleWith(m, withoutWire); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("decoded single ref.test product compiled without exact wire provenance", err)
 	}

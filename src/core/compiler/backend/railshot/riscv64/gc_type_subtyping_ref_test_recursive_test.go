@@ -16,7 +16,7 @@ import (
 
 func TestRV64GCTypeSubtypingRefTestRecursiveAdmissionIsExact(t *testing.T) {
 	data := bytes.Clone(rv64GCTypeSubtypingRefTestRecursiveWire)
-	if len(data) != 162 || sha256.Sum256(data) != [sha256.Size]byte{0x97, 0xaf, 0xdb, 0x1a, 0x9a, 0xd0, 0x42, 0x48, 0x6b, 0x76, 0xad, 0x81, 0x6e, 0x78, 0xa4, 0x3f, 0x93, 0x3e, 0x79, 0xb9, 0x85, 0xc6, 0xfd, 0x20, 0xd0, 0x65, 0x8f, 0x3b, 0x69, 0xc6, 0xe0, 0x22} || !AdmitGCTypeSubtypingRefTestSingleSource(data) {
+	if len(data) != 162 || sha256.Sum256(data) != [sha256.Size]byte{0x97, 0xaf, 0xdb, 0x1a, 0x9a, 0xd0, 0x42, 0x48, 0x6b, 0x76, 0xad, 0x81, 0x6e, 0x78, 0xa4, 0x3f, 0x93, 0x3e, 0x79, 0xb9, 0x85, 0xc6, 0xfd, 0x20, 0xd0, 0x65, 0x8f, 0x3b, 0x69, 0xc6, 0xe0, 0x22} || GCTypeSubtypingRefTestSingleSourceVariant(data) != 2 || !AdmitGCTypeSubtypingRefTestSingleSource(data) {
 		t.Fatal("pinned recursive ref.test source was not admitted")
 	}
 	m, err := wasm.DecodeModule(data)
@@ -33,7 +33,7 @@ func TestRV64GCTypeSubtypingRefTestRecursiveAdmissionIsExact(t *testing.T) {
 		InvocationContext:                  true,
 		ForeignTableCalls:                  true,
 		GCTypeSubtypingRefTest:             true,
-		GCTypeSubtypingRefTestSingleSource: true,
+		GCTypeSubtypingRefTestSingleSource: 2,
 		Codegen: codegen.Options{Module: codegen.ModuleInfo{
 			GCTypeDescs:   metadata.Descs,
 			GCTypeLayouts: metadata.Layouts,
@@ -49,7 +49,7 @@ func TestRV64GCTypeSubtypingRefTestRecursiveAdmissionIsExact(t *testing.T) {
 		t.Fatalf("recursive ref.test product image is incomplete: code=%d/%x entries=%v/%v image=%v", len(compiled.Code), sha256.Sum256(compiled.Code), compiled.Entry, compiled.InternalEntry, compiled.CodeImage)
 	}
 	withoutWire := opts
-	withoutWire.GCTypeSubtypingRefTestSingleSource = false
+	withoutWire.GCTypeSubtypingRefTestSingleSource = 0
 	if _, err = CompileModuleWith(m, withoutWire); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("decoded recursive ref.test product compiled without exact wire provenance", err)
 	}

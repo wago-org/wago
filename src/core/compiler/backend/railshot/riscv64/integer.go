@@ -2079,14 +2079,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			case wasm.InstrRefTest:
 				if state.gcTypeSubtypingRefTestSingle {
-					if len(state.types) <= 6 || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapTypeIndex || imm.HeapType.Type().Rec || imm.HeapType.Type().Index != 4 {
+					if len(state.types) <= 6 || state.gcTypeSubtypingRefTestVariant == 0 || state.gcTypeSubtypingRefTestVariant > 3 || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapTypeIndex || imm.HeapType.Type().Rec || imm.HeapType.Type().Index != 4 {
 						return integerSummary{}, unsupported("single function ref.test type relation")
 					}
 					if _, err = popClass(true); err != nil {
 						return integerSummary{}, err
 					}
 					if live && emit != nil {
-						emit.functionReferenceTest(h, []uint64{state.types[6].key}, imm.Subopcode == 21)
+						accepted := uint32(6)
+						if state.gcTypeSubtypingRefTestVariant == 3 {
+							accepted = 4
+						}
+						emit.functionReferenceTest(h, []uint64{state.types[accepted].key}, imm.Subopcode == 21)
 					}
 					if err = push(false); err != nil {
 						return integerSummary{}, err

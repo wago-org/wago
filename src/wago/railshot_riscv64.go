@@ -33,7 +33,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	}
 	maxImportArity := coreruntime.MaxHostArity
 	vectorProfile := false
-	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && !opts.GCTypeSubtypingRefTestSingleSource {
+	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 {
 		var err error
 		vectorProfile, err = railshot.UsesSWAR(m)
 		if err != nil {
@@ -161,8 +161,8 @@ func railshotGCTypeSubtypingRuntimeTypedTableCallSource(data []byte) bool {
 	return railshot.AdmitGCTypeSubtypingRuntimeTypedTableCallSource(data)
 }
 
-func railshotGCTypeSubtypingRefTestSingleSource(data []byte) bool {
-	return railshot.AdmitGCTypeSubtypingRefTestSingleSource(data)
+func railshotGCTypeSubtypingRefTestSingleSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingRefTestSingleSourceVariant(data)
 }
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
@@ -320,9 +320,9 @@ func railshotConfigureGCTypeSubtypingRuntimeTypedTableCall(exactSource bool, opt
 	}
 }
 
-func railshotConfigureGCTypeSubtypingRefTestSingle(exactSource bool, opts *railshotCompileOptions) {
-	opts.GCTypeSubtypingRefTestSingleSource = exactSource
-	if exactSource {
+func railshotConfigureGCTypeSubtypingRefTestSingle(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRefTestSingleSource = sourceVariant
+	if sourceVariant != 0 {
 		opts.NativeReferenceCalls = false
 		opts.NativeReferenceFunctions = false
 	}

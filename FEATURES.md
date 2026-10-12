@@ -99,14 +99,16 @@ identical function types retain distinct nominal descriptor keys; the `run`
 export accepts only the declared subtype closures, while both narrower and
 unrelated indirect calls trap. Source, compiler-free artifact, W^X lifetime,
 and hostile retained-state paths are covered without a collector. Official
-`.20` and `.21` add the first recursive function-identity `ref.test`
+`.20` through `.22` add the first recursive function-identity `ref.test`
 checkpoints.
 Its declaratively declared function descriptor is tested against the canonical
 equivalent subtype relation across distinct recursive groups by genuine RV64
 code, returning normalized `i32(1)` without a collector. `.21` additionally
 retains mutually recursive function signatures with indexed parameters and
 results while preserving nominal group identity. Each source is paired only
-with its own pinned image and serialized metadata. Exact source, decoded,
+with its own pinned image and serialized metadata. `.22` preserves the reverse
+type direction as a distinct nominal identity and returns normalized `i32(0)`
+instead of accepting the structurally identical carrier. Exact source, decoded,
 compiler-free artifact, W^X lease, final-unmap, and private-runtime-permission
 paths are covered. Other `gc/type-subtyping` module shapes remain fail-closed
 on RV64.

@@ -102,11 +102,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	}
 	opts.gcTypeSubtypingTypedTableCall = decodedGCTypeSubtypingRuntimeTypedTableCall
 	opts.gcTypeSubtypingRuntimeCallCast = opts.gcTypeSubtypingRuntimeCallCast || decodedGCTypeSubtypingRuntimeTypedTableCall
-	decodedGCTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingle(m)
+	decodedGCTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingleVariant(m)
 	if opts.GCTypeSubtypingRefTestSingleSource != decodedGCTypeSubtypingRefTestSingle {
 		return nil, unsupported("gc type-subtyping single ref.test source provenance")
 	}
-	opts.gcTypeSubtypingRefTestSingle = decodedGCTypeSubtypingRefTestSingle
+	opts.gcTypeSubtypingRefTestSingle = decodedGCTypeSubtypingRefTestSingle != 0
+	opts.gcTypeSubtypingRefTestVariant = decodedGCTypeSubtypingRefTestSingle
 	decodedI31Core := admitRV64I31Core(m)
 	if opts.I31CoreSource != decodedI31Core {
 		return nil, unsupported("i31 core source provenance")
@@ -442,7 +443,7 @@ func stageGCTypeSubtypingRuntimeTypedTableCall(c *Compiled, opts CompileOptions,
 }
 
 func stageGCTypeSubtypingRefTestSingle(c *Compiled, opts CompileOptions, m *wasm.Module) (*enc.CompiledModule, error) {
-	if c == nil || !admitRV64GCTypeSubtypingRefTestSingle(m) || !c.state.gcTypeSubtypingRefTestSingle ||
+	if c == nil || admitRV64GCTypeSubtypingRefTestSingleVariant(m) != opts.gcTypeSubtypingRefTestVariant || !c.state.gcTypeSubtypingRefTestSingle || c.state.gcTypeSubtypingRefTestVariant != opts.gcTypeSubtypingRefTestVariant ||
 		!c.state.referenceFunctions || c.state.referenceCalls || c.state.ownedTable || len(c.functions) != 2 || len(c.code) == 0 ||
 		opts.NativeTailCalls || opts.localTailCalls || opts.importTailCalls || opts.dynamicTailCalls || opts.NativeReferenceCalls ||
 		!opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext {
