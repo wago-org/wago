@@ -1089,7 +1089,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntrySigKeyOffset:], c.funcTypeKey(fidx))
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.FuncRefContextOffset:], targetContext)
-			if fidx < c.NumImports && (!railshotNativeContextTrapABI() || rv64GCTypeSubtypingLink(c) || rv64GCTypeSubtypingFinalityLink(c)) {
+			if fidx < c.NumImports && (!railshotNativeContextTrapABI() || rv64GCTypeSubtypingLink(c) || rv64GCTypeSubtypingFinalityLink(c) || rv64GCTypeSubtypingStructLink(c)) {
 				// Cross-instance imports reuse the producer's canonical identity when
 				// that producer already owns a descriptor arena.
 				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {

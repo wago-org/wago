@@ -114,8 +114,12 @@ remain identity-only across open/final type declarations, while both inverse
 consumer imports are authenticated zero-code artifacts that reject before
 retaining the provider. Source and compiler-free artifact paths pin the scalar
 framed image and metadata without claiming a closed reference-function ABI for
-these scalar signatures. Products after `.36` and native
-cache/performance qualification remain open.
+these scalar signatures. Official `.37` and `.38` add the first positive
+recursive-struct link pair: the empty scalar `g` body remains collector-free,
+the consumer proves the structural function subtype across independently
+decoded type graphs, and its descriptor copies the provider's canonical
+identity while retaining the provider through logical close. Products after
+`.38` and native cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

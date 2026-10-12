@@ -129,6 +129,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingFinalityLinkSource identifies the exact official .34
 	// provider or one of the .35/.36 inverse-finality consumers.
 	GCTypeSubtypingFinalityLinkSource uint8
+	// GCTypeSubtypingStructLinkSource identifies the exact official .37
+	// provider or .38 structurally compatible consumer.
+	GCTypeSubtypingStructLinkSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -216,6 +219,7 @@ type CompileOptions struct {
 	gcTypeSubtypingRefTestVariant     uint8
 	gcTypeSubtypingLink               uint8
 	gcTypeSubtypingFinalityLink       uint8
+	gcTypeSubtypingStructLink         uint8
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

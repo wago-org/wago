@@ -98,6 +98,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCTypeSubtypingRefTestSingle := rv64GCTypeSubtypingRefTestSingle(c)
 	exactGCTypeSubtypingLink := rv64GCTypeSubtypingLink(c)
 	exactGCTypeSubtypingFinalityLink := rv64GCTypeSubtypingFinalityLink(c)
+	exactGCTypeSubtypingStructLink := rv64GCTypeSubtypingStructLink(c)
 	exactGCTypeSubtypingRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || exactGCTypeSubtypingRuntimeFinalityCallCast || exactGCTypeSubtypingRuntimeTypedTableCall
 	exactGCStructGet := rv64GCStructGet(c)
 	exactGCStructMutation := rv64GCStructMutation(c)
@@ -122,7 +123,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if rv64GCTypeSubtypingRecursiveFunctionsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRecursiveFunctions {
 		return reject("gc/type-subtyping recursive-function metadata requires its exact retained image")
 	}
-	if rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(c) && !exactGCTypeSubtypingRefFuncGlobals {
+	if rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(c) && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingStructLink {
 		return reject("gc/type-subtyping ref.func-global image requires its exact retained metadata")
 	}
 	if rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRefFuncGlobals {
@@ -163,6 +164,12 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCTypeSubtypingFinalityLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingFinalityLink {
 		return reject("gc/type-subtyping finality-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingStructLinkExecutionCode(c) && rv64GCTypeSubtypingStructLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingStructLink {
+		return reject("gc/type-subtyping struct-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingStructLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingStructLink {
+		return reject("gc/type-subtyping struct-link metadata requires its exact retained image")
 	}
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")
@@ -301,7 +308,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if err := rv64ValidateNativeTail(c); err != nil {
 		return reject(err.Error())
 	}
-	if !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink {
+	if !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink {
 		if err := rv64ValidateReferenceFunctions(c); err != nil {
 			return reject(err.Error())
 		}
@@ -322,7 +329,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		if vectorProfile {
 			maxImportArity = 128
 		}
-		publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink
+		publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCTypeSubtypingStructLink
 		for _, sig := range c.importFuncSigs {
 			if len(sig.Params) > maxImportArity || len(sig.Results) > maxImportArity {
 				return reject("function import signature arity")
@@ -362,7 +369,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
@@ -373,10 +380,10 @@ func railshotValidateCompiled(c *Compiled) error {
 			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 		}
 	}
-	if exactGCTypeSubtypingDeclarations || exactGCTypeSubtypingRecursiveFunctions || exactGCTypeSubtypingRefFuncGlobals || exactGCTypeSubtypingRuntimeCallCast || exactGCTypeSubtypingRefTestSingle || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCRefEq || exactGCRefTestTable || exactGCRefTestConcrete || exactGCRefCastConcrete || exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactGCBrOnCastConcrete || exactGCBrOnCastFailConcrete || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructGet || exactGCStructMutation || exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCStructNumericGlobals || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+	if exactGCTypeSubtypingDeclarations || exactGCTypeSubtypingRecursiveFunctions || exactGCTypeSubtypingRefFuncGlobals || exactGCTypeSubtypingRuntimeCallCast || exactGCTypeSubtypingRefTestSingle || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCTypeSubtypingStructLink || exactGCRefEq || exactGCRefTestTable || exactGCRefTestConcrete || exactGCRefCastConcrete || exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactGCBrOnCastConcrete || exactGCBrOnCastFailConcrete || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructGet || exactGCStructMutation || exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCStructNumericGlobals || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
 		qualifiedFeatures |= CoreFeatureGC
 	}
-	if exactGCTypeSubtypingDeclarations || exactGCTypeSubtypingRecursiveFunctions || exactGCTypeSubtypingRefFuncGlobals || exactGCTypeSubtypingRuntimeCallCast || exactGCTypeSubtypingRefTestSingle || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCRefTestTable || exactGCRefTestConcrete || exactGCRefCastConcrete || exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactGCBrOnCastConcrete || exactGCBrOnCastFailConcrete || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructMutation || exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCStructNumericGlobals || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+	if exactGCTypeSubtypingDeclarations || exactGCTypeSubtypingRecursiveFunctions || exactGCTypeSubtypingRefFuncGlobals || exactGCTypeSubtypingRuntimeCallCast || exactGCTypeSubtypingRefTestSingle || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCTypeSubtypingStructLink || exactGCRefTestTable || exactGCRefTestConcrete || exactGCRefCastConcrete || exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactGCBrOnCastConcrete || exactGCBrOnCastFailConcrete || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructMutation || exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCStructNumericGlobals || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	if exactGCTypeSubtypingRefTestSingle || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData {
@@ -477,12 +484,12 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
+	if !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
 	}
-	if !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink {
+	if !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink {
 		if err := rv64ValidateOwnedTable(c); err != nil {
 			return reject(err.Error())
 		}

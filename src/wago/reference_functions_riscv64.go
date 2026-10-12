@@ -17,10 +17,10 @@ import (
 // or a source Compiled's cache. Trusted decoding retains unpublished RW staging.
 func railshotValidateReferenceFunctionInstance(c *Compiled, opts InstantiateOptions) error {
 	c = c.executionView()
-	if (c.nativeReferenceFunctionABI || rv64GCTypeSubtypingFinalityLink(c)) && !opts.railshotTailPolicy.referenceFunctions {
+	if (c.nativeReferenceFunctionABI || rv64GCTypeSubtypingFinalityLink(c) || rv64GCTypeSubtypingStructLink(c)) && !opts.railshotTailPolicy.referenceFunctions {
 		return fmt.Errorf("%w: closed RV64 reference functions require private Runtime permission", railshot.ErrUnsupported)
 	}
-	if c.nativeReferenceFunctionABI || rv64GCTypeSubtypingFinalityLink(c) {
+	if c.nativeReferenceFunctionABI || rv64GCTypeSubtypingFinalityLink(c) || rv64GCTypeSubtypingStructLink(c) {
 		return c.validateCached()
 	}
 	return nil

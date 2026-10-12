@@ -33,7 +33,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	}
 	maxImportArity := coreruntime.MaxHostArity
 	vectorProfile := false
-	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 {
+	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 && opts.GCTypeSubtypingLinkSource == 0 && opts.GCTypeSubtypingFinalityLinkSource == 0 && opts.GCTypeSubtypingStructLinkSource == 0 {
 		var err error
 		vectorProfile, err = railshot.UsesSWAR(m)
 		if err != nil {
@@ -171,6 +171,10 @@ func railshotGCTypeSubtypingLinkSource(data []byte) uint8 {
 
 func railshotGCTypeSubtypingFinalityLinkSource(data []byte) uint8 {
 	return railshot.GCTypeSubtypingFinalityLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingStructLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingStructLinkSourceVariant(data)
 }
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
@@ -346,6 +350,14 @@ func railshotConfigureGCTypeSubtypingLink(sourceVariant uint8, opts *railshotCom
 
 func railshotConfigureGCTypeSubtypingFinalityLink(sourceVariant uint8, opts *railshotCompileOptions) {
 	opts.GCTypeSubtypingFinalityLinkSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingStructLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingStructLinkSource = sourceVariant
 	if sourceVariant != 0 {
 		opts.NativeReferenceCalls = false
 		opts.NativeReferenceFunctions = false
