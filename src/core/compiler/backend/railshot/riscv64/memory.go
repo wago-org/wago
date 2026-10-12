@@ -70,6 +70,7 @@ type moduleState struct {
 	gcTypeSubtypingRecursiveFunctions bool
 	gcTypeSubtypingRefFuncGlobals     bool
 	gcTypeSubtypingRuntimeCallCast    bool
+	gcTypeSubtypingFinalityCallCast   bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -212,7 +213,8 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
-	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m)
+	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
+	gcTypeSubtypingFinalityCallCast := admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
 	gcTypeSubtypingRefFuncGlobals := admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
@@ -449,6 +451,9 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				fn.key, ok = m.StructuralTypeKeyChecked(flatTypeIndex)
 				if !ok {
 					return s, unsupported("bounded table signature identity")
+				}
+				if gcTypeSubtypingFinalityCallCast && flatTypeIndex == 1 {
+					fn.key ^= rv64GCTypeSubtypingRuntimeFinalityKeySalt
 				}
 			}
 			for k, t := range ft.Params {

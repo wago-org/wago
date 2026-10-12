@@ -25,7 +25,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCRefCastAbstractWire(data) || admitRV64GCRefCastConcreteWire(data) || admitRV64GCBrOnCastAbstractWire(data) || admitRV64GCBrOnCastFailAbstractWire(data) || admitRV64GCBrOnCastConcreteWire(data) || admitRV64GCBrOnCastFailConcreteWire(data) || admitRV64GCBrOnCastNullabilityWire(data) || admitRV64GCBrOnCastFailNullabilityWire(data) || admitRV64GCTypeSubtypingDeclarationsWire(data) || admitRV64GCTypeSubtypingRecursiveFunctionsWire(data) || admitRV64GCTypeSubtypingRefFuncGlobalsWire(data) || admitRV64GCTypeSubtypingRuntimeCallCastWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
+	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCRefCastAbstractWire(data) || admitRV64GCRefCastConcreteWire(data) || admitRV64GCBrOnCastAbstractWire(data) || admitRV64GCBrOnCastFailAbstractWire(data) || admitRV64GCBrOnCastConcreteWire(data) || admitRV64GCBrOnCastFailConcreteWire(data) || admitRV64GCBrOnCastNullabilityWire(data) || admitRV64GCBrOnCastFailNullabilityWire(data) || admitRV64GCTypeSubtypingDeclarationsWire(data) || admitRV64GCTypeSubtypingRecursiveFunctionsWire(data) || admitRV64GCTypeSubtypingRefFuncGlobalsWire(data) || admitRV64GCTypeSubtypingRuntimeCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeFinalityCallCastWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -88,6 +88,14 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, unsupported("gc type-subtyping runtime call/cast source provenance")
 	}
 	opts.gcTypeSubtypingRuntimeCallCast = decodedGCTypeSubtypingRuntimeCallCast
+	decodedGCTypeSubtypingRuntimeFinalityCallCast := admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
+	if opts.GCTypeSubtypingRuntimeFinalityCallCastSource != decodedGCTypeSubtypingRuntimeFinalityCallCast {
+		return nil, unsupported("gc type-subtyping runtime finality call/cast source provenance")
+	}
+	opts.gcTypeSubtypingFinalityCallCast = decodedGCTypeSubtypingRuntimeFinalityCallCast
+	// The shared runtime-call mode supplies framed table/cast mechanics; the
+	// dedicated flag below preserves the different finality subtype relation.
+	opts.gcTypeSubtypingRuntimeCallCast = decodedGCTypeSubtypingRuntimeCallCast || decodedGCTypeSubtypingRuntimeFinalityCallCast
 	decodedI31Core := admitRV64I31Core(m)
 	if opts.I31CoreSource != decodedI31Core {
 		return nil, unsupported("i31 core source provenance")
@@ -272,7 +280,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	}
 	var usesSWAR bool
 	var err error
-	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast {
+	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingFinalityCallCast {
 		usesSWAR, err = moduleUsesSWAR(m)
 		if err != nil {
 			return nil, err
@@ -321,7 +329,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if usesSWAR {
 		return compileSWARProductionModule(m, opts)
 	}
-	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast {
+	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingFinalityCallCast {
 		if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
 			return nil, err
 		}
@@ -350,6 +358,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if err != nil {
 		return nil, err
 	}
+	if opts.gcTypeSubtypingFinalityCallCast {
+		return stageGCTypeSubtypingRuntimeFinalityCallCast(c, opts, m)
+	}
 	if opts.gcTypeSubtypingRuntimeCallCast {
 		return stageGCTypeSubtypingRuntimeCallCast(c, opts, m)
 	}
@@ -376,6 +387,22 @@ func stageGCTypeSubtypingRuntimeCallCast(c *Compiled, opts CompileOptions, m *wa
 		if !function.mode.referenceFunctions || !function.mode.referenceCalls || !function.mode.production || !function.mode.interruptible ||
 			!function.mode.foreignTableCalls || !function.mode.invocationContext || function.mode.localTailCalls || function.mode.importTailCalls || function.mode.dynamicTailCalls {
 			return nil, unsupported("gc type-subtyping runtime call/cast function ABI")
+		}
+	}
+	return stageAdmittedProductionModule(c, opts)
+}
+
+func stageGCTypeSubtypingRuntimeFinalityCallCast(c *Compiled, opts CompileOptions, m *wasm.Module) (*enc.CompiledModule, error) {
+	if c == nil || !admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || !c.state.gcTypeSubtypingFinalityCallCast ||
+		!c.state.referenceFunctions || !c.state.referenceCalls || !c.state.ownedTable || len(c.functions) != 6 || len(c.code) == 0 ||
+		opts.NativeTailCalls || opts.localTailCalls || opts.importTailCalls || opts.dynamicTailCalls ||
+		!opts.NativeReferenceCalls || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext {
+		return nil, unsupported("gc type-subtyping runtime finality call/cast staged ABI")
+	}
+	for _, function := range c.functions {
+		if !function.mode.referenceFunctions || !function.mode.referenceCalls || !function.mode.production || !function.mode.interruptible ||
+			!function.mode.foreignTableCalls || !function.mode.invocationContext || function.mode.localTailCalls || function.mode.importTailCalls || function.mode.dynamicTailCalls {
+			return nil, unsupported("gc type-subtyping runtime finality call/cast function ABI")
 		}
 	}
 	return stageAdmittedProductionModule(c, opts)

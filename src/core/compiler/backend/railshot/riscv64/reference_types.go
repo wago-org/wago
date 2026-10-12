@@ -72,6 +72,7 @@ type internalReferenceTypes struct {
 	gcTypeSubtypingRecursiveFunctions bool
 	gcTypeSubtypingRefFuncGlobals     bool
 	gcTypeSubtypingRuntimeCallCast    bool
+	gcTypeSubtypingFinalityCallCast   bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -253,7 +254,7 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 	}
 	declarationExtern := block && types.declarationExtern && lead == 0x64 && heap == -17
 	gcAbstract := block && (types.gcRefTestAbstract && (heap == -15 || heap == -18 || heap == -19 || heap == -20 || heap == -21 || heap == -22 || heap == 1 || heap == 2) || types.gcBrOnCastNullability && (heap == -18 || heap == 0))
-	runtimeSubtype := types.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3
+	runtimeSubtype := types.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3 && (!types.gcTypeSubtypingFinalityCallCast || heap < 2)
 	if heap != -16 && !declarationExtern && !gcAbstract && !runtimeSubtype && !(typed && heap >= 0 && types.function(uint32(heap))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}

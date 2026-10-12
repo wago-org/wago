@@ -1060,7 +1060,11 @@ type memoryDef struct {
 
 func (c *Compiled) funcTypeKey(index int) uint64 {
 	if c != nil && index >= 0 && index < len(c.FuncTypeID) {
-		return c.FuncTypeID[index]
+		key := c.FuncTypeID[index]
+		if rv64GCTypeSubtypingRuntimeFinalityCallCast(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex && c.Funcs[index].TypeIndex == 1 {
+			key ^= 0x9e3779b97f4a7c15
+		}
+		return key
 	}
 	return 0
 }

@@ -65,8 +65,14 @@ private function-subtype descriptors populate an immutable table; genuine RV64
 `ref.cast` traps on non-matching full-width canonical descriptors. Source,
 artifact, actual compiler-free, W^X lease, final-unmap, success, and six failure
 paths are covered under baseline QEMU RV64G without a collector. Cross-instance
-subtype boundaries and later `gc/type-subtyping` runtime products remain closed
-for later checkpoints; native cache/performance qualification is still open.
+subtype boundaries remain closed for later checkpoints. Official `.18` now has
+its own exact collector-free checkpoint: structurally identical open and final
+function types are separated by pinned private descriptor keys, and both
+wrong-signature indirect calls plus both cross-finality casts trap from source
+and compiler-free artifacts. Exact retained metadata, W^X publication, live
+leases, final unmapping, and framed trap re-entry are covered under baseline
+QEMU RV64G. Later `gc/type-subtyping` runtime products and native cache/performance
+qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

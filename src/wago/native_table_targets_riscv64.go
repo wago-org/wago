@@ -352,7 +352,7 @@ func rv64PublishedDescriptor(owner *Instance, descriptor uint64) ([]byte, bool) 
 	}
 	canonical := owner.funcRefDescs[offset : offset+coreruntime.FuncRefDescBytes]
 	valid := binary.LittleEndian.Uint64(canonical) == entry &&
-		binary.LittleEndian.Uint64(canonical[coreruntime.TableEntrySigKeyOffset:]) == owner.c.FuncTypeID[function] &&
+		binary.LittleEndian.Uint64(canonical[coreruntime.TableEntrySigKeyOffset:]) == owner.c.funcTypeKey(function) &&
 		binary.LittleEndian.Uint64(canonical[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(owner.jm.LinMemBase())|abi.FuncRefLocalWrapperHomeTag &&
 		binary.LittleEndian.Uint64(canonical[coreruntime.TableEntryRefSlotOffset:]) == descriptor &&
 		binary.LittleEndian.Uint64(canonical[coreruntime.FuncRefContextOffset:]) == uint64(owner.nativeContext)

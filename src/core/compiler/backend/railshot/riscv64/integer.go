@@ -86,6 +86,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcTypeSubtypingRecursiveFunctions = state.gcTypeSubtypingRecursiveFunctions
 		referenceTypes.gcTypeSubtypingRefFuncGlobals = state.gcTypeSubtypingRefFuncGlobals
 		referenceTypes.gcTypeSubtypingRuntimeCallCast = state.gcTypeSubtypingRuntimeCallCast
+		referenceTypes.gcTypeSubtypingFinalityCallCast = state.gcTypeSubtypingFinalityCallCast
 	}
 	var locals [256]bool
 	var localRefs [256]bool
@@ -1267,8 +1268,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				} else {
 					if subtypeCall {
 						keys := []uint64{sig.key}
-						for subtype := typeIndex + 1; subtype < 3; subtype++ {
-							keys = append(keys, state.types[subtype].key)
+						if !state.gcTypeSubtypingFinalityCallCast {
+							for subtype := typeIndex + 1; subtype < 3; subtype++ {
+								keys = append(keys, state.types[subtype].key)
+							}
 						}
 						emit.indirectCallKeys(sig, keys, h, indexSlot, tableWide, tableIndex)
 					} else {
@@ -2159,9 +2162,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					target := imm.HeapType.Type().Index
 					if live && emit != nil {
-						keys := make([]uint64, 0, 3-target)
-						for subtype := target; subtype < 3; subtype++ {
-							keys = append(keys, state.types[subtype].key)
+						keys := []uint64{state.types[target].key}
+						if !state.gcTypeSubtypingFinalityCallCast {
+							for subtype := target + 1; subtype < 3; subtype++ {
+								keys = append(keys, state.types[subtype].key)
+							}
 						}
 						emit.functionReferenceCast(h, keys, imm.Subopcode == 23)
 					}
@@ -2611,6 +2616,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcTypeSubtypingRecursiveFunctions = state.gcTypeSubtypingRecursiveFunctions
 		referenceTypes.gcTypeSubtypingRefFuncGlobals = state.gcTypeSubtypingRefFuncGlobals
 		referenceTypes.gcTypeSubtypingRuntimeCallCast = state.gcTypeSubtypingRuntimeCallCast
+		referenceTypes.gcTypeSubtypingFinalityCallCast = state.gcTypeSubtypingFinalityCallCast
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

@@ -38,6 +38,9 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 		// functions private, but its immutable table must be able to call them.
 		return false
 	}
+	if function >= 0 && function < 2 && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingRuntimeFinalityCallCast && rv64GCTypeSubtypingRuntimeFinalityCallCast(c) {
+		return false
+	}
 	if (function == 0 && len(c.Funcs) != 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0])) ||
 		(function == 1 && len(c.Funcs) == 1 && rv64PublicHostReferenceBoundary(c)) ||
 		(function <= 1 && rv64PublicDynamicHostReferenceBoundary(c)) {
@@ -786,7 +789,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("RV64 closed reference functions: %s", detail) }
 	publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c)
 	publicDynamicHostReferenceBoundary := rv64PublicDynamicHostReferenceBoundary(c)
-	privateRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c)
+	privateRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c)
 	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports > 0) {
 		return reject("bounded numeric import directory required")
 	}

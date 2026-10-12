@@ -44,7 +44,12 @@ func railshotRestoreGCTypeSubtypingRefFuncGlobalsArtifact(*Compiled)     {}
 func rv64GCTypeSubtypingRuntimeCallCast(*Compiled) bool                  { return false }
 func rv64GCTypeSubtypingRuntimeCallCastExecutionCode(*Compiled) bool     { return false }
 func railshotRestoreGCTypeSubtypingRuntimeCallCastArtifact(*Compiled)    {}
-func railshotRestoreGCRefCastAbstractArtifact(*Compiled)                 {}
-func rv64GCRefCastConcrete(*Compiled) bool                               { return false }
-func rv64GCRefCastConcreteExecutionCode(*Compiled) bool                  { return false }
-func railshotRestoreGCRefCastConcreteArtifact(*Compiled)                 {}
+
+func rv64GCTypeSubtypingRuntimeFinalityCallCast(*Compiled) bool               { return false }
+func rv64GCTypeSubtypingRuntimeFinalityCallCastExecutionCode(*Compiled) bool  { return false }
+func railshotRestoreGCTypeSubtypingRuntimeFinalityCallCastArtifact(*Compiled) {}
+
+func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
+func rv64GCRefCastConcrete(*Compiled) bool               { return false }
+func rv64GCRefCastConcreteExecutionCode(*Compiled) bool  { return false }
+func railshotRestoreGCRefCastConcreteArtifact(*Compiled) {}

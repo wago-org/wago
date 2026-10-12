@@ -93,7 +93,8 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCTypeSubtypingDeclarations := rv64GCTypeSubtypingDeclarations(c)
 	exactGCTypeSubtypingRecursiveFunctions := rv64GCTypeSubtypingRecursiveFunctions(c)
 	exactGCTypeSubtypingRefFuncGlobals := rv64GCTypeSubtypingRefFuncGlobals(c)
-	exactGCTypeSubtypingRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c)
+	exactGCTypeSubtypingRuntimeFinalityCallCast := rv64GCTypeSubtypingRuntimeFinalityCallCast(c)
+	exactGCTypeSubtypingRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || exactGCTypeSubtypingRuntimeFinalityCallCast
 	exactGCStructGet := rv64GCStructGet(c)
 	exactGCStructMutation := rv64GCStructMutation(c)
 	exactGCStructNull := rv64GCStructNull(c)
@@ -128,6 +129,12 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	if rv64GCTypeSubtypingRuntimeCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeCallCast {
 		return reject("gc/type-subtyping runtime call/cast metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingRuntimeFinalityCallCastExecutionCode(c) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
+		return reject("gc/type-subtyping runtime finality call/cast image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingRuntimeFinalityCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
+		return reject("gc/type-subtyping runtime finality call/cast metadata requires its exact retained image")
 	}
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")

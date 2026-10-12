@@ -190,6 +190,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.gcTypeSubtypingRecursiveFunctions = opts.gcTypeSubtypingRecursiveFunctions
 	state.gcTypeSubtypingRefFuncGlobals = opts.gcTypeSubtypingRefFuncGlobals
 	state.gcTypeSubtypingRuntimeCallCast = opts.gcTypeSubtypingRuntimeCallCast
+	state.gcTypeSubtypingFinalityCallCast = opts.gcTypeSubtypingFinalityCallCast
 	// Internal GC bridges stage their arguments in the same serialized arena as
 	// ordinary Wasm calls. A module whose public functions take fewer arguments
 	// must still retain the complete helper shape; otherwise helper staging can
@@ -506,7 +507,7 @@ func admitShapeProfileReferences(m *wasm.Module, floating, publicStarts, referen
 	return admitShapeProfileFunctions(m, floating, publicStarts, referencesAllowed, typed, false)
 }
 func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referencesAllowed, typed, referenceFunctions bool) error {
-	if admitRV64GCTypeSubtypingDeclarations(m) != 0 || admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) {
+	if admitRV64GCTypeSubtypingDeclarations(m) != 0 || admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) {
 		return nil
 	}
 	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCBrOnCastConcrete(m) || admitRV64GCBrOnCastFailConcrete(m) || admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCRefCastAbstract(m) || admitRV64GCBrOnCastAbstract(m) || admitRV64GCBrOnCastFailAbstract(m) || admitRV64GCStructGet(m) || admitRV64GCStructMutation(m) || admitRV64GCStructNull(m) || admitRV64GCStructPacked(m) || admitRV64GCStructBasic(m) || admitRV64GCStructNumericGlobals(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {

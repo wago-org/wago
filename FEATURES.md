@@ -89,7 +89,12 @@ three canonical function descriptors, `call_indirect` accepts the pinned
 declared-supertype closure, and `ref.cast` checks canonical full-width descriptor
 keys. Its `run` export and all six wrong-signature/cast traps execute from source
 and compiler-free artifacts with W^X lease/cleanup coverage and no collector.
-Other `gc/type-subtyping` module shapes remain fail-closed on RV64.
+Official `.18` is a separate exact finality product. Its structurally identical
+open and final function types receive distinct private descriptor keys, so both
+wrong-signature indirect calls and both cross-finality casts trap. Source and
+compiler-free artifacts cover framed trap recovery, W^X lease/cleanup, hostile
+retained-state rejection, and collector-free execution. Other
+`gc/type-subtyping` module shapes remain fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,
 including cold traps, with explicit wrapper/helper gaps. Unwind maps and detailed
