@@ -169,6 +169,11 @@ profiles for observing nullness, clearing to null, and storing the writer's sole
 exported function. The non-null bridge authenticates the complete published
 descriptor and its same-store local owner before transferring one container root;
 overwrite or close retires that root through the ordinary global transaction.
+One further exact product copies a full-width descriptor from imported mutable
+global zero to imported mutable global one. The parked bridge resolves the
+canonical same-store owner before publication, transfers exactly one target root,
+releases speculative roots for repeated or aliased copies, and uses the same
+transaction to retire a prior target when the copied value is null.
 Reference-global imports combined with instance-owned imported tables, general
 mutable reference imports/exports and typed references remain gated pending
 separate ownership qualification.

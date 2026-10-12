@@ -39,8 +39,11 @@ retirement remains container-managed. A fourth exact profile stores its sole
 exported function (`ref.func 0`) into that same imported cell. The bridge carries
 the full-width descriptor, authenticates its published identity, and transfers
 one precise descriptor-owner root into the container without issuing a public
-token. Other non-null or general `global.set`, raw reference results, and mixed
-state remain unsupported for these profiles.
+token. A fifth exact profile copies one imported mutable nullable funcref cell
+into a second. Null copies retire the target owner; non-null copies authenticate
+the complete canonical descriptor and transfer one target root, while aliased
+source/target cells do not duplicate it. Other non-null or general `global.set`,
+raw reference results, and mixed state remain unsupported for these profiles.
 Table-free declarative segments and repeated
 `elem.drop` use dropped element state; unused legacy declarations require no
 function descriptors or element directory. Empty and state-only modules have no

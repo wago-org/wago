@@ -87,6 +87,7 @@ type moduleState struct {
 	// Exact imported mutable-funcref writes use the parked ownership bridge.
 	mutableFuncrefGlobalClear   bool
 	mutableFuncrefGlobalSetSelf bool
+	mutableFuncrefGlobalCopy    bool
 	ownedTable                  bool
 	ownedTableGrowth            bool
 	table64                     bool
@@ -262,6 +263,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.mutableFuncrefGlobalClear = admitMutableFunctionGlobalClear(m)
 	s.mutableFuncrefGlobalSetSelf = admitMutableFunctionGlobalSetSelf(m)
+	s.mutableFuncrefGlobalCopy = admitMutableFunctionGlobalCopy(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -269,7 +271,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf
+		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -333,7 +335,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("isolated global import")
 			}
 			g := im.Type.GlobalType()
-			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf) && admitImportedFunctionGlobal(m, g)
+			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy) && admitImportedFunctionGlobal(m, g)
 			if !scalarType(g.Type, true) && !reference {
 				return s, unsupported("nonscalar global import")
 			}

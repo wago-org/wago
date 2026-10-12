@@ -19,6 +19,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalStoreSelf(c) {
 		return true, nil // Exact self-store transfers one authenticated descriptor root.
 	}
+	if rv64MutableFuncrefGlobalCopy(c) {
+		return true, nil // Exact cross-container copy transfers the canonical descriptor root.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable

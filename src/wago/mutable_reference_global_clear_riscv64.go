@@ -17,7 +17,7 @@ func rv64MutableFuncrefGlobalClearExecutionCode(c *Compiled) bool {
 	return c != nil && len(c.code) == 844 && sha256.Sum256(c.code) == rv64MutableFuncrefClearCodeDigest
 }
 
-// rv64MutableFuncrefGlobalClear authenticates the sole guest reference write
+// rv64MutableFuncrefGlobalClear authenticates the null guest reference write
 // product. Its function can only store null into imported mutable global zero,
 // and the image-local bridge executes the existing container transaction while
 // native execution is parked.
@@ -70,7 +70,7 @@ func rv64MutableFuncrefGlobalClear(c *Compiled) bool {
 }
 
 func railshotUsesGuestGlobalStoreHelper(c *Compiled) bool {
-	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c)
+	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c)
 }
 
 // The zero-index host-funcref dispatch encoding is permanently invalid for a
@@ -80,15 +80,17 @@ func (in *Instance) dispatchGuestGlobalStore(dispatch uint32, args, results []ui
 	if dispatch != hostFuncRefDispatchBit {
 		return false
 	}
-	if in == nil || len(results) != 0 || len(in.globalCells) != 1 {
+	if in == nil || len(results) != 0 {
 		panic(invalidHostReference{err: fmt.Errorf("invalid RV64 guest global store bridge")})
 	}
 	var err error
 	switch {
-	case rv64MutableFuncrefGlobalClear(in.c) && len(args) == 0:
+	case rv64MutableFuncrefGlobalClear(in.c) && len(args) == 0 && len(in.globalCells) == 1:
 		err = in.globalCells[0].SetValue(ValueFuncRef(NullFuncRef()))
-	case rv64MutableFuncrefGlobalStoreSelf(in.c) && len(args) == 1:
+	case rv64MutableFuncrefGlobalStoreSelf(in.c) && len(args) == 1 && len(in.globalCells) == 1:
 		err = in.globalCells[0].setGuestFuncrefDescriptor(in, args[0])
+	case rv64MutableFuncrefGlobalCopy(in.c) && len(args) == 1 && len(in.globalCells) == 2:
+		err = in.globalCells[1].copyGuestFuncrefDescriptor(in, args[0])
 	default:
 		panic(invalidHostReference{err: fmt.Errorf("invalid RV64 guest global store bridge")})
 	}

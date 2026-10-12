@@ -1317,8 +1317,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if _, err = popClass(reference); err != nil {
 					return integerSummary{}, err
 				}
-				if state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf {
-					if idx != 0 || !reference {
+				if state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy {
+					want := uint32(0)
+					if state.mutableFuncrefGlobalCopy {
+						want = 1
+					}
+					if idx != want || !reference {
 						return integerSummary{}, unsupported("mutable funcref store target")
 					}
 					callCount++
