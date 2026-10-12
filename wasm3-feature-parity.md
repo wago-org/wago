@@ -84,6 +84,14 @@ lowering. Native execution tests pass on both architectures. See
 The eight remaining host-profile rejections are JSPI and JS strings. This
 checkpoint does not establish w2c2 parity or complete thread conformance.
 
+The next checkpoint executes ordinary shared scalar/SIMD memory accesses and
+adds two wasm.fyi contracts (cumulative Wago coverage 84/92). Correcting the
+isolated AOT adapter's thread-profile admission and linking pthread/futex support
+produces seven successful exact-artifact thread comparisons. Wago remains
+1.555–7.097 times slower on the memory/atomic kernels; the fence-only kernel has
+a larger gap because Clang collapses its guest loops to one fence and closed-form
+arithmetic. The linked thread report retains those results and configuration.
+
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
 `~/.cache/wago-wasm3-parity/wago`.

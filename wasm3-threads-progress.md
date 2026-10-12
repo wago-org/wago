@@ -104,3 +104,65 @@ Raw evidence remains local and ignored by Git:
   directory retain commands, artifacts, oracles, and batching controls.
 - `threads-compile-before.txt` and `threads-compile-after.txt` retain compile
   samples from the baseline worktree and current checkout respectively.
+
+## Ordinary access measurement and restored w2c2 thread comparison
+
+wasm.fyi `97beeee` adds shared unaligned scalar and SIMD load/store contracts.
+Their source-built oracles pass in Node/V8 at every declared size, twice per
+instance. The expanded source-built performance set has 92 contracts; cumulative
+Wago coverage is 84/92, with the same eight JSPI/JS-string profile rejections.
+This coverage combines the initial capture and subsequent successful thread
+captures, not a new full-suite rerun.
+
+Wago source identity for all seven current thread measurements is
+`0a24f14a364689fdf2f0734b2e7806b16f6105e5/source-69e9065f3a78775c218699417e2e46103b7ab88c03e190a94ac36e1676607b59`.
+The w2c2 SIMD fork and translator remain at the initial comparison's identities.
+The isolated AOT adapter initially rejected `threads-defined-v1` before running
+the translator. After admitting that no-host-import profile, the C compiler
+required `-DWASM_THREADS_PTHREADS -pthread`; wait/notify additionally needed the
+fork's `futex/futex.c`, `futex/list.c`, and `futex/map.c` linked into the module.
+The [adapter admission patch](docs/benchmarks/wasm3-2026-10-12/aot-defined-threads.patch)
+is retained. Apply it to the isolated native adapter with `patch -p1`, then
+rebuild using `cargo build --release --locked --no-default-features --features aot`.
+These changes resolve harness/configuration gaps; the earlier unsupported and
+failed captures remain separate.
+
+Apple Clang 21 uses `-O3 -march=native -fno-strict-aliasing`, the explicit Xcode
+SDK, and the pthread flags above. Each table row is the median of three launch
+medians, five verified samples per launch. Every pair uses identical artifact
+SHA-256 and meets the 50 ms duration target. Units remain ns per whole invocation.
+
+| Thread contract | Wago | w2c2 | Wago / w2c2 |
+| --- | ---: | ---: | ---: |
+| ordinary-load-store | 209,161 | 94,085 | 2.223 |
+| simd-load-store | 233,839 | 103,353 | 2.263 |
+| atomic-load-store | 242,021 | 155,667 | 1.555 |
+| atomic-rmw-add | 905,594 | 204,531 | 4.428 |
+| atomic-compare-exchange | 889,516 | 254,805 | 3.491 |
+| wait-mismatch-notify | 13,600,083 | 1,916,274 | 7.097 |
+| atomic-fence | 307,669 | 257 | 1,199.241 |
+
+The fence gap is now explained by generated-code inspection: Clang's exported
+performance function has one `dmb ish` followed by closed-form integer arithmetic
+and `ret`, with no guest loop remaining. The ignored `fence-inspect.c` and
+`fence-inspect.s` retain the translated source and assembly. This optimization
+remains part of the parity objective rather than being removed from comparison.
+The RMW/CAS lowering currently uses exclusive load/store loops on arm64;
+qualifying an LSE lowering is a subsequent performance opportunity.
+
+Five additional sequential compile samples at `0a24f14a` retain 74/73/94
+allocations per operation for default scalar/Core 3 scalar/imported-workers
+fixtures. Medians are 6,088 ns, 6,059 ns, and 22,146,119 ns; the larger fixture
+retains 1,587,220 code bytes. Compared with the recorded `c1acd6c0` baseline,
+these fixtures show no material compile regression. Peak RSS remains unmeasured
+for this checkpoint.
+
+Additional ignored evidence under `.validation/wasm3-parity/`:
+
+- `threads-current-arm64.json`, SHA-256 `d85a45bd97e5b54226260bc22c33488277c70470dbf1ec07ca17d8a365c16db9`.
+- `threads-w2c2-pthreads.json`, SHA-256 `cec83b7bc8badeaff39d763700352f1a9dec3185de7ee9090a5a9daca9149ef3` (six successful kernels; wait/notify linker failures excluded).
+- `threads-w2c2-futex.json`, SHA-256 `e67101ef3bcaf0cad294b3da26ff350cc73c5b4c857c53bf84c2edfd1c2f7686` (successful wait/notify).
+- `shared-access-compile.txt`, `threads-current-plan.json`,
+  `threads-w2c2-pthreads-plan.json`, and `threads-w2c2-futex-plan.json` retain
+  samples, exact commands, artifacts, and batching controls.
+- Rebuilt AOT adapter executable SHA-256 `9d18504522f3b22c8e2e161010f5a2a0870931f338e3d465224d20b59e949c84`.
