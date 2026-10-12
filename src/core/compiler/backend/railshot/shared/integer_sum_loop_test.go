@@ -38,3 +38,31 @@ func TestIntegerSumLoopRecognizerRejectsEffectsAndChangedRecurrences(t *testing.
 		}
 	}
 }
+
+func TestIntegerSumCounterSourceProofIncludesFusedAndNestedWrites(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, false)
+	for name, body := range map[string][]byte{
+		"get-only":     {0x20, 1, 0x03, 0x40},
+		"fused-select": {0x41, 7, 0x41, 9, 0x20, 0, 0x1b, 0x21, 2, 0x03, 0x40},
+		"nested-set":   {0x02, 0x40, 0x41, 7, 0x21, 2, 0x0b, 0x03, 0x40},
+		"tee":          {0x41, 7, 0x22, 2, 0x1a, 0x03, 0x40},
+	} {
+		r := wasm.ReaderFrom(body)
+		if err := r.JumpTo(len(body) - 1); err != nil {
+			t.Fatal(err)
+		}
+		got := IntegerSumCounterUntouched(&r, 2, classifier)
+		if got != (name == "get-only") {
+			t.Fatalf("%s: untouched=%t", name, got)
+		}
+		if r.Offset() != len(body)-1 {
+			t.Fatal("prefix proof changed source cursor")
+		}
+	}
+	body := append(bytes.Repeat([]byte{1}, 257), 0x03, 0x40)
+	r := wasm.ReaderFrom(body)
+	_ = r.JumpTo(len(body) - 1)
+	if IntegerSumCounterUntouched(&r, 2, classifier) {
+		t.Fatal("prefix proof exceeded bounded work")
+	}
+}

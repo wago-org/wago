@@ -120,3 +120,31 @@ func InspectIntegerSumLoop(source *wasm.Reader) (IntegerSumLoop, bool) {
 	p.End = r.Offset()
 	return p, true
 }
+
+// IntegerSumCounterUntouched proves the zero initialization from original source,
+// rather than emitter write history, which can omit fused local assignments.
+// Only successful reduction candidates pay this bounded prefix walk.
+func IntegerSumCounterUntouched(source *wasm.Reader, counter uint32, classifier wasm.ModuleInstructionClassifier) bool {
+	end := source.Offset() - 1 // source is immediately after the loop opcode
+	if end < 0 || end > 256 {
+		return false
+	}
+	r := *source
+	if r.JumpTo(0) != nil {
+		return false
+	}
+	var imm wasm.InstructionImmediate
+	for r.Offset() < end {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		if err := classifier.ClassifyInto(&r, op, &imm); err != nil || r.Offset() > end {
+			return false
+		}
+		if (op == 0x21 || op == 0x22) && imm.Index == counter {
+			return false
+		}
+	}
+	return r.Offset() == end
+}

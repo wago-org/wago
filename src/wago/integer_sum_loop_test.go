@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func integerSumModule(wide, fenced, nested bool) []byte {
+func integerSumModule(wide, fenced, nested bool, initializer []byte) []byte {
 	typ, c, add, lt, valueType := wasm.I32, byte(0x41), byte(0x6a), byte(0x49), byte(0x7f)
 	if wide {
 		typ, c, add, lt, valueType = wasm.I64, 0x42, 0x7c, 0x54, 0x7e
@@ -19,6 +19,7 @@ func integerSumModule(wide, fenced, nested bool) []byte {
 		locals = 2
 	}
 	body := []byte{1, locals, valueType, 0x20, 1}
+	body = append(body, initializer...)
 	if nested {
 		body = append(body, 0x03, 0x40)
 	}
@@ -47,7 +48,7 @@ func TestIntegerSumLoopPublicExecution(t *testing.T) {
 					t.Run(fmt.Sprintf("wide=%t/fence=%t/enabled=%t/regabi=%t", wide, fenced, enabled, regABI), func(t *testing.T) {
 						cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithOptimization("integer-sum-loop", enabled).WithOptimization("reg-abi", regABI)
 						for _, nested := range []bool{false, true} {
-							c, err := cfg.Compile(integerSumModule(wide, fenced, nested))
+							c, err := cfg.Compile(integerSumModule(wide, fenced, nested, nil))
 							if err != nil {
 								t.Fatal(err)
 							}
@@ -89,6 +90,52 @@ func TestIntegerSumLoopPublicExecution(t *testing.T) {
 							}
 						}
 					})
+				}
+			}
+		}
+	}
+}
+
+func TestIntegerSumLoopFusedCounterExecution(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		constant := byte(0x41)
+		if wide {
+			constant = 0x42
+		}
+		initializer := []byte{constant, 7, constant, 9, 0x20, 0}
+		if wide {
+			initializer = append(initializer, 0x50, 0x45)
+		}
+		initializer = append(initializer, 0x1b, 0x21, 2)
+		for _, enabled := range []bool{false, true} {
+			c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithOptimization("integer-sum-loop", enabled).Compile(integerSumModule(wide, true, false, initializer))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+				in, err := Instantiate(compiled)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				for _, n := range []uint64{0, 3, 16} {
+					counter := uint64(7)
+					if n == 0 {
+						counter = 9
+					}
+					sum := uint64(17)
+					for {
+						sum += counter
+						counter++
+						if counter >= n {
+							break
+						}
+					}
+					got, err := in.Invoke("sum", n, 17)
+					if err != nil || len(got) != 3 || got[0] != 17 || got[1] != sum || got[2] != counter {
+						t.Fatalf("wide=%t enabled=%t n=%d: %v,%v want=[17,%d,%d]", wide, enabled, n, got, err, sum, counter)
+					}
 				}
 			}
 		}

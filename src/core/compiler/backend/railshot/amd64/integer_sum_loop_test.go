@@ -109,3 +109,19 @@ func TestIntegerSumLoopRequiresUntouchedDeclaredCounter(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerSumLoopRejectsFusedCounterAssignment(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	body := []byte{1, 1, 0x7f, 0x41, 7, 0x41, 9, 0x20, 0, 0x1b, 0x21, 2,
+		0x03, 0x40, 0x20, 1, 0x20, 2, 0x6a, 0x21, 1, 0x20, 2, 0x41, 1, 0x6a, 0x21, 2, 0x20, 2, 0x20, 0, 0x49, 0x0d, 0, 0x0b, 0x20, 1, 0x20, 2, 0x0b}
+	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32, wasm.I32}, results: []wasm.ValType{wasm.I32, wasm.I32}, body: body})
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm.CodeImage.Close()
+	if stats.Funcs[0].Peephole["integer-sum-loop"] != 0 {
+		t.Fatal("fused assignment was treated as an untouched zero counter")
+	}
+}

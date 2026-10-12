@@ -26,16 +26,14 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 			return false, nil
 		}
 	}
-	// Untouched declared locals start at zero even when eager initialization
-	// does not retain a constant state. Exclude enclosing loops: a later write
-	// in their body could change this local before a subsequent entry here.
+	// Original source, not fused-emitter write history, proves initialization.
+	// An enclosing loop could reenter here after a later counter assignment.
 	for _, frame := range f.ctrl {
 		if frame.kind == cfLoop {
 			return false, nil
 		}
 	}
-	untouched := p.Counter < 64 && int(p.Counter) >= f.nParams && f.localWritten&(uint64(1)<<p.Counter) == 0
-	if !f.localConstZero(int(p.Counter)) && !untouched {
+	if int(p.Counter) < f.nParams || !shared.IntegerSumCounterUntouched(r, p.Counter, f.classifier) {
 		return false, nil
 	}
 	if err := r.JumpTo(p.End); err != nil {
