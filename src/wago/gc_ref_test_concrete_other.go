@@ -77,6 +77,11 @@ func rv64GCTypeSubtypingIndependentStructLink(*Compiled) bool              { ret
 func rv64GCTypeSubtypingIndependentStructLinkExecutionCode(*Compiled) bool { return false }
 func railshotRestoreGCTypeSubtypingIndependentStructLinkArtifact(*Compiled) {
 }
+func rv64GCTypeSubtypingExtendedProjectionLink(*Compiled) bool { return false }
+func rv64GCTypeSubtypingExtendedProjectionLinkExecutionCode(*Compiled) bool {
+	return false
+}
+func railshotRestoreGCTypeSubtypingExtendedProjectionLinkArtifact(*Compiled) {}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }

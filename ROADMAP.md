@@ -130,8 +130,12 @@ the provider before attachment, leaving its resource-retention count unchanged.
 Official `.43` and `.44` then prove the positive independent-recursion case:
 separately declared but structurally equivalent self-recursive companions let
 the consumer accept `g`, copy its canonical descriptor identity, and retain the
-provider through logical close. Products after `.44` and native cache/performance
-qualification remain open.
+provider through logical close. Official `.45` and `.46` extend the projected
+recursive-struct link to two imports of the same provider export through distinct
+consumer type projections. Both imported descriptor slots acquire the provider's
+canonical identity, while resource ownership is deduplicated to one retained
+provider and released only after consumer close. Products after `.46` and native
+cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

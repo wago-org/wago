@@ -141,6 +141,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingIndependentStructSource identifies the exact official .43
 	// provider or .44 independently declared compatible consumer.
 	GCTypeSubtypingIndependentStructSource uint8
+	// GCTypeSubtypingExtendedProjectionSource identifies the exact official .45
+	// provider or .46 projected-recursion compatible consumer.
+	GCTypeSubtypingExtendedProjectionSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -232,6 +235,7 @@ type CompileOptions struct {
 	gcTypeSubtypingStructProjection   uint8
 	gcTypeSubtypingStructMismatch     uint8
 	gcTypeSubtypingIndependentStruct  uint8
+	gcTypeSubtypingExtendedProjection uint8
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

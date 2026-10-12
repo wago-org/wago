@@ -115,7 +115,9 @@ func railshotValidateNativeExport(c *Compiled, index int, export *InstanceExport
 		(rv64GCTypeSubtypingStructMismatchLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructMismatchLinkConsumer &&
 			rv64GCTypeSubtypingStructMismatchLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructMismatchLinkProvider) ||
 		(rv64GCTypeSubtypingIndependentStructLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingIndependentStructLinkConsumer &&
-			rv64GCTypeSubtypingIndependentStructLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingIndependentStructLinkProvider)
+			rv64GCTypeSubtypingIndependentStructLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingIndependentStructLinkProvider) ||
+		(rv64GCTypeSubtypingExtendedProjectionLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingExtendedProjectionLinkConsumer &&
+			rv64GCTypeSubtypingExtendedProjectionLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingExtendedProjectionLinkProvider)
 	if index < 0 || index >= len(c.importFuncSigs) || !sigMatches(c.importFuncSigs[index], c.Types, export, allowSubtype) {
 		return fmt.Errorf("native instance export signature mismatch")
 	}
