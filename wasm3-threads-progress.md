@@ -658,3 +658,41 @@ These fixtures show no material compile regression; peak RSS and corpus-wide
 compile costs remain unmeasured. Evidence is `threads-host-import-compile-ab.json`
 and `threads-host-import-scalar-compile-ab.json`. The exact-activation GC fix
 is validated separately and is not included in these timing captures.
+
+## Shared-memory host callback performance contract
+
+wasm.fyi `be6999b` adds `threads/host-identity` at three correctness sizes and
+one sustained performance size. It stores the loop index into shared memory,
+loads it, calls the declared `wasmbench.identity(i32)->i32` import, and adds the
+returned value. The independent wrapping oracle is 536,739,840 for 262,144
+work units. `threads-identity-v1` declares its shared-memory and callback setup;
+wasm-bench `3525ee7` binds the existing owned typed Go HostFuncRef and enables
+threads with explicit bounds. V8 binds its JS identity callback. The isolated
+w2c2 adapter admits the profile and retains its existing noinline/noipa typed
+C callback with an opaque compiler memory barrier.
+
+The pinned correctness artifact rebuilds byte-for-byte; the sustained artifact
+SHA-256 is `c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53`.
+All seven launches verify the oracle and qualify for five 50 ms samples with
+two warmup batches. The three alternating Wago/peer launches yield medians of
+63,726,416 ns and 202,795 ns, a 314.2 ratio. One V8 oracle launch yields
+742,097 ns. These compare Go, C, and JS callback bindings, respectively; they
+expose a host-transition gap and do not isolate shared-memory instruction cost.
+Callback parity remains open. The faster bounded numeric callback route does
+not currently admit this owned HostFuncRef namespace.
+
+Wago adapter identity is
+`6e55e4a0ff6f7c8300adfcc5ba490f0b36dacb36/source-077e70001fa4f70e54bcf72c54ec9562ed15245f2c8f10a555aa31bf32c56a89`.
+Raw ignored evidence `threads-host-identity-arm64.json` has SHA-256
+`69817170c7aa1cc60d7f59d46e93d21064149d405eb6ddd5b57774ed723df700`;
+the adjacent plan preserves exact ordering and commands. Rebuilt isolated peer
+adapter SHA-256 is `3fdbd71e164f6325d0344923c9962ac3977ff52f9db309c4b544ec0aa869475e`.
+The incremental peer profile patch is retained at
+`docs/benchmarks/wasm3-2026-10-12/aot-thread-host-identity.patch`.
+
+The performance harness tests pass (three checks, one unrelated allocation
+fixture skip). The broader curation test has four failures from absent curated
+core fixtures (`br-table-state-machine` and insufficient shared-module/diversity
+inventory); its source/artifact/oracle consistency checks pass. That suite is
+not reported clean. AMD64 host-import execution remains validated, but these
+callback timing captures are ARM64 only.
